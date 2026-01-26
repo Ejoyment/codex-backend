@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Team Workspace - CODEX INC</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="js/api.js"></script>
+    <link rel="stylesheet" href="css/skeleton.css">
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <!-- Skeleton Loader -->
+    <div class="skeleton-loader">
+        <div class="skeleton-main">
+            <div class="skeleton-header"></div>
+            <div class="skeleton-card"></div>
+        </div>
+    </div>
+
+    <!-- Top Header -->
+    <header class="bg-white border-b px-8 py-4">
+        <div class="max-w-7xl mx-auto flex items-center justify-between">
+            <div class="flex items-center space-x-6">
+                <div class="flex items-center space-x-2">
+                    <div class="w-8 h-8 bg-[#0a1628] rounded flex items-center justify-center">
+                        <span class="text-white font-bold text-sm">C</span>
+                    </div>
+                    <span class="text-xl font-bold text-gray-900">CODEX INC</span>
+                </div>
+                <div class="relative">
+                    <select id="companySelector" class="px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="">Select Workspace...</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="flex items-center space-x-4">
+                <button class="relative p-2 text-gray-600 hover:text-gray-800">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
+                    </svg>
+                </button>
+                <div class="flex items-center space-x-2">
+                    <img id="headerAvatar" class="w-9 h-9 rounded-full" src="https://ui-avatars.com/api/?name=User&background=3b82f6&color=fff" alt="">
+                    <div>
+                        <div id="headerName" class="text-sm font-medium text-gray-900">User</div>
+                        <div id="headerRole" class="text-xs text-gray-500">Member</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <div class="bg-gray-100 px-8 py-4 border-b border-gray-300">
+        <div class="max-w-7xl mx-auto flex space-x-2">
+            <a href="dashboard.html" class="px-6 py-2 bg-white text-gray-700 rounded-lg hover:bg-gray-50 transition">Dashboard</a>
+            <button class="px-6 py-2 bg-[#0a1628] text-white rounded-lg">Workspace</button>
+            <a href="tasks.html" class="px-6 py-2 bg-white text-gray-700 rounded-lg hover:bg-gray-50 transition">Tasks</a>
+            <a href="source-code.html" class="px-6 py-2 bg-white text-gray-700 rounded-lg hover:bg-gray-50 transition">Source Code</a>
+            <a href="settings.html" class="px-6 py-2 bg-white text-gray-700 rounded-lg hover:bg-gray-50 transition">Settings</a>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div id="mainContent" class="max-w-7xl mx-auto px-8 py-8">
+        <!-- No Company Selected State -->
+        <div id="noCompanyState" class="bg-white rounded-lg shadow-lg p-12 text-center">
+            <div class="text-gray-400 mb-6">
+                <svg class="w-24 h-24 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                </svg>
+            </div>
+            <h2 class="text-2xl font-bold text-gray-900 mb-4">Welcome to Team Collaboration</h2>
+            <p class="text-gray-600 mb-8 max-w-2xl mx-auto">Create or join a company workspace to collaborate with your team. Share projects, tasks, and communicate in real-time.</p>
+            <div class="flex justify-center space-x-4">
+                <button onclick="showCreateCompanyModal()" class="px-8 py-3 bg-[#0a1628] text-white rounded-lg hover:bg-[#1a2332] transition font-semibold">
+                    Create Workspace
+                </button>
+                <button onclick="showJoinCompanyModal()" class="px-8 py-3 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition font-semibold">
+                    Join Workspace
+                </button>
+            </div>
+            <div class="mt-12 grid grid-cols-3 gap-8 max-w-4xl mx-auto">
+                <div class="text-center">
+                    <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+                        </svg>
+                    </div>
+                    <h3 class="font-semibold text-gray-900 mb-2">Shared Projects</h3>
+                    <p class="text-sm text-gray-600">Manage projects and tasks together</p>
+                </div>
+                <div class="text-center">
+                    <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
+                        </svg>
+                    </div>
+                    <h3 class="font-semibold text-gray-900 mb-2">Team Chat</h3>
+                    <p class="text-sm text-gray-600">Real-time communication</p>
+                </div>
+                <div class="text-center">
+                    <div class="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg class="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                        </svg>
+                    </div>
+                    <h3 class="font-semibold text-gray-900 mb-2">Meetings</h3>
+                    <p class="text-sm text-gray-600">Schedule and conduct standups</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Workspace Content (Hidden by default) -->
+        <div id="workspaceContent" class="hidden">
+            <!-- Workspace Header -->
+            <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-4">
+                        <div id="companyLogo" class="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center text-white text-2xl font-bold">
+                            C
+                        </div>
+                        <div>
+                            <h1 id="companyName" class="text-2xl font-bold text-gray-900">Company Name</h1>
+                            <p id="companyDescription" class="text-gray-600">Company description</p>
+                            <div class="flex items-center space-x-4 mt-2">
+                                <span id="memberCount" class="text-sm text-gray-500">0 members</span>
+                                <span id="companyTier" class="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded">Professional</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button onclick="showInviteMemberModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+                            <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path>
+                            </svg>
+                            Invite Member
+                        </button>
+                        <button onclick="showCompanySettings()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tabs -->
+            <div class="bg-white rounded-lg shadow-lg mb-6">
+                <div class="border-b border-gray-200">
+                    <nav class="flex space-x-8 px-6" aria-label="Tabs">
+                        <button onclick="switchTab('overview')" class="workspace-tab active border-b-2 border-blue-600 py-4 px-1 text-sm font-medium text-blue-600">
+                            Overview
+                        </button>
+                        <button onclick="switchTab('projects')" class="workspace-tab border-b-2 border-transparent py-4 px-1 text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300">
+                            Projects
+                        </button>
+                        <button onclick="switchTab('tasks')" class="workspace-tab border-b-2 border-transparent py-4 px-1 text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300">
+                            Tasks
+                        </button>
+                        <button onclick="switchTab('meetings')" class="workspace-tab border-b-2 border-transparent py-4 px-1 text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300">
+                            Meetings
+                        </button>
+                        <button onclick="switchTab('chat')" class="workspace-tab border-b-2 border-transparent py-4 px-1 text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300">
+                            Team Chat
+                        </button>
+                        <button onclick="switchTab('members')" class="workspace-tab border-b-2 border-transparent py-4 px-1 text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300">
+                            Members
+                        </button>
+                    </nav>
+                </div>
+
+                <!-- Tab Content -->
+                <div class="p-6">
+                    <!-- Overview Tab -->
+                    <div id="overviewTab" class="tab-content">
+                        <div class="grid grid-cols-4 gap-6 mb-6">
+                            <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg p-6 text-white">
+                                <div class="text-3xl font-bold" id="statsProjects">0</div>
+                                <div class="text-blue-100 text-sm">Active Projects</div>
+                            </div>
+                            <div class="bg-gradient-to-br from-green-500 to-green-600 rounded-lg p-6 text-white">
+                                <div class="text-3xl font-bold" id="statsTasks">0</div>
+                                <div class="text-green-100 text-sm">Total Tasks</div>
+                            </div>
+                            <div class="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg p-6 text-white">
+                                <div class="text-3xl font-bold" id="statsCompleted">0</div>
+                                <div class="text-purple-100 text-sm">Completed</div>
+                            </div>
+                            <div class="bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg p-6 text-white">
+                                <div class="text-3xl font-bold" id="statsMeetings">0</div>
+                                <div class="text-orange-100 text-sm">Meetings</div>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-6">
+                            <div class="bg-gray-50 rounded-lg p-6">
+                                <h3 class="font-semibold text-gray-900 mb-4">Recent Activity</h3>
+                                <div id="activityFeed" class="space-y-3">
+                                    <p class="text-gray-500 text-sm">No recent activity</p>
+                                </div>
+                            </div>
+                            <div class="bg-gray-50 rounded-lg p-6">
+                                <h3 class="font-semibold text-gray-900 mb-4">Upcoming Meetings</h3>
+                                <div id="upcomingMeetings" class="space-y-3">
+                                    <p class="text-gray-500 text-sm">No upcoming meetings</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Projects Tab -->
+                    <div id="projectsTab" class="tab-content hidden">
+                        <div class="flex justify-between items-center mb-6">
+                            <h3 class="text-lg font-semibold text-gray-900">Projects</h3>
+                            <button onclick="showCreateProjectModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+                                + New Project
+                            </button>
+                        </div>
+                        <div id="projectsList" class="grid grid-cols-3 gap-4">
+                            <p class="text-gray-500 text-sm col-span-3">No projects yet</p>
+                        </div>
+                    </div>
+
+                    <!-- Tasks Tab -->
+                    <div id="tasksTab" class="tab-content hidden">
+                        <div class="flex justify-between items-center mb-6">
+                            <h3 class="text-lg font-semibold text-gray-900">Tasks</h3>
+                            <button onclick="showCreateTaskModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+                                + New Task
+                            </button>
+                        </div>
+                        <div id="tasksList" class="space-y-3">
+                            <p class="text-gray-500 text-sm">No tasks yet</p>
+                        </div>
+                    </div>
+
+                    <!-- Meetings Tab -->
+                    <div id="meetingsTab" class="tab-content hidden">
+                        <div class="flex justify-between items-center mb-6">
+                            <h3 class="text-lg font-semibold text-gray-900">Meetings</h3>
+                            <button onclick="showScheduleMeetingModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+                                + Schedule Meeting
+                            </button>
+                        </div>
+                        <div id="meetingsList" class="space-y-3">
+                            <p class="text-gray-500 text-sm">No meetings scheduled</p>
+                        </div>
+                    </div>
+
+                    <!-- Chat Tab -->
+                    <div id="chatTab" class="tab-content hidden">
+                        <div class="flex flex-col h-96">
+                            <div id="chatMessages" class="flex-1 overflow-y-auto space-y-3 mb-4 p-4 bg-gray-50 rounded-lg">
+                                <p class="text-gray-500 text-sm text-center">No messages yet. Start the conversation!</p>
+                            </div>
+                            <div class="flex space-x-2">
+                                <input type="text" id="chatInput" placeholder="Type a message..." class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <button onclick="sendMessage()" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+                                    Send
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Members Tab -->
+                    <div id="membersTab" class="tab-content hidden">
+                        <div class="flex justify-between items-center mb-6">
+                            <h3 class="text-lg font-semibold text-gray-900">Team Members</h3>
+                            <button onclick="showInviteMemberModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+                                + Invite Member
+                            </button>
+                        </div>
+                        <div id="membersList" class="grid grid-cols-3 gap-4">
+                            <p class="text-gray-500 text-sm col-span-3">Loading members...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals will be added via JavaScript -->
+    <div id="modalContainer"></div>
+
+    <script src="js/workspace.js"></script>
+</body>
+</html>

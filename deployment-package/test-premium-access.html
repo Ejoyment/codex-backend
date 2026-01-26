@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Premium Access - CODEX INC</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="js/api.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen p-8">
+    <div class="max-w-4xl mx-auto">
+        <div class="bg-white rounded-lg shadow-lg p-8 mb-6">
+            <h1 class="text-3xl font-bold mb-6">Premium Access Test</h1>
+            
+            <div class="space-y-4">
+                <div class="border rounded-lg p-4">
+                    <h2 class="font-bold text-lg mb-2">Authentication Status</h2>
+                    <p id="authStatus" class="text-gray-600">Checking...</p>
+                </div>
+
+                <div class="border rounded-lg p-4">
+                    <h2 class="font-bold text-lg mb-2">Subscription Status</h2>
+                    <div id="subscriptionStatus" class="text-gray-600">Checking...</div>
+                </div>
+
+                <div class="border rounded-lg p-4">
+                    <h2 class="font-bold text-lg mb-2">Feature Access</h2>
+                    <div id="featureAccess" class="space-y-2">Checking...</div>
+                </div>
+
+                <div class="border rounded-lg p-4">
+                    <h2 class="font-bold text-lg mb-2">Test Access</h2>
+                    <div class="space-y-2">
+                        <button onclick="testEditorAccess()" class="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700">
+                            Test Code Editor Access
+                        </button>
+                        <button onclick="testStandupAccess()" class="w-full bg-purple-600 text-white py-2 rounded-lg hover:bg-purple-700">
+                            Test Standup Access
+                        </button>
+                        <button onclick="window.location.href='pricing.html'" class="w-full bg-gray-600 text-white py-2 rounded-lg hover:bg-gray-700">
+                            Go to Pricing Page
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:3000/api';
+
+        async function checkStatus() {
+            const token = localStorage.getItem('authToken');
+            
+            // Check auth
+            if (!token) {
+                document.getElementById('authStatus').innerHTML = '❌ Not logged in<br><a href="sign_in.html" class="text-blue-600 underline">Sign in</a>';
+                document.getElementById('subscriptionStatus').innerHTML = '⚠️ Please sign in first';
+                document.getElementById('featureAccess').innerHTML = '⚠️ Please sign in first';
+                return;
+            }
+
+            document.getElementById('authStatus').innerHTML = '✅ Logged in<br><span class="text-sm text-gray-500">Token: ' + token.substring(0, 20) + '...</span>';
+
+            // Check subscription
+            try {
+                const response = await fetch(`${API_URL}/subscription/current`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    const sub = data.subscription;
+                    
+                    let tierColor = 'gray';
+                    if (sub.tier === 'professional') tierColor = 'blue';
+                    if (sub.tier === 'enterprise') tierColor = 'purple';
+                    
+                    document.getElementById('subscriptionStatus').innerHTML = `
+                        <p class="font-semibold text-${tierColor}-600 text-xl">${sub.tier.toUpperCase()}</p>
+                        <p class="text-sm text-gray-600">Status: ${sub.status}</p>
+                        <p class="text-sm text-gray-600">Pricing: ${sub.pricing}</p>
+                    `;
+
+                    let featuresHtml = '<ul class="space-y-1">';
+                    if (Array.isArray(sub.features)) {
+                        sub.features.forEach(feature => {
+                            featuresHtml += `<li class="text-green-600">✓ ${feature}</li>`;
+                        });
+                    } else {
+                        featuresHtml += '<li class="text-red-600">Error: Features not in array format</li>';
+                        console.error('Features:', sub.features);
+                    }
+                    featuresHtml += '</ul>';
+                    
+                    document.getElementById('featureAccess').innerHTML = featuresHtml;
+                } else {
+                    document.getElementById('subscriptionStatus').innerHTML = '❌ Error: ' + data.message;
+                }
+            } catch (error) {
+                document.getElementById('subscriptionStatus').innerHTML = '❌ Error: ' + error.message;
+            }
+        }
+
+        async function testEditorAccess() {
+            const token = localStorage.getItem('authToken');
+            
+            if (!token) {
+                alert('Please sign in first');
+                window.location.href = 'sign_in.html';
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/subscription/current`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                const data = await response.json();
+                
+                if (!data.success || !data.subscription.features.includes('collaborativeEditing')) {
+                    alert('Code Editor requires Professional tier or higher.\n\nUpgrade now to unlock:\n• Advanced Code Editor\n• AI Code Review\n• Collaborative Editing\n• Real-time Collaboration');
+                    window.location.href = 'pricing.html';
+                } else {
+                    alert('✅ Access granted! Redirecting to Code Editor...');
+                    window.location.href = 'editor.html';
+                }
+            } catch (error) {
+                alert('Error checking access: ' + error.message);
+            }
+        }
+
+        async function testStandupAccess() {
+            const token = localStorage.getItem('authToken');
+            
+            if (!token) {
+                alert('Please sign in first');
+                window.location.href = 'sign_in.html';
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/subscription/current`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                const data = await response.json();
+                
+                if (!data.success || !data.subscription.features.includes('videoStandups')) {
+                    alert('Video Stand-ups require Professional tier or higher.\n\nUpgrade now to unlock:\n• Video Stand-ups\n• Screen Sharing\n• Recording\n• Advanced Analytics');
+                    window.location.href = 'pricing.html';
+                } else {
+                    alert('✅ Access granted! Redirecting to Video Stand-ups...');
+                    window.location.href = 'standup.html';
+                }
+            } catch (error) {
+                alert('Error checking access: ' + error.message);
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', checkStatus);
+    </script>
+</body>
+</html>

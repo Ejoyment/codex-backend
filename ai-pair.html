@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Pair Programming - CODEX INC</title>
+    <link rel="icon"  href="1000222021 1 (1).png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="js/api.js"></script>
+    <style>
+        .split-pane {
+            display: flex;
+            height: calc(100vh - 64px);
+        }
+        .file-tree-item {
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+        .file-tree-item:hover {
+            background: #374151;
+        }
+        .file-tree-item.active {
+            background: #1f2937;
+            border-left: 3px solid #3b82f6;
+        }
+        .chat-message {
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        .code-editor {
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        pre code {
+            display: block;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            overflow-x: auto;
+        }
+        .typing-indicator {
+            display: inline-flex;
+            gap: 4px;
+        }
+        .typing-indicator span {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #3b82f6;
+            animation: bounce 1.4s infinite ease-in-out both;
+        }
+        .typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
+        .typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
+        @keyframes bounce {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1); }
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white">
+    <!-- Top Bar -->
+    <div class="bg-gray-800 border-b border-gray-700 px-6 py-3 flex items-center justify-between">
+        <div class="flex items-center space-x-4">
+            <a href="dashboard-new.html" class="text-gray-400 hover:text-white">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+                </svg>
+            </a>
+            <h1 class="text-xl font-bold">AI Pair Programming</h1>
+        </div>
+        
+        <div class="flex items-center space-x-4">
+            <!-- Repository Selector -->
+            <select id="repoSelector" class="bg-gray-700 text-white px-4 py-2 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">Select Repository...</option>
+            </select>
+            
+            <!-- Session Info -->
+            <div id="sessionInfo" class="hidden text-sm">
+                <span class="text-gray-400">Session:</span>
+                <span id="sessionName" class="text-blue-400 font-medium"></span>
+            </div>
+            
+            <!-- AI Usage -->
+            <div id="aiUsage" class="text-sm text-gray-400">
+                <span id="aiUsageText">Loading...</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Split Pane -->
+    <div class="split-pane">
+        <!-- Left: File Browser + Code Editor -->
+        <div class="flex-1 flex flex-col border-r border-gray-700">
+            <!-- File Browser -->
+            <div class="h-64 border-b border-gray-700 overflow-y-auto bg-gray-800 p-4">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="font-semibold text-sm text-gray-300">Files</h3>
+                    <button id="refreshFiles" class="text-gray-400 hover:text-white">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                        </svg>
+                    </button>
+                </div>
+                <div id="fileTree" class="text-sm space-y-1">
+                    <div class="text-gray-500 text-center py-8">
+                        Select a repository to start
+                    </div>
+                </div>
+            </div>
+
+            <!-- Code Editor -->
+            <div class="flex-1 flex flex-col bg-gray-900">
+                <div class="bg-gray-800 px-4 py-2 border-b border-gray-700 flex items-center justify-between">
+                    <div class="flex items-center space-x-2">
+                        <span id="currentFileName" class="text-sm font-medium text-gray-300">No file selected</span>
+                        <span id="fileLanguage" class="text-xs text-gray-500"></span>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <button id="saveFile" class="hidden px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">
+                            Save
+                        </button>
+                    </div>
+                </div>
+                <div class="flex-1 overflow-auto">
+                    <textarea id="codeEditor" class="w-full h-full bg-gray-900 text-gray-100 p-4 code-editor resize-none focus:outline-none" placeholder="Select a file to view or edit..."></textarea>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right: Chat Interface -->
+        <div class="w-96 flex flex-col bg-gray-800">
+            <!-- Chat Header -->
+            <div class="bg-gray-700 px-4 py-3 border-b border-gray-600">
+                <h3 class="font-semibold">AI Assistant</h3>
+                <p class="text-xs text-gray-400 mt-1">Ask me anything about your code</p>
+            </div>
+
+            <!-- Chat Messages -->
+            <div id="chatMessages" class="flex-1 overflow-y-auto p-4 space-y-4">
+                <div class="text-center text-gray-500 text-sm py-8">
+                    Start a conversation with your AI pair programmer
+                </div>
+            </div>
+
+            <!-- Typing Indicator -->
+            <div id="typingIndicator" class="hidden px-4 py-2">
+                <div class="flex items-center space-x-2 text-sm text-gray-400">
+                    <div class="typing-indicator">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </div>
+                    <span>AI is thinking...</span>
+                </div>
+            </div>
+
+            <!-- Chat Input -->
+            <div class="border-t border-gray-700 p-4">
+                <div class="flex space-x-2">
+                    <textarea id="chatInput" rows="3" class="flex-1 bg-gray-700 text-white px-4 py-2 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" placeholder="Ask AI to help with your code..."></textarea>
+                    <button id="sendMessage" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
+                        </svg>
+                    </button>
+                </div>
+                <div class="mt-2 flex items-center justify-between text-xs text-gray-500">
+                    <span>Press Ctrl+Enter to send</span>
+                    <span id="charCount">0/2000</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-gray-800 rounded-lg p-6 flex items-center space-x-4">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+            <span id="loadingText">Loading...</span>
+        </div>
+    </div>
+
+    <script src="js/ai-pair.js"></script>
+</body>
+</html>

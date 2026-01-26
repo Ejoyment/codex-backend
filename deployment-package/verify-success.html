@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email Verified - CODEX INC</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'navy': '#1e3a8a',
+                        'navy-light': '#3b82f6',
+                        'gray-bg': '#c5c5c5'
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-bg min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-md">
+        <!-- Success Card -->
+        <div class="bg-white rounded-lg shadow-lg p-8">
+            <!-- Header -->
+            <div class="flex items-center justify-between mb-8">
+                <div class="flex items-center space-x-2">
+                    <div class="w-8 h-8 bg-navy rounded-full flex items-center justify-center">
+                        <span class="text-white text-sm font-bold">C</span>
+                    </div>
+                    <span class="text-base font-semibold text-gray-700">CODEX INC</span>
+                </div>
+                <div class="flex space-x-1">
+                    <div class="w-3 h-3 bg-red-500 rounded-full"></div>
+                    <div class="w-3 h-3 bg-yellow-500 rounded-full"></div>
+                    <div class="w-3 h-3 bg-green-500 rounded-full"></div>
+                </div>
+            </div>
+
+            <!-- Content -->
+            <div class="text-center">
+                <h2 class="text-2xl font-semibold text-gray-800 mb-3">Verify your Email</h2>
+                <p class="text-sm text-gray-600 mb-8">Your verification code has been confirmed</p>
+                
+                <!-- Success Icon -->
+                <div class="flex justify-center mb-8">
+                    <div class="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center">
+                        <svg class="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
+                        </svg>
+                    </div>
+                </div>
+
+                <!-- Code Display -->
+                <div class="flex justify-center space-x-3 mb-8">
+                    <div class="w-14 h-14 flex items-center justify-center border border-gray-300 rounded-lg text-xl font-semibold bg-gray-50 text-gray-700" id="digit1"></div>
+                    <div class="w-14 h-14 flex items-center justify-center border border-gray-300 rounded-lg text-xl font-semibold bg-gray-50 text-gray-700" id="digit2"></div>
+                    <div class="w-14 h-14 flex items-center justify-center border border-gray-300 rounded-lg text-xl font-semibold bg-gray-50 text-gray-700" id="digit3"></div>
+                    <div class="w-14 h-14 flex items-center justify-center border border-gray-300 rounded-lg text-xl font-semibold bg-gray-50 text-gray-700" id="digit4"></div>
+                </div>
+
+                <!-- Success Button -->
+                <button onclick="window.location.href='sign_in.html'" class="w-full bg-navy text-white py-3 px-4 rounded-lg font-medium hover:bg-blue-800 transition-colors mb-4">
+                    Continue to Sign In
+                </button>
+
+                <!-- Success Message -->
+                <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <p class="text-sm text-green-700 font-medium">
+                        ✓ Your email has been successfully verified!
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Display the OTP from sessionStorage
+        window.addEventListener('load', () => {
+            const otp = sessionStorage.getItem('otp') || '0000';
+            const digits = otp.split('');
+            
+            document.getElementById('digit1').textContent = digits[0];
+            document.getElementById('digit2').textContent = digits[1];
+            document.getElementById('digit3').textContent = digits[2];
+            document.getElementById('digit4').textContent = digits[3];
+
+            // Clear the OTP from sessionStorage after displaying
+            sessionStorage.removeItem('otp');
+
+            // Auto-redirect after 3 seconds
+            setTimeout(() => {
+                window.location.href = 'sign_in.html';
+            }, 3000);
+        });
+    </script>
+</body>
+</html>

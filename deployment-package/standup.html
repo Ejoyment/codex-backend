@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Stand-up - CODEX INC</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-gray-900 text-white">
+    <div class="flex h-screen">
+        <!-- Sidebar -->
+        <div class="w-64 bg-gray-800 p-4 flex flex-col">
+            <div class="mb-8">
+                <h1 class="text-2xl font-bold text-blue-400">CODEX INC</h1>
+                <p class="text-sm text-gray-400">Video Stand-up</p>
+            </div>
+
+            <div class="flex-1">
+                <h3 class="text-sm font-semibold text-gray-400 mb-3">PARTICIPANTS</h3>
+                <div id="participantsList" class="space-y-2">
+                    <!-- Participants will be added here -->
+                </div>
+            </div>
+
+            <div class="space-y-2">
+                <button onclick="window.location.href='dashboard.html'" class="w-full bg-gray-700 hover:bg-gray-600 py-2 rounded-lg transition">
+                    <i class="fas fa-arrow-left mr-2"></i>Back to Dashboard
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="flex-1 flex flex-col">
+            <!-- Header -->
+            <div class="bg-gray-800 p-4 flex justify-between items-center">
+                <div>
+                    <h2 class="text-xl font-semibold">Daily Stand-up</h2>
+                    <p class="text-sm text-gray-400" id="roomInfo">Room: <span id="roomId">Loading...</span></p>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <span class="text-sm text-gray-400" id="timer">00:00</span>
+                    <span class="px-3 py-1 bg-red-600 rounded-full text-xs font-semibold">LIVE</span>
+                </div>
+            </div>
+
+            <!-- Video Grid -->
+            <div class="flex-1 p-4 grid grid-cols-2 gap-4" id="videoGrid">
+                <!-- Local Video -->
+                <div class="relative bg-gray-800 rounded-lg overflow-hidden">
+                    <video id="localVideo" autoplay muted playsinline class="w-full h-full object-cover"></video>
+                    <div class="absolute bottom-4 left-4 bg-black bg-opacity-50 px-3 py-1 rounded">
+                        <span class="text-sm">You</span>
+                    </div>
+                    <div class="absolute top-4 right-4">
+                        <span class="px-2 py-1 bg-green-600 rounded text-xs">Speaking</span>
+                    </div>
+                </div>
+
+                <!-- Remote Videos will be added here -->
+                <div class="bg-gray-800 rounded-lg flex items-center justify-center">
+                    <div class="text-center text-gray-400">
+                        <i class="fas fa-user-circle text-6xl mb-4"></i>
+                        <p>Waiting for participants...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Controls -->
+            <div class="bg-gray-800 p-6 flex justify-center items-center space-x-4">
+                <button id="toggleVideo" onclick="toggleVideo()" class="w-14 h-14 bg-gray-700 hover:bg-gray-600 rounded-full transition">
+                    <i class="fas fa-video"></i>
+                </button>
+                <button id="toggleAudio" onclick="toggleAudio()" class="w-14 h-14 bg-gray-700 hover:bg-gray-600 rounded-full transition">
+                    <i class="fas fa-microphone"></i>
+                </button>
+                <button id="shareScreen" onclick="shareScreen()" class="w-14 h-14 bg-blue-600 hover:bg-blue-700 rounded-full transition">
+                    <i class="fas fa-desktop"></i>
+                </button>
+                <button onclick="leaveCall()" class="w-14 h-14 bg-red-600 hover:bg-red-700 rounded-full transition">
+                    <i class="fas fa-phone-slash"></i>
+                </button>
+                <button onclick="toggleChat()" class="w-14 h-14 bg-gray-700 hover:bg-gray-600 rounded-full transition">
+                    <i class="fas fa-comment"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Chat Sidebar (Hidden by default) -->
+        <div id="chatSidebar" class="w-80 bg-gray-800 p-4 hidden flex-col">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="font-semibold">Chat</h3>
+                <button onclick="toggleChat()" class="text-gray-400 hover:text-white">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <div id="chatMessages" class="flex-1 overflow-y-auto space-y-3 mb-4">
+                <!-- Chat messages will appear here -->
+            </div>
+
+            <div class="flex space-x-2">
+                <input type="text" id="chatInput" placeholder="Type a message..." 
+                    class="flex-1 bg-gray-700 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    onkeypress="if(event.key==='Enter') sendMessage()">
+                <button onclick="sendMessage()" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:3000/api';
+        let localStream = null;
+        let screenStream = null;
+        let isVideoEnabled = true;
+        let isAudioEnabled = true;
+        let startTime = Date.now();
+
+        // Initialize video call
+        async function initializeCall() {
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({
+                    video: true,
+                    audio: true
+                });
+
+                document.getElementById('localVideo').srcObject = localStream;
+                document.getElementById('roomId').textContent = generateRoomId();
+                
+                // Start timer
+                setInterval(updateTimer, 1000);
+                
+                // Add yourself to participants
+                addParticipant('You', true);
+            } catch (error) {
+                console.error('Error accessing media devices:', error);
+                alert('Could not access camera/microphone. Please check permissions.');
+            }
+        }
+
+        function toggleVideo() {
+            isVideoEnabled = !isVideoEnabled;
+            localStream.getVideoTracks()[0].enabled = isVideoEnabled;
+            
+            const btn = document.getElementById('toggleVideo');
+            btn.classList.toggle('bg-red-600');
+            btn.innerHTML = isVideoEnabled ? '<i class="fas fa-video"></i>' : '<i class="fas fa-video-slash"></i>';
+        }
+
+        function toggleAudio() {
+            isAudioEnabled = !isAudioEnabled;
+            localStream.getAudioTracks()[0].enabled = isAudioEnabled;
+            
+            const btn = document.getElementById('toggleAudio');
+            btn.classList.toggle('bg-red-600');
+            btn.innerHTML = isAudioEnabled ? '<i class="fas fa-microphone"></i>' : '<i class="fas fa-microphone-slash"></i>';
+        }
+
+        async function shareScreen() {
+            try {
+                screenStream = await navigator.mediaDevices.getDisplayMedia({
+                    video: true
+                });
+
+                // Replace video track with screen share
+                const videoTrack = screenStream.getVideoTracks()[0];
+                const sender = localStream.getVideoTracks()[0];
+                
+                document.getElementById('localVideo').srcObject = screenStream;
+                
+                videoTrack.onended = () => {
+                    document.getElementById('localVideo').srcObject = localStream;
+                };
+            } catch (error) {
+                console.error('Screen share error:', error);
+            }
+        }
+
+        function leaveCall() {
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+            }
+            if (screenStream) {
+                screenStream.getTracks().forEach(track => track.stop());
+            }
+            window.location.href = 'dashboard.html';
+        }
+
+        function toggleChat() {
+            const chatSidebar = document.getElementById('chatSidebar');
+            chatSidebar.classList.toggle('hidden');
+            chatSidebar.classList.toggle('flex');
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('chatInput');
+            const message = input.value.trim();
+            
+            if (message) {
+                addChatMessage('You', message, true);
+                input.value = '';
+            }
+        }
+
+        function addChatMessage(sender, message, isOwn = false) {
+            const chatMessages = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `${isOwn ? 'text-right' : 'text-left'}`;
+            messageDiv.innerHTML = `
+                <div class="inline-block ${isOwn ? 'bg-blue-600' : 'bg-gray-700'} rounded-lg px-3 py-2 max-w-xs">
+                    <p class="text-xs text-gray-300 mb-1">${sender}</p>
+                    <p class="text-sm">${message}</p>
+                </div>
+            `;
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function addParticipant(name, isLocal = false) {
+            const participantsList = document.getElementById('participantsList');
+            const participantDiv = document.createElement('div');
+            participantDiv.className = 'flex items-center space-x-2 p-2 bg-gray-700 rounded-lg';
+            participantDiv.innerHTML = `
+                <div class="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
+                    <span class="text-sm font-semibold">${name[0]}</span>
+                </div>
+                <span class="text-sm">${name}</span>
+                ${isLocal ? '<span class="text-xs text-gray-400">(You)</span>' : ''}
+            `;
+            participantsList.appendChild(participantDiv);
+        }
+
+        function updateTimer() {
+            const elapsed = Math.floor((Date.now() - startTime) / 1000);
+            const minutes = Math.floor(elapsed / 60).toString().padStart(2, '0');
+            const seconds = (elapsed % 60).toString().padStart(2, '0');
+            document.getElementById('timer').textContent = `${minutes}:${seconds}`;
+        }
+
+        function generateRoomId() {
+            return 'ROOM-' + Math.random().toString(36).substr(2, 9).toUpperCase();
+        }
+
+        // Initialize on page load
+        window.addEventListener('DOMContentLoaded', initializeCall);
+    </script>
+</body>
+</html>

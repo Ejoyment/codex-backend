@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to CODEX INC</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="js/api.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-2xl">
+        <!-- Progress Bar -->
+        <div class="mb-8">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-sm font-medium text-gray-600">Step <span id="currentStep">1</span> of 4</span>
+            </div>
+            <div class="w-full bg-gray-200 rounded-full h-2">
+                <div id="progressBar" class="bg-[#0a1628] h-2 rounded-full transition-all duration-300" style="width: 25%"></div>
+            </div>
+        </div>
+
+        <!-- Step 1: Welcome -->
+        <div id="step1" class="bg-white rounded-lg shadow-lg p-8">
+            <div class="text-center mb-8">
+                <div class="w-16 h-16 bg-[#0a1628] rounded-full flex items-center justify-center mx-auto mb-4">
+                    <span class="text-white font-bold text-2xl">C</span>
+                </div>
+                <h1 class="text-3xl font-bold text-gray-900 mb-2">Welcome to CODEX INC</h1>
+                <p class="text-gray-600">Let's get you set up in just a few steps</p>
+            </div>
+
+            <div class="space-y-4 mb-8">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">What's your name?</label>
+                    <input type="text" id="fullName" placeholder="John Doe" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0a1628]">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Company Name (Optional)</label>
+                    <input type="text" id="company" placeholder="Acme Inc" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0a1628]">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Team Size</label>
+                    <select id="teamSize" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0a1628]">
+                        <option value="">Select team size</option>
+                        <option value="Just me">Just me</option>
+                        <option value="2-10">2-10 people</option>
+                        <option value="11-50">11-50 people</option>
+                        <option value="51-200">51-200 people</option>
+                        <option value="200+">200+ people</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="flex justify-between">
+                <div></div>
+                <button onclick="nextStep()" class="px-6 py-3 bg-[#0a1628] text-white rounded-lg hover:bg-[#1a2332] transition">
+                    Next
+                </button>
+            </div>
+        </div>
+
+        <!-- Step 2: Role Selection -->
+        <div id="step2" class="hidden bg-white rounded-lg shadow-lg p-8">
+            <div class="text-center mb-8">
+                <h2 class="text-2xl font-bold text-gray-900 mb-2">Tell us your role</h2>
+                <p class="text-gray-600">Select all that apply - you can choose multiple</p>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4 mb-8">
+                <button onclick="toggleRole('CEO')" class="role-btn p-6 border-2 border-gray-300 rounded-lg hover:border-[#0a1628] transition text-center">
+                    <div class="text-3xl mb-2">👔</div>
+                    <div class="font-semibold text-gray-900">CEO</div>
+                </button>
+
+                <button onclick="toggleRole('Designer')" class="role-btn p-6 border-2 border-gray-300 rounded-lg hover:border-[#0a1628] transition text-center">
+                    <div class="text-3xl mb-2">🎨</div>
+                    <div class="font-semibold text-gray-900">Designer</div>
+                </button>
+
+                <button onclick="toggleRole('Developer')" class="role-btn p-6 border-2 border-gray-300 rounded-lg hover:border-[#0a1628] transition text-center">
+                    <div class="text-3xl mb-2">💻</div>
+                    <div class="font-semibold text-gray-900">Developer</div>
+                </button>
+
+                <button onclick="toggleRole('Product Manager')" class="role-btn p-6 border-2 border-gray-300 rounded-lg hover:border-[#0a1628] transition text-center">
+                    <div class="text-3xl mb-2">📊</div>
+                    <div class="font-semibold text-gray-900">Product Manager</div>
+                </button>
+
+                <button onclick="toggleRole('Marketing')" class="role-btn p-6 border-2 border-gray-300 rounded-lg hover:border-[#0a1628] transition text-center">
+                    <div class="text-3xl mb-2">📢</div>
+                    <div class="font-semibold text-gray-900">Marketing</div>
+                </button>
+
+                <button onclick="toggleRole('Executive')" class="role-btn p-6 border-2 border-gray-300 rounded-lg hover:border-[#0a1628] transition text-center">
+                    <div class="text-3xl mb-2">🎯</div>
+                    <div class="font-semibold text-gray-900">Executive</div>
+                </button>
+            </div>
+
+            <div class="flex justify-between">
+                <button onclick="prevStep()" class="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition">
+                    Back
+                </button>
+                <button onclick="nextStep()" class="px-6 py-3 bg-[#0a1628] text-white rounded-lg hover:bg-[#1a2332] transition">
+                    Next
+                </button>
+            </div>
+        </div>
+
+        <!-- Step 3: Goals -->
+        <div id="step3" class="hidden bg-white rounded-lg shadow-lg p-8">
+            <div class="text-center mb-8">
+                <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg class="w-8 h-8 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"></path>
+                        <path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clip-rule="evenodd"></path>
+                    </svg>
+                </div>
+                <h2 class="text-2xl font-bold text-gray-900 mb-2">What drives you?</h2>
+                <p class="text-gray-600">Select your main goals with CODEX</p>
+            </div>
+
+            <div class="space-y-3 mb-8">
+                <label class="flex items-center p-4 border-2 border-gray-300 rounded-lg cursor-pointer hover:border-[#0a1628] transition">
+                    <input type="checkbox" value="Collaborate with team" class="goal-checkbox w-5 h-5 text-[#0a1628] rounded">
+                    <span class="ml-3 text-gray-900">Collaborate with my team</span>
+                </label>
+
+                <label class="flex items-center p-4 border-2 border-gray-300 rounded-lg cursor-pointer hover:border-[#0a1628] transition">
+                    <input type="checkbox" value="Manage projects" class="goal-checkbox w-5 h-5 text-[#0a1628] rounded">
+                    <span class="ml-3 text-gray-900">Manage projects efficiently</span>
+                </label>
+
+                <label class="flex items-center p-4 border-2 border-gray-300 rounded-lg cursor-pointer hover:border-[#0a1628] transition">
+                    <input type="checkbox" value="Track progress" class="goal-checkbox w-5 h-5 text-[#0a1628] rounded">
+                    <span class="ml-3 text-gray-900">Track progress and metrics</span>
+                </label>
+
+                <label class="flex items-center p-4 border-2 border-gray-300 rounded-lg cursor-pointer hover:border-[#0a1628] transition">
+                    <input type="checkbox" value="Code review" class="goal-checkbox w-5 h-5 text-[#0a1628] rounded">
+                    <span class="ml-3 text-gray-900">Streamline code reviews</span>
+                </label>
+
+                <label class="flex items-center p-4 border-2 border-gray-300 rounded-lg cursor-pointer hover:border-[#0a1628] transition">
+                    <input type="checkbox" value="Documentation" class="goal-checkbox w-5 h-5 text-[#0a1628] rounded">
+                    <span class="ml-3 text-gray-900">Improve documentation</span>
+                </label>
+
+                <label class="flex items-center p-4 border-2 border-gray-300 rounded-lg cursor-pointer hover:border-[#0a1628] transition">
+                    <input type="checkbox" value="Integrations" class="goal-checkbox w-5 h-5 text-[#0a1628] rounded">
+                    <span class="ml-3 text-gray-900">Connect with other tools</span>
+                </label>
+            </div>
+
+            <div class="flex justify-between">
+                <button onclick="prevStep()" class="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition">
+                    Back
+                </button>
+                <button onclick="nextStep()" class="px-6 py-3 bg-[#0a1628] text-white rounded-lg hover:bg-[#1a2332] transition">
+                    Next
+                </button>
+            </div>
+        </div>
+
+        <!-- Step 4: Complete -->
+        <div id="step4" class="hidden bg-white rounded-lg shadow-lg p-8">
+            <div class="text-center">
+                <div class="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <svg class="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                    </svg>
+                </div>
+                <h2 class="text-3xl font-bold text-gray-900 mb-4">You're all set!</h2>
+                <p class="text-gray-600 mb-8">Welcome to CODEX INC. Let's start building something amazing together.</p>
+
+                <div class="bg-gray-50 rounded-lg p-6 mb-8">
+                    <h3 class="font-semibold text-gray-900 mb-4">Your Profile</h3>
+                    <div class="space-y-2 text-left">
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Name:</span>
+                            <span id="summaryName" class="font-medium text-gray-900"></span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Company:</span>
+                            <span id="summaryCompany" class="font-medium text-gray-900"></span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Team Size:</span>
+                            <span id="summaryTeamSize" class="font-medium text-gray-900"></span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Role:</span>
+                            <span id="summaryRole" class="font-medium text-gray-900"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <button onclick="completeOnboarding()" class="w-full px-6 py-4 bg-[#0a1628] text-white rounded-lg hover:bg-[#1a2332] transition font-semibold text-lg">
+                    Go to Dashboard
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const token = localStorage.getItem('authToken');
+        if (!token) {
+            window.location.href = 'sign_in.html';
+        }
+
+        let currentStepNum = 1;
+        let selectedRoles = [];
+        let onboardingData = {
+            fullName: '',
+            company: '',
+            teamSize: '',
+            role: [],
+            goals: []
+        };
+
+        // Toggle role selection
+        function toggleRole(role) {
+            const index = selectedRoles.indexOf(role);
+            const btn = event.currentTarget;
+            
+            if (index > -1) {
+                selectedRoles.splice(index, 1);
+                btn.classList.remove('border-[#0a1628]', 'bg-blue-50');
+                btn.classList.add('border-gray-300');
+            } else {
+                selectedRoles.push(role);
+                btn.classList.remove('border-gray-300');
+                btn.classList.add('border-[#0a1628]', 'bg-blue-50');
+            }
+        }
+
+        // Navigation
+        function nextStep() {
+            if (currentStepNum === 1) {
+                const fullName = document.getElementById('fullName').value.trim();
+                const teamSize = document.getElementById('teamSize').value;
+                
+                if (!fullName) {
+                    alert('Please enter your name');
+                    return;
+                }
+                
+                if (!teamSize) {
+                    alert('Please select your team size');
+                    return;
+                }
+                
+                onboardingData.fullName = fullName;
+                onboardingData.company = document.getElementById('company').value.trim();
+                onboardingData.teamSize = teamSize;
+            }
+            
+            if (currentStepNum === 2) {
+                if (selectedRoles.length === 0) {
+                    alert('Please select at least one role');
+                    return;
+                }
+                onboardingData.role = selectedRoles;
+            }
+            
+            if (currentStepNum === 3) {
+                const goals = Array.from(document.querySelectorAll('.goal-checkbox:checked')).map(cb => cb.value);
+                onboardingData.goals = goals;
+                
+                // Show summary
+                document.getElementById('summaryName').textContent = onboardingData.fullName;
+                document.getElementById('summaryCompany').textContent = onboardingData.company || 'Not specified';
+                document.getElementById('summaryTeamSize').textContent = onboardingData.teamSize;
+                document.getElementById('summaryRole').textContent = onboardingData.role.join(', ');
+            }
+            
+            if (currentStepNum < 4) {
+                document.getElementById(`step${currentStepNum}`).classList.add('hidden');
+                currentStepNum++;
+                document.getElementById(`step${currentStepNum}`).classList.remove('hidden');
+                document.getElementById('currentStep').textContent = currentStepNum;
+                document.getElementById('progressBar').style.width = `${(currentStepNum / 4) * 100}%`;
+            }
+        }
+
+        function prevStep() {
+            if (currentStepNum > 1) {
+                document.getElementById(`step${currentStepNum}`).classList.add('hidden');
+                currentStepNum--;
+                document.getElementById(`step${currentStepNum}`).classList.remove('hidden');
+                document.getElementById('currentStep').textContent = currentStepNum;
+                document.getElementById('progressBar').style.width = `${(currentStepNum / 4) * 100}%`;
+            }
+        }
+
+        async function completeOnboarding() {
+            try {
+                const response = await fetch('http://localhost:3000/api/auth/complete-onboarding', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(onboardingData)
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    window.location.href = 'dashboard.html';
+                } else {
+                    alert('Failed to complete onboarding: ' + data.message);
+                }
+            } catch (error) {
+                console.error('Error completing onboarding:', error);
+                alert('Error completing onboarding. Please try again.');
+            }
+        }
+
+        // Check if user needs onboarding
+        async function checkOnboardingStatus() {
+            try {
+                const result = await api.getCurrentUser(token);
+                
+                if (result.success && result.user.onboardingCompleted) {
+                    window.location.href = 'dashboard.html';
+                }
+            } catch (error) {
+                console.error('Error checking onboarding status:', error);
+            }
+        }
+
+        checkOnboardingStatus();
+    </script>
+</body>
+</html>

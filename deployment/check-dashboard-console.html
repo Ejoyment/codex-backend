@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Console Check</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background: #000;
+            color: #0f0;
+        }
+        .log { margin: 5px 0; padding: 5px; background: #111; }
+        .error { color: #f00; }
+        .success { color: #0f0; }
+        .warning { color: #ff0; }
+    </style>
+</head>
+<body>
+    <h1>Dashboard Console Check</h1>
+    <div id="logs"></div>
+
+    <script>
+        const logs = document.getElementById('logs');
+        const token = localStorage.getItem('authToken');
+        
+        function log(msg, type = 'info') {
+            const div = document.createElement('div');
+            div.className = `log ${type}`;
+            div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            logs.appendChild(div);
+            console.log(msg);
+        }
+
+        async function checkDashboard() {
+            log('=== DASHBOARD DIAGNOSTIC ===', 'success');
+            
+            // Check 1: Auth token
+            if (!token) {
+                log('✗ No auth token found!', 'error');
+                log('  → Sign in first', 'warning');
+                return;
+            }
+            log('✓ Auth token exists', 'success');
+            
+            // Check 2: Dashboard data API
+            try {
+                log('Fetching dashboard data...', 'info');
+                const response = await fetch('http://localhost:3000/api/dashboard/data', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                if (!response.ok) {
+                    log(`✗ API returned ${response.status}`, 'error');
+                    const text = await response.text();
+                    log(`  Response: ${text}`, 'error');
+                    return;
+                }
+                
+                const data = await response.json();
+                log('✓ Dashboard data received', 'success');
+                log(`  Tier: ${data.data?.tier}`, 'info');
+                log(`  Connected: ${data.data?.connectedIntegrations?.length || 0}`, 'info');
+                log(`  Allowed: ${data.data?.allowedIntegrations?.length || 0}`, 'info');
+                
+                // Check 3: Data structure
+                if (!data.success) {
+                    log('✗ API returned success=false', 'error');
+                    log(`  Message: ${data.message}`, 'error');
+                    return;
+                }
+                
+                if (!data.data) {
+                    log('✗ No data object in response', 'error');
+                    return;
+                }
+                
+                log('✓ Data structure looks good', 'success');
+                
+                // Check 4: Integration data
+                const integrationData = data.data.integrationData || {};
+                const platforms = Object.keys(integrationData);
+                log(`  Integration data platforms: ${platforms.length}`, 'info');
+                platforms.forEach(p => {
+                    log(`    - ${p}: ${integrationData[p].length} items`, 'info');
+                });
+                
+                log('=== DIAGNOSTIC COMPLETE ===', 'success');
+                log('Dashboard should work. If not, check browser console for JS errors.', 'warning');
+                
+            } catch (error) {
+                log(`✗ Error: ${error.message}`, 'error');
+                log(`  Stack: ${error.stack}`, 'error');
+            }
+        }
+
+        checkDashboard();
+    </script>
+</body>
+</html>

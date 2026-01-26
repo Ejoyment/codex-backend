@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Speed Test</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #00ff00;
+        }
+        .test {
+            margin: 10px 0;
+            padding: 10px;
+            background: #2a2a2a;
+            border-left: 3px solid #00ff00;
+        }
+        .error {
+            border-left-color: #ff0000;
+            color: #ff0000;
+        }
+        .success {
+            border-left-color: #00ff00;
+        }
+        .timing {
+            color: #ffff00;
+        }
+    </style>
+</head>
+<body>
+    <h1>🚀 API Speed Test</h1>
+    <p>Testing dashboard API endpoints to find the slow one...</p>
+    <div id="results"></div>
+
+    <script>
+        const API_URL = 'http://localhost:3000/api';
+        const token = localStorage.getItem('authToken');
+        const results = document.getElementById('results');
+
+        function log(message, type = 'info') {
+            const div = document.createElement('div');
+            div.className = `test ${type}`;
+            div.textContent = message;
+            results.appendChild(div);
+        }
+
+        async function testEndpoint(name, url) {
+            const start = Date.now();
+            try {
+                log(`Testing ${name}...`, 'info');
+                const response = await fetch(url, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                const data = await response.json();
+                const duration = Date.now() - start;
+                
+                if (response.ok) {
+                    log(`✓ ${name} - ${duration}ms`, 'success timing');
+                    console.log(`${name} response:`, data);
+                } else {
+                    log(`✗ ${name} - ${duration}ms - Status: ${response.status}`, 'error');
+                }
+            } catch (error) {
+                const duration = Date.now() - start;
+                log(`✗ ${name} - ${duration}ms - Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function runTests() {
+            if (!token) {
+                log('✗ No auth token found! Please sign in first.', 'error');
+                return;
+            }
+
+            log('Starting tests...', 'info');
+            log('', 'info');
+
+            // Test each endpoint
+            await testEndpoint('Health Check', `${API_URL.replace('/api', '')}/api/health`);
+            await testEndpoint('User Profile (/auth/me)', `${API_URL}/auth/me`);
+            await testEndpoint('Subscription', `${API_URL}/subscription/current`);
+            await testEndpoint('Dashboard Data', `${API_URL}/dashboard/data`);
+
+            log('', 'info');
+            log('Tests complete! Check console for detailed responses.', 'success');
+            log('', 'info');
+            log('If any endpoint took > 1000ms, that\'s the problem!', 'info');
+        }
+
+        // Run tests on load
+        runTests();
+    </script>
+</body>
+</html>

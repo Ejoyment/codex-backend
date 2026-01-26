@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pricing - CODEX INC</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/skeleton.css">
+</head>
+<body class="bg-gray-50">
+    <!-- Skeleton Loader -->
+    <div class="skeleton-loader">
+        <div style="padding: 32px; max-width: 1280px; margin: 0 auto;">
+            <div class="skeleton-header" style="margin-bottom: 48px;"></div>
+            <div class="skeleton-title" style="width: 40%; margin: 0 auto 48px;"></div>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px;">
+                <div class="skeleton-card" style="height: 500px;"></div>
+                <div class="skeleton-card" style="height: 500px;"></div>
+                <div class="skeleton-card" style="height: 500px;"></div>
+            </div>
+        </div>
+    </div>
+    <!-- Navigation -->
+    <nav class="bg-white shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <span class="text-2xl font-bold text-blue-600">CODEX INC</span>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <a href="dashboard.html" class="text-gray-700 hover:text-blue-600">Dashboard</a>
+                    <a href="index.html" class="text-gray-700 hover:text-blue-600">Home</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Pricing Section -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+        <div class="text-center mb-16">
+            <h1 class="text-4xl font-bold text-gray-900 mb-4">Choose Your Plan</h1>
+            <p class="text-xl text-gray-600">Unlock powerful features to accelerate your development</p>
+        </div>
+
+        <div class="grid md:grid-cols-3 gap-8">
+            <!-- Freebie Tier -->
+            <div class="bg-white rounded-lg shadow-lg p-8 border-2 border-gray-200">
+                <div class="text-center mb-6">
+                    <h3 class="text-2xl font-bold text-gray-900 mb-2">Freebie</h3>
+                    <div class="text-4xl font-bold text-gray-900 mb-2">$0</div>
+                    <p class="text-gray-600">Perfect for students</p>
+                </div>
+                
+                <ul class="space-y-4 mb-8">
+                    <li class="flex items-start">
+                        <i class="fas fa-check text-green-500 mt-1 mr-3"></i>
+                        <span class="text-gray-700">Local Repositories</span>
+                    </li>
+                    <li class="flex items-start">
+                        <i class="fas fa-check text-green-500 mt-1 mr-3"></i>
+                        <span class="text-gray-700">Discord Sync</span>
+                    </li>
+                    <li class="flex items-start">
+                        <i class="fas fa-times text-gray-300 mt-1 mr-3"></i>
+                        <span class="text-gray-400">Advanced Analytics</span>
+                    </li>
+                    <li class="flex items-start">
+                        <i class="fas fa-times text-gray-300 mt-1 mr-3"></i>
+                        <span class="text-gray-400">AI Code Review</span>
+                    </li>
+                    <li class="flex items-start">
+                        <i class="fas fa-times text-gray-300 mt-1 mr-3"></i>
+                        <span class="text-gray-400">Video Stand-ups</span>
+                    </li>
+                </ul>
+
+                <button class="w-full bg-gray-200 text-gray-700 py-3 rounded-lg font-semibold cursor-not-allowed">
+                    Current Plan
+                </button>
+            </div>
+
+            <!-- Professional Tier -->
+            <div class="bg-white rounded-lg shadow-xl p-8 border-4 border-blue-600 relative transform scale-105">
+                <div class="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
+                    <span class="bg-blue-600 text-white px-4 py-1 rounded-full text-sm font-semibold">POPULAR</span>
+                </div>
+                
+                <div class="text-center mb-6">
+                    <h3 class="text-2xl font-bold text-gray-900 mb-2">Professional</h3>
+                    <div class="text-4xl font-bold text-blue-600 mb-2">$25</div>
+                    <p class="text-gray-600">per user/month</p>
+                </div>
+                
+                <ul class="space-y-4 mb-8">
+                    <li class="flex items-start">
+                        <i class="fas fa-check text-green-500 mt-1 mr-3"></i>
+                        <span class="text-gray-700 font-semibold">Everything in Freebie</span>
+                    </li>
+                    <li class="flex items-start">
+                        <i class="fas fa-check text-green-500 mt-1 mr-3"></i>
+                        <span class="text-gray-700">Advanced Analytics</span>
+                    </li>
+                    <li class="flex items-start">
+                        <i class="fas fa-check text-green-500 mt-1 mr-3"></i>
+                        <span class="text-gray-700">AI Code Review</span>
+                    </li>
+                    <li class="flex items-start">
+                        <i class="fas fa-check text-green-500 mt-1 mr-3"></i>
+                        <span class="text-gray-700">Video Stand-ups</span>
+                    </li>
+                    <li class="flex items-start">
+                        <i class="fas fa-check text-green-500 mt-1 mr-3"></i>
+                        <span class="text-gray-700">Collaborative Editing</span>
+                    </li>
+                </ul>
+
+                <button onclick="upgradeToProfessional()" class="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition">
+                    Upgrade Now
+                </button>
+            </div>
+
+            <!-- Enterprise Tier -->
+            <div class="bg-white rounded-lg shadow-lg p-8 border-2 border-gray-200">
+                <div class="text-center mb-6">
+                    <h3 class="text-2xl font-bold text-gray-900 mb-2">Enterprise</h3>
+                    <div class="text-4xl font-bold text-gray-900 mb-2">Custom</div>
+                    <p class="text-gray-600">For large teams</p>
+                </div>
+                
+                <ul class="space-y-4 mb-8">
+                    <li class="flex items-start">
+                        <i class="fas fa-check text-green-500 mt-1 mr-3"></i>
+                        <span class="text-gray-700 font-semibold">Everything in Professional</span>
+                    </li>
+                    <li class="flex items-start">
+                        <i class="fas fa-check text-green-500 mt-1 mr-3"></i>
+                        <span class="text-gray-700">SOC 2 Compliance</span>
+                    </li>
+                    <li class="flex items-start">
+                        <i class="fas fa-check text-green-500 mt-1 mr-3"></i>
+                        <span class="text-gray-700">Dedicated Support</span>
+                    </li>
+                    <li class="flex items-start">
+                        <i class="fas fa-check text-green-500 mt-1 mr-3"></i>
+                        <span class="text-gray-700">Custom Integrations</span>
+                    </li>
+                    <li class="flex items-start">
+                        <i class="fas fa-check text-green-500 mt-1 mr-3"></i>
+                        <span class="text-gray-700">Priority Features</span>
+                    </li>
+                </ul>
+
+                <button onclick="contactSales()" class="w-full bg-gray-900 text-white py-3 rounded-lg font-semibold hover:bg-gray-800 transition">
+                    Contact Sales
+                </button>
+            </div>
+        </div>
+
+        <!-- Feature Comparison -->
+        <div class="mt-20">
+            <h2 class="text-3xl font-bold text-center mb-12">Feature Comparison</h2>
+            <div class="bg-white rounded-lg shadow-lg overflow-hidden">
+                <table class="w-full">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-4 text-left text-sm font-semibold text-gray-900">Feature</th>
+                            <th class="px-6 py-4 text-center text-sm font-semibold text-gray-900">Freebie</th>
+                            <th class="px-6 py-4 text-center text-sm font-semibold text-gray-900">Professional</th>
+                            <th class="px-6 py-4 text-center text-sm font-semibold text-gray-900">Enterprise</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-200">
+                        <tr>
+                            <td class="px-6 py-4 text-sm text-gray-900">Local Repositories</td>
+                            <td class="px-6 py-4 text-center"><i class="fas fa-check text-green-500"></i></td>
+                            <td class="px-6 py-4 text-center"><i class="fas fa-check text-green-500"></i></td>
+                            <td class="px-6 py-4 text-center"><i class="fas fa-check text-green-500"></i></td>
+                        </tr>
+                        <tr class="bg-gray-50">
+                            <td class="px-6 py-4 text-sm text-gray-900">Discord Sync</td>
+                            <td class="px-6 py-4 text-center"><i class="fas fa-check text-green-500"></i></td>
+                            <td class="px-6 py-4 text-center"><i class="fas fa-check text-green-500"></i></td>
+                            <td class="px-6 py-4 text-center"><i class="fas fa-check text-green-500"></i></td>
+                        </tr>
+                        <tr>
+                            <td class="px-6 py-4 text-sm text-gray-900">Advanced Analytics</td>
+                            <td class="px-6 py-4 text-center"><i class="fas fa-times text-gray-300"></i></td>
+                            <td class="px-6 py-4 text-center"><i class="fas fa-check text-green-500"></i></td>
+                            <td class="px-6 py-4 text-center"><i class="fas fa-check text-green-500"></i></td>
+                        </tr>
+                        <tr class="bg-gray-50">
+                            <td class="px-6 py-4 text-sm text-gray-900">AI Code Review</td>
+                            <td class="px-6 py-4 text-center"><i class="fas fa-times text-gray-300"></i></td>
+                            <td class="px-6 py-4 text-center"><i class="fas fa-check text-green-500"></i></td>
+                            <td class="px-6 py-4 text-center"><i class="fas fa-check text-green-500"></i></td>
+                        </tr>
+                        <tr>
+                            <td class="px-6 py-4 text-sm text-gray-900">Video Stand-ups</td>
+                            <td class="px-6 py-4 text-center"><i class="fas fa-times text-gray-300"></i></td>
+                            <td class="px-6 py-4 text-center"><i class="fas fa-check text-green-500"></i></td>
+                            <td class="px-6 py-4 text-center"><i class="fas fa-check text-green-500"></i></td>
+                        </tr>
+                        <tr class="bg-gray-50">
+                            <td class="px-6 py-4 text-sm text-gray-900">Collaborative Editing</td>
+                            <td class="px-6 py-4 text-center"><i class="fas fa-times text-gray-300"></i></td>
+                            <td class="px-6 py-4 text-center"><i class="fas fa-check text-green-500"></i></td>
+                            <td class="px-6 py-4 text-center"><i class="fas fa-check text-green-500"></i></td>
+                        </tr>
+                        <tr>
+                            <td class="px-6 py-4 text-sm text-gray-900">SOC 2 Compliance</td>
+                            <td class="px-6 py-4 text-center"><i class="fas fa-times text-gray-300"></i></td>
+                            <td class="px-6 py-4 text-center"><i class="fas fa-times text-gray-300"></i></td>
+                            <td class="px-6 py-4 text-center"><i class="fas fa-check text-green-500"></i></td>
+                        </tr>
+                        <tr class="bg-gray-50">
+                            <td class="px-6 py-4 text-sm text-gray-900">Dedicated Support</td>
+                            <td class="px-6 py-4 text-center"><i class="fas fa-times text-gray-300"></i></td>
+                            <td class="px-6 py-4 text-center"><i class="fas fa-times text-gray-300"></i></td>
+                            <td class="px-6 py-4 text-center"><i class="fas fa-check text-green-500"></i></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:3000/api';
+
+        async function upgradeToProfessional() {
+            const token = localStorage.getItem('authToken');
+            
+            if (!token) {
+                alert('Please sign in first');
+                window.location.href = 'sign_in.html';
+                return;
+            }
+
+            try {
+                // Create Stripe checkout session
+                const response = await fetch(`${API_URL}/subscription/create-checkout`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        tier: 'professional',
+                        interval: 'monthly'
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success && data.url) {
+                    // Redirect to Stripe checkout
+                    window.location.href = data.url;
+                } else {
+                    alert(data.message || 'Error creating checkout session');
+                }
+            } catch (error) {
+                console.error('Checkout error:', error);
+                alert('Error starting checkout process');
+            }
+        }
+
+        function contactSales() {
+            alert('Enterprise sales: contact@codexinc.com\n\nOur team will reach out within 24 hours to discuss your custom requirements.');
+        }
+
+        // Load current subscription on page load
+        window.addEventListener('DOMContentLoaded', async () => {
+            const token = localStorage.getItem('authToken');
+            
+            if (token) {
+                try {
+                    const response = await fetch(`${API_URL}/subscription/current`, {
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        }
+                    });
+
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        console.log('Current subscription:', data.subscription);
+                        updatePricingButtons(data.subscription.tier);
+                    }
+                } catch (error) {
+                    console.error('Error loading subscription:', error);
+                }
+            }
+
+            // Hide skeleton loader
+            setTimeout(() => {
+                document.body.classList.add('content-loaded');
+            }, 300);
+        });
+
+        // Update pricing buttons based on current tier
+        function updatePricingButtons(currentTier) {
+            // Get all pricing cards
+            const freebieCard = document.querySelector('.grid > div:nth-child(1)');
+            const professionalCard = document.querySelector('.grid > div:nth-child(2)');
+            const enterpriseCard = document.querySelector('.grid > div:nth-child(3)');
+
+            // Update Freebie button
+            const freebieButton = freebieCard.querySelector('button');
+            if (currentTier === 'freebie') {
+                freebieButton.innerHTML = '<i class="fas fa-check mr-2"></i>Current Plan';
+                freebieButton.className = 'w-full bg-green-600 text-white py-3 rounded-lg font-semibold cursor-default';
+            } else {
+                freebieButton.innerHTML = 'Downgrade';
+                freebieButton.className = 'w-full bg-gray-200 text-gray-700 py-3 rounded-lg font-semibold hover:bg-gray-300 transition';
+                freebieButton.onclick = () => alert('Contact support to downgrade your plan');
+            }
+
+            // Update Professional button
+            const professionalButton = professionalCard.querySelector('button');
+            if (currentTier === 'professional') {
+                professionalButton.innerHTML = '<i class="fas fa-check mr-2"></i>Current Plan (Monthly)';
+                professionalButton.className = 'w-full bg-green-600 text-white py-3 rounded-lg font-semibold cursor-default';
+                professionalButton.onclick = null;
+                
+                // Add manage subscription button
+                const manageButton = document.createElement('button');
+                manageButton.innerHTML = '<i class="fas fa-cog mr-2"></i>Manage Subscription';
+                manageButton.className = 'w-full mt-2 bg-gray-700 text-white py-2 rounded-lg font-semibold hover:bg-gray-600 transition';
+                manageButton.onclick = () => window.location.href = 'settings.html';
+                professionalButton.parentNode.appendChild(manageButton);
+            } else if (currentTier === 'freebie') {
+                professionalButton.innerHTML = '<i class="fas fa-arrow-up mr-2"></i>Upgrade Now';
+            } else if (currentTier === 'enterprise') {
+                professionalButton.innerHTML = 'Downgrade';
+                professionalButton.className = 'w-full bg-gray-200 text-gray-700 py-3 rounded-lg font-semibold hover:bg-gray-300 transition';
+                professionalButton.onclick = () => alert('Contact support to change your plan');
+            }
+
+            // Update Enterprise button
+            const enterpriseButton = enterpriseCard.querySelector('button');
+            if (currentTier === 'enterprise') {
+                enterpriseButton.innerHTML = '<i class="fas fa-check mr-2"></i>Current Plan';
+                enterpriseButton.className = 'w-full bg-green-600 text-white py-3 rounded-lg font-semibold cursor-default';
+                enterpriseButton.onclick = null;
+                
+                // Add manage subscription button
+                const manageButton = document.createElement('button');
+                manageButton.innerHTML = '<i class="fas fa-cog mr-2"></i>Manage Subscription';
+                manageButton.className = 'w-full mt-2 bg-gray-700 text-white py-2 rounded-lg font-semibold hover:bg-gray-600 transition';
+                manageButton.onclick = () => window.location.href = 'settings.html';
+                enterpriseButton.parentNode.appendChild(manageButton);
+            }
+        }
+    </script>
+</body>
+</html>

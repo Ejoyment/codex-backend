@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Code Editor - CODEX INC</title>
+    <link rel="icon"  href="1000222021 1 (1).png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" data-name="vs/editor/editor.main" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/editor/editor.main.min.css">
+    <style>
+        #editor-container {
+            height: calc(100vh - 120px);
+        }
+    </style>
+</head>
+<body class="bg-gray-900">
+    <!-- Header -->
+    <div class="bg-gray-800 text-white p-4 flex justify-between items-center">
+        <div class="flex items-center space-x-4">
+            <h1 class="text-xl font-bold text-blue-400">CODEX INC</h1>
+            <span class="text-gray-400">|</span>
+            <div class="flex items-center space-x-2">
+                <i class="fas fa-file-code text-blue-400"></i>
+                <span id="fileName">untitled.js</span>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-4">
+            <!-- Collaborators -->
+            <div class="flex items-center space-x-2">
+                <div class="flex -space-x-2">
+                    <div class="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center border-2 border-gray-800">
+                        <span class="text-xs font-semibold">Y</span>
+                    </div>
+                </div>
+                <span class="text-sm text-gray-400">1 online</span>
+            </div>
+
+            <button onclick="toggleAIReview()" class="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-lg transition">
+                <i class="fas fa-robot mr-2"></i>AI Review
+            </button>
+
+            <button onclick="saveCode()" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition">
+                <i class="fas fa-save mr-2"></i>Save
+            </button>
+
+            <button onclick="window.location.href='dashboard.html'" class="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg transition">
+                <i class="fas fa-arrow-left mr-2"></i>Back
+            </button>
+        </div>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="bg-gray-800 text-white px-4 py-2 flex items-center space-x-4 border-t border-gray-700">
+        <select id="languageSelect" onchange="changeLanguage()" class="bg-gray-700 px-3 py-1 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="javascript">JavaScript</option>
+            <option value="typescript">TypeScript</option>
+            <option value="python">Python</option>
+            <option value="java">Java</option>
+            <option value="cpp">C++</option>
+            <option value="html">HTML</option>
+            <option value="css">CSS</option>
+            <option value="json">JSON</option>
+        </select>
+
+        <button onclick="formatCode()" class="text-gray-400 hover:text-white transition">
+            <i class="fas fa-align-left mr-1"></i>Format
+        </button>
+
+        <button onclick="runCode()" class="text-gray-400 hover:text-white transition">
+            <i class="fas fa-play mr-1"></i>Run
+        </button>
+
+        <span class="text-gray-600">|</span>
+
+        <div class="flex items-center space-x-2 text-sm text-gray-400">
+            <span>Ln <span id="lineNumber">1</span></span>
+            <span>Col <span id="columnNumber">1</span></span>
+        </div>
+
+        <div class="flex-1"></div>
+
+        <div id="aiStatus" class="text-sm text-gray-400 hidden">
+            <i class="fas fa-circle-notch fa-spin mr-2"></i>AI analyzing...
+        </div>
+    </div>
+
+    <!-- Editor Container -->
+    <div id="editor-container"></div>
+
+    <!-- AI Review Panel (Hidden by default) -->
+    <div id="aiPanel" class="fixed right-0 top-0 h-full w-96 bg-gray-800 text-white shadow-2xl transform translate-x-full transition-transform duration-300 z-50">
+        <div class="p-4 border-b border-gray-700 flex justify-between items-center">
+            <h3 class="font-semibold flex items-center">
+                <i class="fas fa-robot text-purple-400 mr-2"></i>AI Code Review
+            </h3>
+            <button onclick="toggleAIReview()" class="text-gray-400 hover:text-white">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+
+        <div class="p-4 space-y-4 overflow-y-auto" style="height: calc(100% - 60px);">
+            <div id="aiSuggestions">
+                <div class="bg-gray-700 rounded-lg p-4">
+                    <p class="text-sm text-gray-400">Click "Analyze Code" to get AI suggestions</p>
+                </div>
+            </div>
+
+            <button onclick="analyzeCode()" class="w-full bg-purple-600 hover:bg-purple-700 py-2 rounded-lg transition">
+                <i class="fas fa-magic mr-2"></i>Analyze Code
+            </button>
+        </div>
+    </div>
+
+    <!-- Output Console -->
+    <div id="console" class="fixed bottom-0 left-0 right-0 bg-gray-900 text-white border-t border-gray-700 hidden" style="height: 200px;">
+        <div class="p-2 bg-gray-800 flex justify-between items-center">
+            <span class="text-sm font-semibold">Console Output</span>
+            <button onclick="toggleConsole()" class="text-gray-400 hover:text-white">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div id="consoleOutput" class="p-4 font-mono text-sm overflow-y-auto" style="height: calc(100% - 40px);">
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
+    <script>
+        const API_URL = 'http://localhost:3000/api';
+        let editor;
+
+        // Initialize Monaco Editor
+        require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' } });
+
+        require(['vs/editor/editor.main'], function () {
+            editor = monaco.editor.create(document.getElementById('editor-container'), {
+                value: '// Welcome to CODEX INC Code Editor\n// Start coding with AI-powered assistance\n\nfunction hello() {\n    console.log("Hello, World!");\n}\n\nhello();',
+                language: 'javascript',
+                theme: 'vs-dark',
+                automaticLayout: true,
+                fontSize: 14,
+                minimap: { enabled: true },
+                scrollBeyondLastLine: false,
+                wordWrap: 'on',
+                formatOnPaste: true,
+                formatOnType: true
+            });
+
+            // Update cursor position
+            editor.onDidChangeCursorPosition((e) => {
+                document.getElementById('lineNumber').textContent = e.position.lineNumber;
+                document.getElementById('columnNumber').textContent = e.position.column;
+            });
+
+            // Auto-save
+            editor.onDidChangeModelContent(() => {
+                localStorage.setItem('editorContent', editor.getValue());
+            });
+
+            // Load saved content
+            const savedContent = localStorage.getItem('editorContent');
+            if (savedContent) {
+                editor.setValue(savedContent);
+            }
+        });
+
+        function changeLanguage() {
+            const language = document.getElementById('languageSelect').value;
+            monaco.editor.setModelLanguage(editor.getModel(), language);
+            
+            // Update file name
+            const extensions = {
+                javascript: 'js',
+                typescript: 'ts',
+                python: 'py',
+                java: 'java',
+                cpp: 'cpp',
+                html: 'html',
+                css: 'css',
+                json: 'json'
+            };
+            document.getElementById('fileName').textContent = `untitled.${extensions[language]}`;
+        }
+
+        function formatCode() {
+            editor.getAction('editor.action.formatDocument').run();
+        }
+
+        function saveCode() {
+            const code = editor.getValue();
+            const language = document.getElementById('languageSelect').value;
+            
+            // Create download
+            const blob = new Blob([code], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = document.getElementById('fileName').textContent;
+            a.click();
+            
+            alert('Code saved successfully!');
+        }
+
+        function runCode() {
+            const code = editor.getValue();
+            const language = document.getElementById('languageSelect').value;
+            
+            if (language === 'javascript') {
+                toggleConsole(true);
+                const consoleOutput = document.getElementById('consoleOutput');
+                consoleOutput.innerHTML = '';
+                
+                try {
+                    // Capture console.log
+                    const originalLog = console.log;
+                    console.log = function(...args) {
+                        consoleOutput.innerHTML += args.join(' ') + '\n';
+                        originalLog.apply(console, args);
+                    };
+                    
+                    eval(code);
+                    
+                    console.log = originalLog;
+                } catch (error) {
+                    consoleOutput.innerHTML += `<span class="text-red-400">Error: ${error.message}</span>\n`;
+                }
+            } else {
+                alert('Code execution is only supported for JavaScript in this demo');
+            }
+        }
+
+        function toggleConsole(show = null) {
+            const consoleEl = document.getElementById('console');
+            if (show === true) {
+                consoleEl.classList.remove('hidden');
+            } else if (show === false) {
+                consoleEl.classList.add('hidden');
+            } else {
+                consoleEl.classList.toggle('hidden');
+            }
+        }
+
+        function toggleAIReview() {
+            const panel = document.getElementById('aiPanel');
+            panel.classList.toggle('translate-x-full');
+        }
+
+        async function analyzeCode() {
+            const token = localStorage.getItem('token');
+            const code = editor.getValue();
+            
+            document.getElementById('aiStatus').classList.remove('hidden');
+            
+            // Simulate AI analysis (in production, call actual AI API)
+            setTimeout(() => {
+                const suggestions = [
+                    {
+                        type: 'warning',
+                        line: 4,
+                        message: 'Consider adding error handling',
+                        suggestion: 'Wrap this code in a try-catch block'
+                    },
+                    {
+                        type: 'info',
+                        line: 5,
+                        message: 'Code style suggestion',
+                        suggestion: 'Use const instead of let for variables that don\'t change'
+                    },
+                    {
+                        type: 'success',
+                        line: 0,
+                        message: 'Good practices detected',
+                        suggestion: 'Your code follows best practices'
+                    }
+                ];
+
+                displayAISuggestions(suggestions);
+                document.getElementById('aiStatus').classList.add('hidden');
+            }, 2000);
+        }
+
+        function displayAISuggestions(suggestions) {
+            const container = document.getElementById('aiSuggestions');
+            container.innerHTML = '';
+
+            suggestions.forEach(suggestion => {
+                const colors = {
+                    warning: 'border-yellow-500 bg-yellow-900 bg-opacity-20',
+                    info: 'border-blue-500 bg-blue-900 bg-opacity-20',
+                    success: 'border-green-500 bg-green-900 bg-opacity-20'
+                };
+
+                const icons = {
+                    warning: 'fa-exclamation-triangle text-yellow-500',
+                    info: 'fa-info-circle text-blue-500',
+                    success: 'fa-check-circle text-green-500'
+                };
+
+                const div = document.createElement('div');
+                div.className = `border-l-4 ${colors[suggestion.type]} p-3 rounded mb-3`;
+                div.innerHTML = `
+                    <div class="flex items-start">
+                        <i class="fas ${icons[suggestion.type]} mt-1 mr-2"></i>
+                        <div class="flex-1">
+                            <p class="text-sm font-semibold mb-1">${suggestion.message}</p>
+                            <p class="text-xs text-gray-400 mb-2">${suggestion.suggestion}</p>
+                            ${suggestion.line > 0 ? `<p class="text-xs text-gray-500">Line ${suggestion.line}</p>` : ''}
+                        </div>
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+        }
+    </script>
+</body>
+</html>

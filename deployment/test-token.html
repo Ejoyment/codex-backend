@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Token Debug - CODEX INC</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen p-8">
+    <div class="max-w-4xl mx-auto bg-white rounded-lg shadow-lg p-8">
+        <h1 class="text-3xl font-bold mb-6">Token Debug Tool</h1>
+        
+        <div class="space-y-4">
+            <div class="border rounded-lg p-4">
+                <h2 class="font-bold text-lg mb-2">localStorage Check</h2>
+                <div id="localStorageCheck" class="space-y-2"></div>
+            </div>
+
+            <div class="border rounded-lg p-4">
+                <h2 class="font-bold text-lg mb-2">All localStorage Items</h2>
+                <div id="allItems" class="space-y-1 text-sm"></div>
+            </div>
+
+            <div class="border rounded-lg p-4">
+                <h2 class="font-bold text-lg mb-2">Actions</h2>
+                <div class="space-y-2">
+                    <button onclick="checkToken()" class="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700">
+                        Re-check Token
+                    </button>
+                    <button onclick="window.location.href='sign_in.html'" class="w-full bg-gray-600 text-white py-2 rounded-lg hover:bg-gray-700">
+                        Go to Sign In
+                    </button>
+                    <button onclick="window.location.href='dashboard.html'" class="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700">
+                        Go to Dashboard
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function checkToken() {
+            const localStorageCheck = document.getElementById('localStorageCheck');
+            const allItems = document.getElementById('allItems');
+            
+            // Check specific keys
+            const authToken = localStorage.getItem('authToken');
+            const token = localStorage.getItem('token');
+            const user = localStorage.getItem('user');
+            
+            let html = '';
+            
+            // authToken check
+            if (authToken) {
+                html += `<div class="text-green-600">✅ authToken exists</div>`;
+                html += `<div class="text-sm text-gray-600 ml-4">Value: ${authToken.substring(0, 50)}...</div>`;
+                html += `<div class="text-sm text-gray-600 ml-4">Length: ${authToken.length} characters</div>`;
+            } else {
+                html += `<div class="text-red-600">❌ authToken is ${authToken === null ? 'null' : 'undefined'}</div>`;
+            }
+            
+            // token check
+            if (token) {
+                html += `<div class="text-yellow-600 mt-2">⚠️ 'token' key also exists (should use authToken)</div>`;
+                html += `<div class="text-sm text-gray-600 ml-4">Value: ${token.substring(0, 50)}...</div>`;
+            } else {
+                html += `<div class="text-gray-600 mt-2">ℹ️ 'token' key does not exist (correct)</div>`;
+            }
+            
+            // user check
+            if (user) {
+                html += `<div class="text-green-600 mt-2">✅ user data exists</div>`;
+                try {
+                    const userData = JSON.parse(user);
+                    html += `<div class="text-sm text-gray-600 ml-4">Email: ${userData.email || 'N/A'}</div>`;
+                    html += `<div class="text-sm text-gray-600 ml-4">Name: ${userData.fullName || 'N/A'}</div>`;
+                } catch (e) {
+                    html += `<div class="text-sm text-red-600 ml-4">Error parsing user data</div>`;
+                }
+            } else {
+                html += `<div class="text-yellow-600 mt-2">⚠️ user data does not exist</div>`;
+            }
+            
+            localStorageCheck.innerHTML = html;
+            
+            // Show all localStorage items
+            let allHtml = '';
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                const value = localStorage.getItem(key);
+                allHtml += `<div class="border-b pb-1">`;
+                allHtml += `<span class="font-semibold">${key}:</span> `;
+                if (value.length > 100) {
+                    allHtml += `<span class="text-gray-600">${value.substring(0, 100)}...</span>`;
+                } else {
+                    allHtml += `<span class="text-gray-600">${value}</span>`;
+                }
+                allHtml += `</div>`;
+            }
+            
+            if (localStorage.length === 0) {
+                allHtml = '<div class="text-red-600">❌ localStorage is empty!</div>';
+            }
+            
+            allItems.innerHTML = allHtml;
+        }
+        
+        // Check on page load
+        window.addEventListener('DOMContentLoaded', checkToken);
+    </script>
+</body>
+</html>
