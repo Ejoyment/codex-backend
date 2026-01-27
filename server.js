@@ -119,7 +119,7 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`\n🚀 Server running on port ${PORT}`);
-    console.log(`📧 Email service: ${process.env.EMAIL_HOST}`);
+    console.log(`📧 Email service: Resend API`);
     console.log(`🌐 Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:5500'}`);
     console.log(`\nAPI Endpoints:`);
     console.log(`  POST   /api/auth/signup`);
