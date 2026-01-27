@@ -7,10 +7,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="js/api.js"></script>
     <link rel="stylesheet" href="css/skeleton.css">
-    <link rel="stylesheet" href="css/responsive-guard.css">
-    <script src="js/responsive-guard.js"></script>
 </head>
-<body class="bg-gray-200 min-h-screen" data-protected data-desktop-only data-min-width="1024" data-redirect-url="index.html">
+<body class="bg-gray-200 min-h-screen">
     <!-- Skeleton Loader -->
     <div class="skeleton-loader">
         <div class="skeleton-main" style="background: #e5e7eb;">
@@ -412,13 +410,7 @@
                 
                 if (result.success) {
                     currentUser = result.user;
-                    // Fix profile picture URL - add backend URL if relative path
-                    let avatarUrl = currentUser.profilePicture;
-                    if (avatarUrl && avatarUrl.startsWith('/uploads/')) {
-                        avatarUrl = `https://codex-backend-7utu.onrender.com${avatarUrl}`;
-                    } else if (!avatarUrl) {
-                        avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.fullName)}&background=3b82f6&color=fff`;
-                    }
+                    const avatarUrl = currentUser.profilePicture || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.fullName)}&background=3b82f6&color=fff`;
                     
                     // Update all profile elements
                     document.getElementById('profileName').textContent = currentUser.fullName;
