@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ship Better Code, Faster</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="icon"  href="1000222021 1 (1).png">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'navy': '#1a1f36',
+                        'navy-light': '#2a3441',
+                        'navy-dark': '#070F34',
+                        'blue-accent': '#3b82f6',
+                        'green-accent': '#10b981'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+     h1{
+      font-family: "Inter", sans-serif;
+     }
+    h2{
+      font-family: "Inter", sans-serif;
+     }
+          h3{
+      font-family: "Inter", sans-serif;
+     }
+          p{
+      font-family: "Inter", sans-serif;
+     }
+    </style>
+</head>
+<body class="bg-navy text-white font-sans">
+    <!-- Header -->
+    <header class="bg-navy-dark border-b border-gray-700">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <div class="flex items-center space-x-4 sm:space-x-8">
+                    <div class="flex items-center space-x-2">
+                        <div class="w-6 h-6 sm:w-8 sm:h-8 bg-transparent-accent rounded">
+                            <img src="1000222021 1 (1).png" alt="">
+                        </div>
+                        <span class="text-base sm:text-xl font-semibold">CODEX ENTERPRISE</span>
+                    </div>
+                    <nav class="hidden md:flex space-x-6">
+                        <a href="#" class="text-gray-300 hover:text-white">Features</a>
+                        <a href="#" class="text-gray-300 hover:text-white">Download</a>
+                        <a href="#" class="text-gray-300 hover:text-white">Pricing</a>
+                        <a href="#" class="text-gray-300 hover:text-white">Blog</a>
+                        <a href="#" class="text-gray-300 hover:text-white">Changelog</a>
+                    </nav>
+                </div>
+                <div class="flex items-center space-x-2 sm:space-x-4">
+                <a href="sign_in.html" class="bg-white text-navy px-3 py-2 sm:px-8 sm:py-3 rounded-md font-medium text-sm sm:text-base">
+                    Sign In
+                </a>
+
+                                    <a href="signup.html" class="border border-gray-600 px-3 py-2 sm:px-8 sm:py-3 rounded-md font-medium hover:bg-gray-800 inline-block text-center text-sm sm:text-base whitespace-nowrap">
+                    Start Free Trial
+                </a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="py-20 px-4 sm:px-6 lg:px-8">
+        <div class="max-w-4xl mx-auto text-center">
+            <h1 class="text-5xl md:text-6xl font-bold mb-6">
+                Ship Better Code, Faster
+            </h1>
+            <p class="text-xl text-gray-300 mb-8 max-w-2xl mx-auto">
+                The AI-first code editor. Built to make you extraordinarily productive, Cursor is the best way to code with AI.
+            </p>
+            <div class="flex flex-col sm:flex-row gap-4 justify-center mb-12">
+                <a href="signup.html" class="bg-white text-navy px-8 py-3 rounded-md font-medium inline-block text-center">
+                    Start Free Trial
+                </a>
+                <button class="border border-gray-600 px-8 py-3 rounded-md font-medium hover:bg-gray-800">
+                    Schedule a Demo
+                </button>
+            </div>
+            
+            <!-- Code Editor Preview -->
+            <div class="bg-navy-light rounded-lg p-6 max-w-4xl mx-auto">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex space-x-2">
+                        <div class="w-3 h-3 bg-red-500 rounded-full"></div>
+                        <div class="w-3 h-3 bg-yellow-500 rounded-full"></div>
+                        <div class="w-3 h-3 bg-green-500 rounded-full"></div>
+                    </div>
+                    <div class="text-sm text-gray-400">main.py</div>
+                </div>
+                <div class="bg-navy-dark rounded p-4 text-left font-mono text-sm">
+                    <div class="text-gray-500">1</div>
+                    <div class="text-gray-500">2</div>
+                    <div class="text-gray-500">3</div>
+                    <div class="text-gray-500">4</div>
+                    <div class="text-gray-500">5</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="py-16 px-4 sm:px-6 lg:px-8">
+        <div class="max-w-7xl mx-auto">
+            <h2 class="text-3xl font-bold text-center mb-12">
+                Everything you need to build better software
+            </h2>
+            <p class="text-center text-gray-300 mb-16 max-w-2xl mx-auto">
+                Cursor is designed from the ground up to be the most productive developer environment.
+            </p>
+            
+            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+                <!-- Feature Card 1 -->
+                <div class="bg-navy-light p-6 rounded-lg">
+                    <div class="w-12 h-12 bg-blue-accent rounded-lg mb-4 flex items-center justify-center">
+                        <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-3">AI that understands your codebase</h3>
+                    <p class="text-gray-300">
+                        Cursor indexes your entire codebase and understands the context of your project to provide intelligent suggestions.
+                    </p>
+                </div>
+
+                <!-- Feature Card 2 -->
+                <div class="bg-navy-light p-6 rounded-lg">
+                    <div class="w-12 h-12 bg-green-accent rounded-lg mb-4 flex items-center justify-center">
+                        <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3z"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-3">Pair program with AI</h3>
+                    <p class="text-gray-300">
+                        Chat with an AI that can see your code, make edits, and help you debug issues in real-time. Requires full control of your GitHub repository or VS Code integration to enable real-time code access and editing capabilities.
+                    </p>
+                </div>
+
+                <!-- Feature Card 3 -->
+                <div class="bg-navy-light p-6 rounded-lg">
+                    <div class="w-12 h-12 bg-purple-500 rounded-lg mb-4 flex items-center justify-center">
+                        <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-3">Smart autocomplete</h3>
+                    <p class="text-gray-300">
+                        Get intelligent code completions that understand your coding patterns and project structure.
+                    </p>
+                </div>
+
+                <!-- Feature Card 4 -->
+                <div class="bg-navy-light p-6 rounded-lg">
+                    <div class="w-12 h-12 bg-red-500 rounded-lg mb-4 flex items-center justify-center">
+                        <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"></path>
+                            <path fill-rule="evenodd" d="M4 5a2 2 0 012-2v1a1 1 0 102 0V3a2 2 0 012 2v6a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm2.5 7a1.5 1.5 0 100-3 1.5 1.5 0 000 3zm2.45.5a2.5 2.5 0 11-3.9 0 .5.5 0 00-.1.5V16a1 1 0 001 1h4a1 1 0 001-1v-2a.5.5 0 00-.1-.5z" clip-rule="evenodd"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-3">Privacy first</h3>
+                    <p class="text-gray-300">
+                        Your code stays private. We use SOC 2 compliant infrastructure and never train on your code.
+                    </p>
+                </div>
+
+                <!-- Feature Card 5 -->
+                <div class="bg-navy-light p-6 rounded-lg">
+                    <div class="w-12 h-12 bg-yellow-500 rounded-lg mb-4 flex items-center justify-center">
+                        <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-3">Built for teams</h3>
+                    <p class="text-gray-300">
+                        Share AI conversations, collaborate on code, and maintain consistency across your team.
+                    </p>
+                </div>
+
+                <!-- Feature Card 6 -->
+                <div class="bg-navy-light p-6 rounded-lg">
+                    <div class="w-12 h-12 bg-indigo-500 rounded-lg mb-4 flex items-center justify-center">
+                        <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6zM14.553 7.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-3">Import from anywhere</h3>
+                    <p class="text-gray-300">
+                        Seamlessly import your existing projects from VS Code, GitHub, or any other editor.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+    <!-- Code Editor Section -->
+    <section class="py-16 px-4 sm:px-6 lg:px-8 bg-navy-dark">
+        <div class="max-w-7xl mx-auto">
+            <div class="grid lg:grid-cols-2 gap-12 items-center">
+                <div>
+                    <h2 class="text-3xl font-bold mb-6">Code with confidence</h2>
+                    <p class="text-gray-300 mb-8">
+                        Cursor's AI understands your codebase and can help you write, edit, and debug code faster than ever before.
+                    </p>
+                    <ul class="space-y-4">
+                        <li class="flex items-start space-x-3">
+                            <div class="w-6 h-6 bg-green-accent rounded-full flex items-center justify-center mt-0.5">
+                                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                                </svg>
+                            </div>
+                            <span class="text-gray-300">AI-powered code generation and editing</span>
+                        </li>
+                        <li class="flex items-start space-x-3">
+                            <div class="w-6 h-6 bg-green-accent rounded-full flex items-center justify-center mt-0.5">
+                                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                                </svg>
+                            </div>
+                            <span class="text-gray-300">Intelligent debugging and error detection</span>
+                        </li>
+                        <li class="flex items-start space-x-3">
+                            <div class="w-6 h-6 bg-green-accent rounded-full flex items-center justify-center mt-0.5">
+                                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                                </svg>
+                            </div>
+                            <span class="text-gray-300">Context-aware suggestions and refactoring</span>
+                        </li>
+                    </ul>
+                </div>
+                <div class="bg-navy rounded-lg p-6">
+                    <div class="bg-navy-dark rounded-lg p-4 font-mono text-sm">
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="flex space-x-2">
+                                <div class="w-3 h-3 bg-red-500 rounded-full"></div>
+                                <div class="w-3 h-3 bg-yellow-500 rounded-full"></div>
+                                <div class="w-3 h-3 bg-green-500 rounded-full"></div>
+                            </div>
+                            <span class="text-gray-400 text-xs">app.py</span>
+                        </div>
+                        <div class="space-y-1">
+                            <div class="flex">
+                                <span class="text-gray-500 w-8">1</span>
+                                <span class="text-purple-400">import</span>
+                                <span class="text-white"> requests</span>
+                            </div>
+                            <div class="flex">
+                                <span class="text-gray-500 w-8">2</span>
+                                <span class="text-purple-400">from</span>
+                                <span class="text-white"> flask </span>
+                                <span class="text-purple-400">import</span>
+                                <span class="text-white"> Flask</span>
+                            </div>
+                            <div class="flex">
+                                <span class="text-gray-500 w-8">3</span>
+                            </div>
+                            <div class="flex">
+                                <span class="text-gray-500 w-8">4</span>
+                                <span class="text-white">app = </span>
+                                <span class="text-blue-400">Flask</span>
+                                <span class="text-white">(</span>
+                                <span class="text-green-400">__name__</span>
+                                <span class="text-white">)</span>
+                            </div>
+                            <div class="flex">
+                                <span class="text-gray-500 w-8">5</span>
+                            </div>
+                            <div class="flex">
+                                <span class="text-gray-500 w-8">6</span>
+                                <span class="text-purple-400">@app.route</span>
+                                <span class="text-white">(</span>
+                                <span class="text-green-400">'/'</span>
+                                <span class="text-white">)</span>
+                            </div>
+                            <div class="flex">
+                                <span class="text-gray-500 w-8">7</span>
+                                <span class="text-purple-400">def</span>
+                                <span class="text-blue-400"> hello</span>
+                                <span class="text-white">():</span>
+                            </div>
+                            <div class="flex">
+                                <span class="text-gray-500 w-8">8</span>
+                                <span class="text-white">    </span>
+                                <span class="text-purple-400">return</span>
+                                <span class="text-green-400"> 'Hello, World!'</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Workspace Section -->
+    <section class="py-16 px-4 sm:px-6 lg:px-8">
+        <div class="max-w-7xl mx-auto">
+            <div class="grid lg:grid-cols-2 gap-12 items-center">
+                <div class="order-2 lg:order-1">
+                    <img src="https://images.unsplash.com/photo-1551650975-87deedd944c3?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1974&q=80" 
+                         alt="Developer workspace" 
+                         class="rounded-lg shadow-2xl">
+                </div>
+                <div class="order-1 lg:order-2">
+                    <h2 class="text-3xl font-bold mb-6">Code in your favorite environment</h2>
+                    <p class="text-gray-300 mb-8">
+                        Cursor works with all your favorite tools and extensions. Import your VS Code setup in seconds.
+                    </p>
+                    <ul class="space-y-4">
+                        <li class="flex items-start space-x-3">
+                            <div class="w-6 h-6 bg-blue-accent rounded-full flex items-center justify-center mt-0.5">
+                                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                                </svg>
+                            </div>
+                            <span class="text-gray-300">Import VS Code extensions and settings</span>
+                        </li>
+                        <li class="flex items-start space-x-3">
+                            <div class="w-6 h-6 bg-blue-accent rounded-full flex items-center justify-center mt-0.5">
+                                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                                </svg>
+                            </div>
+                            <span class="text-gray-300">Seamless Git integration</span>
+                        </li>
+                        <li class="flex items-start space-x-3">
+                            <div class="w-6 h-6 bg-blue-accent rounded-full flex items-center justify-center mt-0.5">
+                                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                                </svg>
+                            </div>
+                            <span class="text-gray-300">Built-in terminal and debugging tools</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Integration Section -->
+    <section class="py-16 px-4 sm:px-6 lg:px-8 bg-navy-dark">
+        <div class="max-w-7xl mx-auto text-center">
+            <h2 class="text-3xl font-bold mb-12">Integrates with your favorite tools</h2>
+            
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-8 mb-16">
+                <!-- Integration Icons -->
+                <div class="flex flex-col items-center space-y-2">
+                    <div class="w-16 h-16 bg-navy-light rounded-lg flex items-center justify-center">
+                        <svg class="w-8 h-8 text-blue-400" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M12 0C5.374 0 0 5.373 0 12 0 17.302 3.438 21.8 8.207 23.387c.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
+                        </svg>
+                    </div>
+                    <span class="text-sm text-gray-300">GitHub</span>
+                </div>
+                
+                <div class="flex flex-col items-center space-y-2">
+                    <div class="w-16 h-16 bg-navy-light rounded-lg flex items-center justify-center">
+                        <svg class="w-8 h-8 text-orange-400" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M12 0C5.374 0 0 5.373 0 12 0 17.302 3.438 21.8 8.207 23.387c.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
+                        </svg>
+                    </div>
+                    <span class="text-sm text-gray-300">GitLab</span>
+                </div>
+
+                <div class="flex flex-col items-center space-y-2">
+                    <div class="w-16 h-16 bg-navy-light rounded-lg flex items-center justify-center">
+                        <svg class="w-8 h-8 text-blue-500" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M0 12v12h24V0H0v12zm19.5-8.5h-15v15h15v-15z"/>
+                        </svg>
+                    </div>
+                    <span class="text-sm text-gray-300">Docker</span>
+                </div>
+
+                <div class="flex flex-col items-center space-y-2">
+                    <div class="w-16 h-16 bg-navy-light rounded-lg flex items-center justify-center">
+                        <svg class="w-8 h-8 text-green-400" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M12 0C5.374 0 0 5.373 0 12 0 17.302 3.438 21.8 8.207 23.387c.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
+                        </svg>
+                    </div>
+                    <span class="text-sm text-gray-300">Node.js</span>
+                </div>
+
+                <div class="flex flex-col items-center space-y-2">
+                    <div class="w-16 h-16 bg-navy-light rounded-lg flex items-center justify-center">
+                        <svg class="w-8 h-8 text-yellow-400" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M12 0C5.374 0 0 5.373 0 12 0 17.302 3.438 21.8 8.207 23.387c.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
+                        </svg>
+                    </div>
+                    <span class="text-sm text-gray-300">Python</span>
+                </div>
+
+                <div class="flex flex-col items-center space-y-2">
+                    <div class="w-16 h-16 bg-navy-light rounded-lg flex items-center justify-center">
+                        <svg class="w-8 h-8 text-red-400" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M12 0C5.374 0 0 5.373 0 12 0 17.302 3.438 21.8 8.207 23.387c.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
+                        </svg>
+                    </div>
+                    <span class="text-sm text-gray-300">React</span>
+                </div>
+            </div>
+
+            <p class="text-gray-400">View all 30+ integrations</p>
+        </div>
+    </section>
+
+    <!-- Testimonials Section -->
+    <section class="py-16 px-4 sm:px-6 lg:px-8">
+        <div class="max-w-7xl mx-auto">
+            <h2 class="text-3xl font-bold text-center mb-12">Loved by developers worldwide</h2>
+            
+            <div class="grid md:grid-cols-3 gap-8">
+                <!-- Testimonial 1 -->
+                <div class="bg-navy-light p-6 rounded-lg">
+                    <div class="flex items-center mb-4">
+                        <div class="w-10 h-10 bg-blue-accent rounded-full mr-3"></div>
+                        <div>
+                            <div class="font-semibold">Sarah Chen</div>
+                            <div class="text-sm text-gray-400">Senior Developer at Stripe</div>
+                        </div>
+                    </div>
+                    <p class="text-gray-300">
+                        "Cursor has completely transformed how I write code. The AI suggestions are incredibly accurate and save me hours every day."
+                    </p>
+                    <div class="flex mt-4">
+                        <span class="text-yellow-400">★★★★★</span>
+                    </div>
+                </div>
+
+                <!-- Testimonial 2 -->
+                <div class="bg-navy-light p-6 rounded-lg">
+                    <div class="flex items-center mb-4">
+                        <div class="w-10 h-10 bg-green-accent rounded-full mr-3"></div>
+                        <div>
+                            <div class="font-semibold">Marcus Johnson</div>
+                            <div class="text-sm text-gray-400">CTO at TechStart</div>
+                        </div>
+                    </div>
+                    <p class="text-gray-300">
+                        "The best coding experience I've ever had. Cursor understands context better than any other AI tool I've used."
+                    </p>
+                    <div class="flex mt-4">
+                        <span class="text-yellow-400">★★★★★</span>
+                    </div>
+                </div>
+
+                <!-- Testimonial 3 -->
+                <div class="bg-navy-light p-6 rounded-lg">
+                    <div class="flex items-center mb-4">
+                        <div class="w-10 h-10 bg-purple-500 rounded-full mr-3"></div>
+                        <div>
+                            <div class="font-semibold">Emily Rodriguez</div>
+                            <div class="text-sm text-gray-400">Full Stack Developer</div>
+                        </div>
+                    </div>
+                    <p class="text-gray-300">
+                        "I can't imagine coding without Cursor anymore. It's like having a senior developer pair programming with me 24/7."
+                    </p>
+                    <div class="flex mt-4">
+                        <span class="text-yellow-400">★★★★★</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Stats Section -->
+    <section class="py-16 px-4 sm:px-6 lg:px-8 bg-navy-dark">
+        <div class="max-w-7xl mx-auto">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
+                <div>
+                    <div class="text-4xl font-bold text-blue-accent mb-2">50M+</div>
+                    <div class="text-gray-300">Lines of code generated</div>
+                </div>
+                <div>
+                    <div class="text-4xl font-bold text-green-accent mb-2">99.9%</div>
+                    <div class="text-gray-300">Uptime</div>
+                </div>
+                <div>
+                    <div class="text-4xl font-bold text-purple-400 mb-2">24/7</div>
+                    <div class="text-gray-300">Support</div>
+                </div>
+                <div>
+                    <div class="text-4xl font-bold text-yellow-400 mb-2">SOC 2</div>
+                    <div class="text-gray-300">Compliant</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Pricing Section -->
+    <section class="py-16 px-4 sm:px-6 lg:px-8">
+        <div class="max-w-7xl mx-auto">
+            <h2 class="text-3xl font-bold text-center mb-12">Plans that scale with your team</h2>
+            
+            <div class="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+                <!-- Free Plan -->
+                <div class="bg-navy-light p-8 rounded-lg border border-gray-700">
+                    <h3 class="text-2xl font-bold mb-4">Hobby</h3>
+                    <div class="text-4xl font-bold mb-6">$0</div>
+                    <ul class="space-y-3 mb-8">
+                        <li class="flex items-center space-x-3">
+                            <svg class="w-5 h-5 text-green-accent" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span class="text-gray-300">2,000 completions/month</span>
+                        </li>
+                        <li class="flex items-center space-x-3">
+                            <svg class="w-5 h-5 text-green-accent" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span class="text-gray-300">50 slow premium requests</span>
+                        </li>
+                        <li class="flex items-center space-x-3">
+                            <svg class="w-5 h-5 text-green-accent" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span class="text-gray-300">Basic AI features</span>
+                        </li>
+                    </ul>
+                    <button class="w-full border border-gray-600 py-3 rounded-md font-medium hover:bg-gray-800">
+                        Get Started
+                    </button>
+                </div>
+
+                <!-- Pro Plan -->
+                <div class="bg-blue-accent p-8 rounded-lg relative">
+                    <div class="absolute -top-4 left-1/2 transform -translate-x-1/2">
+                        <span class="bg-yellow-400 text-navy px-3 py-1 rounded-full text-sm font-medium">
+                            Most Popular
+                        </span>
+                    </div>
+                    <h3 class="text-2xl font-bold mb-4 text-white">Pro</h3>
+                    <div class="text-4xl font-bold mb-6 text-white">$25</div>
+                    <ul class="space-y-3 mb-8">
+                        <li class="flex items-center space-x-3">
+                            <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span class="text-white">Unlimited completions</span>
+                        </li>
+                        <li class="flex items-center space-x-3">
+                            <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span class="text-white">500 fast premium requests</span>
+                        </li>
+                        <li class="flex items-center space-x-3">
+                            <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span class="text-white">Advanced AI features</span>
+                        </li>
+                        <li class="flex items-center space-x-3">
+                            <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span class="text-white">Priority support</span>
+                        </li>
+                    </ul>
+                    <a href="signup.html" class="w-full bg-white text-blue-accent py-3 rounded-md font-medium hover:bg-gray-100 inline-block text-center">
+                        Start Free Trial
+                    </a>
+                </div>
+
+                <!-- Business Plan -->
+                <div class="bg-navy-light p-8 rounded-lg border border-gray-700">
+                    <h3 class="text-2xl font-bold mb-4">Business</h3>
+                    <div class="text-4xl font-bold mb-6">Custom</div>
+                    <ul class="space-y-3 mb-8">
+                        <li class="flex items-center space-x-3">
+                            <svg class="w-5 h-5 text-green-accent" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span class="text-gray-300">Everything in Pro</span>
+                        </li>
+                        <li class="flex items-center space-x-3">
+                            <svg class="w-5 h-5 text-green-accent" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span class="text-gray-300">Team management</span>
+                        </li>
+                        <li class="flex items-center space-x-3">
+                            <svg class="w-5 h-5 text-green-accent" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span class="text-gray-300">Advanced security</span>
+                        </li>
+                        <li class="flex items-center space-x-3">
+                            <svg class="w-5 h-5 text-green-accent" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span class="text-gray-300">Dedicated support</span>
+                        </li>
+                    </ul>
+                    <button class="w-full border border-gray-600 py-3 rounded-md font-medium hover:bg-gray-800">
+                        Contact Sales
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="py-20 px-4 sm:px-6 lg:px-8 bg-navy-dark">
+        <div class="max-w-4xl mx-auto text-center">
+            <h2 class="text-4xl font-bold mb-6">Ready to ship better code?</h2>
+            <p class="text-xl text-gray-300 mb-8">
+                Join thousands of developers who are already coding faster with Cursor.
+            </p>
+            <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                <button class="bg-white text-navy px-8 py-3 rounded-md font-medium text-lg">
+                    Download for free
+                </button>
+                <button class="border border-gray-600 px-8 py-3 rounded-md font-medium text-lg hover:bg-gray-800">
+                    Book a demo
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="bg-navy-dark border-t border-gray-700 py-12 px-4 sm:px-6 lg:px-8">
+        <div class="max-w-7xl mx-auto">
+            <div class="grid md:grid-cols-4 gap-8">
+                <div>
+                    <div class="flex items-center space-x-2 mb-4">
+                                                <div class="w-8 h-8 bg-transparent-accent rounded">
+                            <img src="1000222021 1 (1).png" alt="">
+                        </div>
+                        <span class="text-xl font-semibold">CODEX ENTERPRISE</span>
+                    </div>
+                    <p class="text-gray-400 mb-4">
+                        The AI-first code editor built to make you extraordinarily productive.
+                    </p>
+                </div>
+                
+                <div>
+                    <h4 class="font-semibold mb-4">Product</h4>
+                    <ul class="space-y-2 text-gray-400">
+                        <li><a href="#" class="hover:text-white">Features</a></li>
+                        <li><a href="#" class="hover:text-white">Download</a></li>
+                        <li><a href="#" class="hover:text-white">Pricing</a></li>
+                        <li><a href="#" class="hover:text-white">Changelog</a></li>
+                    </ul>
+                </div>
+                
+                <div>
+                    <h4 class="font-semibold mb-4">Company</h4>
+                    <ul class="space-y-2 text-gray-400">
+                        <li><a href="#" class="hover:text-white">About</a></li>
+                        <li><a href="#" class="hover:text-white">Blog</a></li>
+                        <li><a href="#" class="hover:text-white">Careers</a></li>
+                        <li><a href="#" class="hover:text-white">Contact</a></li>
+                    </ul>
+                </div>
+                
+                <div>
+                    <h4 class="font-semibold mb-4">Resources</h4>
+                    <ul class="space-y-2 text-gray-400">
+                        <li><a href="#" class="hover:text-white">Documentation</a></li>
+                        <li><a href="#" class="hover:text-white">Support</a></li>
+                        <li><a href="#" class="hover:text-white">Privacy</a></li>
+                        <li><a href="#" class="hover:text-white">Terms</a></li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="border-t border-gray-700 mt-8 pt-8 text-center text-gray-400">
+                <p>&copy; 2026 CODEX ENTERPRISE. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+</body>
+</html>

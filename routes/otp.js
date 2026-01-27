@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const OTP = require('../models/OTP');
 const User = require('../models/User');
-const { sendOTPEmail, sendWelcomeEmail } = require('../utils/emailServiceSmart');
+const { sendOTPEmail, sendWelcomeEmail } = require('../utils/emailServiceResend');
 const rateLimit = require('express-rate-limit');
 
 // Rate limiting for OTP requests

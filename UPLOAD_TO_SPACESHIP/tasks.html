@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tasks - CODEX INC</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="js/api.js"></script>
+    <script src="js/tasks.js" defer></script>
+    <link rel="stylesheet" href="css/skeleton.css">
+    <link rel="stylesheet" href="css/responsive-guard.css">
+    <script src="js/responsive-guard.js"></script>
+</head>
+<body class="bg-gray-50 flex h-screen overflow-hidden" data-protected data-desktop-only data-min-width="1024" data-redirect-url="index.html">
+    <!-- Skeleton Loader -->
+    <div class="skeleton-loader">
+        <div class="skeleton-sidebar">
+            <div class="skeleton-box" style="height: 40px; margin-bottom: 24px;"></div>
+            <div class="skeleton-box" style="height: 60px; margin-bottom: 24px;"></div>
+            <div class="skeleton-box" style="height: 40px; margin-bottom: 12px;"></div>
+            <div class="skeleton-box" style="height: 40px; margin-bottom: 12px;"></div>
+            <div class="skeleton-box" style="height: 40px; margin-bottom: 12px;"></div>
+        </div>
+        <div class="skeleton-main">
+            <div class="skeleton-header"></div>
+            <div class="skeleton-box" style="height: 48px; margin-bottom: 24px;"></div>
+            <div class="skeleton-card">
+                <div class="skeleton-table-row"></div>
+                <div class="skeleton-table-row"></div>
+                <div class="skeleton-table-row"></div>
+                <div class="skeleton-table-row"></div>
+                <div class="skeleton-table-row"></div>
+                <div class="skeleton-table-row"></div>
+            </div>
+        </div>
+    </div>
+    <!-- Left Sidebar -->
+    <aside class="w-44 bg-[#0a1628] text-white flex flex-col">
+        <!-- Logo Section -->
+        <div class="p-6 border-b border-gray-700">
+            <div class="flex items-center space-x-2">
+                <div class="w-6 h-6 bg-white rounded flex items-center justify-center">
+                    <span class="text-[#0a1628] font-bold text-sm">C</span>
+                </div>
+                <span class="text-base font-bold">CODEX INC</span>
+            </div>
+        </div>
+
+        <!-- Brand Info -->
+        <div class="px-6 py-4 border-b border-gray-700">
+            <div class="text-sm font-semibold">CODEX</div>
+            <div class="text-xs text-gray-400 flex items-center space-x-1">
+                <span>@codex</span>
+                <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z"></path>
+                </svg>
+            </div>
+        </div>
+
+        <!-- Navigation Menu -->
+        <nav class="flex-1 py-4">
+            <a href="dashboard.html" class="flex items-center space-x-3 px-6 py-3 text-gray-300 hover:bg-[#1a2332]">
+                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z"></path>
+                </svg>
+                <span class="text-sm">Dashboard</span>
+            </a>
+            <a href="tasks.html" class="flex items-center space-x-3 px-6 py-3 bg-blue-600 text-white">
+                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd"></path>
+                </svg>
+                <span class="text-sm">Tasks</span>
+            </a>
+            <a href="source-code.html" class="flex items-center space-x-3 px-6 py-3 text-gray-300 hover:bg-[#1a2332]">
+                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M12.316 3.051a1 1 0 01.633 1.265l-4 12a1 1 0 11-1.898-.632l4-12a1 1 0 011.265-.633zM5.707 6.293a1 1 0 010 1.414L3.414 10l2.293 2.293a1 1 0 11-1.414 1.414l-3-3a1 1 0 010-1.414l3-3a1 1 0 011.414 0zm8.586 0a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 11-1.414-1.414L16.586 10l-2.293-2.293a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+                </svg>
+                <span class="text-sm">Source Code</span>
+            </a>
+            <a href="standup.html" class="flex items-center space-x-3 px-6 py-3 text-gray-300 hover:bg-[#1a2332]">
+                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zM14.553 7.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z"></path>
+                </svg>
+                <span class="text-sm">Stand-ups</span>
+            </a>
+            <a href="teams.html" class="flex items-center space-x-3 px-6 py-3 text-gray-300 hover:bg-[#1a2332]">
+                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"></path>
+                </svg>
+                <span class="text-sm">Teams</span>
+            </a>
+            <a href="ai-pair.html" class="flex items-center space-x-3 px-6 py-3 text-gray-300 hover:bg-[#1a2332]">
+                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M2 5a2 2 0 012-2h7a2 2 0 012 2v4a2 2 0 01-2 2H9l-3 3v-3H4a2 2 0 01-2-2V5z"></path>
+                    <path d="M15 7v2a4 4 0 01-4 4H9.828l-1.766 1.767c.28.149.599.233.938.233h2l3 3v-3h2a2 2 0 002-2V9a2 2 0 00-2-2h-1z"></path>
+                </svg>
+                <span class="text-sm">AI Pair</span>
+            </a>
+            <a href="pricing.html" class="flex items-center space-x-3 px-6 py-3 text-gray-300 hover:bg-[#1a2332]">
+                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M8.433 7.418c.155-.103.346-.196.567-.267v1.698a2.305 2.305 0 01-.567-.267C8.07 8.34 8 8.114 8 8c0-.114.07-.34.433-.582zM11 12.849v-1.698c.22.071.412.164.567.267.364.243.433.468.433.582 0 .114-.07.34-.433.582a2.305 2.305 0 01-.567.267z"></path>
+                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-13a1 1 0 10-2 0v.092a4.535 4.535 0 00-1.676.662C6.602 6.234 6 7.009 6 8c0 .99.602 1.765 1.324 2.246.48.32 1.054.545 1.676.662v1.941c-.391-.127-.68-.317-.843-.504a1 1 0 10-1.51 1.31c.562.649 1.413 1.076 2.353 1.253V15a1 1 0 102 0v-.092a4.535 4.535 0 001.676-.662C13.398 13.766 14 12.991 14 12c0-.99-.602-1.765-1.324-2.246A4.535 4.535 0 0011 9.092V7.151c.391.127.68.317.843.504a1 1 0 101.511-1.31c-.563-.649-1.413-1.076-2.354-1.253V5z" clip-rule="evenodd"></path>
+                </svg>
+                <span class="text-sm">Pricing</span>
+            </a>
+            <a href="settings.html" class="flex items-center space-x-3 px-6 py-3 text-gray-300 hover:bg-[#1a2332]">
+                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"></path>
+                </svg>
+                <span class="text-sm">Settings</span>
+            </a>
+        </nav>
+
+        <!-- User Profile -->
+        <div class="p-4 border-t border-gray-700">
+            <div class="flex items-center space-x-3 mb-2">
+                <img id="sidebarAvatar" class="w-10 h-10 rounded-full" src="https://ui-avatars.com/api/?name=User&background=3b82f6&color=fff" alt="">
+                <div class="flex-1 min-w-0">
+                    <div id="sidebarName" class="text-sm font-medium truncate">Alex Rivera</div>
+                    <div class="text-xs text-gray-400">Lead Developer</div>
+                </div>
+            </div>
+            <div id="subscriptionBadge" class="mt-2 px-2 py-1 bg-gray-700 rounded text-xs text-center">
+                <span class="text-gray-400">Loading...</span>
+            </div>
+        </div>
+
+        <!-- Copyright -->
+        <div class="px-6 py-3 text-xs text-gray-500">
+            © 2026 CODEX INC
+        </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 overflow-y-auto bg-gray-100">
+        <!-- Top Header Bar -->
+        <header class="bg-white border-b px-8 py-4">
+            <div class="flex items-center justify-between">
+                <!-- Logo and Search -->
+                <div class="flex items-center space-x-6">
+                    <div class="flex items-center space-x-2">
+                        <div class="w-8 h-8 bg-[#0a1628] rounded flex items-center justify-center">
+                            <span class="text-white font-bold text-sm">C</span>
+                        </div>
+                        <span class="text-xl font-bold text-gray-900">CODEX INC</span>
+                    </div>
+                    <div class="relative">
+                        <svg class="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                        </svg>
+                        <input type="text" placeholder="Search projects, tasks, logs..." class="w-96 pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    </div>
+                </div>
+
+                <!-- Right Side -->
+                <div class="flex items-center space-x-4">
+                    <!-- Notification Bell -->
+                    <button class="relative p-2 text-gray-600 hover:text-gray-800">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
+                        </svg>
+                    </button>
+
+                    <!-- Team Badge -->
+                    <span class="px-3 py-1 bg-yellow-100 text-yellow-800 text-sm font-medium rounded-full">Tech Twelve</span>
+
+                    <!-- User Info -->
+                    <div class="flex items-center space-x-2">
+                        <img id="headerAvatar" class="w-9 h-9 rounded-full" src="https://ui-avatars.com/api/?name=User&background=3b82f6&color=fff" alt="">
+                        <div>
+                            <div id="headerName" class="text-sm font-medium text-gray-900">Alex Rivera</div>
+                            <div class="text-xs text-gray-500">Lead Developer</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Navigation Tabs -->
+        <div class="bg-gray-200 px-8 py-4">
+            <div class="flex space-x-2">
+                <a href="dashboard.html" class="px-6 py-2 bg-white text-gray-700 rounded-lg hover:bg-gray-50 transition">Dashboard</a>
+                <button class="px-6 py-2 bg-[#1e293b] text-white rounded-lg">Tasks</button>
+                <a href="source-code.html" class="px-6 py-2 bg-white text-gray-700 rounded-lg hover:bg-gray-50 transition">Source Code</a>
+                <a href="settings.html" class="px-6 py-2 bg-white text-gray-700 rounded-lg hover:bg-gray-50 transition">Settings</a>
+            </div>
+        </div>
+
+        <!-- Tasks Content -->
+        <div class="p-8">
+            <!-- Search Bar -->
+            <div class="mb-6 flex items-center space-x-4">
+                <div class="flex-1 relative">
+                    <svg class="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                    </svg>
+                    <input type="text" placeholder="Search Tasks..." class="w-full pl-12 pr-4 py-3 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <button class="p-3 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+                    <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Tasks Table -->
+            <div class="bg-white rounded-lg shadow-sm overflow-hidden">
+                <table class="w-full">
+                    <thead class="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                            <th class="px-6 py-4 text-left text-sm font-semibold text-gray-700 w-12"></th>
+                            <th class="px-6 py-4 text-left text-sm font-semibold text-gray-700">Task Name</th>
+                            <th class="px-6 py-4 text-left text-sm font-semibold text-gray-700">Assignee</th>
+                            <th class="px-6 py-4 text-left text-sm font-semibold text-gray-700">Priority</th>
+                            <th class="px-6 py-4 text-left text-sm font-semibold text-gray-700">Status</th>
+                            <th class="px-6 py-4 text-left text-sm font-semibold text-gray-700">
+                                <div class="flex items-center space-x-1">
+                                    <span>Due Date</span>
+                                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+                                    </svg>
+                                </div>
+                            </th>
+                            <th class="px-6 py-4 text-left text-sm font-semibold text-gray-700 w-12"></th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-200">
+                        <!-- Task Row 1 -->
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4">
+                                <input type="checkbox" checked class="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500">
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-900">Website Redesign</td>
+                            <td class="px-6 py-4">
+                                <img class="w-8 h-8 rounded-full" src="https://ui-avatars.com/api/?name=Alex+Rivera&background=f59e0b&color=fff" alt="">
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="px-3 py-1 bg-red-100 text-red-700 text-xs font-medium rounded-full">High</span>
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="px-3 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">In Progress</span>
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-600">03/03/2025</td>
+                            <td class="px-6 py-4">
+                                <button class="text-gray-400 hover:text-gray-600">
+                                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                        <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"></path>
+                                    </svg>
+                                </button>
+                            </td>
+                        </tr>
+
+                        <!-- Task Row 2 -->
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4">
+                                <input type="checkbox" class="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500">
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-900">Website Redesign</td>
+                            <td class="px-6 py-4">
+                                <img class="w-8 h-8 rounded-full" src="https://ui-avatars.com/api/?name=Alex+Rivera&background=f59e0b&color=fff" alt="">
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="px-3 py-1 bg-yellow-100 text-yellow-700 text-xs font-medium rounded-full">Medium</span>
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="px-3 py-1 bg-gray-200 text-gray-700 text-xs font-medium rounded-full">Pending</span>
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-600">03/03/2025</td>
+                            <td class="px-6 py-4">
+                                <button class="text-gray-400 hover:text-gray-600">
+                                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                        <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"></path>
+                                    </svg>
+                                </button>
+                            </td>
+                        </tr>
+
+                        <!-- Task Row 3 -->
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4">
+                                <input type="checkbox" checked class="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500">
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-900">Website Redesign</td>
+                            <td class="px-6 py-4">
+                                <img class="w-8 h-8 rounded-full" src="https://ui-avatars.com/api/?name=Alex+Rivera&background=f59e0b&color=fff" alt="">
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="px-3 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full">Low</span>
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="px-3 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full">Completed</span>
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-600">03/03/2025</td>
+                            <td class="px-6 py-4">
+                                <button class="text-gray-400 hover:text-gray-600">
+                                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                        <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"></path>
+                                    </svg>
+                                </button>
+                            </td>
+                        </tr>
+
+                        <!-- Task Row 4 -->
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4">
+                                <input type="checkbox" checked class="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500">
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-900">Website Redesign</td>
+                            <td class="px-6 py-4">
+                                <img class="w-8 h-8 rounded-full" src="https://ui-avatars.com/api/?name=Alex+Rivera&background=f59e0b&color=fff" alt="">
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="px-3 py-1 bg-red-100 text-red-700 text-xs font-medium rounded-full">High</span>
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="px-3 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">In Progress</span>
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-600">03/03/2025</td>
+                            <td class="px-6 py-4">
+                                <button class="text-gray-400 hover:text-gray-600">
+                                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                        <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"></path>
+                                    </svg>
+                                </button>
+                            </td>
+                        </tr>
+
+                        <!-- Task Row 5 -->
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4">
+                                <input type="checkbox" class="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500">
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-900">Website Redesign</td>
+                            <td class="px-6 py-4">
+                                <img class="w-8 h-8 rounded-full" src="https://ui-avatars.com/api/?name=Alex+Rivera&background=f59e0b&color=fff" alt="">
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="px-3 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full">Low</span>
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="px-3 py-1 bg-gray-200 text-gray-700 text-xs font-medium rounded-full">Pending</span>
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-600">03/03/2025</td>
+                            <td class="px-6 py-4">
+                                <button class="text-gray-400 hover:text-gray-600">
+                                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                        <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"></path>
+                                    </svg>
+                                </button>
+                            </td>
+                        </tr>
+
+                        <!-- Task Row 6 -->
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4">
+                                <input type="checkbox" checked class="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500">
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-900">Website Redesign</td>
+                            <td class="px-6 py-4">
+                                <img class="w-8 h-8 rounded-full" src="https://ui-avatars.com/api/?name=Alex+Rivera&background=f59e0b&color=fff" alt="">
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="px-3 py-1 bg-yellow-100 text-yellow-700 text-xs font-medium rounded-full">Medium</span>
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="px-3 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full">Completed</span>
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-600">03/03/2025</td>
+                            <td class="px-6 py-4">
+                                <button class="text-gray-400 hover:text-gray-600">
+                                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                        <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"></path>
+                                    </svg>
+                                </button>
+                            </td>
+                        </tr>
+
+                        <!-- Task Row 7 -->
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4">
+                                <input type="checkbox" class="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500">
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-900">Website Redesign</td>
+                            <td class="px-6 py-4">
+                                <img class="w-8 h-8 rounded-full" src="https://ui-avatars.com/api/?name=Alex+Rivera&background=f59e0b&color=fff" alt="">
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="px-3 py-1 bg-yellow-100 text-yellow-700 text-xs font-medium rounded-full">Medium</span>
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="px-3 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">In Progress</span>
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-600">03/03/2025</td>
+                            <td class="px-6 py-4">
+                                <button class="text-gray-400 hover:text-gray-600">
+                                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                        <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"></path>
+                                    </svg>
+                                </button>
+                            </td>
+                        </tr>
+
+                        <!-- Task Row 8 -->
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4">
+                                <input type="checkbox" class="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500">
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-900">Website Redesign</td>
+                            <td class="px-6 py-4">
+                                <img class="w-8 h-8 rounded-full" src="https://ui-avatars.com/api/?name=Alex+Rivera&background=f59e0b&color=fff" alt="">
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="px-3 py-1 bg-red-100 text-red-700 text-xs font-medium rounded-full">High</span>
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="px-3 py-1 bg-gray-200 text-gray-700 text-xs font-medium rounded-full">Pending</span>
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-600">03/03/2025</td>
+                            <td class="px-6 py-4">
+                                <button class="text-gray-400 hover:text-gray-600">
+                                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                        <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"></path>
+                                    </svg>
+                                </button>
+                            </td>
+                        </tr>
+
+                        <!-- Task Row 9 -->
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4">
+                                <input type="checkbox" checked class="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500">
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-900">Website Redesign</td>
+                            <td class="px-6 py-4">
+                                <img class="w-8 h-8 rounded-full" src="https://ui-avatars.com/api/?name=Alex+Rivera&background=f59e0b&color=fff" alt="">
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="px-3 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full">Low</span>
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="px-3 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full">Completed</span>
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-600">03/03/2025</td>
+                            <td class="px-6 py-4">
+                                <button class="text-gray-400 hover:text-gray-600">
+                                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                        <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"></path>
+                                    </svg>
+                                </button>
+                            </td>
+                        </tr>
+
+                        <!-- Task Row 10 -->
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4">
+                                <input type="checkbox" class="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500">
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-900">Website Redesign</td>
+                            <td class="px-6 py-4">
+                                <img class="w-8 h-8 rounded-full" src="https://ui-avatars.com/api/?name=Alex+Rivera&background=f59e0b&color=fff" alt="">
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="px-3 py-1 bg-red-100 text-red-700 text-xs font-medium rounded-full">High</span>
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="px-3 py-1 bg-gray-200 text-gray-700 text-xs font-medium rounded-full">Pending</span>
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-600">03/03/2025</td>
+                            <td class="px-6 py-4">
+                                <button class="text-gray-400 hover:text-gray-600">
+                                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                        <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"></path>
+                                    </svg>
+                                </button>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+</body>
+</html>
