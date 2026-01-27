@@ -15,14 +15,23 @@ const app = express();
 
 // Middleware
 app.use(cors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:5500',
+    origin: [
+        process.env.FRONTEND_URL || 'http://localhost:5500',
+        'https://codexincenterprise.online',
+        'http://codexincenterprise.online'
+    ],
     credentials: true
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Serve uploaded files
-app.use('/uploads', express.static('uploads'));
+// Serve uploaded files with proper headers
+app.use('/uploads', express.static('uploads', {
+    setHeaders: (res, path) => {
+        res.set('Access-Control-Allow-Origin', '*');
+        res.set('Cache-Control', 'public, max-age=31536000');
+    }
+}));
 
 // Session configuration
 app.use(session({

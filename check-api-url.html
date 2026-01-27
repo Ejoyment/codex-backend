@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API URL Check</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 900px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .box {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .success { color: #28a745; }
+        .error { color: #dc3545; }
+        .warning { color: #ffc107; }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        button:hover { background: #0056b3; }
+        pre {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            border-left: 4px solid #007bff;
+        }
+        .status-box {
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 4px;
+            border-left: 4px solid #ccc;
+        }
+        .status-box.success { background: #d4edda; border-color: #28a745; }
+        .status-box.error { background: #f8d7da; border-color: #dc3545; }
+        .status-box.warning { background: #fff3cd; border-color: #ffc107; }
+    </style>
+</head>
+<body>
+    <h1>🔍 API Configuration Checker</h1>
+    
+    <div class="box">
+        <h2>Step 1: Check if js/api.js is loaded</h2>
+        <div id="api-file-status"></div>
+    </div>
+
+    <div class="box">
+        <h2>Step 2: Test Backend Connection</h2>
+        <button onclick="testBackend()">Test Backend Now</button>
+        <button onclick="testBackendHealth()">Test Health Endpoint</button>
+        <div id="backend-test-result"></div>
+    </div>
+
+    <div class="box">
+        <h2>Step 3: Test API Call</h2>
+        <button onclick="testSignup()">Test Signup API</button>
+        <div id="api-test-result"></div>
+    </div>
+
+    <div class="box">
+        <h2>Debug Information</h2>
+        <pre id="debug-info"></pre>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script>
+        // Check if API_BASE_URL is defined
+        window.addEventListener('load', () => {
+            const statusDiv = document.getElementById('api-file-status');
+            const debugDiv = document.getElementById('debug-info');
+            
+            let debugInfo = {
+                timestamp: new Date().toISOString(),
+                currentURL: window.location.href,
+                apiFileLoaded: typeof API_BASE_URL !== 'undefined',
+                apiBaseURL: typeof API_BASE_URL !== 'undefined' ? API_BASE_URL : 'NOT DEFINED',
+                apiObjectExists: typeof api !== 'undefined'
+            };
+
+            if (typeof API_BASE_URL !== 'undefined') {
+                statusDiv.innerHTML = `
+                    <div class="status-box success">
+                        <strong>✅ js/api.js is loaded!</strong><br>
+                        API Base URL: <code>${API_BASE_URL}</code>
+                    </div>
+                `;
+            } else {
+                statusDiv.innerHTML = `
+                    <div class="status-box error">
+                        <strong>❌ js/api.js is NOT loaded or API_BASE_URL is not defined!</strong><br>
+                        Make sure you uploaded js/api.js to Spaceship.
+                    </div>
+                `;
+            }
+
+            debugDiv.textContent = JSON.stringify(debugInfo, null, 2);
+        });
+
+        async function testBackend() {
+            const resultDiv = document.getElementById('backend-test-result');
+            resultDiv.innerHTML = '<div class="status-box warning">⏳ Testing backend... (may take 30-60 seconds if sleeping)</div>';
+
+            try {
+                const startTime = Date.now();
+                const response = await fetch('https://codex-backend-7utu.onrender.com/api/health', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                const endTime = Date.now();
+                const duration = ((endTime - startTime) / 1000).toFixed(2);
+                
+                const data = await response.json();
+                
+                resultDiv.innerHTML = `
+                    <div class="status-box success">
+                        <strong>✅ Backend is responding!</strong><br>
+                        Response time: ${duration}s<br>
+                        Status: ${response.status}
+                    </div>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="status-box error">
+                        <strong>❌ Cannot connect to backend</strong><br>
+                        Error: ${error.message}<br><br>
+                        <strong>Possible causes:</strong><br>
+                        1. Backend is sleeping (wait 60 seconds and try again)<br>
+                        2. CORS issue (backend needs to allow your domain)<br>
+                        3. Network issue<br>
+                        4. Backend is down
+                    </div>
+                    <pre>${error.stack}</pre>
+                `;
+            }
+        }
+
+        async function testBackendHealth() {
+            const resultDiv = document.getElementById('backend-test-result');
+            resultDiv.innerHTML = '<div class="status-box warning">⏳ Opening health check in new tab...</div>';
+            
+            window.open('https://codex-backend-7utu.onrender.com/api/health', '_blank');
+            
+            setTimeout(() => {
+                resultDiv.innerHTML = `
+                    <div class="status-box success">
+                        <strong>✅ Health check opened in new tab</strong><br>
+                        If you see JSON with "status": "OK", backend is working!<br>
+                        If it takes long to load, backend is waking up from sleep.
+                    </div>
+                `;
+            }, 1000);
+        }
+
+        async function testSignup() {
+            const resultDiv = document.getElementById('api-test-result');
+            
+            if (typeof api === 'undefined' || typeof api.signup === 'undefined') {
+                resultDiv.innerHTML = `
+                    <div class="status-box error">
+                        <strong>❌ API object not found!</strong><br>
+                        js/api.js is not loaded correctly.
+                    </div>
+                `;
+                return;
+            }
+
+            resultDiv.innerHTML = '<div class="status-box warning">⏳ Testing signup API...</div>';
+
+            try {
+                // Test with dummy data
+                const result = await api.signup('Test User', 'test@example.com', 'password123');
+                
+                resultDiv.innerHTML = `
+                    <div class="status-box ${result.success ? 'success' : 'warning'}">
+                        <strong>${result.success ? '✅' : '⚠️'} API Response Received</strong>
+                    </div>
+                    <pre>${JSON.stringify(result, null, 2)}</pre>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="status-box error">
+                        <strong>❌ API Call Failed</strong><br>
+                        Error: ${error.message}
+                    </div>
+                    <pre>${error.stack}</pre>
+                `;
+            }
+        }
+    </script>
+</body>
+</html>

@@ -137,8 +137,15 @@
                     document.getElementById('fullName').value = user.fullName;
                     document.getElementById('email').value = user.email;
                     
+                    // Fix profile picture URL
                     if (user.profilePicture) {
-                        document.getElementById('profilePicture').src = user.profilePicture;
+                        let avatarUrl = user.profilePicture;
+                        if (avatarUrl.startsWith('/uploads/')) {
+                            avatarUrl = `https://codex-backend-7utu.onrender.com${avatarUrl}`;
+                        }
+                        document.getElementById('profilePicture').src = avatarUrl;
+                    } else {
+                        document.getElementById('profilePicture').src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user.fullName)}&background=3b82f6&color=fff`;
                     }
                 } else {
                     alert('Failed to load user data');
@@ -171,27 +178,83 @@
             const currentPassword = document.getElementById('currentPassword').value;
             const newPassword = document.getElementById('newPassword').value;
             const confirmPassword = document.getElementById('confirmPassword').value;
+            const photoFile = document.getElementById('photoUpload').files[0];
             
-            // Validate password change if attempted
-            if (newPassword || confirmPassword) {
-                if (!currentPassword) {
-                    alert('Please enter your current password');
+            try {
+                // Upload photo if selected
+                if (photoFile) {
+                    const formData = new FormData();
+                    formData.append('profilePhoto', photoFile);
+                    
+                    const uploadResponse = await fetch('https://codex-backend-7utu.onrender.com/api/auth/upload-photo', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: formData
+                    });
+                    
+                    const uploadResult = await uploadResponse.json();
+                    if (!uploadResult.success) {
+                        alert('Failed to upload photo: ' + uploadResult.message);
+                        return;
+                    }
+                }
+                
+                // Update profile name
+                const profileResponse = await fetch('https://codex-backend-7utu.onrender.com/api/auth/update-profile', {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ fullName })
+                });
+                
+                const profileResult = await profileResponse.json();
+                if (!profileResult.success) {
+                    alert('Failed to update profile: ' + profileResult.message);
                     return;
                 }
-                if (newPassword !== confirmPassword) {
-                    alert('New passwords do not match');
-                    return;
+                
+                // Change password if attempted
+                if (newPassword || confirmPassword) {
+                    if (!currentPassword) {
+                        alert('Please enter your current password');
+                        return;
+                    }
+                    if (newPassword !== confirmPassword) {
+                        alert('New passwords do not match');
+                        return;
+                    }
+                    if (newPassword.length < 6) {
+                        alert('New password must be at least 6 characters');
+                        return;
+                    }
+                    
+                    const passwordResponse = await fetch('https://codex-backend-7utu.onrender.com/api/auth/change-password', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ currentPassword, newPassword })
+                    });
+                    
+                    const passwordResult = await passwordResponse.json();
+                    if (!passwordResult.success) {
+                        alert('Failed to change password: ' + passwordResult.message);
+                        return;
+                    }
                 }
-                if (newPassword.length < 6) {
-                    alert('New password must be at least 6 characters');
-                    return;
-                }
+                
+                alert('Profile updated successfully!');
+                window.location.href = 'dashboard.html';
+                
+            } catch (error) {
+                console.error('Update error:', error);
+                alert('Error updating profile. Please try again.');
             }
-            
-            // For now, just show success message
-            // In production, you'd call an API endpoint to update the profile
-            alert('Profile updated successfully!\n\nNote: Full profile update API will be implemented in production.');
-            window.location.href = 'dashboard.html';
         });
 
         // Load data on page load

@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Live Fixes - CODEX INC</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen p-8">
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-3xl font-bold text-gray-900 mb-6">Live Issues Fix Tester</h1>
+        
+        <!-- Test 1: Profile Upload -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-xl font-bold text-gray-900 mb-4">Test 1: Profile Upload</h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Auth Token</label>
+                    <input type="text" id="token1" placeholder="Paste your auth token here" 
+                        class="w-full px-4 py-2 border border-gray-300 rounded-md">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Select Image</label>
+                    <input type="file" id="photoFile" accept="image/*" 
+                        class="w-full px-4 py-2 border border-gray-300 rounded-md">
+                </div>
+                <button onclick="testProfileUpload()" 
+                    class="w-full bg-blue-600 text-white px-6 py-3 rounded-md hover:bg-blue-700">
+                    Test Upload
+                </button>
+                <div id="uploadResult" class="mt-4 p-4 rounded-md hidden"></div>
+            </div>
+        </div>
+
+        <!-- Test 2: Dashboard Loading -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-xl font-bold text-gray-900 mb-4">Test 2: Dashboard Loading</h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Auth Token</label>
+                    <input type="text" id="token2" placeholder="Paste your auth token here" 
+                        class="w-full px-4 py-2 border border-gray-300 rounded-md">
+                </div>
+                <button onclick="testDashboardLoading()" 
+                    class="w-full bg-green-600 text-white px-6 py-3 rounded-md hover:bg-green-700">
+                    Test Dashboard Load
+                </button>
+                <div id="dashboardResult" class="mt-4 p-4 rounded-md hidden"></div>
+                <div id="loadingTime" class="text-sm text-gray-600 hidden"></div>
+            </div>
+        </div>
+
+        <!-- Test 3: Integration Loading -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-xl font-bold text-gray-900 mb-4">Test 3: Integration Loading</h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Auth Token</label>
+                    <input type="text" id="token3" placeholder="Paste your auth token here" 
+                        class="w-full px-4 py-2 border border-gray-300 rounded-md">
+                </div>
+                <div class="grid grid-cols-3 gap-4">
+                    <button onclick="testIntegration('github')" 
+                        class="bg-gray-900 text-white px-4 py-2 rounded-md hover:bg-gray-800">
+                        Test GitHub
+                    </button>
+                    <button onclick="testIntegration('discord')" 
+                        class="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700">
+                        Test Discord
+                    </button>
+                    <button onclick="testIntegration('figma')" 
+                        class="bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700">
+                        Test Figma
+                    </button>
+                </div>
+                <div id="integrationResult" class="mt-4 p-4 rounded-md hidden"></div>
+            </div>
+        </div>
+
+        <!-- Test Results Summary -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h2 class="text-xl font-bold text-gray-900 mb-4">Test Results Summary</h2>
+            <div id="summary" class="space-y-2 text-sm">
+                <p class="text-gray-600">Run tests above to see results</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'https://codex-backend-7utu.onrender.com/api';
+        const results = {
+            profileUpload: null,
+            dashboardLoading: null,
+            integrations: {}
+        };
+
+        async function testProfileUpload() {
+            const token = document.getElementById('token1').value;
+            const file = document.getElementById('photoFile').files[0];
+            const resultDiv = document.getElementById('uploadResult');
+            
+            if (!token) {
+                showResult(resultDiv, 'error', 'Please enter auth token');
+                return;
+            }
+            
+            if (!file) {
+                showResult(resultDiv, 'error', 'Please select an image');
+                return;
+            }
+            
+            showResult(resultDiv, 'loading', 'Uploading...');
+            
+            try {
+                const formData = new FormData();
+                formData.append('profilePhoto', file);
+                
+                const startTime = Date.now();
+                const response = await fetch(`${API_URL}/auth/upload-photo`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: formData
+                });
+                const loadTime = Date.now() - startTime;
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    results.profileUpload = 'PASS';
+                    showResult(resultDiv, 'success', 
+                        `✅ Upload successful! (${loadTime}ms)\nProfile picture: ${result.profilePicture}`);
+                } else {
+                    results.profileUpload = 'FAIL';
+                    showResult(resultDiv, 'error', `❌ Upload failed: ${result.message}`);
+                }
+            } catch (error) {
+                results.profileUpload = 'ERROR';
+                showResult(resultDiv, 'error', `❌ Error: ${error.message}`);
+            }
+            
+            updateSummary();
+        }
+
+        async function testDashboardLoading() {
+            const token = document.getElementById('token2').value;
+            const resultDiv = document.getElementById('dashboardResult');
+            const timeDiv = document.getElementById('loadingTime');
+            
+            if (!token) {
+                showResult(resultDiv, 'error', 'Please enter auth token');
+                return;
+            }
+            
+            showResult(resultDiv, 'loading', 'Loading dashboard data...');
+            timeDiv.classList.remove('hidden');
+            
+            try {
+                const startTime = Date.now();
+                
+                // Test all three endpoints in parallel (like the real dashboard)
+                const [userRes, statsRes, githubRes] = await Promise.all([
+                    fetch(`${API_URL}/auth/me`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    }),
+                    fetch(`${API_URL}/dashboard/data`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    }),
+                    fetch(`${API_URL}/dashboard/data/github`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    })
+                ]);
+                
+                const loadTime = Date.now() - startTime;
+                timeDiv.textContent = `Load time: ${loadTime}ms`;
+                
+                const user = await userRes.json();
+                const stats = await statsRes.json();
+                const github = await githubRes.json();
+                
+                if (user.success && stats.success) {
+                    results.dashboardLoading = 'PASS';
+                    showResult(resultDiv, 'success', 
+                        `✅ Dashboard loaded successfully! (${loadTime}ms)\n` +
+                        `User: ${user.user.fullName}\n` +
+                        `Stats: ${stats.data.stats.activeProjects} projects, ${stats.data.stats.teamMembers} members\n` +
+                        `GitHub: ${github.connected ? 'Connected' : 'Not connected'}`);
+                } else {
+                    results.dashboardLoading = 'FAIL';
+                    showResult(resultDiv, 'error', '❌ Dashboard load failed');
+                }
+            } catch (error) {
+                results.dashboardLoading = 'ERROR';
+                showResult(resultDiv, 'error', `❌ Error: ${error.message}`);
+            }
+            
+            updateSummary();
+        }
+
+        async function testIntegration(platform) {
+            const token = document.getElementById('token3').value;
+            const resultDiv = document.getElementById('integrationResult');
+            
+            if (!token) {
+                showResult(resultDiv, 'error', 'Please enter auth token');
+                return;
+            }
+            
+            showResult(resultDiv, 'loading', `Loading ${platform} data...`);
+            
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 10000);
+                
+                const startTime = Date.now();
+                const response = await fetch(`${API_URL}/dashboard/data/${platform}`, {
+                    headers: { 'Authorization': `Bearer ${token}` },
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+                const loadTime = Date.now() - startTime;
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    results.integrations[platform] = 'PASS';
+                    showResult(resultDiv, 'success', 
+                        `✅ ${platform} loaded successfully! (${loadTime}ms)\n` +
+                        `Connected: ${result.connected}\n` +
+                        `Data: ${JSON.stringify(result.data, null, 2).substring(0, 200)}...`);
+                } else {
+                    results.integrations[platform] = 'FAIL';
+                    showResult(resultDiv, 'error', `❌ ${platform} load failed`);
+                }
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    results.integrations[platform] = 'TIMEOUT';
+                    showResult(resultDiv, 'error', `⏱️ ${platform} timed out after 10 seconds`);
+                } else {
+                    results.integrations[platform] = 'ERROR';
+                    showResult(resultDiv, 'error', `❌ Error: ${error.message}`);
+                }
+            }
+            
+            updateSummary();
+        }
+
+        function showResult(div, type, message) {
+            div.classList.remove('hidden');
+            div.className = 'mt-4 p-4 rounded-md';
+            
+            if (type === 'success') {
+                div.classList.add('bg-green-50', 'text-green-800', 'border', 'border-green-200');
+            } else if (type === 'error') {
+                div.classList.add('bg-red-50', 'text-red-800', 'border', 'border-red-200');
+            } else if (type === 'loading') {
+                div.classList.add('bg-blue-50', 'text-blue-800', 'border', 'border-blue-200');
+            }
+            
+            div.innerHTML = `<pre class="whitespace-pre-wrap text-sm">${message}</pre>`;
+        }
+
+        function updateSummary() {
+            const summaryDiv = document.getElementById('summary');
+            let html = '';
+            
+            if (results.profileUpload) {
+                html += `<p>Profile Upload: <span class="font-bold ${results.profileUpload === 'PASS' ? 'text-green-600' : 'text-red-600'}">${results.profileUpload}</span></p>`;
+            }
+            
+            if (results.dashboardLoading) {
+                html += `<p>Dashboard Loading: <span class="font-bold ${results.dashboardLoading === 'PASS' ? 'text-green-600' : 'text-red-600'}">${results.dashboardLoading}</span></p>`;
+            }
+            
+            Object.keys(results.integrations).forEach(platform => {
+                const status = results.integrations[platform];
+                html += `<p>${platform} Integration: <span class="font-bold ${status === 'PASS' ? 'text-green-600' : 'text-red-600'}">${status}</span></p>`;
+            });
+            
+            if (html) {
+                summaryDiv.innerHTML = html;
+            }
+        }
+    </script>
+</body>
+</html>

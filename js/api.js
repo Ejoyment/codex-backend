@@ -1,5 +1,5 @@
 ﻿// API Configuration
-const API_BASE_URL = 'https://codexincenterprise.online/api';
+const API_BASE_URL = 'https://codex-backend-7utu.onrender.com/api';
 
 // API Helper Functions
 const api = {

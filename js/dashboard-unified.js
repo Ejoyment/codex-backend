@@ -17,30 +17,55 @@ class UnifiedDashboard {
             return;
         }
 
-        // Load everything in parallel
-        await Promise.all([
-            this.loadUserProfile(),
-            this.loadDashboardStats(),
-            this.loadGitHubData()
-        ]);
-        
-        // Start auto-refresh
-        this.startAutoRefresh();
-        
-        // Hide skeleton
-        document.body.classList.add('content-loaded');
+        try {
+            // Load everything in parallel with timeout
+            await Promise.race([
+                Promise.all([
+                    this.loadUserProfile(),
+                    this.loadDashboardStats(),
+                    this.loadGitHubData()
+                ]),
+                new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Loading timeout')), 15000)
+                )
+            ]);
+            
+            // Start auto-refresh
+            this.startAutoRefresh();
+            
+        } catch (error) {
+            console.error('Dashboard init error:', error);
+            // Still show dashboard even if some data fails
+        } finally {
+            // Always hide skeleton after attempt
+            setTimeout(() => {
+                document.body.classList.add('content-loaded');
+            }, 500);
+        }
     }
 
     async loadUserProfile() {
         try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
+            
             const response = await fetch(`${API_URL}/auth/me`, {
-                headers: { 'Authorization': `Bearer ${this.token}` }
+                headers: { 'Authorization': `Bearer ${this.token}` },
+                signal: controller.signal
             });
+            clearTimeout(timeoutId);
+            
             const result = await response.json();
             
             if (result.success) {
                 const user = result.user;
-                const avatarUrl = user.profilePicture || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.fullName)}&background=3b82f6&color=fff`;
+                // Fix profile picture URL - add backend URL if relative path
+                let avatarUrl = user.profilePicture;
+                if (avatarUrl && avatarUrl.startsWith('/uploads/')) {
+                    avatarUrl = `https://codex-backend-7utu.onrender.com${avatarUrl}`;
+                } else if (!avatarUrl) {
+                    avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(user.fullName)}&background=3b82f6&color=fff`;
+                }
                 
                 // Update sidebar
                 document.getElementById('sidebarName').textContent = user.fullName;
@@ -57,6 +82,9 @@ class UnifiedDashboard {
             }
         } catch (error) {
             console.error('Load user error:', error);
+            // Set default values on error
+            document.getElementById('sidebarName').textContent = 'User';
+            document.getElementById('headerName').textContent = 'User';
         }
     }
 
@@ -93,9 +121,15 @@ class UnifiedDashboard {
 
     async loadDashboardStats() {
         try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
+            
             const response = await fetch(`${API_URL}/dashboard/data`, {
-                headers: { 'Authorization': `Bearer ${this.token}` }
+                headers: { 'Authorization': `Bearer ${this.token}` },
+                signal: controller.signal
             });
+            clearTimeout(timeoutId);
+            
             const result = await response.json();
             
             if (result.success && result.data) {
@@ -111,6 +145,13 @@ class UnifiedDashboard {
             }
         } catch (error) {
             console.error('Load stats error:', error);
+            // Set default values on error
+            document.getElementById('activeProjectsCount').textContent = '0';
+            document.getElementById('totalCompletedCount').textContent = '0';
+            document.getElementById('teamMembersCount').textContent = '0';
+            document.getElementById('activeProjectsStatus').textContent = 'Loading...';
+            document.getElementById('totalCompletedStatus').textContent = 'Loading...';
+            document.getElementById('teamMembersStatus').textContent = 'Loading...';
         }
     }
 
@@ -137,16 +178,41 @@ class UnifiedDashboard {
 
     async loadGitHubData() {
         try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
+            
             const response = await fetch(`${API_URL}/dashboard/data/github`, {
-                headers: { 'Authorization': `Bearer ${this.token}` }
+                headers: { 'Authorization': `Bearer ${this.token}` },
+                signal: controller.signal
             });
+            clearTimeout(timeoutId);
+            
             const result = await response.json();
             
             if (result.success && result.data) {
                 this.renderGitHubRepos(result.data.repositories || []);
+            } else if (!result.connected) {
+                const container = document.getElementById('githubRepos');
+                container.innerHTML = `
+                    <div class="text-center p-6 bg-gray-50 rounded-lg">
+                        <p class="text-gray-600 mb-3">GitHub not connected</p>
+                        <a href="settings.html" class="text-blue-600 hover:text-blue-700 font-medium">
+                            Connect GitHub →
+                        </a>
+                    </div>
+                `;
             }
         } catch (error) {
             console.error('Load GitHub data error:', error);
+            const container = document.getElementById('githubRepos');
+            container.innerHTML = `
+                <div class="text-center p-4 bg-yellow-50 rounded-lg">
+                    <p class="text-yellow-800 text-sm">Failed to load GitHub data</p>
+                    <button onclick="dashboard.loadGitHubData()" class="mt-2 text-blue-600 hover:text-blue-700 text-sm font-medium">
+                        Retry
+                    </button>
+                </div>
+            `;
         }
     }
 
@@ -235,16 +301,41 @@ class UnifiedDashboard {
 
     async loadDiscordData() {
         try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
+            
             const response = await fetch(`${API_URL}/dashboard/data/discord`, {
-                headers: { 'Authorization': `Bearer ${this.token}` }
+                headers: { 'Authorization': `Bearer ${this.token}` },
+                signal: controller.signal
             });
+            clearTimeout(timeoutId);
+            
             const result = await response.json();
             
             if (result.success && result.data) {
                 this.renderDiscordServers(result.data.servers || []);
+            } else if (!result.connected) {
+                const container = document.getElementById('discordServers');
+                container.innerHTML = `
+                    <div class="text-center p-6 bg-gray-50 rounded-lg">
+                        <p class="text-gray-600 mb-3">Discord not connected</p>
+                        <a href="settings.html" class="text-blue-600 hover:text-blue-700 font-medium">
+                            Connect Discord →
+                        </a>
+                    </div>
+                `;
             }
         } catch (error) {
             console.error('Load Discord data error:', error);
+            const container = document.getElementById('discordServers');
+            container.innerHTML = `
+                <div class="text-center p-4 bg-yellow-50 rounded-lg">
+                    <p class="text-yellow-800 text-sm">Failed to load Discord data</p>
+                    <button onclick="dashboard.loadDiscordData()" class="mt-2 text-blue-600 hover:text-blue-700 text-sm font-medium">
+                        Retry
+                    </button>
+                </div>
+            `;
         }
     }
 
@@ -333,16 +424,41 @@ class UnifiedDashboard {
 
     async loadFigmaData() {
         try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
+            
             const response = await fetch(`${API_URL}/dashboard/data/figma`, {
-                headers: { 'Authorization': `Bearer ${this.token}` }
+                headers: { 'Authorization': `Bearer ${this.token}` },
+                signal: controller.signal
             });
+            clearTimeout(timeoutId);
+            
             const result = await response.json();
             
             if (result.success && result.data) {
                 this.renderFigmaProjects(result.data.projects || []);
+            } else if (!result.connected) {
+                const container = document.getElementById('figmaProjects');
+                container.innerHTML = `
+                    <div class="text-center p-6 bg-gray-50 rounded-lg">
+                        <p class="text-gray-600 mb-3">Figma not connected</p>
+                        <a href="settings.html" class="text-blue-600 hover:text-blue-700 font-medium">
+                            Connect Figma →
+                        </a>
+                    </div>
+                `;
             }
         } catch (error) {
             console.error('Load Figma data error:', error);
+            const container = document.getElementById('figmaProjects');
+            container.innerHTML = `
+                <div class="text-center p-4 bg-yellow-50 rounded-lg">
+                    <p class="text-yellow-800 text-sm">Failed to load Figma data</p>
+                    <button onclick="dashboard.loadFigmaData()" class="mt-2 text-blue-600 hover:text-blue-700 text-sm font-medium">
+                        Retry
+                    </button>
+                </div>
+            `;
         }
     }
 
