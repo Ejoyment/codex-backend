@@ -13,6 +13,9 @@ const aiPairRoutes = require('./routes/ai-pair');
 
 const app = express();
 
+// Trust proxy (required for Render and other reverse proxies)
+app.set('trust proxy', 1);
+
 // Middleware
 app.use(cors({
     origin: [
