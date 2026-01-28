@@ -17,11 +17,11 @@ const authenticateToken = (req, res, next) => {
     }
     
     const jwt = require('jsonwebtoken');
-    jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+    jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
         if (err) {
             return res.status(403).json({ success: false, message: 'Invalid token' });
         }
-        req.user = user;
+        req.userId = decoded.id; // Store as req.userId for consistency
         next();
     });
 };
@@ -34,7 +34,7 @@ const checkCompanyMembership = async (req, res, next) => {
             return res.status(404).json({ success: false, message: 'Company not found' });
         }
         
-        const isMember = company.members.some(m => m.user.toString() === req.user.userId);
+        const isMember = company.members.some(m => m.user.toString() === req.userId);
         if (!isMember) {
             return res.status(403).json({ success: false, message: 'Not a company member' });
         }
@@ -75,8 +75,8 @@ router.post('/:companyId/projects', authenticateToken, checkCompanyMembership, a
             priority,
             startDate,
             dueDate,
-            owner: req.user.userId,
-            members: members || [req.user.userId]
+            owner: req.userId,
+            members: members || [req.userId]
         });
         
         await project.save();
@@ -89,7 +89,7 @@ router.post('/:companyId/projects', authenticateToken, checkCompanyMembership, a
         // Log activity
         await TeamActivity.create({
             company: req.params.companyId,
-            user: req.user.userId,
+            user: req.userId,
             type: 'project_created',
             action: `Created project: ${name}`,
             metadata: { projectId: project._id }
@@ -117,7 +117,7 @@ router.put('/:companyId/projects/:projectId', authenticateToken, checkCompanyMem
         
         await TeamActivity.create({
             company: req.params.companyId,
-            user: req.user.userId,
+            user: req.userId,
             type: 'project_updated',
             action: `Updated project: ${project.name}`,
             metadata: { projectId: project._id }
@@ -169,7 +169,7 @@ router.post('/:companyId/tasks', authenticateToken, checkCompanyMembership, asyn
             assignedTo,
             dueDate,
             estimatedHours,
-            createdBy: req.user.userId
+            createdBy: req.userId
         });
         
         await task.save();
@@ -182,7 +182,7 @@ router.post('/:companyId/tasks', authenticateToken, checkCompanyMembership, asyn
         // Log activity
         await TeamActivity.create({
             company: req.params.companyId,
-            user: req.user.userId,
+            user: req.userId,
             type: 'task_created',
             action: `Created task: ${title}`,
             metadata: { taskId: task._id }
@@ -219,7 +219,7 @@ router.put('/:companyId/tasks/:taskId', authenticateToken, checkCompanyMembershi
         
         await TeamActivity.create({
             company: req.params.companyId,
-            user: req.user.userId,
+            user: req.userId,
             type: 'task_updated',
             action: `Updated task: ${task.title}`,
             metadata: { taskId: task._id }
@@ -242,7 +242,7 @@ router.post('/:companyId/tasks/:taskId/comments', authenticateToken, checkCompan
             {
                 $push: {
                     comments: {
-                        user: req.user.userId,
+                        user: req.userId,
                         text,
                         createdAt: new Date()
                     }
@@ -257,7 +257,7 @@ router.post('/:companyId/tasks/:taskId/comments', authenticateToken, checkCompan
         
         await TeamActivity.create({
             company: req.params.companyId,
-            user: req.user.userId,
+            user: req.userId,
             type: 'comment_added',
             action: `Commented on task: ${task.title}`,
             metadata: { taskId: task._id }
@@ -299,7 +299,7 @@ router.post('/:companyId/meetings', authenticateToken, checkCompanyMembership, a
             description,
             scheduledAt,
             duration,
-            organizer: req.user.userId,
+            organizer: req.userId,
             participants: participants.map(userId => ({ user: userId, status: 'invited' })),
             agenda
         });
@@ -313,7 +313,7 @@ router.post('/:companyId/meetings', authenticateToken, checkCompanyMembership, a
         
         await TeamActivity.create({
             company: req.params.companyId,
-            user: req.user.userId,
+            user: req.userId,
             type: 'meeting_scheduled',
             action: `Scheduled meeting: ${title}`,
             metadata: { meetingId: meeting._id }
@@ -378,7 +378,7 @@ router.post('/:companyId/chat', authenticateToken, checkCompanyMembership, async
         const chatMessage = new TeamChat({
             company: req.params.companyId,
             channel,
-            sender: req.user.userId,
+            sender: req.userId,
             message,
             messageType,
             mentions,

@@ -15,11 +15,11 @@ const authenticateToken = (req, res, next) => {
     }
     
     const jwt = require('jsonwebtoken');
-    jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+    jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
         if (err) {
             return res.status(403).json({ success: false, message: 'Invalid token' });
         }
-        req.user = user;
+        req.userId = decoded.id; // Store as req.userId for consistency
         next();
     });
 };
@@ -37,11 +37,11 @@ router.post('/create', authenticateToken, async (req, res) => {
         }
         
         // Check user's subscription
-        const subscription = await Subscription.findOne({ user: req.user.userId });
+        const subscription = await Subscription.findOne({ user: req.userId });
         const tier = subscription?.tier || 'freebie';
         
         // Check if user already owns a company
-        const existingCompany = await Company.findOne({ owner: req.user.userId });
+        const existingCompany = await Company.findOne({ owner: req.userId });
         
         // Tier-based restrictions
         if (tier === 'freebie' && existingCompany) {
@@ -77,9 +77,9 @@ router.post('/create', authenticateToken, async (req, res) => {
             name,
             slug,
             description,
-            owner: req.user.userId,
+            owner: req.userId,
             members: [{
-                user: req.user.userId,
+                user: req.userId,
                 role: 'owner',
                 joinedAt: new Date()
             }],
@@ -94,7 +94,7 @@ router.post('/create', authenticateToken, async (req, res) => {
         // Log activity
         await TeamActivity.create({
             company: company._id,
-            user: req.user.userId,
+            user: req.userId,
             type: 'project_created',
             action: `Created company workspace: ${name}`
         });
@@ -123,8 +123,8 @@ router.get('/my-companies', authenticateToken, async (req, res) => {
     try {
         const companies = await Company.find({
             $or: [
-                { owner: req.user.userId },
-                { 'members.user': req.user.userId }
+                { owner: req.userId },
+                { 'members.user': req.userId }
             ],
             isActive: true
         })
@@ -133,7 +133,7 @@ router.get('/my-companies', authenticateToken, async (req, res) => {
         .sort({ createdAt: -1 });
         
         const companiesData = companies.map(company => {
-            const userMember = company.members.find(m => m.user._id.toString() === req.user.userId);
+            const userMember = company.members.find(m => m.user._id.toString() === req.userId);
             return {
                 id: company._id,
                 name: company.name,
@@ -179,7 +179,7 @@ router.get('/:companyId', authenticateToken, async (req, res) => {
         }
         
         // Check if user is a member
-        const isMember = company.members.some(m => m.user._id.toString() === req.user.userId);
+        const isMember = company.members.some(m => m.user._id.toString() === req.userId);
         if (!isMember) {
             return res.status(403).json({
                 success: false,
@@ -226,7 +226,7 @@ router.post('/:companyId/invite', authenticateToken, async (req, res) => {
         }
         
         // Check if user has permission to invite
-        const userMember = company.members.find(m => m.user.toString() === req.user.userId);
+        const userMember = company.members.find(m => m.user.toString() === req.userId);
         if (!userMember || !['owner', 'admin'].includes(userMember.role)) {
             return res.status(403).json({
                 success: false,
@@ -265,7 +265,7 @@ router.post('/:companyId/invite', authenticateToken, async (req, res) => {
             user: invitedUser._id,
             role,
             joinedAt: new Date(),
-            invitedBy: req.user.userId
+            invitedBy: req.userId
         });
         
         await company.save();
@@ -273,7 +273,7 @@ router.post('/:companyId/invite', authenticateToken, async (req, res) => {
         // Log activity
         await TeamActivity.create({
             company: company._id,
-            user: req.user.userId,
+            user: req.userId,
             type: 'member_joined',
             action: `Invited ${invitedUser.fullName} to the team`,
             metadata: { targetUser: invitedUser._id }
@@ -304,7 +304,7 @@ router.delete('/:companyId/members/:userId', authenticateToken, async (req, res)
         }
         
         // Check if user has permission
-        const userMember = company.members.find(m => m.user.toString() === req.user.userId);
+        const userMember = company.members.find(m => m.user.toString() === req.userId);
         if (!userMember || !['owner', 'admin'].includes(userMember.role)) {
             return res.status(403).json({
                 success: false,
@@ -326,7 +326,7 @@ router.delete('/:companyId/members/:userId', authenticateToken, async (req, res)
         // Log activity
         await TeamActivity.create({
             company: company._id,
-            user: req.user.userId,
+            user: req.userId,
             type: 'member_left',
             action: `Removed a member from the team`,
             metadata: { targetUser: req.params.userId }
@@ -359,7 +359,7 @@ router.put('/:companyId', authenticateToken, async (req, res) => {
         }
         
         // Check if user is owner or admin
-        const userMember = company.members.find(m => m.user.toString() === req.user.userId);
+        const userMember = company.members.find(m => m.user.toString() === req.userId);
         if (!userMember || !['owner', 'admin'].includes(userMember.role)) {
             return res.status(403).json({
                 success: false,
