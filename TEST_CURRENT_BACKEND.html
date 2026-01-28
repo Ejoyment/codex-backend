@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Current Backend Status</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        .test-section h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            margin: 5px;
+            transition: transform 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+        }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 15px;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        .warning {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 14px;
+            margin: 10px 0;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 10px;
+        }
+        .status-live {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status-down {
+            background: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Backend Status Checker</h1>
+        <p class="subtitle">Test what's currently running on your backend</p>
+
+        <!-- Test 1: Health Check -->
+        <div class="test-section">
+            <h3>1. Backend Health Check</h3>
+            <p>Check if backend is responding</p>
+            <button onclick="testHealth()">Test Health</button>
+            <div id="health-result"></div>
+        </div>
+
+        <!-- Test 2: Check Email Service -->
+        <div class="test-section">
+            <h3>2. Test Email Service (OTP)</h3>
+            <p>This will attempt to send an OTP to your email</p>
+            <input type="email" id="test-email" placeholder="Enter your email address">
+            <button onclick="testEmailService()">Send Test OTP</button>
+            <div id="email-result"></div>
+        </div>
+
+        <!-- Test 3: Check Server Logs -->
+        <div class="test-section">
+            <h3>3. What to Check in Render</h3>
+            <div class="info result">
+Go to Render Dashboard:
+1. Open: https://dashboard.render.com
+2. Click: codex-backend-7utu
+3. Click: "Logs" tab
+
+Look for these messages:
+✅ GOOD: "📧 Email service: Resend API (Production Ready)"
+❌ BAD: "📧 Email service: smtp.gmail.com"
+❌ BAD: "⚠️ Using MOCK mode"
+
+If you see the BAD messages, the deployment hasn't completed yet.
+            </div>
+        </div>
+
+        <!-- Test 4: Manual Deploy Instructions -->
+        <div class="test-section">
+            <h3>4. Force Manual Deploy (If Stuck)</h3>
+            <div class="warning result">
+If deployment is still stuck after 10+ minutes:
+
+1. Go to: https://dashboard.render.com
+2. Click: codex-backend-7utu
+3. Click: "Manual Deploy" button (top right)
+4. Select: "Clear build cache & deploy"
+5. Click: "Deploy"
+6. Wait: 3-5 minutes
+7. Come back and test again
+
+This will force a fresh deployment and cancel any stuck ones.
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'https://codex-backend-7utu.onrender.com/api';
+
+        async function testHealth() {
+            const resultDiv = document.getElementById('health-result');
+            resultDiv.innerHTML = '<div class="info result">Testing backend health...</div>';
+
+            try {
+                const response = await fetch(`${API_URL}/health`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    resultDiv.innerHTML = `
+                        <div class="success result">
+✅ Backend is LIVE and responding!
+
+Status: ${data.status}
+Message: ${data.message}
+Timestamp: ${data.timestamp}
+
+<strong>Next Step:</strong> Try the email test below to see if Resend is working.
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <div class="error result">
+❌ Backend responded but with an error
+
+Status: ${response.status}
+Response: ${JSON.stringify(data, null, 2)}
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="error result">
+❌ Cannot connect to backend
+
+Error: ${error.message}
+
+Possible causes:
+1. Backend is down
+2. Deployment is still in progress
+3. Network issue
+
+<strong>Action:</strong> Check Render dashboard to see deployment status.
+                    </div>
+                `;
+            }
+        }
+
+        async function testEmailService() {
+            const email = document.getElementById('test-email').value;
+            const resultDiv = document.getElementById('email-result');
+
+            if (!email) {
+                resultDiv.innerHTML = '<div class="error result">❌ Please enter your email address</div>';
+                return;
+            }
+
+            if (!email.includes('@')) {
+                resultDiv.innerHTML = '<div class="error result">❌ Please enter a valid email address</div>';
+                return;
+            }
+
+            resultDiv.innerHTML = '<div class="info result">📧 Sending test OTP email...\n\nThis may take 5-10 seconds...</div>';
+
+            try {
+                // First, try to create a test user (might fail if exists, that's ok)
+                const signupResponse = await fetch(`${API_URL}/auth/signup`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        fullName: 'Test User',
+                        email: email,
+                        password: 'Test123!'
+                    })
+                });
+
+                // Now send OTP
+                const otpResponse = await fetch(`${API_URL}/otp/send`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        email: email
+                    })
+                });
+
+                const otpData = await otpResponse.json();
+
+                if (otpResponse.ok) {
+                    resultDiv.innerHTML = `
+                        <div class="success result">
+✅ OTP EMAIL SENT SUCCESSFULLY!
+
+Message: ${otpData.message}
+Expires in: ${otpData.expiresIn}
+
+<strong>CHECK YOUR EMAIL INBOX NOW!</strong>
+
+Look for:
+- From: "CODEX INC <onboarding@resend.dev>"
+- Subject: "Verify Your Email - CODEX INC"
+- Contains: 4-digit OTP code
+
+If you received the email:
+🎉 RESEND IS WORKING! Email service is live!
+
+If you didn't receive it:
+1. Check spam/junk folder
+2. Wait 1-2 minutes (sometimes delayed)
+3. Check Render logs for errors
+4. Verify RESEND_API_KEY is set in Render
+
+<strong>Next Step:</strong> Go to Render logs and look for:
+"✅ OTP email sent via Resend: [message-id]"
+
+If you see that, Resend is working!
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <div class="error result">
+❌ Failed to send OTP
+
+Status: ${otpResponse.status}
+Message: ${otpData.message || 'Unknown error'}
+Response: ${JSON.stringify(otpData, null, 2)}
+
+<strong>This means:</strong>
+- Backend is running
+- But email service has an issue
+
+<strong>Check Render Logs for:</strong>
+1. "❌ RESEND_API_KEY not configured" → API key missing
+2. "❌ Resend API error" → API key invalid
+3. "⚠️ Using MOCK mode" → Falling back to console
+
+<strong>Action:</strong> Verify RESEND_API_KEY is set in Render environment variables.
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="error result">
+❌ Request failed
+
+Error: ${error.message}
+
+<strong>Possible causes:</strong>
+1. Backend is not responding
+2. Network timeout
+3. CORS issue
+4. Backend is still deploying
+
+<strong>Action:</strong> Check if backend health test passes first.
+                    </div>
+                `;
+            }
+        }
+
+        // Auto-test health on page load
+        window.addEventListener('load', () => {
+            setTimeout(testHealth, 500);
+        });
+    </script>
+</body>
+</html>
