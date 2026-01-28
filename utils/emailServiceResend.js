@@ -372,13 +372,6 @@ const sendMockOTP = (email, otp, fullName) => {
     return { success: true, messageId: 'mock-' + Date.now(), isMock: true };
 };
 
-module.exports = {
-    sendOTPEmail,
-    sendWelcomeEmail,
-    sendInvitationEmail
-};
-
-
 // Send invitation email
 const sendInvitationEmail = async (invitation) => {
     const RESEND_API_KEY = process.env.RESEND_API_KEY;
@@ -506,4 +499,10 @@ const sendInvitationEmail = async (invitation) => {
         console.error('❌ Invitation email failed:', error.message);
         return { success: false, error: error.message };
     }
+};
+
+module.exports = {
+    sendOTPEmail,
+    sendWelcomeEmail,
+    sendInvitationEmail
 };
