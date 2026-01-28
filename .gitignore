@@ -1,12 +1,13 @@
 # Dependencies
 node_modules/
-package-lock.json
 
 # Environment variables
 .env
 
+# Uploads
+uploads/
+
 # Logs
-logs/
 *.log
 npm-debug.log*
 
@@ -14,20 +15,45 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
+# Deployment folders (not needed in repo)
+deployment/
+deployment-package/
+backups/
+UPLOAD_TO_SPACESHIP/
 
-# Build files
-dist/
-build/
+# Zip files
+*.zip
 
-# Database
-*.db
-*.sqlite
+# Test files (not needed in production)
+test-*.js
+test-*.html
+check-*.js
+check-*.html
+check-*.bat
+debug-*.js
+debug-*.bat
+diagnose-*.bat
 
-# Temporary files
-tmp/
-temp/
+# Batch scripts (local only)
+*.bat
+!start-backend.bat
+
+# Documentation (keep only README)
+*.md
+!README.md
+
+# HTML files (frontend - not needed in backend repo)
+*.html
+!skeleton-loader.html
+
+# CSS files (frontend - not needed in backend repo)
+*.css
+
+# Frontend JS (not needed in backend repo)
+js/
+
+# Old/backup files
+*-old.*
+*-backup.*
+*-new.*
+dashboard-*.html
