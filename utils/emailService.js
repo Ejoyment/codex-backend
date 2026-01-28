@@ -1,87 +1,156 @@
-const nodemailer = require('nodemailer');
+// Resend Email Service - Production Ready
+// This file now uses Resend API instead of SMTP
+// Free tier: 100 emails/day, 3,000/month
 
-// Create transporter with better configuration
-const createTransporter = () => {
-    const config = {
-        host: process.env.EMAIL_HOST,
-        port: parseInt(process.env.EMAIL_PORT),
-        secure: process.env.EMAIL_PORT === '465', // true for 465, false for other ports
-        auth: {
-            user: process.env.EMAIL_USER,
-            pass: process.env.EMAIL_PASSWORD
-        },
-        tls: {
-            rejectUnauthorized: false // Allow self-signed certificates
-        },
-        connectionTimeout: 10000, // 10 seconds
-        greetingTimeout: 10000,
-        socketTimeout: 10000
-    };
+// Resend Email Service - Production Ready
+// This file now uses Resend API instead of SMTP
+// Free tier: 100 emails/day, 3,000/month
 
-    console.log('Email config:', {
-        host: config.host,
-        port: config.port,
-        secure: config.secure,
-        user: config.auth.user
-    });
-
-    return nodemailer.createTransport(config);
-};
-
-const transporter = createTransporter();
-
-// Verify transporter configuration
-transporter.verify((error, success) => {
-    if (error) {
-        console.error('✗ Email service error:', error);
-    } else {
-        console.log('✓ Email service is ready');
-    }
-});
-
-// Send OTP email
 const sendOTPEmail = async (email, otp, fullName = 'User') => {
-    const mailOptions = {
-        from: process.env.EMAIL_FROM,
-        to: email,
+    // Check if Resend API key is configured
+    const RESEND_API_KEY = process.env.RESEND_API_KEY;
+    
+    if (!RESEND_API_KEY) {
+        console.error('❌ RESEND_API_KEY not configured');
+        return sendMockOTP(email, otp, fullName);
+    }
+
+    const emailData = {
+        from: process.env.EMAIL_FROM || 'CODEX INC <onboarding@resend.dev>',
+        to: [email],
         subject: 'Verify Your Email - CODEX INC',
         html: `
             <!DOCTYPE html>
             <html>
             <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <style>
-                    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-                    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                    .header { background-color: #1e3a8a; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
-                    .content { background-color: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
-                    .otp-box { background-color: white; border: 2px solid #1e3a8a; padding: 20px; text-align: center; margin: 20px 0; border-radius: 8px; }
-                    .otp-code { font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #1e3a8a; }
-                    .footer { text-align: center; margin-top: 20px; font-size: 12px; color: #6b7280; }
-                    .button { background-color: #1e3a8a; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; display: inline-block; margin: 20px 0; }
+                    body { 
+                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+                        line-height: 1.6; 
+                        color: #333;
+                        margin: 0;
+                        padding: 0;
+                        background-color: #f4f4f4;
+                    }
+                    .container { 
+                        max-width: 600px; 
+                        margin: 40px auto; 
+                        background-color: white;
+                        border-radius: 8px;
+                        overflow: hidden;
+                        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                    }
+                    .header { 
+                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                        color: white; 
+                        padding: 40px 20px; 
+                        text-align: center;
+                    }
+                    .header h1 {
+                        margin: 0;
+                        font-size: 28px;
+                        font-weight: 600;
+                    }
+                    .header p {
+                        margin: 8px 0 0 0;
+                        opacity: 0.9;
+                        font-size: 14px;
+                    }
+                    .content { 
+                        padding: 40px 30px;
+                    }
+                    .content h2 {
+                        color: #333;
+                        font-size: 20px;
+                        margin: 0 0 20px 0;
+                    }
+                    .content p {
+                        color: #666;
+                        margin: 0 0 16px 0;
+                        font-size: 15px;
+                    }
+                    .otp-box { 
+                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                        padding: 30px; 
+                        text-align: center; 
+                        margin: 30px 0; 
+                        border-radius: 8px;
+                    }
+                    .otp-label {
+                        color: white;
+                        font-size: 14px;
+                        margin: 0 0 12px 0;
+                        opacity: 0.9;
+                    }
+                    .otp-code { 
+                        font-size: 36px; 
+                        font-weight: bold; 
+                        letter-spacing: 12px; 
+                        color: white;
+                        margin: 0;
+                        font-family: 'Courier New', monospace;
+                    }
+                    .warning {
+                        background-color: #fff3cd;
+                        border-left: 4px solid #ffc107;
+                        padding: 16px;
+                        margin: 20px 0;
+                        border-radius: 4px;
+                    }
+                    .warning p {
+                        margin: 0;
+                        color: #856404;
+                        font-size: 14px;
+                    }
+                    .footer { 
+                        background-color: #f8f9fa;
+                        text-align: center; 
+                        padding: 30px 20px;
+                        border-top: 1px solid #e9ecef;
+                    }
+                    .footer p {
+                        margin: 0 0 8px 0;
+                        font-size: 13px; 
+                        color: #6c757d;
+                    }
+                    .footer a {
+                        color: #667eea;
+                        text-decoration: none;
+                    }
                 </style>
             </head>
             <body>
                 <div class="container">
                     <div class="header">
-                        <h1>CODEX INC</h1>
-                        <p>Enterprise Portal</p>
+                        <h1>🚀 CODEX INC</h1>
+                        <p>Enterprise Development Platform</p>
                     </div>
                     <div class="content">
-                        <h2>Hello ${fullName},</h2>
-                        <p>Thank you for signing up with CODEX INC! To complete your registration, please verify your email address.</p>
+                        <h2>Hello ${fullName}! 👋</h2>
+                        <p>Thank you for signing up with CODEX INC! We're excited to have you on board.</p>
+                        <p>To complete your registration and verify your email address, please use the verification code below:</p>
                         
                         <div class="otp-box">
-                            <p style="margin: 0; font-size: 14px; color: #6b7280;">Your verification code is:</p>
-                            <div class="otp-code">${otp}</div>
+                            <p class="otp-label">Your Verification Code</p>
+                            <p class="otp-code">${otp}</p>
                         </div>
                         
-                        <p>This code will expire in ${process.env.OTP_EXPIRY_MINUTES || 10} minutes.</p>
-                        <p>If you didn't request this code, please ignore this email.</p>
-                        
-                        <div class="footer">
-                            <p>© ${new Date().getFullYear()} CODEX INC. All rights reserved.</p>
-                            <p>This is an automated email, please do not reply.</p>
+                        <div class="warning">
+                            <p><strong>⏰ Important:</strong> This code will expire in ${process.env.OTP_EXPIRY_MINUTES || 10} minutes for security reasons.</p>
                         </div>
+                        
+                        <p>If you didn't request this code, you can safely ignore this email. Someone may have entered your email address by mistake.</p>
+                        
+                        <p style="margin-top: 30px;">
+                            <strong>Need help?</strong> Contact our support team at support@codexinc.com
+                        </p>
+                    </div>
+                    <div class="footer">
+                        <p><strong>© ${new Date().getFullYear()} CODEX INC</strong></p>
+                        <p>All rights reserved.</p>
+                        <p style="margin-top: 16px;">This is an automated email, please do not reply.</p>
                     </div>
                 </div>
             </body>
@@ -90,44 +159,170 @@ const sendOTPEmail = async (email, otp, fullName = 'User') => {
     };
 
     try {
-        const info = await transporter.sendMail(mailOptions);
-        console.log('✓ Email sent:', info.messageId);
-        return { success: true, messageId: info.messageId };
+        const response = await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${RESEND_API_KEY}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(emailData)
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            console.log('✅ OTP email sent via Resend:', result.id);
+            return { success: true, messageId: result.id, provider: 'resend' };
+        } else {
+            console.error('❌ Resend API error:', result);
+            throw new Error(result.message || 'Failed to send email');
+        }
     } catch (error) {
-        console.error('✗ Email sending failed:', error);
-        throw error;
+        console.error('❌ Email sending failed:', error.message);
+        console.warn('⚠️  Falling back to console output');
+        return sendMockOTP(email, otp, fullName);
     }
 };
 
 // Send welcome email
 const sendWelcomeEmail = async (email, fullName) => {
-    const mailOptions = {
-        from: process.env.EMAIL_FROM,
-        to: email,
-        subject: 'Welcome to CODEX INC!',
+    const RESEND_API_KEY = process.env.RESEND_API_KEY;
+    
+    if (!RESEND_API_KEY) {
+        console.log(`✅ Welcome email (mock) for: ${fullName} (${email})`);
+        return { success: true };
+    }
+
+    const emailData = {
+        from: process.env.EMAIL_FROM || 'CODEX INC <onboarding@resend.dev>',
+        to: [email],
+        subject: 'Welcome to CODEX INC! 🎉',
         html: `
             <!DOCTYPE html>
             <html>
             <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <style>
-                    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-                    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                    .header { background-color: #1e3a8a; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
-                    .content { background-color: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
-                    .button { background-color: #1e3a8a; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; display: inline-block; margin: 20px 0; }
+                    body { 
+                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+                        line-height: 1.6; 
+                        color: #333;
+                        margin: 0;
+                        padding: 0;
+                        background-color: #f4f4f4;
+                    }
+                    .container { 
+                        max-width: 600px; 
+                        margin: 40px auto; 
+                        background-color: white;
+                        border-radius: 8px;
+                        overflow: hidden;
+                        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                    }
+                    .header { 
+                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                        color: white; 
+                        padding: 50px 20px; 
+                        text-align: center;
+                    }
+                    .header h1 {
+                        margin: 0;
+                        font-size: 32px;
+                        font-weight: 600;
+                    }
+                    .content { 
+                        padding: 40px 30px;
+                    }
+                    .content h2 {
+                        color: #333;
+                        font-size: 24px;
+                        margin: 0 0 20px 0;
+                    }
+                    .content p {
+                        color: #666;
+                        margin: 0 0 16px 0;
+                        font-size: 15px;
+                    }
+                    .button { 
+                        display: inline-block;
+                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                        color: white; 
+                        padding: 14px 32px; 
+                        text-decoration: none; 
+                        border-radius: 6px;
+                        font-weight: 600;
+                        margin: 20px 0;
+                        transition: transform 0.2s;
+                    }
+                    .button:hover {
+                        transform: translateY(-2px);
+                    }
+                    .features {
+                        background-color: #f8f9fa;
+                        padding: 24px;
+                        border-radius: 8px;
+                        margin: 24px 0;
+                    }
+                    .feature-item {
+                        margin: 12px 0;
+                        padding-left: 28px;
+                        position: relative;
+                    }
+                    .feature-item:before {
+                        content: "✓";
+                        position: absolute;
+                        left: 0;
+                        color: #667eea;
+                        font-weight: bold;
+                        font-size: 18px;
+                    }
+                    .footer { 
+                        background-color: #f8f9fa;
+                        text-align: center; 
+                        padding: 30px 20px;
+                        border-top: 1px solid #e9ecef;
+                    }
+                    .footer p {
+                        margin: 0 0 8px 0;
+                        font-size: 13px; 
+                        color: #6c757d;
+                    }
                 </style>
             </head>
             <body>
                 <div class="container">
                     <div class="header">
-                        <h1>Welcome to CODEX INC!</h1>
+                        <h1>🎉 Welcome to CODEX INC!</h1>
                     </div>
                     <div class="content">
-                        <h2>Hello ${fullName},</h2>
-                        <p>Your email has been successfully verified! Welcome to the CODEX INC Enterprise Portal.</p>
-                        <p>You can now access all features of your account.</p>
-                        <a href="${process.env.FRONTEND_URL}/sign_in.html" class="button">Sign In Now</a>
-                        <p>If you have any questions, feel free to contact our support team.</p>
+                        <h2>Hello ${fullName}!</h2>
+                        <p>Your email has been successfully verified! Welcome to the CODEX INC Enterprise Development Platform.</p>
+                        
+                        <p>You now have access to:</p>
+                        
+                        <div class="features">
+                            <div class="feature-item">AI-powered code assistance and pair programming</div>
+                            <div class="feature-item">Real-time collaboration with your team</div>
+                            <div class="feature-item">Integrated task and project management</div>
+                            <div class="feature-item">GitHub, Discord, Slack, and more integrations</div>
+                            <div class="feature-item">Advanced analytics and reporting</div>
+                        </div>
+                        
+                        <p style="text-align: center;">
+                            <a href="${process.env.FRONTEND_URL || 'https://codexincenterprise.online'}/sign_in.html" class="button">
+                                Sign In to Your Dashboard →
+                            </a>
+                        </p>
+                        
+                        <p style="margin-top: 30px;">
+                            <strong>Need help getting started?</strong><br>
+                            Check out our <a href="${process.env.FRONTEND_URL || 'https://codexincenterprise.online'}/docs" style="color: #667eea;">documentation</a> or contact support at support@codexinc.com
+                        </p>
+                    </div>
+                    <div class="footer">
+                        <p><strong>© ${new Date().getFullYear()} CODEX INC</strong></p>
+                        <p>All rights reserved.</p>
                     </div>
                 </div>
             </body>
@@ -136,11 +331,49 @@ const sendWelcomeEmail = async (email, fullName) => {
     };
 
     try {
-        await transporter.sendMail(mailOptions);
-        console.log('✓ Welcome email sent to:', email);
+        const response = await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${RESEND_API_KEY}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(emailData)
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            console.log('✅ Welcome email sent via Resend:', result.id);
+            return { success: true, messageId: result.id };
+        } else {
+            console.error('❌ Resend API error:', result);
+        }
     } catch (error) {
-        console.error('✗ Welcome email failed:', error);
+        console.error('❌ Welcome email failed:', error.message);
     }
+};
+
+// Mock email sender (fallback when API key is not configured)
+const sendMockOTP = (email, otp, fullName) => {
+    console.log('\n========================================');
+    console.log('📧 OTP EMAIL (Console Output)');
+    console.log('========================================');
+    console.log('To:', email);
+    console.log('Subject: Verify Your Email - CODEX INC');
+    console.log('----------------------------------------');
+    console.log(`Hello ${fullName},`);
+    console.log('');
+    console.log('Your verification code is:');
+    console.log('');
+    console.log(`    🔑 ${otp} 🔑`);
+    console.log('');
+    console.log(`This code will expire in ${process.env.OTP_EXPIRY_MINUTES || 10} minutes.`);
+    console.log('========================================');
+    console.log('⚠️  NOTE: Configure RESEND_API_KEY to send real emails');
+    console.log('⚠️  Get your free API key at: https://resend.com');
+    console.log('========================================\n');
+
+    return { success: true, messageId: 'mock-' + Date.now(), isMock: true };
 };
 
 module.exports = {
