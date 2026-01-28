@@ -35,6 +35,48 @@ const userSchema = new mongoose.Schema({
     profilePicture: {
         type: String
     },
+    bio: {
+        type: String,
+        maxlength: 500
+    },
+    title: {
+        type: String
+    },
+    phone: {
+        type: String
+    },
+    location: {
+        type: String
+    },
+    website: {
+        type: String
+    },
+    socialLinks: {
+        github: String,
+        linkedin: String,
+        twitter: String,
+        portfolio: String
+    },
+    skills: [{
+        type: String
+    }],
+    timezone: {
+        type: String,
+        default: 'UTC'
+    },
+    language: {
+        type: String,
+        default: 'en'
+    },
+    status: {
+        type: String,
+        enum: ['online', 'away', 'busy', 'offline'],
+        default: 'offline'
+    },
+    customStatus: {
+        type: String,
+        maxlength: 100
+    },
     role: {
         type: [String],
         default: []
@@ -52,6 +94,10 @@ const userSchema = new mongoose.Schema({
     onboardingCompleted: {
         type: Boolean,
         default: false
+    },
+    subscription: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Subscription'
     },
     authProvider: {
         type: String,

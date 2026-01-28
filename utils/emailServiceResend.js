@@ -374,5 +374,136 @@ const sendMockOTP = (email, otp, fullName) => {
 
 module.exports = {
     sendOTPEmail,
-    sendWelcomeEmail
+    sendWelcomeEmail,
+    sendInvitationEmail
+};
+
+
+// Send invitation email
+const sendInvitationEmail = async (invitation) => {
+    const RESEND_API_KEY = process.env.RESEND_API_KEY;
+    
+    if (!RESEND_API_KEY) {
+        console.log(`✅ Invitation email (mock) for: ${invitation.email}`);
+        return { success: true };
+    }
+
+    const acceptUrl = `${process.env.FRONTEND_URL || 'https://codexincenterprise.online'}/accept-invitation.html?token=${invitation.token}`;
+
+    const emailData = {
+        from: process.env.EMAIL_FROM || 'CODEX INC <onboarding@resend.dev>',
+        to: [invitation.email],
+        subject: `You're invited to join ${invitation.company.name} on CODEX INC`,
+        html: `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <style>
+                    body { 
+                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+                        line-height: 1.6; 
+                        color: #333;
+                        margin: 0;
+                        padding: 0;
+                        background-color: #f4f4f4;
+                    }
+                    .container { 
+                        max-width: 600px; 
+                        margin: 40px auto; 
+                        background-color: white;
+                        border-radius: 8px;
+                        overflow: hidden;
+                        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                    }
+                    .header { 
+                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                        color: white; 
+                        padding: 40px 20px; 
+                        text-align: center;
+                    }
+                    .content { 
+                        padding: 40px 30px;
+                    }
+                    .button { 
+                        display: inline-block;
+                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                        color: white; 
+                        padding: 14px 32px; 
+                        text-decoration: none; 
+                        border-radius: 6px;
+                        font-weight: 600;
+                        margin: 20px 0;
+                    }
+                    .message-box {
+                        background-color: #f8f9fa;
+                        border-left: 4px solid #667eea;
+                        padding: 16px;
+                        margin: 20px 0;
+                        border-radius: 4px;
+                    }
+                    .footer { 
+                        background-color: #f8f9fa;
+                        text-align: center; 
+                        padding: 30px 20px;
+                        border-top: 1px solid #e9ecef;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="header">
+                        <h1>🎉 You're Invited!</h1>
+                    </div>
+                    <div class="content">
+                        <h2>Hello!</h2>
+                        <p><strong>${invitation.invitedBy.fullName}</strong> has invited you to join <strong>${invitation.company.name}</strong> on CODEX INC.</p>
+                        
+                        ${invitation.message ? `<div class="message-box"><em>"${invitation.message}"</em></div>` : ''}
+                        
+                        <p>As a <strong>${invitation.role}</strong>, you'll be able to collaborate with the team on projects, tasks, code, and more.</p>
+                        
+                        <p style="text-align: center;">
+                            <a href="${acceptUrl}" class="button">Accept Invitation →</a>
+                        </p>
+                        
+                        <p style="color: #666; font-size: 13px; margin-top: 30px;">
+                            This invitation will expire in 7 days.<br>
+                            If the button doesn't work, copy and paste this link: ${acceptUrl}
+                        </p>
+                    </div>
+                    <div class="footer">
+                        <p><strong>© ${new Date().getFullYear()} CODEX INC</strong></p>
+                        <p>All rights reserved.</p>
+                    </div>
+                </div>
+            </body>
+            </html>
+        `
+    };
+
+    try {
+        const response = await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${RESEND_API_KEY}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(emailData)
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            console.log('✅ Invitation email sent via Resend:', result.id);
+            return { success: true, messageId: result.id };
+        } else {
+            console.error('❌ Resend API error:', result);
+            throw new Error(result.message || 'Failed to send email');
+        }
+    } catch (error) {
+        console.error('❌ Invitation email failed:', error.message);
+        return { success: false, error: error.message };
+    }
 };

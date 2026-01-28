@@ -10,6 +10,11 @@ const otpRoutes = require('./routes/otp');
 const subscriptionRoutes = require('./routes/subscription');
 const integrationsRoutes = require('./routes/integrations');
 const aiPairRoutes = require('./routes/ai-pair');
+const codeEditorRoutes = require('./routes/code-editor');
+const invitationsRoutes = require('./routes/invitations');
+const messagingRoutes = require('./routes/messaging');
+const meetingsRoutes = require('./routes/meetings');
+const profileRoutes = require('./routes/profile');
 
 const app = express();
 
@@ -92,6 +97,11 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/ai-pair', aiPairRoutes);
 app.use('/api/company', companyRoutes);
 app.use('/api/collaboration', collaborationRoutes);
+app.use('/api/code-editor', codeEditorRoutes);
+app.use('/api/invitations', invitationsRoutes);
+app.use('/api/messaging', messagingRoutes);
+app.use('/api/meetings', meetingsRoutes);
+app.use('/api/profile', profileRoutes);
 
 // Integration API routes
 app.use('/api/github', githubApiRoutes);
