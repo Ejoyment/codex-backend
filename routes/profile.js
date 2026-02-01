@@ -47,6 +47,10 @@ router.post('/picture', authenticateToken, upload.single('profilePicture'), asyn
         
         const user = await User.findById(req.userId);
         
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+        
         // Delete old profile picture if exists
         if (user.profilePicture && user.profilePicture.startsWith('/uploads/')) {
             const oldPath = path.join(__dirname, '..', user.profilePicture);
