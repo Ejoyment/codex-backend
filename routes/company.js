@@ -212,6 +212,41 @@ router.get('/:companyId', authenticateToken, async (req, res) => {
     }
 });
 
+// Get company members
+router.get('/:companyId/members', authenticateToken, async (req, res) => {
+    try {
+        const company = await Company.findById(req.params.companyId)
+            .populate('members.user', 'fullName email profilePicture role');
+        
+        if (!company) {
+            return res.status(404).json({
+                success: false,
+                message: 'Company not found'
+            });
+        }
+        
+        // Check if user is a member
+        const isMember = company.members.some(m => m.user._id.toString() === req.userId);
+        if (!isMember) {
+            return res.status(403).json({
+                success: false,
+                message: 'You are not a member of this company'
+            });
+        }
+        
+        res.json({
+            success: true,
+            members: company.members
+        });
+    } catch (error) {
+        console.error('Get members error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch members'
+        });
+    }
+});
+
 // Invite member
 router.post('/:companyId/invite', authenticateToken, async (req, res) => {
     try {
