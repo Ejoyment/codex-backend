@@ -6,6 +6,7 @@ const TeamTask = require('../models/TeamTask');
 const Meeting = require('../models/Meeting');
 const TeamActivity = require('../models/TeamActivity');
 const TeamChat = require('../models/TeamChat');
+const { checkProjectLimit, checkTaskLimit, requireTeamFeature } = require('../middleware/teamRestrictions');
 
 // Middleware to check authentication
 const authenticateToken = (req, res, next) => {
@@ -64,7 +65,7 @@ router.get('/:companyId/projects', authenticateToken, checkCompanyMembership, as
 });
 
 // Create project
-router.post('/:companyId/projects', authenticateToken, checkCompanyMembership, async (req, res) => {
+router.post('/:companyId/projects', authenticateToken, checkCompanyMembership, checkProjectLimit, async (req, res) => {
     try {
         const { name, description, priority, startDate, dueDate, members } = req.body;
         
@@ -156,7 +157,7 @@ router.get('/:companyId/tasks', authenticateToken, checkCompanyMembership, async
 });
 
 // Create task
-router.post('/:companyId/tasks', authenticateToken, checkCompanyMembership, async (req, res) => {
+router.post('/:companyId/tasks', authenticateToken, checkCompanyMembership, checkTaskLimit, async (req, res) => {
     try {
         const { title, description, priority, assignedTo, dueDate, project, estimatedHours } = req.body;
         
@@ -371,7 +372,7 @@ router.get('/:companyId/chat', authenticateToken, checkCompanyMembership, async 
 });
 
 // Send chat message
-router.post('/:companyId/chat', authenticateToken, checkCompanyMembership, async (req, res) => {
+router.post('/:companyId/chat', authenticateToken, checkCompanyMembership, requireTeamFeature('teamChat'), async (req, res) => {
     try {
         const { message, channel = 'general', messageType = 'text', mentions, replyTo } = req.body;
         

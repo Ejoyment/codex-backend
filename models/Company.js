@@ -67,7 +67,7 @@ const companySchema = new mongoose.Schema({
         },
         memberLimit: {
             type: Number,
-            default: 1
+            default: 1  // Freebie: 1 member only (owner)
         }
     },
     stats: {

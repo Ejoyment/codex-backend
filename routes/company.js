@@ -4,6 +4,7 @@ const Company = require('../models/Company');
 const User = require('../models/User');
 const TeamActivity = require('../models/TeamActivity');
 const Subscription = require('../models/Subscription');
+const { checkMemberLimit, checkProjectLimit, requireTeamFeature, getCompanyLimits } = require('../middleware/teamRestrictions');
 
 // Middleware to check authentication
 const authenticateToken = (req, res, next) => {
@@ -248,7 +249,7 @@ router.get('/:companyId/members', authenticateToken, async (req, res) => {
 });
 
 // Invite member
-router.post('/:companyId/invite', authenticateToken, async (req, res) => {
+router.post('/:companyId/invite', authenticateToken, checkMemberLimit, async (req, res) => {
     try {
         const { email, role = 'member' } = req.body;
         
@@ -572,6 +573,22 @@ router.put('/:companyId/settings', authenticateToken, async (req, res) => {
     } catch (error) {
         console.error('Update settings error:', error);
         res.status(500).json({ success: false, message: 'Failed to update settings' });
+    }
+});
+
+// Get company limits and usage
+router.get('/:companyId/limits', authenticateToken, async (req, res) => {
+    try {
+        const limits = await getCompanyLimits(req.params.companyId);
+        
+        if (!limits) {
+            return res.status(404).json({ success: false, message: 'Company not found' });
+        }
+        
+        res.json({ success: true, ...limits });
+    } catch (error) {
+        console.error('Get limits error:', error);
+        res.status(500).json({ success: false, message: 'Failed to get limits' });
     }
 });
 
