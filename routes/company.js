@@ -427,4 +427,152 @@ router.put('/:companyId', authenticateToken, async (req, res) => {
     }
 });
 
+// Upload company logo
+router.post('/:companyId/logo', authenticateToken, async (req, res) => {
+    try {
+        const multer = require('multer');
+        const path = require('path');
+        
+        // Configure multer
+        const storage = multer.diskStorage({
+            destination: (req, file, cb) => {
+                cb(null, 'uploads/logos/');
+            },
+            filename: (req, file, cb) => {
+                const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+                cb(null, 'logo-' + uniqueSuffix + path.extname(file.originalname));
+            }
+        });
+        
+        const upload = multer({
+            storage: storage,
+            limits: { fileSize: 5 * 1024 * 1024 },
+            fileFilter: (req, file, cb) => {
+                const allowedTypes = /jpeg|jpg|png|gif|svg/;
+                const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+                const mimetype = allowedTypes.test(file.mimetype);
+                
+                if (extname && mimetype) {
+                    return cb(null, true);
+                }
+                cb(new Error('Only image files are allowed'));
+            }
+        }).single('logo');
+        
+        upload(req, res, async (err) => {
+            if (err) {
+                return res.status(400).json({ success: false, message: err.message });
+            }
+            
+            if (!req.file) {
+                return res.status(400).json({ success: false, message: 'No file uploaded' });
+            }
+            
+            const company = await Company.findById(req.params.companyId);
+            
+            if (!company) {
+                return res.status(404).json({ success: false, message: 'Company not found' });
+            }
+            
+            // Check permissions
+            const userMember = company.members.find(m => m.user.toString() === req.userId);
+            if (!userMember || !['owner', 'admin'].includes(userMember.role)) {
+                return res.status(403).json({ success: false, message: 'Permission denied' });
+            }
+            
+            company.logo = `/uploads/logos/${req.file.filename}`;
+            await company.save();
+            
+            res.json({
+                success: true,
+                message: 'Logo uploaded successfully',
+                logo: company.logo
+            });
+        });
+    } catch (error) {
+        console.error('Logo upload error:', error);
+        res.status(500).json({ success: false, message: 'Failed to upload logo' });
+    }
+});
+
+// Update member role
+router.put('/:companyId/members/:userId/role', authenticateToken, async (req, res) => {
+    try {
+        const { role } = req.body;
+        
+        if (!['admin', 'member', 'viewer'].includes(role)) {
+            return res.status(400).json({ success: false, message: 'Invalid role' });
+        }
+        
+        const company = await Company.findById(req.params.companyId);
+        
+        if (!company) {
+            return res.status(404).json({ success: false, message: 'Company not found' });
+        }
+        
+        // Check if requester is owner or admin
+        const requester = company.members.find(m => m.user.toString() === req.userId);
+        if (!requester || !['owner', 'admin'].includes(requester.role)) {
+            return res.status(403).json({ success: false, message: 'Permission denied' });
+        }
+        
+        // Cannot change owner role
+        if (company.owner.toString() === req.params.userId) {
+            return res.status(403).json({ success: false, message: 'Cannot change owner role' });
+        }
+        
+        // Update member role
+        const member = company.members.find(m => m.user.toString() === req.params.userId);
+        if (!member) {
+            return res.status(404).json({ success: false, message: 'Member not found' });
+        }
+        
+        member.role = role;
+        await company.save();
+        
+        await TeamActivity.create({
+            company: company._id,
+            user: req.userId,
+            type: 'role_updated',
+            action: `Updated member role to ${role}`,
+            metadata: { targetUser: req.params.userId, newRole: role }
+        });
+        
+        res.json({ success: true, message: 'Role updated successfully' });
+    } catch (error) {
+        console.error('Update role error:', error);
+        res.status(500).json({ success: false, message: 'Failed to update role' });
+    }
+});
+
+// Update company settings
+router.put('/:companyId/settings', authenticateToken, async (req, res) => {
+    try {
+        const { allowMemberInvites, requireApproval, defaultRole } = req.body;
+        
+        const company = await Company.findById(req.params.companyId);
+        
+        if (!company) {
+            return res.status(404).json({ success: false, message: 'Company not found' });
+        }
+        
+        // Check if user is owner or admin
+        const userMember = company.members.find(m => m.user.toString() === req.userId);
+        if (!userMember || !['owner', 'admin'].includes(userMember.role)) {
+            return res.status(403).json({ success: false, message: 'Permission denied' });
+        }
+        
+        if (allowMemberInvites !== undefined) company.settings.allowMemberInvites = allowMemberInvites;
+        if (requireApproval !== undefined) company.settings.requireApproval = requireApproval;
+        if (defaultRole !== undefined) company.settings.defaultRole = defaultRole;
+        
+        await company.save();
+        
+        res.json({ success: true, message: 'Settings updated successfully', settings: company.settings });
+    } catch (error) {
+        console.error('Update settings error:', error);
+        res.status(500).json({ success: false, message: 'Failed to update settings' });
+    }
+});
+
 module.exports = router;
