@@ -133,7 +133,20 @@ router.get('/my-companies', authenticateToken, async (req, res) => {
         .populate('members.user', 'fullName email profilePicture')
         .sort({ createdAt: -1 });
         
-        const companiesData = companies.map(company => {
+        // Sync each company's tier with its owner's subscription
+        const companiesData = await Promise.all(companies.map(async (company) => {
+            // Get owner's subscription
+            const ownerSubscription = await Subscription.findOne({ user: company.owner._id });
+            const ownerTier = ownerSubscription?.tier || 'freebie';
+            
+            // Update company tier if it doesn't match
+            if (company.subscription.tier !== ownerTier) {
+                const memberLimit = ownerTier === 'freebie' ? 1 : ownerTier === 'professional' ? 10 : 999999;
+                company.subscription.tier = ownerTier;
+                company.subscription.memberLimit = memberLimit;
+                await company.save();
+            }
+            
             const userMember = company.members.find(m => m.user._id.toString() === req.userId);
             return {
                 id: company._id,
@@ -149,7 +162,7 @@ router.get('/my-companies', authenticateToken, async (req, res) => {
                 stats: company.stats,
                 createdAt: company.createdAt
             };
-        });
+        }));
         
         res.json({
             success: true,
@@ -186,6 +199,18 @@ router.get('/:companyId', authenticateToken, async (req, res) => {
                 success: false,
                 message: 'You are not a member of this company'
             });
+        }
+        
+        // Sync company tier with owner's subscription
+        const ownerSubscription = await Subscription.findOne({ user: company.owner._id });
+        const ownerTier = ownerSubscription?.tier || 'freebie';
+        
+        // Update company tier if it doesn't match owner's subscription
+        if (company.subscription.tier !== ownerTier) {
+            const memberLimit = ownerTier === 'freebie' ? 1 : ownerTier === 'professional' ? 10 : 999999;
+            company.subscription.tier = ownerTier;
+            company.subscription.memberLimit = memberLimit;
+            await company.save();
         }
         
         res.json({

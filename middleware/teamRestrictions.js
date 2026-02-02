@@ -245,8 +245,23 @@ function getFeatureAvailability(featureName) {
 // Get limits for a company
 async function getCompanyLimits(companyId) {
     try {
-        const company = await Company.findById(companyId);
+        const Company = require('../models/Company');
+        const Subscription = require('../models/Subscription');
+        
+        const company = await Company.findById(companyId).populate('owner');
         if (!company) return null;
+
+        // Sync company tier with owner's subscription
+        const ownerSubscription = await Subscription.findOne({ user: company.owner._id });
+        const ownerTier = ownerSubscription?.tier || 'freebie';
+        
+        // Update company tier if it doesn't match
+        if (company.subscription.tier !== ownerTier) {
+            const memberLimit = ownerTier === 'freebie' ? 1 : ownerTier === 'professional' ? 10 : 999999;
+            company.subscription.tier = ownerTier;
+            company.subscription.memberLimit = memberLimit;
+            await company.save();
+        }
 
         const tier = company.subscription.tier || 'freebie';
         return {
