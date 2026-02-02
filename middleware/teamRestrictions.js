@@ -252,7 +252,7 @@ async function getCompanyLimits(companyId) {
         if (!company) return null;
 
         // Sync company tier with owner's subscription
-        const ownerSubscription = await Subscription.findOne({ user: company.owner._id });
+        const ownerSubscription = await Subscription.findOne({ userId: company.owner._id });
         const ownerTier = ownerSubscription?.tier || 'freebie';
         
         // Update company tier if it doesn't match

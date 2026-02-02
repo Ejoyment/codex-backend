@@ -243,6 +243,10 @@ router.get('/me', async (req, res) => {
             });
         }
 
+        // Get user's subscription
+        const Subscription = require('../models/Subscription');
+        const subscription = await Subscription.findOne({ userId: decoded.id });
+
         res.json({
             success: true,
             user: {
@@ -256,6 +260,15 @@ router.get('/me', async (req, res) => {
                 company: user.company,
                 teamSize: user.teamSize,
                 onboardingCompleted: user.onboardingCompleted,
+                subscription: subscription ? {
+                    tier: subscription.tier,
+                    status: subscription.status,
+                    features: subscription.features
+                } : {
+                    tier: 'freebie',
+                    status: 'active',
+                    features: {}
+                },
                 createdAt: user.createdAt,
                 lastLogin: user.lastLogin
             }

@@ -38,7 +38,7 @@ router.post('/create', authenticateToken, async (req, res) => {
         }
         
         // Check user's subscription
-        const subscription = await Subscription.findOne({ user: req.userId });
+        const subscription = await Subscription.findOne({ userId: req.userId });
         const tier = subscription?.tier || 'freebie';
         
         // Check if user already owns a company
@@ -136,7 +136,7 @@ router.get('/my-companies', authenticateToken, async (req, res) => {
         // Sync each company's tier with its owner's subscription
         const companiesData = await Promise.all(companies.map(async (company) => {
             // Get owner's subscription
-            const ownerSubscription = await Subscription.findOne({ user: company.owner._id });
+            const ownerSubscription = await Subscription.findOne({ userId: company.owner._id });
             const ownerTier = ownerSubscription?.tier || 'freebie';
             
             // Update company tier if it doesn't match
@@ -202,7 +202,7 @@ router.get('/:companyId', authenticateToken, async (req, res) => {
         }
         
         // Sync company tier with owner's subscription
-        const ownerSubscription = await Subscription.findOne({ user: company.owner._id });
+        const ownerSubscription = await Subscription.findOne({ userId: company.owner._id });
         const ownerTier = ownerSubscription?.tier || 'freebie';
         
         // Update company tier if it doesn't match owner's subscription
