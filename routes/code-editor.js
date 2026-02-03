@@ -63,6 +63,61 @@ router.post('/files', authenticateToken, async (req, res) => {
     }
 });
 
+// Batch create multiple files (for AI agent)
+router.post('/files/batch', authenticateToken, async (req, res) => {
+    try {
+        const { files, companyId, projectId } = req.body;
+        
+        if (!Array.isArray(files) || files.length === 0) {
+            return res.status(400).json({ success: false, message: 'Files array is required' });
+        }
+        
+        const user = await require('../models/User').findById(req.userId).populate('subscription');
+        const tier = user.subscription?.tier || 'free';
+        
+        const createdFiles = [];
+        const errors = [];
+        
+        for (const fileData of files) {
+            try {
+                const { name, language, content, path } = fileData;
+                
+                // Check if language is allowed
+                if (!isLanguageAllowed(language, tier)) {
+                    errors.push({ name, error: `${language} not available in ${tier} plan` });
+                    continue;
+                }
+                
+                const codeFile = await CodeFile.create({
+                    name,
+                    language: language.toLowerCase(),
+                    content: content || '',
+                    company: companyId,
+                    project: projectId,
+                    createdBy: req.userId,
+                    lastModifiedBy: req.userId,
+                    path: path || '/'
+                });
+                
+                await codeFile.populate('createdBy', 'fullName email profilePicture');
+                createdFiles.push(codeFile);
+            } catch (error) {
+                errors.push({ name: fileData.name, error: error.message });
+            }
+        }
+        
+        res.json({
+            success: true,
+            files: createdFiles,
+            errors: errors.length > 0 ? errors : undefined,
+            created: createdFiles.length,
+            failed: errors.length
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 // Get all files for a company
 router.get('/files', authenticateToken, async (req, res) => {
     try {
