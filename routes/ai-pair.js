@@ -254,10 +254,10 @@ router.get('/session/:sessionId', verifyToken, async (req, res) => {
     }
 });
 
-// Chat with AI
+// Chat with AI (Enhanced with Agent Actions)
 router.post('/chat', verifyToken, checkAILimits, async (req, res) => {
     try {
-        const { sessionId, message, codeContext } = req.body;
+        const { sessionId, message, codeContext, enableActions = false } = req.body;
         
         // Verify session belongs to user
         const session = await AIPairSession.findOne({
@@ -286,8 +286,44 @@ router.post('/chat', verifyToken, checkAILimits, async (req, res) => {
             .limit(20)
             .select('role content');
 
+        // Enhanced context with agent instructions
+        const enhancedContext = {
+            ...codeContext,
+            agentMode: enableActions,
+            instructions: enableActions ? `You are an autonomous AI coding agent. When users ask you to create files, projects, or make changes:
+
+1. AUTOMATICALLY generate actions to execute - don't just explain
+2. Use these action types:
+   - create_file: Create a single file
+   - create_multiple_files: Create multiple files at once (preferred for projects)
+   - update_file: Update existing file
+   - delete_file: Delete a file
+   - update_current_file: Update the currently open file
+   - insert_code: Insert code at cursor position
+
+3. For "create a website" or "create a project" requests:
+   - Use create_multiple_files with ALL files needed
+   - Include complete, working code in each file
+   - Organize files in proper paths (e.g., "/styles/main.css", "/scripts/app.js")
+   - DO NOT show code blocks - return actions instead
+
+4. Response format when creating files:
+{
+  "actions": [{
+    "action": "create_multiple_files",
+    "files": [
+      {"name": "index.html", "path": "/", "content": "<!DOCTYPE html>...", "language": "html"},
+      {"name": "styles.css", "path": "/styles", "content": "body {...}", "language": "css"}
+    ]
+  }],
+  "message": "I've created a complete website with HTML, CSS, and JavaScript files."
+}
+
+5. Only show code blocks if user asks to "show me" or "explain" - otherwise execute actions` : ''
+        };
+
         // Get AI response
-        const aiResponse = await aiService.chat(history, codeContext);
+        const aiResponse = await aiService.chat(history, enhancedContext);
 
         if (!aiResponse.success) {
             return res.status(500).json({
@@ -296,12 +332,37 @@ router.post('/chat', verifyToken, checkAILimits, async (req, res) => {
             });
         }
 
+        // Parse AI response for actions
+        let actions = [];
+        let responseContent = aiResponse.content;
+        
+        if (enableActions) {
+            // Try to extract JSON actions from response
+            const jsonMatch = aiResponse.content.match(/\{[\s\S]*"actions"[\s\S]*\}/);
+            if (jsonMatch) {
+                try {
+                    const parsed = JSON.parse(jsonMatch[0]);
+                    if (parsed.actions && Array.isArray(parsed.actions)) {
+                        actions = parsed.actions;
+                        responseContent = parsed.message || aiResponse.content;
+                    }
+                } catch (e) {
+                    console.log('Failed to parse actions from AI response:', e);
+                }
+            }
+            
+            // Fallback: Detect intent from message
+            if (actions.length === 0) {
+                actions = detectActionsFromMessage(message, aiResponse.content, codeContext);
+            }
+        }
+
         // Save AI message
         const assistantMessage = await ChatMessage.create({
             sessionId,
             userId: req.userId,
             role: 'assistant',
-            content: aiResponse.content,
+            content: responseContent,
             codeBlocks: aiResponse.codeBlocks,
             fileReferences: aiResponse.fileReferences
         });
@@ -314,6 +375,7 @@ router.post('/chat', verifyToken, checkAILimits, async (req, res) => {
         res.json({
             success: true,
             message: assistantMessage,
+            actions: actions.length > 0 ? actions : undefined,
             aiLimit: req.aiLimit
         });
     } catch (error) {
@@ -324,6 +386,89 @@ router.post('/chat', verifyToken, checkAILimits, async (req, res) => {
         });
     }
 });
+
+// Helper function to detect actions from AI response
+function detectActionsFromMessage(userMessage, aiResponse, codeContext) {
+    const actions = [];
+    const lowerMessage = userMessage.toLowerCase();
+    
+    // Detect "create website" or "create project" intent
+    if (lowerMessage.includes('create') && (lowerMessage.includes('website') || lowerMessage.includes('site') || lowerMessage.includes('page'))) {
+        // Extract code blocks from AI response
+        const codeBlocks = extractCodeBlocks(aiResponse);
+        
+        if (codeBlocks.length > 0) {
+            const files = codeBlocks.map(block => ({
+                name: block.filename || guessFilename(block.language, block.code),
+                path: guessFilePath(block.filename || '', block.language),
+                content: block.code,
+                language: block.language || 'text'
+            }));
+            
+            actions.push({
+                action: 'create_multiple_files',
+                files: files
+            });
+        }
+    }
+    
+    // Detect "fix" or "update current file" intent
+    if (codeContext?.currentFile && (lowerMessage.includes('fix') || lowerMessage.includes('update') || lowerMessage.includes('change'))) {
+        const codeBlocks = extractCodeBlocks(aiResponse);
+        if (codeBlocks.length > 0 && codeBlocks[0].code.length > 50) {
+            actions.push({
+                action: 'update_current_file',
+                content: codeBlocks[0].code
+            });
+        }
+    }
+    
+    return actions;
+}
+
+// Extract code blocks from markdown
+function extractCodeBlocks(text) {
+    const blocks = [];
+    const regex = /```(\w+)?\n([\s\S]*?)```/g;
+    let match;
+    
+    while ((match = regex.exec(text)) !== null) {
+        blocks.push({
+            language: match[1] || 'text',
+            code: match[2].trim(),
+            filename: null
+        });
+    }
+    
+    return blocks;
+}
+
+// Guess filename from language
+function guessFilename(language, code) {
+    const map = {
+        'html': 'index.html',
+        'css': 'styles.css',
+        'javascript': 'script.js',
+        'js': 'script.js',
+        'python': 'main.py',
+        'java': 'Main.java',
+        'typescript': 'index.ts'
+    };
+    return map[language] || `file.${language}`;
+}
+
+// Guess file path from filename
+function guessFilePath(filename, language) {
+    if (filename.includes('/')) {
+        return filename.substring(0, filename.lastIndexOf('/'));
+    }
+    
+    if (language === 'css') return '/styles';
+    if (language === 'javascript' || language === 'js') return '/scripts';
+    if (language === 'html') return '/';
+    
+    return '/';
+}
 
 // Apply code change
 router.post('/apply-change', verifyToken, async (req, res) => {
