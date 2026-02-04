@@ -254,10 +254,10 @@ router.get('/session/:sessionId', verifyToken, async (req, res) => {
     }
 });
 
-// Chat with AI (Enhanced with Agent Actions)
+// Chat with AI (Enhanced with ReAct Agent Loop)
 router.post('/chat', verifyToken, checkAILimits, async (req, res) => {
     try {
-        const { sessionId, message, codeContext, enableActions = false } = req.body;
+        const { sessionId, message, codeContext, enableActions = false, useAgentLoop = false } = req.body;
         
         // Verify session belongs to user
         const session = await AIPairSession.findOne({
@@ -280,7 +280,50 @@ router.post('/chat', verifyToken, checkAILimits, async (req, res) => {
             content: message
         });
 
-        // Get conversation history
+        // If agent loop is requested, use orchestrator
+        if (useAgentLoop) {
+            const agentOrchestrator = require('../utils/agentOrchestrator');
+            
+            const context = {
+                userId: req.userId,
+                workspaceId: codeContext.workspace?.id,
+                workspaceName: codeContext.workspace?.name,
+                files: codeContext.files || [],
+                currentFile: codeContext.currentFile
+            };
+
+            const result = await agentOrchestrator.executeAgenticLoop(
+                message, // The goal
+                context,
+                sessionId
+            );
+
+            // Save agent summary
+            await ChatMessage.create({
+                sessionId,
+                userId: req.userId,
+                role: 'assistant',
+                content: JSON.stringify(result.summary),
+                metadata: {
+                    type: 'agent_summary',
+                    iterations: result.iterations.length
+                }
+            });
+
+            // Update session
+            session.totalMessages += 2;
+            session.lastActivityAt = new Date();
+            await session.save();
+
+            return res.json({
+                success: true,
+                agentMode: true,
+                result,
+                aiLimit: req.aiLimit
+            });
+        }
+
+        // Standard chat mode (existing logic)
         const history = await ChatMessage.find({ sessionId })
             .sort({ createdAt: 1 })
             .limit(20)
