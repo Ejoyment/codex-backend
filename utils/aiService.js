@@ -266,7 +266,7 @@ class AIService {
     }
 
     buildSystemPrompt(codeContext) {
-        const { repository, files, currentFile } = codeContext;
+        const { repository, files, currentFile, agentMode, instructions } = codeContext;
         
         let prompt = `You are an expert AI pair programming assistant. You help developers write, debug, and improve code.
 
@@ -280,7 +280,14 @@ Your capabilities:
 - Generate tests
 - Write documentation
 
-Guidelines:
+`;
+
+        // Add agent mode instructions if enabled
+        if (agentMode && instructions) {
+            prompt += `\n${instructions}\n\n`;
+        }
+
+        prompt += `Guidelines:
 - Always provide clear, concise explanations
 - Use proper code formatting with language tags
 - Reference specific files and line numbers when relevant
@@ -304,6 +311,14 @@ Guidelines:
             prompt += `\nAvailable Files:\n`;
             files.slice(0, 10).forEach(file => {
                 prompt += `- ${file.path}\n`;
+            });
+        }
+
+        // Add capabilities list if in agent mode
+        if (agentMode && codeContext.capabilities) {
+            prompt += `\nAvailable Actions:\n`;
+            codeContext.capabilities.forEach(cap => {
+                prompt += `- ${cap}\n`;
             });
         }
 
