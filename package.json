@@ -27,6 +27,8 @@
     "express-session": "^1.17.3",
     "jsonwebtoken": "^9.0.2",
     "lib0": "^0.2.97",
+    "lru-cache": "^10.4.3",
+    "meilisearch": "^0.38.0",
     "mongoose": "^8.0.3",
     "multer": "^1.4.5-lts.1",
     "nodemailer": "^6.9.7",

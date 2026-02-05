@@ -89,6 +89,7 @@ const slackApiRoutes = require('./routes/slack-api');
 const notionApiRoutes = require('./routes/notion-api');
 const figmaApiRoutes = require('./routes/figma-api');
 const lspRoutes = require('./routes/lsp');
+const vfsRoutes = require('./routes/vfs');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/otp', otpRoutes);
@@ -111,6 +112,7 @@ app.use('/api/slack', slackApiRoutes);
 app.use('/api/notion', notionApiRoutes);
 app.use('/api/figma', figmaApiRoutes);
 app.use('/api/lsp', lspRoutes);
+app.use('/api/vfs', vfsRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
