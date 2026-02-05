@@ -90,6 +90,7 @@ const notionApiRoutes = require('./routes/notion-api');
 const figmaApiRoutes = require('./routes/figma-api');
 const lspRoutes = require('./routes/lsp');
 const vfsRoutes = require('./routes/vfs');
+const terminalRoutes = require('./routes/terminal');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/otp', otpRoutes);
@@ -113,6 +114,7 @@ app.use('/api/notion', notionApiRoutes);
 app.use('/api/figma', figmaApiRoutes);
 app.use('/api/lsp', lspRoutes);
 app.use('/api/vfs', vfsRoutes);
+app.use('/api/terminal', terminalRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -175,6 +177,7 @@ const server = app.listen(PORT, () => {
 // Socket.IO for real-time collaboration
 const { Server } = require('socket.io');
 const collaborationService = require('./utils/collaborationService');
+const terminalService = require('./utils/terminalService');
 const jwt = require('jsonwebtoken');
 
 const io = new Server(server, {
@@ -282,4 +285,129 @@ io.on('connection', (socket) => {
 });
 
 console.log('✓ Socket.IO collaboration server initialized');
+
+// Terminal namespace
+const terminalNamespace = io.of('/terminal');
+
+terminalNamespace.use((socket, next) => {
+    const token = socket.handshake.auth.token;
+    
+    if (!token) {
+        return next(new Error('Authentication error'));
+    }
+    
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        socket.userId = decoded.userId;
+        socket.user = decoded;
+        next();
+    } catch (error) {
+        next(new Error('Authentication error'));
+    }
+});
+
+terminalNamespace.on('connection', (socket) => {
+    console.log(`Terminal connected: ${socket.userId}`);
+    let currentSession = null;
+    
+    // Create terminal session
+    socket.on('terminal:create', async ({ workspaceId, options }) => {
+        try {
+            const result = await terminalService.createTerminal(
+                socket.userId,
+                workspaceId,
+                options
+            );
+            
+            currentSession = result.sessionId;
+            
+            // Register data handler
+            terminalService.onData(currentSession, (data) => {
+                socket.emit('terminal:data', { data });
+            });
+            
+            socket.emit('terminal:created', result);
+            console.log(`Terminal created: ${currentSession}`);
+        } catch (error) {
+            console.error('Terminal create error:', error);
+            socket.emit('terminal:error', { message: error.message });
+        }
+    });
+    
+    // Write to terminal
+    socket.on('terminal:input', ({ sessionId, data }) => {
+        try {
+            if (sessionId !== currentSession) {
+                throw new Error('Invalid session');
+            }
+            
+            terminalService.write(sessionId, data);
+        } catch (error) {
+            console.error('Terminal input error:', error);
+            socket.emit('terminal:error', { message: error.message });
+        }
+    });
+    
+    // Resize terminal
+    socket.on('terminal:resize', ({ sessionId, cols, rows }) => {
+        try {
+            if (sessionId !== currentSession) {
+                throw new Error('Invalid session');
+            }
+            
+            terminalService.resize(sessionId, cols, rows);
+        } catch (error) {
+            console.error('Terminal resize error:', error);
+            socket.emit('terminal:error', { message: error.message });
+        }
+    });
+    
+    // Get terminal history (simulated only)
+    socket.on('terminal:history', ({ sessionId }) => {
+        try {
+            if (sessionId !== currentSession) {
+                throw new Error('Invalid session');
+            }
+            
+            const history = terminalService.getHistory(sessionId);
+            socket.emit('terminal:history', { history });
+        } catch (error) {
+            console.error('Terminal history error:', error);
+            socket.emit('terminal:error', { message: error.message });
+        }
+    });
+    
+    // Destroy terminal
+    socket.on('terminal:destroy', async ({ sessionId }) => {
+        try {
+            if (sessionId !== currentSession) {
+                throw new Error('Invalid session');
+            }
+            
+            await terminalService.destroy(sessionId);
+            currentSession = null;
+            socket.emit('terminal:destroyed', { sessionId });
+            console.log(`Terminal destroyed: ${sessionId}`);
+        } catch (error) {
+            console.error('Terminal destroy error:', error);
+            socket.emit('terminal:error', { message: error.message });
+        }
+    });
+    
+    // Disconnect
+    socket.on('disconnect', async () => {
+        console.log(`Terminal disconnected: ${socket.userId}`);
+        
+        if (currentSession) {
+            try {
+                await terminalService.destroy(currentSession);
+                console.log(`Auto-destroyed terminal: ${currentSession}`);
+            } catch (error) {
+                console.error('Auto-destroy error:', error);
+            }
+        }
+    });
+});
+
+console.log('✓ Socket.IO terminal server initialized');
 
