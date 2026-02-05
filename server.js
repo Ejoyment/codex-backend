@@ -91,6 +91,7 @@ const figmaApiRoutes = require('./routes/figma-api');
 const lspRoutes = require('./routes/lsp');
 const vfsRoutes = require('./routes/vfs');
 const terminalRoutes = require('./routes/terminal');
+const gitRoutes = require('./routes/git');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/otp', otpRoutes);
@@ -115,6 +116,7 @@ app.use('/api/figma', figmaApiRoutes);
 app.use('/api/lsp', lspRoutes);
 app.use('/api/vfs', vfsRoutes);
 app.use('/api/terminal', terminalRoutes);
+app.use('/api/git', gitRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
