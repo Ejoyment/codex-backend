@@ -741,4 +741,189 @@ router.patch('/session/:sessionId', verifyToken, async (req, res) => {
     }
 });
 
+// ============================================
+// VECTOR MEMORY ENDPOINTS
+// ============================================
+
+// Store code pattern in vector memory
+router.post('/memory/store', verifyToken, async (req, res) => {
+    try {
+        const { content, metadata, workspaceId } = req.body;
+        
+        if (!content) {
+            return res.status(400).json({
+                success: false,
+                message: 'Content is required'
+            });
+        }
+
+        const vectorMemory = require('../utils/vectorMemory');
+        
+        const result = await vectorMemory.store(
+            content,
+            metadata || {},
+            req.userId,
+            workspaceId
+        );
+
+        res.json({
+            success: true,
+            ...result
+        });
+    } catch (error) {
+        console.error('Store memory error:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+});
+
+// Retrieve similar patterns from vector memory
+router.get('/memory/retrieve', verifyToken, async (req, res) => {
+    try {
+        const { query, k = 5, workspaceId } = req.query;
+        
+        if (!query) {
+            return res.status(400).json({
+                success: false,
+                message: 'Query is required'
+            });
+        }
+
+        const vectorMemory = require('../utils/vectorMemory');
+        
+        const results = await vectorMemory.retrieve(
+            query,
+            parseInt(k),
+            req.userId,
+            workspaceId
+        );
+
+        res.json({
+            success: true,
+            results,
+            count: results.length
+        });
+    } catch (error) {
+        console.error('Retrieve memory error:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+});
+
+// Clear memories for user/workspace
+router.delete('/memory/clear', verifyToken, async (req, res) => {
+    try {
+        const { workspaceId } = req.query;
+        
+        const vectorMemory = require('../utils/vectorMemory');
+        
+        const result = await vectorMemory.clear(
+            req.userId,
+            workspaceId
+        );
+
+        res.json({
+            success: true,
+            ...result
+        });
+    } catch (error) {
+        console.error('Clear memory error:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+});
+
+// Get memory statistics
+router.get('/memory/stats', verifyToken, async (req, res) => {
+    try {
+        const { workspaceId } = req.query;
+        
+        const vectorMemory = require('../utils/vectorMemory');
+        
+        const stats = await vectorMemory.getStats(
+            req.userId,
+            workspaceId
+        );
+
+        res.json({
+            success: true,
+            stats
+        });
+    } catch (error) {
+        console.error('Memory stats error:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+});
+
+// ============================================
+// SANDBOX EXECUTION ENDPOINTS
+// ============================================
+
+// Execute code in sandbox
+router.post('/execute', verifyToken, async (req, res) => {
+    try {
+        const { code, language = 'javascript', timeout } = req.body;
+        
+        if (!code) {
+            return res.status(400).json({
+                success: false,
+                message: 'Code is required'
+            });
+        }
+
+        const sandboxExecutor = require('../utils/sandboxExecutor');
+        
+        // Validate code
+        const validation = sandboxExecutor.validateCode(code, language);
+        if (!validation.valid) {
+            return res.status(400).json({
+                success: false,
+                message: validation.error
+            });
+        }
+
+        // Execute
+        const result = await sandboxExecutor.execute(code, language, { timeout });
+
+        res.json({
+            success: true,
+            ...result
+        });
+    } catch (error) {
+        console.error('Execute code error:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+});
+
+// Get sandbox statistics
+router.get('/sandbox/stats', verifyToken, async (req, res) => {
+    try {
+        const sandboxExecutor = require('../utils/sandboxExecutor');
+        const stats = sandboxExecutor.getStats();
+
+        res.json({
+            success: true,
+            stats
+        });
+    } catch (error) {
+        console.error('Sandbox stats error:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+});
+
 module.exports = router;

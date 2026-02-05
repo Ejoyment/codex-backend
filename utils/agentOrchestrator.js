@@ -11,11 +11,13 @@
 const aiService = require('./aiService');
 const AgentSession = require('../models/AIPairSession');
 const ChatMessage = require('../models/ChatMessage');
+const vectorMemory = require('./vectorMemory');
 
 class AgentOrchestrator {
     constructor() {
         this.maxIterations = 10; // Prevent infinite loops
         this.tools = this.initializeTools();
+        this.vectorMemory = vectorMemory;
     }
 
     /**
@@ -197,18 +199,78 @@ class AgentOrchestrator {
                 name: 'run_tests',
                 description: 'Run tests for the codebase',
                 parameters: {
-                    testFile: 'string - Optional specific test file'
+                    testFile: 'string - Optional specific test file',
+                    framework: 'string - Test framework (jest, mocha, default: jest)'
                 },
                 execute: async (params, context) => {
-                    // Placeholder for test execution
+                    const sandboxExecutor = require('./sandboxExecutor');
+                    const CodeFile = require('../models/CodeFile');
+                    
+                    // If specific test file provided, run it
+                    if (params.testFile) {
+                        const file = await CodeFile.findOne({
+                            company: context.workspaceId,
+                            path: params.testFile
+                        });
+                        
+                        if (!file) {
+                            return {
+                                success: false,
+                                error: `Test file not found: ${params.testFile}`
+                            };
+                        }
+                        
+                        const result = await sandboxExecutor.executeTests(
+                            file.content,
+                            file.language,
+                            params.framework || 'jest'
+                        );
+                        
+                        return {
+                            success: result.success,
+                            output: result.output,
+                            errors: result.errors,
+                            executionTime: result.executionTime
+                        };
+                    }
+                    
+                    // Otherwise, find and run all test files
+                    const testFiles = await CodeFile.find({
+                        company: context.workspaceId,
+                        $or: [
+                            { name: /\.test\.(js|ts)$/ },
+                            { name: /\.spec\.(js|ts)$/ },
+                            { path: /\/tests?\// }
+                        ]
+                    });
+                    
+                    if (testFiles.length === 0) {
+                        return {
+                            success: false,
+                            message: 'No test files found'
+                        };
+                    }
+                    
+                    const results = [];
+                    for (const file of testFiles) {
+                        const result = await sandboxExecutor.executeTests(
+                            file.content,
+                            file.language,
+                            params.framework || 'jest'
+                        );
+                        results.push({
+                            file: file.name,
+                            success: result.success,
+                            output: result.output
+                        });
+                    }
+                    
                     return {
                         success: true,
-                        message: 'Test execution not yet implemented',
-                        results: {
-                            passed: 0,
-                            failed: 0,
-                            skipped: 0
-                        }
+                        totalTests: results.length,
+                        passed: results.filter(r => r.success).length,
+                        failed: results.filter(r => !r.success).length,
+                        results
                     };
                 }
             },
@@ -246,6 +308,37 @@ class AgentOrchestrator {
                         files: created
                     };
                 }
+            },
+
+            execute_code: {
+                name: 'execute_code',
+                description: 'Execute code safely in a sandbox environment',
+                parameters: {
+                    code: 'string - Code to execute',
+                    language: 'string - Programming language (javascript, python, etc.)',
+                    timeout: 'number - Optional timeout in milliseconds (default: 5000)'
+                },
+                execute: async (params, context) => {
+                    const sandboxExecutor = require('./sandboxExecutor');
+                    
+                    // Validate code first
+                    const validation = sandboxExecutor.validateCode(params.code, params.language);
+                    if (!validation.valid) {
+                        return {
+                            success: false,
+                            error: validation.error
+                        };
+                    }
+                    
+                    // Execute in sandbox
+                    const result = await sandboxExecutor.execute(
+                        params.code,
+                        params.language || 'javascript',
+                        { timeout: params.timeout }
+                    );
+                    
+                    return result;
+                }
             }
         };
     }
@@ -265,13 +358,13 @@ class AgentOrchestrator {
 
         let iteration = 0;
         let goalAchieved = false;
-        let lastObservation = this.observe(context);
+        let lastObservation = await this.observe(context, goal);
 
         while (iteration < this.maxIterations && !goalAchieved) {
             iteration++;
             console.log(`\n=== Agent Iteration ${iteration} ===`);
 
-            // 1. OBSERVATION - Current state
+            // 1. OBSERVATION - Current state with memory retrieval
             const observation = {
                 iteration,
                 state: lastObservation,
@@ -299,6 +392,9 @@ class AgentOrchestrator {
                     action: null,
                     result: { success: true, message: 'Goal achieved' }
                 });
+
+                // Store successful pattern in vector memory
+                await this.storeSuccessfulPattern(goal, session, context);
                 break;
             }
 
@@ -306,16 +402,17 @@ class AgentOrchestrator {
             const actionResult = await this.act(reasoning.action, context);
 
             // 4. FEEDBACK - Integrate result for next iteration
-            lastObservation = this.feedback(observation, actionResult);
+            lastObservation = await this.feedback(observation, actionResult, context, goal);
 
             // Store iteration
-            session.iterations.push({
+            const iterationData = {
                 iteration,
                 observation,
                 reasoning,
                 action: reasoning.action,
                 result: actionResult
-            });
+            };
+            session.iterations.push(iterationData);
 
             // Save to database
             await this.saveIteration(sessionId, {
@@ -324,6 +421,11 @@ class AgentOrchestrator {
                 action: reasoning.action,
                 result: actionResult
             });
+
+            // Store successful action patterns
+            if (actionResult.success) {
+                await this.storeActionPattern(reasoning, actionResult, context);
+            }
         }
 
         return {
@@ -337,8 +439,8 @@ class AgentOrchestrator {
     /**
      * OBSERVATION - Parse current environment state
      */
-    observe(context) {
-        return {
+    async observe(context, goal) {
+        const observation = {
             workspace: {
                 id: context.workspaceId,
                 name: context.workspaceName
@@ -348,6 +450,31 @@ class AgentOrchestrator {
             availableTools: Object.keys(this.tools),
             timestamp: new Date()
         };
+
+        // Retrieve relevant memories from vector store
+        try {
+            const memories = await this.vectorMemory.retrieve(
+                goal, // Use goal as query
+                5, // Top 5 similar memories
+                context.userId,
+                context.workspaceId
+            );
+
+            if (memories && memories.length > 0) {
+                observation.relevantMemories = memories.map(m => ({
+                    content: m.content,
+                    type: m.metadata?.type,
+                    language: m.metadata?.language,
+                    score: m.score
+                }));
+                console.log(`📚 Retrieved ${memories.length} relevant memories`);
+            }
+        } catch (error) {
+            console.error('Failed to retrieve memories:', error);
+            // Non-critical, continue without memories
+        }
+
+        return observation;
     }
 
     /**
@@ -403,18 +530,82 @@ class AgentOrchestrator {
     /**
      * FEEDBACK - Integrate action result into observation
      */
-    feedback(observation, actionResult) {
-        return {
-            ...observation.state,
-            lastAction: actionResult,
-            timestamp: new Date()
-        };
+    async feedback(observation, actionResult, context, goal) {
+        return await this.observe(context, goal); // Re-observe with updated state
+    }
+
+    /**
+     * Store successful pattern in vector memory
+     */
+    async storeSuccessfulPattern(goal, session, context) {
+        try {
+            const pattern = {
+                goal,
+                iterations: session.iterations.length,
+                actions: session.iterations.map(i => i.action?.tool).filter(Boolean),
+                summary: this.generateSummary(session)
+            };
+
+            await this.vectorMemory.store(
+                JSON.stringify(pattern),
+                {
+                    type: 'successful_pattern',
+                    goal,
+                    iterationCount: session.iterations.length,
+                    timestamp: new Date()
+                },
+                context.userId,
+                context.workspaceId
+            );
+
+            console.log('✓ Stored successful pattern in vector memory');
+        } catch (error) {
+            console.error('Failed to store pattern:', error);
+        }
+    }
+
+    /**
+     * Store individual action pattern
+     */
+    async storeActionPattern(reasoning, actionResult, context) {
+        try {
+            const pattern = {
+                thought: reasoning.thought,
+                action: reasoning.action,
+                result: actionResult
+            };
+
+            await this.vectorMemory.store(
+                JSON.stringify(pattern),
+                {
+                    type: 'action_pattern',
+                    tool: reasoning.action.tool,
+                    success: actionResult.success,
+                    timestamp: new Date()
+                },
+                context.userId,
+                context.workspaceId
+            );
+        } catch (error) {
+            console.error('Failed to store action pattern:', error);
+        }
     }
 
     /**
      * Build reasoning prompt for LLM
      */
     buildReasoningPrompt(goal, observation, context) {
+        let memoriesSection = '';
+        if (observation.state.relevantMemories && observation.state.relevantMemories.length > 0) {
+            memoriesSection = `\n**RELEVANT PAST EXPERIENCES**:
+${observation.state.relevantMemories.map((m, i) => 
+    `${i + 1}. [${m.type}] ${m.content.substring(0, 200)}... (similarity: ${(m.score * 100).toFixed(1)}%)`
+).join('\n')}
+
+Use these past experiences to inform your decision, but adapt to the current context.
+`;
+        }
+
         return `You are an autonomous AI agent working in a code editor. Your goal is:
 
 **GOAL**: ${goal}
@@ -423,7 +614,7 @@ class AgentOrchestrator {
 - Workspace: ${observation.state.workspace.name}
 - Files: ${observation.state.files.length} files
 - Current File: ${observation.state.currentFile?.name || 'None'}
-
+${memoriesSection}
 **PREVIOUS ACTIONS**:
 ${observation.previousActions.map((a, i) => `${i + 1}. ${a.action?.tool}: ${a.result.success ? '✓' : '✗'} ${a.result.message || ''}`).join('\n')}
 
