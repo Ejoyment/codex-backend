@@ -88,6 +88,7 @@ const discordApiRoutes = require('./routes/discord-api');
 const slackApiRoutes = require('./routes/slack-api');
 const notionApiRoutes = require('./routes/notion-api');
 const figmaApiRoutes = require('./routes/figma-api');
+const lspRoutes = require('./routes/lsp');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/otp', otpRoutes);
@@ -109,6 +110,7 @@ app.use('/api/discord', discordApiRoutes);
 app.use('/api/slack', slackApiRoutes);
 app.use('/api/notion', notionApiRoutes);
 app.use('/api/figma', figmaApiRoutes);
+app.use('/api/lsp', lspRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

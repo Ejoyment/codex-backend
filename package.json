@@ -35,6 +35,10 @@
     "passport-google-oauth20": "^2.0.0",
     "socket.io": "^4.8.1",
     "stripe": "^20.2.0",
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-protocol": "^3.17.5",
+    "vscode-languageserver-textdocument": "^1.0.12",
+    "vscode-uri": "^3.1.0",
     "y-protocols": "^1.0.6",
     "yjs": "^13.6.18"
   },
