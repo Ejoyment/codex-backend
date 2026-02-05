@@ -6,6 +6,7 @@
     <title>Code Editor - BUCQ</title>
     <link rel="icon" href="1000222021 1 (1).png">
     <link rel="stylesheet" href="css/professional-ui.css">
+    <link rel="stylesheet" href="css/editor-premium.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" data-name="vs/editor/editor.main" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/editor/editor.main.min.css">
     <style>
@@ -263,8 +264,8 @@
             </div>
 
             <!-- AI Assistant View -->
-            <div id="aiView" class="sidebar-view" style="display: none; flex-direction: column; height: 100%;">
-                <div class="sidebar-header" style="display: flex; justify-content: space-between; align-items: center;">
+            <div id="aiView" class="sidebar-view" style="display: none; flex-direction: column; height: 100%; overflow: hidden;">
+                <div class="sidebar-header" style="display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
                     <span>AI ASSISTANT</span>
                     <button id="agentModeToggle" onclick="toggleAgentMode()" 
                             style="font-size: 10px; padding: 4px 8px; background: var(--vscode-bg); border: 1px solid var(--vscode-border); color: var(--vscode-text); cursor: pointer; border-radius: 3px;">
@@ -273,12 +274,12 @@
                 </div>
                 
                 <!-- Agent Mode Indicator -->
-                <div id="agentModeIndicator" style="display: none; padding: 8px; background: var(--vscode-primary); color: white; font-size: 11px; text-align: center;">
+                <div id="agentModeIndicator" style="display: none; padding: 8px; background: var(--vscode-primary); color: white; font-size: 11px; text-align: center; flex-shrink: 0;">
                     <i class="fas fa-robot"></i> Agent Mode Active - AI will autonomously execute actions
                 </div>
                 
                 <!-- Memory Panel -->
-                <div id="memoryPanel" class="ai-panel-section" style="padding: 8px; background: var(--vscode-bg); border-bottom: 1px solid var(--vscode-border); display: none;">
+                <div id="memoryPanel" class="ai-panel-section" style="padding: 8px; background: var(--vscode-bg); border-bottom: 1px solid var(--vscode-border); display: none; flex-shrink: 0;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                         <span style="font-size: 11px; font-weight: 600; color: var(--vscode-text);">
                             <i class="fas fa-brain"></i> AGENT MEMORY
@@ -297,7 +298,7 @@
                 </div>
                 
                 <!-- Sandbox Panel -->
-                <div id="sandboxPanel" class="ai-panel-section" style="padding: 8px; background: var(--vscode-bg); border-bottom: 1px solid var(--vscode-border); display: none;">
+                <div id="sandboxPanel" class="ai-panel-section" style="padding: 8px; background: var(--vscode-bg); border-bottom: 1px solid var(--vscode-border); display: none; flex-shrink: 0;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                         <span style="font-size: 11px; font-weight: 600; color: var(--vscode-text);">
                             <i class="fas fa-play-circle"></i> CODE EXECUTION
@@ -315,8 +316,8 @@
                     </div>
                 </div>
                 
-                <div class="ai-chat-container" style="flex: 1; display: flex; flex-direction: column;">
-                    <div class="ai-messages" id="aiMessages">
+                <div class="ai-chat-container" style="flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden;">
+                    <div class="ai-messages" id="aiMessages" style="flex: 1; overflow-y: auto; overflow-x: hidden; padding: 8px; min-height: 0;">
                         <div style="text-align: center; padding: 40px 20px; color: var(--vscode-text-dim);">
                             <i class="fas fa-robot" style="font-size: 48px; opacity: 0.3; margin-bottom: 16px;"></i>
                             <div style="font-size: 14px; margin-bottom: 8px; font-weight: 600;">AI Coding Agent</div>
@@ -331,12 +332,12 @@
                             </div>
                         </div>
                     </div>
-                    <div id="typingIndicator" style="display: none; padding: 8px; background: var(--vscode-bg); margin: 0 8px;">
+                    <div id="typingIndicator" style="display: none; padding: 8px; background: var(--vscode-bg); margin: 0 8px; flex-shrink: 0;">
                         <div style="color: var(--vscode-statusbar); font-size: 12px;">
                             <i class="fas fa-circle-notch fa-spin"></i> AI is thinking...
                         </div>
                     </div>
-                    <div class="ai-input-area">
+                    <div class="ai-input-area" style="flex-shrink: 0;">
                         <div style="margin-bottom: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px;">
                             <button class="btn btn-secondary" onclick="aiExplainCode()" style="font-size: 10px; padding: 6px;" title="Explain selected code">
                                 <i class="fas fa-lightbulb"></i> Explain
@@ -447,9 +448,12 @@
 
     <!-- Modals -->
     <!-- New File Modal -->
-    <div class="modal" id="newFileModal">
+    <div class="modal-overlay" id="newFileModal" style="display: none;">
         <div class="modal-content">
-            <div class="modal-header">Create New File</div>
+            <div class="modal-header">
+                <h2><i class="fas fa-file-plus"></i> Create New File</h2>
+                <button class="modal-close" onclick="closeModal('newFileModal')">&times;</button>
+            </div>
             <div class="modal-body">
                 <label class="modal-label">File Name</label>
                 <input type="text" class="modal-input" id="newFileName" placeholder="example.js">
@@ -473,9 +477,12 @@
     </div>
 
     <!-- New Folder Modal -->
-    <div class="modal" id="newFolderModal">
+    <div class="modal-overlay" id="newFolderModal" style="display: none;">
         <div class="modal-content">
-            <div class="modal-header">Create New Folder</div>
+            <div class="modal-header">
+                <h2><i class="fas fa-folder-plus"></i> Create New Folder</h2>
+                <button class="modal-close" onclick="closeModal('newFolderModal')">&times;</button>
+            </div>
             <div class="modal-body">
                 <label class="modal-label">Folder Name</label>
                 <input type="text" class="modal-input" id="newFolderName" placeholder="my-folder">
@@ -490,9 +497,12 @@
     </div>
 
     <!-- Language Selector Modal -->
-    <div class="modal" id="languageSelectorModal">
+    <div class="modal-overlay" id="languageSelectorModal" style="display: none;">
         <div class="modal-content">
-            <div class="modal-header">Select Language</div>
+            <div class="modal-header">
+                <h2><i class="fas fa-code"></i> Select Language</h2>
+                <button class="modal-close" onclick="closeModal('languageSelectorModal')">&times;</button>
+            </div>
             <div class="modal-body">
                 <div class="search-box">
                     <input type="text" class="search-input" placeholder="Search languages..." id="languageSearchInput" oninput="filterLanguages()">

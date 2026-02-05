@@ -67,7 +67,20 @@ const codeFileSchema = new mongoose.Schema({
     size: {
         type: Number,
         default: 0
-    }
+    },
+    ydocState: {
+        type: Buffer,
+        default: null
+    },
+    activeCollaborators: [{
+        userId: mongoose.Schema.Types.ObjectId,
+        socketId: String,
+        cursor: {
+            line: Number,
+            column: Number
+        },
+        lastSeen: Date
+    }]
 }, {
     timestamps: true
 });

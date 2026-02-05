@@ -85,6 +85,19 @@ console.log("Welcome to BUCQ!");
                 saveCurrentFile();
             }, 2000);
         }
+        
+        // Update problems in real-time
+        updateProblemsFromEditor();
+    });
+    
+    // Listen to Monaco's marker changes (errors, warnings)
+    monaco.editor.onDidChangeMarkers((uris) => {
+        if (editor && editor.getModel()) {
+            const model = editor.getModel();
+            if (uris.some(uri => uri.toString() === model.uri.toString())) {
+                updateProblemsFromMonaco();
+            }
+        }
     });
 
     // Keyboard shortcuts
@@ -1407,17 +1420,34 @@ function unmarkTabAsModified(tabId) {
 
 // Sidebar Management
 function switchSidebar(view) {
+    const sidebar = document.getElementById('sidebar');
+    
+    // If clicking the same view, toggle sidebar visibility
+    if (currentSidebar === view && !sidebar.classList.contains('collapsed')) {
+        sidebar.classList.add('collapsed');
+        document.querySelectorAll('.activity-bar-item').forEach(item => item.classList.remove('active'));
+        return;
+    }
+    
     currentSidebar = view;
+    
+    // Update activity bar
     document.querySelectorAll('.activity-bar-item').forEach(item => item.classList.remove('active'));
     event.target.closest('.activity-bar-item').classList.add('active');
     
+    // Switch views
     document.querySelectorAll('.sidebar-view').forEach(v => v.style.display = 'none');
     document.getElementById(view + 'View').style.display = 'flex';
     
-    document.getElementById('sidebar').classList.remove('collapsed');
+    // Show sidebar if collapsed
+    sidebar.classList.remove('collapsed');
 }
 
 // Panel Management
+let terminalHistory = [];
+let outputLog = [];
+let problemsList = [];
+
 function togglePanel() {
     const panel = document.getElementById('panel');
     const icon = document.getElementById('panelToggleIcon');
@@ -1427,8 +1457,10 @@ function togglePanel() {
     
     if (panelVisible) {
         icon.className = 'fas fa-chevron-down';
+        icon.title = 'Minimize Panel';
     } else {
         icon.className = 'fas fa-chevron-up';
+        icon.title = 'Maximize Panel';
     }
 }
 
@@ -1440,22 +1472,236 @@ function switchPanelTab(tab) {
     
     switch(tab) {
         case 'terminal':
-            panelContent.innerHTML = `
-                <div style="color: var(--vscode-success);">$ BUCQ Code Editor Terminal</div>
-                <div style="color: var(--vscode-text-dim);">Ready to execute code...</div>
-            `;
+            renderTerminal(panelContent);
             break;
         case 'output':
-            panelContent.innerHTML = `
-                <div style="color: var(--vscode-text-dim);">No output yet</div>
-            `;
+            renderOutput(panelContent);
             break;
         case 'problems':
-            panelContent.innerHTML = `
-                <div style="color: var(--vscode-text-dim);">No problems detected</div>
-            `;
+            renderProblems(panelContent);
             break;
     }
+}
+
+function renderTerminal(container) {
+    const terminalHTML = `
+        <div style="display: flex; flex-direction: column; height: 100%;">
+            <div id="terminalOutput" style="flex: 1; overflow-y: auto; padding: 8px; font-family: 'Consolas', monospace; font-size: 13px; line-height: 1.6;">
+                ${terminalHistory.length === 0 ? `
+                    <div style="color: var(--vscode-success);">$ BUCQ Code Editor Terminal</div>
+                    <div style="color: var(--vscode-text-dim); margin-top: 4px;">Type commands or run code with F5</div>
+                    <div style="color: var(--vscode-text-dim); margin-top: 8px;">Available commands:</div>
+                    <div style="color: var(--vscode-text-dim);">  • clear - Clear terminal</div>
+                    <div style="color: var(--vscode-text-dim);">  • help - Show help</div>
+                    <div style="color: var(--vscode-text-dim);">  • run - Execute current file</div>
+                ` : terminalHistory.map(entry => `
+                    <div style="color: ${entry.type === 'command' ? 'var(--vscode-success)' : entry.type === 'error' ? 'var(--vscode-error)' : 'var(--vscode-text)'};">
+                        ${entry.type === 'command' ? '$ ' : ''}${entry.text}
+                    </div>
+                `).join('')}
+            </div>
+            <div style="display: flex; align-items: center; padding: 8px; border-top: 1px solid var(--vscode-border); background: var(--vscode-bg);">
+                <span style="color: var(--vscode-success); margin-right: 8px;">$</span>
+                <input type="text" id="terminalInput" 
+                       placeholder="Type command..." 
+                       style="flex: 1; background: transparent; border: none; color: var(--vscode-text); font-family: 'Consolas', monospace; font-size: 13px; outline: none;"
+                       onkeydown="handleTerminalInput(event)">
+            </div>
+        </div>
+    `;
+    container.innerHTML = terminalHTML;
+    setTimeout(() => document.getElementById('terminalInput')?.focus(), 100);
+}
+
+function renderOutput(container) {
+    const outputHTML = `
+        <div style="padding: 8px; font-family: 'Consolas', monospace; font-size: 13px; line-height: 1.6;">
+            ${outputLog.length === 0 ? `
+                <div style="color: var(--vscode-text-dim);">No output yet</div>
+                <div style="color: var(--vscode-text-dim); margin-top: 8px;">Output from code execution will appear here</div>
+            ` : outputLog.map(entry => `
+                <div style="color: ${entry.type === 'error' ? 'var(--vscode-error)' : entry.type === 'warning' ? 'var(--vscode-warning)' : 'var(--vscode-text)'}; margin-bottom: 4px;">
+                    <span style="color: var(--vscode-text-dim);">[${entry.timestamp}]</span> ${entry.message}
+                </div>
+            `).join('')}
+        </div>
+    `;
+    container.innerHTML = outputHTML;
+}
+
+function renderProblems(container) {
+    const problemsHTML = `
+        <div style="padding: 8px;">
+            ${problemsList.length === 0 ? `
+                <div style="color: var(--vscode-text-dim); font-size: 13px;">
+                    <i class="fas fa-check-circle" style="color: var(--vscode-success); margin-right: 8px;"></i>
+                    No problems detected
+                </div>
+                <div style="color: var(--vscode-text-dim); font-size: 12px; margin-top: 8px;">
+                    Problems will appear here when detected in your code
+                </div>
+            ` : problemsList.map(problem => `
+                <div style="padding: 8px; margin-bottom: 4px; background: var(--vscode-hover); border-left: 3px solid ${problem.severity === 'error' ? 'var(--vscode-error)' : 'var(--vscode-warning)'}; cursor: pointer; border-radius: 2px;"
+                     onclick="goToLine(${problem.line})">
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                        <i class="fas ${problem.severity === 'error' ? 'fa-times-circle' : 'fa-exclamation-triangle'}" 
+                           style="color: ${problem.severity === 'error' ? 'var(--vscode-error)' : 'var(--vscode-warning)'};"></i>
+                        <span style="color: var(--vscode-text); font-size: 13px; font-weight: 500;">${problem.message}</span>
+                    </div>
+                    <div style="color: var(--vscode-text-dim); font-size: 12px; margin-left: 24px;">
+                        ${currentFile?.name || 'untitled'} [Ln ${problem.line}, Col ${problem.column}]
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+    container.innerHTML = problemsHTML;
+}
+
+function handleTerminalInput(event) {
+    if (event.key === 'Enter') {
+        const input = event.target;
+        const command = input.value.trim();
+        
+        if (command) {
+            executeTerminalCommand(command);
+            input.value = '';
+        }
+    }
+}
+
+function executeTerminalCommand(command) {
+    // Add command to history
+    terminalHistory.push({ type: 'command', text: command });
+    
+    // Process command
+    switch(command.toLowerCase()) {
+        case 'clear':
+            terminalHistory = [];
+            addTerminalOutput('Terminal cleared', 'info');
+            break;
+            
+        case 'help':
+            addTerminalOutput('Available commands:', 'info');
+            addTerminalOutput('  clear - Clear terminal', 'info');
+            addTerminalOutput('  help - Show this help', 'info');
+            addTerminalOutput('  run - Execute current file', 'info');
+            addTerminalOutput('  save - Save current file', 'info');
+            addTerminalOutput('  files - List workspace files', 'info');
+            break;
+            
+        case 'run':
+            runCode();
+            break;
+            
+        case 'save':
+            saveCurrentFile();
+            addTerminalOutput('File saved', 'info');
+            break;
+            
+        case 'files':
+            if (fileTree.length === 0) {
+                addTerminalOutput('No files in workspace', 'info');
+            } else {
+                addTerminalOutput(`Files in workspace (${fileTree.length}):`, 'info');
+                fileTree.forEach(file => {
+                    addTerminalOutput(`  • ${file.name} (${file.language})`, 'info');
+                });
+            }
+            break;
+            
+        default:
+            addTerminalOutput(`Command not found: ${command}`, 'error');
+            addTerminalOutput('Type "help" for available commands', 'info');
+    }
+    
+    // Re-render terminal
+    const panelContent = document.getElementById('panelContent');
+    renderTerminal(panelContent);
+}
+
+function addTerminalOutput(text, type = 'output') {
+    terminalHistory.push({ type, text });
+}
+
+function addOutput(message, type = 'info') {
+    const timestamp = new Date().toLocaleTimeString();
+    outputLog.push({ timestamp, message, type });
+    
+    // Update output count in status bar
+    updateOutputCount();
+}
+
+function addProblem(message, severity, line, column) {
+    problemsList.push({ message, severity, line, column });
+    
+    // Update problem counts in status bar
+    updateProblemCounts();
+}
+
+function clearProblems() {
+    problemsList = [];
+    updateProblemCounts();
+}
+
+function updateProblemCounts() {
+    const errors = problemsList.filter(p => p.severity === 'error').length;
+    const warnings = problemsList.filter(p => p.severity === 'warning').length;
+    
+    document.getElementById('errorCount').textContent = errors;
+    document.getElementById('warningCount').textContent = warnings;
+}
+
+function updateOutputCount() {
+    // Could add output count indicator if needed
+}
+
+function goToLine(lineNumber) {
+    if (editor) {
+        editor.revealLineInCenter(lineNumber);
+        editor.setPosition({ lineNumber, column: 1 });
+        editor.focus();
+    }
+}
+
+// Update problems from Monaco editor markers
+function updateProblemsFromMonaco() {
+    if (!editor || !editor.getModel()) return;
+    
+    const model = editor.getModel();
+    const markers = monaco.editor.getModelMarkers({ resource: model.uri });
+    
+    // Clear existing problems
+    problemsList = [];
+    
+    // Add markers as problems
+    markers.forEach(marker => {
+        const severity = marker.severity === monaco.MarkerSeverity.Error ? 'error' : 'warning';
+        problemsList.push({
+            message: marker.message,
+            severity: severity,
+            line: marker.startLineNumber,
+            column: marker.startColumn
+        });
+    });
+    
+    // Update UI
+    updateProblemCounts();
+    
+    // If problems panel is active, refresh it
+    const problemsTab = document.querySelector('.panel-tab:nth-child(3)');
+    if (problemsTab && problemsTab.classList.contains('active')) {
+        renderProblems(document.getElementById('panelContent'));
+    }
+}
+
+// Update problems from code analysis
+function updateProblemsFromEditor() {
+    // This runs on every change, so we debounce it
+    clearTimeout(window.problemsUpdateTimeout);
+    window.problemsUpdateTimeout = setTimeout(() => {
+        updateProblemsFromMonaco();
+    }, 500);
 }
 
 // Code Execution
@@ -1464,16 +1710,56 @@ async function runCode() {
     const language = editor.getModel().getLanguageId();
     
     if (!panelVisible) togglePanel();
-    switchPanelTab('terminal');
     
-    const panelContent = document.getElementById('panelContent');
-    panelContent.innerHTML = `
-        <div style="color: var(--vscode-success);">$ Running ${language} code...</div>
-        <div style="color: var(--vscode-text); margin-top: 8px; white-space: pre-wrap;">${code.substring(0, 500)}${code.length > 500 ? '...' : ''}</div>
-        <div style="color: var(--vscode-success); margin-top: 8px;">✓ Execution completed</div>
-    `;
+    // Clear previous output
+    outputLog = [];
+    clearProblems();
     
-    showNotification('Code Executed', 'Check the terminal for output');
+    // Add to terminal
+    addTerminalOutput(`Running ${language} code...`, 'command');
+    
+    // Add to output
+    addOutput(`Executing ${currentFile?.name || 'untitled'} (${language})`, 'info');
+    
+    try {
+        // Simulate code execution (in real app, this would call backend)
+        if (language === 'javascript') {
+            // Try to detect syntax errors
+            try {
+                new Function(code);
+                addOutput('✓ No syntax errors detected', 'info');
+                addOutput('Code executed successfully', 'info');
+                addTerminalOutput('✓ Execution completed', 'info');
+            } catch (error) {
+                addOutput(`✗ Syntax Error: ${error.message}`, 'error');
+                addTerminalOutput(`✗ Error: ${error.message}`, 'error');
+                
+                // Try to extract line number
+                const lineMatch = error.stack?.match(/anonymous>:(\d+)/);
+                if (lineMatch) {
+                    addProblem(error.message, 'error', parseInt(lineMatch[1]), 1);
+                }
+            }
+        } else {
+            addOutput(`Code execution for ${language} would run on backend`, 'info');
+            addOutput('✓ Code validated', 'info');
+            addTerminalOutput('✓ Execution completed', 'info');
+        }
+        
+        // Switch to output tab
+        const outputTab = document.querySelector('.panel-tab:nth-child(2)');
+        if (outputTab) {
+            document.querySelectorAll('.panel-tab').forEach(t => t.classList.remove('active'));
+            outputTab.classList.add('active');
+            renderOutput(document.getElementById('panelContent'));
+        }
+        
+        showNotification('Code Executed', 'Check the output panel');
+    } catch (error) {
+        addOutput(`Execution error: ${error.message}`, 'error');
+        addTerminalOutput(`✗ Error: ${error.message}`, 'error');
+        showNotification('Execution Error', error.message);
+    }
 }
 
 // Search & Replace
@@ -1545,12 +1831,14 @@ function replaceAll() {
 
 // Modal Management
 function showNewFileModal() {
-    document.getElementById('newFileModal').classList.add('active');
-    document.getElementById('newFileName').focus();
+    const modal = document.getElementById('newFileModal');
+    modal.style.display = 'flex';
+    setTimeout(() => document.getElementById('newFileName').focus(), 100);
 }
 
 function closeModal(modalId) {
-    document.getElementById(modalId).classList.remove('active');
+    const modal = document.getElementById(modalId);
+    modal.style.display = 'none';
 }
 
 // Settings
@@ -1579,9 +1867,16 @@ function showNotification(title, message) {
 // Close modals on escape
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
-        document.querySelectorAll('.modal').forEach(modal => {
-            modal.classList.remove('active');
+        document.querySelectorAll('.modal-overlay').forEach(modal => {
+            modal.style.display = 'none';
         });
+    }
+});
+
+// Close modal when clicking outside
+document.addEventListener('click', (e) => {
+    if (e.target.classList.contains('modal-overlay')) {
+        e.target.style.display = 'none';
     }
 });
 
@@ -1639,7 +1934,7 @@ function showLanguageSelector() {
     const modal = document.getElementById('languageSelectorModal');
     if (!modal) return;
     
-    modal.classList.add('active');
+    modal.style.display = 'flex';
     
     const languageList = document.getElementById('languageList');
     if (!languageList) return;

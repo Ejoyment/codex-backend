@@ -130,7 +130,7 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
     console.log(`\n🚀 CODEX INC Server running on port ${PORT}`);
     console.log(`📧 Email service: Resend API (Production Ready)`);
     console.log(`🌐 Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:5500'}`);
@@ -167,3 +167,115 @@ app.listen(PORT, () => {
     console.log(`  POST   /api/ai-pair/commit`);
     console.log(`  GET    /api/health\n`);
 });
+
+// Socket.IO for real-time collaboration
+const { Server } = require('socket.io');
+const collaborationService = require('./utils/collaborationService');
+const jwt = require('jsonwebtoken');
+
+const io = new Server(server, {
+    cors: {
+        origin: [
+            process.env.FRONTEND_URL || 'http://localhost:5500',
+            'https://codexincenterprise.online',
+            'http://codexincenterprise.online'
+        ],
+        credentials: true
+    }
+});
+
+// Socket.IO authentication middleware
+io.use((socket, next) => {
+    const token = socket.handshake.auth.token;
+    
+    if (!token) {
+        return next(new Error('Authentication error'));
+    }
+    
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        socket.userId = decoded.userId;
+        socket.user = decoded;
+        next();
+    } catch (error) {
+        next(new Error('Authentication error'));
+    }
+});
+
+// Collaboration namespace
+io.on('connection', (socket) => {
+    console.log(`User connected: ${socket.userId}`);
+    
+    // Join file collaboration
+    socket.on('collab:join', async ({ fileId, user }) => {
+        try {
+            socket.join(`file:${fileId}`);
+            collaborationService.addClient(fileId, socket);
+            
+            // Notify others
+            socket.to(`file:${fileId}`).emit('collab:user-joined', {
+                userId: socket.userId,
+                user
+            });
+            
+            console.log(`User ${socket.userId} joined file: ${fileId}`);
+        } catch (error) {
+            console.error('Join error:', error);
+            socket.emit('collab:error', { message: error.message });
+        }
+    });
+    
+    // Handle sync messages
+    socket.on('collab:sync', ({ fileId, message }) => {
+        try {
+            collaborationService.handleSyncMessage(fileId, socket, message);
+        } catch (error) {
+            console.error('Sync error:', error);
+            socket.emit('collab:error', { message: error.message });
+        }
+    });
+    
+    // Handle awareness messages (cursor position, selection)
+    socket.on('collab:awareness', ({ fileId, message }) => {
+        try {
+            collaborationService.handleAwarenessMessage(fileId, socket, message);
+        } catch (error) {
+            console.error('Awareness error:', error);
+            socket.emit('collab:error', { message: error.message });
+        }
+    });
+    
+    // Leave file collaboration
+    socket.on('collab:leave', ({ fileId }) => {
+        try {
+            socket.leave(`file:${fileId}`);
+            collaborationService.removeClient(fileId, socket);
+            
+            // Notify others
+            socket.to(`file:${fileId}`).emit('collab:user-left', {
+                userId: socket.userId
+            });
+            
+            console.log(`User ${socket.userId} left file: ${fileId}`);
+        } catch (error) {
+            console.error('Leave error:', error);
+        }
+    });
+    
+    // Disconnect
+    socket.on('disconnect', () => {
+        console.log(`User disconnected: ${socket.userId}`);
+        
+        // Clean up all file connections
+        const rooms = Array.from(socket.rooms);
+        rooms.forEach(room => {
+            if (room.startsWith('file:')) {
+                const fileId = room.replace('file:', '');
+                collaborationService.removeClient(fileId, socket);
+            }
+        });
+    });
+});
+
+console.log('✓ Socket.IO collaboration server initialized');
+
