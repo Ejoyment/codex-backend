@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Code Editor - BUCQ</title>
+    <link rel="icon" href="1000222021 1 (1).png">
+    <link rel="stylesheet" href="css/professional-ui.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" data-name="vs/editor/editor.main" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/editor/editor.main.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; height: 100vh; display: flex; flex-direction: column; }
+        
+        :root {
+            --vscode-bg: #1e1e1e;
+            --vscode-sidebar: #252526;
+            --vscode-titlebar: #323233;
+            --vscode-statusbar: #007acc;
+            --vscode-border: #3e3e42;
+            --vscode-text: #cccccc;
+            --vscode-text-dim: #858585;
+            --vscode-hover: #2a2d2e;
+            --vscode-active: #37373d;
+            --vscode-success: #16825d;
+            --vscode-error: #f48771;
+            --vscode-warning: #cca700;
+        }
+        
+        /* Layout Structure */
+        .main-container { display: flex; flex: 1; overflow: hidden; }
+        .editor-area { display: flex; flex-direction: column; flex: 1; overflow: hidden; }
+        #editor-container { flex: 1; overflow: hidden; }
+        
+        /* Activity Bar */
+        .activity-bar { width: 48px; background: var(--vscode-titlebar); border-right: 1px solid var(--vscode-border); display: flex; flex-direction: column; }
+        .activity-bar-item { width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; color: var(--vscode-text-dim); cursor: pointer; position: relative; transition: all 0.2s; }
+        .activity-bar-item:hover { color: var(--vscode-text); background: var(--vscode-hover); }
+        .activity-bar-item.active { color: var(--vscode-text); }
+        .activity-bar-item.active::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: var(--vscode-statusbar); }
+        
+        /* Sidebar */
+        .sidebar { width: 300px; background: var(--vscode-sidebar); border-right: 1px solid var(--vscode-border); display: flex; flex-direction: column; overflow: hidden; }
+        .sidebar.collapsed { width: 0; }
+        .sidebar-header { padding: 12px 16px; font-size: 11px; text-transform: uppercase; color: var(--vscode-text); font-weight: 600; letter-spacing: 0.5px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
+        .sidebar-content { flex: 1; overflow-y: auto; overflow-x: hidden; }
+        .sidebar-item { padding: 6px 16px; color: var(--vscode-text); cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 8px; transition: background 0.2s; }
+        .sidebar-item:hover { background: var(--vscode-hover); }
+        .sidebar-item.active { background: var(--vscode-active); }
+        .sidebar-item i { width: 16px; flex-shrink: 0; }
+        
+        /* Titlebar */
+        .titlebar { height: 35px; background: var(--vscode-titlebar); border-bottom: 1px solid var(--vscode-border); display: flex; align-items: center; padding: 0 8px; flex-shrink: 0; }
+        .titlebar-title { flex: 1; text-align: center; font-size: 12px; color: var(--vscode-text); }
+        .titlebar-controls { display: flex; gap: 4px; }
+        .titlebar-btn { width: 46px; height: 35px; display: flex; align-items: center; justify-content: center; color: var(--vscode-text); cursor: pointer; font-size: 10px; transition: background 0.2s; }
+        .titlebar-btn:hover { background: var(--vscode-hover); }
+        
+        /* Tabs */
+        .tabs-bar { height: 35px; background: var(--vscode-sidebar); border-bottom: 1px solid var(--vscode-border); display: flex; overflow-x: auto; flex-shrink: 0; }
+        .tabs-bar::-webkit-scrollbar { height: 0; }
+        .tab { height: 35px; padding: 0 12px; display: flex; align-items: center; gap: 8px; background: var(--vscode-bg); border-right: 1px solid var(--vscode-border); color: var(--vscode-text-dim); cursor: pointer; font-size: 13px; min-width: 120px; max-width: 200px; transition: all 0.2s; flex-shrink: 0; }
+        .tab:hover { background: var(--vscode-hover); color: var(--vscode-text); }
+        .tab.active { color: var(--vscode-text); background: var(--vscode-bg); border-bottom: 2px solid var(--vscode-statusbar); }
+        .tab.modified::after { content: '●'; margin-left: 4px; color: var(--vscode-text); }
+        .tab-close { opacity: 0; transition: opacity 0.2s; margin-left: auto; flex-shrink: 0; }
+        .tab:hover .tab-close { opacity: 1; }
+        .tab-icon { font-size: 14px; flex-shrink: 0; }
+        
+        /* Status Bar */
+        .statusbar { height: 22px; background: var(--vscode-statusbar); color: white; display: flex; align-items: center; padding: 0 12px; font-size: 12px; gap: 16px; flex-shrink: 0; }
+        .statusbar-item { display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 0 4px; transition: background 0.2s; white-space: nowrap; }
+        .statusbar-item:hover { background: rgba(255,255,255,0.1); }
+        .statusbar-right { margin-left: auto; display: flex; gap: 16px; }
+        
+        /* Panel */
+        .panel { height: 250px; background: var(--vscode-sidebar); border-top: 1px solid var(--vscode-border); display: flex; flex-direction: column; flex-shrink: 0; }
+        .panel.collapsed { height: 35px; }
+        .panel-tabs { height: 35px; background: var(--vscode-titlebar); display: flex; border-bottom: 1px solid var(--vscode-border); flex-shrink: 0; }
+        .panel-tab { padding: 0 12px; display: flex; align-items: center; color: var(--vscode-text-dim); cursor: pointer; font-size: 13px; gap: 6px; transition: all 0.2s; }
+        .panel-tab:hover { color: var(--vscode-text); }
+        .panel-tab.active { color: var(--vscode-text); border-bottom: 2px solid var(--vscode-statusbar); }
+        .panel-content { flex: 1; overflow-y: auto; padding: 8px; color: var(--vscode-text); font-size: 13px; font-family: 'Consolas', 'Courier New', monospace; line-height: 1.5; }
+        
+        /* File Tree */
+        .file-tree-item { padding: 4px 8px; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--vscode-text); transition: background 0.2s; }
+        .file-tree-item:hover { background: var(--vscode-hover); }
+        .file-tree-item.selected { background: var(--vscode-active); }
+        
+        /* Search Box */
+        .search-box { padding: 8px; background: var(--vscode-sidebar); flex-shrink: 0; }
+        .search-input { width: 100%; padding: 6px 8px; background: var(--vscode-bg); border: 1px solid var(--vscode-border); color: var(--vscode-text); font-size: 13px; border-radius: 2px; }
+        .search-input:focus { outline: none; border-color: var(--vscode-statusbar); }
+        
+        /* AI Chat */
+        .ai-chat-container { display: flex; flex-direction: column; height: 100%; }
+        .ai-messages { flex: 1; overflow-y: auto; padding: 8px; }
+        .ai-message { margin-bottom: 12px; }
+        .ai-message.user { margin-left: 20px; }
+        .ai-message.assistant { margin-right: 20px; }
+        .ai-message-content { padding: 8px; border-radius: 4px; font-size: 12px; line-height: 1.5; }
+        .ai-message.user .ai-message-content { background: var(--vscode-statusbar); color: white; }
+        .ai-message.assistant .ai-message-content { background: var(--vscode-hover); color: var(--vscode-text); border-left: 3px solid var(--vscode-success); }
+        
+        /* Agent Mode Styles */
+        .agent-message .ai-message-content { 
+            background: var(--vscode-bg); 
+            border-left: 3px solid var(--vscode-primary); 
+            font-family: 'Courier New', monospace;
+        }
+        .agent-iteration {
+            margin: 8px 0;
+            padding: 12px;
+            background: var(--vscode-bg);
+            border-left: 3px solid var(--vscode-primary);
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        .agent-iteration .iteration-header {
+            font-weight: 600;
+            color: var(--vscode-primary);
+            margin-bottom: 8px;
+        }
+        .agent-iteration .iteration-thought {
+            color: var(--vscode-text-dim);
+            margin-bottom: 4px;
+        }
+        .agent-iteration .iteration-action {
+            color: var(--vscode-success);
+            margin-bottom: 4px;
+        }
+        .agent-iteration .iteration-result {
+            font-weight: 500;
+        }
+        #agentModeToggle.active {
+            background: var(--vscode-primary);
+            color: white;
+            border-color: var(--vscode-primary);
+        }
+        
+        .ai-input-area { padding: 8px; border-top: 1px solid var(--vscode-border); flex-shrink: 0; }
+        
+        /* Scrollbars */
+        ::-webkit-scrollbar { width: 10px; height: 10px; }
+        ::-webkit-scrollbar-track { background: var(--vscode-bg); }
+        ::-webkit-scrollbar-thumb { background: #424242; border-radius: 5px; }
+        ::-webkit-scrollbar-thumb:hover { background: #4e4e4e; }
+        
+        /* Modals */
+        .modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: none; align-items: center; justify-content: center; z-index: 2000; }
+        .modal.active { display: flex; }
+        .modal-content { background: var(--vscode-sidebar); border: 1px solid var(--vscode-border); border-radius: 4px; padding: 20px; min-width: 400px; max-width: 600px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
+        .modal-header { font-size: 16px; font-weight: 600; color: var(--vscode-text); margin-bottom: 16px; }
+        .modal-body { margin-bottom: 16px; }
+        .modal-footer { display: flex; gap: 8px; justify-content: flex-end; }
+        .modal-input { width: 100%; padding: 8px; background: var(--vscode-bg); border: 1px solid var(--vscode-border); color: var(--vscode-text); font-size: 13px; border-radius: 2px; margin-bottom: 12px; }
+        .modal-input:focus { outline: none; border-color: var(--vscode-statusbar); }
+        .modal-select { width: 100%; padding: 8px; background: var(--vscode-bg); border: 1px solid var(--vscode-border); color: var(--vscode-text); font-size: 13px; border-radius: 2px; margin-bottom: 12px; }
+        .modal-label { display: block; color: var(--vscode-text); font-size: 13px; margin-bottom: 6px; }
+        
+        /* Buttons */
+        .btn { padding: 8px 16px; border: none; border-radius: 2px; cursor: pointer; font-size: 13px; transition: all 0.2s; }
+        .btn-primary { background: var(--vscode-statusbar); color: white; }
+        .btn-primary:hover { background: #005a9e; }
+        .btn-secondary { background: var(--vscode-hover); color: var(--vscode-text); }
+        .btn-secondary:hover { background: var(--vscode-active); }
+        .btn-success { background: var(--vscode-success); color: white; }
+        .btn-success:hover { background: #0e6b4a; }
+        
+        /* Notifications */
+        .notification { position: fixed; bottom: 30px; right: 20px; background: var(--vscode-sidebar); border: 1px solid var(--vscode-border); padding: 12px 16px; min-width: 300px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); z-index: 1000; animation: slideIn 0.3s; }
+        @keyframes slideIn { from { transform: translateX(400px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        .notification-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .notification-title { color: var(--vscode-text); font-weight: 600; font-size: 13px; }
+        .notification-close { color: var(--vscode-text-dim); cursor: pointer; }
+        .notification-body { color: var(--vscode-text-dim); font-size: 12px; }
+        
+        /* Loading */
+        .loading-spinner { border: 2px solid var(--vscode-border); border-top: 2px solid var(--vscode-statusbar); border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        /* Context Menu */
+        .context-menu { position: fixed; background: #3c3c3c; border: 1px solid var(--vscode-border); box-shadow: 0 2px 8px rgba(0,0,0,0.5); z-index: 1500; min-width: 200px; display: none; }
+        .context-menu.active { display: block; }
+        .context-menu-item { padding: 6px 12px; color: var(--vscode-text); cursor: pointer; font-size: 13px; display: flex; align-items: center; justify-content: space-between; transition: background 0.2s; }
+        .context-menu-item:hover { background: var(--vscode-statusbar); }
+        .context-menu-separator { height: 1px; background: var(--vscode-border); margin: 4px 0; }
+        .context-menu-shortcut { color: var(--vscode-text-dim); font-size: 11px; margin-left: 16px; }
+    </style>
+</head>
+<body style="background: var(--vscode-bg);">
+    <!-- Titlebar -->
+    <div class="titlebar">
+        <div style="display: flex; gap: 8px; align-items: center;">
+            <img src="1000222021 1 (1).png" style="width: 16px; height: 16px;">
+            <span style="font-size: 12px; color: var(--vscode-text); font-weight: 600;">BUCQ</span>
+        </div>
+        <div class="titlebar-title" id="titlebarTitle">Code Editor</div>
+        <div class="titlebar-controls">
+            <div class="titlebar-btn" onclick="window.location.href='dashboard.html'" title="Back to Dashboard">
+                <i class="fas fa-home"></i>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Container -->
+    <div class="main-container">
+        <!-- Activity Bar -->
+        <div class="activity-bar">
+            <div class="activity-bar-item active" onclick="switchSidebar('explorer')" title="Explorer (Ctrl+Shift+E)">
+                <i class="far fa-folder" style="font-size: 20px;"></i>
+            </div>
+            <div class="activity-bar-item" onclick="switchSidebar('search')" title="Search (Ctrl+Shift+F)">
+                <i class="fas fa-search" style="font-size: 18px;"></i>
+            </div>
+            <div class="activity-bar-item" onclick="switchSidebar('ai')" title="AI Assistant (Ctrl+Shift+A)">
+                <i class="fas fa-robot" style="font-size: 18px;"></i>
+            </div>
+            <div style="flex: 1;"></div>
+            <div class="activity-bar-item" onclick="openSettings()" title="Settings">
+                <i class="fas fa-cog" style="font-size: 18px;"></i>
+            </div>
+            <div class="activity-bar-item" onclick="togglePanel()" title="Toggle Panel (Ctrl+`)">
+                <i class="fas fa-terminal" style="font-size: 18px;"></i>
+            </div>
+        </div>
+
+        <!-- Sidebar -->
+        <div class="sidebar" id="sidebar">
+            <!-- Explorer View -->
+            <div id="explorerView" class="sidebar-view" style="display: flex; flex-direction: column; height: 100%;">
+                <div class="sidebar-header">
+                    EXPLORER
+                    <div style="display: flex; gap: 8px;">
+                        <i class="fas fa-file-plus" onclick="showNewFileModal()" title="New File" style="cursor: pointer;"></i>
+                        <i class="fas fa-sync" onclick="refreshFileTree()" title="Refresh" style="cursor: pointer;"></i>
+                    </div>
+                </div>
+                <div class="search-box">
+                    <input type="text" class="search-input" placeholder="Search files..." id="fileSearch" oninput="filterFiles()">
+                </div>
+                <div class="sidebar-content" id="fileTree">
+                    <div style="padding: 16px; color: var(--vscode-text-dim); font-size: 12px; text-align: center;">
+                        <div class="loading-spinner" style="margin: 0 auto 12px;"></div>
+                        <div>Loading workspace...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Search View -->
+            <div id="searchView" class="sidebar-view" style="display: none; flex-direction: column; height: 100%;">
+                <div class="sidebar-header">SEARCH</div>
+                <div class="search-box">
+                    <input type="text" class="search-input" placeholder="Search" id="searchInput" style="margin-bottom: 8px;" onkeyup="performSearch()">
+                    <input type="text" class="search-input" placeholder="Replace" id="replaceInput">
+                    <button class="btn btn-primary" onclick="replaceAll()" style="width: 100%; margin-top: 8px;">Replace All</button>
+                </div>
+                <div class="sidebar-content" id="searchResults">
+                    <div style="padding: 16px; color: var(--vscode-text-dim); font-size: 12px;">
+                        No results
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI Assistant View -->
+            <div id="aiView" class="sidebar-view" style="display: none; flex-direction: column; height: 100%;">
+                <div class="sidebar-header" style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>AI ASSISTANT</span>
+                    <button id="agentModeToggle" onclick="toggleAgentMode()" 
+                            style="font-size: 10px; padding: 4px 8px; background: var(--vscode-bg); border: 1px solid var(--vscode-border); color: var(--vscode-text); cursor: pointer; border-radius: 3px;">
+                        <i class="fas fa-robot"></i> Agent Mode: OFF
+                    </button>
+                </div>
+                
+                <!-- Agent Mode Indicator -->
+                <div id="agentModeIndicator" style="display: none; padding: 8px; background: var(--vscode-primary); color: white; font-size: 11px; text-align: center;">
+                    <i class="fas fa-robot"></i> Agent Mode Active - AI will autonomously execute actions
+                </div>
+                
+                <!-- Memory Panel -->
+                <div id="memoryPanel" class="ai-panel-section" style="padding: 8px; background: var(--vscode-bg); border-bottom: 1px solid var(--vscode-border); display: none;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <span style="font-size: 11px; font-weight: 600; color: var(--vscode-text);">
+                            <i class="fas fa-brain"></i> AGENT MEMORY
+                        </span>
+                        <button onclick="openMemoryManager()" style="font-size: 10px; padding: 2px 6px; background: var(--vscode-bg); border: 1px solid var(--vscode-border); color: var(--vscode-text); cursor: pointer; border-radius: 2px;">
+                            Manage
+                        </button>
+                    </div>
+                    <div id="memoryStats" style="display: flex; gap: 12px; font-size: 10px; color: var(--vscode-text-dim); margin-bottom: 8px;">
+                        <span>Patterns: <strong id="memoryCount" style="color: var(--vscode-text);">0</strong></span>
+                        <span>Backend: <strong id="memoryBackend" style="color: var(--vscode-text);">memory</strong></span>
+                    </div>
+                    <div id="retrievedMemories" style="max-height: 120px; overflow-y: auto; font-size: 11px;">
+                        <!-- Retrieved memories will appear here -->
+                    </div>
+                </div>
+                
+                <!-- Sandbox Panel -->
+                <div id="sandboxPanel" class="ai-panel-section" style="padding: 8px; background: var(--vscode-bg); border-bottom: 1px solid var(--vscode-border); display: none;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <span style="font-size: 11px; font-weight: 600; color: var(--vscode-text);">
+                            <i class="fas fa-play-circle"></i> CODE EXECUTION
+                        </span>
+                        <button onclick="openSandboxRunner()" style="font-size: 10px; padding: 2px 6px; background: var(--vscode-bg); border: 1px solid var(--vscode-border); color: var(--vscode-text); cursor: pointer; border-radius: 2px;">
+                            Run Code
+                        </button>
+                    </div>
+                    <div id="sandboxStats" style="display: flex; gap: 12px; font-size: 10px; color: var(--vscode-text-dim); margin-bottom: 8px;">
+                        <span>Backend: <strong id="sandboxBackend" style="color: var(--vscode-text);">vm2</strong></span>
+                        <span>Status: <strong id="sandboxStatus" style="color: var(--vscode-success);">Ready</strong></span>
+                    </div>
+                    <div id="executionOutput" style="max-height: 120px; overflow-y: auto; font-size: 11px; font-family: 'Consolas', monospace; background: #000; color: #0f0; padding: 6px; border-radius: 2px; display: none;">
+                        <!-- Execution output will appear here -->
+                    </div>
+                </div>
+                
+                <div class="ai-chat-container" style="flex: 1; display: flex; flex-direction: column;">
+                    <div class="ai-messages" id="aiMessages">
+                        <div style="text-align: center; padding: 40px 20px; color: var(--vscode-text-dim);">
+                            <i class="fas fa-robot" style="font-size: 48px; opacity: 0.3; margin-bottom: 16px;"></i>
+                            <div style="font-size: 14px; margin-bottom: 8px; font-weight: 600;">AI Coding Agent</div>
+                            <div style="font-size: 12px; line-height: 1.6;">
+                                I can help you:<br>
+                                • Create & modify files<br>
+                                • Fix bugs & optimize code<br>
+                                • Generate tests & docs<br>
+                                • Explain & refactor code<br>
+                                • Learn from experience<br>
+                                • Execute code safely
+                            </div>
+                        </div>
+                    </div>
+                    <div id="typingIndicator" style="display: none; padding: 8px; background: var(--vscode-bg); margin: 0 8px;">
+                        <div style="color: var(--vscode-statusbar); font-size: 12px;">
+                            <i class="fas fa-circle-notch fa-spin"></i> AI is thinking...
+                        </div>
+                    </div>
+                    <div class="ai-input-area">
+                        <div style="margin-bottom: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px;">
+                            <button class="btn btn-secondary" onclick="aiExplainCode()" style="font-size: 10px; padding: 6px;" title="Explain selected code">
+                                <i class="fas fa-lightbulb"></i> Explain
+                            </button>
+                            <button class="btn btn-secondary" onclick="aiOptimizeCode()" style="font-size: 10px; padding: 6px;" title="Optimize selected code">
+                                <i class="fas fa-rocket"></i> Optimize
+                            </button>
+                            <button class="btn btn-secondary" onclick="aiFixBugs()" style="font-size: 10px; padding: 6px;" title="Find and fix bugs">
+                                <i class="fas fa-bug"></i> Fix Bugs
+                            </button>
+                            <button class="btn btn-secondary" onclick="aiRefactorCode()" style="font-size: 10px; padding: 6px;" title="Refactor code">
+                                <i class="fas fa-code"></i> Refactor
+                            </button>
+                            <button class="btn btn-secondary" onclick="aiAddFeature()" style="font-size: 10px; padding: 6px;" title="Add new feature">
+                                <i class="fas fa-plus"></i> Add Feature
+                            </button>
+                            <button class="btn btn-secondary" onclick="aiGenerateTests()" style="font-size: 10px; padding: 6px;" title="Generate unit tests">
+                                <i class="fas fa-vial"></i> Tests
+                            </button>
+                        </div>
+                        <textarea class="modal-input" placeholder="Ask AI to create files, modify code, or explain anything..." id="aiInput" rows="3" style="resize: vertical; margin-bottom: 8px;"></textarea>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 11px; color: var(--vscode-text-dim);">
+                            <span id="aiCharCount">0/2000</span>
+                            <span id="aiUsageCount">AI: 0/10 today</span>
+                        </div>
+                        <button class="btn btn-success" onclick="sendAIMessage()" style="width: 100%;">
+                            <i class="fas fa-paper-plane"></i> Send (Ctrl+Enter)
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Editor Area -->
+        <div class="editor-area">
+            <!-- Tabs Bar -->
+            <div class="tabs-bar" id="tabsBar">
+                <!-- Tabs will be added dynamically -->
+            </div>
+
+            <!-- Editor Container -->
+            <div id="editor-container"></div>
+
+            <!-- Bottom Panel -->
+            <div class="panel" id="panel">
+                <div class="panel-tabs">
+                    <div class="panel-tab active" onclick="switchPanelTab('terminal')">
+                        <i class="fas fa-terminal"></i> TERMINAL
+                    </div>
+                    <div class="panel-tab" onclick="switchPanelTab('output')">
+                        <i class="fas fa-list"></i> OUTPUT
+                    </div>
+                    <div class="panel-tab" onclick="switchPanelTab('problems')">
+                        <i class="fas fa-exclamation-triangle"></i> PROBLEMS
+                    </div>
+                    <div style="margin-left: auto; padding: 0 12px; display: flex; align-items: center; gap: 8px;">
+                        <i class="fas fa-chevron-down" id="panelToggleIcon" onclick="togglePanel()" style="cursor: pointer; color: var(--vscode-text-dim);" title="Minimize Panel"></i>
+                    </div>
+                </div>
+                <div class="panel-content" id="panelContent">
+                    <div style="color: var(--vscode-success);">$ BUCQ Code Editor Terminal</div>
+                    <div style="color: var(--vscode-text-dim);">Ready to execute code...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Status Bar -->
+    <div class="statusbar">
+        <div class="statusbar-item">
+            <i class="fas fa-code-branch"></i>
+            <span id="gitBranch">main</span>
+        </div>
+        <div class="statusbar-item">
+            <i class="fas fa-exclamation-circle"></i>
+            <span id="errorCount">0</span>
+        </div>
+        <div class="statusbar-item">
+            <i class="fas fa-exclamation-triangle"></i>
+            <span id="warningCount">0</span>
+        </div>
+        <div class="statusbar-item" onclick="toggleAutoSave()">
+            <i class="fas fa-save"></i>
+            <span id="autoSaveStatus">Auto Save: On</span>
+        </div>
+        <div class="statusbar-right">
+            <div class="statusbar-item" onclick="showLanguageSelector()">
+                <span id="languageStatus">JavaScript</span>
+            </div>
+            <div class="statusbar-item">
+                <span>UTF-8</span>
+            </div>
+            <div class="statusbar-item">
+                <span>LF</span>
+            </div>
+            <div class="statusbar-item">
+                <span>Ln <span id="lineNumber">1</span>, Col <span id="columnNumber">1</span></span>
+            </div>
+            <div class="statusbar-item">
+                <span>Spaces: 4</span>
+            </div>
+            <div class="statusbar-item" id="subscriptionStatus">
+                <i class="fas fa-crown"></i>
+                <span>Loading...</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <!-- New File Modal -->
+    <div class="modal" id="newFileModal">
+        <div class="modal-content">
+            <div class="modal-header">Create New File</div>
+            <div class="modal-body">
+                <label class="modal-label">File Name</label>
+                <input type="text" class="modal-input" id="newFileName" placeholder="example.js">
+                <label class="modal-label">Language</label>
+                <select class="modal-select" id="newFileLanguage">
+                    <option value="javascript">JavaScript</option>
+                    <option value="typescript">TypeScript</option>
+                    <option value="python">Python</option>
+                    <option value="java">Java</option>
+                    <option value="html">HTML</option>
+                    <option value="css">CSS</option>
+                </select>
+                <label class="modal-label">Path</label>
+                <input type="text" class="modal-input" id="newFilePath" placeholder="/" value="/">
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('newFileModal')">Cancel</button>
+                <button class="btn btn-primary" onclick="createNewFile()">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- New Folder Modal -->
+    <div class="modal" id="newFolderModal">
+        <div class="modal-content">
+            <div class="modal-header">Create New Folder</div>
+            <div class="modal-body">
+                <label class="modal-label">Folder Name</label>
+                <input type="text" class="modal-input" id="newFolderName" placeholder="my-folder">
+                <label class="modal-label">Path</label>
+                <input type="text" class="modal-input" id="newFolderPath" placeholder="/" value="/">
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('newFolderModal')">Cancel</button>
+                <button class="btn btn-primary" onclick="createNewFolder()">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Language Selector Modal -->
+    <div class="modal" id="languageSelectorModal">
+        <div class="modal-content">
+            <div class="modal-header">Select Language</div>
+            <div class="modal-body">
+                <div class="search-box">
+                    <input type="text" class="search-input" placeholder="Search languages..." id="languageSearchInput" oninput="filterLanguages()">
+                </div>
+                <div id="languageList" style="max-height: 400px; overflow-y: auto; margin-top: 12px;">
+                    <!-- Languages will be populated here -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('languageSelectorModal')">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Context Menu -->
+    <div class="context-menu" id="contextMenu">
+        <div class="context-menu-item" onclick="contextMenuAction('open')">
+            <span><i class="fas fa-folder-open"></i> Open</span>
+            <span class="context-menu-shortcut">Enter</span>
+        </div>
+        <div class="context-menu-item" onclick="contextMenuAction('rename')">
+            <span><i class="fas fa-edit"></i> Rename</span>
+            <span class="context-menu-shortcut">F2</span>
+        </div>
+        <div class="context-menu-separator"></div>
+        <div class="context-menu-item" onclick="contextMenuAction('delete')">
+            <span><i class="fas fa-trash"></i> Delete</span>
+            <span class="context-menu-shortcut">Del</span>
+        </div>
+        <div class="context-menu-separator"></div>
+        <div class="context-menu-item" onclick="contextMenuAction('copy')">
+            <span><i class="fas fa-copy"></i> Copy</span>
+            <span class="context-menu-shortcut">Ctrl+C</span>
+        </div>
+        <div class="context-menu-item" onclick="contextMenuAction('paste')">
+            <span><i class="fas fa-paste"></i> Paste</span>
+            <span class="context-menu-shortcut">Ctrl+V</span>
+        </div>
+    </div>
+
+    <!-- Memory Manager Modal -->
+    <div id="memoryManagerModal" class="modal-overlay" style="display: none;">
+        <div class="modal-content" style="max-width: 800px; max-height: 80vh;">
+            <div class="modal-header">
+                <h2><i class="fas fa-brain"></i> Memory Manager</h2>
+                <button class="modal-close" onclick="closeMemoryManager()">&times;</button>
+            </div>
+            <div class="modal-body" style="max-height: 60vh; overflow-y: auto;">
+                <div style="margin-bottom: 16px; display: flex; gap: 8px;">
+                    <input type="text" id="memorySearchInput" placeholder="Search memories..." 
+                           style="flex: 1; padding: 8px; background: var(--vscode-bg); border: 1px solid var(--vscode-border); color: var(--vscode-text); border-radius: 4px;">
+                    <button class="btn btn-secondary" onclick="searchMemories()">
+                        <i class="fas fa-search"></i> Search
+                    </button>
+                    <button class="btn btn-danger" onclick="clearAllMemories()">
+                        <i class="fas fa-trash"></i> Clear All
+                    </button>
+                </div>
+                <div id="memoryList" style="display: flex; flex-direction: column; gap: 8px;">
+                    <!-- Memory items will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sandbox Runner Modal -->
+    <div id="sandboxRunnerModal" class="modal-overlay" style="display: none;">
+        <div class="modal-content" style="max-width: 900px; max-height: 85vh;">
+            <div class="modal-header">
+                <h2><i class="fas fa-play-circle"></i> Code Sandbox</h2>
+                <button class="modal-close" onclick="closeSandboxRunner()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="margin-bottom: 12px; display: flex; gap: 8px; align-items: center;">
+                    <select id="sandboxLanguage" style="padding: 6px; background: var(--vscode-bg); border: 1px solid var(--vscode-border); color: var(--vscode-text); border-radius: 4px;">
+                        <option value="javascript">JavaScript</option>
+                        <option value="python">Python</option>
+                        <option value="java">Java</option>
+                        <option value="go">Go</option>
+                        <option value="rust">Rust</option>
+                        <option value="ruby">Ruby</option>
+                        <option value="php">PHP</option>
+                    </select>
+                    <input type="number" id="sandboxTimeout" value="5000" min="1000" max="30000" step="1000"
+                           style="width: 100px; padding: 6px; background: var(--vscode-bg); border: 1px solid var(--vscode-border); color: var(--vscode-text); border-radius: 4px;"
+                           placeholder="Timeout (ms)">
+                    <button class="btn btn-success" onclick="executeSandboxCode()">
+                        <i class="fas fa-play"></i> Run Code
+                    </button>
+                    <button class="btn btn-secondary" onclick="clearSandboxOutput()">
+                        <i class="fas fa-eraser"></i> Clear
+                    </button>
+                </div>
+                <div style="margin-bottom: 12px;">
+                    <textarea id="sandboxCodeInput" rows="12" 
+                              style="width: 100%; padding: 8px; background: #000; color: #0f0; border: 1px solid var(--vscode-border); font-family: 'Consolas', monospace; font-size: 13px; border-radius: 4px;"
+                              placeholder="// Enter code to execute safely...&#10;console.log('Hello from sandbox!');">
+                    </textarea>
+                </div>
+                <div style="margin-bottom: 8px; font-weight: 600; color: var(--vscode-text);">
+                    <i class="fas fa-terminal"></i> Output:
+                </div>
+                <div id="sandboxOutputDisplay" 
+                     style="padding: 12px; background: #000; color: #0f0; border: 1px solid var(--vscode-border); font-family: 'Consolas', monospace; font-size: 12px; min-height: 150px; max-height: 300px; overflow-y: auto; border-radius: 4px; white-space: pre-wrap;">
+                    Ready to execute code...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/tier-restrictions.js"></script>
+    <script src="js/editor-new.js"></script>
+</body>
+</html>
