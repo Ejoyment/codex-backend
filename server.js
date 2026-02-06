@@ -88,10 +88,11 @@ const discordApiRoutes = require('./routes/discord-api');
 const slackApiRoutes = require('./routes/slack-api');
 const notionApiRoutes = require('./routes/notion-api');
 const figmaApiRoutes = require('./routes/figma-api');
-const lspRoutes = require('./routes/lsp');
-const vfsRoutes = require('./routes/vfs');
-const terminalRoutes = require('./routes/terminal');
-const gitRoutes = require('./routes/git');
+// Phase 5 routes - temporarily disabled for deployment
+// const lspRoutes = require('./routes/lsp');
+// const vfsRoutes = require('./routes/vfs');
+// const terminalRoutes = require('./routes/terminal');
+// const gitRoutes = require('./routes/git');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/otp', otpRoutes);
@@ -113,10 +114,11 @@ app.use('/api/discord', discordApiRoutes);
 app.use('/api/slack', slackApiRoutes);
 app.use('/api/notion', notionApiRoutes);
 app.use('/api/figma', figmaApiRoutes);
-app.use('/api/lsp', lspRoutes);
-app.use('/api/vfs', vfsRoutes);
-app.use('/api/terminal', terminalRoutes);
-app.use('/api/git', gitRoutes);
+// Phase 5 routes - temporarily disabled for deployment
+// app.use('/api/lsp', lspRoutes);
+// app.use('/api/vfs', vfsRoutes);
+// app.use('/api/terminal', terminalRoutes);
+// app.use('/api/git', gitRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
