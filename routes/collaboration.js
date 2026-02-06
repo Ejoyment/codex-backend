@@ -14,7 +14,7 @@ const CodeFile = require('../models/CodeFile');
  * GET /api/collaboration/file/:fileId/users
  * Get active users editing a file
  */
-router.get('/file/:fileId/users', auth, permissionMatrix.requirePermission('collab', 'join'), async (req, res) => {
+router.get('/file/:fileId/users', auth, async (req, res) => {
     try {
         const { fileId } = req.params;
         
@@ -41,7 +41,7 @@ router.get('/file/:fileId/users', auth, permissionMatrix.requirePermission('coll
  * POST /api/collaboration/file/:fileId/join
  * Join a collaboration session
  */
-router.post('/file/:fileId/join', auth, permissionMatrix.requirePermission('collab', 'join'), async (req, res) => {
+router.post('/file/:fileId/join', auth, async (req, res) => {
     try {
         const { fileId } = req.params;
         

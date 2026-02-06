@@ -294,7 +294,7 @@ class PermissionMatrix {
   requirePermission(resource, action) {
     return async (req, res, next) => {
       try {
-        const userId = req.user?.userId;
+        const userId = req.user?._id || req.user?.userId;
         
         if (!userId) {
           return res.status(401).json({
@@ -338,7 +338,7 @@ class PermissionMatrix {
   requireLimit(limitType) {
     return async (req, res, next) => {
       try {
-        const userId = req.user?.userId;
+        const userId = req.user?._id || req.user?.userId;
         
         if (!userId) {
           return res.status(401).json({
