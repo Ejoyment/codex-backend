@@ -5,7 +5,7 @@
 
 const express = require('express');
 const router = express.Router();
-const auth = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 const CodeFile = require('../models/CodeFile');
 
 // Collaboration service will be implemented when Yjs is added
@@ -18,7 +18,7 @@ const collaborationService = {
  * GET /api/collaboration/file/:fileId/users
  * Get active users editing a file
  */
-router.get('/file/:fileId/users', auth, async (req, res) => {
+router.get('/file/:fileId/users', authenticateToken, async (req, res) => {
     try {
         const { fileId } = req.params;
         
@@ -45,7 +45,7 @@ router.get('/file/:fileId/users', auth, async (req, res) => {
  * POST /api/collaboration/file/:fileId/join
  * Join a collaboration session
  */
-router.post('/file/:fileId/join', auth, async (req, res) => {
+router.post('/file/:fileId/join', authenticateToken, async (req, res) => {
     try {
         const { fileId } = req.params;
         
@@ -73,7 +73,7 @@ router.post('/file/:fileId/join', auth, async (req, res) => {
  * POST /api/collaboration/file/:fileId/leave
  * Leave a collaboration session
  */
-router.post('/file/:fileId/leave', auth, async (req, res) => {
+router.post('/file/:fileId/leave', authenticateToken, async (req, res) => {
     try {
         const { fileId } = req.params;
         
