@@ -12,12 +12,34 @@ const aiService = require('./aiService');
 const AgentSession = require('../models/AIPairSession');
 const ChatMessage = require('../models/ChatMessage');
 const vectorMemory = require('./vectorMemory');
+const HITLGates = require('./hitlGates');
 
 class AgentOrchestrator {
-    constructor() {
+    constructor(io = null) {
         this.maxIterations = 10; // Prevent infinite loops
+        this.maxRetries = 3; // Max retries per action
         this.tools = this.initializeTools();
         this.vectorMemory = vectorMemory;
+        this.hitlGates = new HITLGates(io);
+        
+        // Tool alternatives for self-correction
+        this.toolAlternatives = {
+            'create_file': 'update_file',
+            'delete_file': 'update_file',
+            'run_command': 'execute_code'
+        };
+        
+        // Start cleanup interval for expired confirmations
+        setInterval(() => {
+            this.hitlGates.clearExpiredConfirmations();
+        }, 30000); // Every 30 seconds
+    }
+    
+    /**
+     * Set Socket.io instance for HITL communication
+     */
+    setSocketIO(io) {
+        this.hitlGates.io = io;
     }
 
     /**
@@ -503,9 +525,16 @@ class AgentOrchestrator {
     }
 
     /**
-     * ACTION - Execute the chosen tool
+     * ACTION - Execute the chosen tool with retry and self-correction
      */
     async act(action, context) {
+        return await this.executeWithRetry(action, context);
+    }
+
+    /**
+     * Execute action with retry logic and self-correction
+     */
+    async executeWithRetry(action, context, attempt = 1) {
         const tool = this.tools[action.tool];
         
         if (!tool) {
@@ -516,15 +545,166 @@ class AgentOrchestrator {
         }
 
         try {
-            console.log(`Executing tool: ${action.tool}`, action.parameters);
+            // Check if HITL confirmation is required
+            const userTier = context.userTier || 'freebie';
+            
+            if (this.hitlGates.requiresConfirmation(action.tool, action.parameters, userTier)) {
+                console.log(`🔒 HITL Gate: Requesting confirmation for ${action.tool}`);
+                
+                try {
+                    const confirmation = await this.hitlGates.requestConfirmation(
+                        action.tool,
+                        action.parameters,
+                        context.userId,
+                        context
+                    );
+                    
+                    if (!confirmation.approved) {
+                        return {
+                            success: false,
+                            error: 'Action rejected by user',
+                            userRejected: true
+                        };
+                    }
+                    
+                    console.log(`✓ User approved ${action.tool}`);
+                } catch (error) {
+                    return {
+                        success: false,
+                        error: error.message,
+                        confirmationFailed: true
+                    };
+                }
+            }
+            
+            console.log(`Executing tool: ${action.tool} (attempt ${attempt}/${this.maxRetries})`, action.parameters);
             const result = await tool.execute(action.parameters, context);
+            
+            if (result.success) {
+                return result;
+            }
+            
+            // If failed and retries available, analyze error and retry
+            if (attempt < this.maxRetries) {
+                console.log(`⚠️ Action failed, analyzing error for retry...`);
+                const correction = await this.analyzeError(result.error || result.message, action, context);
+                
+                if (correction.shouldRetry) {
+                    console.log(`🔄 Retry ${attempt + 1}: ${correction.reasoning}`);
+                    
+                    // Use corrected parameters or alternative tool
+                    const nextAction = {
+                        tool: correction.alternativeTool || action.tool,
+                        parameters: correction.adjustedParameters || action.parameters
+                    };
+                    
+                    return await this.executeWithRetry(nextAction, context, attempt + 1);
+                }
+            }
+            
             return result;
+            
         } catch (error) {
+            console.error(`❌ Tool execution error:`, error.message);
+            
+            // Try alternative tool if available and retries remain
+            if (attempt < this.maxRetries) {
+                const alternativeTool = this.getAlternativeTool(action.tool);
+                
+                if (alternativeTool) {
+                    console.log(`🔄 Switching to alternative tool: ${alternativeTool}`);
+                    
+                    const nextAction = {
+                        tool: alternativeTool,
+                        parameters: this.adaptParametersForTool(action.parameters, alternativeTool)
+                    };
+                    
+                    return await this.executeWithRetry(nextAction, context, attempt + 1);
+                }
+            }
+            
             return {
                 success: false,
-                error: error.message
+                error: error.message,
+                attempts: attempt
             };
         }
+    }
+
+    /**
+     * Analyze error and suggest corrections using AI
+     */
+    async analyzeError(error, action, context) {
+        try {
+            const prompt = `Analyze this error and suggest a correction:
+
+**Tool**: ${action.tool}
+**Parameters**: ${JSON.stringify(action.parameters, null, 2)}
+**Error**: ${error}
+
+**Available Tools**: ${Object.keys(this.tools).join(', ')}
+
+Analyze the error and respond with JSON:
+{
+  "shouldRetry": true/false,
+  "reasoning": "explanation of the error and correction strategy",
+  "adjustedParameters": { "corrected": "parameters" },
+  "alternativeTool": "alternative_tool_name or null"
+}
+
+RESPOND WITH JSON ONLY.`;
+
+            const response = await aiService.chat([
+                { role: 'user', content: prompt }
+            ], {
+                agentMode: true,
+                instructions: 'Analyze error and suggest correction. JSON only.'
+            });
+
+            // Parse response
+            let cleaned = response.content.trim();
+            if (cleaned.startsWith('```')) {
+                cleaned = cleaned.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+            }
+            
+            const correction = JSON.parse(cleaned);
+            return correction;
+            
+        } catch (error) {
+            console.error('Failed to analyze error:', error);
+            return {
+                shouldRetry: false,
+                reasoning: 'Could not analyze error',
+                adjustedParameters: null,
+                alternativeTool: null
+            };
+        }
+    }
+
+    /**
+     * Get alternative tool for self-correction
+     */
+    getAlternativeTool(toolName) {
+        return this.toolAlternatives[toolName] || null;
+    }
+
+    /**
+     * Adapt parameters when switching to alternative tool
+     */
+    adaptParametersForTool(params, newTool) {
+        // Smart parameter adaptation based on tool
+        const adapted = { ...params };
+        
+        // Example adaptations
+        if (newTool === 'update_file' && params.name) {
+            // Converting from create_file to update_file
+            // Need to find fileId from name
+            adapted.content = params.content;
+            delete adapted.name;
+            delete adapted.language;
+        }
+        
+        return adapted;
     }
 
     /**
