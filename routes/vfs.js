@@ -8,12 +8,13 @@ const router = express.Router();
 const vfs = require('../utils/virtualFileSystem');
 const codeSearchService = require('../utils/codeSearchService');
 const auth = require('../middleware/auth');
+const permissionMatrix = require('../middleware/permissionMatrix');
 
 /**
  * Get file tree for workspace
  * GET /api/vfs/tree/:workspaceId
  */
-router.get('/tree/:workspaceId', auth, async (req, res) => {
+router.get('/tree/:workspaceId', auth, permissionMatrix.requirePermission('vfs', 'read'), async (req, res) => {
   try {
     const { workspaceId } = req.params;
     
@@ -33,7 +34,7 @@ router.get('/tree/:workspaceId', auth, async (req, res) => {
  * Read file content (lazy loaded)
  * GET /api/vfs/file/:fileId
  */
-router.get('/file/:fileId', auth, async (req, res) => {
+router.get('/file/:fileId', auth, permissionMatrix.requirePermission('vfs', 'read'), async (req, res) => {
   try {
     const { fileId } = req.params;
     const { workspaceId } = req.query;
@@ -166,7 +167,7 @@ router.get('/search-name', auth, async (req, res) => {
  * Full-text search in file content
  * GET /api/vfs/search
  */
-router.get('/search', auth, async (req, res) => {
+router.get('/search', auth, permissionMatrix.requirePermission('vfs', 'search'), async (req, res) => {
   try {
     const { query, workspaceId, limit, offset } = req.query;
 
@@ -239,7 +240,7 @@ router.get('/stats/:workspaceId', auth, async (req, res) => {
  * Rebuild file index
  * POST /api/vfs/rebuild-index/:workspaceId
  */
-router.post('/rebuild-index/:workspaceId', auth, async (req, res) => {
+router.post('/rebuild-index/:workspaceId', auth, permissionMatrix.requirePermission('vfs', 'index'), async (req, res) => {
   try {
     const { workspaceId } = req.params;
     

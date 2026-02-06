@@ -6,6 +6,7 @@
 const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
+const permissionMatrix = require('../middleware/permissionMatrix');
 const collaborationService = require('../utils/collaborationService');
 const CodeFile = require('../models/CodeFile');
 
@@ -13,7 +14,7 @@ const CodeFile = require('../models/CodeFile');
  * GET /api/collaboration/file/:fileId/users
  * Get active users editing a file
  */
-router.get('/file/:fileId/users', auth, async (req, res) => {
+router.get('/file/:fileId/users', auth, permissionMatrix.requirePermission('collab', 'join'), async (req, res) => {
     try {
         const { fileId } = req.params;
         
@@ -40,7 +41,7 @@ router.get('/file/:fileId/users', auth, async (req, res) => {
  * POST /api/collaboration/file/:fileId/join
  * Join a collaboration session
  */
-router.post('/file/:fileId/join', auth, async (req, res) => {
+router.post('/file/:fileId/join', auth, permissionMatrix.requirePermission('collab', 'join'), async (req, res) => {
     try {
         const { fileId } = req.params;
         

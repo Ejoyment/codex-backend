@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const gitService = require('../utils/gitService');
 const auth = require('../middleware/auth');
+const permissionMatrix = require('../middleware/permissionMatrix');
 
 /**
  * Initialize repository
@@ -32,7 +33,7 @@ router.post('/init', auth, async (req, res) => {
  * Get repository status
  * GET /api/git/status/:workspaceId
  */
-router.get('/status/:workspaceId', auth, async (req, res) => {
+router.get('/status/:workspaceId', auth, permissionMatrix.requirePermission('git', 'read'), async (req, res) => {
   try {
     const { workspaceId } = req.params;
     const result = await gitService.status(workspaceId);
@@ -104,7 +105,7 @@ router.post('/reset', auth, async (req, res) => {
  * Commit changes
  * POST /api/git/commit
  */
-router.post('/commit', auth, async (req, res) => {
+router.post('/commit', auth, permissionMatrix.requirePermission('git', 'commit'), async (req, res) => {
   try {
     const { workspaceId, message, files } = req.body;
 
@@ -159,7 +160,7 @@ router.get('/branches/:workspaceId', auth, async (req, res) => {
  * Create branch
  * POST /api/git/branch
  */
-router.post('/branch', auth, async (req, res) => {
+router.post('/branch', auth, permissionMatrix.requirePermission('git', 'branch'), async (req, res) => {
   try {
     const { workspaceId, branchName } = req.body;
 
@@ -219,7 +220,7 @@ router.post('/merge', auth, async (req, res) => {
  * Pull from remote
  * POST /api/git/pull
  */
-router.post('/pull', auth, async (req, res) => {
+router.post('/pull', auth, permissionMatrix.requirePermission('git', 'pull'), async (req, res) => {
   try {
     const { workspaceId, remote, branch } = req.body;
 
@@ -239,7 +240,7 @@ router.post('/pull', auth, async (req, res) => {
  * Push to remote
  * POST /api/git/push
  */
-router.post('/push', auth, async (req, res) => {
+router.post('/push', auth, permissionMatrix.requirePermission('git', 'push'), async (req, res) => {
   try {
     const { workspaceId, remote, branch } = req.body;
 
