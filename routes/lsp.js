@@ -6,14 +6,14 @@
 const express = require('express');
 const router = express.Router();
 const lspManager = require('../utils/lspManager');
-const auth = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 const permissionMatrix = require('../middleware/permissionMatrix');
 
 /**
  * Start LSP server for a language
  * POST /api/lsp/start
  */
-router.post('/start', auth, async (req, res) => {
+router.post('/start', authenticateToken, async (req, res) => {
   try {
     const { language } = req.body;
     const userId = req.user.userId;
@@ -39,7 +39,7 @@ router.post('/start', auth, async (req, res) => {
  * Get completions
  * POST /api/lsp/completions
  */
-router.post('/completions', auth, permissionMatrix.requirePermission('lsp', 'completions'), async (req, res) => {
+router.post('/completions', authenticateToken, permissionMatrix.requirePermission('lsp', 'completions'), async (req, res) => {
   try {
     const { documentUri, position, content, language } = req.body;
     const userId = req.user.userId;
@@ -67,7 +67,7 @@ router.post('/completions', auth, permissionMatrix.requirePermission('lsp', 'com
  * Get hover information
  * POST /api/lsp/hover
  */
-router.post('/hover', auth, permissionMatrix.requirePermission('lsp', 'hover'), async (req, res) => {
+router.post('/hover', authenticateToken, permissionMatrix.requirePermission('lsp', 'hover'), async (req, res) => {
   try {
     const { documentUri, position, content, language } = req.body;
     const userId = req.user.userId;
@@ -95,7 +95,7 @@ router.post('/hover', auth, permissionMatrix.requirePermission('lsp', 'hover'), 
  * Get definition
  * POST /api/lsp/definition
  */
-router.post('/definition', auth, permissionMatrix.requirePermission('lsp', 'definition'), async (req, res) => {
+router.post('/definition', authenticateToken, permissionMatrix.requirePermission('lsp', 'definition'), async (req, res) => {
   try {
     const { documentUri, position, content, language } = req.body;
     const userId = req.user.userId;
@@ -123,7 +123,7 @@ router.post('/definition', auth, permissionMatrix.requirePermission('lsp', 'defi
  * Get references
  * POST /api/lsp/references
  */
-router.post('/references', auth, permissionMatrix.requirePermission('lsp', 'references'), async (req, res) => {
+router.post('/references', authenticateToken, permissionMatrix.requirePermission('lsp', 'references'), async (req, res) => {
   try {
     const { documentUri, position, content, language } = req.body;
     const userId = req.user.userId;
@@ -151,7 +151,7 @@ router.post('/references', auth, permissionMatrix.requirePermission('lsp', 'refe
  * Notify document change
  * POST /api/lsp/change
  */
-router.post('/change', auth, async (req, res) => {
+router.post('/change', authenticateToken, async (req, res) => {
   try {
     const { documentUri, content, language } = req.body;
     const userId = req.user.userId;
@@ -172,7 +172,7 @@ router.post('/change', auth, async (req, res) => {
  * Close document
  * POST /api/lsp/close
  */
-router.post('/close', auth, async (req, res) => {
+router.post('/close', authenticateToken, async (req, res) => {
   try {
     const { documentUri, language } = req.body;
     const userId = req.user.userId;
@@ -193,7 +193,7 @@ router.post('/close', auth, async (req, res) => {
  * Stop LSP server
  * POST /api/lsp/stop
  */
-router.post('/stop', auth, async (req, res) => {
+router.post('/stop', authenticateToken, async (req, res) => {
   try {
     const { language } = req.body;
     const userId = req.user.userId;
@@ -219,7 +219,7 @@ router.post('/stop', auth, async (req, res) => {
  * Get language from filename
  * GET /api/lsp/language/:filename
  */
-router.get('/language/:filename', auth, (req, res) => {
+router.get('/language/:filename', authenticateToken, (req, res) => {
   try {
     const { filename } = req.params;
     const language = lspManager.getLanguageFromExtension(filename);

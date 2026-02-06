@@ -5,10 +5,10 @@
 
 const express = require('express');
 const router = express.Router();
-const auth = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 
 // Get pending confirmations for current user
-router.get('/pending', auth, async (req, res) => {
+router.get('/pending', authenticateToken, async (req, res) => {
     try {
         const agentOrchestrator = require('../utils/agentOrchestrator');
         const pending = agentOrchestrator.hitlGates.getPendingConfirmations(req.user._id.toString());
@@ -27,7 +27,7 @@ router.get('/pending', auth, async (req, res) => {
 });
 
 // Respond to confirmation request
-router.post('/respond', auth, async (req, res) => {
+router.post('/respond', authenticateToken, async (req, res) => {
     try {
         const { confirmationId, approved, reason } = req.body;
         

@@ -6,14 +6,14 @@
 const express = require('express');
 const router = express.Router();
 const gitService = require('../utils/gitService');
-const auth = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 const permissionMatrix = require('../middleware/permissionMatrix');
 
 /**
  * Initialize repository
  * POST /api/git/init
  */
-router.post('/init', auth, async (req, res) => {
+router.post('/init', authenticateToken, async (req, res) => {
   try {
     const { workspaceId, userName, userEmail } = req.body;
 
@@ -33,7 +33,7 @@ router.post('/init', auth, async (req, res) => {
  * Get repository status
  * GET /api/git/status/:workspaceId
  */
-router.get('/status/:workspaceId', auth, permissionMatrix.requirePermission('git', 'read'), async (req, res) => {
+router.get('/status/:workspaceId', authenticateToken, permissionMatrix.requirePermission('git', 'read'), async (req, res) => {
   try {
     const { workspaceId } = req.params;
     const result = await gitService.status(workspaceId);
@@ -48,7 +48,7 @@ router.get('/status/:workspaceId', auth, permissionMatrix.requirePermission('git
  * Get diff
  * GET /api/git/diff/:workspaceId
  */
-router.get('/diff/:workspaceId', auth, async (req, res) => {
+router.get('/diff/:workspaceId', authenticateToken, async (req, res) => {
   try {
     const { workspaceId } = req.params;
     const { file } = req.query;
@@ -65,7 +65,7 @@ router.get('/diff/:workspaceId', auth, async (req, res) => {
  * Stage files
  * POST /api/git/add
  */
-router.post('/add', auth, async (req, res) => {
+router.post('/add', authenticateToken, async (req, res) => {
   try {
     const { workspaceId, files } = req.body;
 
@@ -85,7 +85,7 @@ router.post('/add', auth, async (req, res) => {
  * Unstage files
  * POST /api/git/reset
  */
-router.post('/reset', auth, async (req, res) => {
+router.post('/reset', authenticateToken, async (req, res) => {
   try {
     const { workspaceId, files } = req.body;
 
@@ -105,7 +105,7 @@ router.post('/reset', auth, async (req, res) => {
  * Commit changes
  * POST /api/git/commit
  */
-router.post('/commit', auth, permissionMatrix.requirePermission('git', 'commit'), async (req, res) => {
+router.post('/commit', authenticateToken, permissionMatrix.requirePermission('git', 'commit'), async (req, res) => {
   try {
     const { workspaceId, message, files } = req.body;
 
@@ -125,7 +125,7 @@ router.post('/commit', auth, permissionMatrix.requirePermission('git', 'commit')
  * Get commit log
  * GET /api/git/log/:workspaceId
  */
-router.get('/log/:workspaceId', auth, async (req, res) => {
+router.get('/log/:workspaceId', authenticateToken, async (req, res) => {
   try {
     const { workspaceId } = req.params;
     const { limit, file } = req.query;
@@ -145,7 +145,7 @@ router.get('/log/:workspaceId', auth, async (req, res) => {
  * List branches
  * GET /api/git/branches/:workspaceId
  */
-router.get('/branches/:workspaceId', auth, async (req, res) => {
+router.get('/branches/:workspaceId', authenticateToken, async (req, res) => {
   try {
     const { workspaceId } = req.params;
     const result = await gitService.branches(workspaceId);
@@ -160,7 +160,7 @@ router.get('/branches/:workspaceId', auth, async (req, res) => {
  * Create branch
  * POST /api/git/branch
  */
-router.post('/branch', auth, permissionMatrix.requirePermission('git', 'branch'), async (req, res) => {
+router.post('/branch', authenticateToken, permissionMatrix.requirePermission('git', 'branch'), async (req, res) => {
   try {
     const { workspaceId, branchName } = req.body;
 
@@ -180,7 +180,7 @@ router.post('/branch', auth, permissionMatrix.requirePermission('git', 'branch')
  * Switch branch
  * POST /api/git/checkout
  */
-router.post('/checkout', auth, async (req, res) => {
+router.post('/checkout', authenticateToken, async (req, res) => {
   try {
     const { workspaceId, branchName } = req.body;
 
@@ -200,7 +200,7 @@ router.post('/checkout', auth, async (req, res) => {
  * Merge branch
  * POST /api/git/merge
  */
-router.post('/merge', auth, async (req, res) => {
+router.post('/merge', authenticateToken, async (req, res) => {
   try {
     const { workspaceId, branchName } = req.body;
 
@@ -220,7 +220,7 @@ router.post('/merge', auth, async (req, res) => {
  * Pull from remote
  * POST /api/git/pull
  */
-router.post('/pull', auth, permissionMatrix.requirePermission('git', 'pull'), async (req, res) => {
+router.post('/pull', authenticateToken, permissionMatrix.requirePermission('git', 'pull'), async (req, res) => {
   try {
     const { workspaceId, remote, branch } = req.body;
 
@@ -240,7 +240,7 @@ router.post('/pull', auth, permissionMatrix.requirePermission('git', 'pull'), as
  * Push to remote
  * POST /api/git/push
  */
-router.post('/push', auth, permissionMatrix.requirePermission('git', 'push'), async (req, res) => {
+router.post('/push', authenticateToken, permissionMatrix.requirePermission('git', 'push'), async (req, res) => {
   try {
     const { workspaceId, remote, branch } = req.body;
 
@@ -260,7 +260,7 @@ router.post('/push', auth, permissionMatrix.requirePermission('git', 'push'), as
  * Add remote
  * POST /api/git/remote
  */
-router.post('/remote', auth, async (req, res) => {
+router.post('/remote', authenticateToken, async (req, res) => {
   try {
     const { workspaceId, name, url } = req.body;
 
@@ -280,7 +280,7 @@ router.post('/remote', auth, async (req, res) => {
  * List remotes
  * GET /api/git/remotes/:workspaceId
  */
-router.get('/remotes/:workspaceId', auth, async (req, res) => {
+router.get('/remotes/:workspaceId', authenticateToken, async (req, res) => {
   try {
     const { workspaceId } = req.params;
     const result = await gitService.remotes(workspaceId);
@@ -295,7 +295,7 @@ router.get('/remotes/:workspaceId', auth, async (req, res) => {
  * Clone repository
  * POST /api/git/clone
  */
-router.post('/clone', auth, async (req, res) => {
+router.post('/clone', authenticateToken, async (req, res) => {
   try {
     const { workspaceId, repoUrl, args } = req.body;
 
@@ -315,7 +315,7 @@ router.post('/clone', auth, async (req, res) => {
  * Get file at commit
  * GET /api/git/show/:workspaceId
  */
-router.get('/show/:workspaceId', auth, async (req, res) => {
+router.get('/show/:workspaceId', authenticateToken, async (req, res) => {
   try {
     const { workspaceId } = req.params;
     const { commit, file } = req.query;
@@ -336,7 +336,7 @@ router.get('/show/:workspaceId', auth, async (req, res) => {
  * Stash changes
  * POST /api/git/stash
  */
-router.post('/stash', auth, async (req, res) => {
+router.post('/stash', authenticateToken, async (req, res) => {
   try {
     const { workspaceId, message } = req.body;
 
@@ -356,7 +356,7 @@ router.post('/stash', auth, async (req, res) => {
  * Apply stash
  * POST /api/git/stash/pop
  */
-router.post('/stash/pop', auth, async (req, res) => {
+router.post('/stash/pop', authenticateToken, async (req, res) => {
   try {
     const { workspaceId } = req.body;
 
@@ -376,7 +376,7 @@ router.post('/stash/pop', auth, async (req, res) => {
  * Cleanup workspace
  * DELETE /api/git/workspace/:workspaceId
  */
-router.delete('/workspace/:workspaceId', auth, async (req, res) => {
+router.delete('/workspace/:workspaceId', authenticateToken, async (req, res) => {
   try {
     const { workspaceId } = req.params;
     const result = await gitService.cleanup(workspaceId);

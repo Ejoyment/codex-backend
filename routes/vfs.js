@@ -7,14 +7,14 @@ const express = require('express');
 const router = express.Router();
 const vfs = require('../utils/virtualFileSystem');
 const codeSearchService = require('../utils/codeSearchService');
-const auth = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 const permissionMatrix = require('../middleware/permissionMatrix');
 
 /**
  * Get file tree for workspace
  * GET /api/vfs/tree/:workspaceId
  */
-router.get('/tree/:workspaceId', auth, permissionMatrix.requirePermission('vfs', 'read'), async (req, res) => {
+router.get('/tree/:workspaceId', authenticateToken, permissionMatrix.requirePermission('vfs', 'read'), async (req, res) => {
   try {
     const { workspaceId } = req.params;
     
@@ -34,7 +34,7 @@ router.get('/tree/:workspaceId', auth, permissionMatrix.requirePermission('vfs',
  * Read file content (lazy loaded)
  * GET /api/vfs/file/:fileId
  */
-router.get('/file/:fileId', auth, permissionMatrix.requirePermission('vfs', 'read'), async (req, res) => {
+router.get('/file/:fileId', authenticateToken, permissionMatrix.requirePermission('vfs', 'read'), async (req, res) => {
   try {
     const { fileId } = req.params;
     const { workspaceId } = req.query;
@@ -59,7 +59,7 @@ router.get('/file/:fileId', auth, permissionMatrix.requirePermission('vfs', 'rea
  * Read file by path
  * GET /api/vfs/file-by-path
  */
-router.get('/file-by-path', auth, async (req, res) => {
+router.get('/file-by-path', authenticateToken, async (req, res) => {
   try {
     const { path, workspaceId } = req.query;
 
@@ -83,7 +83,7 @@ router.get('/file-by-path', auth, async (req, res) => {
  * Read file in chunks (for large files)
  * GET /api/vfs/file-chunked/:fileId
  */
-router.get('/file-chunked/:fileId', auth, async (req, res) => {
+router.get('/file-chunked/:fileId', authenticateToken, async (req, res) => {
   try {
     const { fileId } = req.params;
     const { workspaceId, chunkSize } = req.query;
@@ -113,7 +113,7 @@ router.get('/file-chunked/:fileId', auth, async (req, res) => {
  * Get file metadata (without content)
  * GET /api/vfs/metadata/:fileId
  */
-router.get('/metadata/:fileId', auth, async (req, res) => {
+router.get('/metadata/:fileId', authenticateToken, async (req, res) => {
   try {
     const { fileId } = req.params;
     const { workspaceId } = req.query;
@@ -142,7 +142,7 @@ router.get('/metadata/:fileId', auth, async (req, res) => {
  * Search files by name (fast, uses index)
  * GET /api/vfs/search-name
  */
-router.get('/search-name', auth, async (req, res) => {
+router.get('/search-name', authenticateToken, async (req, res) => {
   try {
     const { query, workspaceId } = req.query;
 
@@ -167,7 +167,7 @@ router.get('/search-name', auth, async (req, res) => {
  * Full-text search in file content
  * GET /api/vfs/search
  */
-router.get('/search', auth, permissionMatrix.requirePermission('vfs', 'search'), async (req, res) => {
+router.get('/search', authenticateToken, permissionMatrix.requirePermission('vfs', 'search'), async (req, res) => {
   try {
     const { query, workspaceId, limit, offset } = req.query;
 
@@ -194,7 +194,7 @@ router.get('/search', auth, permissionMatrix.requirePermission('vfs', 'search'),
  * Search by language
  * GET /api/vfs/search-language
  */
-router.get('/search-language', auth, async (req, res) => {
+router.get('/search-language', authenticateToken, async (req, res) => {
   try {
     const { language, workspaceId, limit } = req.query;
 
@@ -220,7 +220,7 @@ router.get('/search-language', auth, async (req, res) => {
  * Get workspace statistics
  * GET /api/vfs/stats/:workspaceId
  */
-router.get('/stats/:workspaceId', auth, async (req, res) => {
+router.get('/stats/:workspaceId', authenticateToken, async (req, res) => {
   try {
     const { workspaceId } = req.params;
     
@@ -240,7 +240,7 @@ router.get('/stats/:workspaceId', auth, async (req, res) => {
  * Rebuild file index
  * POST /api/vfs/rebuild-index/:workspaceId
  */
-router.post('/rebuild-index/:workspaceId', auth, permissionMatrix.requirePermission('vfs', 'index'), async (req, res) => {
+router.post('/rebuild-index/:workspaceId', authenticateToken, permissionMatrix.requirePermission('vfs', 'index'), async (req, res) => {
   try {
     const { workspaceId } = req.params;
     
@@ -261,7 +261,7 @@ router.post('/rebuild-index/:workspaceId', auth, permissionMatrix.requirePermiss
  * Rebuild search index
  * POST /api/vfs/rebuild-search/:workspaceId
  */
-router.post('/rebuild-search/:workspaceId', auth, async (req, res) => {
+router.post('/rebuild-search/:workspaceId', authenticateToken, async (req, res) => {
   try {
     const { workspaceId } = req.params;
     
@@ -282,7 +282,7 @@ router.post('/rebuild-search/:workspaceId', auth, async (req, res) => {
  * Clear cache for workspace
  * POST /api/vfs/clear-cache/:workspaceId
  */
-router.post('/clear-cache/:workspaceId', auth, async (req, res) => {
+router.post('/clear-cache/:workspaceId', authenticateToken, async (req, res) => {
   try {
     const { workspaceId } = req.params;
     
@@ -302,7 +302,7 @@ router.post('/clear-cache/:workspaceId', auth, async (req, res) => {
  * Get search service stats
  * GET /api/vfs/search-stats
  */
-router.get('/search-stats', auth, async (req, res) => {
+router.get('/search-stats', authenticateToken, async (req, res) => {
   try {
     const stats = await codeSearchService.getStats();
     

@@ -5,12 +5,12 @@
 
 const express = require('express');
 const router = express.Router();
-const auth = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 const debugAdapter = require('../utils/debugAdapter');
 const CodeFile = require('../models/CodeFile');
 
 // Create debug session
-router.post('/session/create', auth, async (req, res) => {
+router.post('/session/create', authenticateToken, async (req, res) => {
     try {
         const { workspaceId, config } = req.body;
         
@@ -37,7 +37,7 @@ router.post('/session/create', auth, async (req, res) => {
 });
 
 // Launch debugger
-router.post('/launch', auth, async (req, res) => {
+router.post('/launch', authenticateToken, async (req, res) => {
     try {
         const { sessionId, fileId, language, args, env } = req.body;
         
@@ -88,7 +88,7 @@ router.post('/launch', auth, async (req, res) => {
 });
 
 // Set breakpoints
-router.post('/breakpoints/set', auth, async (req, res) => {
+router.post('/breakpoints/set', authenticateToken, async (req, res) => {
     try {
         const { sessionId, fileId, breakpoints } = req.body;
         
@@ -115,7 +115,7 @@ router.post('/breakpoints/set', auth, async (req, res) => {
 });
 
 // Continue execution
-router.post('/continue', auth, async (req, res) => {
+router.post('/continue', authenticateToken, async (req, res) => {
     try {
         const { sessionId } = req.body;
         
@@ -138,7 +138,7 @@ router.post('/continue', auth, async (req, res) => {
 });
 
 // Step over
-router.post('/step-over', auth, async (req, res) => {
+router.post('/step-over', authenticateToken, async (req, res) => {
     try {
         const { sessionId } = req.body;
         
@@ -161,7 +161,7 @@ router.post('/step-over', auth, async (req, res) => {
 });
 
 // Step into
-router.post('/step-into', auth, async (req, res) => {
+router.post('/step-into', authenticateToken, async (req, res) => {
     try {
         const { sessionId } = req.body;
         
@@ -184,7 +184,7 @@ router.post('/step-into', auth, async (req, res) => {
 });
 
 // Step out
-router.post('/step-out', auth, async (req, res) => {
+router.post('/step-out', authenticateToken, async (req, res) => {
     try {
         const { sessionId } = req.body;
         
@@ -207,7 +207,7 @@ router.post('/step-out', auth, async (req, res) => {
 });
 
 // Pause execution
-router.post('/pause', auth, async (req, res) => {
+router.post('/pause', authenticateToken, async (req, res) => {
     try {
         const { sessionId } = req.body;
         
@@ -230,7 +230,7 @@ router.post('/pause', auth, async (req, res) => {
 });
 
 // Get stack trace
-router.get('/stack-trace/:sessionId', auth, async (req, res) => {
+router.get('/stack-trace/:sessionId', authenticateToken, async (req, res) => {
     try {
         const { sessionId } = req.params;
         
@@ -250,7 +250,7 @@ router.get('/stack-trace/:sessionId', auth, async (req, res) => {
 });
 
 // Get variables
-router.get('/variables/:sessionId', auth, async (req, res) => {
+router.get('/variables/:sessionId', authenticateToken, async (req, res) => {
     try {
         const { sessionId } = req.params;
         const { scopeId } = req.query;
@@ -271,7 +271,7 @@ router.get('/variables/:sessionId', auth, async (req, res) => {
 });
 
 // Evaluate expression
-router.post('/evaluate', auth, async (req, res) => {
+router.post('/evaluate', authenticateToken, async (req, res) => {
     try {
         const { sessionId, expression, frameId } = req.body;
         
@@ -298,7 +298,7 @@ router.post('/evaluate', auth, async (req, res) => {
 });
 
 // Terminate session
-router.post('/terminate', auth, async (req, res) => {
+router.post('/terminate', authenticateToken, async (req, res) => {
     try {
         const { sessionId } = req.body;
         
@@ -321,7 +321,7 @@ router.post('/terminate', auth, async (req, res) => {
 });
 
 // Get session info
-router.get('/session/:sessionId', auth, async (req, res) => {
+router.get('/session/:sessionId', authenticateToken, async (req, res) => {
     try {
         const { sessionId } = req.params;
         
@@ -348,7 +348,7 @@ router.get('/session/:sessionId', auth, async (req, res) => {
 });
 
 // Get user's active sessions
-router.get('/sessions', auth, async (req, res) => {
+router.get('/sessions', authenticateToken, async (req, res) => {
     try {
         const sessions = debugAdapter.getUserSessions(req.user._id.toString());
         
@@ -366,7 +366,7 @@ router.get('/sessions', auth, async (req, res) => {
 });
 
 // Test endpoint - simulate breakpoint hit
-router.post('/test/breakpoint-hit', auth, async (req, res) => {
+router.post('/test/breakpoint-hit', authenticateToken, async (req, res) => {
     try {
         const { sessionId, fileId, line } = req.body;
         

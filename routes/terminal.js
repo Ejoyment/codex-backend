@@ -6,14 +6,14 @@
 const express = require('express');
 const router = express.Router();
 const terminalService = require('../utils/terminalService');
-const auth = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 const permissionMatrix = require('../middleware/permissionMatrix');
 
 /**
  * Get active terminal sessions
  * GET /api/terminal/sessions
  */
-router.get('/sessions', auth, permissionMatrix.requirePermission('terminal', 'access'), (req, res) => {
+router.get('/sessions', authenticateToken, permissionMatrix.requirePermission('terminal', 'access'), (req, res) => {
   try {
     const sessions = terminalService.getActiveSessions(req.user.userId);
     res.json({ success: true, sessions });
@@ -27,7 +27,7 @@ router.get('/sessions', auth, permissionMatrix.requirePermission('terminal', 'ac
  * Get terminal statistics
  * GET /api/terminal/stats
  */
-router.get('/stats', auth, (req, res) => {
+router.get('/stats', authenticateToken, (req, res) => {
   try {
     const stats = terminalService.getStats();
     res.json({ success: true, stats });
@@ -41,7 +41,7 @@ router.get('/stats', auth, (req, res) => {
  * Destroy terminal session
  * DELETE /api/terminal/:sessionId
  */
-router.delete('/:sessionId', auth, permissionMatrix.requirePermission('terminal', 'access'), async (req, res) => {
+router.delete('/:sessionId', authenticateToken, permissionMatrix.requirePermission('terminal', 'access'), async (req, res) => {
   try {
     const { sessionId } = req.params;
     await terminalService.destroy(sessionId);
