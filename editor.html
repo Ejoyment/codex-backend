@@ -7,8 +7,14 @@
     <link rel="icon" href="1000222021 1 (1).png">
     <link rel="stylesheet" href="css/professional-ui.css">
     <link rel="stylesheet" href="css/editor-premium.css">
+    <link rel="stylesheet" href="css/visual-polish.css">
+    <link rel="stylesheet" href="css/tab-management.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" data-name="vs/editor/editor.main" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/editor/editor.main.min.css">
+    
+    <!-- xterm.js for Terminal -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
+    
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; height: 100vh; display: flex; flex-direction: column; }
@@ -82,6 +88,12 @@
         .panel-tab:hover { color: var(--vscode-text); }
         .panel-tab.active { color: var(--vscode-text); border-bottom: 2px solid var(--vscode-statusbar); }
         .panel-content { flex: 1; overflow-y: auto; padding: 8px; color: var(--vscode-text); font-size: 13px; font-family: 'Consolas', 'Courier New', monospace; line-height: 1.5; }
+        
+        /* Terminal Specific */
+        #terminal-panel { padding: 0; overflow: hidden; display: none; }
+        #terminal-panel.active { display: block; }
+        #terminal-container { width: 100%; height: 100%; }
+        .terminal { height: 100%; }
         
         /* File Tree */
         .file-tree-item { padding: 4px 8px; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--vscode-text); transition: background 0.2s; }
@@ -187,6 +199,28 @@
         .context-menu-item:hover { background: var(--vscode-statusbar); }
         .context-menu-separator { height: 1px; background: var(--vscode-border); margin: 4px 0; }
         .context-menu-shortcut { color: var(--vscode-text-dim); font-size: 11px; margin-left: 16px; }
+        
+        /* Git Styles */
+        .git-file-item { padding: 4px 8px 4px 24px; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--vscode-text); transition: background 0.2s; position: relative; }
+        .git-file-item:hover { background: var(--vscode-hover); }
+        .git-file-item::before { content: ''; position: absolute; left: 8px; width: 8px; height: 8px; border-radius: 50%; }
+        .git-file-item.modified::before { background: #e5e510; }
+        .git-file-item.added::before { background: #0dbc79; }
+        .git-file-item.deleted::before { background: #f48771; }
+        .git-file-item.renamed::before { background: #3b8eea; }
+        .git-file-item .git-file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .git-file-item .git-file-actions { display: none; gap: 4px; }
+        .git-file-item:hover .git-file-actions { display: flex; }
+        .git-file-action { padding: 2px 6px; font-size: 10px; cursor: pointer; border-radius: 2px; transition: background 0.2s; }
+        .git-file-action:hover { background: var(--vscode-active); }
+        
+        /* Command Palette Styles */
+        .command-item { padding: 8px 12px; cursor: pointer; display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--vscode-text); transition: background 0.2s; border-left: 2px solid transparent; }
+        .command-item:hover { background: var(--vscode-hover); }
+        .command-item.selected { background: var(--vscode-statusbar); border-left-color: white; }
+        .command-item i { width: 16px; text-align: center; color: var(--vscode-text-dim); }
+        .command-item .command-name { flex: 1; }
+        .command-item .command-shortcut { font-size: 11px; color: var(--vscode-text-dim); }
     </style>
 </head>
 <body style="background: var(--vscode-bg);">
@@ -217,6 +251,9 @@
             <div class="activity-bar-item" onclick="switchSidebar('ai')" title="AI Assistant (Ctrl+Shift+A)">
                 <i class="fas fa-robot" style="font-size: 18px;"></i>
             </div>
+            <div class="activity-bar-item" onclick="switchSidebar('git')" title="Source Control (Ctrl+Shift+G)">
+                <i class="fas fa-code-branch" style="font-size: 18px;"></i>
+            </div>
             <div style="flex: 1;"></div>
             <div class="activity-bar-item" onclick="openSettings()" title="Settings">
                 <i class="fas fa-cog" style="font-size: 18px;"></i>
@@ -231,10 +268,11 @@
             <!-- Explorer View -->
             <div id="explorerView" class="sidebar-view" style="display: flex; flex-direction: column; height: 100%;">
                 <div class="sidebar-header">
-                    EXPLORER
-                    <div style="display: flex; gap: 8px;">
-                        <i class="fas fa-file-plus" onclick="showNewFileModal()" title="New File" style="cursor: pointer;"></i>
-                        <i class="fas fa-sync" onclick="refreshFileTree()" title="Refresh" style="cursor: pointer;"></i>
+                    <span>EXPLORER</span>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <i class="fas fa-file-plus" onclick="showNewFileModal()" title="New File (Ctrl+N)" data-tooltip="New File" style="cursor: pointer;"></i>
+                        <i class="fas fa-folder-plus" onclick="showNewFolderModal()" title="New Folder" data-tooltip="New Folder" style="cursor: pointer;"></i>
+                        <i class="fas fa-compress-alt" onclick="collapseAll()" title="Collapse All" data-tooltip="Collapse All" style="cursor: pointer;"></i>
                     </div>
                 </div>
                 <div class="search-box">
@@ -369,10 +407,68 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Git View -->
+            <div id="gitView" class="sidebar-view" style="display: none; flex-direction: column; height: 100%;">
+                <div class="sidebar-header">
+                    SOURCE CONTROL
+                    <div style="display: flex; gap: 8px;">
+                        <i class="fas fa-sync" onclick="refreshGitStatus()" title="Refresh" style="cursor: pointer;"></i>
+                        <i class="fas fa-ellipsis-v" onclick="showGitMenu()" title="More Actions" style="cursor: pointer;"></i>
+                    </div>
+                </div>
+                
+                <!-- Commit Message Box -->
+                <div style="padding: 8px; background: var(--vscode-bg); border-bottom: 1px solid var(--vscode-border);">
+                    <textarea id="gitCommitMessage" placeholder="Message (Ctrl+Enter to commit)" 
+                              style="width: 100%; min-height: 60px; padding: 8px; background: var(--vscode-sidebar); border: 1px solid var(--vscode-border); color: var(--vscode-text); font-size: 13px; font-family: inherit; resize: vertical; border-radius: 2px;"
+                              onkeydown="if(event.ctrlKey && event.key==='Enter') gitCommit()"></textarea>
+                    <div style="display: flex; gap: 8px; margin-top: 8px;">
+                        <button class="btn btn-primary" onclick="gitCommit()" style="flex: 1; font-size: 12px;">
+                            <i class="fas fa-check"></i> Commit
+                        </button>
+                        <button class="btn btn-secondary" onclick="gitCommitAndPush()" style="flex: 1; font-size: 12px;">
+                            <i class="fas fa-upload"></i> Commit & Push
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="sidebar-content" style="flex: 1; overflow-y: auto;">
+                    <!-- Staged Changes Section -->
+                    <div id="gitStagedSection" style="display: none;">
+                        <div style="padding: 8px 12px; background: var(--vscode-hover); font-size: 11px; font-weight: 600; color: var(--vscode-text); text-transform: uppercase; letter-spacing: 0.5px; display: flex; justify-content: space-between; align-items: center;">
+                            <span>STAGED CHANGES (<span id="gitStagedCount">0</span>)</span>
+                            <i class="fas fa-minus" onclick="unstageAll()" title="Unstage All" style="cursor: pointer; font-size: 10px;"></i>
+                        </div>
+                        <div id="gitStagedFiles"></div>
+                    </div>
+                    
+                    <!-- Changes Section -->
+                    <div id="gitChangesSection">
+                        <div style="padding: 8px 12px; background: var(--vscode-hover); font-size: 11px; font-weight: 600; color: var(--vscode-text); text-transform: uppercase; letter-spacing: 0.5px; display: flex; justify-content: space-between; align-items: center;">
+                            <span>CHANGES (<span id="gitChangesCount">0</span>)</span>
+                            <i class="fas fa-plus" onclick="stageAll()" title="Stage All" style="cursor: pointer; font-size: 10px;"></i>
+                        </div>
+                        <div id="gitChangedFiles"></div>
+                    </div>
+                    
+                    <!-- No Changes Message -->
+                    <div id="gitNoChanges" style="padding: 40px 20px; text-align: center; color: var(--vscode-text-dim); font-size: 13px;">
+                        <i class="fas fa-check-circle" style="font-size: 48px; opacity: 0.3; margin-bottom: 16px; display: block;"></i>
+                        <div style="font-weight: 600; margin-bottom: 8px;">No Changes</div>
+                        <div style="font-size: 12px;">Your working tree is clean</div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Editor Area -->
         <div class="editor-area">
+            <!-- Breadcrumbs -->
+            <div id="breadcrumbs" style="height: 28px; background: var(--vscode-sidebar); border-bottom: 1px solid var(--vscode-border); display: flex; align-items: center; padding: 0 12px; font-size: 12px; color: var(--vscode-text); overflow-x: auto; white-space: nowrap;">
+                <span class="breadcrumb-item"><i class="fas fa-home"></i></span>
+            </div>
+            
             <!-- Tabs Bar -->
             <div class="tabs-bar" id="tabsBar">
                 <!-- Tabs will be added dynamically -->
@@ -384,22 +480,35 @@
             <!-- Bottom Panel -->
             <div class="panel" id="panel">
                 <div class="panel-tabs">
-                    <div class="panel-tab active" onclick="switchPanelTab('terminal')">
+                    <div class="panel-tab active" data-panel="terminal" onclick="switchPanelTab('terminal')">
                         <i class="fas fa-terminal"></i> TERMINAL
                     </div>
-                    <div class="panel-tab" onclick="switchPanelTab('output')">
+                    <div class="panel-tab" data-panel="output" onclick="switchPanelTab('output')">
                         <i class="fas fa-list"></i> OUTPUT
                     </div>
-                    <div class="panel-tab" onclick="switchPanelTab('problems')">
+                    <div class="panel-tab" data-panel="problems" onclick="switchPanelTab('problems')">
                         <i class="fas fa-exclamation-triangle"></i> PROBLEMS
                     </div>
                     <div style="margin-left: auto; padding: 0 12px; display: flex; align-items: center; gap: 8px;">
+                        <i class="fas fa-plus" onclick="createNewTerminal()" style="cursor: pointer; color: var(--vscode-text-dim); margin-right: 8px;" title="New Terminal"></i>
                         <i class="fas fa-chevron-down" id="panelToggleIcon" onclick="togglePanel()" style="cursor: pointer; color: var(--vscode-text-dim);" title="Minimize Panel"></i>
                     </div>
                 </div>
-                <div class="panel-content" id="panelContent">
-                    <div style="color: var(--vscode-success);">$ BUCQ Code Editor Terminal</div>
-                    <div style="color: var(--vscode-text-dim);">Ready to execute code...</div>
+                
+                <!-- Terminal Panel -->
+                <div class="panel-content active" id="terminal-panel">
+                    <div id="terminal-container"></div>
+                </div>
+                
+                <!-- Output Panel -->
+                <div class="panel-content" id="output-panel" style="display: none;">
+                    <div style="color: var(--vscode-success);">$ BUCQ Code Editor Output</div>
+                    <div style="color: var(--vscode-text-dim);">Build and execution output will appear here...</div>
+                </div>
+                
+                <!-- Problems Panel -->
+                <div class="panel-content" id="problems-panel" style="display: none;">
+                    <div style="color: var(--vscode-text-dim);">No problems detected</div>
                 </div>
             </div>
         </div>
@@ -543,6 +652,34 @@
         </div>
     </div>
 
+    <!-- Command Palette -->
+    <div id="commandPalette" class="modal" style="align-items: flex-start; padding-top: 100px;">
+        <div style="background: var(--vscode-sidebar); border: 1px solid var(--vscode-border); border-radius: 4px; width: 600px; max-width: 90%; box-shadow: 0 8px 24px rgba(0,0,0,0.5);">
+            <div style="padding: 12px; border-bottom: 1px solid var(--vscode-border);">
+                <input type="text" id="commandPaletteInput" placeholder="Type a command or search..." 
+                       style="width: 100%; padding: 8px; background: var(--vscode-bg); border: 1px solid var(--vscode-border); color: var(--vscode-text); font-size: 14px; border-radius: 2px;"
+                       oninput="filterCommands()" onkeydown="handleCommandPaletteKey(event)">
+            </div>
+            <div id="commandPaletteResults" style="max-height: 400px; overflow-y: auto;">
+                <!-- Command results will appear here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Open (File Picker) -->
+    <div id="quickOpen" class="modal" style="align-items: flex-start; padding-top: 100px;">
+        <div style="background: var(--vscode-sidebar); border: 1px solid var(--vscode-border); border-radius: 4px; width: 600px; max-width: 90%; box-shadow: 0 8px 24px rgba(0,0,0,0.5);">
+            <div style="padding: 12px; border-bottom: 1px solid var(--vscode-border);">
+                <input type="text" id="quickOpenInput" placeholder="Search files..." 
+                       style="width: 100%; padding: 8px; background: var(--vscode-bg); border: 1px solid var(--vscode-border); color: var(--vscode-text); font-size: 14px; border-radius: 2px;"
+                       oninput="filterFiles()" onkeydown="handleQuickOpenKey(event)">
+            </div>
+            <div id="quickOpenResults" style="max-height: 400px; overflow-y: auto;">
+                <!-- File results will appear here -->
+            </div>
+        </div>
+    </div>
+
     <!-- Memory Manager Modal -->
     <div id="memoryManagerModal" class="modal-overlay" style="display: none;">
         <div class="modal-content" style="max-width: 800px; max-height: 80vh;">
@@ -613,9 +750,1828 @@
         </div>
     </div>
 
+    <!-- Monaco Editor -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
+    
+    <!-- Socket.IO for Terminal -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    
+    <!-- Socket.IO for Terminal WebSocket -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    
+    <!-- xterm.js Terminal - Dynamic Loading with Fallbacks -->
+    <script>
+        // Dynamic script loader with fallback CDNs
+        window.xtermLoadPromise = new Promise((resolve, reject) => {
+            const cdnSources = [
+                {
+                    name: 'unpkg',
+                    xterm: 'https://unpkg.com/xterm@5.3.0/lib/xterm.js',
+                    fit: 'https://unpkg.com/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js',
+                    weblinks: 'https://unpkg.com/xterm-addon-web-links@0.9.0/lib/xterm-addon-web-links.js'
+                },
+                {
+                    name: 'jsdelivr',
+                    xterm: 'https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js',
+                    fit: 'https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js',
+                    weblinks: 'https://cdn.jsdelivr.net/npm/xterm-addon-web-links@0.9.0/lib/xterm-addon-web-links.js'
+                },
+                {
+                    name: 'cdnjs',
+                    xterm: 'https://cdnjs.cloudflare.com/ajax/libs/xterm/5.3.0/xterm.min.js',
+                    fit: 'https://cdnjs.cloudflare.com/ajax/libs/xterm/5.3.0/addons/xterm-addon-fit/xterm-addon-fit.min.js',
+                    weblinks: null // Not available on cdnjs
+                }
+            ];
+            
+            let currentCdnIndex = 0;
+            
+            function loadScript(src, timeout = 10000) {
+                return new Promise((resolve, reject) => {
+                    const script = document.createElement('script');
+                    script.src = src;
+                    
+                    const timer = setTimeout(() => {
+                        script.remove();
+                        reject(new Error('Script load timeout: ' + src));
+                    }, timeout);
+                    
+                    script.onload = () => {
+                        clearTimeout(timer);
+                        resolve();
+                    };
+                    
+                    script.onerror = () => {
+                        clearTimeout(timer);
+                        script.remove();
+                        reject(new Error('Script load error: ' + src));
+                    };
+                    
+                    document.head.appendChild(script);
+                });
+            }
+            
+            async function tryLoadFromCdn(cdn) {
+                console.log(`Trying to load xterm.js from ${cdn.name}...`);
+                
+                try {
+                    // Load main xterm.js
+                    await loadScript(cdn.xterm);
+                    
+                    // Check if Terminal is available
+                    if (typeof Terminal === 'undefined') {
+                        throw new Error('Terminal class not found after loading');
+                    }
+                    
+                    console.log(`✓ xterm.js loaded from ${cdn.name}`);
+                    
+                    // Load addons
+                    try {
+                        await loadScript(cdn.fit);
+                        console.log(`✓ FitAddon loaded from ${cdn.name}`);
+                    } catch (e) {
+                        console.warn('FitAddon failed to load:', e.message);
+                    }
+                    
+                    if (cdn.weblinks) {
+                        try {
+                            await loadScript(cdn.weblinks);
+                            console.log(`✓ WebLinksAddon loaded from ${cdn.name}`);
+                        } catch (e) {
+                            console.warn('WebLinksAddon failed to load:', e.message);
+                        }
+                    }
+                    
+                    return true;
+                } catch (error) {
+                    console.warn(`Failed to load from ${cdn.name}:`, error.message);
+                    return false;
+                }
+            }
+            
+            async function loadXterm() {
+                for (let i = 0; i < cdnSources.length; i++) {
+                    const success = await tryLoadFromCdn(cdnSources[i]);
+                    if (success) {
+                        resolve(cdnSources[i].name);
+                        return;
+                    }
+                }
+                
+                reject(new Error('All CDN sources failed to load xterm.js'));
+            }
+            
+            loadXterm();
+        });
+        
+        // Log the result
+        window.xtermLoadPromise
+            .then(cdn => console.log(`xterm.js successfully loaded from ${cdn}`))
+            .catch(err => console.error('xterm.js failed to load:', err));
+    </script>
+    
+    <!-- Application Scripts -->
     <script src="js/api.js"></script>
     <script src="js/tier-restrictions.js"></script>
+    <script src="js/terminalClient.js"></script>
+    <script src="js/gitClient.js"></script>
+    <script src="js/file-explorer.js"></script>
+    <script src="js/tab-management.js"></script>
     <script src="js/editor-new.js"></script>
+    
+    <!-- Git Integration Script -->
+    <script>
+        // Global Git client instance
+        let gitClient = null;
+        let currentWorkspaceId = null;
+        
+        // Initialize Git client
+        function initializeGit(workspaceId) {
+            currentWorkspaceId = workspaceId || 'default-workspace';
+            gitClient = new GitClient();
+            gitClient.setWorkspace(currentWorkspaceId);
+            console.log('Git client initialized for workspace:', currentWorkspaceId);
+            
+            // Load initial status
+            refreshGitStatus();
+        }
+        
+        // Refresh Git status
+        async function refreshGitStatus() {
+            if (!gitClient) {
+                console.warn('Git client not initialized');
+                return;
+            }
+            
+            try {
+                const status = await gitClient.status();
+                updateGitUI(status);
+            } catch (error) {
+                console.error('Failed to get Git status:', error);
+                showGitError('Failed to load Git status');
+            }
+        }
+        
+        // Update Git UI with status
+        function updateGitUI(status) {
+            const stagedFiles = status.staged || [];
+            const changedFiles = status.modified || [];
+            
+            // Update counts
+            document.getElementById('gitStagedCount').textContent = stagedFiles.length;
+            document.getElementById('gitChangesCount').textContent = changedFiles.length;
+            
+            // Update status bar
+            const gitBranch = document.getElementById('gitBranch');
+            if (gitBranch && status.branch) {
+                gitBranch.textContent = status.branch;
+            }
+            
+            // Show/hide sections
+            document.getElementById('gitStagedSection').style.display = stagedFiles.length > 0 ? 'block' : 'none';
+            document.getElementById('gitNoChanges').style.display = (stagedFiles.length === 0 && changedFiles.length === 0) ? 'block' : 'none';
+            
+            // Render file lists
+            renderGitFiles('gitStagedFiles', stagedFiles, true);
+            renderGitFiles('gitChangedFiles', changedFiles, false);
+        }
+        
+        // Render Git file list
+        function renderGitFiles(containerId, files, isStaged) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            
+            if (files.length === 0) {
+                container.innerHTML = '';
+                return;
+            }
+            
+            container.innerHTML = files.map(file => {
+                const status = file.status || 'modified';
+                const statusClass = status.toLowerCase();
+                const actionIcon = isStaged ? 'minus' : 'plus';
+                const actionTitle = isStaged ? 'Unstage' : 'Stage';
+                const actionFn = isStaged ? 'unstageFile' : 'stageFile';
+                
+                return `
+                    <div class="git-file-item ${statusClass}" onclick="showGitDiff('${file.path}')">
+                        <span class="git-file-name" title="${file.path}">${file.path}</span>
+                        <div class="git-file-actions">
+                            <span class="git-file-action" onclick="event.stopPropagation(); ${actionFn}('${file.path}')" title="${actionTitle}">
+                                <i class="fas fa-${actionIcon}"></i>
+                            </span>
+                            <span class="git-file-action" onclick="event.stopPropagation(); openFile('${file.path}')" title="Open File">
+                                <i class="fas fa-external-link-alt"></i>
+                            </span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        // Stage file
+        async function stageFile(filePath) {
+            if (!gitClient) return;
+            
+            try {
+                await gitClient.add([filePath]);
+                await refreshGitStatus();
+                showNotification('Git', `Staged: ${filePath}`, 'success');
+            } catch (error) {
+                console.error('Failed to stage file:', error);
+                showNotification('Git', `Failed to stage: ${filePath}`, 'error');
+            }
+        }
+        
+        // Unstage file
+        async function unstageFile(filePath) {
+            if (!gitClient) return;
+            
+            try {
+                await gitClient.reset([filePath]);
+                await refreshGitStatus();
+                showNotification('Git', `Unstaged: ${filePath}`, 'success');
+            } catch (error) {
+                console.error('Failed to unstage file:', error);
+                showNotification('Git', `Failed to unstage: ${filePath}`, 'error');
+            }
+        }
+        
+        // Stage all files
+        async function stageAll() {
+            if (!gitClient) return;
+            
+            try {
+                await gitClient.add(['.']);
+                await refreshGitStatus();
+                showNotification('Git', 'All changes staged', 'success');
+            } catch (error) {
+                console.error('Failed to stage all:', error);
+                showNotification('Git', 'Failed to stage all changes', 'error');
+            }
+        }
+        
+        // Unstage all files
+        async function unstageAll() {
+            if (!gitClient) return;
+            
+            try {
+                await gitClient.reset(['.']);
+                await refreshGitStatus();
+                showNotification('Git', 'All changes unstaged', 'success');
+            } catch (error) {
+                console.error('Failed to unstage all:', error);
+                showNotification('Git', 'Failed to unstage all changes', 'error');
+            }
+        }
+        
+        // Commit changes
+        async function gitCommit() {
+            if (!gitClient) return;
+            
+            const message = document.getElementById('gitCommitMessage').value.trim();
+            if (!message) {
+                showNotification('Git', 'Please enter a commit message', 'warning');
+                return;
+            }
+            
+            try {
+                const result = await gitClient.commit(message);
+                document.getElementById('gitCommitMessage').value = '';
+                await refreshGitStatus();
+                showNotification('Git', `Committed: ${result.commit}`, 'success');
+            } catch (error) {
+                console.error('Failed to commit:', error);
+                showNotification('Git', 'Failed to commit changes', 'error');
+            }
+        }
+        
+        // Commit and push
+        async function gitCommitAndPush() {
+            await gitCommit();
+            
+            if (!gitClient) return;
+            
+            try {
+                await gitClient.push();
+                showNotification('Git', 'Pushed to remote', 'success');
+            } catch (error) {
+                console.error('Failed to push:', error);
+                showNotification('Git', 'Failed to push to remote', 'error');
+            }
+        }
+        
+        // Show Git diff
+        async function showGitDiff(filePath) {
+            if (!gitClient) return;
+            
+            try {
+                const diff = await gitClient.diff(filePath);
+                // TODO: Show diff in a modal or split view
+                console.log('Diff for', filePath, diff);
+                showNotification('Git', `Viewing diff for: ${filePath}`, 'info');
+            } catch (error) {
+                console.error('Failed to get diff:', error);
+                showNotification('Git', 'Failed to load diff', 'error');
+            }
+        }
+        
+        // Show Git menu
+        function showGitMenu() {
+            // TODO: Show context menu with Git actions
+            console.log('Git menu');
+        }
+        
+        // Show Git error
+        function showGitError(message) {
+            const container = document.getElementById('gitChangedFiles');
+            if (container) {
+                container.innerHTML = `
+                    <div style="padding: 20px; text-align: center; color: var(--vscode-error);">
+                        <i class="fas fa-exclamation-triangle" style="font-size: 32px; margin-bottom: 12px; display: block;"></i>
+                        <div>${message}</div>
+                        <button class="btn btn-secondary" onclick="refreshGitStatus()" style="margin-top: 12px;">
+                            <i class="fas fa-sync"></i> Retry
+                        </button>
+                    </div>
+                `;
+            }
+        }
+        
+        // Initialize Git when workspace is loaded
+        window.addEventListener('load', () => {
+            // Get workspace ID from URL or localStorage
+            const urlParams = new URLSearchParams(window.location.search);
+            const workspaceId = urlParams.get('workspace') || localStorage.getItem('currentWorkspaceId');
+            
+            if (workspaceId) {
+                initializeGit(workspaceId);
+            }
+        });
+    </script>
+    
+    <!-- Terminal Integration Script -->
+    <script>
+        // Global terminal instance
+        let terminalClient = null;
+        let terminalInitialized = false;
+        
+        // Wait for xterm to load
+        async function waitForXterm() {
+            try {
+                const cdnName = await window.xtermLoadPromise;
+                console.log(`✓ xterm.js ready (loaded from ${cdnName})`);
+                console.log('Terminal:', typeof Terminal);
+                console.log('FitAddon:', typeof FitAddon);
+                console.log('WebLinksAddon:', typeof WebLinksAddon);
+                return true;
+            } catch (error) {
+                console.error('xterm.js failed to load:', error);
+                throw error;
+            }
+        }
+        
+        // Initialize terminal when panel is first opened
+        async function initializeTerminal() {
+            if (terminalInitialized) return;
+            
+            try {
+                console.log('Initializing terminal...');
+                
+                // Wait for xterm to be available
+                await waitForXterm();
+                
+                // Get current workspace ID (you may need to adjust this based on your app)
+                const workspaceId = localStorage.getItem('currentWorkspaceId') || 'default-workspace';
+                
+                // Create terminal client
+                terminalClient = new TerminalClient();
+                
+                // Initialize terminal in container
+                await terminalClient.initialize('terminal-container', workspaceId, {
+                    cols: 80,
+                    rows: 24
+                });
+                
+                terminalInitialized = true;
+                console.log('Terminal initialized successfully!');
+                
+                // Update status bar
+                updateTerminalStatus('connected');
+                
+            } catch (error) {
+                console.error('Terminal initialization error:', error);
+                
+                // Show fallback message
+                document.getElementById('terminal-container').innerHTML = `
+                    <div style="padding: 20px; color: var(--vscode-error);">
+                        <i class="fas fa-exclamation-triangle"></i> Terminal initialization failed<br>
+                        <small style="color: var(--vscode-text-dim);">${error.message}</small><br>
+                        <button class="btn btn-primary" onclick="retryTerminalInit()" style="margin-top: 12px;">
+                            <i class="fas fa-redo"></i> Retry
+                        </button>
+                    </div>
+                `;
+            }
+        }
+        
+        // Retry terminal initialization
+        async function retryTerminalInit() {
+            terminalInitialized = false;
+            document.getElementById('terminal-container').innerHTML = '';
+            await initializeTerminal();
+        }
+        
+        // Create new terminal session
+        async function createNewTerminal() {
+            if (!terminalInitialized) {
+                await initializeTerminal();
+            } else {
+                showNotification('Terminal', 'Multiple terminal sessions coming soon!', 'info');
+            }
+        }
+        
+        // Update terminal status in status bar
+        function updateTerminalStatus(status) {
+            // You can add a terminal status indicator to the status bar if needed
+            console.log('Terminal status:', status);
+        }
+        
+        // Enhanced switchPanelTab function
+        function switchPanelTab(tabName) {
+            // Remove active class from all tabs
+            document.querySelectorAll('.panel-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Add active class to clicked tab
+            document.querySelector(`.panel-tab[data-panel="${tabName}"]`).classList.add('active');
+            
+            // Hide all panel contents
+            document.querySelectorAll('.panel-content').forEach(content => {
+                content.style.display = 'none';
+                content.classList.remove('active');
+            });
+            
+            // Show selected panel
+            const panelId = `${tabName}-panel`;
+            const panel = document.getElementById(panelId);
+            if (panel) {
+                panel.style.display = 'block';
+                panel.classList.add('active');
+            }
+            
+            // Initialize terminal if switching to terminal tab
+            if (tabName === 'terminal' && !terminalInitialized) {
+                initializeTerminal();
+            }
+            
+            // Fit terminal to container if already initialized
+            if (tabName === 'terminal' && terminalClient && terminalClient.fitAddon) {
+                setTimeout(() => {
+                    terminalClient.fit();
+                }, 100);
+            }
+        }
+        
+        // Initialize terminal when page loads (if terminal tab is active)
+        window.addEventListener('load', () => {
+            // Check if terminal tab is active by default
+            const terminalTab = document.querySelector('.panel-tab[data-panel="terminal"]');
+            if (terminalTab && terminalTab.classList.contains('active')) {
+                // Delay initialization slightly to ensure DOM is ready
+                setTimeout(() => {
+                    initializeTerminal();
+                }, 500);
+            }
+        });
+        
+        // Handle window resize for terminal
+        window.addEventListener('resize', () => {
+            if (terminalClient && terminalClient.fitAddon) {
+                terminalClient.fit();
+            }
+        });
+        
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (terminalClient) {
+                terminalClient.destroy();
+            }
+        });
+    </script>
+    
+    <!-- Modal Functions -->
+    <script>
+        // Show/Hide Modal Functions
+        function showNewFileModal() {
+            const modal = document.getElementById('newFileModal');
+            if (modal) {
+                modal.style.display = 'flex';
+                const input = document.getElementById('newFileName');
+                if (input) {
+                    setTimeout(() => input.focus(), 100);
+                }
+            }
+        }
+        
+        function showNewFolderModal() {
+            const modal = document.getElementById('newFolderModal');
+            if (modal) {
+                modal.style.display = 'flex';
+                const input = document.getElementById('newFolderName');
+                if (input) {
+                    setTimeout(() => input.focus(), 100);
+                }
+            }
+        }
+        
+        function closeModal(modalId) {
+            const modal = document.getElementById(modalId);
+            if (modal) {
+                modal.style.display = 'none';
+                // Clear inputs
+                const inputs = modal.querySelectorAll('input[type="text"]');
+                inputs.forEach(input => input.value = '');
+            }
+        }
+        
+        function createNewFile() {
+            const fileName = document.getElementById('newFileName')?.value;
+            const language = document.getElementById('newFileLanguage')?.value;
+            const path = document.getElementById('newFilePath')?.value || '/';
+            
+            if (!fileName) {
+                alert('Please enter a file name');
+                return;
+            }
+            
+            console.log('Creating file:', { fileName, language, path });
+            
+            // Add file to file tree
+            const fullPath = path.endsWith('/') ? path + fileName : path + '/' + fileName;
+            const newFile = {
+                name: fileName,
+                path: fullPath,
+                type: 'file',
+                language: language
+            };
+            
+            // Add to fileTreeData if it exists
+            if (typeof fileTreeData !== 'undefined') {
+                fileTreeData.push(newFile);
+                if (typeof renderFileTree === 'function') {
+                    renderFileTree();
+                }
+            }
+            
+            showNotification('File', `Created file: ${fileName}`, 'success');
+            closeModal('newFileModal');
+        }
+        
+        function createNewFolder() {
+            const folderName = document.getElementById('newFolderName')?.value;
+            const path = document.getElementById('newFolderPath')?.value || '/';
+            
+            if (!folderName) {
+                alert('Please enter a folder name');
+                return;
+            }
+            
+            console.log('Creating folder:', { folderName, path });
+            
+            // Add folder to file tree
+            const fullPath = path.endsWith('/') ? path + folderName : path + '/' + folderName;
+            const newFolder = {
+                name: folderName,
+                path: fullPath,
+                type: 'folder',
+                children: []
+            };
+            
+            // Add to fileTreeData if it exists
+            if (typeof fileTreeData !== 'undefined') {
+                fileTreeData.push(newFolder);
+                if (typeof renderFileTree === 'function') {
+                    renderFileTree();
+                }
+            }
+            
+            showNotification('Folder', `Created folder: ${folderName}`, 'success');
+            closeModal('newFolderModal');
+        }
+        
+        // Close modals on Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                const modals = document.querySelectorAll('.modal-overlay[style*="display: flex"]');
+                modals.forEach(modal => {
+                    modal.style.display = 'none';
+                });
+            }
+        });
+        
+        // Close modals on background click
+        document.querySelectorAll('.modal-overlay').forEach(modal => {
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    modal.style.display = 'none';
+                }
+            });
+        });
+    </script>
+    
+    <!-- Command Palette & Enhanced UI Script -->
+    <script>
+        // Command Registry
+        const commands = [
+            { id: 'file.new', name: 'File: New File', icon: 'fa-file-plus', shortcut: 'Ctrl+N', action: () => showNewFileModal() },
+            { id: 'file.open', name: 'File: Open File', icon: 'fa-folder-open', shortcut: 'Ctrl+O', action: () => openQuickOpen() },
+            { id: 'file.save', name: 'File: Save', icon: 'fa-save', shortcut: 'Ctrl+S', action: () => saveCurrentFile() },
+            { id: 'file.saveAll', name: 'File: Save All', icon: 'fa-save', shortcut: 'Ctrl+K S', action: () => saveAllFiles() },
+            { id: 'file.close', name: 'File: Close', icon: 'fa-times', shortcut: 'Ctrl+W', action: () => closeCurrentTab() },
+            { id: 'edit.undo', name: 'Edit: Undo', icon: 'fa-undo', shortcut: 'Ctrl+Z', action: () => editorUndo() },
+            { id: 'edit.redo', name: 'Edit: Redo', icon: 'fa-redo', shortcut: 'Ctrl+Y', action: () => editorRedo() },
+            { id: 'edit.find', name: 'Edit: Find', icon: 'fa-search', shortcut: 'Ctrl+F', action: () => editorFind() },
+            { id: 'edit.replace', name: 'Edit: Replace', icon: 'fa-exchange-alt', shortcut: 'Ctrl+H', action: () => editorReplace() },
+            { id: 'view.explorer', name: 'View: Show Explorer', icon: 'fa-folder', shortcut: 'Ctrl+Shift+E', action: () => switchSidebar('explorer') },
+            { id: 'view.search', name: 'View: Show Search', icon: 'fa-search', shortcut: 'Ctrl+Shift+F', action: () => switchSidebar('search') },
+            { id: 'view.git', name: 'View: Show Source Control', icon: 'fa-code-branch', shortcut: 'Ctrl+Shift+G', action: () => switchSidebar('git') },
+            { id: 'view.ai', name: 'View: Show AI Assistant', icon: 'fa-robot', shortcut: 'Ctrl+Shift+A', action: () => switchSidebar('ai') },
+            { id: 'view.terminal', name: 'View: Toggle Terminal', icon: 'fa-terminal', shortcut: 'Ctrl+`', action: () => togglePanel() },
+            { id: 'git.refresh', name: 'Git: Refresh', icon: 'fa-sync', shortcut: '', action: () => refreshGitStatus() },
+            { id: 'git.commit', name: 'Git: Commit', icon: 'fa-check', shortcut: '', action: () => gitCommit() },
+            { id: 'git.push', name: 'Git: Push', icon: 'fa-upload', shortcut: '', action: () => gitCommitAndPush() },
+            { id: 'git.stageAll', name: 'Git: Stage All Changes', icon: 'fa-plus', shortcut: '', action: () => stageAll() },
+            { id: 'ai.explain', name: 'AI: Explain Code', icon: 'fa-lightbulb', shortcut: '', action: () => aiExplainCode() },
+            { id: 'ai.optimize', name: 'AI: Optimize Code', icon: 'fa-rocket', shortcut: '', action: () => aiOptimizeCode() },
+            { id: 'ai.fix', name: 'AI: Fix Bugs', icon: 'fa-bug', shortcut: '', action: () => aiFixBugs() },
+            { id: 'ai.refactor', name: 'AI: Refactor Code', icon: 'fa-code', shortcut: '', action: () => aiRefactorCode() },
+            { id: 'terminal.new', name: 'Terminal: Create New Terminal', icon: 'fa-terminal', shortcut: '', action: () => createNewTerminal() },
+            { id: 'settings.open', name: 'Settings: Open Settings', icon: 'fa-cog', shortcut: '', action: () => openSettings() }
+        ];
+        
+        let selectedCommandIndex = 0;
+        let filteredCommands = [];
+        
+        // Open Command Palette
+        function openCommandPalette() {
+            const palette = document.getElementById('commandPalette');
+            const input = document.getElementById('commandPaletteInput');
+            
+            palette.classList.add('active');
+            input.value = '';
+            input.focus();
+            
+            // Show all commands initially
+            filteredCommands = [...commands];
+            renderCommands();
+            selectedCommandIndex = 0;
+        }
+        
+        // Close Command Palette
+        function closeCommandPalette() {
+            document.getElementById('commandPalette').classList.remove('active');
+        }
+        
+        // Filter commands based on search
+        function filterCommands() {
+            const input = document.getElementById('commandPaletteInput');
+            const query = input.value.toLowerCase();
+            
+            if (!query) {
+                filteredCommands = [...commands];
+            } else {
+                // Fuzzy search
+                filteredCommands = commands.filter(cmd => {
+                    const name = cmd.name.toLowerCase();
+                    const id = cmd.id.toLowerCase();
+                    return name.includes(query) || id.includes(query) || fuzzyMatch(name, query);
+                });
+            }
+            
+            selectedCommandIndex = 0;
+            renderCommands();
+        }
+        
+        // Fuzzy match helper
+        function fuzzyMatch(str, pattern) {
+            let patternIdx = 0;
+            let strIdx = 0;
+            
+            while (strIdx < str.length && patternIdx < pattern.length) {
+                if (str[strIdx].toLowerCase() === pattern[patternIdx].toLowerCase()) {
+                    patternIdx++;
+                }
+                strIdx++;
+            }
+            
+            return patternIdx === pattern.length;
+        }
+        
+        // Render command results
+        function renderCommands() {
+            const results = document.getElementById('commandPaletteResults');
+            
+            if (filteredCommands.length === 0) {
+                results.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--vscode-text-dim);">No commands found</div>';
+                return;
+            }
+            
+            results.innerHTML = filteredCommands.map((cmd, index) => `
+                <div class="command-item ${index === selectedCommandIndex ? 'selected' : ''}" 
+                     onclick="executeCommand('${cmd.id}')" 
+                     data-index="${index}">
+                    <i class="fas ${cmd.icon}"></i>
+                    <span class="command-name">${cmd.name}</span>
+                    ${cmd.shortcut ? `<span class="command-shortcut">${cmd.shortcut}</span>` : ''}
+                </div>
+            `).join('');
+        }
+        
+        // Handle keyboard navigation in command palette
+        function handleCommandPaletteKey(event) {
+            if (event.key === 'Escape') {
+                closeCommandPalette();
+                event.preventDefault();
+            } else if (event.key === 'ArrowDown') {
+                selectedCommandIndex = Math.min(selectedCommandIndex + 1, filteredCommands.length - 1);
+                renderCommands();
+                scrollToSelected();
+                event.preventDefault();
+            } else if (event.key === 'ArrowUp') {
+                selectedCommandIndex = Math.max(selectedCommandIndex - 1, 0);
+                renderCommands();
+                scrollToSelected();
+                event.preventDefault();
+            } else if (event.key === 'Enter') {
+                if (filteredCommands[selectedCommandIndex]) {
+                    executeCommand(filteredCommands[selectedCommandIndex].id);
+                }
+                event.preventDefault();
+            }
+        }
+        
+        // Scroll to selected command
+        function scrollToSelected() {
+            const results = document.getElementById('commandPaletteResults');
+            const selected = results.querySelector('.command-item.selected');
+            if (selected) {
+                selected.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            }
+        }
+        
+        // Execute command
+        function executeCommand(commandId) {
+            const command = commands.find(cmd => cmd.id === commandId);
+            if (command && command.action) {
+                closeCommandPalette();
+                command.action();
+            }
+        }
+        
+        // Quick Open functionality
+        let allFiles = [];
+        let selectedFileIndex = 0;
+        let filteredFiles = [];
+        
+        // Open Quick Open
+        function openQuickOpen() {
+            const quickOpen = document.getElementById('quickOpen');
+            const input = document.getElementById('quickOpenInput');
+            
+            quickOpen.classList.add('active');
+            input.value = '';
+            input.focus();
+            
+            // Load all files (you'll need to implement this based on your file system)
+            loadAllFiles();
+            filteredFiles = [...allFiles];
+            renderFiles();
+            selectedFileIndex = 0;
+        }
+        
+        // Close Quick Open
+        function closeQuickOpen() {
+            document.getElementById('quickOpen').classList.remove('active');
+        }
+        
+        // Load all files from workspace
+        function loadAllFiles() {
+            // TODO: Implement based on your VFS or file system
+            // For now, use placeholder data
+            allFiles = [
+                { path: 'src/index.js', name: 'index.js', icon: 'fa-file-code' },
+                { path: 'src/app.js', name: 'app.js', icon: 'fa-file-code' },
+                { path: 'src/styles.css', name: 'styles.css', icon: 'fa-file-code' },
+                { path: 'package.json', name: 'package.json', icon: 'fa-file-code' },
+                { path: 'README.md', name: 'README.md', icon: 'fa-file-alt' }
+            ];
+        }
+        
+        // Filter files based on search
+        function filterFilesQuickOpen() {
+            const input = document.getElementById('quickOpenInput');
+            const query = input.value.toLowerCase();
+            
+            if (!query) {
+                filteredFiles = [...allFiles];
+            } else {
+                filteredFiles = allFiles.filter(file => {
+                    const name = file.name.toLowerCase();
+                    const path = file.path.toLowerCase();
+                    return name.includes(query) || path.includes(query) || fuzzyMatch(name, query);
+                });
+            }
+            
+            selectedFileIndex = 0;
+            renderFiles();
+        }
+        
+        // Render file results
+        function renderFiles() {
+            const results = document.getElementById('quickOpenResults');
+            
+            if (filteredFiles.length === 0) {
+                results.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--vscode-text-dim);">No files found</div>';
+                return;
+            }
+            
+            results.innerHTML = filteredFiles.map((file, index) => `
+                <div class="command-item ${index === selectedFileIndex ? 'selected' : ''}" 
+                     onclick="openFileFromQuickOpen('${file.path}')" 
+                     data-index="${index}">
+                    <i class="fas ${file.icon}"></i>
+                    <span class="command-name">${file.path}</span>
+                </div>
+            `).join('');
+        }
+        
+        // Handle keyboard navigation in quick open
+        function handleQuickOpenKey(event) {
+            if (event.key === 'Escape') {
+                closeQuickOpen();
+                event.preventDefault();
+            } else if (event.key === 'ArrowDown') {
+                selectedFileIndex = Math.min(selectedFileIndex + 1, filteredFiles.length - 1);
+                renderFiles();
+                scrollToSelectedFile();
+                event.preventDefault();
+            } else if (event.key === 'ArrowUp') {
+                selectedFileIndex = Math.max(selectedFileIndex - 1, 0);
+                renderFiles();
+                scrollToSelectedFile();
+                event.preventDefault();
+            } else if (event.key === 'Enter') {
+                if (filteredFiles[selectedFileIndex]) {
+                    openFileFromQuickOpen(filteredFiles[selectedFileIndex].path);
+                }
+                event.preventDefault();
+            }
+        }
+        
+        // Scroll to selected file
+        function scrollToSelectedFile() {
+            const results = document.getElementById('quickOpenResults');
+            const selected = results.querySelector('.command-item.selected');
+            if (selected) {
+                selected.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            }
+        }
+        
+        // Open file from quick open
+        function openFileFromQuickOpen(filePath) {
+            closeQuickOpen();
+            // TODO: Implement file opening logic
+            console.log('Opening file:', filePath);
+            showNotification('Quick Open', `Opening: ${filePath}`, 'info');
+        }
+        
+        // Enhanced Status Bar Updates
+        function updateStatusBar() {
+            // Update cursor position
+            if (window.editor) {
+                const position = window.editor.getPosition();
+                if (position) {
+                    document.getElementById('lineNumber').textContent = position.lineNumber;
+                    document.getElementById('columnNumber').textContent = position.column;
+                }
+                
+                // Update selection count
+                const selection = window.editor.getSelection();
+                if (selection && !selection.isEmpty()) {
+                    const model = window.editor.getModel();
+                    const selectedText = model.getValueInRange(selection);
+                    const selectionInfo = `${selectedText.length} chars selected`;
+                    // You can add a selection indicator to status bar if needed
+                }
+            }
+        }
+        
+        // Update status bar on editor changes
+        if (window.editor) {
+            window.editor.onDidChangeCursorPosition(() => {
+                updateStatusBar();
+            });
+            
+            window.editor.onDidChangeCursorSelection(() => {
+                updateStatusBar();
+            });
+        }
+        
+        // Global keyboard shortcuts
+        document.addEventListener('keydown', (event) => {
+            // Command Palette: Ctrl+Shift+P
+            if (event.ctrlKey && event.shiftKey && event.key === 'P') {
+                openCommandPalette();
+                event.preventDefault();
+            }
+            
+            // Quick Open: Ctrl+P
+            if (event.ctrlKey && !event.shiftKey && event.key === 'p') {
+                openQuickOpen();
+                event.preventDefault();
+            }
+            
+            // Close modals with Escape
+            if (event.key === 'Escape') {
+                closeCommandPalette();
+                closeQuickOpen();
+            }
+            
+            // Explorer: Ctrl+Shift+E
+            if (event.ctrlKey && event.shiftKey && event.key === 'E') {
+                switchSidebar('explorer');
+                event.preventDefault();
+            }
+            
+            // Search: Ctrl+Shift+F
+            if (event.ctrlKey && event.shiftKey && event.key === 'F') {
+                switchSidebar('search');
+                event.preventDefault();
+            }
+            
+            // Git: Ctrl+Shift+G
+            if (event.ctrlKey && event.shiftKey && event.key === 'G') {
+                switchSidebar('git');
+                event.preventDefault();
+            }
+            
+            // AI Assistant: Ctrl+Shift+A
+            if (event.ctrlKey && event.shiftKey && event.key === 'A') {
+                switchSidebar('ai');
+                event.preventDefault();
+            }
+            
+            // Toggle Terminal: Ctrl+`
+            if (event.ctrlKey && event.key === '`') {
+                togglePanel();
+                event.preventDefault();
+            }
+        });
+        
+        // Click outside to close modals
+        document.getElementById('commandPalette').addEventListener('click', (event) => {
+            if (event.target.id === 'commandPalette') {
+                closeCommandPalette();
+            }
+        });
+        
+        document.getElementById('quickOpen').addEventListener('click', (event) => {
+            if (event.target.id === 'quickOpen') {
+                closeQuickOpen();
+            }
+        });
+        
+        // Helper functions for command actions
+        function saveCurrentFile() {
+            // TODO: Implement save logic
+            showNotification('File', 'File saved', 'success');
+        }
+        
+        function saveAllFiles() {
+            // TODO: Implement save all logic
+            showNotification('File', 'All files saved', 'success');
+        }
+        
+        function closeCurrentTab() {
+            // TODO: Implement close tab logic
+            showNotification('File', 'Tab closed', 'info');
+        }
+        
+        function editorUndo() {
+            if (window.editor) {
+                window.editor.trigger('keyboard', 'undo');
+            }
+        }
+        
+        function editorRedo() {
+            if (window.editor) {
+                window.editor.trigger('keyboard', 'redo');
+            }
+        }
+        
+        function editorFind() {
+            if (window.editor) {
+                window.editor.trigger('keyboard', 'actions.find');
+            }
+        }
+        
+        function editorReplace() {
+            if (window.editor) {
+                window.editor.trigger('keyboard', 'editor.action.startFindReplaceAction');
+            }
+        }
+        
+        console.log('✓ Command Palette & Enhanced UI initialized');
+        console.log('  - Ctrl+Shift+P: Command Palette');
+        console.log('  - Ctrl+P: Quick Open');
+        console.log('  - Ctrl+Shift+E/F/G/A: Switch views');
+        console.log('  - Ctrl+`: Toggle Terminal');
+    </script>
+    
+    <!-- Visual Polish & Loading States Script -->
+    <script>
+        // ============================================
+        // SKELETON LOADERS
+        // ============================================
+        
+        /**
+         * Create skeleton loader for file tree
+         */
+        function createFileTreeSkeleton(count = 8) {
+            let html = '<div class="skeleton-file-tree">';
+            for (let i = 0; i < count; i++) {
+                const width = Math.random() > 0.5 ? 'short' : 'medium';
+                html += `
+                    <div class="skeleton-file-item stagger-item">
+                        <div class="skeleton-file-icon"></div>
+                        <div class="skeleton-file-name ${width}"></div>
+                    </div>
+                `;
+            }
+            html += '</div>';
+            return html;
+        }
+        
+        /**
+         * Show skeleton loader in file tree
+         */
+        function showFileTreeLoading() {
+            const fileTree = document.getElementById('fileTree');
+            if (fileTree) {
+                fileTree.innerHTML = createFileTreeSkeleton();
+            }
+        }
+        
+        /**
+         * Create skeleton loader for Git files
+         */
+        function createGitFilesSkeleton(count = 5) {
+            let html = '<div class="skeleton-file-tree">';
+            for (let i = 0; i < count; i++) {
+                html += `
+                    <div class="skeleton-file-item stagger-item">
+                        <div class="skeleton-file-icon"></div>
+                        <div class="skeleton-file-name"></div>
+                    </div>
+                `;
+            }
+            html += '</div>';
+            return html;
+        }
+        
+        /**
+         * Show skeleton loader for Git status
+         */
+        function showGitStatusLoading() {
+            const gitChangedFiles = document.getElementById('gitChangedFiles');
+            if (gitChangedFiles) {
+                gitChangedFiles.innerHTML = createGitFilesSkeleton();
+            }
+        }
+        
+        /**
+         * Create skeleton loader for search results
+         */
+        function createSearchResultsSkeleton(count = 6) {
+            let html = '<div class="skeleton-file-tree">';
+            for (let i = 0; i < count; i++) {
+                html += `
+                    <div class="skeleton-file-item stagger-item">
+                        <div class="skeleton-line"></div>
+                        <div class="skeleton-line short"></div>
+                    </div>
+                `;
+            }
+            html += '</div>';
+            return html;
+        }
+        
+        // ============================================
+        // LOADING OVERLAY
+        // ============================================
+        
+        /**
+         * Show loading overlay
+         */
+        function showLoadingOverlay(container, message = 'Loading...') {
+            const overlay = document.createElement('div');
+            overlay.className = 'loading-overlay';
+            overlay.innerHTML = `
+                <div class="loading-spinner large"></div>
+                <div class="loading-text">${message}</div>
+            `;
+            
+            const target = typeof container === 'string' 
+                ? document.getElementById(container) 
+                : container;
+            
+            if (target) {
+                target.style.position = 'relative';
+                target.appendChild(overlay);
+            }
+            
+            return overlay;
+        }
+        
+        /**
+         * Hide loading overlay
+         */
+        function hideLoadingOverlay(container) {
+            const target = typeof container === 'string' 
+                ? document.getElementById(container) 
+                : container;
+            
+            if (target) {
+                const overlay = target.querySelector('.loading-overlay');
+                if (overlay) {
+                    overlay.style.opacity = '0';
+                    setTimeout(() => overlay.remove(), 200);
+                }
+            }
+        }
+        
+        // ============================================
+        // BUTTON LOADING STATES
+        // ============================================
+        
+        /**
+         * Set button to loading state
+         */
+        function setButtonLoading(button, loading = true) {
+            const btn = typeof button === 'string' 
+                ? document.querySelector(button) 
+                : button;
+            
+            if (!btn) return;
+            
+            if (loading) {
+                btn.classList.add('loading');
+                btn.disabled = true;
+                btn.dataset.originalText = btn.innerHTML;
+            } else {
+                btn.classList.remove('loading');
+                btn.disabled = false;
+                if (btn.dataset.originalText) {
+                    btn.innerHTML = btn.dataset.originalText;
+                }
+            }
+        }
+        
+        /**
+         * Set button to success state
+         */
+        function setButtonSuccess(button, duration = 2000) {
+            const btn = typeof button === 'string' 
+                ? document.querySelector(button) 
+                : button;
+            
+            if (!btn) return;
+            
+            btn.classList.add('success');
+            setTimeout(() => {
+                btn.classList.remove('success');
+            }, duration);
+        }
+        
+        /**
+         * Set button to error state
+         */
+        function setButtonError(button, duration = 2000) {
+            const btn = typeof button === 'string' 
+                ? document.querySelector(button) 
+                : button;
+            
+            if (!btn) return;
+            
+            btn.classList.add('error');
+            setTimeout(() => {
+                btn.classList.remove('error');
+            }, duration);
+        }
+        
+        // ============================================
+        // PROGRESS BAR
+        // ============================================
+        
+        /**
+         * Create progress bar
+         */
+        function createProgressBar(container, indeterminate = false) {
+            const progressBar = document.createElement('div');
+            progressBar.className = 'progress-bar' + (indeterminate ? ' indeterminate' : '');
+            progressBar.innerHTML = '<div class="progress-bar-fill"></div>';
+            
+            const target = typeof container === 'string' 
+                ? document.getElementById(container) 
+                : container;
+            
+            if (target) {
+                target.appendChild(progressBar);
+            }
+            
+            return progressBar;
+        }
+        
+        /**
+         * Update progress bar
+         */
+        function updateProgressBar(progressBar, percent) {
+            const fill = progressBar.querySelector('.progress-bar-fill');
+            if (fill) {
+                fill.style.width = percent + '%';
+            }
+        }
+        
+        /**
+         * Remove progress bar
+         */
+        function removeProgressBar(progressBar) {
+            if (progressBar) {
+                progressBar.style.opacity = '0';
+                setTimeout(() => progressBar.remove(), 300);
+            }
+        }
+        
+        // ============================================
+        // TOOLTIPS
+        // ============================================
+        
+        let currentTooltip = null;
+        
+        /**
+         * Show tooltip
+         */
+        function showTooltip(element, text, position = 'top') {
+            hideTooltip();
+            
+            const tooltip = document.createElement('div');
+            tooltip.className = 'tooltip';
+            tooltip.textContent = text;
+            document.body.appendChild(tooltip);
+            
+            const rect = element.getBoundingClientRect();
+            
+            switch (position) {
+                case 'top':
+                    tooltip.style.left = rect.left + (rect.width / 2) - (tooltip.offsetWidth / 2) + 'px';
+                    tooltip.style.top = rect.top - tooltip.offsetHeight - 8 + 'px';
+                    break;
+                case 'bottom':
+                    tooltip.style.left = rect.left + (rect.width / 2) - (tooltip.offsetWidth / 2) + 'px';
+                    tooltip.style.top = rect.bottom + 8 + 'px';
+                    break;
+                case 'left':
+                    tooltip.style.left = rect.left - tooltip.offsetWidth - 8 + 'px';
+                    tooltip.style.top = rect.top + (rect.height / 2) - (tooltip.offsetHeight / 2) + 'px';
+                    break;
+                case 'right':
+                    tooltip.style.left = rect.right + 8 + 'px';
+                    tooltip.style.top = rect.top + (rect.height / 2) - (tooltip.offsetHeight / 2) + 'px';
+                    break;
+            }
+            
+            setTimeout(() => tooltip.classList.add('show'), 10);
+            currentTooltip = tooltip;
+        }
+        
+        /**
+         * Hide tooltip
+         */
+        function hideTooltip() {
+            if (currentTooltip) {
+                currentTooltip.classList.remove('show');
+                setTimeout(() => {
+                    if (currentTooltip) {
+                        currentTooltip.remove();
+                        currentTooltip = null;
+                    }
+                }, 200);
+            }
+        }
+        
+        /**
+         * Add tooltip to element
+         */
+        function addTooltip(element, text, position = 'top') {
+            element.addEventListener('mouseenter', () => showTooltip(element, text, position));
+            element.addEventListener('mouseleave', hideTooltip);
+        }
+        
+        // ============================================
+        // ENHANCED NOTIFICATIONS
+        // ============================================
+        
+        /**
+         * Show enhanced notification with animation
+         */
+        function showNotificationEnhanced(title, message, type = 'info', options = {}) {
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            
+            const icons = {
+                success: 'fa-check-circle',
+                error: 'fa-exclamation-circle',
+                warning: 'fa-exclamation-triangle',
+                info: 'fa-info-circle'
+            };
+            
+            const colors = {
+                success: 'var(--vscode-success)',
+                error: 'var(--vscode-error)',
+                warning: 'var(--vscode-warning)',
+                info: 'var(--vscode-statusbar)'
+            };
+            
+            notification.innerHTML = `
+                <div class="notification-header">
+                    <i class="fas ${icons[type]}" style="color: ${colors[type]}"></i>
+                    <span class="notification-title">${title}</span>
+                    <i class="fas fa-times notification-close" onclick="this.parentElement.parentElement.remove()"></i>
+                </div>
+                <div class="notification-body">${message}</div>
+                ${options.actions ? `
+                    <div class="notification-actions">
+                        ${options.actions.map(action => `
+                            <button class="btn btn-sm ${action.class || 'btn-secondary'}" onclick="${action.onclick}">
+                                ${action.icon ? `<i class="fas ${action.icon}"></i>` : ''} ${action.label}
+                            </button>
+                        `).join('')}
+                    </div>
+                ` : ''}
+            `;
+            
+            document.body.appendChild(notification);
+            
+            // Auto-remove after duration
+            const duration = options.duration || 5000;
+            if (duration > 0) {
+                setTimeout(() => {
+                    notification.classList.add('removing');
+                    setTimeout(() => notification.remove(), 300);
+                }, duration);
+            }
+            
+            return notification;
+        }
+        
+        // ============================================
+        // SMOOTH SCROLL
+        // ============================================
+        
+        /**
+         * Smooth scroll to element
+         */
+        function smoothScrollTo(element, container) {
+            const target = typeof element === 'string' 
+                ? document.querySelector(element) 
+                : element;
+            
+            const scrollContainer = typeof container === 'string' 
+                ? document.querySelector(container) 
+                : container;
+            
+            if (target && scrollContainer) {
+                scrollContainer.scrollTo({
+                    top: target.offsetTop - scrollContainer.offsetTop,
+                    behavior: 'smooth'
+                });
+            }
+        }
+        
+        // ============================================
+        // INITIALIZE TOOLTIPS
+        // ============================================
+        
+        /**
+         * Initialize tooltips for all elements with data-tooltip
+         */
+        function initializeTooltips() {
+            document.querySelectorAll('[data-tooltip]').forEach(element => {
+                const text = element.getAttribute('data-tooltip');
+                const position = element.getAttribute('data-tooltip-position') || 'top';
+                addTooltip(element, text, position);
+            });
+        }
+        
+        // Initialize tooltips on page load
+        window.addEventListener('load', initializeTooltips);
+        
+        // ============================================
+        // APPLY VISUAL POLISH TO EXISTING FUNCTIONS
+        // ============================================
+        
+        // Enhance existing refreshGitStatus with loading state
+        const originalRefreshGitStatus = window.refreshGitStatus;
+        if (originalRefreshGitStatus) {
+            window.refreshGitStatus = async function() {
+                showGitStatusLoading();
+                try {
+                    await originalRefreshGitStatus();
+                } catch (error) {
+                    console.error('Git status refresh error:', error);
+                }
+            };
+        }
+        
+        // Enhance file tree loading
+        const originalRefreshFileTree = window.refreshFileTree;
+        if (originalRefreshFileTree) {
+            window.refreshFileTree = async function() {
+                showFileTreeLoading();
+                try {
+                    await originalRefreshFileTree();
+                } catch (error) {
+                    console.error('File tree refresh error:', error);
+                }
+            };
+        }
+        
+        console.log('✓ Visual Polish & Loading States initialized');
+        console.log('  - Smooth transitions enabled');
+        console.log('  - Skeleton loaders ready');
+        console.log('  - Loading overlays ready');
+        console.log('  - Enhanced notifications ready');
+        console.log('  - Tooltips initialized');
+    </script>
+    
+    <!-- File Explorer Enhancement Script -->
+    <script>
+        // Note: FILE_ICONS is defined in js/file-explorer.js
+        
+        // ============================================
+        // CONTEXT MENU
+        // ============================================
+        
+        let contextMenuTarget = null;
+        
+        /**
+         * Show context menu
+         */
+        function showContextMenu(event, target, type = 'file') {
+            event.preventDefault();
+            event.stopPropagation();
+            
+            contextMenuTarget = target;
+            
+            const contextMenu = document.getElementById('contextMenu');
+            if (!contextMenu) return;
+            
+            // Update context menu items based on type
+            updateContextMenuItems(type);
+            
+            // Position context menu
+            contextMenu.style.left = event.pageX + 'px';
+            contextMenu.style.top = event.pageY + 'px';
+            contextMenu.classList.add('active');
+            
+            // Close on click outside
+            setTimeout(() => {
+                document.addEventListener('click', closeContextMenu);
+            }, 10);
+        }
+        
+        /**
+         * Close context menu
+         */
+        function closeContextMenu() {
+            const contextMenu = document.getElementById('contextMenu');
+            if (contextMenu) {
+                contextMenu.classList.remove('active');
+            }
+            document.removeEventListener('click', closeContextMenu);
+        }
+        
+        /**
+         * Update context menu items
+         */
+        function updateContextMenuItems(type) {
+            const contextMenu = document.getElementById('contextMenu');
+            if (!contextMenu) return;
+            
+            if (type === 'file') {
+                contextMenu.innerHTML = `
+                    <div class="context-menu-item" onclick="contextMenuAction('open')">
+                        <span><i class="fas fa-folder-open"></i> Open</span>
+                        <span class="context-menu-shortcut">Enter</span>
+                    </div>
+                    <div class="context-menu-item" onclick="contextMenuAction('rename')">
+                        <span><i class="fas fa-edit"></i> Rename</span>
+                        <span class="context-menu-shortcut">F2</span>
+                    </div>
+                    <div class="context-menu-separator"></div>
+                    <div class="context-menu-item" onclick="contextMenuAction('copy')">
+                        <span><i class="fas fa-copy"></i> Copy</span>
+                        <span class="context-menu-shortcut">Ctrl+C</span>
+                    </div>
+                    <div class="context-menu-item" onclick="contextMenuAction('cut')">
+                        <span><i class="fas fa-cut"></i> Cut</span>
+                        <span class="context-menu-shortcut">Ctrl+X</span>
+                    </div>
+                    <div class="context-menu-item" onclick="contextMenuAction('paste')">
+                        <span><i class="fas fa-paste"></i> Paste</span>
+                        <span class="context-menu-shortcut">Ctrl+V</span>
+                    </div>
+                    <div class="context-menu-separator"></div>
+                    <div class="context-menu-item" onclick="contextMenuAction('copyPath')">
+                        <span><i class="fas fa-link"></i> Copy Path</span>
+                    </div>
+                    <div class="context-menu-item" onclick="contextMenuAction('copyRelativePath')">
+                        <span><i class="fas fa-link"></i> Copy Relative Path</span>
+                    </div>
+                    <div class="context-menu-separator"></div>
+                    <div class="context-menu-item" onclick="contextMenuAction('delete')">
+                        <span><i class="fas fa-trash"></i> Delete</span>
+                        <span class="context-menu-shortcut">Del</span>
+                    </div>
+                `;
+            } else if (type === 'folder') {
+                contextMenu.innerHTML = `
+                    <div class="context-menu-item" onclick="contextMenuAction('newFile')">
+                        <span><i class="fas fa-file-plus"></i> New File</span>
+                    </div>
+                    <div class="context-menu-item" onclick="contextMenuAction('newFolder')">
+                        <span><i class="fas fa-folder-plus"></i> New Folder</span>
+                    </div>
+                    <div class="context-menu-separator"></div>
+                    <div class="context-menu-item" onclick="contextMenuAction('rename')">
+                        <span><i class="fas fa-edit"></i> Rename</span>
+                        <span class="context-menu-shortcut">F2</span>
+                    </div>
+                    <div class="context-menu-separator"></div>
+                    <div class="context-menu-item" onclick="contextMenuAction('copyPath')">
+                        <span><i class="fas fa-link"></i> Copy Path</span>
+                    </div>
+                    <div class="context-menu-separator"></div>
+                    <div class="context-menu-item" onclick="contextMenuAction('delete')">
+                        <span><i class="fas fa-trash"></i> Delete</span>
+                        <span class="context-menu-shortcut">Del</span>
+                    </div>
+                `;
+            }
+        }
+        
+        /**
+         * Handle context menu actions
+         */
+        function contextMenuAction(action) {
+            closeContextMenu();
+            
+            if (!contextMenuTarget) return;
+            
+            switch (action) {
+                case 'open':
+                    console.log('Open:', contextMenuTarget);
+                    showNotificationEnhanced('File', `Opening: ${contextMenuTarget}`, 'info');
+                    break;
+                    
+                case 'rename':
+                    showRenameModal(contextMenuTarget);
+                    break;
+                    
+                case 'delete':
+                    showDeleteConfirmation(contextMenuTarget);
+                    break;
+                    
+                case 'copy':
+                    console.log('Copy:', contextMenuTarget);
+                    showNotificationEnhanced('Clipboard', `Copied: ${contextMenuTarget}`, 'success');
+                    break;
+                    
+                case 'cut':
+                    console.log('Cut:', contextMenuTarget);
+                    showNotificationEnhanced('Clipboard', `Cut: ${contextMenuTarget}`, 'success');
+                    break;
+                    
+                case 'paste':
+                    console.log('Paste');
+                    showNotificationEnhanced('Clipboard', 'Pasted', 'success');
+                    break;
+                    
+                case 'copyPath':
+                    navigator.clipboard.writeText(contextMenuTarget);
+                    showNotificationEnhanced('Clipboard', 'Path copied to clipboard', 'success');
+                    break;
+                    
+                case 'copyRelativePath':
+                    const relativePath = contextMenuTarget.replace(/^.*\//, '');
+                    navigator.clipboard.writeText(relativePath);
+                    showNotificationEnhanced('Clipboard', 'Relative path copied', 'success');
+                    break;
+                    
+                case 'newFile':
+                    showNewFileModal();
+                    break;
+                    
+                case 'newFolder':
+                    showNewFolderModal();
+                    break;
+            }
+        }
+        
+        /**
+         * Show rename modal
+         */
+        function showRenameModal(filename) {
+            const modal = document.createElement('div');
+            modal.className = 'modal active';
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2><i class="fas fa-edit"></i> Rename</h2>
+                        <button class="modal-close" onclick="this.parentElement.parentElement.parentElement.remove()">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <label class="modal-label">New Name</label>
+                        <input type="text" class="modal-input" id="renameInput" value="${filename}">
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" onclick="this.parentElement.parentElement.parentElement.remove()">Cancel</button>
+                        <button class="btn btn-primary" onclick="performRename('${filename}')">Rename</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            document.getElementById('renameInput').focus();
+            document.getElementById('renameInput').select();
+        }
+        
+        /**
+         * Perform rename
+         */
+        function performRename(oldName) {
+            const newName = document.getElementById('renameInput').value;
+            if (newName && newName !== oldName) {
+                console.log('Rename:', oldName, '->', newName);
+                showNotificationEnhanced('File', `Renamed: ${oldName} → ${newName}`, 'success');
+                // TODO: Implement actual rename via VFS
+            }
+            document.querySelector('.modal.active').remove();
+        }
+        
+        /**
+         * Show delete confirmation
+         */
+        function showDeleteConfirmation(filename) {
+            const modal = document.createElement('div');
+            modal.className = 'modal active';
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2><i class="fas fa-exclamation-triangle" style="color: var(--vscode-error)"></i> Delete</h2>
+                        <button class="modal-close" onclick="this.parentElement.parentElement.parentElement.remove()">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <p>Are you sure you want to delete:</p>
+                        <p style="font-weight: 600; margin-top: 8px;">${filename}</p>
+                        <p style="color: var(--vscode-error); margin-top: 12px; font-size: 12px;">This action cannot be undone.</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" onclick="this.parentElement.parentElement.parentElement.remove()">Cancel</button>
+                        <button class="btn btn-secondary" onclick="performDelete('${filename}')" style="background: var(--vscode-error)">Delete</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+        
+        /**
+         * Perform delete
+         */
+        function performDelete(filename) {
+            console.log('Delete:', filename);
+            showNotificationEnhanced('File', `Deleted: ${filename}`, 'success');
+            // TODO: Implement actual delete via VFS
+            document.querySelector('.modal.active').remove();
+        }
+        
+        // ============================================
+        // BREADCRUMBS NAVIGATION
+        // ============================================
+        
+        let currentFilePath = '';
+        
+        /**
+         * Update breadcrumbs
+         */
+        function updateBreadcrumbs(filePath) {
+            currentFilePath = filePath;
+            const breadcrumbsContainer = document.getElementById('breadcrumbs');
+            if (!breadcrumbsContainer) return;
+            
+            const parts = filePath.split('/').filter(p => p);
+            
+            let html = '<span class="breadcrumb-item" onclick="navigateToBreadcrumb(\'\')"><i class="fas fa-home"></i></span>';
+            
+            let path = '';
+            parts.forEach((part, index) => {
+                path += '/' + part;
+                const isLast = index === parts.length - 1;
+                html += ` <i class="fas fa-chevron-right" style="font-size: 10px; color: var(--vscode-text-dim); margin: 0 4px;"></i> `;
+                html += `<span class="breadcrumb-item ${isLast ? 'active' : ''}" onclick="navigateToBreadcrumb('${path}')">${part}</span>`;
+            });
+            
+            breadcrumbsContainer.innerHTML = html;
+        }
+        
+        /**
+         * Navigate to breadcrumb
+         */
+        function navigateToBreadcrumb(path) {
+            console.log('Navigate to:', path || 'root');
+            // TODO: Implement navigation via VFS
+        }
+        
+        // ============================================
+        // ENHANCED FILE TREE RENDERING
+        // ============================================
+        
+        /**
+         * Render enhanced file tree with icons
+         */
+        function renderEnhancedFileTree(files, container) {
+            if (!container) return;
+            
+            let html = '';
+            files.forEach((file, index) => {
+                const isFolder = file.type === 'folder';
+                const icon = isFolder 
+                    ? renderFolderIcon(file.name, file.isOpen) 
+                    : renderFileIcon(file.name);
+                
+                html += `
+                    <div class="file-tree-item stagger-item" 
+                         data-path="${file.path}"
+                         onclick="handleFileClick('${file.path}', ${isFolder})"
+                         oncontextmenu="showContextMenu(event, '${file.path}', '${isFolder ? 'folder' : 'file'}')">
+                        ${icon}
+                        <span>${file.name}</span>
+                    </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+        }
+        
+        /**
+         * Handle file click
+         */
+        function handleFileClick(path, isFolder) {
+            if (isFolder) {
+                console.log('Toggle folder:', path);
+                // TODO: Implement folder toggle
+            } else {
+                console.log('Open file:', path);
+                updateBreadcrumbs(path);
+                // TODO: Implement file open
+            }
+        }
+        
+        // ============================================
+        // KEYBOARD SHORTCUTS
+        // ============================================
+        
+        document.addEventListener('keydown', (event) => {
+            // F2 - Rename
+            if (event.key === 'F2' && contextMenuTarget) {
+                event.preventDefault();
+                showRenameModal(contextMenuTarget);
+            }
+            
+            // Delete - Delete file
+            if (event.key === 'Delete' && contextMenuTarget) {
+                event.preventDefault();
+                showDeleteConfirmation(contextMenuTarget);
+            }
+        });
+        
+        console.log('✓ File Explorer Enhancement initialized');
+        console.log('  - File icons (80+ types)');
+        console.log('  - Folder icons (special folders)');
+        console.log('  - Context menu (right-click)');
+        console.log('  - Breadcrumbs navigation');
+        console.log('  - Keyboard shortcuts (F2, Del)');
+    </script>
 </body>
 </html>

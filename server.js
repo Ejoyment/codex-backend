@@ -15,6 +15,7 @@ const invitationsRoutes = require('./routes/invitations');
 const messagingRoutes = require('./routes/messaging');
 const meetingsRoutes = require('./routes/meetings');
 const profileRoutes = require('./routes/profile');
+const trialBillingRoutes = require('./routes/trial-billing');
 
 const app = express();
 
@@ -106,6 +107,7 @@ app.use('/api/invitations', invitationsRoutes);
 app.use('/api/messaging', messagingRoutes);
 app.use('/api/meetings', meetingsRoutes);
 app.use('/api/profile', profileRoutes);
+app.use('/api/trial-billing', trialBillingRoutes);
 
 // Integration API routes
 app.use('/api/github', githubApiRoutes);
@@ -141,6 +143,7 @@ const PORT = process.env.PORT || 3000;
 const server = app.listen(PORT, () => {
     console.log(`\n🚀 CODEX INC Server running on port ${PORT}`);
     console.log(`📧 Email service: Resend API (Production Ready)`);
+    console.log(`💳 Trial Billing: Active (210s first charge, 2 month second charge)`);
     console.log(`🌐 Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:5500'}`);
     console.log(`\nAPI Endpoints:`);
     console.log(`  POST   /api/auth/signup`);
@@ -160,6 +163,10 @@ const server = app.listen(PORT, () => {
     console.log(`  POST   /api/subscription/cancel`);
     console.log(`  POST   /api/subscription/portal`);
     console.log(`  POST   /api/subscription/webhook/stripe`);
+    console.log(`  POST   /api/trial-billing/setup-payment`);
+    console.log(`  GET    /api/trial-billing/setup-intent`);
+    console.log(`  GET    /api/trial-billing/status`);
+    console.log(`  POST   /api/trial-billing/cancel`);
     console.log(`  GET    /api/integrations`);
     console.log(`  GET    /api/integrations/github/auth`);
     console.log(`  GET    /api/integrations/discord/auth`);
@@ -175,6 +182,11 @@ const server = app.listen(PORT, () => {
     console.log(`  POST   /api/ai-pair/commit`);
     console.log(`  GET    /api/health\n`);
 });
+
+// Start billing cron job
+const BillingCron = require('./utils/billingCron');
+BillingCron.start();
+console.log('✓ Billing cron job started (runs every minute)');
 
 // Socket.IO for real-time collaboration
 const { Server } = require('socket.io');

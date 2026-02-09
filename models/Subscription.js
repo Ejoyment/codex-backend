@@ -14,8 +14,24 @@ const subscriptionSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ['active', 'cancelled', 'expired', 'trial'],
+        enum: ['active', 'cancelled', 'expired', 'trial', 'past_due'],
         default: 'active'
+    },
+    // Trial billing fields
+    isTrialWithCard: {
+        type: Boolean,
+        default: false
+    },
+    cardAddedAt: Date,
+    firstChargeAt: Date,
+    firstChargeCompleted: {
+        type: Boolean,
+        default: false
+    },
+    nextBillingDate: Date,
+    billingCycle: {
+        type: Number,
+        default: 0 // 0 = not started, 1 = first charge, 2 = second charge (2 months), 3+ = monthly
     },
     features: {
         localRepositories: { type: Boolean, default: true },

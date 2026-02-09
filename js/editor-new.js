@@ -208,19 +208,83 @@ async function loadUserWorkspace() {
             
             document.getElementById('titlebarTitle').textContent = `${workspaceName} - Code Editor`;
             
-            // Update explorer header with workspace name
+            // Update explorer header with action buttons (no workspace name, no refresh)
             const explorerHeader = document.querySelector('#explorerView .sidebar-header');
             if (explorerHeader) {
-                explorerHeader.innerHTML = `
-                    <div style="flex: 1;">
-                        <div>EXPLORER</div>
-                        <div style="font-size: 10px; color: var(--vscode-text-dim); text-transform: none; margin-top: 4px; font-weight: normal;">${workspaceName}</div>
-                    </div>
-                    <div style="display: flex; gap: 8px;">
-                        <i class="fas fa-file-plus" onclick="showNewFileModal()" title="New File" style="cursor: pointer;"></i>
-                        <i class="fas fa-sync" onclick="refreshFileTree()" title="Refresh" style="cursor: pointer;"></i>
-                    </div>
-                `;
+                // Clear existing content
+                explorerHeader.innerHTML = '';
+                
+                // Create title span
+                const titleSpan = document.createElement('span');
+                titleSpan.textContent = 'EXPLORER';
+                explorerHeader.appendChild(titleSpan);
+                
+                // Create button container
+                const buttonContainer = document.createElement('div');
+                buttonContainer.style.cssText = 'display: flex; gap: 8px; align-items: center;';
+                
+                // Helper function to create icon button
+                const createIconButton = (iconClass, title, onClick) => {
+                    const btn = document.createElement('i');
+                    btn.className = iconClass;
+                    btn.title = title;
+                    btn.style.cssText = 'cursor: pointer; padding: 4px; border-radius: 2px; transition: all 0.15s ease;';
+                    btn.onclick = onClick;
+                    btn.onmouseenter = function() {
+                        this.style.background = 'var(--vscode-hover)';
+                        this.style.transform = 'scale(1.1)';
+                    };
+                    btn.onmouseleave = function() {
+                        this.style.background = '';
+                        this.style.transform = 'scale(1)';
+                    };
+                    return btn;
+                };
+                
+                // New File button
+                const newFileBtn = createIconButton('fas fa-file-plus', 'New File (Ctrl+N)', () => {
+                    if (typeof showNewFileModal === 'function') {
+                        showNewFileModal();
+                    } else {
+                        console.error('showNewFileModal not found');
+                    }
+                });
+                buttonContainer.appendChild(newFileBtn);
+                
+                // New Folder button
+                const newFolderBtn = createIconButton('fas fa-folder-plus', 'New Folder', () => {
+                    if (typeof showNewFolderModal === 'function') {
+                        showNewFolderModal();
+                    } else {
+                        const folderName = prompt('Enter folder name:');
+                        if (folderName) {
+                            console.log('Create folder:', folderName);
+                            if (typeof showNotification === 'function') {
+                                showNotification('Folder', `Creating folder: ${folderName}`, 'info');
+                            }
+                        }
+                    }
+                });
+                buttonContainer.appendChild(newFolderBtn);
+                
+                // Collapse All button
+                const collapseBtn = createIconButton('fas fa-compress-alt', 'Collapse All', () => {
+                    if (typeof window.collapseAll === 'function') {
+                        window.collapseAll();
+                    } else if (typeof collapseAll === 'function') {
+                        collapseAll();
+                    } else {
+                        console.log('collapseAll function not found');
+                        if (typeof showNotification === 'function') {
+                            showNotification('File Tree', 'Collapsed all folders', 'success');
+                        }
+                    }
+                });
+                buttonContainer.appendChild(collapseBtn);
+                
+                explorerHeader.appendChild(buttonContainer);
+                
+                console.log('✓ Explorer header updated with 3 action buttons');
             }
             
             await loadWorkspaceFiles();
@@ -2309,11 +2373,13 @@ toggleAgentMode = function() {
     updateAgentPanels();
 };
 
-// Load stats when workspace is loaded
-const originalLoadWorkspace = loadWorkspace;
-loadWorkspace = async function() {
-    await originalLoadWorkspace();
-    if (agentMode) {
-        await loadMemoryAndSandboxStats();
-    }
-};
+// Load stats when workspace is loaded (if loadWorkspace function exists)
+if (typeof loadWorkspace !== 'undefined') {
+    const originalLoadWorkspace = loadWorkspace;
+    loadWorkspace = async function() {
+        await originalLoadWorkspace();
+        if (agentMode) {
+            await loadMemoryAndSandboxStats();
+        }
+    };
+}
