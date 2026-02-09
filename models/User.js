@@ -99,6 +99,12 @@ const userSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Subscription'
     },
+    stripeCustomerId: {
+        type: String
+    },
+    paystackCustomerId: {
+        type: String
+    },
     authProvider: {
         type: String,
         enum: ['local', 'google', 'facebook'],

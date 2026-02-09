@@ -16,6 +16,7 @@ const messagingRoutes = require('./routes/messaging');
 const meetingsRoutes = require('./routes/meetings');
 const profileRoutes = require('./routes/profile');
 const trialBillingRoutes = require('./routes/trial-billing');
+const paystackBillingRoutes = require('./routes/paystack-billing');
 
 const app = express();
 
@@ -108,6 +109,7 @@ app.use('/api/messaging', messagingRoutes);
 app.use('/api/meetings', meetingsRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/trial-billing', trialBillingRoutes);
+app.use('/api/paystack-billing', paystackBillingRoutes);
 
 // Integration API routes
 app.use('/api/github', githubApiRoutes);
