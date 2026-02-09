@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-const auth = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 const Subscription = require('../models/Subscription');
 const User = require('../models/User');
 const BillingScheduler = require('../utils/billingScheduler');
@@ -10,7 +10,7 @@ const BillingScheduler = require('../utils/billingScheduler');
  * Setup payment method for trial
  * POST /api/trial-billing/setup-payment
  */
-router.post('/setup-payment', auth, async (req, res) => {
+router.post('/setup-payment', authenticateToken, async (req, res) => {
     try {
         const { paymentMethodId } = req.body;
         const userId = req.user.userId;
@@ -110,7 +110,7 @@ router.post('/setup-payment', auth, async (req, res) => {
  * Get billing status
  * GET /api/trial-billing/status
  */
-router.get('/status', auth, async (req, res) => {
+router.get('/status', authenticateToken, async (req, res) => {
     try {
         const userId = req.user.userId;
         const subscription = await Subscription.findOne({ userId });
@@ -174,7 +174,7 @@ router.get('/status', auth, async (req, res) => {
  * Cancel subscription
  * POST /api/trial-billing/cancel
  */
-router.post('/cancel', auth, async (req, res) => {
+router.post('/cancel', authenticateToken, async (req, res) => {
     try {
         const userId = req.user.userId;
         const subscription = await Subscription.findOne({ userId });
@@ -210,7 +210,7 @@ router.post('/cancel', auth, async (req, res) => {
  * Create Stripe Setup Intent (for collecting card details)
  * GET /api/trial-billing/setup-intent
  */
-router.get('/setup-intent', auth, async (req, res) => {
+router.get('/setup-intent', authenticateToken, async (req, res) => {
     try {
         const userId = req.user.userId;
         const user = await User.findById(userId);
