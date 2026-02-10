@@ -19,8 +19,9 @@ router.post('/initialize', authenticateToken, async (req, res) => {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
 
-        // Amount in kobo (₦10,000 = 1,000,000 kobo)
-        const amount = 1000000; // ₦10,000 (~$25 USD)
+        // Amount in kobo (₦50 = 5,000 kobo for card verification)
+        // This is just to verify the card, actual charge happens later
+        const amount = 5000; // ₦50 verification charge
 
         // Initialize transaction
         const response = await paystack.transaction.initialize({
@@ -31,11 +32,17 @@ router.post('/initialize', authenticateToken, async (req, res) => {
             metadata: {
                 userId: userId.toString(),
                 fullName: user.fullName,
+                isVerification: true, // Mark this as verification charge
                 custom_fields: [
                     {
                         display_name: 'User ID',
                         variable_name: 'user_id',
                         value: userId.toString()
+                    },
+                    {
+                        display_name: 'Charge Type',
+                        variable_name: 'charge_type',
+                        value: 'verification'
                     }
                 ]
             }
