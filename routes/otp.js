@@ -140,9 +140,18 @@ router.post('/verify', async (req, res) => {
         // Clean up - delete the OTP
         await OTP.deleteOne({ _id: otpRecord._id });
 
+        // Generate JWT token for automatic login
+        const jwt = require('jsonwebtoken');
+        const token = jwt.sign(
+            { userId: user._id, email: user.email },
+            process.env.JWT_SECRET,
+            { expiresIn: '7d' }
+        );
+
         res.json({
             success: true,
             message: 'Email verified successfully!',
+            token: token, // Return token for automatic login
             user: {
                 email: user.email,
                 fullName: user.fullName,
