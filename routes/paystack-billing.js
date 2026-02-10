@@ -272,4 +272,138 @@ router.post('/cancel', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * Webhook endpoint for Paystack notifications
+ * POST /api/paystack-billing/webhook
+ */
+router.post('/webhook', async (req, res) => {
+    try {
+        const crypto = require('crypto');
+        const secret = process.env.PAYSTACK_SECRET_KEY;
+
+        // Verify webhook signature
+        const hash = crypto
+            .createHmac('sha512', secret)
+            .update(JSON.stringify(req.body))
+            .digest('hex');
+
+        if (hash !== req.headers['x-paystack-signature']) {
+            console.error('Invalid webhook signature');
+            return res.status(400).json({ success: false, message: 'Invalid signature' });
+        }
+
+        const event = req.body;
+        console.log('Paystack webhook received:', event.event);
+
+        // Handle different event types
+        switch (event.event) {
+            case 'charge.success':
+                await handleChargeSuccess(event.data);
+                break;
+
+            case 'charge.failed':
+                await handleChargeFailed(event.data);
+                break;
+
+            case 'subscription.create':
+                console.log('Subscription created:', event.data.subscription_code);
+                break;
+
+            case 'subscription.disable':
+                await handleSubscriptionDisabled(event.data);
+                break;
+
+            default:
+                console.log('Unhandled webhook event:', event.event);
+        }
+
+        res.status(200).json({ success: true });
+
+    } catch (error) {
+        console.error('Webhook error:', error);
+        res.status(500).json({ success: false, message: 'Webhook processing failed' });
+    }
+});
+
+/**
+ * Handle successful charge webhook
+ */
+async function handleChargeSuccess(data) {
+    try {
+        const reference = data.reference;
+        const userId = data.metadata?.userId;
+
+        if (!userId) {
+            console.log('No userId in webhook metadata');
+            return;
+        }
+
+        console.log(`Charge successful for user ${userId}, reference: ${reference}`);
+
+        // Update subscription if needed
+        const subscription = await Subscription.findOne({ userId });
+        if (subscription && subscription.status === 'past_due') {
+            subscription.status = 'active';
+            await subscription.save();
+            console.log(`Subscription reactivated for user ${userId}`);
+        }
+
+    } catch (error) {
+        console.error('Error handling charge success:', error);
+    }
+}
+
+/**
+ * Handle failed charge webhook
+ */
+async function handleChargeFailed(data) {
+    try {
+        const reference = data.reference;
+        const userId = data.metadata?.userId;
+
+        if (!userId) {
+            console.log('No userId in webhook metadata');
+            return;
+        }
+
+        console.log(`Charge failed for user ${userId}, reference: ${reference}`);
+
+        // Update subscription status
+        const subscription = await Subscription.findOne({ userId });
+        if (subscription) {
+            subscription.status = 'past_due';
+            await subscription.save();
+            console.log(`Subscription marked as past_due for user ${userId}`);
+        }
+
+    } catch (error) {
+        console.error('Error handling charge failed:', error);
+    }
+}
+
+/**
+ * Handle subscription disabled webhook
+ */
+async function handleSubscriptionDisabled(data) {
+    try {
+        const subscriptionCode = data.subscription_code;
+        console.log(`Subscription disabled: ${subscriptionCode}`);
+
+        // Find and cancel subscription
+        const subscription = await Subscription.findOne({ 
+            paymentId: subscriptionCode 
+        });
+
+        if (subscription) {
+            subscription.status = 'cancelled';
+            subscription.cancelledAt = new Date();
+            await subscription.save();
+            console.log(`Subscription cancelled for user ${subscription.userId}`);
+        }
+
+    } catch (error) {
+        console.error('Error handling subscription disabled:', error);
+    }
+}
+
 module.exports = router;
