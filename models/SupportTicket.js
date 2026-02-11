@@ -3,8 +3,10 @@ const mongoose = require('mongoose');
 const supportTicketSchema = new mongoose.Schema({
     ticketId: {
         type: String,
-        required: true,
-        unique: true
+        unique: true,
+        default: function() {
+            return 'TKT-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9).toUpperCase();
+        }
     },
     userId: {
         type: mongoose.Schema.Types.ObjectId,
@@ -76,14 +78,6 @@ const supportTicketSchema = new mongoose.Schema({
 // Update timestamp on save
 supportTicketSchema.pre('save', function(next) {
     this.updatedAt = Date.now();
-    next();
-});
-
-// Generate ticket ID
-supportTicketSchema.pre('save', function(next) {
-    if (!this.ticketId) {
-        this.ticketId = 'TKT-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9).toUpperCase();
-    }
     next();
 });
 
