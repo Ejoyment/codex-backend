@@ -17,8 +17,22 @@ const meetingsRoutes = require('./routes/meetings');
 const profileRoutes = require('./routes/profile');
 const trialBillingRoutes = require('./routes/trial-billing');
 const paystackBillingRoutes = require('./routes/paystack-billing');
+const supportRoutes = require('./routes/support');
 
 const app = express();
+const http = require('http');
+const server = http.createServer(app);
+const { Server } = require('socket.io');
+const io = new Server(server, {
+    cors: {
+        origin: [
+            process.env.FRONTEND_URL || 'http://localhost:5500',
+            'https://codexincenterprise.online',
+            'http://codexincenterprise.online'
+        ],
+        credentials: true
+    }
+});
 
 // Trust proxy (required for Render and other reverse proxies)
 app.set('trust proxy', 1);
@@ -110,6 +124,7 @@ app.use('/api/meetings', meetingsRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/trial-billing', trialBillingRoutes);
 app.use('/api/paystack-billing', paystackBillingRoutes);
+app.use('/api/support', supportRoutes);
 
 // Integration API routes
 app.use('/api/github', githubApiRoutes);
@@ -142,10 +157,16 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 3000;
-const server = app.listen(PORT, () => {
+
+// Initialize Socket.IO for support
+const supportSocket = require('./utils/supportSocket');
+supportSocket(io);
+
+server.listen(PORT, () => {
     console.log(`\n🚀 CODEX INC Server running on port ${PORT}`);
     console.log(`📧 Email service: Resend API (Production Ready)`);
     console.log(`💳 Trial Billing: Active (210s first charge, 2 month second charge)`);
+    console.log(`💬 Live Support: Socket.IO Active`);
     console.log(`🌐 Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:5500'}`);
     console.log(`\nAPI Endpoints:`);
     console.log(`  POST   /api/auth/signup`);
@@ -158,6 +179,9 @@ const server = app.listen(PORT, () => {
     console.log(`  POST   /api/auth/upload-photo`);
     console.log(`  PUT    /api/auth/update-profile`);
     console.log(`  POST   /api/auth/change-password`);
+    console.log(`  POST   /api/support/tickets`);
+    console.log(`  POST   /api/support/agent/login`);
+    console.log(`  GET    /api/support/agent/tickets`);
     console.log(`  POST   /api/auth/complete-onboarding`);
     console.log(`  GET    /api/subscription/current`);
     console.log(`  POST   /api/subscription/create-checkout`);
