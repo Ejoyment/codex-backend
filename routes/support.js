@@ -219,4 +219,45 @@ router.get('/agents/online', async (req, res) => {
     }
 });
 
+// Setup Demo Agent (One-time setup endpoint)
+router.post('/setup/demo-agent', async (req, res) => {
+    try {
+        // Check if agent already exists
+        const existingAgent = await SupportAgent.findOne({ email: 'agent@buildershq.com' });
+        if (existingAgent) {
+            return res.json({ 
+                message: 'Demo agent already exists!',
+                credentials: {
+                    email: 'agent@buildershq.com',
+                    password: 'agent123'
+                }
+            });
+        }
+
+        // Create demo agent
+        const agent = new SupportAgent({
+            name: 'Demo Support Agent',
+            email: 'agent@buildershq.com',
+            password: 'agent123',
+            role: 'agent',
+            status: 'offline'
+        });
+
+        await agent.save();
+
+        res.json({
+            success: true,
+            message: 'Demo support agent created successfully!',
+            credentials: {
+                email: 'agent@buildershq.com',
+                password: 'agent123'
+            },
+            loginUrl: '/support-admin.html'
+        });
+    } catch (error) {
+        console.error('Setup demo agent error:', error);
+        res.status(500).json({ error: 'Failed to create demo agent' });
+    }
+});
+
 module.exports = router;
