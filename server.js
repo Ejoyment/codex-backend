@@ -22,8 +22,8 @@ const supportRoutes = require('./routes/support');
 const app = express();
 const http = require('http');
 const server = http.createServer(app);
-const { Server } = require('socket.io');
-const io = new Server(server, {
+const socketIO = require('socket.io');
+const io = socketIO(server, {
     cors: {
         origin: [
             process.env.FRONTEND_URL || 'http://localhost:5500',
