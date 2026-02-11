@@ -215,21 +215,11 @@ BillingCron.start();
 console.log('✓ Billing cron job started (runs every minute)');
 
 // Socket.IO for real-time collaboration
-const { Server } = require('socket.io');
 const collaborationService = require('./utils/collaborationService');
 const terminalService = require('./utils/terminalService');
 const jwt = require('jsonwebtoken');
 
-const io = new Server(server, {
-    cors: {
-        origin: [
-            process.env.FRONTEND_URL || 'http://localhost:5500',
-            'https://codexincenterprise.online',
-            'http://codexincenterprise.online'
-        ],
-        credentials: true
-    }
-});
+// Socket.IO already initialized at top of file - reuse the same io instance
 
 // Socket.IO authentication middleware
 io.use((socket, next) => {
