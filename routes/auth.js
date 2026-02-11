@@ -529,7 +529,9 @@ router.post('/complete-onboarding', async (req, res) => {
         }
 
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const user = await User.findById(decoded.id);
+        // Support both 'id' and 'userId' for backwards compatibility
+        const userId = decoded.userId || decoded.id;
+        const user = await User.findById(userId);
 
         if (!user) {
             return res.status(404).json({ 
