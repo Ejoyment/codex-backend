@@ -82,9 +82,16 @@ class PaystackScheduler {
                 throw new Error('No authorization code found');
             }
 
+            // Get user email
+            const User = require('../models/User');
+            const user = await User.findById(subscription.userId);
+            if (!user) {
+                throw new Error('User not found');
+            }
+
             // Charge using saved authorization
             const response = await paystack.transaction.charge({
-                email: subscription.userId.email || 'user@example.com',
+                email: user.email,
                 amount: billingSchedule.amount,
                 authorization_code: subscription.paymentId,
                 currency: 'NGN',
