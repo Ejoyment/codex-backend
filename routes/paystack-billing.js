@@ -19,9 +19,9 @@ router.post('/initialize', authenticateToken, async (req, res) => {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
 
-        // Amount in kobo (₦50 = 5,000 kobo for card verification)
-        // This is just to verify the card, actual charge happens later
-        const amount = 5000; // ₦50 verification charge
+        // Amount in kobo (₦10,000 = 1,000,000 kobo for card verification)
+        // This is the verification charge amount
+        const amount = 1000000; // ₦10,000 verification charge
 
         // Initialize transaction
         const response = await paystack.transaction.initialize({
