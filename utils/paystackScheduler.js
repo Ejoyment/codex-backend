@@ -4,10 +4,10 @@ const paystack = require('../config/paystack');
 
 class PaystackScheduler {
     /**
-     * Schedule first charge (210 seconds after card added)
+     * Schedule first charge (14 days after card added - when trial ends)
      */
     static async scheduleFirstCharge(userId, subscriptionId, cardAddedAt) {
-        const scheduledFor = new Date(cardAddedAt.getTime() + (210 * 1000)); // 210 seconds
+        const scheduledFor = new Date(cardAddedAt.getTime() + (14 * 24 * 60 * 60 * 1000)); // 14 days
         const amount = 1000000; // ₦10,000 in kobo
 
         const billingSchedule = new BillingSchedule({
@@ -162,11 +162,20 @@ class PaystackScheduler {
             billingSchedule.error = error.message;
             await billingSchedule.save();
 
-            // Update subscription status
+            // Update subscription status and downgrade to freebie tier
             const subscription = await Subscription.findById(billingSchedule.subscriptionId);
             if (subscription) {
-                subscription.status = 'past_due';
+                // Downgrade to freebie tier (NO REFUND)
+                subscription.upgradeTo('freebie');
+                subscription.status = 'cancelled';
+                subscription.cancelledAt = new Date();
+                subscription.isTrialWithCard = false;
+                subscription.firstChargeCompleted = false;
+                subscription.billingCycle = 0;
+                subscription.nextBillingDate = null;
                 await subscription.save();
+                
+                console.log(`✗ Payment failed for user ${subscription.userId}, downgraded to freebie tier`);
             }
 
             return { success: false, error: error.message };

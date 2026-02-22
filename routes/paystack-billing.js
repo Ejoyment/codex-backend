@@ -19,9 +19,9 @@ router.post('/initialize', authenticateToken, async (req, res) => {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
 
-        // Amount in kobo (₦10,000 = 1,000,000 kobo for card verification)
+        // Amount in kobo (₦100 = 10,000 kobo for card verification)
         // This is the verification charge amount
-        const amount = 1000000; // ₦10,000 verification charge
+        const amount = 10000; // ₦100 verification charge
 
         // Initialize transaction
         const response = await paystack.transaction.initialize({
@@ -133,7 +133,7 @@ router.post('/verify', authenticateToken, async (req, res) => {
                 paymentId: authorizationCode,
                 paymentProvider: 'paystack',
                 pricing: {
-                    amount: 10000, // ₦10,000
+                    amount: 10000, // ₦10,000 monthly subscription
                     currency: 'NGN',
                     interval: 'monthly'
                 }
@@ -153,7 +153,7 @@ router.post('/verify', authenticateToken, async (req, res) => {
         subscription.upgradeTo('professional');
         await subscription.save();
 
-        // Schedule first charge (210 seconds from now)
+        // Schedule first charge (14 days from now - after trial ends)
         await BillingScheduler.scheduleFirstCharge(userId, subscription._id, cardAddedAt);
 
         res.json({
@@ -163,7 +163,7 @@ router.post('/verify', authenticateToken, async (req, res) => {
                 status: subscription.status,
                 tier: subscription.tier,
                 trialEndsAt: subscription.trialEndsAt,
-                firstChargeAt: new Date(cardAddedAt.getTime() + (210 * 1000))
+                firstChargeAt: new Date(cardAddedAt.getTime() + (14 * 24 * 60 * 60 * 1000)) // 14 days
             }
         });
 
@@ -260,14 +260,29 @@ router.post('/cancel', authenticateToken, async (req, res) => {
         // Cancel all pending charges
         await BillingScheduler.cancelUserCharges(userId);
 
-        // Update subscription
+        // Downgrade to freebie tier (NO REFUND)
+        subscription.upgradeTo('freebie');
         subscription.status = 'cancelled';
         subscription.cancelledAt = new Date();
+        
+        // Clear payment info
+        subscription.isTrialWithCard = false;
+        subscription.firstChargeCompleted = false;
+        subscription.billingCycle = 0;
+        subscription.nextBillingDate = null;
+        
         await subscription.save();
+
+        console.log(`✓ Subscription cancelled for user ${userId}, downgraded to freebie tier`);
 
         res.json({
             success: true,
-            message: 'Subscription canceled successfully'
+            message: 'Subscription canceled successfully. You have been downgraded to the Free tier.',
+            subscription: {
+                tier: subscription.tier,
+                status: subscription.status,
+                cancelledAt: subscription.cancelledAt
+            }
         });
 
     } catch (error) {
@@ -376,12 +391,20 @@ async function handleChargeFailed(data) {
 
         console.log(`Charge failed for user ${userId}, reference: ${reference}`);
 
-        // Update subscription status
+        // Update subscription status and downgrade to freebie
         const subscription = await Subscription.findOne({ userId });
         if (subscription) {
-            subscription.status = 'past_due';
+            // Downgrade to freebie tier (NO REFUND)
+            subscription.upgradeTo('freebie');
+            subscription.status = 'cancelled';
+            subscription.cancelledAt = new Date();
+            subscription.isTrialWithCard = false;
+            subscription.firstChargeCompleted = false;
+            subscription.billingCycle = 0;
+            subscription.nextBillingDate = null;
             await subscription.save();
-            console.log(`Subscription marked as past_due for user ${userId}`);
+            
+            console.log(`✗ Payment failed for user ${userId}, downgraded to freebie tier`);
         }
 
     } catch (error) {
@@ -403,10 +426,17 @@ async function handleSubscriptionDisabled(data) {
         });
 
         if (subscription) {
+            // Downgrade to freebie tier (NO REFUND)
+            subscription.upgradeTo('freebie');
             subscription.status = 'cancelled';
             subscription.cancelledAt = new Date();
+            subscription.isTrialWithCard = false;
+            subscription.firstChargeCompleted = false;
+            subscription.billingCycle = 0;
+            subscription.nextBillingDate = null;
             await subscription.save();
-            console.log(`Subscription cancelled for user ${subscription.userId}`);
+            
+            console.log(`✓ Subscription cancelled for user ${subscription.userId}, downgraded to freebie tier`);
         }
 
     } catch (error) {
