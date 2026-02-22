@@ -100,6 +100,7 @@ const dashboardRoutes = require('./routes/dashboard');
 const companyRoutes = require('./routes/company');
 const collaborationRoutes = require('./routes/collaboration');
 const githubApiRoutes = require('./routes/github-api');
+const githubAdvancedRoutes = require('./routes/github-advanced');
 const discordApiRoutes = require('./routes/discord-api');
 const slackApiRoutes = require('./routes/slack-api');
 const notionApiRoutes = require('./routes/notion-api');
@@ -128,6 +129,7 @@ app.use('/api/support', supportRoutes);
 
 // Integration API routes
 app.use('/api/github', githubApiRoutes);
+app.use('/api/github-advanced', githubAdvancedRoutes);
 app.use('/api/discord', discordApiRoutes);
 app.use('/api/slack', slackApiRoutes);
 app.use('/api/notion', notionApiRoutes);

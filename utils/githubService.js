@@ -315,6 +315,200 @@ class GitHubService {
         }
     }
 
+    async getCommits(userId, owner, repo, branch = null, path = null, limit = 20) {
+        try {
+            const octokit = await this.getClient(userId);
+            
+            const params = {
+                owner,
+                repo,
+                per_page: limit
+            };
+
+            if (branch) params.sha = branch;
+            if (path) params.path = path;
+
+            const { data } = await octokit.repos.listCommits(params);
+
+            return data.map(commit => ({
+                sha: commit.sha,
+                message: commit.commit.message,
+                author: {
+                    name: commit.commit.author.name,
+                    email: commit.commit.author.email,
+                    date: commit.commit.author.date
+                },
+                url: commit.html_url
+            }));
+        } catch (error) {
+            console.error('GitHub get commits error:', error);
+            throw new Error('Failed to get commits: ' + error.message);
+        }
+    }
+
+    async getFileDiff(userId, owner, repo, path, base, head) {
+        try {
+            const octokit = await this.getClient(userId);
+            
+            const { data } = await octokit.repos.compareCommits({
+                owner,
+                repo,
+                base,
+                head
+            });
+
+            // Find the specific file in the diff
+            const file = data.files.find(f => f.filename === path);
+            
+            if (!file) {
+                throw new Error('File not found in diff');
+            }
+
+            return {
+                filename: file.filename,
+                status: file.status,
+                additions: file.additions,
+                deletions: file.deletions,
+                changes: file.changes,
+                patch: file.patch
+            };
+        } catch (error) {
+            console.error('GitHub get diff error:', error);
+            throw new Error('Failed to get diff: ' + error.message);
+        }
+    }
+
+    async listPullRequests(userId, owner, repo, state = 'open', limit = 20) {
+        try {
+            const octokit = await this.getClient(userId);
+            
+            const { data } = await octokit.pulls.list({
+                owner,
+                repo,
+                state,
+                per_page: limit
+            });
+
+            return data.map(pr => ({
+                number: pr.number,
+                title: pr.title,
+                state: pr.state,
+                url: pr.html_url,
+                head: pr.head.ref,
+                base: pr.base.ref,
+                author: pr.user.login,
+                createdAt: pr.created_at,
+                updatedAt: pr.updated_at
+            }));
+        } catch (error) {
+            console.error('GitHub list PRs error:', error);
+            throw new Error('Failed to list pull requests: ' + error.message);
+        }
+    }
+
+    async getPullRequest(userId, owner, repo, number) {
+        try {
+            const octokit = await this.getClient(userId);
+            
+            const { data } = await octokit.pulls.get({
+                owner,
+                repo,
+                pull_number: number
+            });
+
+            return {
+                number: data.number,
+                title: data.title,
+                body: data.body,
+                state: data.state,
+                url: data.html_url,
+                head: data.head.ref,
+                base: data.base.ref,
+                author: data.user.login,
+                mergeable: data.mergeable,
+                merged: data.merged,
+                createdAt: data.created_at,
+                updatedAt: data.updated_at
+            };
+        } catch (error) {
+            console.error('GitHub get PR error:', error);
+            throw new Error('Failed to get pull request: ' + error.message);
+        }
+    }
+
+    async mergePullRequest(userId, owner, repo, number, commitMessage = null, mergeMethod = 'merge') {
+        try {
+            const octokit = await this.getClient(userId);
+            
+            const params = {
+                owner,
+                repo,
+                pull_number: number,
+                merge_method: mergeMethod
+            };
+
+            if (commitMessage) {
+                params.commit_message = commitMessage;
+            }
+
+            const { data } = await octokit.pulls.merge(params);
+
+            return {
+                sha: data.sha,
+                merged: data.merged,
+                message: data.message
+            };
+        } catch (error) {
+            console.error('GitHub merge PR error:', error);
+            throw new Error('Failed to merge pull request: ' + error.message);
+        }
+    }
+
+    async addPRComment(userId, owner, repo, number, body) {
+        try {
+            const octokit = await this.getClient(userId);
+            
+            const { data } = await octokit.issues.createComment({
+                owner,
+                repo,
+                issue_number: number,
+                body
+            });
+
+            return {
+                id: data.id,
+                body: data.body,
+                author: data.user.login,
+                createdAt: data.created_at,
+                url: data.html_url
+            };
+        } catch (error) {
+            console.error('GitHub add comment error:', error);
+            throw new Error('Failed to add comment: ' + error.message);
+        }
+    }
+
+    async requestReview(userId, owner, repo, number, reviewers) {
+        try {
+            const octokit = await this.getClient(userId);
+            
+            const { data } = await octokit.pulls.requestReviewers({
+                owner,
+                repo,
+                pull_number: number,
+                reviewers
+            });
+
+            return {
+                number: data.number,
+                requestedReviewers: data.requested_reviewers.map(r => r.login)
+            };
+        } catch (error) {
+            console.error('GitHub request review error:', error);
+            throw new Error('Failed to request review: ' + error.message);
+        }
+    }
+
     clearCache(userId) {
         this.clients.delete(userId);
     }
