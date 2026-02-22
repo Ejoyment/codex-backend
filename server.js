@@ -162,6 +162,10 @@ const PORT = process.env.PORT || 3000;
 const supportSocket = require('./utils/supportSocket');
 supportSocket(io);
 
+// Initialize Socket.IO for meetings
+const meetingSocket = require('./utils/meetingSocket');
+meetingSocket(io);
+
 server.listen(PORT, () => {
     console.log(`\n🚀 CODEX INC Server running on port ${PORT}`);
     console.log(`📧 Email service: Resend API (Production Ready)`);
