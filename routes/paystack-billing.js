@@ -12,10 +12,11 @@ const BillingScheduler = require('../utils/paystackScheduler');
  */
 router.post('/initialize', authenticateToken, async (req, res) => {
     try {
-        const userId = req.user.userId;
+        const userId = req.userId || req.user.userId || req.user.id;
         const user = await User.findById(userId);
 
         if (!user) {
+            console.error('User not found for ID:', userId);
             return res.status(404).json({ success: false, message: 'User not found' });
         }
 
@@ -77,7 +78,7 @@ router.post('/initialize', authenticateToken, async (req, res) => {
 router.post('/verify', authenticateToken, async (req, res) => {
     try {
         const { reference } = req.body;
-        const userId = req.user.userId;
+        const userId = req.userId || req.user.userId || req.user.id;
 
         if (!reference) {
             return res.status(400).json({ success: false, message: 'Payment reference required' });
@@ -183,7 +184,7 @@ router.post('/verify', authenticateToken, async (req, res) => {
  */
 router.get('/status', authenticateToken, async (req, res) => {
     try {
-        const userId = req.user.userId;
+        const userId = req.userId || req.user.userId || req.user.id;
         const subscription = await Subscription.findOne({ userId });
 
         if (!subscription) {
@@ -250,7 +251,7 @@ router.get('/status', authenticateToken, async (req, res) => {
  */
 router.post('/cancel', authenticateToken, async (req, res) => {
     try {
-        const userId = req.user.userId;
+        const userId = req.userId || req.user.userId || req.user.id;
         const subscription = await Subscription.findOne({ userId });
 
         if (!subscription) {
