@@ -18,6 +18,7 @@ const profileRoutes = require('./routes/profile');
 const trialBillingRoutes = require('./routes/trial-billing');
 const paystackBillingRoutes = require('./routes/paystack-billing');
 const supportRoutes = require('./routes/support');
+const notificationsRoutes = require('./routes/notifications');
 
 const app = express();
 const http = require('http');
@@ -126,6 +127,7 @@ app.use('/api/profile', profileRoutes);
 app.use('/api/trial-billing', trialBillingRoutes);
 app.use('/api/paystack-billing', paystackBillingRoutes);
 app.use('/api/support', supportRoutes);
+app.use('/api/notifications', notificationsRoutes);
 
 // Integration API routes
 app.use('/api/github', githubApiRoutes);
