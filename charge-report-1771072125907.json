@@ -1,0 +1,126 @@
+{
+  "total": 2,
+  "charged": 0,
+  "skipped": 0,
+  "failed": 2,
+  "details": [
+    {
+      "email": "admin@codexincenterprise.online",
+      "userId": "698cf2272c03ae7fb1c68f87",
+      "success": false,
+      "reason": "charge_failed",
+      "message": "Charge attempted",
+      "fullResponse": {
+        "status": true,
+        "message": "Charge attempted",
+        "data": {
+          "amount": 1000000,
+          "currency": "NGN",
+          "transaction_date": "2026-02-14T12:28:32.000Z",
+          "status": "failed",
+          "reference": "eudm7ebyoe257pj",
+          "domain": "live",
+          "metadata": {
+            "userId": "698cf2272c03ae7fb1c68f87",
+            "subscriptionId": "698cf2272c03ae7fb1c68f89",
+            "chargeType": "retroactive_verification_fee",
+            "description": "Retroactive ₦10,000 verification charge"
+          },
+          "gateway_response": "Insufficient Funds",
+          "message": null,
+          "channel": "card",
+          "ip_address": null,
+          "log": null,
+          "fees": null,
+          "authorization": {
+            "authorization_code": "AUTH_746v51j7mr",
+            "bin": "507881",
+            "last4": "5008",
+            "exp_month": "02",
+            "exp_year": "2029",
+            "channel": "card",
+            "card_type": "verve debit",
+            "bank": "PALMPAY",
+            "country_code": "NG",
+            "brand": "verve",
+            "reusable": true,
+            "signature": "SIG_zX4jJU6fPLidMfQvoeJb",
+            "account_name": null
+          },
+          "customer": {
+            "id": 338649531,
+            "first_name": "Layefa",
+            "last_name": "Ebono",
+            "email": "admin@codexincenterprise.online",
+            "customer_code": "CUS_oxfisygzf6er9ja",
+            "phone": null,
+            "metadata": null,
+            "risk_action": "default",
+            "international_format_phone": null
+          },
+          "plan": null,
+          "id": 5837592808
+        }
+      }
+    },
+    {
+      "email": "krissdivine11@gmail.com",
+      "userId": "698dfa2260a2b1726c23f71e",
+      "success": false,
+      "reason": "charge_failed",
+      "message": "Charge attempted",
+      "fullResponse": {
+        "status": true,
+        "message": "Charge attempted",
+        "data": {
+          "amount": 1000000,
+          "currency": "NGN",
+          "transaction_date": "2026-02-14T12:28:43.000Z",
+          "status": "failed",
+          "reference": "w8w2oylxor9h5ae",
+          "domain": "live",
+          "metadata": {
+            "userId": "698dfa2260a2b1726c23f71e",
+            "subscriptionId": "698dfa2360a2b1726c23f723",
+            "chargeType": "retroactive_verification_fee",
+            "description": "Retroactive ₦10,000 verification charge"
+          },
+          "gateway_response": "Insufficient Funds",
+          "message": null,
+          "channel": "card",
+          "ip_address": null,
+          "log": null,
+          "fees": null,
+          "authorization": {
+            "authorization_code": "AUTH_7lyn78qn9n",
+            "bin": "506115",
+            "last4": "5672",
+            "exp_month": "10",
+            "exp_year": "2027",
+            "channel": "card",
+            "card_type": "verve ",
+            "bank": "Fidelity Bank",
+            "country_code": "NG",
+            "brand": "verve",
+            "reusable": true,
+            "signature": "SIG_K0E5hanWFvT0cUWqTzqh",
+            "account_name": null
+          },
+          "customer": {
+            "id": 339067603,
+            "first_name": null,
+            "last_name": null,
+            "email": "krissdivine11@gmail.com",
+            "customer_code": "CUS_ahlfzhez8azlrbs",
+            "phone": null,
+            "metadata": null,
+            "risk_action": "default",
+            "international_format_phone": null
+          },
+          "plan": null,
+          "id": 5837593383
+        }
+      }
+    }
+  ]
+}

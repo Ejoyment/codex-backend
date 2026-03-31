@@ -1,0 +1,22 @@
+{
+  "total": 2,
+  "charged": 0,
+  "skipped": 0,
+  "failed": 2,
+  "details": [
+    {
+      "email": "admin@codexincenterprise.online",
+      "userId": "698cf2272c03ae7fb1c68f87",
+      "success": false,
+      "reason": "charge_failed",
+      "message": "Charge attempted"
+    },
+    {
+      "email": "krissdivine11@gmail.com",
+      "userId": "698dfa2260a2b1726c23f71e",
+      "success": false,
+      "reason": "charge_failed",
+      "message": "Charge attempted"
+    }
+  ]
+}

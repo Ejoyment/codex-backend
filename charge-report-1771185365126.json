@@ -1,0 +1,15 @@
+{
+  "total": 1,
+  "charged": 1,
+  "skipped": 0,
+  "failed": 0,
+  "details": [
+    {
+      "email": "admin@codexincenterprise.online",
+      "userId": "698cf2272c03ae7fb1c68f87",
+      "success": true,
+      "reference": "2cr28orwbx4u2zg",
+      "amount": 10000
+    }
+  ]
+}
