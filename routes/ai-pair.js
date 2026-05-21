@@ -157,6 +157,50 @@ router.get('/file/:owner/:repo/*', verifyToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/ai-pair/session:
+ *   post:
+ *     summary: Create a new AI pair programming session
+ *     tags:
+ *       - AI Pair Programming
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               repositoryId:
+ *                 type: string
+ *                 example: "12345"
+ *               repositoryName:
+ *                 type: string
+ *                 example: "my-project"
+ *               repositoryOwner:
+ *                 type: string
+ *                 example: "john"
+ *               branch:
+ *                 type: string
+ *                 example: "main"
+ *               sessionName:
+ *                 type: string
+ *                 example: "Debug Auth Flow"
+ *     responses:
+ *       201:
+ *         description: AI pair session created
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 session:
+ *                   $ref: '#/components/schemas/AIPairSession'
+ */
 // Create new AI pair session
 router.post('/session', verifyToken, async (req, res) => {
     try {
@@ -254,6 +298,53 @@ router.get('/session/:sessionId', verifyToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/ai-pair/chat:
+ *   post:
+ *     summary: Chat with AI pair programmer
+ *     tags:
+ *       - AI Pair Programming
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               sessionId:
+ *                 type: string
+ *               message:
+ *                 type: string
+ *                 example: "Why is this authentication token not working?"
+ *               codeContext:
+ *                 type: object
+ *                 properties:
+ *                   file:
+ *                     type: string
+ *                   language:
+ *                     type: string
+ *               enableActions:
+ *                 type: boolean
+ *     responses:
+ *       200:
+ *         description: AI response with suggestions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 reply:
+ *                   type: string
+ *                 suggestions:
+ *                   type: array
+ *                 usage:
+ *                   type: object
+ */
 // Chat with AI (Enhanced with ReAct Agent Loop)
 router.post('/chat', verifyToken, checkAILimits, async (req, res) => {
     try {

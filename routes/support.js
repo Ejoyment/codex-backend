@@ -79,6 +79,47 @@ router.post('/agent/logout', verifySupportAgent, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/support/tickets:
+ *   post:
+ *     summary: Create a support ticket
+ *     tags:
+ *       - Support System
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               subject:
+ *                 type: string
+ *                 example: "AI assistant not responding"
+ *               guestName:
+ *                 type: string
+ *                 example: "John Doe"
+ *               guestEmail:
+ *                 type: string
+ *                 example: "john@example.com"
+ *               message:
+ *                 type: string
+ *                 example: "The AI pair programmer stopped responding after 2 messages"
+ *               userId:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Support ticket created
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 ticket:
+ *                   type: object
+ */
 // Create Support Ticket (Public)
 router.post('/tickets', async (req, res) => {
     try {

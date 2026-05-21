@@ -28,6 +28,30 @@ const verifyToken = (req, res, next) => {
     }
 };
 
+/**
+ * @swagger
+ * /api/subscription/current:
+ *   get:
+ *     summary: Get user's current subscription
+ *     tags:
+ *       - Subscription & Billing
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Current subscription details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 subscription:
+ *                   $ref: '#/components/schemas/Subscription'
+ *       401:
+ *         description: Unauthorized
+ */
 // Get current subscription
 router.get('/current', verifyToken, async (req, res) => {
     try {

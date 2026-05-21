@@ -27,6 +27,32 @@ const verifyToken = (req, res, next) => {
     }
 };
 
+/**
+ * @swagger
+ * /api/integrations:
+ *   get:
+ *     summary: List all user integrations
+ *     tags:
+ *       - Integrations
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of user integrations
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 integrations:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Integration'
+ *       401:
+ *         description: Unauthorized
+ */
 // Get all integrations for user
 router.get('/', verifyToken, async (req, res) => {
     try {
