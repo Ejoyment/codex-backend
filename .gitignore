@@ -38,9 +38,10 @@ diagnose-*.bat
 *.bat
 !start-backend.bat
 
-# Documentation (keep only README)
+# Documentation (keep README and API docs)
 *.md
 !README.md
+!API_DOCUMENTATION.md
 
 # HTML files (frontend - not needed in backend repo)
 *.html

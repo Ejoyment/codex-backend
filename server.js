@@ -149,14 +149,80 @@ app.get('/', (req, res) => {
         message: 'Enterprise AI Developer Platform API',
         version: '1.0.0',
         timestamp: new Date().toISOString(),
+        features: [
+            'AI Pair Programming (Groq/Google Generative AI)',
+            'Real-time Team Collaboration',
+            'Multi-platform Integrations (GitHub, Discord, Slack, Notion, Figma)',
+            'Enterprise Features (SOC 2, audit logs, RBAC)',
+            'Support Ticketing & AI Agents',
+            'Subscription Management (Stripe, Paystack, Flutterwave)',
+            'Video Meetings & Real-time Chat'
+        ],
         endpoints: {
+            documentation: '/api/docs',
             health: '/api/health',
             auth: '/api/auth',
             subscription: '/api/subscription',
             integrations: '/api/integrations',
             aiPair: '/api/ai-pair',
             support: '/api/support',
-            documentation: 'https://github.com/yourusername/codex-backend'
+            meetings: '/api/meetings',
+            messaging: '/api/messaging',
+            collaboration: '/api/collaboration'
+        },
+        quickStart: {
+            signup: 'POST /api/auth/signup',
+            signin: 'POST /api/auth/signin',
+            getMe: 'GET /api/auth/me (requires token)'
+        }
+    });
+});
+
+// API Documentation endpoint
+app.get('/api/docs', (req, res) => {
+    res.json({
+        status: 'OK',
+        name: 'CODEX INC Backend API Documentation',
+        version: '1.0.0',
+        baseUrl: 'https://codex-backend-7utu.onrender.com',
+        documentation: {
+            fullDocs: 'See API_DOCUMENTATION.md in repository',
+            sections: [
+                'Authentication (/api/auth)',
+                'User Management (/api/auth)',
+                'AI Pair Programming (/api/ai-pair)',
+                'Team Collaboration (/api/company, /api/messaging, /api/collaboration)',
+                'Integrations (/api/integrations)',
+                'Subscription & Billing (/api/subscription, /api/trial-billing, /api/paystack-billing)',
+                'Support System (/api/support)',
+                'Meetings (/api/meetings)',
+                'Notifications (/api/notifications)'
+            ]
+        },
+        mainEndpoints: {
+            'POST /api/auth/signup': 'Create new user account',
+            'POST /api/auth/signin': 'Login and get JWT token',
+            'GET /api/auth/me': 'Get current user info',
+            'GET /api/integrations': 'List user integrations',
+            'POST /api/ai-pair/session': 'Create AI pair programming session',
+            'POST /api/ai-pair/chat': 'Chat with AI assistant',
+            'GET /api/subscription/current': 'Get subscription info',
+            'POST /api/support/tickets': 'Create support ticket',
+            'GET /api/health': 'Health check'
+        },
+        authentication: {
+            method: 'Bearer Token (JWT)',
+            header: 'Authorization: Bearer <token>',
+            expiresIn: '24 hours'
+        },
+        rateLimiting: {
+            free: '10 requests/minute',
+            pro: '100 requests/minute',
+            enterprise: 'Unlimited'
+        },
+        marketplace: {
+            support: 'api-support@codexinc.com',
+            status: 'https://status.codexinc.com'
         }
     });
 });
