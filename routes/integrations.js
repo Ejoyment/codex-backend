@@ -81,6 +81,28 @@ router.get('/', verifyToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/integrations/github/auth:
+ *   get:
+ *     summary: Get GitHub OAuth authorization URL
+ *     tags:
+ *       - Integrations
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: GitHub OAuth URL
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 authUrl:
+ *                   type: string
+ */
 // GitHub OAuth
 router.get('/github/auth', verifyToken, (req, res) => {
     const redirectUri = `${process.env.BACKEND_URL}/api/integrations/github/callback`;
@@ -95,6 +117,27 @@ router.get('/github/auth', verifyToken, (req, res) => {
     });
 });
 
+/**
+ * @swagger
+ * /api/integrations/github/callback:
+ *   get:
+ *     summary: GitHub OAuth callback (handled server-side)
+ *     tags:
+ *       - Integrations
+ *     description: Exchanges OAuth code for access token and saves GitHub integration
+ *     parameters:
+ *       - name: code
+ *         in: query
+ *         schema:
+ *           type: string
+ *       - name: state
+ *         in: query
+ *         schema:
+ *           type: string
+ *     responses:
+ *       302:
+ *         description: Redirect to frontend settings page
+ */
 router.get('/github/callback', async (req, res) => {
     const { code, state } = req.query;
     const userId = state;
@@ -139,6 +182,28 @@ router.get('/github/callback', async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/integrations/slack/auth:
+ *   get:
+ *     summary: Get Slack OAuth authorization URL
+ *     tags:
+ *       - Integrations
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Slack OAuth URL
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 authUrl:
+ *                   type: string
+ */
 // Slack OAuth
 router.get('/slack/auth', verifyToken, (req, res) => {
     const redirectUri = `${process.env.BACKEND_URL}/api/integrations/slack/callback`;
@@ -153,6 +218,27 @@ router.get('/slack/auth', verifyToken, (req, res) => {
     });
 });
 
+/**
+ * @swagger
+ * /api/integrations/slack/callback:
+ *   get:
+ *     summary: Slack OAuth callback
+ *     tags:
+ *       - Integrations
+ *     description: Exchanges OAuth code for Slack access token and saves integration
+ *     parameters:
+ *       - name: code
+ *         in: query
+ *         schema:
+ *           type: string
+ *       - name: state
+ *         in: query
+ *         schema:
+ *           type: string
+ *     responses:
+ *       302:
+ *         description: Redirect to frontend settings page
+ */
 router.get('/slack/callback', async (req, res) => {
     const { code, state } = req.query;
     const userId = state;
@@ -193,6 +279,28 @@ router.get('/slack/callback', async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/integrations/discord/auth:
+ *   get:
+ *     summary: Get Discord OAuth authorization URL
+ *     tags:
+ *       - Integrations
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Discord OAuth URL
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 authUrl:
+ *                   type: string
+ */
 // Discord OAuth
 router.get('/discord/auth', verifyToken, (req, res) => {
     const redirectUri = `${process.env.BACKEND_URL}/api/integrations/discord/callback`;
@@ -207,6 +315,27 @@ router.get('/discord/auth', verifyToken, (req, res) => {
     });
 });
 
+/**
+ * @swagger
+ * /api/integrations/discord/callback:
+ *   get:
+ *     summary: Discord OAuth callback
+ *     tags:
+ *       - Integrations
+ *     description: Exchanges OAuth code for Discord access token and saves integration
+ *     parameters:
+ *       - name: code
+ *         in: query
+ *         schema:
+ *           type: string
+ *       - name: state
+ *         in: query
+ *         schema:
+ *           type: string
+ *     responses:
+ *       302:
+ *         description: Redirect to frontend settings page
+ */
 router.get('/discord/callback', async (req, res) => {
     const { code, state } = req.query;
     const userId = state;
@@ -265,6 +394,28 @@ router.get('/discord/callback', async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/integrations/notion/auth:
+ *   get:
+ *     summary: Get Notion OAuth authorization URL
+ *     tags:
+ *       - Integrations
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Notion OAuth URL
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 authUrl:
+ *                   type: string
+ */
 // Notion OAuth
 router.get('/notion/auth', verifyToken, (req, res) => {
     const redirectUri = `${process.env.BACKEND_URL}/api/integrations/notion/callback`;
@@ -278,6 +429,27 @@ router.get('/notion/auth', verifyToken, (req, res) => {
     });
 });
 
+/**
+ * @swagger
+ * /api/integrations/notion/callback:
+ *   get:
+ *     summary: Notion OAuth callback
+ *     tags:
+ *       - Integrations
+ *     description: Exchanges OAuth code for Notion access token and saves integration
+ *     parameters:
+ *       - name: code
+ *         in: query
+ *         schema:
+ *           type: string
+ *       - name: state
+ *         in: query
+ *         schema:
+ *           type: string
+ *     responses:
+ *       302:
+ *         description: Redirect to frontend settings page
+ */
 router.get('/notion/callback', async (req, res) => {
     const { code, state } = req.query;
     const userId = state;
@@ -319,6 +491,28 @@ router.get('/notion/callback', async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/integrations/figma/auth:
+ *   get:
+ *     summary: Get Figma OAuth authorization URL
+ *     tags:
+ *       - Integrations
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Figma OAuth URL
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 authUrl:
+ *                   type: string
+ */
 // Figma OAuth
 router.get('/figma/auth', verifyToken, (req, res) => {
     const redirectUri = `${process.env.BACKEND_URL}/api/integrations/figma/callback`;
@@ -333,6 +527,27 @@ router.get('/figma/auth', verifyToken, (req, res) => {
     });
 });
 
+/**
+ * @swagger
+ * /api/integrations/figma/callback:
+ *   get:
+ *     summary: Figma OAuth callback
+ *     tags:
+ *       - Integrations
+ *     description: Exchanges OAuth code for Figma access token and saves integration
+ *     parameters:
+ *       - name: code
+ *         in: query
+ *         schema:
+ *           type: string
+ *       - name: state
+ *         in: query
+ *         schema:
+ *           type: string
+ *     responses:
+ *       302:
+ *         description: Redirect to frontend settings page
+ */
 router.get('/figma/callback', async (req, res) => {
     const { code, state } = req.query;
     const userId = state;
@@ -377,6 +592,35 @@ router.get('/figma/callback', async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/integrations/vscode/connect:
+ *   post:
+ *     summary: Connect VS Code integration
+ *     tags:
+ *       - Integrations
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - accessToken
+ *             properties:
+ *               accessToken:
+ *                 type: string
+ *                 example: vscode_token_here
+ *     responses:
+ *       200:
+ *         description: VS Code connected successfully
+ *       400:
+ *         description: Access token required
+ *       401:
+ *         description: Unauthorized
+ */
 // VS Code - Generate access token
 router.post('/vscode/connect', verifyToken, async (req, res) => {
     try {
@@ -414,6 +658,29 @@ router.post('/vscode/connect', verifyToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/integrations/{provider}/disconnect:
+ *   delete:
+ *     summary: Disconnect an integration
+ *     tags:
+ *       - Integrations
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: provider
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *           enum: [github, discord, slack, notion, figma, vscode]
+ *         example: github
+ *     responses:
+ *       200:
+ *         description: Integration disconnected successfully
+ *       401:
+ *         description: Unauthorized
+ */
 // Disconnect integration
 router.delete('/:provider/disconnect', verifyToken, async (req, res) => {
     try {

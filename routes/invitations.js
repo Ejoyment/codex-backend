@@ -6,6 +6,56 @@ const User = require('../models/User');
 const { authenticateToken } = require('../middleware/auth');
 const { sendInvitationEmail } = require('../utils/emailService');
 
+/**
+ * @swagger
+ * /api/invitations:
+ *   post:
+ *     summary: Create and send a company invitation
+ *     tags:
+ *       - Invitations
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - companyId
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 example: colleague@example.com
+ *               companyId:
+ *                 type: string
+ *               role:
+ *                 type: string
+ *                 enum: [admin, member, viewer]
+ *                 default: member
+ *               message:
+ *                 type: string
+ *                 example: Join our team on CODEX!
+ *     responses:
+ *       200:
+ *         description: Invitation created and email sent
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 invitation:
+ *                   $ref: '#/components/schemas/Invitation'
+ *       400:
+ *         description: User already invited or already a member
+ *       403:
+ *         description: Permission denied
+ *       404:
+ *         description: Company not found
+ */
 // Create invitation
 router.post('/', authenticateToken, async (req, res) => {
     try {
@@ -75,6 +125,27 @@ router.post('/', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/invitations/company/{companyId}:
+ *   get:
+ *     summary: Get all invitations for a company
+ *     tags:
+ *       - Invitations
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: companyId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: List of invitations
+ *       401:
+ *         description: Unauthorized
+ */
 // Get all invitations for a company
 router.get('/company/:companyId', authenticateToken, async (req, res) => {
     try {
@@ -93,6 +164,21 @@ router.get('/company/:companyId', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/invitations/my-invitations:
+ *   get:
+ *     summary: Get pending invitations for the current user
+ *     tags:
+ *       - Invitations
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of pending invitations
+ *       401:
+ *         description: Unauthorized
+ */
 // Get invitations for current user
 router.get('/my-invitations', authenticateToken, async (req, res) => {
     try {
@@ -115,6 +201,31 @@ router.get('/my-invitations', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/invitations/{token}/accept:
+ *   post:
+ *     summary: Accept an invitation using its token
+ *     tags:
+ *       - Invitations
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: token
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Invitation accepted, user added to company
+ *       400:
+ *         description: Invitation expired or already processed
+ *       403:
+ *         description: Invitation is for a different email
+ *       404:
+ *         description: Invitation not found
+ */
 // Accept invitation
 router.post('/:token/accept', authenticateToken, async (req, res) => {
     try {
@@ -164,6 +275,27 @@ router.post('/:token/accept', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/invitations/{token}/decline:
+ *   post:
+ *     summary: Decline an invitation
+ *     tags:
+ *       - Invitations
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: token
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Invitation declined
+ *       404:
+ *         description: Invitation not found
+ */
 // Decline invitation
 router.post('/:token/decline', authenticateToken, async (req, res) => {
     try {
@@ -185,6 +317,29 @@ router.post('/:token/decline', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/invitations/{id}/resend:
+ *   post:
+ *     summary: Resend an invitation email
+ *     tags:
+ *       - Invitations
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Invitation resent
+ *       400:
+ *         description: Can only resend pending invitations
+ *       404:
+ *         description: Invitation not found
+ */
 // Resend invitation
 router.post('/:id/resend', authenticateToken, async (req, res) => {
     try {
@@ -222,6 +377,27 @@ router.post('/:id/resend', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/invitations/{id}:
+ *   delete:
+ *     summary: Cancel an invitation
+ *     tags:
+ *       - Invitations
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Invitation cancelled
+ *       404:
+ *         description: Invitation not found
+ */
 // Cancel invitation
 router.delete('/:id', authenticateToken, async (req, res) => {
     try {

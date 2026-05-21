@@ -74,6 +74,30 @@ const checkAILimits = async (req, res, next) => {
     }
 };
 
+/**
+ * @swagger
+ * /api/ai-pair/repos:
+ *   get:
+ *     summary: List user's GitHub repositories
+ *     tags:
+ *       - AI Pair Programming
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of repositories
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 repositories:
+ *                   type: array
+ *       401:
+ *         description: Unauthorized
+ */
 // List user's GitHub repositories
 router.get('/repos', verifyToken, async (req, res) => {
     try {
@@ -92,6 +116,32 @@ router.get('/repos', verifyToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/ai-pair/repo/{owner}/{repo}:
+ *   get:
+ *     summary: Get repository details and branches
+ *     tags:
+ *       - AI Pair Programming
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: owner
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: repo
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Repository details and branches
+ *       401:
+ *         description: Unauthorized
+ */
 // Get repository details
 router.get('/repo/:owner/:repo', verifyToken, async (req, res) => {
     try {
@@ -114,6 +164,41 @@ router.get('/repo/:owner/:repo', verifyToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/ai-pair/files/{owner}/{repo}:
+ *   get:
+ *     summary: List files in a repository
+ *     tags:
+ *       - AI Pair Programming
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: owner
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: repo
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: path
+ *         in: query
+ *         schema:
+ *           type: string
+ *         description: Directory path (default is root)
+ *       - name: branch
+ *         in: query
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: List of files
+ *       401:
+ *         description: Unauthorized
+ */
 // List files in repository
 router.get('/files/:owner/:repo', verifyToken, async (req, res) => {
     try {
@@ -135,6 +220,42 @@ router.get('/files/:owner/:repo', verifyToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/ai-pair/file/{owner}/{repo}/{path}:
+ *   get:
+ *     summary: Get file content from a repository
+ *     tags:
+ *       - AI Pair Programming
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: owner
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: repo
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: path
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: File path within the repository
+ *       - name: branch
+ *         in: query
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: File content
+ *       401:
+ *         description: Unauthorized
+ */
 // Get file content
 router.get('/file/:owner/:repo/*', verifyToken, async (req, res) => {
     try {
@@ -229,6 +350,43 @@ router.post('/session', verifyToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/ai-pair/sessions:
+ *   get:
+ *     summary: Get all AI pair programming sessions for the user
+ *     tags:
+ *       - AI Pair Programming
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: status
+ *         in: query
+ *         schema:
+ *           type: string
+ *           enum: [active, completed, archived]
+ *       - name: limit
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *     responses:
+ *       200:
+ *         description: List of sessions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 sessions:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/AIPairSession'
+ *       401:
+ *         description: Unauthorized
+ */
 // Get user's sessions
 router.get('/sessions', verifyToken, async (req, res) => {
     try {
@@ -256,6 +414,29 @@ router.get('/sessions', verifyToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/ai-pair/session/{sessionId}:
+ *   get:
+ *     summary: Get session details with messages and code changes
+ *     tags:
+ *       - AI Pair Programming
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: sessionId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Session details, messages, and code changes
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Session not found
+ */
 // Get session details
 router.get('/session/:sessionId', verifyToken, async (req, res) => {
     try {
@@ -604,6 +785,45 @@ function guessFilePath(filename, language) {
     return '/';
 }
 
+/**
+ * @swagger
+ * /api/ai-pair/apply-change:
+ *   post:
+ *     summary: Stage a code change for a file
+ *     tags:
+ *       - AI Pair Programming
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - sessionId
+ *               - filePath
+ *               - newContent
+ *             properties:
+ *               sessionId:
+ *                 type: string
+ *               filePath:
+ *                 type: string
+ *                 example: src/index.js
+ *               newContent:
+ *                 type: string
+ *               operation:
+ *                 type: string
+ *                 enum: [edit, create, delete]
+ *                 default: edit
+ *     responses:
+ *       200:
+ *         description: Code change staged with diff
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Session not found
+ */
 // Apply code change
 router.post('/apply-change', verifyToken, async (req, res) => {
     try {
@@ -673,6 +893,42 @@ router.post('/apply-change', verifyToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/ai-pair/commit:
+ *   post:
+ *     summary: Commit staged code changes to GitHub
+ *     tags:
+ *       - AI Pair Programming
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - sessionId
+ *               - changeIds
+ *             properties:
+ *               sessionId:
+ *                 type: string
+ *               changeIds:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               commitMessage:
+ *                 type: string
+ *                 example: "feat: add authentication flow"
+ *     responses:
+ *       200:
+ *         description: Changes committed to GitHub
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Session not found
+ */
 // Commit changes to GitHub
 router.post('/commit', verifyToken, async (req, res) => {
     try {
@@ -795,6 +1051,39 @@ router.post('/commit', verifyToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/ai-pair/session/{sessionId}:
+ *   patch:
+ *     summary: Update session status
+ *     tags:
+ *       - AI Pair Programming
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: sessionId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               status:
+ *                 type: string
+ *                 enum: [active, completed, archived]
+ *     responses:
+ *       200:
+ *         description: Session updated
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Session not found
+ */
 // Update session status
 router.patch('/session/:sessionId', verifyToken, async (req, res) => {
     try {
@@ -836,6 +1125,36 @@ router.patch('/session/:sessionId', verifyToken, async (req, res) => {
 // VECTOR MEMORY ENDPOINTS
 // ============================================
 
+/**
+ * @swagger
+ * /api/ai-pair/memory/store:
+ *   post:
+ *     summary: Store a code pattern in vector memory
+ *     tags:
+ *       - AI Pair Programming
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - content
+ *             properties:
+ *               content:
+ *                 type: string
+ *               metadata:
+ *                 type: object
+ *               workspaceId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Pattern stored in vector memory
+ *       401:
+ *         description: Unauthorized
+ */
 // Store code pattern in vector memory
 router.post('/memory/store', verifyToken, async (req, res) => {
     try {
@@ -870,6 +1189,37 @@ router.post('/memory/store', verifyToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/ai-pair/memory/retrieve:
+ *   get:
+ *     summary: Retrieve similar patterns from vector memory
+ *     tags:
+ *       - AI Pair Programming
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: query
+ *         in: query
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: k
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           default: 5
+ *         description: Number of results to return
+ *       - name: workspaceId
+ *         in: query
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Similar patterns from memory
+ *       401:
+ *         description: Unauthorized
+ */
 // Retrieve similar patterns from vector memory
 router.get('/memory/retrieve', verifyToken, async (req, res) => {
     try {
@@ -905,6 +1255,26 @@ router.get('/memory/retrieve', verifyToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/ai-pair/memory/clear:
+ *   delete:
+ *     summary: Clear vector memory for user/workspace
+ *     tags:
+ *       - AI Pair Programming
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: workspaceId
+ *         in: query
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Memory cleared
+ *       401:
+ *         description: Unauthorized
+ */
 // Clear memories for user/workspace
 router.delete('/memory/clear', verifyToken, async (req, res) => {
     try {
@@ -930,6 +1300,26 @@ router.delete('/memory/clear', verifyToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/ai-pair/memory/stats:
+ *   get:
+ *     summary: Get vector memory statistics
+ *     tags:
+ *       - AI Pair Programming
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: workspaceId
+ *         in: query
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Memory statistics
+ *       401:
+ *         description: Unauthorized
+ */
 // Get memory statistics
 router.get('/memory/stats', verifyToken, async (req, res) => {
     try {
@@ -959,6 +1349,55 @@ router.get('/memory/stats', verifyToken, async (req, res) => {
 // SANDBOX EXECUTION ENDPOINTS
 // ============================================
 
+/**
+ * @swagger
+ * /api/ai-pair/execute:
+ *   post:
+ *     summary: Execute code in a sandboxed environment
+ *     tags:
+ *       - AI Pair Programming
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - code
+ *             properties:
+ *               code:
+ *                 type: string
+ *                 example: "console.log('Hello World')"
+ *               language:
+ *                 type: string
+ *                 default: javascript
+ *                 example: javascript
+ *               timeout:
+ *                 type: integer
+ *                 description: Execution timeout in milliseconds
+ *     responses:
+ *       200:
+ *         description: Code execution result
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 output:
+ *                   type: string
+ *                 error:
+ *                   type: string
+ *                 executionTime:
+ *                   type: number
+ *       400:
+ *         description: Invalid or unsafe code
+ *       401:
+ *         description: Unauthorized
+ */
 // Execute code in sandbox
 router.post('/execute', verifyToken, async (req, res) => {
     try {
@@ -998,6 +1437,21 @@ router.post('/execute', verifyToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/ai-pair/sandbox/stats:
+ *   get:
+ *     summary: Get sandbox execution statistics
+ *     tags:
+ *       - AI Pair Programming
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Sandbox statistics
+ *       401:
+ *         description: Unauthorized
+ */
 // Get sandbox statistics
 router.get('/sandbox/stats', verifyToken, async (req, res) => {
     try {

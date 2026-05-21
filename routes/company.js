@@ -25,6 +25,30 @@ const authenticateToken = (req, res, next) => {
     });
 };
 
+/**
+ * @swagger
+ * /api/company/create:
+ *   post:
+ *     summary: Create a new company
+ *     tags:
+ *       - Company
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *               description:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Company created successfully
+ */
 // Create company
 router.post('/create', authenticateToken, async (req, res) => {
     try {
@@ -119,6 +143,32 @@ router.post('/create', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/company/my-companies:
+ *   get:
+ *     summary: Get all companies the current user belongs to
+ *     tags:
+ *       - Company
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of companies
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 companies:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Company'
+ *       401:
+ *         description: Unauthorized
+ */
 // Get user's companies
 router.get('/my-companies', authenticateToken, async (req, res) => {
     try {
@@ -177,6 +227,69 @@ router.get('/my-companies', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/company/{companyId}:
+ *   get:
+ *     summary: Get company details
+ *     tags:
+ *       - Company
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: companyId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Company details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 company:
+ *                   $ref: '#/components/schemas/Company'
+ *       403:
+ *         description: Not a member of this company
+ *       404:
+ *         description: Company not found
+ *   put:
+ *     summary: Update company details
+ *     tags:
+ *       - Company
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: companyId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *               description:
+ *                 type: string
+ *               logo:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Company updated
+ *       403:
+ *         description: Permission denied
+ *       404:
+ *         description: Company not found
+ */
 // Get company details
 router.get('/:companyId', authenticateToken, async (req, res) => {
     try {
@@ -238,6 +351,29 @@ router.get('/:companyId', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/company/{companyId}/members:
+ *   get:
+ *     summary: Get all members of a company
+ *     tags:
+ *       - Company
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: companyId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: List of company members
+ *       403:
+ *         description: Not a member
+ *       404:
+ *         description: Company not found
+ */
 // Get company members
 router.get('/:companyId/members', authenticateToken, async (req, res) => {
     try {
@@ -273,6 +409,47 @@ router.get('/:companyId/members', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/company/{companyId}/invite:
+ *   post:
+ *     summary: Invite a user to the company by email
+ *     tags:
+ *       - Company
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: companyId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 example: colleague@example.com
+ *               role:
+ *                 type: string
+ *                 enum: [admin, member, viewer]
+ *                 default: member
+ *     responses:
+ *       200:
+ *         description: Member invited successfully
+ *       400:
+ *         description: User already a member
+ *       403:
+ *         description: Member limit reached or permission denied
+ *       404:
+ *         description: User not found with this email
+ */
 // Invite member
 router.post('/:companyId/invite', authenticateToken, checkMemberLimit, async (req, res) => {
     try {
@@ -353,6 +530,34 @@ router.post('/:companyId/invite', authenticateToken, checkMemberLimit, async (re
     }
 });
 
+/**
+ * @swagger
+ * /api/company/{companyId}/members/{userId}:
+ *   delete:
+ *     summary: Remove a member from the company
+ *     tags:
+ *       - Company
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: companyId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: userId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Member removed
+ *       403:
+ *         description: Cannot remove owner or permission denied
+ *       404:
+ *         description: Company not found
+ */
 // Remove member
 router.delete('/:companyId/members/:userId', authenticateToken, async (req, res) => {
     try {
@@ -453,6 +658,42 @@ router.put('/:companyId', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/company/{companyId}/logo:
+ *   post:
+ *     summary: Upload company logo
+ *     tags:
+ *       - Company
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: companyId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               logo:
+ *                 type: string
+ *                 format: binary
+ *                 description: Image file (JPEG, PNG, GIF, SVG - max 5MB)
+ *     responses:
+ *       200:
+ *         description: Logo uploaded successfully
+ *       400:
+ *         description: No file uploaded or invalid file type
+ *       403:
+ *         description: Permission denied
+ *       404:
+ *         description: Company not found
+ */
 // Upload company logo
 router.post('/:companyId/logo', authenticateToken, async (req, res) => {
     try {
@@ -521,6 +762,48 @@ router.post('/:companyId/logo', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/company/{companyId}/members/{userId}/role:
+ *   put:
+ *     summary: Update a member's role
+ *     tags:
+ *       - Company
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: companyId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: userId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - role
+ *             properties:
+ *               role:
+ *                 type: string
+ *                 enum: [admin, member, viewer]
+ *     responses:
+ *       200:
+ *         description: Role updated
+ *       400:
+ *         description: Invalid role
+ *       403:
+ *         description: Cannot change owner role or permission denied
+ *       404:
+ *         description: Member not found
+ */
 // Update member role
 router.put('/:companyId/members/:userId/role', authenticateToken, async (req, res) => {
     try {
@@ -571,6 +854,42 @@ router.put('/:companyId/members/:userId/role', authenticateToken, async (req, re
     }
 });
 
+/**
+ * @swagger
+ * /api/company/{companyId}/settings:
+ *   put:
+ *     summary: Update company settings
+ *     tags:
+ *       - Company
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: companyId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               allowMemberInvites:
+ *                 type: boolean
+ *               requireApproval:
+ *                 type: boolean
+ *               defaultRole:
+ *                 type: string
+ *                 enum: [member, viewer]
+ *     responses:
+ *       200:
+ *         description: Settings updated
+ *       403:
+ *         description: Permission denied
+ *       404:
+ *         description: Company not found
+ */
 // Update company settings
 router.put('/:companyId/settings', authenticateToken, async (req, res) => {
     try {
@@ -601,6 +920,27 @@ router.put('/:companyId/settings', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/company/{companyId}/limits:
+ *   get:
+ *     summary: Get company usage limits and current usage
+ *     tags:
+ *       - Company
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: companyId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Company limits and usage
+ *       404:
+ *         description: Company not found
+ */
 // Get company limits and usage
 router.get('/:companyId/limits', authenticateToken, async (req, res) => {
     try {

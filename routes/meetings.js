@@ -4,6 +4,43 @@ const MeetingRoom = require('../models/MeetingRoom');
 const { authenticateToken } = require('../middleware/auth');
 const crypto = require('crypto');
 
+/**
+ * @swagger
+ * /api/meetings:
+ *   post:
+ *     summary: Create a new meeting
+ *     tags:
+ *       - Meetings
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               title:
+ *                 type: string
+ *                 example: Team Standup
+ *               description:
+ *                 type: string
+ *               companyId:
+ *                 type: string
+ *               scheduledAt:
+ *                 type: string
+ *                 format: date-time
+ *               duration:
+ *                 type: number
+ *                 example: 60
+ *               participants:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *     responses:
+ *       201:
+ *         description: Meeting created successfully
+ */
 // Create meeting
 router.post('/', authenticateToken, async (req, res) => {
     try {
@@ -38,6 +75,37 @@ router.post('/', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/meetings:
+ *   get:
+ *     summary: Get all meetings for a company
+ *     tags:
+ *       - Meetings
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: companyId
+ *         in: query
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: status
+ *         in: query
+ *         schema:
+ *           type: string
+ *           enum: [scheduled, ongoing, completed, cancelled]
+ *       - name: upcoming
+ *         in: query
+ *         schema:
+ *           type: boolean
+ *         description: Filter for upcoming meetings only
+ *     responses:
+ *       200:
+ *         description: List of meetings
+ *       401:
+ *         description: Unauthorized
+ */
 // Get all meetings for company
 router.get('/', authenticateToken, async (req, res) => {
     try {
@@ -68,6 +136,82 @@ router.get('/', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/meetings/{id}:
+ *   get:
+ *     summary: Get a single meeting by ID
+ *     tags:
+ *       - Meetings
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Meeting details
+ *       404:
+ *         description: Meeting not found
+ *   put:
+ *     summary: Update meeting details
+ *     tags:
+ *       - Meetings
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               title:
+ *                 type: string
+ *               description:
+ *                 type: string
+ *               scheduledAt:
+ *                 type: string
+ *                 format: date-time
+ *               duration:
+ *                 type: integer
+ *               settings:
+ *                 type: object
+ *     responses:
+ *       200:
+ *         description: Meeting updated
+ *       403:
+ *         description: Only host can update meeting
+ *       404:
+ *         description: Meeting not found
+ *   delete:
+ *     summary: Delete a meeting
+ *     tags:
+ *       - Meetings
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Meeting deleted
+ *       403:
+ *         description: Only host can delete meeting
+ *       404:
+ *         description: Meeting not found
+ */
 // Get single meeting
 router.get('/:id', authenticateToken, async (req, res) => {
     try {
@@ -88,6 +232,27 @@ router.get('/:id', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/meetings/room/{roomId}:
+ *   get:
+ *     summary: Get meeting by room ID
+ *     tags:
+ *       - Meetings
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: roomId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Meeting details
+ *       404:
+ *         description: Meeting not found
+ */
 // Get meeting by room ID
 router.get('/room/:roomId', authenticateToken, async (req, res) => {
     try {
@@ -142,6 +307,25 @@ router.put('/:id', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/meetings/{id}/join:
+ *   post:
+ *     summary: Join an active meeting
+ *     tags:
+ *       - Meetings
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Successfully joined meeting
+ */
 // Join meeting
 router.post('/:id/join', authenticateToken, async (req, res) => {
     try {
@@ -181,6 +365,27 @@ router.post('/:id/join', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/meetings/{id}/leave:
+ *   post:
+ *     summary: Leave a meeting
+ *     tags:
+ *       - Meetings
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Left meeting
+ *       404:
+ *         description: Meeting not found
+ */
 // Leave meeting
 router.post('/:id/leave', authenticateToken, async (req, res) => {
     try {
@@ -208,6 +413,29 @@ router.post('/:id/leave', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/meetings/{id}/end:
+ *   post:
+ *     summary: End a meeting (host only)
+ *     tags:
+ *       - Meetings
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Meeting ended
+ *       403:
+ *         description: Only host can end meeting
+ *       404:
+ *         description: Meeting not found
+ */
 // End meeting
 router.post('/:id/end', authenticateToken, async (req, res) => {
     try {
@@ -235,6 +463,29 @@ router.post('/:id/end', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/meetings/{id}/record/start:
+ *   post:
+ *     summary: Start recording a meeting (host only)
+ *     tags:
+ *       - Meetings
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Recording started
+ *       403:
+ *         description: Only host can start recording
+ *       404:
+ *         description: Meeting not found
+ */
 // Start recording
 router.post('/:id/record/start', authenticateToken, async (req, res) => {
     try {
@@ -263,6 +514,39 @@ router.post('/:id/record/start', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/meetings/{id}/record/stop:
+ *   post:
+ *     summary: Stop recording a meeting (host only)
+ *     tags:
+ *       - Meetings
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               url:
+ *                 type: string
+ *               size:
+ *                 type: integer
+ *     responses:
+ *       200:
+ *         description: Recording stopped
+ *       403:
+ *         description: Only host can stop recording
+ *       404:
+ *         description: Meeting not found
+ */
 // Stop recording
 router.post('/:id/record/stop', authenticateToken, async (req, res) => {
     try {

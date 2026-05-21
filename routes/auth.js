@@ -266,11 +266,40 @@ router.post('/signin', authLimiter, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/auth/google:
+ *   get:
+ *     summary: Initiate Google OAuth login
+ *     tags:
+ *       - Authentication
+ *     description: Redirects the user to Google for OAuth authentication
+ *     responses:
+ *       302:
+ *         description: Redirect to Google OAuth
+ */
 // Google OAuth
 router.get('/google', 
     passport.authenticate('google', { scope: ['profile', 'email'] })
 );
 
+/**
+ * @swagger
+ * /api/auth/google/callback:
+ *   get:
+ *     summary: Google OAuth callback
+ *     tags:
+ *       - Authentication
+ *     description: Handles the callback from Google OAuth and redirects with JWT token
+ *     parameters:
+ *       - name: code
+ *         in: query
+ *         schema:
+ *           type: string
+ *     responses:
+ *       302:
+ *         description: Redirect to frontend with token
+ */
 router.get('/google/callback',
     passport.authenticate('google', { failureRedirect: '/sign_in.html' }),
     (req, res) => {
@@ -282,11 +311,35 @@ router.get('/google/callback',
     }
 );
 
+/**
+ * @swagger
+ * /api/auth/facebook:
+ *   get:
+ *     summary: Initiate Facebook OAuth login
+ *     tags:
+ *       - Authentication
+ *     description: Redirects the user to Facebook for OAuth authentication
+ *     responses:
+ *       302:
+ *         description: Redirect to Facebook OAuth
+ */
 // Facebook OAuth
 router.get('/facebook',
     passport.authenticate('facebook', { scope: ['email'] })
 );
 
+/**
+ * @swagger
+ * /api/auth/facebook/callback:
+ *   get:
+ *     summary: Facebook OAuth callback
+ *     tags:
+ *       - Authentication
+ *     description: Handles the callback from Facebook OAuth and redirects with JWT token
+ *     responses:
+ *       302:
+ *         description: Redirect to frontend with token
+ */
 router.get('/facebook/callback',
     passport.authenticate('facebook', { failureRedirect: '/sign_in.html' }),
     (req, res) => {
@@ -385,6 +438,43 @@ router.get('/me', async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/auth/upload-photo:
+ *   post:
+ *     summary: Upload user profile photo
+ *     tags:
+ *       - Authentication
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               profilePhoto:
+ *                 type: string
+ *                 format: binary
+ *                 description: Image file (JPEG, PNG, GIF, WebP - max 5MB)
+ *     responses:
+ *       200:
+ *         description: Profile photo updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 profilePicture:
+ *                   type: string
+ *       400:
+ *         description: No file uploaded
+ *       401:
+ *         description: Unauthorized
+ */
 // Upload profile photo
 router.post('/upload-photo', upload.single('profilePhoto'), async (req, res) => {
     try {
@@ -442,6 +532,37 @@ router.post('/upload-photo', upload.single('profilePhoto'), async (req, res) => 
     }
 });
 
+/**
+ * @swagger
+ * /api/auth/update-profile:
+ *   put:
+ *     summary: Update user profile
+ *     tags:
+ *       - Authentication
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               fullName:
+ *                 type: string
+ *                 example: John Doe
+ *               emailNotifications:
+ *                 type: boolean
+ *               systemPush:
+ *                 type: boolean
+ *               twoFactorAuth:
+ *                 type: boolean
+ *     responses:
+ *       200:
+ *         description: Profile updated successfully
+ *       401:
+ *         description: Unauthorized
+ */
 // Update profile
 router.put('/update-profile', async (req, res) => {
     try {
@@ -495,6 +616,39 @@ router.put('/update-profile', async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/auth/change-password:
+ *   post:
+ *     summary: Change user password
+ *     tags:
+ *       - Authentication
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - currentPassword
+ *               - newPassword
+ *             properties:
+ *               currentPassword:
+ *                 type: string
+ *                 example: OldPassword123
+ *               newPassword:
+ *                 type: string
+ *                 example: NewPassword456
+ *     responses:
+ *       200:
+ *         description: Password changed successfully
+ *       400:
+ *         description: Not available for social login accounts
+ *       401:
+ *         description: Current password incorrect
+ */
 // Change password
 router.post('/change-password', async (req, res) => {
     try {
@@ -562,6 +716,23 @@ router.post('/change-password', async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/auth/delete-account:
+ *   delete:
+ *     summary: Delete user account permanently
+ *     tags:
+ *       - Authentication
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Account deleted successfully
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: User not found
+ */
 // Delete account
 router.delete('/delete-account', async (req, res) => {
     try {
@@ -619,6 +790,47 @@ router.delete('/delete-account', async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/auth/complete-onboarding:
+ *   post:
+ *     summary: Complete user onboarding
+ *     tags:
+ *       - Authentication
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               fullName:
+ *                 type: string
+ *                 example: John Doe
+ *               company:
+ *                 type: string
+ *                 example: Acme Corp
+ *               teamSize:
+ *                 type: string
+ *                 example: "11-50"
+ *               role:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 example: ["developer", "team-lead"]
+ *               goals:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 example: ["improve-productivity", "ai-assistance"]
+ *     responses:
+ *       200:
+ *         description: Onboarding completed successfully
+ *       401:
+ *         description: Unauthorized
+ */
 // Complete onboarding
 router.post('/complete-onboarding', async (req, res) => {
     try {

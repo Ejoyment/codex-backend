@@ -4,6 +4,39 @@ const Message = require('../models/Message');
 const Channel = require('../models/Channel');
 const { authenticateToken } = require('../middleware/auth');
 
+/**
+ * @swagger
+ * /api/messaging/channels:
+ *   post:
+ *     summary: Create a new messaging channel
+ *     tags:
+ *       - Messaging
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *               description:
+ *                 type: string
+ *               companyId:
+ *                 type: string
+ *               type:
+ *                 type: string
+ *                 enum: [public, private, direct]
+ *               members:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *     responses:
+ *       201:
+ *         description: Channel created successfully
+ */
 // Create channel
 router.post('/channels', authenticateToken, async (req, res) => {
     try {
@@ -33,6 +66,25 @@ router.post('/channels', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/messaging/channels:
+ *   get:
+ *     summary: Get all channels for a company
+ *     tags:
+ *       - Messaging
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: companyId
+ *         in: query
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: List of channels
+ */
 // Get all channels for company
 router.get('/channels', authenticateToken, async (req, res) => {
     try {
@@ -56,6 +108,27 @@ router.get('/channels', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/messaging/channels/{id}:
+ *   get:
+ *     summary: Get a single channel by ID
+ *     tags:
+ *       - Messaging
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Channel details
+ *       404:
+ *         description: Channel not found
+ */
 // Get single channel
 router.get('/channels/:id', authenticateToken, async (req, res) => {
     try {
@@ -77,6 +150,86 @@ router.get('/channels/:id', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/messaging/messages:
+ *   post:
+ *     summary: Send a message to a channel or user
+ *     tags:
+ *       - Messaging
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - content
+ *             properties:
+ *               content:
+ *                 type: string
+ *                 example: Hello team!
+ *               channelId:
+ *                 type: string
+ *               recipientId:
+ *                 type: string
+ *               companyId:
+ *                 type: string
+ *               type:
+ *                 type: string
+ *                 enum: [text, file, code, image]
+ *                 default: text
+ *               attachments:
+ *                 type: array
+ *               mentions:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *     responses:
+ *       200:
+ *         description: Message sent
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   $ref: '#/components/schemas/Message'
+ *       401:
+ *         description: Unauthorized
+ *   get:
+ *     summary: Get messages for a channel
+ *     tags:
+ *       - Messaging
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: channelId
+ *         in: query
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: limit
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *       - name: before
+ *         in: query
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Cursor for pagination - get messages before this timestamp
+ *     responses:
+ *       200:
+ *         description: List of messages (oldest first)
+ *       401:
+ *         description: Unauthorized
+ */
 // Send message
 router.post('/messages', authenticateToken, async (req, res) => {
     try {
@@ -141,6 +294,59 @@ router.get('/messages', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/messaging/messages/{id}:
+ *   put:
+ *     summary: Edit a message
+ *     tags:
+ *       - Messaging
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - content
+ *             properties:
+ *               content:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Message edited
+ *       403:
+ *         description: Permission denied
+ *       404:
+ *         description: Message not found
+ *   delete:
+ *     summary: Delete a message (soft delete)
+ *     tags:
+ *       - Messaging
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Message deleted
+ *       403:
+ *         description: Permission denied
+ *       404:
+ *         description: Message not found
+ */
 // Edit message
 router.put('/messages/:id', authenticateToken, async (req, res) => {
     try {
@@ -196,6 +402,39 @@ router.delete('/messages/:id', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/messaging/messages/{id}/reactions:
+ *   post:
+ *     summary: Add or remove a reaction on a message
+ *     tags:
+ *       - Messaging
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - emoji
+ *             properties:
+ *               emoji:
+ *                 type: string
+ *                 example: "👍"
+ *     responses:
+ *       200:
+ *         description: Reaction toggled
+ *       404:
+ *         description: Message not found
+ */
 // Add reaction
 router.post('/messages/:id/reactions', authenticateToken, async (req, res) => {
     try {
@@ -233,6 +472,27 @@ router.post('/messages/:id/reactions', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/messaging/messages/{id}/read:
+ *   post:
+ *     summary: Mark a message as read
+ *     tags:
+ *       - Messaging
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Message marked as read
+ *       404:
+ *         description: Message not found
+ */
 // Mark as read
 router.post('/messages/:id/read', authenticateToken, async (req, res) => {
     try {
@@ -257,6 +517,38 @@ router.post('/messages/:id/read', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/messaging/channels/{id}/members:
+ *   post:
+ *     summary: Add a member to a channel
+ *     tags:
+ *       - Messaging
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - userId
+ *             properties:
+ *               userId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Member added to channel
+ *       404:
+ *         description: Channel not found
+ */
 // Add member to channel
 router.post('/channels/:id/members', authenticateToken, async (req, res) => {
     try {

@@ -17,6 +17,31 @@ const generateOTP = () => {
     return Math.floor(1000 + Math.random() * 9000).toString();
 };
 
+/**
+ * @swagger
+ * /api/otp/send:
+ *   post:
+ *     summary: Send OTP email for verification
+ *     tags:
+ *       - Email Verification
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 example: john@example.com
+ *     responses:
+ *       200:
+ *         description: OTP sent successfully
+ *       404:
+ *         description: User not found
+ *       400:
+ *         description: Email already verified or rate limit exceeded
+ */
 // Send OTP
 router.post('/send', otpLimiter, async (req, res) => {
     try {
@@ -77,6 +102,34 @@ router.post('/send', otpLimiter, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/otp/verify:
+ *   post:
+ *     summary: Verify OTP and confirm email
+ *     tags:
+ *       - Email Verification
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 example: john@example.com
+ *               otp:
+ *                 type: string
+ *                 example: "1234"
+ *     responses:
+ *       200:
+ *         description: Email verified successfully
+ *       400:
+ *         description: Invalid or expired OTP
+ *       404:
+ *         description: OTP not found
+ */
 // Verify OTP
 router.post('/verify', async (req, res) => {
     try {
@@ -169,6 +222,33 @@ router.post('/verify', async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/otp/resend:
+ *   post:
+ *     summary: Resend OTP verification email
+ *     tags:
+ *       - Email Verification
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 example: john@example.com
+ *     responses:
+ *       200:
+ *         description: New OTP sent successfully
+ *       400:
+ *         description: Email already verified or rate limit exceeded
+ *       404:
+ *         description: User not found
+ */
 // Resend OTP
 router.post('/resend', otpLimiter, async (req, res) => {
     try {

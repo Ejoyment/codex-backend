@@ -28,6 +28,38 @@ const verifyToken = (req, res, next) => {
     }
 };
 
+/**
+ * @swagger
+ * /api/dashboard/data:
+ *   get:
+ *     summary: Get dashboard overview data
+ *     tags:
+ *       - Dashboard
+ *     security:
+ *       - bearerAuth: []
+ *     description: Returns integration data, stats, and connected platforms for the current user
+ *     responses:
+ *       200:
+ *         description: Dashboard data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     tier:
+ *                       type: string
+ *                     connectedIntegrations:
+ *                       type: array
+ *                     stats:
+ *                       type: object
+ *       401:
+ *         description: Unauthorized
+ */
 // Get dashboard data
 router.get('/data', verifyToken, async (req, res) => {
     try {
@@ -117,6 +149,40 @@ router.get('/data', verifyToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/dashboard/data/{platform}:
+ *   get:
+ *     summary: Get data for a specific integration platform
+ *     tags:
+ *       - Dashboard
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: platform
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *           enum: [github, discord, slack, notion, figma, vscode]
+ *         example: github
+ *     responses:
+ *       200:
+ *         description: Platform integration data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 connected:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *       401:
+ *         description: Unauthorized
+ */
 // Get specific integration data
 router.get('/data/:platform', verifyToken, async (req, res) => {
     try {
@@ -229,6 +295,31 @@ router.get('/data/:platform', verifyToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/dashboard/sync/{platform}:
+ *   post:
+ *     summary: Sync data for a specific integration platform
+ *     tags:
+ *       - Dashboard
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: platform
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *           enum: [github, discord, slack, notion, figma, vscode]
+ *         example: github
+ *     responses:
+ *       200:
+ *         description: Platform data synced successfully
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Integration not connected
+ */
 // Sync integration data (mock for now)
 router.post('/sync/:platform', verifyToken, async (req, res) => {
     try {

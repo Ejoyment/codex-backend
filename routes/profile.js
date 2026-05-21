@@ -38,6 +38,29 @@ const upload = multer({
     }
 });
 
+/**
+ * @swagger
+ * /api/profile/picture:
+ *   post:
+ *     summary: Upload user profile picture
+ *     tags:
+ *       - Profile
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               profilePicture:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Profile picture uploaded successfully
+ */
 // Upload profile picture
 router.post('/picture', authenticateToken, upload.single('profilePicture'), async (req, res) => {
     try {
@@ -72,6 +95,52 @@ router.post('/picture', authenticateToken, upload.single('profilePicture'), asyn
     }
 });
 
+/**
+ * @swagger
+ * /api/profile:
+ *   put:
+ *     summary: Update user profile
+ *     tags:
+ *       - Profile
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               fullName:
+ *                 type: string
+ *               bio:
+ *                 type: string
+ *               title:
+ *                 type: string
+ *               phone:
+ *                 type: string
+ *               location:
+ *                 type: string
+ *               website:
+ *                 type: string
+ *               socialLinks:
+ *                 type: object
+ *               skills:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               timezone:
+ *                 type: string
+ *               language:
+ *                 type: string
+ *               status:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Profile updated successfully
+ *       401:
+ *         description: Unauthorized
+ */
 // Update profile
 router.put('/', authenticateToken, async (req, res) => {
     try {
@@ -117,6 +186,27 @@ router.put('/', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/profile/{userId}:
+ *   get:
+ *     summary: Get user profile information
+ *     tags:
+ *       - Profile
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: userId
+ *         in: path
+ *         schema:
+ *           type: string
+ *         description: User ID (optional, defaults to current user)
+ *     responses:
+ *       200:
+ *         description: User profile data
+ *       404:
+ *         description: User not found
+ */
 // Get profile
 router.get('/:userId?', authenticateToken, async (req, res) => {
     try {
@@ -139,6 +229,32 @@ router.get('/:userId?', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/profile/status:
+ *   put:
+ *     summary: Update user status
+ *     tags:
+ *       - Profile
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               status:
+ *                 type: string
+ *               customStatus:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Status updated successfully
+ *       401:
+ *         description: Unauthorized
+ */
 // Update status
 router.put('/status', authenticateToken, async (req, res) => {
     try {
@@ -161,6 +277,21 @@ router.put('/status', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/profile/picture:
+ *   delete:
+ *     summary: Delete profile picture
+ *     tags:
+ *       - Profile
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Profile picture deleted
+ *       401:
+ *         description: Unauthorized
+ */
 // Delete profile picture
 router.delete('/picture', authenticateToken, async (req, res) => {
     try {

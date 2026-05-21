@@ -4,6 +4,36 @@ const CodeFile = require('../models/CodeFile');
 const { authenticateToken } = require('../middleware/auth');
 const { getAllowedLanguages, isLanguageAllowed, getAllLanguagesWithStatus } = require('../utils/languageRestrictions');
 
+/**
+ * @swagger
+ * /api/code-editor/languages:
+ *   get:
+ *     summary: Get allowed programming languages for user's subscription tier
+ *     tags:
+ *       - Code Editor
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of languages with availability status
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 tier:
+ *                   type: string
+ *                 languages:
+ *                   type: array
+ *                 allowedCount:
+ *                   type: integer
+ *                 totalCount:
+ *                   type: integer
+ *       401:
+ *         description: Unauthorized
+ */
 // Get allowed languages for user's tier
 router.get('/languages', authenticateToken, async (req, res) => {
     try {
@@ -24,6 +54,57 @@ router.get('/languages', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/code-editor/files:
+ *   post:
+ *     summary: Create a new code file
+ *     tags:
+ *       - Code Editor
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - name
+ *               - language
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 example: index.js
+ *               language:
+ *                 type: string
+ *                 example: javascript
+ *               content:
+ *                 type: string
+ *               companyId:
+ *                 type: string
+ *               projectId:
+ *                 type: string
+ *               path:
+ *                 type: string
+ *                 example: /src
+ *     responses:
+ *       200:
+ *         description: File created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 file:
+ *                   $ref: '#/components/schemas/CodeFile'
+ *       403:
+ *         description: Language not available in current plan
+ *       401:
+ *         description: Unauthorized
+ */
 // Create new code file
 router.post('/files', authenticateToken, async (req, res) => {
     try {
@@ -63,6 +144,49 @@ router.post('/files', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/code-editor/files/batch:
+ *   post:
+ *     summary: Batch create multiple code files
+ *     tags:
+ *       - Code Editor
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - files
+ *             properties:
+ *               files:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     name:
+ *                       type: string
+ *                     language:
+ *                       type: string
+ *                     content:
+ *                       type: string
+ *                     path:
+ *                       type: string
+ *               companyId:
+ *                 type: string
+ *               projectId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Files created (with partial failure info if any)
+ *       400:
+ *         description: Files array is required
+ *       401:
+ *         description: Unauthorized
+ */
 // Batch create multiple files (for AI agent)
 router.post('/files/batch', authenticateToken, async (req, res) => {
     try {
@@ -118,6 +242,39 @@ router.post('/files/batch', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/code-editor/files:
+ *   get:
+ *     summary: Get all code files for a company
+ *     tags:
+ *       - Code Editor
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: companyId
+ *         in: query
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: projectId
+ *         in: query
+ *         schema:
+ *           type: string
+ *       - name: language
+ *         in: query
+ *         schema:
+ *           type: string
+ *       - name: path
+ *         in: query
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: List of code files
+ *       401:
+ *         description: Unauthorized
+ */
 // Get all files for a company
 router.get('/files', authenticateToken, async (req, res) => {
     try {
@@ -142,6 +299,82 @@ router.get('/files', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/code-editor/files/{id}:
+ *   get:
+ *     summary: Get a single code file by ID
+ *     tags:
+ *       - Code Editor
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Code file details
+ *       404:
+ *         description: File not found
+ *       401:
+ *         description: Unauthorized
+ *   put:
+ *     summary: Update a code file
+ *     tags:
+ *       - Code Editor
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               content:
+ *                 type: string
+ *               name:
+ *                 type: string
+ *               language:
+ *                 type: string
+ *               comment:
+ *                 type: string
+ *                 description: Version comment
+ *     responses:
+ *       200:
+ *         description: File updated
+ *       404:
+ *         description: File not found
+ *       401:
+ *         description: Unauthorized
+ *   delete:
+ *     summary: Delete a code file
+ *     tags:
+ *       - Code Editor
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: File deleted
+ *       404:
+ *         description: File not found
+ *       401:
+ *         description: Unauthorized
+ */
 // Get single file
 router.get('/files/:id', authenticateToken, async (req, res) => {
     try {
@@ -218,6 +451,44 @@ router.delete('/files/:id', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/code-editor/files/{id}/collaborators:
+ *   post:
+ *     summary: Add a collaborator to a code file
+ *     tags:
+ *       - Code Editor
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - userId
+ *             properties:
+ *               userId:
+ *                 type: string
+ *               permission:
+ *                 type: string
+ *                 enum: [read, write, admin]
+ *                 default: write
+ *     responses:
+ *       200:
+ *         description: Collaborator added
+ *       404:
+ *         description: File not found
+ *       401:
+ *         description: Unauthorized
+ */
 // Add collaborator
 router.post('/files/:id/collaborators', authenticateToken, async (req, res) => {
     try {
@@ -248,6 +519,29 @@ router.post('/files/:id/collaborators', authenticateToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/code-editor/files/{id}/versions:
+ *   get:
+ *     summary: Get version history of a code file
+ *     tags:
+ *       - Code Editor
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: List of file versions
+ *       404:
+ *         description: File not found
+ *       401:
+ *         description: Unauthorized
+ */
 // Get file versions
 router.get('/files/:id/versions', authenticateToken, async (req, res) => {
     try {

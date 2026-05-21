@@ -26,6 +26,32 @@ const verifySupportAgent = async (req, res, next) => {
     }
 };
 
+/**
+ * @swagger
+ * /api/support/agent/login:
+ *   post:
+ *     summary: Support agent login
+ *     tags:
+ *       - Support System
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 example: "agent@buildershq.com"
+ *               password:
+ *                 type: string
+ *                 example: "agent123"
+ *     responses:
+ *       200:
+ *         description: Agent logged in successfully
+ *       401:
+ *         description: Invalid credentials
+ */
 // Support Agent Login
 router.post('/agent/login', async (req, res) => {
     try {
@@ -68,6 +94,21 @@ router.post('/agent/login', async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/support/agent/logout:
+ *   post:
+ *     summary: Support agent logout
+ *     tags:
+ *       - Support System
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Agent logged out successfully
+ *       401:
+ *         description: Unauthorized
+ */
 // Support Agent Logout
 router.post('/agent/logout', verifySupportAgent, async (req, res) => {
     try {
@@ -150,6 +191,26 @@ router.post('/tickets', async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/support/tickets/{ticketId}:
+ *   get:
+ *     summary: Get ticket by ID
+ *     tags:
+ *       - Support System
+ *     parameters:
+ *       - name: ticketId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Ticket ID
+ *     responses:
+ *       200:
+ *         description: Ticket details
+ *       404:
+ *         description: Ticket not found
+ */
 // Get Ticket by ID (Public)
 router.get('/tickets/:ticketId', async (req, res) => {
     try {
@@ -163,6 +224,37 @@ router.get('/tickets/:ticketId', async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/support/agent/tickets:
+ *   get:
+ *     summary: Get all tickets (agent only)
+ *     tags:
+ *       - Support System
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: status
+ *         in: query
+ *         schema:
+ *           type: string
+ *           enum: [open, in-progress, resolved, closed]
+ *       - name: priority
+ *         in: query
+ *         schema:
+ *           type: string
+ *           enum: [low, medium, high, critical]
+ *       - name: assignedTo
+ *         in: query
+ *         schema:
+ *           type: string
+ *           example: "me"
+ *     responses:
+ *       200:
+ *         description: List of tickets
+ *       401:
+ *         description: Unauthorized
+ */
 // Get All Tickets (Agent Only)
 router.get('/agent/tickets', verifySupportAgent, async (req, res) => {
     try {
@@ -184,6 +276,30 @@ router.get('/agent/tickets', verifySupportAgent, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/support/agent/tickets/{ticketId}/assign:
+ *   put:
+ *     summary: Assign ticket to agent
+ *     tags:
+ *       - Support System
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: ticketId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Ticket ID
+ *     responses:
+ *       200:
+ *         description: Ticket assigned successfully
+ *       404:
+ *         description: Ticket not found
+ *       401:
+ *         description: Unauthorized
+ */
 // Assign Ticket to Agent
 router.put('/agent/tickets/:ticketId/assign', verifySupportAgent, async (req, res) => {
     try {
@@ -202,6 +318,40 @@ router.put('/agent/tickets/:ticketId/assign', verifySupportAgent, async (req, re
     }
 });
 
+/**
+ * @swagger
+ * /api/support/agent/tickets/{ticketId}/status:
+ *   put:
+ *     summary: Update ticket status
+ *     tags:
+ *       - Support System
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: ticketId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Ticket ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               status:
+ *                 type: string
+ *                 enum: [open, in-progress, resolved, closed]
+ *     responses:
+ *       200:
+ *         description: Ticket status updated
+ *       404:
+ *         description: Ticket not found
+ *       401:
+ *         description: Unauthorized
+ */
 // Update Ticket Status
 router.put('/agent/tickets/:ticketId/status', verifySupportAgent, async (req, res) => {
     try {
@@ -224,6 +374,21 @@ router.put('/agent/tickets/:ticketId/status', verifySupportAgent, async (req, re
     }
 });
 
+/**
+ * @swagger
+ * /api/support/agent/stats:
+ *   get:
+ *     summary: Get agent statistics
+ *     tags:
+ *       - Support System
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Agent statistics
+ *       401:
+ *         description: Unauthorized
+ */
 // Get Agent Stats
 router.get('/agent/stats', verifySupportAgent, async (req, res) => {
     try {
@@ -248,6 +413,17 @@ router.get('/agent/stats', verifySupportAgent, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/support/agents/online:
+ *   get:
+ *     summary: Get all online agents
+ *     tags:
+ *       - Support System
+ *     responses:
+ *       200:
+ *         description: List of online agents
+ */
 // Get All Online Agents
 router.get('/agents/online', async (req, res) => {
     try {
@@ -260,6 +436,17 @@ router.get('/agents/online', async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/support/setup/demo-agent:
+ *   post:
+ *     summary: Setup demo support agent
+ *     tags:
+ *       - Support System
+ *     responses:
+ *       200:
+ *         description: Demo agent created or already exists
+ */
 // Setup Demo Agent (One-time setup endpoint)
 router.post('/setup/demo-agent', async (req, res) => {
     try {

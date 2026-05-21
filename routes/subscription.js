@@ -99,6 +99,51 @@ router.get('/current', verifyToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/subscription/create-checkout:
+ *   post:
+ *     summary: Create a Stripe checkout session for subscription upgrade
+ *     tags:
+ *       - Subscription & Billing
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - tier
+ *             properties:
+ *               tier:
+ *                 type: string
+ *                 enum: [professional, enterprise]
+ *                 example: professional
+ *               interval:
+ *                 type: string
+ *                 enum: [monthly, yearly]
+ *                 example: monthly
+ *     responses:
+ *       200:
+ *         description: Checkout session created
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 sessionId:
+ *                   type: string
+ *                 url:
+ *                   type: string
+ *       400:
+ *         description: Invalid tier
+ *       401:
+ *         description: Unauthorized
+ */
 // Create Stripe checkout session
 router.post('/create-checkout', verifyToken, async (req, res) => {
     try {
@@ -157,6 +202,44 @@ router.post('/create-checkout', verifyToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/subscription/upgrade:
+ *   post:
+ *     summary: Upgrade subscription tier
+ *     tags:
+ *       - Subscription & Billing
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - tier
+ *             properties:
+ *               tier:
+ *                 type: string
+ *                 enum: [professional, enterprise]
+ *               paymentProvider:
+ *                 type: string
+ *                 example: stripe
+ *               paymentId:
+ *                 type: string
+ *               customerId:
+ *                 type: string
+ *               metadata:
+ *                 type: object
+ *     responses:
+ *       200:
+ *         description: Subscription upgraded successfully
+ *       400:
+ *         description: Invalid tier
+ *       401:
+ *         description: Unauthorized
+ */
 // Upgrade subscription (manual or after payment)
 router.post('/upgrade', verifyToken, async (req, res) => {
     try {
@@ -212,6 +295,23 @@ router.post('/upgrade', verifyToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/subscription/cancel:
+ *   post:
+ *     summary: Cancel current subscription
+ *     tags:
+ *       - Subscription & Billing
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Subscription cancelled and downgraded to freebie
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: No subscription found
+ */
 // Cancel subscription
 router.post('/cancel', verifyToken, async (req, res) => {
     try {
@@ -250,6 +350,26 @@ router.post('/cancel', verifyToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/subscription/webhook/stripe:
+ *   post:
+ *     summary: Stripe webhook handler
+ *     tags:
+ *       - Subscription & Billing
+ *     description: Receives Stripe webhook events. Requires raw body and Stripe-Signature header.
+ *     parameters:
+ *       - name: stripe-signature
+ *         in: header
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Webhook received
+ *       400:
+ *         description: Signature verification failed
+ */
 // Stripe webhook handler (MUST be before express.json() middleware)
 router.post('/webhook/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
     const signature = req.headers['stripe-signature'];
@@ -361,6 +481,33 @@ async function handlePaymentFailed(invoice) {
     }
 }
 
+/**
+ * @swagger
+ * /api/subscription/portal:
+ *   post:
+ *     summary: Create Stripe customer portal session
+ *     tags:
+ *       - Subscription & Billing
+ *     security:
+ *       - bearerAuth: []
+ *     description: Returns a URL to the Stripe billing portal for managing payment methods and invoices
+ *     responses:
+ *       200:
+ *         description: Portal session URL
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 url:
+ *                   type: string
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: No Stripe customer found
+ */
 // Create customer portal session
 router.post('/portal', verifyToken, async (req, res) => {
     try {
@@ -395,6 +542,18 @@ router.post('/portal', verifyToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/subscription/payment/stripe:
+ *   post:
+ *     summary: Stripe payment webhook (legacy)
+ *     tags:
+ *       - Subscription & Billing
+ *     description: Legacy Stripe webhook endpoint
+ *     responses:
+ *       200:
+ *         description: Webhook received
+ */
 // Stripe webhook handler
 router.post('/payment/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
     try {
@@ -421,6 +580,18 @@ router.post('/payment/stripe', express.raw({ type: 'application/json' }), async 
     }
 });
 
+/**
+ * @swagger
+ * /api/subscription/payment/paystack:
+ *   post:
+ *     summary: Paystack payment webhook
+ *     tags:
+ *       - Subscription & Billing
+ *     description: Receives Paystack charge.success events to activate subscriptions
+ *     responses:
+ *       200:
+ *         description: Webhook received
+ */
 // Paystack webhook handler
 router.post('/payment/paystack', async (req, res) => {
     try {

@@ -3,6 +3,37 @@ const router = express.Router();
 const { authenticateToken: auth } = require('../middleware/auth');
 const NotificationService = require('../utils/notificationService');
 
+/**
+ * @swagger
+ * /api/notifications:
+ *   get:
+ *     summary: Get user notifications
+ *     tags:
+ *       - Notifications
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: limit
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *       - name: skip
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           default: 0
+ *       - name: unreadOnly
+ *         in: query
+ *         schema:
+ *           type: boolean
+ *           default: false
+ *     responses:
+ *       200:
+ *         description: List of notifications
+ *       401:
+ *         description: Unauthorized
+ */
 // Get user notifications
 router.get('/', auth, async (req, res) => {
     try {
@@ -29,6 +60,30 @@ router.get('/', auth, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/notifications/unread-count:
+ *   get:
+ *     summary: Get unread notification count
+ *     tags:
+ *       - Notifications
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Unread notification count
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 count:
+ *                   type: integer
+ *       401:
+ *         description: Unauthorized
+ */
 // Get unread count
 router.get('/unread-count', auth, async (req, res) => {
     try {
@@ -48,6 +103,30 @@ router.get('/unread-count', auth, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/notifications/{id}/read:
+ *   put:
+ *     summary: Mark notification as read
+ *     tags:
+ *       - Notifications
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Notification ID
+ *     responses:
+ *       200:
+ *         description: Notification marked as read
+ *       404:
+ *         description: Notification not found
+ *       401:
+ *         description: Unauthorized
+ */
 // Mark notification as read
 router.put('/:id/read', auth, async (req, res) => {
     try {
@@ -76,6 +155,21 @@ router.put('/:id/read', auth, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/notifications/read-all:
+ *   put:
+ *     summary: Mark all notifications as read
+ *     tags:
+ *       - Notifications
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: All notifications marked as read
+ *       401:
+ *         description: Unauthorized
+ */
 // Mark all notifications as read
 router.put('/read-all', auth, async (req, res) => {
     try {
@@ -95,6 +189,30 @@ router.put('/read-all', auth, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/notifications/{id}:
+ *   delete:
+ *     summary: Delete a notification
+ *     tags:
+ *       - Notifications
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Notification ID
+ *     responses:
+ *       200:
+ *         description: Notification deleted
+ *       404:
+ *         description: Notification not found
+ *       401:
+ *         description: Unauthorized
+ */
 // Delete notification
 router.delete('/:id', auth, async (req, res) => {
     try {
@@ -123,6 +241,21 @@ router.delete('/:id', auth, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/notifications/read-all:
+ *   delete:
+ *     summary: Delete all read notifications
+ *     tags:
+ *       - Notifications
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: All read notifications deleted
+ *       401:
+ *         description: Unauthorized
+ */
 // Delete all read notifications
 router.delete('/read-all', auth, async (req, res) => {
     try {
