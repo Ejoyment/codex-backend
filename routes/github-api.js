@@ -56,7 +56,42 @@ async function githubAPI(accessToken, endpoint, method = 'GET', data = null) {
 
 // ===== REPOSITORIES =====
 
-// Get all repositories
+/**
+ * @swagger
+ * /api/github/repos:
+ *   get:
+ *     summary: Get all GitHub repositories
+ *     tags:
+ *       - GitHub API
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: sort
+ *         in: query
+ *         schema:
+ *           type: string
+ *           default: updated
+ *       - name: per_page
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           default: 30
+ *       - name: page
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - name: type
+ *         in: query
+ *         schema:
+ *           type: string
+ *           default: all
+ *     responses:
+ *       200:
+ *         description: List of repositories
+ *       401:
+ *         description: Unauthorized
+ */
 router.get('/repos', verifyToken, async (req, res) => {
     try {
         const integration = await getGitHubIntegration(req.userId);
@@ -91,7 +126,32 @@ router.get('/repos', verifyToken, async (req, res) => {
     }
 });
 
-// Get single repository
+/**
+ * @swagger
+ * /api/github/repos/{owner}/{repo}:
+ *   get:
+ *     summary: Get single GitHub repository
+ *     tags:
+ *       - GitHub API
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: owner
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: repo
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Repository details
+ *       401:
+ *         description: Unauthorized
+ */
 router.get('/repos/:owner/:repo', verifyToken, async (req, res) => {
     try {
         const integration = await getGitHubIntegration(req.userId);
@@ -122,7 +182,38 @@ router.get('/repos/:owner/:repo', verifyToken, async (req, res) => {
     }
 });
 
-// Create repository
+/**
+ * @swagger
+ * /api/github/repos:
+ *   post:
+ *     summary: Create GitHub repository
+ *     tags:
+ *       - GitHub API
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *               description:
+ *                 type: string
+ *               private:
+ *                 type: boolean
+ *                 default: false
+ *               autoInit:
+ *                 type: boolean
+ *                 default: true
+ *     responses:
+ *       200:
+ *         description: Repository created successfully
+ *       401:
+ *         description: Unauthorized
+ */
 router.post('/repos', verifyToken, async (req, res) => {
     try {
         const integration = await getGitHubIntegration(req.userId);
@@ -151,7 +242,32 @@ router.post('/repos', verifyToken, async (req, res) => {
 
 // ===== BRANCHES =====
 
-// Get branches
+/**
+ * @swagger
+ * /api/github/repos/{owner}/{repo}/branches:
+ *   get:
+ *     summary: Get GitHub repository branches
+ *     tags:
+ *       - GitHub API
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: owner
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: repo
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: List of branches
+ *       401:
+ *         description: Unauthorized
+ */
 router.get('/repos/:owner/:repo/branches', verifyToken, async (req, res) => {
     try {
         const integration = await getGitHubIntegration(req.userId);
@@ -175,7 +291,44 @@ router.get('/repos/:owner/:repo/branches', verifyToken, async (req, res) => {
     }
 });
 
-// Create branch
+/**
+ * @swagger
+ * /api/github/repos/{owner}/{repo}/branches:
+ *   post:
+ *     summary: Create GitHub branch
+ *     tags:
+ *       - GitHub API
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: owner
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: repo
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               branchName:
+ *                 type: string
+ *               fromBranch:
+ *                 type: string
+ *                 default: main
+ *     responses:
+ *       200:
+ *         description: Branch created successfully
+ *       401:
+ *         description: Unauthorized
+ */
 router.post('/repos/:owner/:repo/branches', verifyToken, async (req, res) => {
     try {
         const integration = await getGitHubIntegration(req.userId);
@@ -208,7 +361,41 @@ router.post('/repos/:owner/:repo/branches', verifyToken, async (req, res) => {
 
 // ===== FILES & CONTENT =====
 
-// Get repository contents
+/**
+ * @swagger
+ * /api/github/repos/{owner}/{repo}/contents/{path}:
+ *   get:
+ *     summary: Get GitHub repository contents
+ *     tags:
+ *       - GitHub API
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: owner
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: repo
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: path
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: ref
+ *         in: query
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Repository contents
+ *       401:
+ *         description: Unauthorized
+ */
 router.get('/repos/:owner/:repo/contents/*', verifyToken, async (req, res) => {
     try {
         const integration = await getGitHubIntegration(req.userId);
@@ -255,7 +442,52 @@ router.get('/repos/:owner/:repo/contents/*', verifyToken, async (req, res) => {
     }
 });
 
-// Update file
+/**
+ * @swagger
+ * /api/github/repos/{owner}/{repo}/contents/{path}:
+ *   put:
+ *     summary: Update GitHub file
+ *     tags:
+ *       - GitHub API
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: owner
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: repo
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: path
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               content:
+ *                 type: string
+ *               message:
+ *                 type: string
+ *               sha:
+ *                 type: string
+ *               branch:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: File updated successfully
+ *       401:
+ *         description: Unauthorized
+ */
 router.put('/repos/:owner/:repo/contents/*', verifyToken, async (req, res) => {
     try {
         const integration = await getGitHubIntegration(req.userId);
@@ -286,7 +518,50 @@ router.put('/repos/:owner/:repo/contents/*', verifyToken, async (req, res) => {
     }
 });
 
-// Create file
+/**
+ * @swagger
+ * /api/github/repos/{owner}/{repo}/contents/{path}:
+ *   post:
+ *     summary: Create GitHub file
+ *     tags:
+ *       - GitHub API
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: owner
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: repo
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: path
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               content:
+ *                 type: string
+ *               message:
+ *                 type: string
+ *               branch:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: File created successfully
+ *       401:
+ *         description: Unauthorized
+ */
 router.post('/repos/:owner/:repo/contents/*', verifyToken, async (req, res) => {
     try {
         const integration = await getGitHubIntegration(req.userId);
@@ -318,7 +593,46 @@ router.post('/repos/:owner/:repo/contents/*', verifyToken, async (req, res) => {
 
 // ===== COMMITS =====
 
-// Get commits
+/**
+ * @swagger
+ * /api/github/repos/{owner}/{repo}/commits:
+ *   get:
+ *     summary: Get GitHub repository commits
+ *     tags:
+ *       - GitHub API
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: owner
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: repo
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: sha
+ *         in: query
+ *         schema:
+ *           type: string
+ *       - name: per_page
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           default: 30
+ *       - name: page
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *     responses:
+ *       200:
+ *         description: List of commits
+ *       401:
+ *         description: Unauthorized
+ */
 router.get('/repos/:owner/:repo/commits', verifyToken, async (req, res) => {
     try {
         const integration = await getGitHubIntegration(req.userId);
@@ -350,7 +664,47 @@ router.get('/repos/:owner/:repo/commits', verifyToken, async (req, res) => {
 
 // ===== ISSUES =====
 
-// Get issues
+/**
+ * @swagger
+ * /api/github/repos/{owner}/{repo}/issues:
+ *   get:
+ *     summary: Get GitHub repository issues
+ *     tags:
+ *       - GitHub API
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: owner
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: repo
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: state
+ *         in: query
+ *         schema:
+ *           type: string
+ *           default: open
+ *       - name: per_page
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           default: 30
+ *       - name: page
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *     responses:
+ *       200:
+ *         description: List of issues
+ *       401:
+ *         description: Unauthorized
+ */
 router.get('/repos/:owner/:repo/issues', verifyToken, async (req, res) => {
     try {
         const integration = await getGitHubIntegration(req.userId);
@@ -380,7 +734,51 @@ router.get('/repos/:owner/:repo/issues', verifyToken, async (req, res) => {
     }
 });
 
-// Create issue
+/**
+ * @swagger
+ * /api/github/repos/{owner}/{repo}/issues:
+ *   post:
+ *     summary: Create GitHub issue
+ *     tags:
+ *       - GitHub API
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: owner
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: repo
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               title:
+ *                 type: string
+ *               body:
+ *                 type: string
+ *               labels:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               assignees:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *     responses:
+ *       200:
+ *         description: Issue created successfully
+ *       401:
+ *         description: Unauthorized
+ */
 router.post('/repos/:owner/:repo/issues', verifyToken, async (req, res) => {
     try {
         const integration = await getGitHubIntegration(req.userId);
@@ -410,7 +808,47 @@ router.post('/repos/:owner/:repo/issues', verifyToken, async (req, res) => {
 
 // ===== PULL REQUESTS =====
 
-// Get pull requests
+/**
+ * @swagger
+ * /api/github/repos/{owner}/{repo}/pulls:
+ *   get:
+ *     summary: Get GitHub repository pull requests
+ *     tags:
+ *       - GitHub API
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: owner
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: repo
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: state
+ *         in: query
+ *         schema:
+ *           type: string
+ *           default: open
+ *       - name: per_page
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           default: 30
+ *       - name: page
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *     responses:
+ *       200:
+ *         description: List of pull requests
+ *       401:
+ *         description: Unauthorized
+ */
 router.get('/repos/:owner/:repo/pulls', verifyToken, async (req, res) => {
     try {
         const integration = await getGitHubIntegration(req.userId);
@@ -441,7 +879,48 @@ router.get('/repos/:owner/:repo/pulls', verifyToken, async (req, res) => {
     }
 });
 
-// Create pull request
+/**
+ * @swagger
+ * /api/github/repos/{owner}/{repo}/pulls:
+ *   post:
+ *     summary: Create GitHub pull request
+ *     tags:
+ *       - GitHub API
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: owner
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: repo
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               title:
+ *                 type: string
+ *               body:
+ *                 type: string
+ *               head:
+ *                 type: string
+ *               base:
+ *                 type: string
+ *                 default: main
+ *     responses:
+ *       200:
+ *         description: Pull request created successfully
+ *       401:
+ *         description: Unauthorized
+ */
 router.post('/repos/:owner/:repo/pulls', verifyToken, async (req, res) => {
     try {
         const integration = await getGitHubIntegration(req.userId);
@@ -471,7 +950,21 @@ router.post('/repos/:owner/:repo/pulls', verifyToken, async (req, res) => {
 
 // ===== USER INFO =====
 
-// Get authenticated user
+/**
+ * @swagger
+ * /api/github/user:
+ *   get:
+ *     summary: Get authenticated GitHub user info
+ *     tags:
+ *       - GitHub API
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: GitHub user information
+ *       401:
+ *         description: Unauthorized
+ */
 router.get('/user', verifyToken, async (req, res) => {
     try {
         const integration = await getGitHubIntegration(req.userId);

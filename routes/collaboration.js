@@ -15,8 +15,28 @@ const collaborationService = {
 };
 
 /**
- * GET /api/collaboration/file/:fileId/users
- * Get active users editing a file
+ * @swagger
+ * /api/collaboration/file/{fileId}/users:
+ *   get:
+ *     summary: Get active users editing a file
+ *     tags:
+ *       - Collaboration
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: fileId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: File ID
+ *     responses:
+ *       200:
+ *         description: List of active users
+ *       404:
+ *         description: File not found
+ *       401:
+ *         description: Unauthorized
  */
 router.get('/file/:fileId/users', authenticateToken, async (req, res) => {
     try {
@@ -42,8 +62,28 @@ router.get('/file/:fileId/users', authenticateToken, async (req, res) => {
 });
 
 /**
- * POST /api/collaboration/file/:fileId/join
- * Join a collaboration session
+ * @swagger
+ * /api/collaboration/file/{fileId}/join:
+ *   post:
+ *     summary: Join a collaboration session
+ *     tags:
+ *       - Collaboration
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: fileId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: File ID
+ *     responses:
+ *       200:
+ *         description: Joined collaboration session
+ *       404:
+ *         description: File not found
+ *       401:
+ *         description: Unauthorized
  */
 router.post('/file/:fileId/join', authenticateToken, async (req, res) => {
     try {
@@ -70,8 +110,26 @@ router.post('/file/:fileId/join', authenticateToken, async (req, res) => {
 });
 
 /**
- * POST /api/collaboration/file/:fileId/leave
- * Leave a collaboration session
+ * @swagger
+ * /api/collaboration/file/{fileId}/leave:
+ *   post:
+ *     summary: Leave a collaboration session
+ *     tags:
+ *       - Collaboration
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: fileId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: File ID
+ *     responses:
+ *       200:
+ *         description: Left collaboration session
+ *       401:
+ *         description: Unauthorized
  */
 router.post('/file/:fileId/leave', authenticateToken, async (req, res) => {
     try {

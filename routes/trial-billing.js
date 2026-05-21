@@ -7,8 +7,31 @@ const User = require('../models/User');
 const BillingScheduler = require('../utils/billingScheduler');
 
 /**
- * Setup payment method for trial
- * POST /api/trial-billing/setup-payment
+ * @swagger
+ * /api/trial-billing/setup-payment:
+ *   post:
+ *     summary: Setup payment method for trial
+ *     tags:
+ *       - Trial Billing
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               paymentMethodId:
+ *                 type: string
+ *                 description: Stripe payment method ID
+ *     responses:
+ *       200:
+ *         description: Payment method setup successful
+ *       404:
+ *         description: User not found
+ *       401:
+ *         description: Unauthorized
  */
 router.post('/setup-payment', authenticateToken, async (req, res) => {
     try {
@@ -107,8 +130,19 @@ router.post('/setup-payment', authenticateToken, async (req, res) => {
 });
 
 /**
- * Get billing status
- * GET /api/trial-billing/status
+ * @swagger
+ * /api/trial-billing/status:
+ *   get:
+ *     summary: Get billing status
+ *     tags:
+ *       - Trial Billing
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Billing status information
+ *       401:
+ *         description: Unauthorized
  */
 router.get('/status', authenticateToken, async (req, res) => {
     try {
@@ -171,8 +205,21 @@ router.get('/status', authenticateToken, async (req, res) => {
 });
 
 /**
- * Cancel subscription
- * POST /api/trial-billing/cancel
+ * @swagger
+ * /api/trial-billing/cancel:
+ *   post:
+ *     summary: Cancel subscription
+ *     tags:
+ *       - Trial Billing
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Subscription cancelled successfully
+ *       404:
+ *         description: No subscription found
+ *       401:
+ *         description: Unauthorized
  */
 router.post('/cancel', authenticateToken, async (req, res) => {
     try {
@@ -207,8 +254,21 @@ router.post('/cancel', authenticateToken, async (req, res) => {
 });
 
 /**
- * Create Stripe Setup Intent (for collecting card details)
- * GET /api/trial-billing/setup-intent
+ * @swagger
+ * /api/trial-billing/setup-intent:
+ *   get:
+ *     summary: Create Stripe setup intent for collecting card details
+ *     tags:
+ *       - Trial Billing
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Setup intent created
+ *       404:
+ *         description: User not found
+ *       401:
+ *         description: Unauthorized
  */
 router.get('/setup-intent', authenticateToken, async (req, res) => {
     try {

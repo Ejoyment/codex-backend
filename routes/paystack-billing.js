@@ -7,8 +7,21 @@ const User = require('../models/User');
 const BillingScheduler = require('../utils/paystackScheduler');
 
 /**
- * Initialize payment (get authorization URL)
- * POST /api/paystack-billing/initialize
+ * @swagger
+ * /api/paystack-billing/initialize:
+ *   post:
+ *     summary: Initialize Paystack payment (get authorization URL)
+ *     tags:
+ *       - Paystack Billing
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Payment initialized successfully
+ *       404:
+ *         description: User not found
+ *       401:
+ *         description: Unauthorized
  */
 router.post('/initialize', authenticateToken, async (req, res) => {
     try {
@@ -72,8 +85,33 @@ router.post('/initialize', authenticateToken, async (req, res) => {
 });
 
 /**
- * Verify payment and setup subscription
- * POST /api/paystack-billing/verify
+ * @swagger
+ * /api/paystack-billing/verify:
+ *   post:
+ *     summary: Verify Paystack payment and setup subscription
+ *     tags:
+ *       - Paystack Billing
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               reference:
+ *                 type: string
+ *                 description: Payment reference from Paystack
+ *     responses:
+ *       200:
+ *         description: Payment verified and subscription created
+ *       400:
+ *         description: Payment verification failed
+ *       404:
+ *         description: User not found
+ *       401:
+ *         description: Unauthorized
  */
 router.post('/verify', authenticateToken, async (req, res) => {
     try {
@@ -179,8 +217,19 @@ router.post('/verify', authenticateToken, async (req, res) => {
 });
 
 /**
- * Get billing status
- * GET /api/paystack-billing/status
+ * @swagger
+ * /api/paystack-billing/status:
+ *   get:
+ *     summary: Get Paystack billing status
+ *     tags:
+ *       - Paystack Billing
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Billing status information
+ *       401:
+ *         description: Unauthorized
  */
 router.get('/status', authenticateToken, async (req, res) => {
     try {
@@ -246,8 +295,21 @@ router.get('/status', authenticateToken, async (req, res) => {
 });
 
 /**
- * Cancel subscription
- * POST /api/paystack-billing/cancel
+ * @swagger
+ * /api/paystack-billing/cancel:
+ *   post:
+ *     summary: Cancel Paystack subscription
+ *     tags:
+ *       - Paystack Billing
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Subscription cancelled successfully
+ *       404:
+ *         description: No subscription found
+ *       401:
+ *         description: Unauthorized
  */
 router.post('/cancel', authenticateToken, async (req, res) => {
     try {
@@ -297,8 +359,17 @@ router.post('/cancel', authenticateToken, async (req, res) => {
 });
 
 /**
- * Webhook endpoint for Paystack notifications
- * POST /api/paystack-billing/webhook
+ * @swagger
+ * /api/paystack-billing/webhook:
+ *   post:
+ *     summary: Paystack webhook endpoint for payment notifications
+ *     tags:
+ *       - Paystack Billing
+ *     responses:
+ *       200:
+ *         description: Webhook processed successfully
+ *       400:
+ *         description: Invalid webhook signature
  */
 router.post('/webhook', async (req, res) => {
     try {
