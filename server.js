@@ -141,6 +141,26 @@ app.use('/api/vfs', vfsRoutes);
 app.use('/api/terminal', terminalRoutes);
 app.use('/api/git', gitRoutes);
 
+// Root endpoint
+app.get('/', (req, res) => {
+    res.json({ 
+        status: 'OK',
+        name: 'CODEX INC Backend',
+        message: 'Enterprise AI Developer Platform API',
+        version: '1.0.0',
+        timestamp: new Date().toISOString(),
+        endpoints: {
+            health: '/api/health',
+            auth: '/api/auth',
+            subscription: '/api/subscription',
+            integrations: '/api/integrations',
+            aiPair: '/api/ai-pair',
+            support: '/api/support',
+            documentation: 'https://github.com/yourusername/codex-backend'
+        }
+    });
+});
+
 // Health check
 app.get('/api/health', (req, res) => {
     res.json({ 
