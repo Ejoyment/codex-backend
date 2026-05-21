@@ -3,6 +3,8 @@ const cors = require('cors');
 const session = require('express-session');
 const passport = require('passport');
 const mongoose = require('mongoose');
+const swaggerUi = require('swagger-ui-express');
+const swaggerSpecs = require('./config/swagger');
 require('dotenv').config();
 
 const authRoutes = require('./routes/auth');
@@ -141,6 +143,27 @@ app.use('/api/vfs', vfsRoutes);
 app.use('/api/terminal', terminalRoutes);
 app.use('/api/git', gitRoutes);
 
+// Swagger API Documentation
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs, {
+    swaggerOptions: {
+        url: '/api-docs/swagger.json',
+        displayOperationId: true,
+        defaultModelsExpandDepth: 1
+    },
+    customCss: `
+        .topbar { background-color: #1f2937; }
+        .info .title { color: #3b82f6; }
+        .scheme-container { background-color: #f3f4f6; }
+    `,
+    customSiteTitle: 'CODEX INC API Documentation'
+}));
+
+// Swagger JSON endpoint
+app.get('/api-docs/swagger.json', (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.send(swaggerSpecs);
+});
+
 // Root endpoint
 app.get('/', (req, res) => {
     res.json({ 
@@ -159,7 +182,7 @@ app.get('/', (req, res) => {
             'Video Meetings & Real-time Chat'
         ],
         endpoints: {
-            documentation: '/api/docs',
+            documentation: '/api-docs (Interactive Swagger UI)',
             health: '/api/health',
             auth: '/api/auth',
             subscription: '/api/subscription',
@@ -171,6 +194,7 @@ app.get('/', (req, res) => {
             collaboration: '/api/collaboration'
         },
         quickStart: {
+            apiDocs: 'GET /api-docs',
             signup: 'POST /api/auth/signup',
             signin: 'POST /api/auth/signin',
             getMe: 'GET /api/auth/me (requires token)'
