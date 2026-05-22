@@ -9,7 +9,32 @@ const { authenticateToken } = require('../middleware/auth');
 const debugAdapter = require('../utils/debugAdapter');
 const CodeFile = require('../models/CodeFile');
 
-// Create debug session
+/**
+ * @swagger
+ * /api/debug/session/create:
+ *   post:
+ *     summary: Create debug session
+ *     tags:
+ *       - Debug
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               workspaceId:
+ *                 type: string
+ *               config:
+ *                 type: object
+ *     responses:
+ *       200:
+ *         description: Debug session created
+ *       401:
+ *         description: Unauthorized
+ */
 router.post('/session/create', authenticateToken, async (req, res) => {
     try {
         const { workspaceId, config } = req.body;
@@ -36,7 +61,44 @@ router.post('/session/create', authenticateToken, async (req, res) => {
     }
 });
 
-// Launch debugger
+/**
+ * @swagger
+ * /api/debug/launch:
+ *   post:
+ *     summary: Launch debugger
+ *     tags:
+ *       - Debug
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               sessionId:
+ *                 type: string
+ *               fileId:
+ *                 type: string
+ *               language:
+ *                 type: string
+ *               args:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               env:
+ *                 type: object
+ *     responses:
+ *       200:
+ *         description: Debugger launched
+ *       400:
+ *         description: Missing required fields
+ *       404:
+ *         description: File not found
+ *       401:
+ *         description: Unauthorized
+ */
 router.post('/launch', authenticateToken, async (req, res) => {
     try {
         const { sessionId, fileId, language, args, env } = req.body;
@@ -87,7 +149,38 @@ router.post('/launch', authenticateToken, async (req, res) => {
     }
 });
 
-// Set breakpoints
+/**
+ * @swagger
+ * /api/debug/breakpoints/set:
+ *   post:
+ *     summary: Set breakpoints
+ *     tags:
+ *       - Debug
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               sessionId:
+ *                 type: string
+ *               fileId:
+ *                 type: string
+ *               breakpoints:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *     responses:
+ *       200:
+ *         description: Breakpoints set
+ *       400:
+ *         description: Missing required fields
+ *       401:
+ *         description: Unauthorized
+ */
 router.post('/breakpoints/set', authenticateToken, async (req, res) => {
     try {
         const { sessionId, fileId, breakpoints } = req.body;
@@ -114,7 +207,32 @@ router.post('/breakpoints/set', authenticateToken, async (req, res) => {
     }
 });
 
-// Continue execution
+/**
+ * @swagger
+ * /api/debug/continue:
+ *   post:
+ *     summary: Continue debug execution
+ *     tags:
+ *       - Debug
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               sessionId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Execution continued
+ *       400:
+ *         description: Missing sessionId
+ *       401:
+ *         description: Unauthorized
+ */
 router.post('/continue', authenticateToken, async (req, res) => {
     try {
         const { sessionId } = req.body;
@@ -137,7 +255,32 @@ router.post('/continue', authenticateToken, async (req, res) => {
     }
 });
 
-// Step over
+/**
+ * @swagger
+ * /api/debug/step-over:
+ *   post:
+ *     summary: Step over in debugger
+ *     tags:
+ *       - Debug
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               sessionId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Stepped over
+ *       400:
+ *         description: Missing sessionId
+ *       401:
+ *         description: Unauthorized
+ */
 router.post('/step-over', authenticateToken, async (req, res) => {
     try {
         const { sessionId } = req.body;
@@ -160,7 +303,32 @@ router.post('/step-over', authenticateToken, async (req, res) => {
     }
 });
 
-// Step into
+/**
+ * @swagger
+ * /api/debug/step-into:
+ *   post:
+ *     summary: Step into in debugger
+ *     tags:
+ *       - Debug
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               sessionId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Stepped into
+ *       400:
+ *         description: Missing sessionId
+ *       401:
+ *         description: Unauthorized
+ */
 router.post('/step-into', authenticateToken, async (req, res) => {
     try {
         const { sessionId } = req.body;
@@ -183,7 +351,32 @@ router.post('/step-into', authenticateToken, async (req, res) => {
     }
 });
 
-// Step out
+/**
+ * @swagger
+ * /api/debug/step-out:
+ *   post:
+ *     summary: Step out in debugger
+ *     tags:
+ *       - Debug
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               sessionId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Stepped out
+ *       400:
+ *         description: Missing sessionId
+ *       401:
+ *         description: Unauthorized
+ */
 router.post('/step-out', authenticateToken, async (req, res) => {
     try {
         const { sessionId } = req.body;
@@ -206,7 +399,32 @@ router.post('/step-out', authenticateToken, async (req, res) => {
     }
 });
 
-// Pause execution
+/**
+ * @swagger
+ * /api/debug/pause:
+ *   post:
+ *     summary: Pause debug execution
+ *     tags:
+ *       - Debug
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               sessionId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Execution paused
+ *       400:
+ *         description: Missing sessionId
+ *       401:
+ *         description: Unauthorized
+ */
 router.post('/pause', authenticateToken, async (req, res) => {
     try {
         const { sessionId } = req.body;
@@ -229,7 +447,27 @@ router.post('/pause', authenticateToken, async (req, res) => {
     }
 });
 
-// Get stack trace
+/**
+ * @swagger
+ * /api/debug/stack-trace/{sessionId}:
+ *   get:
+ *     summary: Get debug stack trace
+ *     tags:
+ *       - Debug
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: sessionId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Stack trace retrieved
+ *       401:
+ *         description: Unauthorized
+ */
 router.get('/stack-trace/:sessionId', authenticateToken, async (req, res) => {
     try {
         const { sessionId } = req.params;
@@ -249,7 +487,31 @@ router.get('/stack-trace/:sessionId', authenticateToken, async (req, res) => {
     }
 });
 
-// Get variables
+/**
+ * @swagger
+ * /api/debug/variables/{sessionId}:
+ *   get:
+ *     summary: Get debug variables
+ *     tags:
+ *       - Debug
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: sessionId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: scopeId
+ *         in: query
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Variables retrieved
+ *       401:
+ *         description: Unauthorized
+ */
 router.get('/variables/:sessionId', authenticateToken, async (req, res) => {
     try {
         const { sessionId } = req.params;
@@ -270,7 +532,36 @@ router.get('/variables/:sessionId', authenticateToken, async (req, res) => {
     }
 });
 
-// Evaluate expression
+/**
+ * @swagger
+ * /api/debug/evaluate:
+ *   post:
+ *     summary: Evaluate expression in debugger
+ *     tags:
+ *       - Debug
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               sessionId:
+ *                 type: string
+ *               expression:
+ *                 type: string
+ *               frameId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Expression evaluated
+ *       400:
+ *         description: Missing required fields
+ *       401:
+ *         description: Unauthorized
+ */
 router.post('/evaluate', authenticateToken, async (req, res) => {
     try {
         const { sessionId, expression, frameId } = req.body;
@@ -297,7 +588,32 @@ router.post('/evaluate', authenticateToken, async (req, res) => {
     }
 });
 
-// Terminate session
+/**
+ * @swagger
+ * /api/debug/terminate:
+ *   post:
+ *     summary: Terminate debug session
+ *     tags:
+ *       - Debug
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               sessionId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Session terminated
+ *       400:
+ *         description: Missing sessionId
+ *       401:
+ *         description: Unauthorized
+ */
 router.post('/terminate', authenticateToken, async (req, res) => {
     try {
         const { sessionId } = req.body;
@@ -320,7 +636,29 @@ router.post('/terminate', authenticateToken, async (req, res) => {
     }
 });
 
-// Get session info
+/**
+ * @swagger
+ * /api/debug/session/{sessionId}:
+ *   get:
+ *     summary: Get debug session info
+ *     tags:
+ *       - Debug
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: sessionId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Session info retrieved
+ *       404:
+ *         description: Session not found
+ *       401:
+ *         description: Unauthorized
+ */
 router.get('/session/:sessionId', authenticateToken, async (req, res) => {
     try {
         const { sessionId } = req.params;
@@ -347,7 +685,21 @@ router.get('/session/:sessionId', authenticateToken, async (req, res) => {
     }
 });
 
-// Get user's active sessions
+/**
+ * @swagger
+ * /api/debug/sessions:
+ *   get:
+ *     summary: Get user's active debug sessions
+ *     tags:
+ *       - Debug
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Active sessions retrieved
+ *       401:
+ *         description: Unauthorized
+ */
 router.get('/sessions', authenticateToken, async (req, res) => {
     try {
         const sessions = debugAdapter.getUserSessions(req.user._id.toString());
@@ -365,7 +717,34 @@ router.get('/sessions', authenticateToken, async (req, res) => {
     }
 });
 
-// Test endpoint - simulate breakpoint hit
+/**
+ * @swagger
+ * /api/debug/test/breakpoint-hit:
+ *   post:
+ *     summary: Test endpoint - simulate breakpoint hit
+ *     tags:
+ *       - Debug
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               sessionId:
+ *                 type: string
+ *               fileId:
+ *                 type: string
+ *               line:
+ *                 type: integer
+ *     responses:
+ *       200:
+ *         description: Breakpoint hit simulated
+ *       401:
+ *         description: Unauthorized
+ */
 router.post('/test/breakpoint-hit', authenticateToken, async (req, res) => {
     try {
         const { sessionId, fileId, line } = req.body;

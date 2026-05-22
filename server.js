@@ -112,6 +112,8 @@ const lspRoutes = require('./routes/lsp');
 const vfsRoutes = require('./routes/vfs');
 const terminalRoutes = require('./routes/terminal');
 const gitRoutes = require('./routes/git');
+const debugRoutes = require('./routes/debug');
+const agentConfirmationRoutes = require('./routes/agent-confirmation');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/otp', otpRoutes);
@@ -142,6 +144,8 @@ app.use('/api/lsp', lspRoutes);
 app.use('/api/vfs', vfsRoutes);
 app.use('/api/terminal', terminalRoutes);
 app.use('/api/git', gitRoutes);
+app.use('/api/debug', debugRoutes);
+app.use('/api/agent-confirmation', agentConfirmationRoutes);
 
 // Swagger API Documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs, {
