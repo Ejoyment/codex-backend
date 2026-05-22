@@ -7,8 +7,21 @@ const User = require('../models/User');
 const FlutterwaveScheduler = require('../utils/flutterwaveScheduler');
 
 /**
- * Initialize payment (get payment link)
- * POST /api/flutterwave-billing/initialize
+ * @swagger
+ * /api/flutterwave-billing/initialize:
+ *   post:
+ *     summary: Initialize Flutterwave payment (get payment link)
+ *     tags:
+ *       - Flutterwave Billing
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Payment initialized successfully
+ *       404:
+ *         description: User not found
+ *       401:
+ *         description: Unauthorized
  */
 router.post('/initialize', authenticateToken, async (req, res) => {
     try {
@@ -60,8 +73,33 @@ router.post('/initialize', authenticateToken, async (req, res) => {
 });
 
 /**
- * Verify payment and setup subscription
- * POST /api/flutterwave-billing/verify
+ * @swagger
+ * /api/flutterwave-billing/verify:
+ *   post:
+ *     summary: Verify Flutterwave payment and setup subscription
+ *     tags:
+ *       - Flutterwave Billing
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               transaction_id:
+ *                 type: string
+ *                 description: Flutterwave transaction ID
+ *     responses:
+ *       200:
+ *         description: Payment verified and subscription created
+ *       400:
+ *         description: Payment verification failed
+ *       404:
+ *         description: User not found
+ *       401:
+ *         description: Unauthorized
  */
 router.post('/verify', authenticateToken, async (req, res) => {
     try {
@@ -151,8 +189,19 @@ router.post('/verify', authenticateToken, async (req, res) => {
 });
 
 /**
- * Get billing status
- * GET /api/flutterwave-billing/status
+ * @swagger
+ * /api/flutterwave-billing/status:
+ *   get:
+ *     summary: Get Flutterwave billing status
+ *     tags:
+ *       - Flutterwave Billing
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Billing status information
+ *       401:
+ *         description: Unauthorized
  */
 router.get('/status', authenticateToken, async (req, res) => {
     try {
@@ -216,8 +265,21 @@ router.get('/status', authenticateToken, async (req, res) => {
 });
 
 /**
- * Cancel subscription
- * POST /api/flutterwave-billing/cancel
+ * @swagger
+ * /api/flutterwave-billing/cancel:
+ *   post:
+ *     summary: Cancel Flutterwave subscription
+ *     tags:
+ *       - Flutterwave Billing
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Subscription cancelled successfully
+ *       404:
+ *         description: No subscription found
+ *       401:
+ *         description: Unauthorized
  */
 router.post('/cancel', authenticateToken, async (req, res) => {
     try {

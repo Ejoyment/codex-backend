@@ -114,6 +114,7 @@ const terminalRoutes = require('./routes/terminal');
 const gitRoutes = require('./routes/git');
 const debugRoutes = require('./routes/debug');
 const agentConfirmationRoutes = require('./routes/agent-confirmation');
+const flutterwaveBillingRoutes = require('./routes/flutterwave-billing');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/otp', otpRoutes);
@@ -130,6 +131,7 @@ app.use('/api/meetings', meetingsRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/trial-billing', trialBillingRoutes);
 app.use('/api/paystack-billing', paystackBillingRoutes);
+app.use('/api/flutterwave-billing', flutterwaveBillingRoutes);
 app.use('/api/support', supportRoutes);
 app.use('/api/notifications', notificationsRoutes);
 
