@@ -219,6 +219,7 @@ const options = {
       { name: 'Subscription & Billing', description: 'Subscription plans, Stripe billing, and payment management' },
       { name: 'Trial Billing (Stripe)', description: 'Stripe-based trial billing with card setup' },
       { name: 'Paystack Billing', description: 'Paystack payment integration for NGN billing' },
+      { name: 'Flutterwave Billing', description: 'Flutterwave payment integration for NGN billing' },
       { name: 'Integrations', description: 'OAuth integrations with GitHub, Discord, Slack, Notion, Figma, VS Code' },
       { name: 'Dashboard', description: 'Dashboard data and integration sync' },
       { name: 'AI Pair Programming', description: 'AI-powered pair programming sessions, chat, and code execution' },
