@@ -4,12 +4,12 @@ const options = {
   definition: {
     openapi: '3.0.0',
     info: {
-      title: 'CODEX INC Backend API',
+      title: 'BUILDRSHQ Backend API',
       description: 'Enterprise AI Developer Platform - Complete API Reference',
       version: '1.0.0',
       contact: {
-        name: 'CODEX Support',
-        email: 'api-support@codexinc.com'
+        name: 'BUILDRSHQ Support',
+        email: 'admin@codexincenterprise.online'
       },
       license: {
         name: 'ISC'
