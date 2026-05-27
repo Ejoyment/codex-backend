@@ -11,8 +11,38 @@ const { authenticateToken } = require('../middleware/auth');
 const permissionMatrix = require('../middleware/permissionMatrix');
 
 /**
- * Get file tree for workspace
- * GET /api/vfs/tree/:workspaceId
+ * @swagger
+ * /api/vfs/tree/{workspaceId}:
+ *   get:
+ *     summary: Get file tree for workspace
+ *     tags:
+ *       - VFS API
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: workspaceId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Workspace ID
+ *     responses:
+ *       200:
+ *         description: File tree retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 tree:
+ *                   type: object
+ *                   description: File tree structure
+ *       401:
+ *         description: Unauthorized - invalid or missing token
+ *       500:
+ *         description: Internal server error
  */
 router.get('/tree/:workspaceId', authenticateToken, permissionMatrix.requirePermission('vfs', 'read'), async (req, res) => {
   try {

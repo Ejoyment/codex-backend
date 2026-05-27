@@ -10,8 +10,50 @@ const { authenticateToken } = require('../middleware/auth');
 const permissionMatrix = require('../middleware/permissionMatrix');
 
 /**
- * Initialize repository
- * POST /api/git/init
+ * @swagger
+ * /api/git/init:
+ *   post:
+ *     summary: Initialize Git repository in workspace
+ *     tags:
+ *       - Git API
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - workspaceId
+ *             properties:
+ *               workspaceId:
+ *                 type: string
+ *                 description: Workspace ID
+ *               userName:
+ *                 type: string
+ *                 description: Git user name
+ *               userEmail:
+ *                 type: string
+ *                 description: Git user email
+ *     responses:
+ *       200:
+ *         description: Git repository initialized successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *       400:
+ *         description: Bad request - missing required fields
+ *       401:
+ *         description: Unauthorized - invalid or missing token
+ *       500:
+ *         description: Internal server error
  */
 router.post('/init', authenticateToken, async (req, res) => {
   try {

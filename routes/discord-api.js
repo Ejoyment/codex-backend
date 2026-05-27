@@ -96,6 +96,49 @@ async function discordAPI(accessToken, endpoint, method = 'GET', data = null) {
 
 // ===== USER INFO =====
 
+/**
+ * @swagger
+ * /api/discord/user:
+ *   get:
+ *     summary: Get current Discord user information
+ *     tags:
+ *       - Discord API
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Discord user information retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 user:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                     username:
+ *                       type: string
+ *                     discriminator:
+ *                       type: string
+ *                     avatar:
+ *                       type: string
+ *                     email:
+ *                       type: string
+ *                     verified:
+ *                       type: boolean
+ *                     locale:
+ *                       type: string
+ *                     mfaEnabled:
+ *                       type: boolean
+ *       401:
+ *         description: Unauthorized - invalid or missing token
+ *       500:
+ *         description: Internal server error
+ */
 // Get current user
 router.get('/user', verifyToken, async (req, res) => {
     try {
@@ -122,6 +165,49 @@ router.get('/user', verifyToken, async (req, res) => {
 
 // ===== GUILDS (SERVERS) =====
 
+/**
+ * @swagger
+ * /api/discord/guilds:
+ *   get:
+ *     summary: Get user's Discord guilds (servers)
+ *     tags:
+ *       - Discord API
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of Discord guilds retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 guilds:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                       name:
+ *                         type: string
+ *                       icon:
+ *                         type: string
+ *                       owner:
+ *                         type: boolean
+ *                       permissions:
+ *                         type: string
+ *                       features:
+ *                         type: array
+ *                         items:
+ *                           type: string
+ *       401:
+ *         description: Unauthorized - invalid or missing token
+ *       500:
+ *         description: Internal server error
+ */
 // Get user's guilds
 router.get('/guilds', verifyToken, async (req, res) => {
     try {
@@ -144,6 +230,52 @@ router.get('/guilds', verifyToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/discord/guilds/{guildId}:
+ *   get:
+ *     summary: Get Discord guild details
+ *     tags:
+ *       - Discord API
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: guildId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Discord guild ID
+ *     responses:
+ *       200:
+ *         description: Guild details retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 guild:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                     name:
+ *                       type: string
+ *                     icon:
+ *                       type: string
+ *                     owner:
+ *                       type: boolean
+ *                     permissions:
+ *                       type: string
+ *       404:
+ *         description: Guild not found
+ *       401:
+ *         description: Unauthorized - invalid or missing token
+ *       500:
+ *         description: Internal server error
+ */
 // Get guild details (requires bot token - for future implementation)
 router.get('/guilds/:guildId', verifyToken, async (req, res) => {
     try {
@@ -174,6 +306,52 @@ router.get('/guilds/:guildId', verifyToken, async (req, res) => {
 
 // ===== CHANNELS =====
 
+/**
+ * @swagger
+ * /api/discord/guilds/{guildId}/channels:
+ *   get:
+ *     summary: Get Discord guild channels
+ *     tags:
+ *       - Discord API
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: guildId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Discord guild ID
+ *     responses:
+ *       200:
+ *         description: Guild channels retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 channels:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                       name:
+ *                         type: string
+ *                       type:
+ *                         type: number
+ *                       position:
+ *                         type: number
+ *                 note:
+ *                   type: string
+ *       401:
+ *         description: Unauthorized - invalid or missing token
+ *       500:
+ *         description: Internal server error
+ */
 // Get guild channels (requires bot - mock for now)
 router.get('/guilds/:guildId/channels', verifyToken, async (req, res) => {
     try {

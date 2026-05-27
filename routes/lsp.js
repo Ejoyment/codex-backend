@@ -10,8 +10,44 @@ const { authenticateToken } = require('../middleware/auth');
 const permissionMatrix = require('../middleware/permissionMatrix');
 
 /**
- * Start LSP server for a language
- * POST /api/lsp/start
+ * @swagger
+ * /api/lsp/start:
+ *   post:
+ *     summary: Start Language Server Protocol server for a specific language
+ *     tags:
+ *       - LSP API
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - language
+ *             properties:
+ *               language:
+ *                 type: string
+ *                 description: Programming language (e.g., javascript, python, typescript)
+ *     responses:
+ *       200:
+ *         description: LSP server started successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *       400:
+ *         description: Bad request - missing required fields
+ *       401:
+ *         description: Unauthorized - invalid or missing token
+ *       500:
+ *         description: Internal server error
  */
 router.post('/start', authenticateToken, async (req, res) => {
   try {

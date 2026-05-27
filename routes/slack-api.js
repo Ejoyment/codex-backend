@@ -38,6 +38,43 @@ async function slackAPI(accessToken, method, params = {}) {
     }
 }
 
+/**
+ * @swagger
+ * /api/slack/team/info:
+ *   get:
+ *     summary: Get Slack workspace information
+ *     tags:
+ *       - Slack API
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Slack workspace information retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 team:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                     name:
+ *                       type: string
+ *                     domain:
+ *                       type: string
+ *                     email_domain:
+ *                       type: string
+ *                     icon:
+ *                       type: object
+ *       401:
+ *         description: Unauthorized - invalid or missing token
+ *       500:
+ *         description: Internal server error
+ */
 // Get workspace info
 router.get('/team/info', verifyToken, async (req, res) => {
     try {

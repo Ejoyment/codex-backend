@@ -1,0 +1,667 @@
+{
+  "info": {
+    "name": "BUILDRSHQ API - Core Working Endpoints",
+    "description": "Postman collection for demoing BUILDRSHQ API core features including AI Pair Programming, Authentication, Billing, and Integrations",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "📋 Setup & Configuration",
+      "item": [
+        {
+          "name": "1. Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/health",
+              "host": ["{{base_url}}"],
+              "path": ["api", "health"]
+            },
+            "description": "Check if the API server is running"
+          },
+          "response": []
+        },
+        {
+          "name": "2. API Documentation",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api-docs",
+              "host": ["{{base_url}}"],
+              "path": ["api-docs"]
+            },
+            "description": "Access Swagger UI documentation"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🔐 Authentication",
+      "item": [
+        {
+          "name": "1. User Registration",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Demo User\",\n  \"email\": \"demo@example.com\",\n  \"password\": \"Password123!\",\n  \"company\": \"Demo Company\",\n  \"teamSize\": \"1-10\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/signup",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "signup"]
+            },
+            "description": "Create a new user account"
+          },
+          "response": []
+        },
+        {
+          "name": "2. User Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"demo@example.com\",\n  \"password\": \"Password123!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/signin",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "signin"]
+            },
+            "description": "Login and get JWT token"
+          },
+          "response": []
+        },
+        {
+          "name": "3. Get Current User",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/auth/me",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "me"]
+            },
+            "description": "Get current user information (requires authentication)"
+          },
+          "response": []
+        },
+        {
+          "name": "4. Send OTP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"demo@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/otp/send",
+              "host": ["{{base_url}}"],
+              "path": ["api", "otp", "send"]
+            },
+            "description": "Send OTP for email verification"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🤖 AI Pair Programming",
+      "item": [
+        {
+          "name": "1. Get AI Repositories",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/ai-pair/repos",
+              "host": ["{{base_url}}"],
+              "path": ["api", "ai-pair", "repos"]
+            },
+            "description": "Get list of repositories for AI pair programming"
+          },
+          "response": []
+        },
+        {
+          "name": "2. Create AI Session",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"repositoryName\": \"demo-repo\",\n  \"repositoryOwner\": \"demo-user\",\n  \"branch\": \"main\",\n  \"sessionName\": \"Demo AI Session\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/ai-pair/session",
+              "host": ["{{base_url}}"],
+              "path": ["api", "ai-pair", "session"]
+            },
+            "description": "Create a new AI pair programming session"
+          },
+          "response": []
+        },
+        {
+          "name": "3. Chat with AI",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sessionId\": \"{{ai_session_id}}\",\n  \"message\": \"Create a simple React component that displays a counter\",\n  \"context\": \"I'm building a counter app\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/ai-pair/chat",
+              "host": ["{{base_url}}"],
+              "path": ["api", "ai-pair", "chat"]
+            },
+            "description": "Chat with AI assistant for code generation"
+          },
+          "response": []
+        },
+        {
+          "name": "4. Execute Code",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sessionId\": \"{{ai_session_id}}\",\n  \"code\": \"console.log('Hello, World!');\",\n  \"language\": \"javascript\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/ai-pair/execute",
+              "host": ["{{base_url}}"],
+              "path": ["api", "ai-pair", "execute"]
+            },
+            "description": "Execute code in sandbox environment"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "💳 Subscription & Billing",
+      "item": [
+        {
+          "name": "1. Get Current Subscription",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/subscription/current",
+              "host": ["{{base_url}}"],
+              "path": ["api", "subscription", "current"]
+            },
+            "description": "Get current user subscription status"
+          },
+          "response": []
+        },
+        {
+          "name": "2. Create Stripe Checkout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"priceId\": \"price_1StGQSFau6CKO3VawRcrLBv1\",\n  \"successUrl\": \"{{frontend_url}}/success.html\",\n  \"cancelUrl\": \"{{frontend_url}}/cancel.html\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/subscription/create-checkout",
+              "host": ["{{base_url}}"],
+              "path": ["api", "subscription", "create-checkout"]
+            },
+            "description": "Create Stripe checkout session"
+          },
+          "response": []
+        },
+        {
+          "name": "3. Get Trial Billing Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/trial-billing/status",
+              "host": ["{{base_url}}"],
+              "path": ["api", "trial-billing", "status"]
+            },
+            "description": "Get trial billing status"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🔗 Integrations",
+      "item": [
+        {
+          "name": "1. Get User Integrations",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/integrations",
+              "host": ["{{base_url}}"],
+              "path": ["api", "integrations"]
+            },
+            "description": "Get list of user's connected integrations"
+          },
+          "response": []
+        },
+        {
+          "name": "2. GitHub OAuth Start",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/integrations/github/auth",
+              "host": ["{{base_url}}"],
+              "path": ["api", "integrations", "github", "auth"]
+            },
+            "description": "Start GitHub OAuth flow"
+          },
+          "response": []
+        },
+        {
+          "name": "3. Get GitHub Repositories",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/github/repos",
+              "host": ["{{base_url}}"],
+              "path": ["api", "github", "repos"]
+            },
+            "description": "Get GitHub repositories (requires GitHub integration)"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "👥 Team & Collaboration",
+      "item": [
+        {
+          "name": "1. Create Company",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Demo Team\",\n  \"description\": \"Our demo team workspace\",\n  \"logo\": \"https://example.com/logo.png\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/company",
+              "host": ["{{base_url}}"],
+              "path": ["api", "company"]
+            },
+            "description": "Create a new company/workspace"
+          },
+          "response": []
+        },
+        {
+          "name": "2. Get Company Members",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/company/members",
+              "host": ["{{base_url}}"],
+              "path": ["api", "company", "members"]
+            },
+            "description": "Get company members"
+          },
+          "response": []
+        },
+        {
+          "name": "3. Create Invitation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"teammate@example.com\",\n  \"role\": \"member\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/invitations",
+              "host": ["{{base_url}}"],
+              "path": ["api", "invitations"]
+            },
+            "description": "Invite team member to company"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "💬 Messaging & Meetings",
+      "item": [
+        {
+          "name": "1. Get Channels",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/messaging/channels",
+              "host": ["{{base_url}}"],
+              "path": ["api", "messaging", "channels"]
+            },
+            "description": "Get messaging channels"
+          },
+          "response": []
+        },
+        {
+          "name": "2. Create Meeting",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Team Standup\",\n  \"description\": \"Daily standup meeting\",\n  \"scheduledAt\": \"2024-01-15T10:00:00.000Z\",\n  \"duration\": 30\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/meetings",
+              "host": ["{{base_url}}"],
+              "path": ["api", "meetings"]
+            },
+            "description": "Schedule a new meeting"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🛠️ Developer Tools",
+      "item": [
+        {
+          "name": "1. Create Code File",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"app.js\",\n  \"content\": \"console.log('Hello World');\",\n  \"language\": \"javascript\",\n  \"path\": \"/src\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/code-editor/files",
+              "host": ["{{base_url}}"],
+              "path": ["api", "code-editor", "files"]
+            },
+            "description": "Create a new code file"
+          },
+          "response": []
+        },
+        {
+          "name": "2. Get File Tree",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/vfs/tree/{{workspace_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "vfs", "tree", "{{workspace_id}}"]
+            },
+            "description": "Get workspace file tree"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🆘 Support System",
+      "item": [
+        {
+          "name": "1. Create Support Ticket",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subject\": \"AI assistant not responding\",\n  \"guestName\": \"Demo User\",\n  \"guestEmail\": \"demo@example.com\",\n  \"message\": \"The AI pair programmer stopped responding after 2 messages\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/support/tickets",
+              "host": ["{{base_url}}"],
+              "path": ["api", "support", "tickets"]
+            },
+            "description": "Create a support ticket (public endpoint)"
+          },
+          "response": []
+        },
+        {
+          "name": "2. Support Agent Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"agent@buildershq.com\",\n  \"password\": \"agent123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/support/agent/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "support", "agent", "login"]
+            },
+            "description": "Login as support agent (demo credentials)"
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://codex-backend-7utu.onrender.com",
+      "type": "string",
+      "description": "Base URL for the API"
+    },
+    {
+      "key": "frontend_url",
+      "value": "https://codexincenterprise.online",
+      "type": "string",
+      "description": "Frontend URL for callbacks"
+    },
+    {
+      "key": "auth_token",
+      "value": "",
+      "type": "string",
+      "description": "JWT authentication token (obtained from login)"
+    },
+    {
+      "key": "ai_session_id",
+      "value": "",
+      "type": "string",
+      "description": "AI pair programming session ID"
+    },
+    {
+      "key": "workspace_id",
+      "value": "",
+      "type": "string",
+      "description": "Workspace/company ID"
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "console.log('Starting request to ' + pm.request.url);"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Store authentication token from login response",
+          "if (pm.response.code === 200) {",
+          "    var jsonData = pm.response.json();",
+          "    if (jsonData.token) {",
+          "        pm.collectionVariables.set('auth_token', jsonData.token);",
+          "        console.log('Auth token stored: ' + jsonData.token.substring(0, 20) + '...');",
+          "    }",
+          "    if (jsonData.session && jsonData.session.id) {",
+          "        pm.collectionVariables.set('ai_session_id', jsonData.session.id);",
+          "        console.log('AI session ID stored: ' + jsonData.session.id);",
+          "    }",
+          "}"
+        ]
+      }
+    }
+  ],
+  "auth": null
+}

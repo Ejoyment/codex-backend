@@ -18,6 +18,8 @@ const FlutterwaveScheduler = require('../utils/flutterwaveScheduler');
  *     responses:
  *       200:
  *         description: Payment initialized successfully
+ *       503:
+ *         description: Flutterwave not configured
  *       404:
  *         description: User not found
  *       401:
@@ -25,6 +27,15 @@ const FlutterwaveScheduler = require('../utils/flutterwaveScheduler');
  */
 router.post('/initialize', authenticateToken, async (req, res) => {
     try {
+        // Check if Flutterwave is configured
+        if (!process.env.FLUTTERWAVE_PUBLIC_KEY || !process.env.FLUTTERWAVE_SECRET_KEY) {
+            return res.status(503).json({
+                success: false,
+                message: 'Flutterwave payment service is not configured',
+                error: 'Please set FLUTTERWAVE_PUBLIC_KEY and FLUTTERWAVE_SECRET_KEY environment variables'
+            });
+        }
+
         const userId = req.user.userId;
         const user = await User.findById(userId);
 
@@ -94,6 +105,8 @@ router.post('/initialize', authenticateToken, async (req, res) => {
  *     responses:
  *       200:
  *         description: Payment verified and subscription created
+ *       503:
+ *         description: Flutterwave not configured
  *       400:
  *         description: Payment verification failed
  *       404:
@@ -103,6 +116,15 @@ router.post('/initialize', authenticateToken, async (req, res) => {
  */
 router.post('/verify', authenticateToken, async (req, res) => {
     try {
+        // Check if Flutterwave is configured
+        if (!process.env.FLUTTERWAVE_PUBLIC_KEY || !process.env.FLUTTERWAVE_SECRET_KEY) {
+            return res.status(503).json({
+                success: false,
+                message: 'Flutterwave payment service is not configured',
+                error: 'Please set FLUTTERWAVE_PUBLIC_KEY and FLUTTERWAVE_SECRET_KEY environment variables'
+            });
+        }
+
         const { transaction_id } = req.body;
         const userId = req.user.userId;
 

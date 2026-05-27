@@ -10,8 +10,40 @@ const { authenticateToken } = require('../middleware/auth');
 const permissionMatrix = require('../middleware/permissionMatrix');
 
 /**
- * Get active terminal sessions
- * GET /api/terminal/sessions
+ * @swagger
+ * /api/terminal/sessions:
+ *   get:
+ *     summary: Get active terminal sessions for current user
+ *     tags:
+ *       - Terminal API
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Active terminal sessions retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 sessions:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       sessionId:
+ *                         type: string
+ *                       workspaceId:
+ *                         type: string
+ *                       createdAt:
+ *                         type: string
+ *                         format: date-time
+ *       401:
+ *         description: Unauthorized - invalid or missing token
+ *       500:
+ *         description: Internal server error
  */
 router.get('/sessions', authenticateToken, permissionMatrix.requirePermission('terminal', 'access'), (req, res) => {
   try {
