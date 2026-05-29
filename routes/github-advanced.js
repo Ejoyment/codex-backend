@@ -4,6 +4,80 @@ const { authenticateToken } = require('../middleware/auth');
 const githubService = require('../utils/githubService');
 const aiService = require('../utils/aiService');
 
+/**
+ * @swagger
+ * /api/github-advanced/push:
+ *   post:
+ *     summary: Direct push to GitHub with multi-file commit
+ *     tags:
+ *       - GitHub Advanced
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - owner
+ *               - repo
+ *               - files
+ *             properties:
+ *               owner:
+ *                 type: string
+ *                 description: Repository owner
+ *               repo:
+ *                 type: string
+ *                 description: Repository name
+ *               branch:
+ *                 type: string
+ *                 description: Branch name (default: main)
+ *               files:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     path:
+ *                       type: string
+ *                     content:
+ *                       type: string
+ *               message:
+ *                 type: string
+ *                 description: Commit message
+ *               description:
+ *                 type: string
+ *                 description: Commit description
+ *     responses:
+ *       200:
+ *         description: Files pushed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 results:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       path:
+ *                         type: string
+ *                       success:
+ *                         type: boolean
+ *                       commitSha:
+ *                         type: string
+ *                 commitSha:
+ *                   type: string
+ *       400:
+ *         description: Bad request - missing required fields
+ *       401:
+ *         description: Unauthorized - invalid or missing token
+ *       500:
+ *         description: Internal server error
+ */
 // Direct push to GitHub (multi-file commit)
 router.post('/push', authenticateToken, async (req, res) => {
     try {
