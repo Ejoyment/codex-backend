@@ -1,0 +1,73 @@
+name: CI - Lint and Test
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Check for lint issues (basic syntax check)
+      run: |
+        echo "Running syntax checks..."
+        npx -y eslint@8 --no-eslintrc --parser-options=ecmaVersion:2020 --rule '{"no-undef":"warn","semi":"warn","no-unused-vars":"warn"}' models/ middleware/ utils/ config/ routes/ server.js 2>&1 || true
+        echo "Lint check completed (non-blocking)"
+
+    - name: Run tests
+      run: npm run test:ci
+      env:
+        NODE_ENV: test
+        JWT_SECRET: ci-test-jwt-secret
+        MONGODB_URI: mongodb://localhost:27017/codex-inc-ci-test
+
+    - name: Upload coverage report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report-${{ matrix.node-version }}
+        path: coverage/
+        retention-days: 14
+
+    - name: Check test results
+      if: always()
+      run: |
+        echo "Test execution completed."
+        ls -la coverage/ 2>/dev/null || echo "No coverage directory found"
+
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Run Gitleaks for secret scanning
+      uses: gitleaks/gitleaks-action@v2
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      continue-on-error: true
+
+    - name: Check for .env secrets in codebase
+      run: |
+        echo "Scanning for hardcoded secrets..."
+        ! grep -r "mongodb\+srv://" --include="*.js" --include="*.json" . 2>/dev/null | grep -v node_modules | grep -v ".env" | grep -v "your-" && echo "No hardcoded MongoDB URIs found" || echo "WARNING: Hardcoded MongoDB URIs may exist"
+        ! grep -r "sk_live_" --include="*.js" . 2>/dev/null | grep -v node_modules && echo "No live Stripe keys found" || echo "WARNING: Live Stripe keys found"

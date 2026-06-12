@@ -12,7 +12,7 @@ const verifySupportAgent = async (req, res, next) => {
             return res.status(401).json({ error: 'No token provided' });
         }
 
-        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
         const agent = await SupportAgent.findById(decoded.agentId);
         
         if (!agent) {
@@ -42,10 +42,8 @@ const verifySupportAgent = async (req, res, next) => {
  *             properties:
  *               email:
  *                 type: string
- *                 example: "agent@buildershq.com"
  *               password:
  *                 type: string
- *                 example: "agent123"
  *     responses:
  *       200:
  *         description: Agent logged in successfully
@@ -74,7 +72,7 @@ router.post('/agent/login', async (req, res) => {
 
         const token = jwt.sign(
             { agentId: agent._id, role: agent.role },
-            process.env.JWT_SECRET || 'your-secret-key',
+            process.env.JWT_SECRET,
             { expiresIn: '8h' }
         );
 
@@ -136,16 +134,12 @@ router.post('/agent/logout', verifySupportAgent, async (req, res) => {
  *             properties:
  *               subject:
  *                 type: string
- *                 example: "AI assistant not responding"
  *               guestName:
  *                 type: string
- *                 example: "John Doe"
  *               guestEmail:
  *                 type: string
- *                 example: "john@example.com"
  *               message:
  *                 type: string
- *                 example: "The AI pair programmer stopped responding after 2 messages"
  *               userId:
  *                 type: string
  *     responses:
@@ -204,7 +198,6 @@ router.post('/tickets', async (req, res) => {
  *         required: true
  *         schema:
  *           type: string
- *         description: Ticket ID
  *     responses:
  *       200:
  *         description: Ticket details
@@ -248,7 +241,6 @@ router.get('/tickets/:ticketId', async (req, res) => {
  *         in: query
  *         schema:
  *           type: string
- *           example: "me"
  *     responses:
  *       200:
  *         description: List of tickets
@@ -291,7 +283,6 @@ router.get('/agent/tickets', verifySupportAgent, async (req, res) => {
  *         required: true
  *         schema:
  *           type: string
- *         description: Ticket ID
  *     responses:
  *       200:
  *         description: Ticket assigned successfully
@@ -333,7 +324,6 @@ router.put('/agent/tickets/:ticketId/assign', verifySupportAgent, async (req, re
  *         required: true
  *         schema:
  *           type: string
- *         description: Ticket ID
  *     requestBody:
  *       required: true
  *       content:
@@ -450,23 +440,32 @@ router.get('/agents/online', async (req, res) => {
 // Setup Demo Agent (One-time setup endpoint)
 router.post('/setup/demo-agent', async (req, res) => {
     try {
+        const demoEmail = process.env.DEMO_AGENT_EMAIL || 'agent@buildershq.com';
+        const demoPassword = process.env.DEMO_AGENT_PASSWORD;
+
+        if (!demoPassword) {
+            return res.status(500).json({ 
+                error: 'DEMO_AGENT_PASSWORD environment variable not set. Please configure it before setting up a demo agent.' 
+            });
+        }
+
         // Check if agent already exists
-        const existingAgent = await SupportAgent.findOne({ email: 'agent@buildershq.com' });
+        const existingAgent = await SupportAgent.findOne({ email: demoEmail });
         if (existingAgent) {
             return res.json({ 
                 message: 'Demo agent already exists!',
                 credentials: {
-                    email: 'agent@buildershq.com',
-                    password: 'agent123'
+                    email: demoEmail,
+                    password: '[configured via DEMO_AGENT_PASSWORD env var]'
                 }
             });
         }
 
         // Create demo agent
         const agent = new SupportAgent({
-            name: 'Demo Support Agent',
-            email: 'agent@buildershq.com',
-            password: 'agent123',
+            name: process.env.DEMO_AGENT_NAME || 'Demo Support Agent',
+            email: demoEmail,
+            password: demoPassword,
             role: 'agent',
             status: 'offline'
         });
@@ -477,8 +476,8 @@ router.post('/setup/demo-agent', async (req, res) => {
             success: true,
             message: 'Demo support agent created successfully!',
             credentials: {
-                email: 'agent@buildershq.com',
-                password: 'agent123'
+                email: demoEmail,
+                password: '[configured via DEMO_AGENT_PASSWORD env var]'
             },
             loginUrl: '/support-admin.html'
         });

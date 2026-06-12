@@ -87,7 +87,7 @@ const mongooseOptions = {
     family: 4 // Use IPv4, skip trying IPv6
 };
 
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/codex-inc', mongooseOptions)
+mongoose.connect(process.env.MONGODB_URI, mongooseOptions)
 .then(() => {
     console.log('✓ MongoDB connected successfully');
     console.log('✓ Database:', mongoose.connection.name);
@@ -438,6 +438,8 @@ io.on('connection', (socket) => {
     });
 });
 
+module.exports = app;
+
 console.log('✓ Socket.IO collaboration server initialized');
 
 // Terminal namespace
@@ -564,4 +566,3 @@ terminalNamespace.on('connection', (socket) => {
 });
 
 console.log('✓ Socket.IO terminal server initialized');
-

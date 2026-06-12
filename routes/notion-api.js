@@ -42,6 +42,54 @@ async function notionAPI(accessToken, endpoint, method = 'GET', data = null) {
     }
 }
 
+/**
+ * @swagger
+ * /api/notion/search:
+ *   post:
+ *     summary: Search Notion workspace
+ *     tags:
+ *       - Notion API
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               query:
+ *                 type: string
+ *                 description: Search query text
+ *               filter:
+ *                 type: object
+ *                 description: Filter criteria
+ *               sort:
+ *                 type: object
+ *                 description: Sort criteria
+ *               page_size:
+ *                 type: integer
+ *                 default: 100
+ *                 description: Number of results per page
+ *     responses:
+ *       200:
+ *         description: Search results retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 results:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *       401:
+ *         description: Unauthorized - invalid or missing token
+ *       500:
+ *         description: Internal server error
+ */
 // Search
 router.post('/search', verifyToken, async (req, res) => {
     try {

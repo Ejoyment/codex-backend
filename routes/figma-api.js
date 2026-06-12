@@ -72,6 +72,41 @@ async function figmaAPI(accessToken, endpoint, method = 'GET', data = null) {
     }
 }
 
+/**
+ * @swagger
+ * /api/figma/me:
+ *   get:
+ *     summary: Get current Figma user information
+ *     tags:
+ *       - Figma API
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Figma user information retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 user:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                     email:
+ *                       type: string
+ *                     handle:
+ *                       type: string
+ *                     img_url:
+ *                       type: string
+ *       401:
+ *         description: Unauthorized - invalid or missing token
+ *       500:
+ *         description: Internal server error
+ */
 // Get current user
 router.get('/me', verifyToken, async (req, res) => {
     try {

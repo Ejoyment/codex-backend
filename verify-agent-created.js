@@ -17,9 +17,9 @@ async function verifyAgent() {
             console.log('  Role:', agent.role);
             console.log('  Status:', agent.status);
             console.log('  Created:', agent.createdAt);
-            console.log('\n✅ You can now login at: /support-admin.html');
-            console.log('  Email: agent@buildershq.com');
-            console.log('  Password: agent123');
+    console.log('\n✅ You can now login at: /support-admin.html');
+    console.log('  Email: agent@buildershq.com');
+    console.log('  Password: [use DEMO_AGENT_PASSWORD env var]');
         } else {
             console.log('❌ Demo support agent NOT FOUND in database!\n');
             console.log('Run this command to create it:');

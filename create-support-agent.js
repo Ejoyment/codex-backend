@@ -8,19 +8,19 @@ async function createDemoAgent() {
         console.log('Connected to MongoDB');
 
         // Check if agent already exists
-        const existingAgent = await SupportAgent.findOne({ email: 'agent@buildershq.com' });
+        const existingAgent = await SupportAgent.findOne({ email: process.env.DEMO_AGENT_EMAIL || 'agent@buildershq.com' });
         if (existingAgent) {
             console.log('Demo agent already exists!');
-            console.log('Email: agent@buildershq.com');
-            console.log('Password: agent123');
+            console.log('Email:', process.env.DEMO_AGENT_EMAIL || 'agent@buildershq.com');
+            console.log('Password: [set via DEMO_AGENT_PASSWORD env var]');
             process.exit(0);
         }
 
         // Create demo agent
         const agent = new SupportAgent({
-            name: 'Demo Support Agent',
-            email: 'agent@buildershq.com',
-            password: 'agent123',
+            name: process.env.DEMO_AGENT_NAME || 'Demo Support Agent',
+            email: process.env.DEMO_AGENT_EMAIL || 'agent@buildershq.com',
+            password: process.env.DEMO_AGENT_PASSWORD || 'change-me-in-production',
             role: 'agent',
             status: 'offline'
         });
@@ -29,8 +29,8 @@ async function createDemoAgent() {
 
         console.log('✅ Demo support agent created successfully!');
         console.log('\nLogin Credentials:');
-        console.log('Email: agent@buildershq.com');
-        console.log('Password: agent123');
+        console.log('Email:', process.env.DEMO_AGENT_EMAIL || 'agent@buildershq.com');
+        console.log('Password: [set via DEMO_AGENT_PASSWORD env var]');
         console.log('\nAccess the admin dashboard at: /support-admin.html');
 
         process.exit(0);
