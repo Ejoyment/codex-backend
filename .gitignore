@@ -3,6 +3,9 @@ node_modules/
 
 # Environment variables
 .env
+.env.production
+.env.local
+.env.development
 
 # Uploads
 uploads/
@@ -58,3 +61,10 @@ js/
 *-backup.*
 *-new.*
 dashboard-*.html
+
+# Coverage reports
+coverage/
+
+# IDE config
+.vscode/
+.idea/
