@@ -446,17 +446,17 @@ router.post('/channels/:channelId/webhooks', verifyToken, async (req, res) => {
         await getDiscordIntegration(req.userId);
         const { name, avatar } = req.body;
         
-        // Mock response - requires bot or proper channel permissions
-        res.json({
-            success: true,
-            webhook: {
-                id: Date.now().toString(),
-                name,
-                url: 'https://discord.com/api/webhooks/...',
-                token: 'webhook_token_here'
-            },
-            note: 'Creating webhooks requires proper channel permissions'
-        });
+    // Mock response - requires bot or proper channel permissions
+    res.json({
+        success: true,
+        webhook: {
+            id: Date.now().toString(),
+            name,
+            url: 'https://discord.com/api/webhooks/[id]',
+            authKey: '[redacted]'
+        },
+        note: 'Creating webhooks requires proper channel permissions'
+    });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -538,9 +538,9 @@ router.get('/bot-setup', verifyToken, async (req, res) => {
             'Embed Links'
         ],
         envVariables: {
-            DISCORD_BOT_TOKEN: 'Your bot token from step 3',
-            DISCORD_CLIENT_ID: 'Your application ID',
-            DISCORD_CLIENT_SECRET: 'Your client secret'
+            DISCORD_BOT_ID: '[from Discord Developer Portal]',
+            DISCORD_CLIENT_ID: '[from Discord Developer Portal]',
+            DISCORD_CLIENT_APP_AUTH: '[from Discord Developer Portal]'
         }
     });
 });

@@ -1,0 +1,26 @@
+{
+  "skill_name": "swe-bench-repo-audit",
+  "evals": [
+    {
+      "id": 1,
+      "name": "eval-pindrop-mid",
+      "prompt": "Audit the codebase at /Users/dakshjain/Downloads/pindrop for SWE-bench / LLM evaluation viability. Produce a markdown report (swe-bench-audit.md) and a JSON scorecard (swe-bench-audit.json) saved to <OUTPUT_DIR>/. Cover dimensions like commit history, contributors, tests, mocking of external services, internal packages, dev environment, CI, code quality. Estimate how many SWE-bench-style atomic feature+test commits could be mined. Do not modify the target repo. Do not install dependencies or run tests. Static inspection only.",
+      "expected_output": "B-tier verdict, ~13–24 mineable tasks, blockers should call out: integration tests mock @/lib/db (test theater), README is next-template boilerplate, ~333 days stale, and that storyTimelineScenarios fixtures inflate test LOC. Mineable commits should include 4096bb6, 428d917, 63dc879, c94b8b6, f82f196.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "name": "eval-requests-strong",
+      "prompt": "Audit the codebase at /tmp/eval-repos/requests for SWE-bench / LLM evaluation viability. Produce a markdown report (swe-bench-audit.md) and a JSON scorecard (swe-bench-audit.json) saved to <OUTPUT_DIR>/. Cover dimensions like commit history, contributors, tests, mocking of external services, internal packages, dev environment, CI, code quality. Estimate how many SWE-bench-style atomic feature+test commits could be mined. Do not modify the target repo. Do not install dependencies or run tests. Static inspection only.",
+      "expected_output": "A or S tier. Should detect 6000+ commits, 800+ contributors, full test suite under tests/, pytest, tox.ini, real test runs without heavy mocking. Estimated mineable tasks should be high (20+). This repo IS in the original SWE-bench corpus.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "name": "eval-boilerplate-weak",
+      "prompt": "Audit the codebase at /tmp/eval-repos/next-learn for SWE-bench / LLM evaluation viability. Produce a markdown report (swe-bench-audit.md) and a JSON scorecard (swe-bench-audit.json) saved to <OUTPUT_DIR>/. Cover dimensions like commit history, contributors, tests, mocking of external services, internal packages, dev environment, CI, code quality. Estimate how many SWE-bench-style atomic feature+test commits could be mined. Do not modify the target repo. Do not install dependencies or run tests. Static inspection only.",
+      "expected_output": "D-tier verdict, near-zero mineable tasks. Despite ~224 commits, this is a Next.js tutorial repo with 0 test files and no test framework — should score very low on D group. Blocker: no tests = no discriminator.",
+      "files": []
+    }
+  ]
+}

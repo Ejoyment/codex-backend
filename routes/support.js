@@ -454,10 +454,8 @@ router.post('/setup/demo-agent', async (req, res) => {
         if (existingAgent) {
             return res.json({ 
                 message: 'Demo agent already exists!',
-                credentials: {
-                    email: demoEmail,
-                    password: '[configured via DEMO_AGENT_PASSWORD env var]'
-                }
+                email: demoEmail,
+                hint: 'See DEMO_AGENT_PASSWORD env var for login'
             });
         }
 
@@ -475,10 +473,8 @@ router.post('/setup/demo-agent', async (req, res) => {
         res.json({
             success: true,
             message: 'Demo support agent created successfully!',
-            credentials: {
-                email: demoEmail,
-                password: '[configured via DEMO_AGENT_PASSWORD env var]'
-            },
+            email: demoEmail,
+            loginHint: 'Use DEMO_AGENT_PASSWORD env var for login',
             loginUrl: '/support-admin.html'
         });
     } catch (error) {
