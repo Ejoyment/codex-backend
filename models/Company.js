@@ -87,6 +87,6 @@ const companySchema = new mongoose.Schema({
 // Index for faster queries
 companySchema.index({ owner: 1 });
 companySchema.index({ 'members.user': 1 });
-companySchema.index({ slug: 1 });
+
 
 module.exports = mongoose.model('Company', companySchema);

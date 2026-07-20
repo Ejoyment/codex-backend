@@ -59,7 +59,7 @@ const invitationSchema = new mongoose.Schema({
 
 // Index for faster queries
 invitationSchema.index({ email: 1, company: 1 });
-invitationSchema.index({ token: 1 });
+
 invitationSchema.index({ status: 1 });
 invitationSchema.index({ expiresAt: 1 });
 
