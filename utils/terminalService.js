@@ -30,6 +30,9 @@ class TerminalService {
    * Create a new terminal session
    */
   async createTerminal(userId, workspaceId, options = {}) {
+    const { assertValidWorkspaceId } = require('./sanitize');
+    assertValidWorkspaceId(workspaceId);
+
     const sessionId = `${userId}_${workspaceId}_${Date.now()}`;
     
     // Create workspace directory
@@ -355,9 +358,21 @@ class TerminalService {
 // Singleton instance
 const terminalService = new TerminalService();
 
-// Cleanup old sessions every 30 minutes
-setInterval(() => {
-  terminalService.cleanupOldSessions();
-}, 30 * 60 * 1000);
+// Cleanup old sessions every 30 minutes (store interval for cleanup)
+if (process.env.NODE_ENV !== 'test') {
+  terminalService._cleanupInterval = setInterval(() => {
+    terminalService.cleanupOldSessions();
+  }, 30 * 60 * 1000);
+} else {
+  terminalService._cleanupInterval = null;
+}
+
+// Provide a stop function for tests to clear the interval
+terminalService.stopCleanup = function() {
+  if (this._cleanupInterval) {
+    clearInterval(this._cleanupInterval);
+    this._cleanupInterval = null;
+  }
+};
 
 module.exports = terminalService;

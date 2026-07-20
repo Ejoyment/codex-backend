@@ -29,10 +29,23 @@ class AgentOrchestrator {
             'run_command': 'execute_code'
         };
         
-        // Start cleanup interval for expired confirmations
-        setInterval(() => {
-            this.hitlGates.clearExpiredConfirmations();
-        }, 30000); // Every 30 seconds
+        // Start cleanup interval for expired confirmations and keep reference
+        // Skip automatic background workers during tests to avoid open handles
+        if (process.env.NODE_ENV !== 'test') {
+            this._hitlCleanupInterval = setInterval(() => {
+                this.hitlGates.clearExpiredConfirmations();
+            }, 30000); // Every 30 seconds
+        }
+    }
+
+    /**
+     * Stop background workers and cleanup resources (used in tests)
+     */
+    stop() {
+        if (this._hitlCleanupInterval) {
+            clearInterval(this._hitlCleanupInterval);
+            this._hitlCleanupInterval = null;
+        }
     }
     
     /**

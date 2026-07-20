@@ -5,6 +5,7 @@
 
 const { LRUCache } = require('lru-cache');
 const CodeFile = require('../models/CodeFile');
+const { assertValidWorkspaceId } = require('./sanitize');
 
 class VirtualFileSystem {
   constructor() {
@@ -27,6 +28,7 @@ class VirtualFileSystem {
    * Only loads metadata, not content
    */
   async buildIndex(workspaceId) {
+    assertValidWorkspaceId(workspaceId);
     console.log(`Building VFS index for workspace: ${workspaceId}`);
     
     // Fetch only metadata (no content)
@@ -101,6 +103,7 @@ class VirtualFileSystem {
    * Get file tree for workspace (lazy loaded)
    */
   async getTree(workspaceId) {
+    assertValidWorkspaceId(workspaceId);
     let index = this.indexes.get(workspaceId);
     
     if (!index) {
@@ -126,6 +129,7 @@ class VirtualFileSystem {
     console.log(`VFS cache miss: ${fileId}, loading from DB`);
 
     // Load from database
+    assertValidWorkspaceId(workspaceId);
     const file = await CodeFile.findById(fileId)
       .select('name path content language size')
       .lean()
@@ -145,6 +149,7 @@ class VirtualFileSystem {
    * Read file by path (with caching)
    */
   async readFileByPath(path, workspaceId) {
+    assertValidWorkspaceId(workspaceId);
     const index = this.indexes.get(workspaceId);
     
     if (!index) {
@@ -164,6 +169,8 @@ class VirtualFileSystem {
    * Write file (updates cache and index)
    */
   async writeFile(fileId, content, workspaceId) {
+    assertValidWorkspaceId(workspaceId);
+
     const file = await CodeFile.findByIdAndUpdate(
       fileId,
       { 
@@ -197,6 +204,8 @@ class VirtualFileSystem {
    * Create new file (updates index)
    */
   async createFile(fileData, workspaceId) {
+    assertValidWorkspaceId(workspaceId);
+
     const file = await CodeFile.create(fileData);
 
     // Update index
@@ -224,6 +233,8 @@ class VirtualFileSystem {
    * Delete file (updates cache and index)
    */
   async deleteFile(fileId, workspaceId) {
+    assertValidWorkspaceId(workspaceId);
+
     const file = await CodeFile.findById(fileId);
     if (!file) {
       throw new Error('File not found');
@@ -304,6 +315,7 @@ class VirtualFileSystem {
    * Get workspace statistics
    */
   async getStats(workspaceId) {
+    assertValidWorkspaceId(workspaceId);
     const index = this.indexes.get(workspaceId);
     
     if (!index) {
@@ -332,6 +344,8 @@ class VirtualFileSystem {
    * Clear cache for workspace
    */
   clearCache(workspaceId) {
+    assertValidWorkspaceId(workspaceId);
+
     const keysToDelete = [];
     
     for (const key of this.cache.keys()) {

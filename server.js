@@ -24,18 +24,50 @@ const notificationsRoutes = require('./routes/notifications');
 
 const app = express();
 const http = require('http');
-const server = http.createServer(app);
 const socketIO = require('socket.io');
-const io = socketIO(server, {
-    cors: {
-        origin: [
-            process.env.FRONTEND_URL || 'http://localhost:5500',
-            'https://codexincenterprise.online',
-            'http://codexincenterprise.online'
-        ],
-        credentials: true
-    }
-});
+
+let server = null;
+let io = null;
+
+function createServer() {
+    if (server && io) return { server, io };
+
+    server = http.createServer(app);
+    io = socketIO(server, {
+        cors: {
+            origin: [
+                process.env.FRONTEND_URL || 'http://localhost:5500',
+                'https://codexincenterprise.online',
+                'http://codexincenterprise.online'
+            ],
+            credentials: true
+        }
+    });
+
+    return { server, io };
+}
+
+async function startServer(port = process.env.PORT || 3000) {
+    const { server: srv, io: socket } = createServer();
+
+    // Initialize Socket.IO endpoints now that server is created
+    const supportSocket = require('./utils/supportSocket');
+    supportSocket(socket);
+
+    const meetingSocket = require('./utils/meetingSocket');
+    meetingSocket(socket);
+
+    return new Promise((resolve, reject) => {
+        srv.listen(port, () => {
+            console.log(`\n🚀 CODEX INC Server running on port ${port}`);
+            console.log(`📧 Email service: Resend API (Production Ready)`);
+            console.log(`💳 Trial Billing: Active (210s first charge, 2 month second charge)`);
+            console.log(`💬 Live Support: Socket.IO Active`);
+            console.log(`🌐 Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:5500'}`);
+            resolve(srv);
+        }).on('error', reject);
+    });
+}
 
 // Trust proxy (required for Render and other reverse proxies)
 app.set('trust proxy', 1);
@@ -278,60 +310,43 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 3000;
 
-// Initialize Socket.IO for support
-const supportSocket = require('./utils/supportSocket');
-supportSocket(io);
+// Export for programmatic control (tests)
+const stopServer = async () => {
+    try {
+        const BillingCron = require('./utils/billingCron');
+        if (BillingCron && BillingCron.stop) BillingCron.stop();
 
-// Initialize Socket.IO for meetings
-const meetingSocket = require('./utils/meetingSocket');
-meetingSocket(io);
+        const collaboration = require('./utils/collaborationService');
+        if (collaboration && collaboration.stopPersistenceWorker) collaboration.stopPersistenceWorker();
 
-server.listen(PORT, () => {
-    console.log(`\n🚀 CODEX INC Server running on port ${PORT}`);
-    console.log(`📧 Email service: Resend API (Production Ready)`);
-    console.log(`💳 Trial Billing: Active (210s first charge, 2 month second charge)`);
-    console.log(`💬 Live Support: Socket.IO Active`);
-    console.log(`🌐 Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:5500'}`);
-    console.log(`\nAPI Endpoints:`);
-    console.log(`  POST   /api/auth/signup`);
-    console.log(`  POST   /api/auth/signin`);
-    console.log(`  POST   /api/otp/send`);
-    console.log(`  POST   /api/otp/verify`);
-    console.log(`  GET    /api/auth/google`);
-    console.log(`  GET    /api/auth/facebook`);
-    console.log(`  GET    /api/auth/me`);
-    console.log(`  POST   /api/auth/upload-photo`);
-    console.log(`  PUT    /api/auth/update-profile`);
-    console.log(`  POST   /api/auth/change-password`);
-    console.log(`  POST   /api/support/tickets`);
-    console.log(`  POST   /api/support/agent/login`);
-    console.log(`  GET    /api/support/agent/tickets`);
-    console.log(`  POST   /api/auth/complete-onboarding`);
-    console.log(`  GET    /api/subscription/current`);
-    console.log(`  POST   /api/subscription/create-checkout`);
-    console.log(`  POST   /api/subscription/upgrade`);
-    console.log(`  POST   /api/subscription/cancel`);
-    console.log(`  POST   /api/subscription/portal`);
-    console.log(`  POST   /api/subscription/webhook/stripe`);
-    console.log(`  POST   /api/trial-billing/setup-payment`);
-    console.log(`  GET    /api/trial-billing/setup-intent`);
-    console.log(`  GET    /api/trial-billing/status`);
-    console.log(`  POST   /api/trial-billing/cancel`);
-    console.log(`  GET    /api/integrations`);
-    console.log(`  GET    /api/integrations/github/auth`);
-    console.log(`  GET    /api/integrations/discord/auth`);
-    console.log(`  GET    /api/integrations/slack/auth`);
-    console.log(`  GET    /api/integrations/notion/auth`);
-    console.log(`  GET    /api/integrations/figma/auth`);
-    console.log(`  POST   /api/integrations/vscode/connect`);
-    console.log(`  DELETE /api/integrations/:platform/disconnect`);
-    console.log(`  DELETE /api/auth/delete-account`);
-    console.log(`  GET    /api/ai-pair/repos`);
-    console.log(`  POST   /api/ai-pair/session`);
-    console.log(`  POST   /api/ai-pair/chat`);
-    console.log(`  POST   /api/ai-pair/commit`);
-    console.log(`  GET    /api/health\n`);
-});
+        const terminalService = require('./utils/terminalService');
+        if (terminalService && terminalService.stopCleanup) terminalService.stopCleanup();
+
+        const agentOrchestrator = require('./utils/agentOrchestrator');
+        if (agentOrchestrator && agentOrchestrator.stop) agentOrchestrator.stop();
+
+        if (server) {
+            await new Promise((resolve, reject) => {
+                server.close(err => {
+                    if (err) return reject(err);
+                    server = null;
+                    io = null;
+                    resolve();
+                });
+            });
+        }
+    } catch (error) {
+        console.error('Error during stopServer:', error);
+    }
+};
+
+// Maintain backward compatibility: export `app` as module export, and attach helpers
+app.createServer = createServer;
+app.startServer = startServer;
+app.stopServer = stopServer;
+app.serverRef = () => server;
+
+module.exports = app;
 
 // Start billing cron job
 const BillingCron = require('./utils/billingCron');
@@ -344,6 +359,9 @@ const terminalService = require('./utils/terminalService');
 const jwt = require('jsonwebtoken');
 
 // Socket.IO already initialized at top of file - reuse the same io instance
+
+// Ensure io is initialized for module import (backwards compatibility)
+createServer();
 
 // Socket.IO authentication middleware
 io.use((socket, next) => {

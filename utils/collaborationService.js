@@ -22,8 +22,12 @@ class CollaborationService {
         // Persistence queue
         this.persistenceQueue = new Map();
         this.persistenceInterval = 5000; // Save every 5 seconds
-        
-        this.startPersistenceWorker();
+
+        this._persistenceWorker = null;
+        // Start persistence worker unless running tests (tests will control lifecycle)
+        if (process.env.NODE_ENV !== 'test') {
+            this.startPersistenceWorker();
+        }
     }
     
     /**
@@ -256,7 +260,12 @@ class CollaborationService {
      * Start persistence worker
      */
     startPersistenceWorker() {
-        setInterval(() => {
+        // Clear existing worker if any
+        if (this._persistenceWorker) {
+            clearInterval(this._persistenceWorker);
+        }
+
+        this._persistenceWorker = setInterval(() => {
             const now = Date.now();
             
             this.persistenceQueue.forEach((data, fileId) => {
@@ -267,6 +276,13 @@ class CollaborationService {
                 }
             });
         }, this.persistenceInterval);
+    }
+
+    stopPersistenceWorker() {
+        if (this._persistenceWorker) {
+            clearInterval(this._persistenceWorker);
+            this._persistenceWorker = null;
+        }
     }
     
     /**
