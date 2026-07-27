@@ -72,8 +72,50 @@ router.post('/start', authenticateToken, async (req, res) => {
 });
 
 /**
- * Get completions
- * POST /api/lsp/completions
+ * @swagger
+ * /api/lsp/completions:
+ *   post:
+ *     summary: Get code completions from Language Server
+ *     tags:
+ *       - LSP API
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - documentUri
+ *               - position
+ *               - content
+ *               - language
+ *             properties:
+ *               documentUri:
+ *                 type: string
+ *                 example: file:///test.js
+ *               position:
+ *                 type: object
+ *                 properties:
+ *                   line:
+ *                     type: integer
+ *                   character:
+ *                     type: integer
+ *               content:
+ *                 type: string
+ *               language:
+ *                 type: string
+ *                 example: javascript
+ *     responses:
+ *       200:
+ *         description: Completions retrieved successfully
+ *       400:
+ *         description: Missing required fields
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
  */
 router.post('/completions', authenticateToken, permissionMatrix.requirePermission('lsp', 'completions'), async (req, res) => {
   try {
@@ -100,8 +142,41 @@ router.post('/completions', authenticateToken, permissionMatrix.requirePermissio
 });
 
 /**
- * Get hover information
- * POST /api/lsp/hover
+ * @swagger
+ * /api/lsp/hover:
+ *   post:
+ *     summary: Get hover information for code symbol
+ *     tags:
+ *       - LSP API
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - documentUri
+ *               - position
+ *               - content
+ *               - language
+ *             properties:
+ *               documentUri:
+ *                 type: string
+ *               position:
+ *                 type: object
+ *               content:
+ *                 type: string
+ *               language:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Hover information retrieved
+ *       400:
+ *         description: Missing required fields
+ *       401:
+ *         description: Unauthorized
  */
 router.post('/hover', authenticateToken, permissionMatrix.requirePermission('lsp', 'hover'), async (req, res) => {
   try {
@@ -128,8 +203,32 @@ router.post('/hover', authenticateToken, permissionMatrix.requirePermission('lsp
 });
 
 /**
- * Get definition
- * POST /api/lsp/definition
+ * @swagger
+ * /api/lsp/definition:
+ *   post:
+ *     summary: Get definition location for code symbol
+ *     tags:
+ *       - LSP API
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - documentUri
+ *               - position
+ *               - content
+ *               - language
+ *     responses:
+ *       200:
+ *         description: Definition retrieved
+ *       400:
+ *         description: Missing required fields
+ *       401:
+ *         description: Unauthorized
  */
 router.post('/definition', authenticateToken, permissionMatrix.requirePermission('lsp', 'definition'), async (req, res) => {
   try {
@@ -156,8 +255,30 @@ router.post('/definition', authenticateToken, permissionMatrix.requirePermission
 });
 
 /**
- * Get references
- * POST /api/lsp/references
+ * @swagger
+ * /api/lsp/references:
+ *   post:
+ *     summary: Get all references to a code symbol
+ *     tags:
+ *       - LSP API
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - documentUri
+ *               - position
+ *               - content
+ *               - language
+ *     responses:
+ *       200:
+ *         description: References retrieved
+ *       401:
+ *         description: Unauthorized
  */
 router.post('/references', authenticateToken, permissionMatrix.requirePermission('lsp', 'references'), async (req, res) => {
   try {
@@ -184,8 +305,29 @@ router.post('/references', authenticateToken, permissionMatrix.requirePermission
 });
 
 /**
- * Notify document change
- * POST /api/lsp/change
+ * @swagger
+ * /api/lsp/change:
+ *   post:
+ *     summary: Notify document change to Language Server
+ *     tags:
+ *       - LSP API
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - documentUri
+ *               - content
+ *               - language
+ *     responses:
+ *       200:
+ *         description: Document change notified
+ *       401:
+ *         description: Unauthorized
  */
 router.post('/change', authenticateToken, async (req, res) => {
   try {
@@ -205,8 +347,28 @@ router.post('/change', authenticateToken, async (req, res) => {
 });
 
 /**
- * Close document
- * POST /api/lsp/close
+ * @swagger
+ * /api/lsp/close:
+ *   post:
+ *     summary: Close document in Language Server
+ *     tags:
+ *       - LSP API
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - documentUri
+ *               - language
+ *     responses:
+ *       200:
+ *         description: Document closed
+ *       401:
+ *         description: Unauthorized
  */
 router.post('/close', authenticateToken, async (req, res) => {
   try {
@@ -226,8 +388,31 @@ router.post('/close', authenticateToken, async (req, res) => {
 });
 
 /**
- * Stop LSP server
- * POST /api/lsp/stop
+ * @swagger
+ * /api/lsp/stop:
+ *   post:
+ *     summary: Stop Language Server for a language
+ *     tags:
+ *       - LSP API
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - language
+ *             properties:
+ *               language:
+ *                 type: string
+ *                 example: javascript
+ *     responses:
+ *       200:
+ *         description: LSP server stopped
+ *       401:
+ *         description: Unauthorized
  */
 router.post('/stop', authenticateToken, async (req, res) => {
   try {
@@ -252,8 +437,28 @@ router.post('/stop', authenticateToken, async (req, res) => {
 });
 
 /**
- * Get language from filename
- * GET /api/lsp/language/:filename
+ * @swagger
+ * /api/lsp/language/{filename}:
+ *   get:
+ *     summary: Get programming language from filename extension
+ *     tags:
+ *       - LSP API
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: filename
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: test.js
+ *     responses:
+ *       200:
+ *         description: Language detected
+ *       404:
+ *         description: Language not supported
+ *       401:
+ *         description: Unauthorized
  */
 router.get('/language/:filename', authenticateToken, (req, res) => {
   try {

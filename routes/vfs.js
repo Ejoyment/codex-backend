@@ -61,8 +61,32 @@ router.get('/tree/:workspaceId', authenticateToken, permissionMatrix.requirePerm
 });
 
 /**
- * Read file content (lazy loaded)
- * GET /api/vfs/file/:fileId
+ * @swagger
+ * /api/vfs/file/{fileId}:
+ *   get:
+ *     summary: Read file content (lazy loaded)
+ *     tags:
+ *       - Virtual File System
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: fileId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: workspaceId
+ *         in: query
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: File content retrieved
+ *       400:
+ *         description: Missing workspaceId
+ *       401:
+ *         description: Unauthorized
  */
 router.get('/file/:fileId', authenticateToken, permissionMatrix.requirePermission('vfs', 'read'), async (req, res) => {
   try {
@@ -86,8 +110,32 @@ router.get('/file/:fileId', authenticateToken, permissionMatrix.requirePermissio
 });
 
 /**
- * Read file by path
- * GET /api/vfs/file-by-path
+ * @swagger
+ * /api/vfs/file-by-path:
+ *   get:
+ *     summary: Read file by path
+ *     tags:
+ *       - Virtual File System
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: path
+ *         in: query
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: workspaceId
+ *         in: query
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: File content retrieved
+ *       400:
+ *         description: Missing required parameters
+ *       401:
+ *         description: Unauthorized
  */
 router.get('/file-by-path', authenticateToken, async (req, res) => {
   try {
@@ -110,8 +158,35 @@ router.get('/file-by-path', authenticateToken, async (req, res) => {
 });
 
 /**
- * Read file in chunks (for large files)
- * GET /api/vfs/file-chunked/:fileId
+ * @swagger
+ * /api/vfs/file-chunked/{fileId}:
+ *   get:
+ *     summary: Read file in chunks (for large files)
+ *     tags:
+ *       - Virtual File System
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: fileId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: workspaceId
+ *         in: query
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: chunkSize
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           default: 102400
+ *     responses:
+ *       200:
+ *         description: File chunks retrieved
+ *       401:
+ *         description: Unauthorized
  */
 router.get('/file-chunked/:fileId', authenticateToken, async (req, res) => {
   try {
