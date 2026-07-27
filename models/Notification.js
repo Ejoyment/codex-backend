@@ -4,8 +4,7 @@ const notificationSchema = new mongoose.Schema({
     userId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
-        required: true,
-        index: true
+        required: true
     },
     type: {
         type: String,
@@ -45,8 +44,7 @@ const notificationSchema = new mongoose.Schema({
     },
     read: {
         type: Boolean,
-        default: false,
-        index: true
+        default: false
     },
     link: {
         type: String,
@@ -58,13 +56,11 @@ const notificationSchema = new mongoose.Schema({
     },
     createdAt: {
         type: Date,
-        default: Date.now,
-        index: true
+        default: Date.now
     },
     expiresAt: {
         type: Date,
-        default: () => new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
-        index: true
+        default: () => new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 days
     }
 });
 

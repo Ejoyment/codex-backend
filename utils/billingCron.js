@@ -7,8 +7,12 @@ const PaystackScheduler = require('./paystackScheduler');
  */
 class BillingCron {
     static start() {
-        // Run every minute to check for due charges
-        cron.schedule('* * * * *', async () => {
+        // Run every minute to check for due charges; keep reference for stop
+        if (this._task) {
+            this._task.destroy();
+        }
+
+        this._task = cron.schedule('* * * * *', async () => {
             console.log('Running billing cron job (Paystack)...');
             
             try {
@@ -31,6 +35,17 @@ class BillingCron {
     static async processNow() {
         console.log('Processing Paystack charges immediately...');
         return await PaystackScheduler.processScheduledCharges();
+    }
+
+    static stop() {
+        if (this._task) {
+            try {
+                this._task.destroy();
+            } catch (e) {
+                // ignore
+            }
+            this._task = null;
+        }
     }
 }
 

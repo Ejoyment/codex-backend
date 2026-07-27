@@ -7,6 +7,7 @@ const simpleGit = require('simple-git');
 const path = require('path');
 const fs = require('fs').promises;
 const os = require('os');
+const { assertValidWorkspaceId, assertValidRepoUrl } = require('./sanitize');
 
 class GitService {
   constructor() {
@@ -18,6 +19,8 @@ class GitService {
    * Get or create git instance for workspace
    */
   async getGit(workspaceId) {
+    assertValidWorkspaceId(workspaceId);
+
     if (this.repositories.has(workspaceId)) {
       return this.repositories.get(workspaceId);
     }
@@ -381,6 +384,9 @@ class GitService {
    */
   async clone(workspaceId, repoUrl, options = {}) {
     try {
+      assertValidWorkspaceId(workspaceId);
+      assertValidRepoUrl(repoUrl);
+
       const workspacePath = path.join(os.tmpdir(), 'codex-git', workspaceId);
       await fs.mkdir(workspacePath, { recursive: true });
 

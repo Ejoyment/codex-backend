@@ -89,7 +89,7 @@ const meetingRoomSchema = new mongoose.Schema({
 });
 
 meetingRoomSchema.index({ company: 1, scheduledAt: 1 });
-meetingRoomSchema.index({ roomId: 1 });
+
 meetingRoomSchema.index({ host: 1 });
 
 module.exports = mongoose.model('MeetingRoom', meetingRoomSchema);
