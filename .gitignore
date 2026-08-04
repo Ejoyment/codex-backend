@@ -67,4 +67,5 @@ coverage/
 
 # IDE config
 .vscode/
-.idea/
+.idea/.env.production
+QUICK_ADD_RESEND_KEY.txt
