@@ -15,7 +15,7 @@ const permissionMatrix = require('../middleware/permissionMatrix');
  *   get:
  *     summary: Get active terminal sessions for current user
  *     tags:
- *       - Terminal API
+ *       - Terminal
  *     security:
  *       - bearerAuth: []
  *     responses:
@@ -56,8 +56,30 @@ router.get('/sessions', authenticateToken, permissionMatrix.requirePermission('t
 });
 
 /**
- * Get terminal statistics
- * GET /api/terminal/stats
+ * @swagger
+ * /api/terminal/stats:
+ *   get:
+ *     summary: Get terminal statistics
+ *     tags:
+ *       - Terminal
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Terminal statistics retrieved
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 stats:
+ *                   type: object
+ *       401:
+ *         description: Unauthorized - invalid or missing token
+ *       500:
+ *         description: Internal server error
  */
 router.get('/stats', authenticateToken, (req, res) => {
   try {
@@ -70,8 +92,36 @@ router.get('/stats', authenticateToken, (req, res) => {
 });
 
 /**
- * Destroy terminal session
- * DELETE /api/terminal/:sessionId
+ * @swagger
+ * /api/terminal/{sessionId}:
+ *   delete:
+ *     summary: Destroy terminal session
+ *     tags:
+ *       - Terminal
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: sessionId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Terminal session destroyed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *       401:
+ *         description: Unauthorized - invalid or missing token
+ *       500:
+ *         description: Internal server error
  */
 router.delete('/:sessionId', authenticateToken, permissionMatrix.requirePermission('terminal', 'access'), async (req, res) => {
   try {

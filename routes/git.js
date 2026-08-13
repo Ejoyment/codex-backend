@@ -15,7 +15,7 @@ const permissionMatrix = require('../middleware/permissionMatrix');
  *   post:
  *     summary: Initialize Git repository in workspace
  *     tags:
- *       - Git API
+ *       - Git
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -72,8 +72,27 @@ router.post('/init', authenticateToken, async (req, res) => {
 });
 
 /**
- * Get repository status
- * GET /api/git/status/:workspaceId
+ * @swagger
+ * /api/git/status/{workspaceId}:
+ *   get:
+ *     summary: Get repository status
+ *     tags:
+ *       - Git
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: workspaceId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Repository status retrieved
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
  */
 router.get('/status/:workspaceId', authenticateToken, permissionMatrix.requirePermission('git', 'read'), async (req, res) => {
   try {
@@ -87,8 +106,31 @@ router.get('/status/:workspaceId', authenticateToken, permissionMatrix.requirePe
 });
 
 /**
- * Get diff
- * GET /api/git/diff/:workspaceId
+ * @swagger
+ * /api/git/diff/{workspaceId}:
+ *   get:
+ *     summary: Get diff of changes
+ *     tags:
+ *       - Git
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: workspaceId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: file
+ *         in: query
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Diff retrieved
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
  */
 router.get('/diff/:workspaceId', authenticateToken, async (req, res) => {
   try {
@@ -104,8 +146,39 @@ router.get('/diff/:workspaceId', authenticateToken, async (req, res) => {
 });
 
 /**
- * Stage files
- * POST /api/git/add
+ * @swagger
+ * /api/git/add:
+ *   post:
+ *     summary: Stage files
+ *     tags:
+ *       - Git
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - workspaceId
+ *               - files
+ *             properties:
+ *               workspaceId:
+ *                 type: string
+ *               files:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *     responses:
+ *       200:
+ *         description: Files staged successfully
+ *       400:
+ *         description: Missing required fields
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
  */
 router.post('/add', authenticateToken, async (req, res) => {
   try {
@@ -124,8 +197,39 @@ router.post('/add', authenticateToken, async (req, res) => {
 });
 
 /**
- * Unstage files
- * POST /api/git/reset
+ * @swagger
+ * /api/git/reset:
+ *   post:
+ *     summary: Unstage files
+ *     tags:
+ *       - Git
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - workspaceId
+ *               - files
+ *             properties:
+ *               workspaceId:
+ *                 type: string
+ *               files:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *     responses:
+ *       200:
+ *         description: Files unstaged successfully
+ *       400:
+ *         description: Missing required fields
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
  */
 router.post('/reset', authenticateToken, async (req, res) => {
   try {
@@ -144,8 +248,41 @@ router.post('/reset', authenticateToken, async (req, res) => {
 });
 
 /**
- * Commit changes
- * POST /api/git/commit
+ * @swagger
+ * /api/git/commit:
+ *   post:
+ *     summary: Commit changes
+ *     tags:
+ *       - Git
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - workspaceId
+ *               - message
+ *             properties:
+ *               workspaceId:
+ *                 type: string
+ *               message:
+ *                 type: string
+ *               files:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *     responses:
+ *       200:
+ *         description: Changes committed successfully
+ *       400:
+ *         description: Missing required fields
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
  */
 router.post('/commit', authenticateToken, permissionMatrix.requirePermission('git', 'commit'), async (req, res) => {
   try {
@@ -164,8 +301,35 @@ router.post('/commit', authenticateToken, permissionMatrix.requirePermission('gi
 });
 
 /**
- * Get commit log
- * GET /api/git/log/:workspaceId
+ * @swagger
+ * /api/git/log/{workspaceId}:
+ *   get:
+ *     summary: Get commit log
+ *     tags:
+ *       - Git
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: workspaceId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: limit
+ *         in: query
+ *         schema:
+ *           type: integer
+ *       - name: file
+ *         in: query
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Commit log retrieved
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
  */
 router.get('/log/:workspaceId', authenticateToken, async (req, res) => {
   try {
@@ -184,8 +348,27 @@ router.get('/log/:workspaceId', authenticateToken, async (req, res) => {
 });
 
 /**
- * List branches
- * GET /api/git/branches/:workspaceId
+ * @swagger
+ * /api/git/branches/{workspaceId}:
+ *   get:
+ *     summary: List branches
+ *     tags:
+ *       - Git
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: workspaceId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Branches listed
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
  */
 router.get('/branches/:workspaceId', authenticateToken, async (req, res) => {
   try {
@@ -199,8 +382,37 @@ router.get('/branches/:workspaceId', authenticateToken, async (req, res) => {
 });
 
 /**
- * Create branch
- * POST /api/git/branch
+ * @swagger
+ * /api/git/branch:
+ *   post:
+ *     summary: Create branch
+ *     tags:
+ *       - Git
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - workspaceId
+ *               - branchName
+ *             properties:
+ *               workspaceId:
+ *                 type: string
+ *               branchName:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Branch created
+ *       400:
+ *         description: Missing required fields
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
  */
 router.post('/branch', authenticateToken, permissionMatrix.requirePermission('git', 'branch'), async (req, res) => {
   try {
@@ -219,8 +431,37 @@ router.post('/branch', authenticateToken, permissionMatrix.requirePermission('gi
 });
 
 /**
- * Switch branch
- * POST /api/git/checkout
+ * @swagger
+ * /api/git/checkout:
+ *   post:
+ *     summary: Switch branch
+ *     tags:
+ *       - Git
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - workspaceId
+ *               - branchName
+ *             properties:
+ *               workspaceId:
+ *                 type: string
+ *               branchName:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Branch switched
+ *       400:
+ *         description: Missing required fields
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
  */
 router.post('/checkout', authenticateToken, async (req, res) => {
   try {
@@ -239,8 +480,37 @@ router.post('/checkout', authenticateToken, async (req, res) => {
 });
 
 /**
- * Merge branch
- * POST /api/git/merge
+ * @swagger
+ * /api/git/merge:
+ *   post:
+ *     summary: Merge branch
+ *     tags:
+ *       - Git
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - workspaceId
+ *               - branchName
+ *             properties:
+ *               workspaceId:
+ *                 type: string
+ *               branchName:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Branch merged
+ *       400:
+ *         description: Missing required fields
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
  */
 router.post('/merge', authenticateToken, async (req, res) => {
   try {
@@ -259,8 +529,38 @@ router.post('/merge', authenticateToken, async (req, res) => {
 });
 
 /**
- * Pull from remote
- * POST /api/git/pull
+ * @swagger
+ * /api/git/pull:
+ *   post:
+ *     summary: Pull from remote
+ *     tags:
+ *       - Git
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - workspaceId
+ *             properties:
+ *               workspaceId:
+ *                 type: string
+ *               remote:
+ *                 type: string
+ *               branch:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Pulled from remote
+ *       400:
+ *         description: Missing required fields
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
  */
 router.post('/pull', authenticateToken, permissionMatrix.requirePermission('git', 'pull'), async (req, res) => {
   try {
@@ -279,8 +579,38 @@ router.post('/pull', authenticateToken, permissionMatrix.requirePermission('git'
 });
 
 /**
- * Push to remote
- * POST /api/git/push
+ * @swagger
+ * /api/git/push:
+ *   post:
+ *     summary: Push to remote
+ *     tags:
+ *       - Git
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - workspaceId
+ *             properties:
+ *               workspaceId:
+ *                 type: string
+ *               remote:
+ *                 type: string
+ *               branch:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Pushed to remote
+ *       400:
+ *         description: Missing required fields
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
  */
 router.post('/push', authenticateToken, permissionMatrix.requirePermission('git', 'push'), async (req, res) => {
   try {
@@ -299,8 +629,40 @@ router.post('/push', authenticateToken, permissionMatrix.requirePermission('git'
 });
 
 /**
- * Add remote
- * POST /api/git/remote
+ * @swagger
+ * /api/git/remote:
+ *   post:
+ *     summary: Add remote
+ *     tags:
+ *       - Git
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - workspaceId
+ *               - name
+ *               - url
+ *             properties:
+ *               workspaceId:
+ *                 type: string
+ *               name:
+ *                 type: string
+ *               url:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Remote added
+ *       400:
+ *         description: Missing required fields
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
  */
 router.post('/remote', authenticateToken, async (req, res) => {
   try {
@@ -319,8 +681,27 @@ router.post('/remote', authenticateToken, async (req, res) => {
 });
 
 /**
- * List remotes
- * GET /api/git/remotes/:workspaceId
+ * @swagger
+ * /api/git/remotes/{workspaceId}:
+ *   get:
+ *     summary: List remotes
+ *     tags:
+ *       - Git
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: workspaceId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Remotes listed
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
  */
 router.get('/remotes/:workspaceId', authenticateToken, async (req, res) => {
   try {
@@ -334,8 +715,39 @@ router.get('/remotes/:workspaceId', authenticateToken, async (req, res) => {
 });
 
 /**
- * Clone repository
- * POST /api/git/clone
+ * @swagger
+ * /api/git/clone:
+ *   post:
+ *     summary: Clone repository
+ *     tags:
+ *       - Git
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - workspaceId
+ *               - repoUrl
+ *             properties:
+ *               workspaceId:
+ *                 type: string
+ *               repoUrl:
+ *                 type: string
+ *               args:
+ *                 type: object
+ *     responses:
+ *       200:
+ *         description: Repository cloned
+ *       400:
+ *         description: Missing required fields
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
  */
 router.post('/clone', authenticateToken, async (req, res) => {
   try {
@@ -354,8 +766,39 @@ router.post('/clone', authenticateToken, async (req, res) => {
 });
 
 /**
- * Get file at commit
- * GET /api/git/show/:workspaceId
+ * @swagger
+ * /api/git/show/{workspaceId}:
+ *   get:
+ *     summary: Get file at commit
+ *     tags:
+ *       - Git
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: workspaceId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: commit
+ *         in: query
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: file
+ *         in: query
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: File content retrieved
+ *       400:
+ *         description: Missing required fields
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
  */
 router.get('/show/:workspaceId', authenticateToken, async (req, res) => {
   try {
@@ -375,8 +818,36 @@ router.get('/show/:workspaceId', authenticateToken, async (req, res) => {
 });
 
 /**
- * Stash changes
- * POST /api/git/stash
+ * @swagger
+ * /api/git/stash:
+ *   post:
+ *     summary: Stash changes
+ *     tags:
+ *       - Git
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - workspaceId
+ *             properties:
+ *               workspaceId:
+ *                 type: string
+ *               message:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Changes stashed
+ *       400:
+ *         description: Missing required fields
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
  */
 router.post('/stash', authenticateToken, async (req, res) => {
   try {
@@ -395,8 +866,34 @@ router.post('/stash', authenticateToken, async (req, res) => {
 });
 
 /**
- * Apply stash
- * POST /api/git/stash/pop
+ * @swagger
+ * /api/git/stash/pop:
+ *   post:
+ *     summary: Apply stash
+ *     tags:
+ *       - Git
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - workspaceId
+ *             properties:
+ *               workspaceId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Stash applied
+ *       400:
+ *         description: Missing required fields
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
  */
 router.post('/stash/pop', authenticateToken, async (req, res) => {
   try {
@@ -415,8 +912,27 @@ router.post('/stash/pop', authenticateToken, async (req, res) => {
 });
 
 /**
- * Cleanup workspace
- * DELETE /api/git/workspace/:workspaceId
+ * @swagger
+ * /api/git/workspace/{workspaceId}:
+ *   delete:
+ *     summary: Cleanup workspace
+ *     tags:
+ *       - Git
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: workspaceId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Workspace cleaned up
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
  */
 router.delete('/workspace/:workspaceId', authenticateToken, async (req, res) => {
   try {
