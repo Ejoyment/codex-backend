@@ -118,26 +118,29 @@ class CollaborationService {
      * Handle sync message from client
      */
     handleSyncMessage(fileId, socket, message) {
-        const ydoc = this.getDocument(fileId);
-        const encoder = encoding.createEncoder();
-        const decoder = decoding.createDecoder(message);
-        const messageType = decoding.readVarUint(decoder);
-        
-        switch (messageType) {
-            case syncProtocol.messageYjsSyncStep1:
-                syncProtocol.readSyncStep1(decoder, encoder, ydoc);
-                this.sendMessage(socket, encoding.toUint8Array(encoder));
-                break;
-                
-            case syncProtocol.messageYjsSyncStep2:
-                syncProtocol.readSyncStep2(decoder, ydoc);
-                break;
-                
-            case syncProtocol.messageYjsUpdate:
-                syncProtocol.readUpdate(decoder, ydoc);
-                // Broadcast to other clients
-                this.broadcastUpdate(fileId, socket, message);
-                break;
+        try {
+            const ydoc = this.getDocument(fileId);
+            const encoder = encoding.createEncoder();
+            const decoder = decoding.createDecoder(message);
+            const messageType = decoding.readVarUint(decoder);
+            
+            switch (messageType) {
+                case syncProtocol.messageYjsSyncStep1:
+                    syncProtocol.readSyncStep1(decoder, encoder, ydoc);
+                    this.sendMessage(socket, encoding.toUint8Array(encoder));
+                    break;
+                    
+                case syncProtocol.messageYjsSyncStep2:
+                    syncProtocol.readSyncStep2(decoder, ydoc);
+                    break;
+                    
+                case syncProtocol.messageYjsUpdate:
+                    syncProtocol.readUpdate(decoder, ydoc);
+                    this.broadcastUpdate(fileId, socket, message);
+                    break;
+            }
+        } catch (error) {
+            console.error(`Sync message error for file ${fileId}:`, error.message);
         }
     }
     
@@ -145,17 +148,20 @@ class CollaborationService {
      * Handle awareness message from client
      */
     handleAwarenessMessage(fileId, socket, message) {
-        const awareness = this.getAwareness(fileId);
-        const decoder = decoding.createDecoder(message);
-        
-        awarenessProtocol.applyAwarenessUpdate(
-            awareness,
-            decoding.readVarUint8Array(decoder),
-            socket
-        );
-        
-        // Broadcast to other clients
-        this.broadcastAwareness(fileId, socket, message);
+        try {
+            const awareness = this.getAwareness(fileId);
+            const decoder = decoding.createDecoder(message);
+            
+            awarenessProtocol.applyAwarenessUpdate(
+                awareness,
+                decoding.readVarUint8Array(decoder),
+                socket
+            );
+            
+            this.broadcastAwareness(fileId, socket, message);
+        } catch (error) {
+            console.error(`Awareness message error for file ${fileId}:`, error.message);
+        }
     }
     
     /**
@@ -188,7 +194,7 @@ class CollaborationService {
      * Send message to socket
      */
     sendMessage(socket, message) {
-        if (socket.readyState === 1) { // WebSocket.OPEN
+        if (socket.connected) {
             socket.emit('collab:message', message);
         }
     }

@@ -7,12 +7,7 @@ const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../middleware/auth');
 const CodeFile = require('../models/CodeFile');
-
-// Collaboration service will be implemented when Yjs is added
-const collaborationService = {
-    getActiveUsers: (fileId) => [],
-    loadDocument: async (fileId) => ({ success: true })
-};
+const collaborationService = require('../utils/collaborationService');
 
 /**
  * @swagger
