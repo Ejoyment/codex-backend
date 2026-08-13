@@ -111,9 +111,8 @@ app.use(passport.session());
 require('./config/passport')(passport);
 
 // MongoDB connection with better error handling and timeout settings
+// Note: useNewUrlParser and useUnifiedTopology are deprecated in Mongoose 8+
 const mongooseOptions = {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
     serverSelectionTimeoutMS: 30000, // Increase timeout to 30 seconds
     socketTimeoutMS: 45000, // Socket timeout
     family: 4 // Use IPv4, skip trying IPv6
@@ -348,17 +347,13 @@ app.serverRef = () => server;
 
 module.exports = app;
 
-// Start billing cron job
+// Billing cron job is started after server starts listening
 const BillingCron = require('./utils/billingCron');
-BillingCron.start();
-console.log('✓ Billing cron job started (runs every minute)');
 
 // Socket.IO for real-time collaboration
 const collaborationService = require('./utils/collaborationService');
 const terminalService = require('./utils/terminalService');
 const jwt = require('jsonwebtoken');
-
-// Socket.IO already initialized at top of file - reuse the same io instance
 
 // Ensure io is initialized for module import (backwards compatibility)
 createServer();
@@ -455,8 +450,6 @@ io.on('connection', (socket) => {
         });
     });
 });
-
-module.exports = app;
 
 console.log('✓ Socket.IO collaboration server initialized');
 
@@ -584,3 +577,21 @@ terminalNamespace.on('connection', (socket) => {
 });
 
 console.log('✓ Socket.IO terminal server initialized');
+
+// ============================================================
+// CRITICAL FIX: Start the HTTP server so it binds to a port.
+// Without this, Render reports "No open ports detected" and
+// the service never goes live.
+// ============================================================
+// Only auto-start when not in test mode (tests use supertest directly)
+if (process.env.NODE_ENV !== 'test') {
+    startServer(PORT)
+        .then(() => {
+            // Start billing cron job only after server is listening
+            BillingCron.start();
+        })
+        .catch(err => {
+            console.error('❌ Failed to start server:', err);
+            process.exit(1);
+        });
+}

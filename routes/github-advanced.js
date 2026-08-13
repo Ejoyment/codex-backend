@@ -32,7 +32,7 @@ const aiService = require('../utils/aiService');
  *                 description: Repository name
  *               branch:
  *                 type: string
- *                 description: Branch name (default: main)
+ *                 description: "Branch name (default: main)"
  *               files:
  *                 type: array
  *                 items:
