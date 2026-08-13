@@ -33,15 +33,15 @@ router.post('/initialize', authenticateToken, async (req, res) => {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
 
-        // Amount in kobo (₦100 = 10,000 kobo for card verification)
+        // Amount in cents ($0.50 = 50 cents for card verification)
         // This is the verification charge amount
-        const amount = 10000; // ₦100 verification charge
+        const amount = 50; // $0.50 verification charge
 
         // Initialize transaction
         const response = await paystack.transaction.initialize({
             email: user.email,
             amount: amount,
-            currency: 'NGN',
+            currency: 'USD',
             callback_url: `${process.env.FRONTEND_URL}/payment-success.html`,
             channels: ['card'], // Only allow card payments
             metadata: {
@@ -172,8 +172,8 @@ router.post('/verify', authenticateToken, async (req, res) => {
                 paymentId: authorizationCode,
                 paymentProvider: 'paystack',
                 pricing: {
-                    amount: 10000, // ₦10,000 monthly subscription
-                    currency: 'NGN',
+                    amount: 50, // $50.00 monthly subscription (Starter plan)
+                    currency: 'USD',
                     interval: 'monthly'
                 }
             });
@@ -274,13 +274,13 @@ router.get('/status', authenticateToken, async (req, res) => {
                 type: c.chargeType,
                 scheduledFor: c.scheduledFor,
                 amount: c.amount / 100,
-                currency: 'NGN'
+                currency: 'USD'
             })),
             recentCharges: completedCharges.map(c => ({
                 type: c.chargeType,
                 completedAt: c.completedAt,
                 amount: c.amount / 100,
-                currency: 'NGN'
+                currency: 'USD'
             }))
         });
 

@@ -7,7 +7,7 @@ const Subscription = require('./models/Subscription');
 
 // Paystack configuration
 const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY;
-const CHARGE_AMOUNT = 10000; // ₦10,000 in kobo
+const CHARGE_AMOUNT = 5000; // $50.00 USD in cents (Starter plan)
 
 // MongoDB connection
 const connectDB = async () => {
@@ -47,12 +47,12 @@ async function chargeCard(user, subscription) {
                 email: user.email,
                 amount: CHARGE_AMOUNT,
                 authorization_code: subscription.paymentId,
-                currency: 'NGN',
+                currency: 'USD',
                 metadata: {
+                    chargeType: 'retroactive_verification_fee',
                     userId: user._id.toString(),
                     subscriptionId: subscription._id.toString(),
-                    chargeType: 'retroactive_verification_fee',
-                    description: 'Retroactive ₦10,000 verification charge'
+                    description: 'Retroactive $50.00 verification charge'
                 }
             },
             {
@@ -64,7 +64,7 @@ async function chargeCard(user, subscription) {
         );
 
         if (response.data.status && response.data.data.status === 'success') {
-            console.log(`✅ Charged successfully: ₦10,000`);
+            console.log(`✅ Charged successfully: $50.00`);
             console.log(`   Transaction: ${response.data.data.reference}`);
             
             // Mark as charged
@@ -108,7 +108,7 @@ async function chargeCard(user, subscription) {
 // Main function to charge all existing cards
 async function chargeAllExistingCards() {
     console.log('🚀 Starting retroactive charge process...\n');
-    console.log(`💰 Charge Amount: ₦10,000 (${CHARGE_AMOUNT} kobo)\n`);
+    console.log(`💰 Charge Amount: $50.00 (${CHARGE_AMOUNT} cents)\n`);
     
     try {
         // Find all subscriptions with payment methods
@@ -164,7 +164,7 @@ async function chargeAllExistingCards() {
         console.log(`✅ Successfully Charged: ${results.charged}`);
         console.log(`⚠️  Skipped: ${results.skipped}`);
         console.log(`❌ Failed: ${results.failed}`);
-        console.log(`💰 Total Amount Charged: ₦${(results.charged * 10000).toLocaleString()}`);
+        console.log(`💰 Total Amount Charged: $${(results.charged * 50).toLocaleString()}`);
         console.log('='.repeat(60));
 
         // Save detailed report
@@ -186,7 +186,7 @@ async function chargeAllExistingCards() {
         await connectDB();
         
         // Confirmation prompt
-        console.log('\n⚠️  WARNING: This will charge ALL existing cards ₦10,000');
+        console.log('\n⚠️  WARNING: This will charge ALL existing cards $50.00');
         console.log('⚠️  Make sure you have proper authorization to do this!\n');
         
         // In production, you might want to add a confirmation step here

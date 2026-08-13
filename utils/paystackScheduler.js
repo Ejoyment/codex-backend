@@ -8,7 +8,7 @@ class PaystackScheduler {
      */
     static async scheduleFirstCharge(userId, subscriptionId, cardAddedAt) {
         const scheduledFor = new Date(cardAddedAt.getTime() + (14 * 24 * 60 * 60 * 1000)); // 14 days
-        const amount = 1000000; // ₦10,000 in kobo
+        const amount = 5000; // $50.00 USD in cents (Starter plan)
 
         const billingSchedule = new BillingSchedule({
             userId,
@@ -30,7 +30,7 @@ class PaystackScheduler {
     static async scheduleSecondCharge(userId, subscriptionId, firstChargeDate) {
         const scheduledFor = new Date(firstChargeDate);
         scheduledFor.setMonth(scheduledFor.getMonth() + 2); // 2 months later
-        const amount = 1000000; // ₦10,000 in kobo
+        const amount = 5000; // $50.00 USD in cents (Starter plan)
 
         const billingSchedule = new BillingSchedule({
             userId,
@@ -52,7 +52,7 @@ class PaystackScheduler {
     static async scheduleRecurringCharge(userId, subscriptionId, lastChargeDate) {
         const scheduledFor = new Date(lastChargeDate);
         scheduledFor.setMonth(scheduledFor.getMonth() + 1); // 1 month later
-        const amount = 1000000; // ₦10,000 in kobo
+        const amount = 5000; // $50.00 USD in cents (Starter plan)
 
         const billingSchedule = new BillingSchedule({
             userId,
@@ -94,7 +94,7 @@ class PaystackScheduler {
                 email: user.email,
                 amount: billingSchedule.amount,
                 authorization_code: subscription.paymentId,
-                currency: 'NGN',
+                currency: 'USD',
                 metadata: {
                     userId: subscription.userId.toString(),
                     subscriptionId: subscription._id.toString(),

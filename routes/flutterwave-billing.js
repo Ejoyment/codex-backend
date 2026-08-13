@@ -46,8 +46,8 @@ router.post('/initialize', authenticateToken, async (req, res) => {
         // Create payment payload
         const payload = {
             tx_ref: `txref_${Date.now()}_${userId}`,
-            amount: 100, // ₦10,000 (Flutterwave uses kobo, so 10000 * 100)
-            currency: 'NGN',
+            amount: 50, // $50.00 USD (Starter plan)
+            currency: 'USD',
             redirect_url: `${process.env.FRONTEND_URL || 'http://localhost:5500'}/payment-success.html`,
             customer: {
                 email: user.email,
@@ -135,7 +135,7 @@ router.post('/verify', authenticateToken, async (req, res) => {
         // Verify transaction with Flutterwave
         const response = await flw.Transaction.verify({ id: transaction_id });
 
-        if (response.data.status === 'successful' && response.data.amount >= 100) {
+        if (response.data.status === 'successful' && response.data.amount >= 50) {
             const user = await User.findById(userId);
             const cardAddedAt = new Date();
 
@@ -159,8 +159,8 @@ router.post('/verify', authenticateToken, async (req, res) => {
                     paymentProvider: 'flutterwave',
                     email: user.email,
                     pricing: {
-                        amount: 10000,
-                        currency: 'NGN',
+                        amount: 50,
+                        currency: 'USD',
                         interval: 'monthly'
                     }
                 });
@@ -267,12 +267,14 @@ router.get('/status', authenticateToken, async (req, res) => {
             pendingCharges: pendingCharges.map(c => ({
                 type: c.chargeType,
                 scheduledFor: c.scheduledFor,
-                amount: c.amount / 100 // Convert kobo to naira
+                amount: c.amount / 100, // Convert cents to dollars
+                currency: 'USD'
             })),
             recentCharges: completedCharges.map(c => ({
                 type: c.chargeType,
                 completedAt: c.completedAt,
-                amount: c.amount / 100
+                amount: c.amount / 100, // Convert cents to dollars
+                currency: 'USD'
             }))
         });
 

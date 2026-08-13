@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<coverage generated="1786616289277" clover="3.2.0">
-  <project timestamp="1786616289277" name="All files">
+<coverage generated="1786618687184" clover="3.2.0">
+  <project timestamp="1786618687185" name="All files">
     <metrics statements="6968" coveredstatements="1055" conditionals="2695" coveredconditionals="150" methods="938" coveredmethods="46" elements="10601" coveredelements="1251" complexity="0" loc="6968" ncloc="6968" packages="6" files="90" classes="90"/>
     <package name="codex-backend">
       <metrics statements="264" coveredstatements="119" conditionals="57" coveredconditionals="8" methods="35" coveredmethods="5"/>
@@ -2352,23 +2352,23 @@
         <line num="246" count="0" type="stmt"/>
         <line num="251" count="0" type="stmt"/>
         <line num="267" count="0" type="stmt"/>
-        <line num="272" count="0" type="stmt"/>
-        <line num="280" count="0" type="stmt"/>
-        <line num="281" count="0" type="stmt"/>
-        <line num="306" count="2" type="stmt"/>
-        <line num="307" count="0" type="stmt"/>
-        <line num="308" count="0" type="stmt"/>
+        <line num="273" count="0" type="stmt"/>
+        <line num="282" count="0" type="stmt"/>
+        <line num="283" count="0" type="stmt"/>
+        <line num="308" count="2" type="stmt"/>
         <line num="309" count="0" type="stmt"/>
-        <line num="311" count="0" type="cond" truecount="0" falsecount="2"/>
-        <line num="312" count="0" type="stmt"/>
-        <line num="316" count="0" type="stmt"/>
-        <line num="319" count="0" type="stmt"/>
-        <line num="320" count="0" type="stmt"/>
+        <line num="310" count="0" type="stmt"/>
+        <line num="311" count="0" type="stmt"/>
+        <line num="313" count="0" type="cond" truecount="0" falsecount="2"/>
+        <line num="314" count="0" type="stmt"/>
+        <line num="318" count="0" type="stmt"/>
         <line num="321" count="0" type="stmt"/>
+        <line num="322" count="0" type="stmt"/>
         <line num="323" count="0" type="stmt"/>
-        <line num="329" count="0" type="stmt"/>
-        <line num="330" count="0" type="stmt"/>
-        <line num="338" count="2" type="stmt"/>
+        <line num="325" count="0" type="stmt"/>
+        <line num="331" count="0" type="stmt"/>
+        <line num="332" count="0" type="stmt"/>
+        <line num="340" count="2" type="stmt"/>
       </file>
       <file name="git.js" path="/Users/mac/codex-backend/routes/git.js">
         <metrics statements="177" coveredstatements="26" conditionals="49" coveredconditionals="0" methods="20" coveredmethods="0"/>

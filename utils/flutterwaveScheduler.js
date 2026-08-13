@@ -13,7 +13,7 @@ async function scheduleFirstCharge(userId, subscriptionId, cardAddedAt) {
         subscriptionId,
         chargeType: 'first_charge',
         scheduledFor: firstChargeTime,
-        amount: 10000, // ₦10,000 (approximately $25 USD)
+        amount: 5000, // $50.00 USD in cents (Starter plan)
         status: 'pending'
     });
 
@@ -35,7 +35,7 @@ async function scheduleSecondCharge(userId, subscriptionId, firstChargeDate) {
         subscriptionId,
         chargeType: 'second_charge',
         scheduledFor: secondChargeTime,
-        amount: 10000, // ₦10,000
+        amount: 5000, // $50.00 USD in cents (Starter plan)
         status: 'pending'
     });
 
@@ -57,7 +57,7 @@ async function scheduleRecurringCharge(userId, subscriptionId, lastChargeDate) {
         subscriptionId,
         chargeType: 'recurring',
         scheduledFor: nextChargeTime,
-        amount: 10000, // ₦10,000
+        amount: 5000, // $50.00 USD in cents (Starter plan)
         status: 'pending'
     });
 
@@ -90,9 +90,9 @@ async function processCharge(billingSchedule) {
         // Create charge using Flutterwave tokenized charge
         const payload = {
             token: paymentToken,
-            currency: 'NGN',
-            country: 'NG',
-            amount: billingSchedule.amount / 100, // Convert kobo to naira
+            currency: 'USD',
+            country: 'US',
+            amount: billingSchedule.amount / 100, // Convert cents to dollars
             email: subscription.email || 'customer@buildershq.com',
             tx_ref: `charge_${billingSchedule._id}_${Date.now()}`,
             narration: `BuildrsHQ ${billingSchedule.chargeType.replace('_', ' ')}`,
