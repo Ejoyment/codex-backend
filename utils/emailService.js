@@ -18,7 +18,7 @@ const sendOTPEmail = async (email, otp, fullName = 'User') => {
     const emailData = {
         from: process.env.EMAIL_FROM || 'CODEX INC <onboarding@resend.dev>',
         to: [email],
-        subject: 'Verify Your Email - CODEX INC',
+        subject: 'Verify Your Email - BuildrsHQ',
         html: `
             <!DOCTYPE html>
             <html>
@@ -124,12 +124,12 @@ const sendOTPEmail = async (email, otp, fullName = 'User') => {
             <body>
                 <div class="container">
                     <div class="header">
-                        <h1>🚀 CODEX INC</h1>
+                        <h1>BuildrsHQ</h1>
                         <p>Enterprise Development Platform</p>
                     </div>
                     <div class="content">
                         <h2>Hello ${fullName}! 👋</h2>
-                        <p>Thank you for signing up with CODEX INC! We're excited to have you on board.</p>
+                        <p>Thank you for signing up with BuildrsHQ! We're excited to have you on board.</p>
                         <p>To complete your registration and verify your email address, please use the verification code below:</p>
                         
                         <div class="otp-box">
@@ -144,11 +144,11 @@ const sendOTPEmail = async (email, otp, fullName = 'User') => {
                         <p>If you didn't request this code, you can safely ignore this email. Someone may have entered your email address by mistake.</p>
                         
                         <p style="margin-top: 30px;">
-                            <strong>Need help?</strong> Contact our support team at support@codexinc.com
+                            <strong>Need help?</strong> Contact our support team at support@buildrshq.dev
                         </p>
                     </div>
                     <div class="footer">
-                        <p><strong>© ${new Date().getFullYear()} CODEX INC</strong></p>
+                        <p><strong>© ${new Date().getFullYear()} BuildrsHQ</strong></p>
                         <p>All rights reserved.</p>
                         <p style="margin-top: 16px;">This is an automated email, please do not reply.</p>
                     </div>
