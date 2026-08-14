@@ -23,6 +23,9 @@ class CollaborationService {
         this.persistenceQueue = new Map();
         this.persistenceInterval = 5000; // Save every 5 seconds
 
+        // Tracking timeouts for cleanup
+        this.cleanupTimeouts = new Map(); // fileId -> timeoutId
+
         this._persistenceWorker = null;
         // Start persistence worker unless running tests (tests will control lifecycle)
         if (process.env.NODE_ENV !== 'test') {
@@ -98,16 +101,24 @@ class CollaborationService {
             clients.delete(socket);
             
             if (clients.size === 0) {
+                // Clear existing cleanup timeout if any
+                if (this.cleanupTimeouts.has(fileId)) {
+                    clearTimeout(this.cleanupTimeouts.get(fileId));
+                }
+
                 // No more clients, persist and cleanup after delay
-                setTimeout(() => {
+                const timeoutId = setTimeout(() => {
                     if (this.clients.get(fileId)?.size === 0) {
                         this.persistDocument(fileId);
                         this.documents.delete(fileId);
                         this.awareness.delete(fileId);
                         this.clients.delete(fileId);
+                        this.cleanupTimeouts.delete(fileId);
                         console.log(`Cleaned up document: ${fileId}`);
                     }
                 }, 30000); // 30 second grace period
+
+                this.cleanupTimeouts.set(fileId, timeoutId);
             }
             
             console.log(`Client disconnected from file: ${fileId}, remaining: ${clients.size}`);
@@ -119,6 +130,8 @@ class CollaborationService {
      */
     handleSyncMessage(fileId, socket, message) {
         try {
+            if (!message || message.byteLength === 0) return;
+
             const ydoc = this.getDocument(fileId);
             const encoder = encoding.createEncoder();
             const decoder = decoding.createDecoder(message);
@@ -149,6 +162,8 @@ class CollaborationService {
      */
     handleAwarenessMessage(fileId, socket, message) {
         try {
+            if (!message || message.byteLength === 0) return;
+
             const awareness = this.getAwareness(fileId);
             const decoder = decoding.createDecoder(message);
             
@@ -289,6 +304,30 @@ class CollaborationService {
             clearInterval(this._persistenceWorker);
             this._persistenceWorker = null;
         }
+    }
+
+    /**
+     * Stop the service and cleanup all handles
+     */
+    stop() {
+        this.stopPersistenceWorker();
+
+        // Clear all cleanup timeouts
+        this.cleanupTimeouts.forEach(timeoutId => clearTimeout(timeoutId));
+        this.cleanupTimeouts.clear();
+
+        // Clean up documents
+        this.documents.forEach((ydoc, fileId) => {
+            this.persistDocument(fileId);
+            ydoc.destroy();
+        });
+
+        this.documents.clear();
+        this.awareness.clear();
+        this.clients.clear();
+        this.persistenceQueue.clear();
+
+        console.log('Collaboration service stopped and cleaned up');
     }
     
     /**
