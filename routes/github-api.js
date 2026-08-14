@@ -991,4 +991,177 @@ router.get('/user', verifyToken, async (req, res) => {
     }
 });
 
+// ===== OAUTH / CONFIGURATION =====
+
+/**
+ * @swagger
+ * /api/github/connect:
+ *   get:
+ *     summary: Start GitHub OAuth flow
+ *     tags:
+ *       - GitHub API
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Returns GitHub authorization URL
+ *       401:
+ *         description: Unauthorized
+ */
+router.get('/connect', verifyToken, (req, res) => {
+    const params = new URLSearchParams({
+        client_id: process.env.GITHUB_CLIENT_ID,
+        redirect_uri: process.env.GITHUB_REDIRECT_URI,
+        scope: 'repo,user',
+        state: req.userId // pass userId through so callback knows who's connecting
+    });
+
+    const authUrl = `https://github.com/login/oauth/authorize?${params.toString()}`;
+
+    res.json({
+        success: true,
+        authUrl
+    });
+});
+
+/**
+ * @swagger
+ * /api/github/callback:
+ *   get:
+ *     summary: GitHub OAuth callback
+ *     tags:
+ *       - GitHub API
+ *     parameters:
+ *       - name: code
+ *         in: query
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: state
+ *         in: query
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: GitHub connected successfully
+ *       400:
+ *         description: Missing code or state
+ *       500:
+ *         description: OAuth exchange failed
+ */
+router.get('/callback', async (req, res) => {
+    try {
+        const { code, state: userId } = req.query;
+
+        if (!code || !userId) {
+            return res.status(400).json({ success: false, message: 'Missing code or state' });
+        }
+
+        // Exchange code for access token
+        const tokenResponse = await axios.post(
+            'https://github.com/login/oauth/access_token',
+            {
+                client_id: process.env.GITHUB_CLIENT_ID,
+                client_secret: process.env.GITHUB_CLIENT_SECRET,
+                code,
+                redirect_uri: process.env.GITHUB_REDIRECT_URI
+            },
+            {
+                headers: { Accept: 'application/json' }
+            }
+        );
+
+        const { access_token, error } = tokenResponse.data;
+
+        if (error || !access_token) {
+            return res.status(500).json({ success: false, message: error || 'Token exchange failed' });
+        }
+
+        // Fetch GitHub user info to store alongside the integration
+        const githubUser = await githubAPI(access_token, '/user');
+
+        // Upsert the integration
+        await Integration.findOneAndUpdate(
+            { userId, provider: 'github' },
+            {
+                userId,
+                provider: 'github',
+                accessToken: access_token,
+                isActive: true,
+                accountLogin: githubUser.login,
+                connectedAt: new Date()
+            },
+            { upsert: true, new: true }
+        );
+
+        // Redirect back to your frontend settings page
+        res.redirect(`${process.env.FRONTEND_URL}/settings/integrations?github=connected`);
+    } catch (error) {
+        console.error('GitHub OAuth callback error:', error.response?.data || error.message);
+        res.status(500).json({ success: false, message: 'GitHub connection failed' });
+    }
+});
+
+/**
+ * @swagger
+ * /api/github/status:
+ *   get:
+ *     summary: Check GitHub connection status
+ *     tags:
+ *       - GitHub API
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Connection status
+ *       401:
+ *         description: Unauthorized
+ */
+router.get('/status', verifyToken, async (req, res) => {
+    try {
+        const integration = await Integration.findOne({
+            userId: req.userId,
+            provider: 'github',
+            isActive: true
+        });
+
+        res.json({
+            success: true,
+            connected: !!integration,
+            account: integration ? integration.accountLogin : null
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+/**
+ * @swagger
+ * /api/github/disconnect:
+ *   delete:
+ *     summary: Disconnect GitHub integration
+ *     tags:
+ *       - GitHub API
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Disconnected successfully
+ *       401:
+ *         description: Unauthorized
+ */
+router.delete('/disconnect', verifyToken, async (req, res) => {
+    try {
+        await Integration.findOneAndUpdate(
+            { userId: req.userId, provider: 'github' },
+            { isActive: false }
+        );
+
+        res.json({ success: true, message: 'GitHub disconnected' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 module.exports = router;

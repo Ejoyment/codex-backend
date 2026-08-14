@@ -1,4 +1,33 @@
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+let stripe = null;
+
+if (process.env.STRIPE_SECRET_KEY) {
+    stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+} else {
+    console.warn('⚠️  Stripe not configured - STRIPE_SECRET_KEY environment variable is required');
+
+    // Create a mock object when Stripe is not configured
+    stripe = {
+        checkout: {
+            sessions: {
+                create: async () => {
+                    throw new Error('Stripe not configured. Please set STRIPE_SECRET_KEY environment variable.');
+                }
+            }
+        },
+        billingPortal: {
+            sessions: {
+                create: async () => {
+                    throw new Error('Stripe not configured. Please set STRIPE_SECRET_KEY environment variable.');
+                }
+            }
+        },
+        webhooks: {
+            constructEvent: () => {
+                throw new Error('Stripe not configured. Please set STRIPE_SECRET_KEY environment variable.');
+            }
+        }
+    };
+}
 
 // Price IDs for each tier (you'll need to create these in Stripe Dashboard)
 const PRICE_IDS = {

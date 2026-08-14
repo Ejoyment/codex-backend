@@ -15,8 +15,8 @@ describe('CollaborationService - Unit Tests', () => {
   });
 
   afterAll(() => {
-    if (collaborationService.stopPersistenceWorker) {
-      collaborationService.stopPersistenceWorker();
+    if (collaborationService.stop) {
+      collaborationService.stop();
     }
   });
 
@@ -135,18 +135,22 @@ describe('CollaborationService - Unit Tests', () => {
       }).not.toThrow();
     });
 
-    test('should create document on sync if it does not exist yet', () => {
+    test('should handle valid sync step 1 message', () => {
       const mockSocket = {
         id: 'sync-socket-2',
         connected: true,
         emit: jest.fn(),
       };
-      expect(() => {
-        collaborationService.handleSyncMessage('sync-auto-create', mockSocket, new Uint8Array(0));
-      }).not.toThrow();
-      // Document should now exist
-      const doc = collaborationService.getDocument('sync-auto-create');
-      expect(doc).toBeDefined();
+      const ydoc = collaborationService.getDocument('sync-valid-1');
+
+      // Create valid sync step 1 message
+      const { encoding } = require('lib0');
+      const encoder = encoding.createEncoder();
+      encoding.writeVarUint(encoder, 0); // messageYjsSyncStep1
+      const message = encoding.toUint8Array(encoder);
+
+      collaborationService.handleSyncMessage('sync-valid-1', mockSocket, message);
+      expect(mockSocket.emit).toHaveBeenCalled();
     });
   });
 

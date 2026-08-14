@@ -221,4 +221,182 @@ router.get('/users', verifyToken, async (req, res) => {
     }
 });
 
+// ===== OAUTH / CONFIGURATION =====
+
+/**
+ * @swagger
+ * /api/notion/connect:
+ *   get:
+ *     summary: Start Notion OAuth flow
+ *     tags:
+ *       - Notion API
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Returns Notion authorization URL
+ *       401:
+ *         description: Unauthorized
+ */
+router.get('/connect', verifyToken, (req, res) => {
+    const params = new URLSearchParams({
+        client_id: process.env.NOTION_CLIENT_ID,
+        redirect_uri: process.env.NOTION_CALLBACK_URL,
+        response_type: 'code',
+        owner: 'user',
+        state: req.userId // pass userId through so callback knows who's connecting
+    });
+
+    const authUrl = `https://api.notion.com/v1/oauth/authorize?${params.toString()}`;
+
+    res.json({
+        success: true,
+        authUrl
+    });
+});
+
+/**
+ * @swagger
+ * /api/notion/callback:
+ *   get:
+ *     summary: Notion OAuth callback
+ *     tags:
+ *       - Notion API
+ *     parameters:
+ *       - name: code
+ *         in: query
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: state
+ *         in: query
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Notion connected successfully
+ *       400:
+ *         description: Missing code or state
+ *       500:
+ *         description: OAuth exchange failed
+ */
+router.get('/callback', async (req, res) => {
+    try {
+        const { code, state: userId } = req.query;
+
+        if (!code || !userId) {
+            return res.status(400).json({ success: false, message: 'Missing code or state' });
+        }
+
+        // Notion requires Basic Auth (client_id:client_secret base64-encoded) for token exchange
+        const basicAuth = Buffer.from(
+            `${process.env.NOTION_CLIENT_ID}:${process.env.NOTION_CLIENT_SECRET}`
+        ).toString('base64');
+
+        const tokenResponse = await axios.post(
+            'https://api.notion.com/v1/oauth/token',
+            {
+                grant_type: 'authorization_code',
+                code,
+                redirect_uri: process.env.NOTION_CALLBACK_URL
+            },
+            {
+                headers: {
+                    'Authorization': `Basic ${basicAuth}`,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+
+        const data = tokenResponse.data;
+
+        if (!data.access_token) {
+            return res.status(500).json({ success: false, message: 'Token exchange failed' });
+        }
+
+        // Notion's token response includes workspace + bot info directly — no extra API call needed
+        await Integration.findOneAndUpdate(
+            { userId, provider: 'notion' },
+            {
+                userId,
+                provider: 'notion',
+                accessToken: data.access_token,
+                isActive: true,
+                workspaceId: data.workspace_id,
+                workspaceName: data.workspace_name,
+                connectedAt: new Date()
+            },
+            { upsert: true, new: true }
+        );
+
+        // Redirect back to your frontend settings page
+        res.redirect(`${process.env.FRONTEND_URL}/settings/integrations?notion=connected`);
+    } catch (error) {
+        console.error('Notion OAuth callback error:', error.response?.data || error.message);
+        res.status(500).json({ success: false, message: 'Notion connection failed' });
+    }
+});
+
+/**
+ * @swagger
+ * /api/notion/status:
+ *   get:
+ *     summary: Check Notion connection status
+ *     tags:
+ *       - Notion API
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Connection status
+ *       401:
+ *         description: Unauthorized
+ */
+router.get('/status', verifyToken, async (req, res) => {
+    try {
+        const integration = await Integration.findOne({
+            userId: req.userId,
+            provider: 'notion',
+            isActive: true
+        });
+
+        res.json({
+            success: true,
+            connected: !!integration,
+            workspace: integration ? integration.workspaceName : null
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+/**
+ * @swagger
+ * /api/notion/disconnect:
+ *   delete:
+ *     summary: Disconnect Notion integration
+ *     tags:
+ *       - Notion API
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Disconnected successfully
+ *       401:
+ *         description: Unauthorized
+ */
+router.delete('/disconnect', verifyToken, async (req, res) => {
+    try {
+        await Integration.findOneAndUpdate(
+            { userId: req.userId, provider: 'notion' },
+            { isActive: false }
+        );
+
+        res.json({ success: true, message: 'Notion disconnected' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 module.exports = router;
