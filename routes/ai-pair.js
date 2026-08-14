@@ -1471,4 +1471,158 @@ router.get('/sandbox/stats', verifyToken, async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/ai-pair/review:
+ *   post:
+ *     summary: Request an AI code review
+ *     tags:
+ *       - AI Pair Programming
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - code
+ *             properties:
+ *               code:
+ *                 type: string
+ *               language:
+ *                 type: string
+ *               context:
+ *                 type: object
+ *     responses:
+ *       200:
+ *         description: AI Code Review response
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 review:
+ *                   type: string
+ *                 codeBlocks:
+ *                   type: array
+ *                 aiLimit:
+ *                   type: object
+ */
+router.post('/review', verifyToken, checkAILimits, async (req, res) => {
+    try {
+        const { code, language, context = {} } = req.body;
+
+        if (!code) {
+            return res.status(400).json({
+                success: false,
+                message: 'Code is required for review'
+            });
+        }
+
+        const aiResponse = await aiService.reviewCode(code, language, context);
+
+        if (!aiResponse.success) {
+            return res.status(500).json({
+                success: false,
+                message: 'AI review failed: ' + aiResponse.error
+            });
+        }
+
+        res.json({
+            success: true,
+            review: aiResponse.content,
+            codeBlocks: aiResponse.codeBlocks,
+            aiLimit: req.aiLimit
+        });
+    } catch (error) {
+        console.error('Code review error:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @swagger
+ * /api/ai-pair/debug:
+ *   post:
+ *     summary: Request AI debugging assistance
+ *     tags:
+ *       - AI Pair Programming
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - code
+ *             properties:
+ *               code:
+ *                 type: string
+ *               language:
+ *                 type: string
+ *               error:
+ *                 type: string
+ *               context:
+ *                 type: object
+ *     responses:
+ *       200:
+ *         description: AI Debugging response
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 debugAdvice:
+ *                   type: string
+ *                 codeBlocks:
+ *                   type: array
+ *                 aiLimit:
+ *                   type: object
+ */
+router.post('/debug', verifyToken, checkAILimits, async (req, res) => {
+    try {
+        const { code, language, error, context = {} } = req.body;
+
+        if (!code) {
+            return res.status(400).json({
+                success: false,
+                message: 'Code is required for debugging'
+            });
+        }
+
+        const aiResponse = await aiService.debugCode(code, language, error, context);
+
+        if (!aiResponse.success) {
+            return res.status(500).json({
+                success: false,
+                message: 'AI debugging failed: ' + aiResponse.error
+            });
+        }
+
+        res.json({
+            success: true,
+            debugAdvice: aiResponse.content,
+            codeBlocks: aiResponse.codeBlocks,
+            aiLimit: req.aiLimit
+        });
+    } catch (error) {
+        console.error('AI debugging error:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+});
+
 module.exports = router;

@@ -103,6 +103,52 @@ class AIService {
         }
     }
 
+    /**
+     * Specialized method for code review
+     */
+    async reviewCode(code, language, context = {}) {
+        const prompt = `Perform a comprehensive code review for the following ${language || 'source'} code.
+Focus on:
+1. Logic errors and bugs
+2. Security vulnerabilities
+3. Performance bottlenecks
+4. Readability and maintainability
+5. Best practices
+
+Code to review:
+\`\`\`${language || ''}
+${code}
+\`\`\`
+
+Additional Context: ${context.details || 'None'}
+`;
+        return await this.chat([{ role: 'user', content: prompt }], { ...context, agentMode: false });
+    }
+
+    /**
+     * Specialized method for debugging
+     */
+    async debugCode(code, language, error, context = {}) {
+        const prompt = `I'm encountering an error in my ${language || 'source'} code. Please help me debug it.
+
+Error Message:
+${error || 'Not provided'}
+
+Code Snippet:
+\`\`\`${language || ''}
+${code}
+\`\`\`
+
+Additional Context: ${context.details || 'None'}
+
+Please:
+1. Explain the likely cause of the error.
+2. Provide a fixed version of the code.
+3. Suggest how to prevent similar issues in the future.
+`;
+        return await this.chat([{ role: 'user', content: prompt }], { ...context, agentMode: false });
+    }
+
     getFallbackProvider(currentProvider) {
         const providers = Object.keys(this.providers);
         return providers.find(p => p !== currentProvider && this.providers[p].available);
