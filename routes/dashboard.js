@@ -18,7 +18,9 @@ const verifyToken = (req, res, next) => {
 
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        req.userId = decoded.id;
+        const userId = decoded.userId || decoded.id || decoded._id;
+        req.userId = userId;
+        req.user = { ...decoded, id: userId, userId };
         next();
     } catch (error) {
         return res.status(401).json({
@@ -65,77 +67,154 @@ router.get('/data', verifyToken, async (req, res) => {
     try {
         // Get user's subscription
         const subscription = await Subscription.findOne({ userId: req.userId });
-        const tier = subscription?.tier || 'freebie';
+        const tier = subscription?.tier || 'starter';
+        const status = subscription?.status || 'trial';
 
-        // Get user's connected integrations (using correct field names)
+        // Get user's connected integrations
         const integrations = await Integration.find({ userId: req.userId, isActive: true });
         
         console.log(`Found ${integrations.length} active integrations for user ${req.userId}`);
         
-        // Define tier-based access
-        const allowedIntegrations = tier === 'freebie' 
-            ? ['discord'] 
-            : ['github', 'discord', 'slack', 'notion', 'figma', 'vscode'];
+        // Define which integrations each tier can access
+        const allowedIntegrationsMap = {
+            'starter': ['discord'],
+            'freebie': ['discord'],
+            'professional': ['github', 'discord', 'slack', 'notion', 'figma', 'vscode'],
+            'enterprise': ['github', 'discord', 'slack', 'notion', 'figma', 'vscode']
+        };
+        const allowedIntegrations = allowedIntegrationsMap[tier] || ['discord'];
 
-        // Filter integrations based on tier (using 'provider' field, not 'platform')
-        const accessibleIntegrations = integrations.filter(int => 
-            allowedIntegrations.includes(int.provider)
-        );
-        
-        console.log(`Accessible integrations: ${accessibleIntegrations.map(i => i.provider).join(', ')}`);
+        // Get all integrations the user has connected (regardless of tier)
+        const allUserIntegrations = await Integration.find({ userId: req.userId });
+        const connectedUserPlatforms = allUserIntegrations
+            .filter(i => i.isActive)
+            .map(i => i.provider);
+
+        // Build integration hub data with both connected and tierAllowed flags
+        const hubs = [
+            { platform: 'github', name: 'GitHub' },
+            { platform: 'discord', name: 'Discord' },
+            { platform: 'slack', name: 'Slack' },
+            { platform: 'notion', name: 'Notion' },
+            { platform: 'figma', name: 'Figma' },
+            { platform: 'vscode', name: 'VS Code' }
+        ].map(hub => ({
+            ...hub,
+            connected: connectedUserPlatforms.includes(hub.platform),
+            tierAllowed: allowedIntegrations.includes(hub.platform)
+        }));
 
         // Get integration data for connected platforms
         const integrationData = {};
-        for (const integration of accessibleIntegrations) {
+        for (const integration of integrations) {
             const data = await IntegrationData.find({
                 userId: req.userId,
-                platform: integration.provider  // Use provider field
+                platform: integration.provider
             }).sort({ lastSynced: -1 }).limit(10);
             
             integrationData[integration.provider] = data;
         }
 
-        // Calculate stats
+        // ===== REAL Stats from Local Models =====
+        const LocalProject = require('../models/LocalProject');
+        const LocalTask = require('../models/LocalTask');
+        const Company = require('../models/Company');
+        const TeamProject = require('../models/TeamProject');
+        const TeamTask = require('../models/TeamTask');
+
+        // Count local projects
+        const localProjectCount = await LocalProject.countDocuments({ 
+            userId: req.userId, 
+            isArchived: false 
+        });
+        
+        const localCompletedTasks = await LocalTask.countDocuments({
+            userId: req.userId,
+            status: 'completed'
+        });
+        const localPendingTasks = await LocalTask.countDocuments({
+            userId: req.userId,
+            status: { $in: ['pending', 'in-progress', 'in_review'] }
+        });
+
+        // Count GitHub repos as projects
+        const githubRepos = integrationData.github?.filter(d => d.dataType === 'repositories') || [];
+        const githubIssues = integrationData.github?.filter(d => d.dataType === 'issues') || [];
+        const githubCompleted = githubIssues.filter(i => i.data.state === 'closed').length;
+        const githubPending = githubIssues.filter(i => i.data.state === 'open').length;
+
+        // Team projects/tasks (if user is in companies)
+        let teamProjectCount = 0;
+        let teamCompletedTasks = 0;
+        let teamMembersCount = 0;
+
+        try {
+            const userCompanies = await Company.find({
+                $or: [
+                    { 'members.userId': req.userId },
+                    { owner: req.userId }
+                ]
+            });
+            
+            teamMembersCount = userCompanies.reduce((sum, c) => sum + (c.members?.length || 0), 0);
+            
+            for (const company of userCompanies) {
+                const teamProjects = await TeamProject.countDocuments({ companyId: company._id });
+                const completedTeamTasks = await TeamTask.countDocuments({ 
+                    companyId: company._id, 
+                    status: 'completed' 
+                });
+                teamProjectCount += teamProjects;
+                teamCompletedTasks += completedTeamTasks;
+            }
+        } catch (companyError) {
+            console.error('Company stats error:', companyError);
+        }
+
         const stats = {
-            activeProjects: 0,
-            totalCompleted: 0,
-            teamMembers: 0,
-            pendingTasks: 0
+            activeProjects: localProjectCount + githubRepos.length + teamProjectCount,
+            totalCompleted: localCompletedTasks + githubCompleted + teamCompletedTasks,
+            completedTasks: localCompletedTasks + githubCompleted + teamCompletedTasks,
+            teamMembers: teamMembersCount,
+            pendingTasks: localPendingTasks + githubPending,
+            integrations: connectedUserPlatforms.length,
+            activeProjectsCount: localProjectCount + githubRepos.length + teamProjectCount,
+            totalCompletedCount: localCompletedTasks + githubCompleted + teamCompletedTasks,
+            teamMembersCount,
+            pendingTasksCount: localPendingTasks + githubPending,
+            integrationsCount: connectedUserPlatforms.length,
+            localProjects: localProjectCount,
+            githubProjects: githubRepos.length,
+            teamProjects: teamProjectCount
         };
 
-        // GitHub stats
-        if (integrationData.github) {
-            const repos = integrationData.github.filter(d => d.dataType === 'repositories');
-            const issues = integrationData.github.filter(d => d.dataType === 'issues');
-            stats.activeProjects += repos.length;
-            stats.pendingTasks += issues.filter(i => i.data.state === 'open').length;
-            stats.totalCompleted += issues.filter(i => i.data.state === 'closed').length;
-        }
-
-        // Discord stats
-        if (integrationData.discord) {
-            const members = integrationData.discord.find(d => d.dataType === 'members');
-            if (members) stats.teamMembers += members.metadata?.totalItems || 0;
-        }
-
-        // Slack stats
-        if (integrationData.slack) {
-            const members = integrationData.slack.find(d => d.dataType === 'members');
-            if (members) stats.teamMembers += members.metadata?.totalItems || 0;
+        // Trial info for dashboard banner
+        let trialInfo = null;
+        if (subscription && subscription.status === 'trial') {
+            const daysLeft = subscription.getTrialDaysLeft();
+            trialInfo = {
+                isOnTrial: true,
+                daysLeft,
+                isLastDay: subscription.isLastTrialDay(),
+                trialEndsAt: subscription.trialEndsAt
+            };
         }
 
         res.json({
             success: true,
             data: {
                 tier,
+                status,
                 allowedIntegrations,
-                connectedIntegrations: accessibleIntegrations.map(i => ({
-                    platform: i.provider,  // Use provider field
-                    username: i.providerUsername || i.providerEmail,  // Use correct field names
-                    connectedAt: i.createdAt  // Use createdAt since there's no connectedAt
+                integrationsHub: hubs,
+                connectedIntegrations: connectedUserPlatforms.map(p => ({
+                    platform: p,
+                    username: integrations.find(i => i.provider === p)?.providerUsername || null,
+                    connectedAt: integrations.find(i => i.provider === p)?.createdAt || null
                 })),
                 integrationData,
                 stats,
+                trial: trialInfo,
                 hasData: Object.keys(integrationData).length > 0
             }
         });

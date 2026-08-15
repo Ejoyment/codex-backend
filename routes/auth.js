@@ -8,6 +8,7 @@ const fs = require('fs');
 const User = require('../models/User');
 const Subscription = require('../models/Subscription');
 const rateLimit = require('express-rate-limit');
+const emailService = require('../utils/emailServiceResend');
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -124,18 +125,38 @@ router.post('/signup', authLimiter, async (req, res) => {
             authProvider: 'local'
         });
 
-        // Create default subscription (freebie tier)
-        await Subscription.create({
+        // Create default subscription (STARTER free trial - 14 days)
+        const trialEndsAt = new Date(Date.now() + (14 * 24 * 60 * 60 * 1000)); // 14 days
+        const subscription = await Subscription.create({
             userId: user._id,
-            tier: 'freebie',
-            status: 'active'
+            tier: 'starter',
+            status: 'trial',
+            trialStartedAt: new Date(),
+            trialEndsAt,
+            pricing: {
+                amount: 0,
+                currency: 'USD',
+                interval: 'trial'
+            }
         });
+
+        // Send trial welcome email (non-blocking)
+        try {
+            await emailService.sendTrialWelcomeEmail(email, fullName, trialEndsAt);
+        } catch (emailError) {
+            console.error('Trial welcome email error:', emailError);
+        }
 
         res.status(201).json({
             success: true,
             message: 'Account created successfully. Please verify your email.',
             userId: user._id,
-            email: user.email
+            email: user.email,
+            trial: {
+                tier: subscription.tier,
+                trialEndsAt: subscription.trialEndsAt,
+                daysLeft: 14
+            }
         });
 
     } catch (error) {
@@ -390,7 +411,8 @@ router.get('/me', async (req, res) => {
         }
 
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const user = await User.findById(decoded.id).select('-password');
+        const userId = decoded.userId || decoded.id;
+        const user = await User.findById(userId).select('-password');
 
         if (!user) {
             return res.status(404).json({ 
@@ -401,7 +423,25 @@ router.get('/me', async (req, res) => {
 
         // Get user's subscription
         const Subscription = require('../models/Subscription');
-        const subscription = await Subscription.findOne({ userId: decoded.id });
+        const subscription = await Subscription.findOne({ userId });
+
+        // Handle trial expiry: auto-downgrade to freebie if trial expired
+        if (subscription && subscription.isTrialExpired && subscription.isTrialExpired()) {
+            const previousTier = subscription.tier;
+            subscription.status = 'expired';
+            subscription.upgradeTo('freebie');
+            await subscription.save();
+
+            // Send trial expired email notification
+            try {
+                await emailService.sendTrialExpiredEmail(user.email, user.fullName);
+                console.log(`Trial expired email sent to user ${userId}`);
+            } catch (emailError) {
+                console.error('Trial expired email error:', emailError);
+            }
+
+            console.log(`User ${userId} trial expired, downgraded from ${previousTier} to freebie`);
+        }
 
         res.json({
             success: true,
@@ -419,11 +459,28 @@ router.get('/me', async (req, res) => {
                 subscription: subscription ? {
                     tier: subscription.tier,
                     status: subscription.status,
-                    features: subscription.features
+                    features: {
+                        maxProjects: subscription.features.maxProjects,
+                        basicAiAssistance: subscription.features.basicAiAssistance,
+                        communitySupport: subscription.features.communitySupport,
+                        limitedApiAccess: subscription.features.limitedApiAccess,
+                        supportResponseHours: subscription.features.supportResponseHours,
+                        advancedAiAssistance: subscription.features.advancedAiAssistance,
+                        fullApiAccess: subscription.features.fullApiAccess,
+                        teamCollaboration: subscription.features.teamCollaboration,
+                        unlimitedProjects: subscription.features.unlimitedProjects
+                    },
+                    trial: subscription.status === 'trial' ? {
+                        trialStartedAt: subscription.trialStartedAt,
+                        trialEndsAt: subscription.trialEndsAt,
+                        daysLeft: subscription.trialEndsAt ? Math.max(0, Math.ceil((subscription.trialEndsAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24))) : 0,
+                        isLastDay: subscription.isLastTrialDay ? subscription.isLastTrialDay() : false
+                    } : null
                 } : {
-                    tier: 'freebie',
-                    status: 'active',
-                    features: {}
+                    tier: 'starter',
+                    status: 'trial',
+                    features: {},
+                    trial: null
                 },
                 createdAt: user.createdAt,
                 lastLogin: user.lastLogin

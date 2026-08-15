@@ -13,8 +13,18 @@ const authenticateToken = (req, res, next) => {
         if (err) {
             return res.status(403).json({ success: false, message: 'Invalid or expired token' });
         }
-        req.userId = user.id; // Changed from user.userId to user.id
-        req.user = user;
+        
+        // Normalize user ID access across all routes
+        // Support both legacy and new token payloads: { id } or { userId }
+        const userId = user.userId || user.id || user._id;
+        
+        req.userId = userId;
+        req.user = {
+            ...user,
+            id: userId,
+            userId: userId,
+            _id: userId
+        };
         next();
     });
 };

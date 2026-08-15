@@ -26,6 +26,9 @@ const app = express();
 const http = require('http');
 const socketIO = require('socket.io');
 
+// Import trial enforcement middleware
+const { checkTrialStatus, enforceProjectLimit, enforceAIAccess } = require('./middleware/trial');
+
 let server = null;
 let io = null;
 
@@ -146,13 +149,16 @@ const gitRoutes = require('./routes/git');
 const debugRoutes = require('./routes/debug');
 const agentConfirmationRoutes = require('./routes/agent-confirmation');
 const flutterwaveBillingRoutes = require('./routes/flutterwave-billing');
+const projectRoutes = require('./routes/projects');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/otp', otpRoutes);
 app.use('/api/subscription', subscriptionRoutes);
 app.use('/api/integrations', integrationsRoutes);
-app.use('/api/dashboard', dashboardRoutes);
-app.use('/api/ai-pair', aiPairRoutes);
+// Apply trial middleware to all dashboard routes (protected routes)
+app.use('/api/dashboard', checkTrialStatus, dashboardRoutes);
+// Apply AI access enforcement to all AI pair routes
+app.use('/api/ai-pair', enforceAIAccess, aiPairRoutes);
 app.use('/api/company', companyRoutes);
 app.use('/api/collaboration', collaborationRoutes);
 app.use('/api/code-editor', codeEditorRoutes);
@@ -166,7 +172,7 @@ app.use('/api/flutterwave-billing', flutterwaveBillingRoutes);
 app.use('/api/support', supportRoutes);
 app.use('/api/notifications', notificationsRoutes);
 
-// Integration API routes
+// Integration API routes (OAuth callbacks and public endpoints remain unprotected)
 app.use('/api/github', githubApiRoutes);
 app.use('/api/github-advanced', githubAdvancedRoutes);
 app.use('/api/discord', discordApiRoutes);
@@ -179,6 +185,8 @@ app.use('/api/terminal', terminalRoutes);
 app.use('/api/git', gitRoutes);
 app.use('/api/debug', debugRoutes);
 app.use('/api/agent-confirmation', agentConfirmationRoutes);
+// Project routes (enforcement of project limits handled in route handlers)
+app.use('/api/projects', projectRoutes);
 
 // Swagger API Documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs, {
@@ -368,8 +376,9 @@ io.use((socket, next) => {
     
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        socket.userId = decoded.userId;
-        socket.user = decoded;
+        const userId = decoded.userId || decoded.id || decoded._id;
+        socket.userId = userId;
+        socket.user = { ...decoded, id: userId, userId };
         next();
     } catch (error) {
         next(new Error('Authentication error'));
@@ -465,8 +474,9 @@ terminalNamespace.use((socket, next) => {
     
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        socket.userId = decoded.userId;
-        socket.user = decoded;
+        const userId = decoded.userId || decoded.id || decoded._id;
+        socket.userId = userId;
+        socket.user = { ...decoded, id: userId, userId };
         next();
     } catch (error) {
         next(new Error('Authentication error'));
