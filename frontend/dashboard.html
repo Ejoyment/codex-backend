@@ -1,0 +1,1070 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - BuildrsHQ</title>
+    <link rel="icon" href="buildrs.png">
+    <link rel="stylesheet" href="fonts/fonts.css">
+    <link rel="stylesheet" href="css/workspace.css">
+    <link rel="stylesheet" href="css/responsive-guard.css">
+    <script src="js/api.js"></script>
+    <script src="js/responsive-guard.js"></script>
+    <script src="js/notifications.js"></script>
+</head>
+<body data-protected data-desktop-only data-min-width="1024" data-redirect-url="index.html">
+    <div class="workspace-container">
+        <!-- Sidebar -->
+        <aside class="workspace-sidebar">
+            <div class="sidebar-logo">
+                <div class="sidebar-logo-content">
+                    <div class="sidebar-icon">
+                        <img src="buildrs.png" alt="BuildrsHQ" style="width: 100%; height: 100%; object-fit: contain;">
+                    </div>
+                    <span class="sidebar-logo-text" style="font-size:20px;">BuildrsHQ</span>
+                </div>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <a href="dashboard.html" class="sidebar-nav-item active">
+                    <svg class="sidebar-nav-icon" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z"></path>
+                    </svg>
+                    <span>Dashboard</span>
+                </a>
+                <a href="tasks.html" class="sidebar-nav-item">
+                    <svg class="sidebar-nav-icon" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd"></path>
+                    </svg>
+                    <span>Tasks</span>
+                </a>
+                <a href="teams.html" class="sidebar-nav-item">
+                    <svg class="sidebar-nav-icon" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"></path>
+                    </svg>
+                    <span>Teams</span>
+                </a>
+                <a href="source-code.html" class="sidebar-nav-item">
+                    <svg class="sidebar-nav-icon" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M12.316 3.051a1 1 0 01.633 1.265l-4 12a1 1 0 11-1.898-.632l4-12a1 1 0 011.265-.633zM5.707 6.293a1 1 0 010 1.414L3.414 10l2.293 2.293a1 1 0 11-1.414 1.414l-3-3a1 1 0 010-1.414l3-3a1 1 0 011.414 0zm8.586 0a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 11-1.414-1.414L16.586 10l-2.293-2.293a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+                    </svg>
+                    <span>Source Code</span>
+                </a>
+                <a href="editor.html" class="sidebar-nav-item">
+                    <svg class="sidebar-nav-icon" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"></path>
+                    </svg>
+                    <span>Editor</span>
+                </a>
+                <a href="ai-pair.html" class="sidebar-nav-item">
+                    <svg class="sidebar-nav-icon" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M2 5a2 2 0 012-2h7a2 2 0 012 2v4a2 2 0 01-2 2H9l-3 3v-3H4a2 2 0 01-2-2V5z"></path>
+                        <path d="M15 7v2a4 4 0 01-4 4H9.828l-1.766 1.767c.28.149.599.233.938.233h2l3 3v-3h2a2 2 0 002-2V9a2 2 0 00-2-2h-1z"></path>
+                    </svg>
+                    <span>AI Pair</span>
+                </a>
+                <a href="settings.html" class="sidebar-nav-item">
+                    <svg class="sidebar-nav-icon" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"></path>
+                    </svg>
+                    <span>Settings</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-user">
+                <div class="sidebar-user-info">
+                    <img id="sidebarAvatar" class="sidebar-user-avatar" src="https://ui-avatars.com/api/?name=User&background=3b82f6&color=fff" alt="User">
+                    <div class="sidebar-user-details">
+                        <div id="sidebarName" class="sidebar-user-name">Loading...</div>
+                        <div id="sidebarRole" class="sidebar-user-role">Loading...</div>
+                    </div>
+                </div>
+                <div id="subscriptionBadge" class="sidebar-badge">
+                    <span>Loading...</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="workspace-main">
+            <header class="workspace-header">
+                <div class="flex items-center gap-6">
+                    <h1 class="text-xl font-bold">Dashboard</h1>
+                    <div class="flex items-center gap-2">
+                        <span class="status-indicator status-online"></span>
+                        <span class="text-sm text-muted">All systems operational</span>
+                    </div>
+                </div>
+                <div class="flex items-center gap-4">
+                    <button type="button" class="btn-workspace btn-secondary" title="Notifications">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
+                        </svg>
+                    </button>
+                    <button type="button" class="btn-workspace btn-primary" onclick="viewAllProjects()">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                        </svg>
+                        <span>New Project</span>
+                    </button>
+                    <img id="headerAvatar" class="avatar" src="https://ui-avatars.com/api/?name=User&background=3b82f6&color=fff" alt="User">
+                </div>
+            </header>
+
+            <div class="workspace-content">
+                <!-- Stats Cards -->
+                <div class="grid grid-cols-4 gap-6 mb-6">
+                    <div class="stat-card stat-card-blue">
+                        <div class="stat-card-value" id="activeProjectsCount">0</div>
+                        <div class="stat-card-label">Active Projects</div>
+                    </div>
+                    <div class="stat-card stat-card-green">
+                        <div class="stat-card-value" id="totalCompletedCount">0</div>
+                        <div class="stat-card-label">Completed Tasks</div>
+                    </div>
+                    <div class="stat-card stat-card-purple">
+                        <div class="stat-card-value" id="teamMembersCount">0</div>
+                        <div class="stat-card-label">Team Members</div>
+                    </div>
+                    <div class="stat-card stat-card-orange">
+                        <div class="stat-card-value" id="integrationsCount">0</div>
+                        <div class="stat-card-label">Integrations</div>
+                    </div>
+                </div>
+
+                <!-- Quick Actions & Activity -->
+                <div class="grid grid-cols-3 gap-6 mb-6">
+                    <!-- Quick Actions -->
+                    <div class="workspace-card">
+                        <div class="workspace-card-header">
+                            <h2 class="workspace-card-title">Quick Actions</h2>
+                        </div>
+                        <div class="workspace-card-body">
+                            <div class="flex flex-col gap-3">
+                                <button type="button" class="btn-workspace btn-primary" onclick="createTask()">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                                    </svg>
+                                    Create Task
+                                </button>
+                                <button type="button" class="btn-workspace btn-secondary" onclick="inviteTeam()">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                                    </svg>
+                                    Invite Team
+                                </button>
+                                <button type="button" class="btn-workspace btn-secondary" onclick="viewCode()">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path>
+                                    </svg>
+                                    View Code
+                                </button>
+                                <button type="button" class="btn-workspace btn-secondary" onclick="startAIPair()">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path>
+                                    </svg>
+                                    AI Pair Chat
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Recent Activity -->
+                    <div class="workspace-card" style="grid-column: span 2;">
+                        <div class="workspace-card-header">
+                            <h2 class="workspace-card-title">Recent Activity</h2>
+                        </div>
+                        <div class="workspace-card-body">
+                            <div id="activityFeed" class="flex flex-col gap-2">
+                                <p class="text-muted text-sm">Loading activity...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Integrations Hub -->
+                <div class="workspace-card mb-6">
+                    <div class="workspace-card-header">
+                        <div class="flex items-center justify-between">
+                            <h2 class="workspace-card-title">Integrations Hub</h2>
+                            <a href="integrations.html" class="text-sm font-medium" style="color: #3b82f6;">View All →</a>
+                        </div>
+                    </div>
+                    <div class="workspace-card-body">
+                        <div id="integrationsHub" class="grid grid-cols-4 gap-4">
+                            <p class="text-muted text-sm">Loading integrations...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Projects Overview -->
+                <div class="workspace-card">
+                    <div class="workspace-card-header">
+                        <div class="flex items-center justify-between">
+                            <h2 class="workspace-card-title">Recent Projects</h2>
+                            <a href="workspace.html" class="text-sm font-medium" style="color: #3b82f6;">View All →</a>
+                        </div>
+                    </div>
+                    <div class="workspace-card-body">
+                        <div id="projectsList" class="flex flex-col gap-3">
+                            <p class="text-muted text-sm">Loading projects...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // Dashboard Controller with Complete Functionality
+        // Use API_BASE_URL from api.js
+        const API_URL = typeof API_BASE_URL !== 'undefined' ? API_BASE_URL : 'https://codex-backend-7utu.onrender.com/api';
+        const token = localStorage.getItem('authToken');
+        
+        if (!token) {
+            window.location.href = 'sign_in.html';
+        }
+
+        // Load user data with proper error handling
+        async function loadUserData() {
+            try {
+                const response = await fetch(`${API_URL}/auth/me`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const result = await response.json();
+                
+                if (result.success && result.user) {
+                    const user = result.user;
+                    
+                    // Fix profile picture URL
+                    let avatarUrl = user.profilePicture || user.profilePhoto;
+                    if (avatarUrl && avatarUrl.startsWith('/uploads/')) {
+                        avatarUrl = `${API_URL.replace('/api', '')}${avatarUrl}`;
+                    } else if (!avatarUrl) {
+                        avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(user.fullName || user.name || 'User')}&background=3b82f6&color=fff`;
+                    }
+
+                    // Update sidebar
+                    const sidebarName = document.getElementById('sidebarName');
+                    const sidebarRole = document.getElementById('sidebarRole');
+                    const sidebarAvatar = document.getElementById('sidebarAvatar');
+                    if (sidebarName) sidebarName.textContent = user.fullName || user.name || 'User';
+                    if (sidebarRole) sidebarRole.textContent = user.role?.join(', ') || 'Member';
+                    if (sidebarAvatar) sidebarAvatar.src = avatarUrl;
+
+                    // Update header
+                    const headerAvatar = document.getElementById('headerAvatar');
+                    if (headerAvatar) headerAvatar.src = avatarUrl;
+
+                    // Update subscription badge
+                    await loadSubscription();
+                }
+            } catch (error) {
+                console.error('Error loading user data:', error);
+            }
+        }
+
+        // Load subscription info
+        async function loadSubscription() {
+            try {
+                const response = await fetch(`${API_URL}/subscription/current`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+                
+                if (data.success && data.subscription) {
+                    const badge = document.getElementById('subscriptionBadge');
+                    if (badge) {
+                        const tierNames = {
+                            freebie: 'Free',
+                            professional: 'Pro',
+                            enterprise: 'Enterprise'
+                        };
+                        badge.textContent = tierNames[data.subscription.tier] || 'Free';
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading subscription:', error);
+            }
+        }
+
+        // Load real stats from API
+        async function loadStats() {
+            try {
+                const response = await fetch(`${API_URL}/dashboard/data`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const result = await response.json();
+                
+                if (result.success && result.data) {
+                    const stats = result.data.stats;
+                    
+                    const activeProjects = document.getElementById('activeProjectsCount');
+                    const totalCompleted = document.getElementById('totalCompletedCount');
+                    const teamMembers = document.getElementById('teamMembersCount');
+                    const integrations = document.getElementById('integrationsCount');
+                    
+                    if (activeProjects) activeProjects.textContent = stats.activeProjects || '0';
+                    if (totalCompleted) totalCompleted.textContent = stats.totalCompleted || '0';
+                    if (teamMembers) teamMembers.textContent = stats.teamMembers || '0';
+                    if (integrations) integrations.textContent = stats.integrations || '0';
+                } else {
+                    // Show zeros instead of fake placeholder data
+                    setZeroStats();
+                }
+            } catch (error) {
+                console.error('Error loading stats:', error);
+                setZeroStats();
+            }
+        }
+
+        function setZeroStats() {
+            const activeProjects = document.getElementById('activeProjectsCount');
+            const totalCompleted = document.getElementById('totalCompletedCount');
+            const teamMembers = document.getElementById('teamMembersCount');
+            const integrations = document.getElementById('integrationsCount');
+            
+            if (activeProjects) activeProjects.textContent = '0';
+            if (totalCompleted) totalCompleted.textContent = '0';
+            if (teamMembers) teamMembers.textContent = '0';
+            if (integrations) integrations.textContent = '0';
+        }
+
+        // Load integrations hub
+        async function loadIntegrationsHub() {
+            const container = document.getElementById('integrationsHub');
+            if (!container) return;
+
+            try {
+                const response = await fetch(`${API_URL}/dashboard/data`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const result = await response.json();
+                
+                if (result.success && result.data) {
+                    const connectedIntegrations = result.data.connectedIntegrations || [];
+                    renderIntegrationsHub(connectedIntegrations);
+                } else {
+                    renderEmptyIntegrationsHub();
+                }
+            } catch (error) {
+                console.error('Error loading integrations:', error);
+                renderEmptyIntegrationsHub();
+            }
+        }
+
+        function renderIntegrationsHub(connectedIntegrations) {
+            const container = document.getElementById('integrationsHub');
+            if (!container) return;
+
+            const integrations = [
+                { 
+                    platform: 'github', 
+                    name: 'GitHub', 
+                    svg: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>' 
+                },
+                { 
+                    platform: 'discord', 
+                    name: 'Discord', 
+                    svg: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/></svg>' 
+                },
+                { 
+                    platform: 'figma', 
+                    name: 'Figma', 
+                    svg: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M15.852 8.981h-4.588V0h4.588c2.476 0 4.49 2.014 4.49 4.49s-2.014 4.491-4.49 4.491zM12.735 7.51h3.117c1.665 0 3.019-1.355 3.019-3.019s-1.355-3.019-3.019-3.019h-3.117V7.51zm0 1.471H8.148c-2.476 0-4.49-2.014-4.49-4.49S5.672 0 8.148 0h4.588v8.981zm-4.587-7.51c-1.665 0-3.019 1.355-3.019 3.019s1.354 3.02 3.019 3.02h3.117V1.471H8.148zm4.587 15.019H8.148c-2.476 0-4.49-2.014-4.49-4.49s2.014-4.49 4.49-4.49h4.588v8.98zM8.148 8.981c-1.665 0-3.019 1.355-3.019 3.019s1.355 3.019 3.019 3.019h3.117V8.981H8.148zM8.172 24c-2.489 0-4.515-2.014-4.515-4.49s2.014-4.49 4.49-4.49h4.588v4.441c0 2.503-2.047 4.539-4.563 4.539zm-.024-7.51a3.023 3.023 0 0 0-3.019 3.019c0 1.665 1.365 3.019 3.044 3.019 1.705 0 3.093-1.376 3.093-3.068v-2.97H8.148zm7.704 0h-.098c-2.476 0-4.49-2.014-4.49-4.49s2.014-4.49 4.49-4.49h.098c2.476 0 4.49 2.014 4.49 4.49s-2.014 4.49-4.49 4.49zm-.097-7.509c-1.665 0-3.019 1.355-3.019 3.019s1.355 3.019 3.019 3.019h.098c1.665 0 3.019-1.355 3.019-3.019s-1.355-3.019-3.019-3.019h-.098z"/></svg>' 
+                },
+                { 
+                    platform: 'slack', 
+                    name: 'Slack', 
+                    svg: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/></svg>' 
+                },
+                { 
+                    platform: 'notion', 
+                    name: 'Notion', 
+                    svg: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M4.459 4.208c.746.606 1.026.56 2.428.466l13.215-.793c.28 0 .047-.28-.046-.326L17.86 1.968c-.42-.326-.981-.7-2.055-.607l-13.169.793c-.28.047-.42.14-.42.28 0 .14.14.28.42.28l.793.514zm.793 2.246v13.683c0 .42.326.606.793.56l14.494-.793c.42-.047.793-.326.793-.793V5.734c0-.28-.14-.56-.42-.56-.047 0-.047 0-.14.047l-14.494.793c-.326.047-.56.28-.56.56zm14.494-.56l.793.56v13.683l-.793.56-13.215-.793V6.454l13.215-.56z"/><path d="M6.827 6.734c.28.047.56.047.793.047l11.215-.793c.28-.047.42-.14.42-.28 0-.14-.14-.28-.42-.28l-11.215.793c-.28.047-.42.14-.42.28 0 .14.14.28.42.28zm.793 2.246v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14v-10.5c0-.28-.14-.42-.42-.42-.14 0-.28.047-.42.14l-2.24 1.4c-.14.093-.28.14-.42.14-.14 0-.28-.047-.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24 1.4c-.14.093-.28.14-.42.14-.14 0-.28-.047-.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14v-10.5c0-.28-.14-.42-.42-.42-.14 0-.28.047-.42.14l-2.24 1.4c-.14.093-.28.14-.42.14-.14 0-.28-.047-.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24 1.4c-.14.093-.28.14-.42.14-.14 0-.28-.047-.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14v-10.5c0-.28-.14-.42-.42-.42-.14 0-.28.047-.42.14l-2.24 1.4c-.14.093-.28.14-.42.14-.14 0-.28-.047-.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24 1.4c-.14.093-.28.14-.42.14-.14 0-.28-.047-.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14v-10.5c0-.28-.14-.42-.42-.42-.14 0-.28.047-.42.14l-2.24 1.4c-.14.093-.28.14-.42.14-.14 0-.28-.047-.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24 1.4c-.14.093-.28.14-.42.14-.14 0-.28-.047-.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14v-10.5c0-.28-.14-.42-.42-.42-.14 0-.28.047-.42.14l-2.24 1.4c-.14.093-.28.14-.42.14-.14 0-.28-.047-.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24 1.4c-.14.093-.28.14-.42.14-.14 0-.28-.047-.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14v-10.5c0-.28-.14-.42-.42-.42-.14 0-.28.047-.42.14l-2.24 1.4c-.14.093-.28.14-.42.14-.14 0-.28-.047-.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24 1.4c-.14.093-.28.14-.42.14-.14 0-.28-.047-.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14v-10.5c0-.28-.14-.42-.42-.42-.14 0-.28.047-.42.14l-2.24 1.4c-.14.093-.28.14-.42.14-.14 0-.28-.047-.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24 1.4c-.14.093-.28.14-.42.14-.14 0-.28-.047-.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14v-10.5c0-.28-.14-.42-.42-.42-.14 0-.28.047-.42.14l-2.24 1.4c-.14.093-.28.14-.42.14-.14 0-.28-.047-.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24 1.4c-.14.093-.28.14-.42.14-.14 0-.28-.047-.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14v-10.5c0-.28-.14-.42-.42-.42-.14 0-.28.047-.42.14l-2.24 1.4c-.14.093-.28.14-.42.14-.14 0-.28-.047-.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24 1.4c-.14.093-.28.14-.42.14-.14 0-.28-.047-.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14v10.5c0 .28.14.42.42.42.14 0 .28-.047.42-.14l2.24-1.4c.14-.093.28-.14.42-.14.14 0 .28.047.42.14l2.24 1.4c.14.093.28.14.42.14.14 0 .28-.047.42-.14l-2.24-1.4c-.14-.093-.28-.14-.42-.14-.14 0-.28.047-.42.14l-2.24
+                { 
+                    platform: 'vscode', 
+                    name: 'VS Code', 
+                    svg: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M23.15 2.587L18.21.21a1.494 1.494 0 0 0-1.705.29l-9.46 8.63-4.12-3.128a.999.999 0 0 0-1.276.057L.327 7.261A1 1 0 0 0 .326 8.74l3.36 3.26-3.36 3.26a1 1 0 0 0 .001 1.479L1.65 17.94a.999.999 0 0 0 1.276.057l4.12-3.128 9.46 8.63a1.492 1.492 0 0 0 1.704.29l4.942-2.377A1.5 1.5 0 0 0 24 20.06V3.94a1.5 1.5 0 0 0-.85-1.353zm-5.146 14.593l-8.1-5.18 8.1-5.18z"/></svg>' 
+                }
+            ];
+
+                const badgeClass = isConnected ? 'badge-green' : 'badge-gray';
+                const badgeText = isConnected ? 'Connected' : 'Not Connected';
+
+                return `
+                    <div class="integration-card" onclick="window.location.href='settings.html#integrations'" style="cursor: pointer; padding: 1rem; border: 1px solid #e5e5e5; border-radius: 8px; transition: all 0.2s;">
+                        <div style="width: 48px; height: 48px; margin-bottom: 0.75rem; color: ${isConnected ? '#3b82f6' : '#94a3b8'};">${integration.svg}</div>
+                        <div style="font-weight: 600; font-size: 14px; margin-bottom: 0.25rem;">${integration.name}</div>
+                        <div class="badge ${badgeClass}" style="display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; ${isConnected ? 'background: #d1fae5; color: #065f46;' : 'background: #f3f4f6; color: #6b7280;'}">${badgeText}</div>
+                    </div>
+                `;
+            }).join('');
+
+            container.innerHTML = html;
+        }
+
+        function renderEmptyIntegrationsHub() {
+            const container = document.getElementById('integrationsHub');
+            if (!container) return;
+
+            container.innerHTML = `
+                <div style="grid-column: span 4; text-align: center; padding: 2rem;">
+                    <p class="text-muted text-sm">No integrations connected yet</p>
+                    <a href="settings.html#integrations" class="text-sm" style="color: #3b82f6; text-decoration: none; margin-top: 0.5rem; display: inline-block;">Connect Integrations →</a>
+                </div>
+            `;
+        }
+
+        // Load activity feed from real integrations
+        async function loadActivity() {
+            const feed = document.getElementById('activityFeed');
+            if (!feed) return;
+            
+            try {
+                // Fetch activities from all integrations in parallel
+                const activities = await Promise.all([
+                    fetchGitHubActivity(),
+                    fetchDiscordActivity(),
+                    fetchFigmaActivity(),
+                    fetchSlackActivity()
+                ]);
+                
+                // Flatten and sort by timestamp
+                const allActivities = activities
+                    .flat()
+                    .filter(a => a !== null)
+                    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+                    .slice(0, 10); // Show latest 10 activities
+                
+                if (allActivities.length > 0) {
+                    renderActivity(allActivities);
+                } else {
+                    renderPlaceholderActivity();
+                }
+            } catch (error) {
+                console.error('Error loading activity:', error);
+                renderPlaceholderActivity();
+            }
+        }
+
+        // Fetch GitHub activity (commits, PRs, issues)
+        async function fetchGitHubActivity() {
+            try {
+                const response = await fetch(`${API_URL}/github/repos?per_page=5`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+                
+                if (!data.success || !data.repositories || data.repositories.length === 0) {
+                    return [];
+                }
+                
+                // Get commits from first repo
+                const repo = data.repositories[0];
+                const commitsResponse = await fetch(`${API_URL}/github/repos/${repo.owner}/${repo.name}/commits?per_page=3`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const commitsData = await commitsResponse.json();
+                
+                if (commitsData.success && commitsData.commits) {
+                    return commitsData.commits.map(commit => ({
+                        type: 'integration',
+                        title: 'GitHub Commit',
+                        description: `${commit.message.split('\n')[0]} in ${repo.name}`,
+                        timestamp: commit.author.date,
+                        icon: 'github'
+                    }));
+                }
+                
+                return [];
+            } catch (error) {
+                console.error('GitHub activity error:', error);
+                return [];
+            }
+        }
+
+        // Fetch Discord activity (messages)
+        async function fetchDiscordActivity() {
+            try {
+                const guildsResponse = await fetch(`${API_URL}/discord/guilds`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const guildsData = await guildsResponse.json();
+                
+                if (!guildsData.success || !guildsData.guilds || guildsData.guilds.length === 0) {
+                    return [];
+                }
+                
+                // Get messages from first guild's first channel
+                const guild = guildsData.guilds[0];
+                const channelsResponse = await fetch(`${API_URL}/discord/guilds/${guild.id}/channels`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const channelsData = await channelsResponse.json();
+                
+                if (channelsData.success && channelsData.channels && channelsData.channels.length > 0) {
+                    const channel = channelsData.channels[0];
+                    const messagesResponse = await fetch(`${API_URL}/discord/channels/${channel.id}/messages?limit=3`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const messagesData = await messagesResponse.json();
+                    
+                    if (messagesData.success && messagesData.messages) {
+                        return messagesData.messages.map(msg => ({
+                            type: 'team',
+                            title: 'Discord Message',
+                            description: `${msg.author.username}: ${msg.content.substring(0, 50)}${msg.content.length > 50 ? '...' : ''}`,
+                            timestamp: msg.timestamp,
+                            icon: 'discord'
+                        }));
+                    }
+                }
+                
+                return [];
+            } catch (error) {
+                console.error('Discord activity error:', error);
+                return [];
+            }
+        }
+
+        // Fetch Figma activity (comments, file updates)
+        async function fetchFigmaActivity() {
+            try {
+                const filesResponse = await fetch(`${API_URL}/figma/files`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const filesData = await filesResponse.json();
+                
+                if (!filesData.success || !filesData.files || filesData.files.length === 0) {
+                    return [];
+                }
+                
+                // Get comments from first file
+                const file = filesData.files[0];
+                const commentsResponse = await fetch(`${API_URL}/figma/files/${file.key}/comments`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const commentsData = await commentsResponse.json();
+                
+                if (commentsData.success && commentsData.comments) {
+                    return commentsData.comments.slice(0, 3).map(comment => ({
+                        type: 'integration',
+                        title: 'Figma Comment',
+                        description: `New comment on ${file.name}`,
+                        timestamp: comment.created_at,
+                        icon: 'figma'
+                    }));
+                }
+                
+                return [];
+            } catch (error) {
+                console.error('Figma activity error:', error);
+                return [];
+            }
+        }
+
+        // Fetch Slack activity (messages)
+        async function fetchSlackActivity() {
+            try {
+                const channelsResponse = await fetch(`${API_URL}/slack/conversations/list?limit=5`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const channelsData = await channelsResponse.json();
+                
+                if (!channelsData.success || !channelsData.channels || channelsData.channels.length === 0) {
+                    return [];
+                }
+                
+                // Get messages from first channel
+                const channel = channelsData.channels[0];
+                const messagesResponse = await fetch(`${API_URL}/slack/conversations/history/${channel.id}?limit=3`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const messagesData = await messagesResponse.json();
+                
+                if (messagesData.success && messagesData.messages) {
+                    return messagesData.messages.map(msg => ({
+                        type: 'team',
+                        title: 'Slack Message',
+                        description: `${msg.text?.substring(0, 50)}${msg.text?.length > 50 ? '...' : ''}`,
+                        timestamp: new Date(parseFloat(msg.ts) * 1000).toISOString(),
+                        icon: 'slack'
+                    }));
+                }
+                
+                return [];
+            } catch (error) {
+                console.error('Slack activity error:', error);
+                return [];
+            }
+        }
+
+        function renderActivity(activities) {
+            const feed = document.getElementById('activityFeed');
+            if (!feed) return;
+            
+            const iconColors = {
+                task: { bg: '#dbeafe', color: '#3b82f6' },
+                completed: { bg: '#d1fae5', color: '#10b981' },
+                team: { bg: '#ede9fe', color: '#8b5cf6' },
+                integration: { bg: '#fef3c7', color: '#f59e0b' },
+                github: { bg: '#f3f4f6', color: '#1f2937' },
+                discord: { bg: '#eef2ff', color: '#5865F2' },
+                figma: { bg: '#fef2f2', color: '#f24e1e' },
+                slack: { bg: '#fef3c7', color: '#e01e5a' }
+            };
+            
+            const activityHTML = activities.map(activity => {
+                const colors = iconColors[activity.icon || activity.type] || iconColors.integration;
+                
+                return `
+                    <div style="display: flex; gap: 1rem; padding: 0.75rem; border-radius: 8px; transition: background 0.2s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+                        <div style="width: 40px; height: 40px; border-radius: 8px; background: ${colors.bg}; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                            <svg style="width: 20px; height: 20px; color: ${colors.color};" fill="currentColor" viewBox="0 0 20 20">
+                                ${getActivityIcon(activity.icon || activity.type)}
+                            </svg>
+                        </div>
+                        <div style="flex: 1;">
+                            <div style="font-weight: 500; font-size: 14px; margin-bottom: 0.25rem;">${activity.title}</div>
+                            <div style="font-size: 12px; color: #64748b;">${activity.description} - ${formatTime(activity.timestamp)}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            feed.innerHTML = activityHTML;
+        }
+
+        function renderPlaceholderActivity() {
+            const feed = document.getElementById('activityFeed');
+            if (!feed) return;
+            
+            feed.innerHTML = `
+                <div style="text-align: center; padding: 2rem; color: #94a3b8;">
+                    <svg style="width: 48px; height: 48px; margin: 0 auto 1rem; color: #cbd5e1;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    <p style="font-size: 14px; font-weight: 500; color: #64748b; margin-bottom: 0.5rem;">No recent activity</p>
+                    <p style="font-size: 12px; color: #94a3b8;">Connect integrations to see your activity here</p>
+                    <a href="settings.html#integrations" style="display: inline-block; margin-top: 1rem; padding: 0.5rem 1rem; background: #3b82f6; color: white; border-radius: 6px; text-decoration: none; font-size: 13px;">
+                        Connect Integrations
+                    </a>
+                </div>
+            `;
+        }
+
+        function getActivityIcon(type) {
+            const icons = {
+                task: '<path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"></path><path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clip-rule="evenodd"></path>',
+                completed: '<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>',
+                team: '<path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"></path>',
+                integration: '<path fill-rule="evenodd" d="M12.316 3.051a1 1 0 01.633 1.265l-4 12a1 1 0 11-1.898-.632l4-12a1 1 0 011.265-.633zM5.707 6.293a1 1 0 010 1.414L3.414 10l2.293 2.293a1 1 0 11-1.414 1.414l-3-3a1 1 0 010-1.414l3-3a1 1 0 011.414 0zm8.586 0a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 11-1.414-1.414L16.586 10l-2.293-2.293a1 1 0 010-1.414z" clip-rule="evenodd"></path>',
+                github: '<path fill-rule="evenodd" d="M10 0C4.477 0 0 4.484 0 10.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0110 4.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.203 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.942.359.31.678.921.678 1.856 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0020 10.017C20 4.484 15.522 0 10 0z" clip-rule="evenodd"></path>',
+                discord: '<path d="M13.545 2.907a13.227 13.227 0 0 0-3.257-1.011.05.05 0 0 0-.052.025c-.141.25-.297.577-.406.833a12.19 12.19 0 0 0-3.658 0 8.258 8.258 0 0 0-.412-.833.051.051 0 0 0-.052-.025c-1.125.194-2.22.534-3.257 1.011a.041.041 0 0 0-.021.018C.356 6.024-.213 9.047.066 12.032c.001.014.01.028.021.037a13.276 13.276 0 0 0 3.995 2.02.05.05 0 0 0 .056-.019c.308-.42.582-.863.818-1.329a.05.05 0 0 0-.01-.059.051.051 0 0 0-.018-.011 8.875 8.875 0 0 1-1.248-.595.05.05 0 0 1-.02-.066.051.051 0 0 1 .015-.019c.084-.063.168-.129.248-.195a.05.05 0 0 1 .051-.007c2.619 1.196 5.454 1.196 8.041 0a.052.052 0 0 1 .053.007c.08.066.164.132.248.195a.051.051 0 0 1-.004.085 8.254 8.254 0 0 1-1.249.594.05.05 0 0 0-.03.03.052.052 0 0 0 .003.041c.24.465.515.909.817 1.329a.05.05 0 0 0 .056.019 13.235 13.235 0 0 0 4.001-2.02.049.049 0 0 0 .021-.037c.334-3.451-.559-6.449-2.366-9.106a.034.034 0 0 0-.02-.019z"></path>',
+                figma: '<path d="M8 24c2.208 0 4-1.792 4-4v-4H8c-2.208 0-4 1.792-4 4s1.792 4 4 4z"></path><path d="M4 12c0-2.208 1.792-4 4-4h4v8H8c-2.208 0-4-1.792-4-4z"></path><path d="M4 4c0-2.208 1.792-4 4-4h4v8H8C5.792 8 4 6.208 4 4z"></path><path d="M12 0h4c2.208 0 4 1.792 4 4s-1.792 4-4 4h-4V0z"></path><path d="M20 12c0 2.208-1.792 4-4 4s-4-1.792-4-4 1.792-4 4-4 4 1.792 4 4z"></path>',
+                slack: '<path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312z"></path>'
+            };
+            return icons[type] || icons.integration;
+        }
+
+        function formatTime(timestamp) {
+            const now = new Date();
+            const time = new Date(timestamp);
+            const diff = Math.floor((now - time) / 1000); // seconds
+            
+            if (diff < 60) return 'just now';
+            if (diff < 3600) return `${Math.floor(diff / 60)} minutes ago`;
+            if (diff < 86400) return `${Math.floor(diff / 3600)} hours ago`;
+            if (diff < 604800) return `${Math.floor(diff / 86400)} days ago`;
+            return time.toLocaleDateString();
+        }
+
+        // Button handlers - with modals for creating projects and tasks
+        function createTask() {
+            showCreateTaskModal();
+        }
+
+        function inviteTeam() {
+            window.location.href = 'teams.html?action=invite';
+        }
+
+        function viewCode() {
+            window.location.href = 'source-code.html';
+        }
+
+        function startAIPair() {
+            window.location.href = 'ai-pair.html';
+        }
+
+        function viewAllProjects() {
+            showCreateProjectModal();
+        }
+
+        function connectIntegration(integration) {
+            window.location.href = `settings.html?tab=integrations&connect=${integration}`;
+        }
+        
+        // ==== Create Project Modal ====
+        function showCreateProjectModal() {
+            const modal = document.createElement('div');
+            modal.id = 'createProjectModal';
+            modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:9999;';
+            modal.innerHTML = `
+                <div style="background:white;border-radius:12px;padding:2rem;max-width:480px;width:100%;margin:1rem;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
+                        <h3 style="font-size:1.25rem;font-weight:700;color:#0f172a;">Create New Project</h3>
+                        <button onclick="closeModal('createProjectModal')" style="background:none;border:none;font-size:1.5rem;cursor:pointer;color:#64748b;">&times;</button>
+                    </div>
+                    <form id="createProjectForm" onsubmit="createProjectSubmit(event)">
+                        <div style="margin-bottom:1rem;">
+                            <label style="display:block;font-size:0.875rem;font-weight:500;color:#334155;margin-bottom:0.375rem;">Project Name *</label>
+                            <input type="text" id="newProjectName" required placeholder="my-awesome-project" style="width:100%;padding:0.625rem 0.875rem;border:1px solid #cbd5e1;border-radius:8px;font-size:0.875rem;">
+                        </div>
+                        <div style="margin-bottom:1rem;">
+                            <label style="display:block;font-size:0.875rem;font-weight:500;color:#334155;margin-bottom:0.375rem;">Description</label>
+                            <textarea id="newProjectDescription" rows="3" placeholder="A brief description" style="width:100%;padding:0.625rem 0.875rem;border:1px solid #cbd5e1;border-radius:8px;font-size:0.875rem;resize:vertical;"></textarea>
+                        </div>
+                        <div style="margin-bottom:1rem;">
+                            <label style="display:block;font-size:0.875rem;font-weight:500;color:#334155;margin-bottom:0.375rem;">Priority</label>
+                            <select id="newProjectPriority" style="width:100%;padding:0.625rem 0.875rem;border:1px solid #cbd5e1;border-radius:8px;font-size:0.875rem;">
+                                <option value="low">Low</option>
+                                <option value="medium" selected>Medium</option>
+                                <option value="high">High</option>
+                                <option value="urgent">Urgent</option>
+                            </select>
+                        </div>
+                        <div style="display:flex;gap:0.75rem;justify-content:flex-end;margin-top:1.5rem;">
+                            <button type="button" onclick="closeModal('createProjectModal')" style="padding:0.625rem 1.5rem;border:1px solid #cbd5e1;border-radius:8px;background:white;color:#334155;cursor:pointer;font-size:0.875rem;">Cancel</button>
+                            <button type="submit" style="padding:0.625rem 1.5rem;border:none;border-radius:8px;background:#3b82f6;color:white;cursor:pointer;font-size:0.875rem;font-weight:600;">Create Project</button>
+                        </div>
+                    </form>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        async function createProjectSubmit(event) {
+            event.preventDefault();
+            const name = document.getElementById('newProjectName').value.trim();
+            const description = document.getElementById('newProjectDescription').value.trim();
+            const priority = document.getElementById('newProjectPriority').value;
+
+            if (!name) return;
+
+            try {
+                const response = await fetch(`${API_URL}/projects`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ name, description, priority })
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    closeModal('createProjectModal');
+                    await loadProjects();
+                    await loadStats();
+                    alert('Project "' + name + '" created successfully!');
+                } else {
+                    alert(result.message || 'Failed to create project');
+                }
+            } catch (error) {
+                console.error('Create project error:', error);
+                alert('Failed to create project. Please try again.');
+            }
+        }
+
+        // === Create Task Modal ===
+        function showCreateTaskModal() {
+            const modal = document.createElement('div');
+            modal.id = 'createTaskModal';
+            modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:9999;';
+            modal.innerHTML = `
+                <div style="background:white;border-radius:12px;padding:2rem;max-width:480px;width:100%;margin:1rem;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
+                        <h3 style="font-size:1.25rem;font-weight:700;color:#0f172a;">Create New Task</h3>
+                        <button onclick="closeModal('createTaskModal')" style="background:none;border:none;font-size:1.5rem;cursor:pointer;color:#64748b;">&times;</button>
+                    </div>
+                    <form id="createTaskForm" onsubmit="createTaskSubmit(event)">
+                        <div style="margin-bottom:1rem;">
+                            <label style="display:block;font-size:0.875rem;font-weight:500;color:#334155;margin-bottom:0.375rem;">Task Title *</label>
+                            <input type="text" id="newTaskTitle" required placeholder="Implement feature XYZ" style="width:100%;padding:0.625rem 0.875rem;border:1px solid #cbd5e1;border-radius:8px;font-size:0.875rem;">
+                        </div>
+                        <div style="margin-bottom:1rem;">
+                            <label style="display:block;font-size:0.875rem;font-weight:500;color:#334155;margin-bottom:0.375rem;">Description</label>
+                            <textarea id="newTaskDescription" rows="3" placeholder="Task details" style="width:100%;padding:0.625rem 0.875rem;border:1px solid #cbd5e1;border-radius:8px;font-size:0.875rem;resize:vertical;"></textarea>
+                        </div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;">
+                            <div>
+                                <label style="display:block;font-size:0.875rem;font-weight:500;color:#334155;margin-bottom:0.375rem;">Priority</label>
+                                <select id="newTaskPriority" style="width:100%;padding:0.625rem 0.875rem;border:1px solid #cbd5e1;border-radius:8px;font-size:0.875rem;">
+                                    <option value="low">Low</option>
+                                    <option value="medium" selected>Medium</option>
+                                    <option value="high">High</option>
+                                    <option value="urgent">Urgent</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="display:block;font-size:0.875rem;font-weight:500;color:#334155;margin-bottom:0.375rem;">Task Type</label>
+                                <select id="newTaskType" style="width:100%;padding:0.625rem 0.875rem;border:1px solid #cbd5e1;border-radius:8px;font-size:0.875rem;">
+                                    <option value="local" selected>Local BuildrsHQ</option>
+                                    <option value="github">GitHub Issue</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div style="display:flex;gap:0.75rem;justify-content:flex-end;margin-top:1.5rem;">
+                            <button type="button" onclick="closeModal('createTaskModal')" style="padding:0.625rem 1.5rem;border:1px solid #cbd5e1;border-radius:8px;background:white;color:#334155;cursor:pointer;font-size:0.875rem;">Cancel</button>
+                            <button type="submit" style="padding:0.625rem 1.5rem;border:none;border-radius:8px;background:#3b82f6;color:white;cursor:pointer;font-size:0.875rem;font-weight:600;">Create Task</button>
+                        </div>
+                    </form>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        async function createTaskSubmit(event) {
+            event.preventDefault();
+            const title = document.getElementById('newTaskTitle').value.trim();
+            const description = document.getElementById('newTaskDescription').value.trim();
+            const priority = document.getElementById('newTaskPriority').value;
+            const taskType = document.getElementById('newTaskType').value;
+
+            if (!title) return;
+
+            try {
+                const response = await fetch(`${API_URL}/projects/tasks`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ title, description, priority, taskType })
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    closeModal('createTaskModal');
+                    await loadStats();
+                    alert('Task "' + title + '" created successfully!');
+                } else {
+                    alert(result.message || 'Failed to create task');
+                }
+            } catch (error) {
+                console.error('Create task error:', error);
+                alert('Failed to create task. Please try again.');
+            }
+        }
+        
+        // Close modal helper
+        function closeModal(modalId) {
+            const modal = document.getElementById(modalId);
+            if (modal) modal.remove();
+        }
+
+        // Make functions globally accessible
+        window.createTask = createTask;
+        window.inviteTeam = inviteTeam;
+        window.viewCode = viewCode;
+        window.startAIPair = startAIPair;
+        window.viewAllProjects = viewAllProjects;
+        window.connectIntegration = connectIntegration;
+        window.showCreateProjectModal = showCreateProjectModal;
+        window.showCreateTaskModal = showCreateTaskModal;
+        window.createProjectSubmit = createProjectSubmit;
+        window.createTaskSubmit = createTaskSubmit;
+        window.closeModal = closeModal;
+
+        // Load projects from GitHub repos and team projects
+        async function loadProjects() {
+            const projectsList = document.getElementById('projectsList');
+            if (!projectsList) return;
+            
+            try {
+                const projects = [];
+                
+                // Try to fetch GitHub repositories as projects
+                try {
+                    const githubResponse = await fetch(`${API_URL}/github/repos?per_page=5&sort=updated`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const githubData = await githubResponse.json();
+                    
+                    if (githubData.success && githubData.repositories) {
+                        projects.push(...githubData.repositories.map(repo => ({
+                            name: repo.name,
+                            description: repo.description || 'No description',
+                            status: 'active',
+                            type: 'github',
+                            updatedAt: repo.updatedAt,
+                            stats: {
+                                stars: repo.stars,
+                                forks: repo.forks,
+                                language: repo.language
+                            },
+                            url: repo.url
+                        })));
+                    }
+                } catch (error) {
+                    console.log('GitHub projects not available:', error.message);
+                }
+                
+                // Try to fetch team projects from collaboration
+                try {
+                    // First get user's company
+                    const userResponse = await fetch(`${API_URL}/auth/me`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const userData = await userResponse.json();
+                    
+                    if (userData.success && userData.user.company) {
+                        const projectsResponse = await fetch(`${API_URL}/collaboration/${userData.user.company}/projects`, {
+                            headers: { 'Authorization': `Bearer ${token}` }
+                        });
+                        const projectsData = await projectsResponse.json();
+                        
+                        if (projectsData.success && projectsData.projects) {
+                            projects.push(...projectsData.projects.map(project => ({
+                                name: project.name,
+                                description: project.description || 'No description',
+                                status: project.status,
+                                type: 'team',
+                                updatedAt: project.updatedAt,
+                                stats: {
+                                    progress: project.progress,
+                                    priority: project.priority,
+                                    members: project.members?.length || 0
+                                }
+                            })));
+                        }
+                    }
+                } catch (error) {
+                    console.log('Team projects not available:', error.message);
+                }
+                
+                // Sort by most recently updated
+                projects.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+                
+                if (projects.length > 0) {
+                    renderProjects(projects.slice(0, 5)); // Show top 5
+                } else {
+                    renderEmptyProjects();
+                }
+            } catch (error) {
+                console.error('Error loading projects:', error);
+                renderEmptyProjects();
+            }
+        }
+
+        function renderProjects(projects) {
+            const projectsList = document.getElementById('projectsList');
+            if (!projectsList) return;
+            
+            const projectsHTML = projects.map(project => {
+                const statusColors = {
+                    active: { bg: '#dbeafe', text: '#1e40af', label: 'Active' },
+                    planning: { bg: '#fef3c7', text: '#92400e', label: 'Planning' },
+                    'on-hold': { bg: '#fee2e2', text: '#991b1b', label: 'On Hold' },
+                    completed: { bg: '#d1fae5', text: '#065f46', label: 'Completed' },
+                    archived: { bg: '#f3f4f6', text: '#4b5563', label: 'Archived' }
+                };
+                
+                const status = statusColors[project.status] || statusColors.active;
+                const icon = project.type === 'github' ? 'github' : 'team';
+                const iconColor = project.type === 'github' ? '#1f2937' : '#8b5cf6';
+                
+                return `
+                    <div style="display: flex; gap: 1rem; padding: 1rem; border: 1px solid #e5e5e5; border-radius: 8px; transition: all 0.2s; cursor: pointer;" 
+                         onmouseover="this.style.boxShadow='0 2px 8px rgba(0,0,0,0.08)'; this.style.borderColor='#d4d4d4';" 
+                         onmouseout="this.style.boxShadow='none'; this.style.borderColor='#e5e5e5';"
+                         onclick="${project.url ? `window.open('${project.url}', '_blank')` : 'viewAllProjects()'}">
+                        <div style="width: 48px; height: 48px; border-radius: 8px; background: ${project.type === 'github' ? '#f3f4f6' : '#ede9fe'}; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                            <svg style="width: 24px; height: 24px; color: ${iconColor};" fill="currentColor" viewBox="0 0 20 20">
+                                ${getProjectIcon(icon)}
+                            </svg>
+                        </div>
+                        <div style="flex: 1; min-width: 0;">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
+                                <h3 style="font-weight: 600; font-size: 14px; margin: 0; color: #000;">${project.name}</h3>
+                                <span style="padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; background: ${status.bg}; color: ${status.text};">${status.label}</span>
+                            </div>
+                            <p style="font-size: 12px; color: #64748b; margin: 0 0 0.5rem 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${project.description}</p>
+                            <div style="display: flex; gap: 1rem; font-size: 11px; color: #94a3b8;">
+                                ${renderProjectStats(project)}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            projectsList.innerHTML = projectsHTML;
+        }
+
+        function renderProjectStats(project) {
+            if (project.type === 'github') {
+                return `
+                    <span>⭐ ${project.stats.stars || 0}</span>
+                    <span>🔱 ${project.stats.forks || 0}</span>
+                    ${project.stats.language ? `<span>• ${project.stats.language}</span>` : ''}
+                `;
+            } else {
+                return `
+                    <span>📊 ${project.stats.progress || 0}% complete</span>
+                    <span>👥 ${project.stats.members || 0} members</span>
+                    <span>🎯 ${project.stats.priority || 'medium'}</span>
+                `;
+            }
+        }
+
+        function renderEmptyProjects() {
+            const projectsList = document.getElementById('projectsList');
+            if (!projectsList) return;
+            
+            projectsList.innerHTML = `
+                <div style="text-align: center; padding: 2rem; background: #f8fafc; border-radius: 8px; border: 1px dashed #cbd5e1;">
+                    <svg style="width: 48px; height: 48px; color: #cbd5e1; margin: 0 auto 1rem;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                    <p style="color: #64748b; font-size: 14px; margin: 0 0 1rem 0;">No projects yet</p>
+                    <button onclick="viewAllProjects()" style="padding: 8px 16px; background: #3b82f6; color: white; border: none; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer;">
+                        Create Your First Project
+                    </button>
+                </div>
+            `;
+        }
+
+        function getProjectIcon(type) {
+            const icons = {
+                github: '<path fill-rule="evenodd" d="M10 0C4.477 0 0 4.484 0 10.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0110 4.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.203 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.942.359.31.678.921.678 1.856 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0020 10.017C20 4.484 15.522 0 10 0z" clip-rule="evenodd"></path>',
+                team: '<path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"></path>'
+            };
+            return icons[type] || icons.team;
+        }
+
+        // Initialize dashboard
+        async function initDashboard() {
+            await Promise.all([
+                loadUserData(),
+                loadStats(),
+                loadIntegrationsHub(),
+                loadActivity(),
+                loadProjects()
+            ]);
+        }
+
+        // Start initialization
+        initDashboard();
+
+        // Auto-refresh every 30 seconds
+        setInterval(() => {
+            loadStats();
+            loadIntegrationsHub();
+            loadActivity();
+            loadProjects();
+        }, 30000);
+    </script>
+</body>
+</html>
+
