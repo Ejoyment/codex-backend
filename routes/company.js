@@ -64,19 +64,20 @@ router.post('/create', authenticateToken, async (req, res) => {
         // Check user's subscription
         const subscription = await Subscription.findOne({ userId: req.userId });
         const tier = subscription?.tier || 'freebie';
+        const companyTier = tier === 'starter' ? 'freebie' : tier;
         
         // Check if user already owns a company
         const existingCompany = await Company.findOne({ owner: req.userId });
         
         // Tier-based restrictions
-        if (tier === 'freebie' && existingCompany) {
+        if (companyTier === 'freebie' && existingCompany) {
             return res.status(403).json({
                 success: false,
                 message: 'Freebie tier allows only one company. Upgrade to Professional for more workspaces.'
             });
         }
         
-        if (tier === 'professional' && existingCompany) {
+        if (companyTier === 'professional' && existingCompany) {
             return res.status(403).json({
                 success: false,
                 message: 'Professional tier allows only one company. Upgrade to Enterprise for multiple workspaces.'
@@ -96,7 +97,7 @@ router.post('/create', authenticateToken, async (req, res) => {
         }
         
         // Set member limit based on tier
-        const memberLimit = tier === 'freebie' ? 3 : tier === 'professional' ? 10 : 999999;
+        const memberLimit = companyTier === 'freebie' ? 3 : companyTier === 'professional' ? 10 : 999999;
         
         const company = new Company({
             name,
@@ -109,7 +110,7 @@ router.post('/create', authenticateToken, async (req, res) => {
                 joinedAt: new Date()
             }],
             subscription: {
-                tier,
+                tier: companyTier,
                 memberLimit
             }
         });
@@ -187,7 +188,8 @@ router.get('/my-companies', authenticateToken, async (req, res) => {
         const companiesData = await Promise.all(companies.map(async (company) => {
             // Get owner's subscription
             const ownerSubscription = await Subscription.findOne({ userId: company.owner._id });
-            const ownerTier = ownerSubscription?.tier || 'freebie';
+            let ownerTier = ownerSubscription?.tier || 'freebie';
+            if (ownerTier === 'starter') ownerTier = 'freebie';
             
             // Update company tier if it doesn't match
             if (company.subscription.tier !== ownerTier) {
@@ -316,7 +318,8 @@ router.get('/:companyId', authenticateToken, async (req, res) => {
         
         // Sync company tier with owner's subscription
         const ownerSubscription = await Subscription.findOne({ userId: company.owner._id });
-        const ownerTier = ownerSubscription?.tier || 'freebie';
+        let ownerTier = ownerSubscription?.tier || 'freebie';
+        if (ownerTier === 'starter') ownerTier = 'freebie';
         
         // Update company tier if it doesn't match owner's subscription
         if (company.subscription.tier !== ownerTier) {

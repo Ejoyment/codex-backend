@@ -604,14 +604,24 @@ router.post('/chat', verifyToken, checkAILimits, async (req, res) => {
             .limit(20)
             .select('role content');
 
-        // Enhanced context with agent instructions and team conventions
+        // Enhanced context with cross-tool AI context engine
         let teamConventionPrompt = '';
+        let crossToolContext = null;
         if (companyId) {
             try {
                 const teamMemoryService = require('../utils/teamMemoryService');
                 teamConventionPrompt = await teamMemoryService.getConventionsPrompt(companyId);
+                
+                const aiContextEngine = require('../utils/aiContextEngine');
+                crossToolContext = await aiContextEngine.buildCrossToolContext(req.userId, companyId, {
+                    includeFigma: true,
+                    includeTeamConventions: true,
+                    includeTicketContext: false,
+                    includeIntegrations: true,
+                    includeCodeContext: true
+                });
             } catch (error) {
-                console.error('Failed to load team conventions:', error.message);
+                console.error('Failed to load cross-tool context:', error.message);
             }
         }
 
@@ -649,7 +659,8 @@ router.post('/chat', verifyToken, checkAILimits, async (req, res) => {
         const enhancedContext = {
             ...codeContext,
             agentMode: enableActions,
-            instructions: `${baseInstructions}${teamConventionPrompt}`
+            instructions: `${baseInstructions}${teamConventionPrompt}`,
+            crossToolContext: crossToolContext
         };
 
         // Get AI response
