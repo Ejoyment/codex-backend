@@ -150,6 +150,11 @@ const debugRoutes = require('./routes/debug');
 const agentConfirmationRoutes = require('./routes/agent-confirmation');
 const flutterwaveBillingRoutes = require('./routes/flutterwave-billing');
 const projectRoutes = require('./routes/projects');
+const figmaContextRoutes = require('./routes/figma-context');
+const teamMemoryRoutes = require('./routes/team-memory');
+const ticketBridgeRoutes = require('./routes/ticket-bridge');
+const collaborationOverlayRoutes = require('./routes/collaboration-overlay');
+const debugHandoffRoutes = require('./routes/debug-handoff');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/otp', otpRoutes);
@@ -161,6 +166,8 @@ app.use('/api/dashboard', checkTrialStatus, dashboardRoutes);
 app.use('/api/ai-pair', enforceAIAccess, aiPairRoutes);
 app.use('/api/company', companyRoutes);
 app.use('/api/collaboration', collaborationRoutes);
+app.use('/api/collaboration', collaborationOverlayRoutes);
+app.use('/api/collaboration', debugHandoffRoutes);
 app.use('/api/code-editor', codeEditorRoutes);
 app.use('/api/invitations', invitationsRoutes);
 app.use('/api/messaging', messagingRoutes);
@@ -187,6 +194,7 @@ app.use('/api/debug', debugRoutes);
 app.use('/api/agent-confirmation', agentConfirmationRoutes);
 // Project routes (enforcement of project limits handled in route handlers)
 app.use('/api/projects', projectRoutes);
+app.use('/api/ai-context', figmaContextRoutes, teamMemoryRoutes, ticketBridgeRoutes);
 
 // Swagger API Documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs, {

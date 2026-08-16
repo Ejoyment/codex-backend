@@ -204,6 +204,79 @@ const options = {
             success: { type: 'boolean', example: true },
             message: { type: 'string' }
           }
+        },
+        DesignToken: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            userId: { type: 'string' },
+            figmaFileId: { type: 'string' },
+            figmaFileKey: { type: 'string' },
+            tokenType: { type: 'string', enum: ['color', 'typography', 'spacing', 'shadow', 'borderRadius', 'layout', 'component', 'variable'] },
+            name: { type: 'string' },
+            value: { type: 'object' },
+            mode: { type: 'string' },
+            usageCount: { type: 'integer' }
+          }
+        },
+        TeamConvention: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            companyId: { type: 'string' },
+            category: { type: 'string', enum: ['architecture', 'naming', 'error-handling', 'state-management', 'api-design', 'testing', 'security', 'deployment', 'custom'] },
+            rule: { type: 'string' },
+            description: { type: 'string' },
+            examples: { type: 'array', items: { type: 'string' } },
+            techStack: { type: 'array', items: { type: 'string' } },
+            priority: { type: 'string', enum: ['required', 'recommended', 'optional'] }
+          }
+        },
+        TicketAnalysis: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            ticketId: { type: 'string' },
+            analysisStatus: { type: 'string', enum: ['pending', 'analyzing', 'completed', 'failed'] },
+            extractedContext: { type: 'object' },
+            linkedFiles: { type: 'array', items: { type: 'object' } },
+            suggestedFix: { type: 'object' },
+            sandboxState: { type: 'object' }
+          }
+        },
+        MeetingOverlay: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            meetingId: { type: 'string' },
+            companyId: { type: 'string' },
+            context: {
+              type: 'object',
+              properties: {
+                type: { type: 'string', enum: ['editor', 'sandbox', 'design-review', 'debug', 'general'] },
+                targetFileId: { type: 'string' },
+                targetProjectId: { type: 'string' },
+                ticketId: { type: 'string' },
+                debugSessionId: { type: 'string' }
+              }
+            },
+            status: { type: 'string', enum: ['active', 'paused', 'ended'] }
+          }
+        },
+        DebugHandoff: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            handoffId: { type: 'string' },
+            title: { type: 'string' },
+            description: { type: 'string' },
+            source: { type: 'string', enum: ['manual', 'debug-session', 'support-ticket', 'error-alert', 'ai-suggestion'] },
+            codeSnapshot: { type: 'object' },
+            runtimeState: { type: 'object' },
+            sandbox: { type: 'object' },
+            access: { type: 'object' },
+            resolvedAt: { type: 'string', format: 'date-time' }
+          }
         }
       }
     },
@@ -229,6 +302,7 @@ const options = {
       { name: 'Messaging', description: 'Real-time team messaging and channels' },
       { name: 'Meetings', description: 'Video meeting management' },
       { name: 'Collaboration', description: 'Real-time code collaboration sessions' },
+      { name: 'Collaboration Overlay', description: 'Embedded meeting overlays, bug handoffs, and in-context collaboration' },
       { name: 'Support System', description: 'Customer support tickets and agent management' },
       { name: 'Notifications', description: 'User notification management' },
       { name: 'GitHub API', description: 'Direct GitHub repository, branch, file, issue, and PR management' },
@@ -243,7 +317,8 @@ const options = {
       { name: 'Git', description: 'Git version control operations on workspaces' },
       { name: 'Debugger', description: 'Debug session management with breakpoints and stepping' },
       { name: 'Agent Confirmation', description: 'Human-in-the-loop confirmation for AI agent actions' },
-      { name: 'Health', description: 'Server health and status endpoints' }
+      { name: 'Health', description: 'Server health and status endpoints' },
+      { name: 'AI Context Engine', description: 'Cross-tool AI context: Figma design tokens, team memory, support ticket-to-code bridge' }
     ]
   },
   apis: ['./routes/*.js', './server.js'],

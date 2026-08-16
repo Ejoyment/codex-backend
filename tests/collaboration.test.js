@@ -14,9 +14,9 @@ describe('CollaborationService - Unit Tests', () => {
     collaborationService = require('../utils/collaborationService');
   });
 
-  afterAll(() => {
+  afterAll(async () => {
     if (collaborationService.stop) {
-      collaborationService.stop();
+      await collaborationService.stop();
     }
   });
 

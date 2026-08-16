@@ -316,7 +316,7 @@
                 });
                 const result = await response.json();
                 
-                if (result.success && result.data) {
+                if (result.success && result.data && result.data.stats) {
                     const stats = result.data.stats;
                     
                     const activeProjects = document.getElementById('activeProjectsCount');
@@ -324,15 +324,14 @@
                     const teamMembers = document.getElementById('teamMembersCount');
                     const integrations = document.getElementById('integrationsCount');
                     
-                    if (activeProjects) activeProjects.textContent = stats.activeProjects || '0';
-                    if (totalCompleted) totalCompleted.textContent = stats.totalCompleted || '0';
-                    if (teamMembers) teamMembers.textContent = stats.teamMembers || '0';
-                    if (integrations) integrations.textContent = stats.integrations || '0';
+                    if (activeProjects) activeProjects.textContent = Math.max(0, Number(stats.activeProjects) || 0);
+                    if (totalCompleted) totalCompleted.textContent = Math.max(0, Number(stats.totalCompleted) || 0);
+                    if (teamMembers) teamMembers.textContent = Math.max(0, Number(stats.teamMembers) || 0);
+                    if (integrations) integrations.textContent = Math.max(0, Number(stats.integrations) || 0);
                     
                     // Show/hide trial banner
                     renderTrialBanner(result.data.trial);
                 } else {
-                    // Show zeros instead of fake placeholder data
                     setZeroStats();
                 }
             } catch (error) {
@@ -408,7 +407,7 @@
                 }
             } catch (error) {
                 console.error('Error loading integrations:', error);
-                renderEmptyIntegrationsHub();
+                // Keep existing hub content on transient errors instead of clearing it
             }
         }
 
@@ -1118,16 +1117,31 @@
             ]);
         }
 
+        // Refresh when tab becomes visible again
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                loadStats();
+                loadIntegrationsHub();
+                loadActivity();
+                loadProjects();
+            }
+        });
+
         // Start initialization
         initDashboard();
 
         // Auto-refresh every 30 seconds
-        setInterval(() => {
+        let dashboardInterval = setInterval(() => {
             loadStats();
             loadIntegrationsHub();
             loadActivity();
             loadProjects();
         }, 30000);
+
+        // Cleanup interval on page unload
+        window.addEventListener('beforeunload', () => {
+            clearInterval(dashboardInterval);
+        });
     </script>
 </body>
 </html>

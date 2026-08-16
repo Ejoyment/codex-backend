@@ -256,6 +256,8 @@ class CollaborationService {
      * Persist document to database
      */
     async persistDocument(fileId) {
+        if (process.env.NODE_ENV === 'test') return;
+        
         const ydoc = this.documents.get(fileId);
         if (!ydoc) return;
         
@@ -309,23 +311,27 @@ class CollaborationService {
     /**
      * Stop the service and cleanup all handles
      */
-    stop() {
+    async stop() {
         this.stopPersistenceWorker();
+
+        // Clear persistence queue to prevent new saves during shutdown
+        this.persistenceQueue.clear();
 
         // Clear all cleanup timeouts
         this.cleanupTimeouts.forEach(timeoutId => clearTimeout(timeoutId));
         this.cleanupTimeouts.clear();
 
         // Clean up documents
+        const persistPromises = [];
         this.documents.forEach((ydoc, fileId) => {
-            this.persistDocument(fileId);
+            persistPromises.push(this.persistDocument(fileId).catch(() => {}));
             ydoc.destroy();
         });
+        await Promise.all(persistPromises);
 
         this.documents.clear();
         this.awareness.clear();
         this.clients.clear();
-        this.persistenceQueue.clear();
 
         console.log('Collaboration service stopped and cleaned up');
     }

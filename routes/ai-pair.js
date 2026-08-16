@@ -509,6 +509,9 @@ router.get('/session/:sessionId', verifyToken, async (req, res) => {
  *                     type: string
  *               enableActions:
  *                 type: boolean
+ *               companyId:
+ *                 type: string
+ *                 description: Optional company ID to inject team architectural conventions into AI context
  *     responses:
  *       200:
  *         description: AI response with suggestions
@@ -529,7 +532,7 @@ router.get('/session/:sessionId', verifyToken, async (req, res) => {
 // Chat with AI (Enhanced with ReAct Agent Loop)
 router.post('/chat', verifyToken, checkAILimits, async (req, res) => {
     try {
-        const { sessionId, message, codeContext, enableActions = false, useAgentLoop = false } = req.body;
+        const { sessionId, message, codeContext, enableActions = false, useAgentLoop = false, companyId } = req.body;
         
         // Verify session belongs to user
         const session = await AIPairSession.findOne({
@@ -601,11 +604,18 @@ router.post('/chat', verifyToken, checkAILimits, async (req, res) => {
             .limit(20)
             .select('role content');
 
-        // Enhanced context with agent instructions
-        const enhancedContext = {
-            ...codeContext,
-            agentMode: enableActions,
-            instructions: enableActions ? `You are an autonomous AI coding agent. When users ask you to create files, projects, or make changes:
+        // Enhanced context with agent instructions and team conventions
+        let teamConventionPrompt = '';
+        if (companyId) {
+            try {
+                const teamMemoryService = require('../utils/teamMemoryService');
+                teamConventionPrompt = await teamMemoryService.getConventionsPrompt(companyId);
+            } catch (error) {
+                console.error('Failed to load team conventions:', error.message);
+            }
+        }
+
+        const baseInstructions = enableActions ? `You are an autonomous AI coding agent. When users ask you to create files, projects, or make changes:
 
 1. AUTOMATICALLY generate actions to execute - don't just explain
 2. Use these action types:
@@ -634,7 +644,12 @@ router.post('/chat', verifyToken, checkAILimits, async (req, res) => {
   "message": "I've created a complete website with HTML, CSS, and JavaScript files."
 }
 
-5. Only show code blocks if user asks to "show me" or "explain" - otherwise execute actions` : ''
+5. Only show code blocks if user asks to "show me" or "explain" - otherwise execute actions` : '';
+
+        const enhancedContext = {
+            ...codeContext,
+            agentMode: enableActions,
+            instructions: `${baseInstructions}${teamConventionPrompt}`
         };
 
         // Get AI response
