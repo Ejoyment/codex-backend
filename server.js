@@ -60,6 +60,17 @@ async function startServer(port = process.env.PORT || 3000) {
     const meetingSocket = require('./utils/meetingSocket');
     meetingSocket(socket);
 
+    // Realtime collaboration namespace: presence, hover cursors, inline audio, design sync
+    const realtimeBus = require('./utils/realtimeBus');
+    realtimeBus.setIO(socket);
+
+    const collabRealtimeSocket = require('./utils/collabRealtimeSocket');
+    collabRealtimeSocket(socket);
+
+    // Ephemeral sandbox provisioner (Instant Bug Handoff)
+    const sandboxProvisioner = require('./utils/sandboxProvisioner');
+    sandboxProvisioner.init(socket);
+
     return new Promise((resolve, reject) => {
         srv.listen(port, () => {
             console.log(`\n🚀 CODEX INC Server running on port ${port}`);
@@ -92,6 +103,14 @@ app.use('/uploads', express.static('uploads', {
     setHeaders: (res, path) => {
         res.set('Access-Control-Allow-Origin', '*');
         res.set('Cache-Control', 'public, max-age=31536000');
+    }
+}));
+
+// Serve the frontend SPA (editor, design-code split, sandbox viewer, etc.) so the
+// real-time collaboration features are viewable directly from this server at /app
+app.use('/app', express.static('frontend', {
+    setHeaders: (res) => {
+        res.set('Access-Control-Allow-Origin', '*');
     }
 }));
 
@@ -155,6 +174,8 @@ const teamMemoryRoutes = require('./routes/team-memory');
 const ticketBridgeRoutes = require('./routes/ticket-bridge');
 const collaborationOverlayRoutes = require('./routes/collaboration-overlay');
 const debugHandoffRoutes = require('./routes/debug-handoff');
+const collabRealtimeRoutes = require('./routes/collab-realtime');
+const designSyncRoutes = require('./routes/design-sync');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/otp', otpRoutes);
@@ -168,6 +189,8 @@ app.use('/api/company', companyRoutes);
 app.use('/api/collaboration', collaborationRoutes);
 app.use('/api/collaboration', collaborationOverlayRoutes);
 app.use('/api/collaboration', debugHandoffRoutes);
+app.use('/api/collaboration', collabRealtimeRoutes);
+app.use('/api/collaboration/design-sync', designSyncRoutes);
 app.use('/api/code-editor', codeEditorRoutes);
 app.use('/api/invitations', invitationsRoutes);
 app.use('/api/messaging', messagingRoutes);
@@ -336,6 +359,9 @@ const stopServer = async () => {
 
         const terminalService = require('./utils/terminalService');
         if (terminalService && terminalService.stopCleanup) terminalService.stopCleanup();
+
+        const sandboxProvisioner = require('./utils/sandboxProvisioner');
+        if (sandboxProvisioner && sandboxProvisioner.stopAll) await sandboxProvisioner.stopAll();
 
         const agentOrchestrator = require('./utils/agentOrchestrator');
         if (agentOrchestrator && agentOrchestrator.stop) agentOrchestrator.stop();

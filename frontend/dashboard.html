@@ -940,13 +940,38 @@
         window.createTaskSubmit = createTaskSubmit;
         window.closeModal = closeModal;
 
-        // Load projects from GitHub repos and team projects
+        // Load projects from local BuildrsHQ, GitHub, and team projects
         async function loadProjects() {
             const projectsList = document.getElementById('projectsList');
             if (!projectsList) return;
             
             try {
                 const projects = [];
+                
+                // Try to fetch local BuildrsHQ projects
+                try {
+                    const localResponse = await fetch(`${API_URL}/projects`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const localData = await localResponse.json();
+                    
+                    if (localData.success && localData.projects) {
+                        projects.push(...localData.projects.map(project => ({
+                            name: project.name,
+                            description: project.description || 'No description',
+                            status: project.status || 'active',
+                            type: 'local',
+                            updatedAt: project.updatedAt,
+                            stats: {
+                                progress: project.progress || 0,
+                                priority: project.priority || 'medium',
+                                members: project.members?.length || 0
+                            }
+                        })));
+                    }
+                } catch (error) {
+                    console.log('Local projects not available:', error.message);
+                }
                 
                 // Try to fetch GitHub repositories as projects
                 try {
@@ -1035,8 +1060,8 @@
                 };
                 
                 const status = statusColors[project.status] || statusColors.active;
-                const icon = project.type === 'github' ? 'github' : 'team';
-                const iconColor = project.type === 'github' ? '#1f2937' : '#8b5cf6';
+                const icon = project.type === 'github' ? 'github' : project.type === 'local' ? 'local' : 'team';
+                const iconColor = project.type === 'github' ? '#1f2937' : project.type === 'local' ? '#3b82f6' : '#8b5cf6';
                 
                 return `
                     <div style="display: flex; gap: 1rem; padding: 1rem; border: 1px solid #e5e5e5; border-radius: 8px; transition: all 0.2s; cursor: pointer;" 
@@ -1072,6 +1097,11 @@
                     <span>🔱 ${project.stats.forks || 0}</span>
                     ${project.stats.language ? `<span>• ${project.stats.language}</span>` : ''}
                 `;
+            } else if (project.type === 'local') {
+                return `
+                    <span>📊 ${project.stats.progress || 0}% complete</span>
+                    <span>🎯 ${project.stats.priority || 'medium'}</span>
+                `;
             } else {
                 return `
                     <span>📊 ${project.stats.progress || 0}% complete</span>
@@ -1101,9 +1131,10 @@
         function getProjectIcon(type) {
             const icons = {
                 github: '<path fill-rule="evenodd" d="M10 0C4.477 0 0 4.484 0 10.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0110 4.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.203 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.942.359.31.678.921.678 1.856 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0020 10.017C20 4.484 15.522 0 10 0z" clip-rule="evenodd"></path>',
-                team: '<path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"></path>'
+                team: '<path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"></path>',
+                local: '<path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>'
             };
-            return icons[type] || icons.team;
+            return icons[type] || icons.local;
         }
 
         // Initialize dashboard
