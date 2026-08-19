@@ -24,6 +24,15 @@ module.exports = (io) => {
                 timestamp: new Date()
             });
 
+            // If an agent joined, emit a system message to notify the user
+            if (userType === 'agent') {
+                supportNamespace.to(ticketId).emit('system-message', {
+                    ticketId,
+                    message: `${userName} joined the chat`,
+                    timestamp: new Date()
+                });
+            }
+
             // Send typing indicator support
             socket.on('typing', () => {
                 socket.to(ticketId).emit('user-typing', {
@@ -64,6 +73,7 @@ module.exports = (io) => {
 
                 // Broadcast message to all in the room
                 supportNamespace.to(ticketId).emit('new-message', {
+                    ticketId,
                     sender: senderType,
                     senderName,
                     message,
