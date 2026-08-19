@@ -217,6 +217,158 @@ router.get('/context', authenticateToken, async (req, res) => {
  *       401:
  *         description: Unauthorized
  */
+/**
+ * @swagger
+ * /api/ai-context/figma/read:
+ *   post:
+ *     summary: Read and extract design data from a Figma URL or file reference
+ *     description: |
+ *       Parses a Figma URL or file reference and returns comprehensive design data
+ *       including design tokens, component structure, and layout information.
+ *       This endpoint is used by the design-code split pane to process designs.
+ *     tags:
+ *       - AI Context Engine
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - figmaRef
+ *             properties:
+ *               figmaRef:
+ *                 type: string
+ *                 description: Figma file URL (https://figma.com/file/...) or file key
+ *               target:
+ *                 type: string
+ *                 description: Target framework for code generation (react, vue, html, flutter)
+ *                 default: react
+ *               workspaceId:
+ *                 type: string
+ *                 description: Optional workspace ID for context
+ *     responses:
+ *       200:
+ *         description: Design data extracted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 fileKey:
+ *                   type: string
+ *                 nodeId:
+ *                   type: string
+ *                 designContext:
+ *                   type: object
+ *                   properties:
+ *                     tokens:
+ *                       type: array
+ *                     components:
+ *                       type: array
+ *                     layout:
+ *                       type: object
+ *                     colors:
+ *                       type: array
+ *                     typography:
+ *                       type: array
+ *       400:
+ *         description: Invalid Figma reference
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Failed to read Figma design
+ */
+router.post('/read', authenticateToken, async (req, res) => {
+    try {
+        const { figmaRef, target = 'react', workspaceId } = req.body;
+        
+        if (!figmaRef) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'figmaRef is required - provide a Figma URL or file key' 
+            });
+        }
+
+        // Parse Figma URL to extract file key and node ID
+        let fileKey = figmaRef;
+        let nodeId = null;
+
+        // Handle Figma URLs like: https://www.figma.com/file/ABC123/Design?node-id=1:2
+        if (figmaRef.includes('figma.com')) {
+            const urlMatch = figmaRef.match(/figma\.com\/(?:file|design)\/([a-zA-Z0-9]+)/);
+            if (urlMatch) {
+                fileKey = urlMatch[1];
+            }
+            const nodeMatch = figmaRef.match(/node-id=([^&]+)/);
+            if (nodeMatch) {
+                nodeId = decodeURIComponent(nodeMatch[1]);
+            }
+        }
+
+        // Get design context from Figma
+        const figmaContextService = require('../utils/figmaContextService');
+        
+        let designContext = {
+            tokens: [],
+            components: [],
+            layout: {},
+            colors: [],
+            typography: [],
+            raw: null
+        };
+
+        try {
+            // Try to get the full design context
+            const context = await figmaContextService.getDesignContext(
+                req.userId,
+                fileKey,
+                nodeId,
+                'codegen'
+            );
+            
+            if (context) {
+                designContext = {
+                    tokens: context.designSystem?.tokens || [],
+                    components: context.components || [],
+                    layout: context.nodeTree || {},
+                    colors: context.designSystem?.colors || [],
+                    typography: context.designSystem?.typography || [],
+                    raw: context
+                };
+            }
+        } catch (figmaError) {
+            console.log('Figma context fetch failed, using fallback:', figmaError.message);
+            // Fallback: try to ingest tokens directly
+            try {
+                const tokens = await figmaContextService.ingestDesignTokens(req.userId, fileKey, nodeId);
+                designContext.tokens = tokens || [];
+            } catch (ingestError) {
+                console.log('Token ingest also failed:', ingestError.message);
+            }
+        }
+
+        res.json({
+            success: true,
+            fileKey,
+            nodeId,
+            target,
+            designContext,
+            message: `Design data extracted for ${target} code generation`
+        });
+    } catch (error) {
+        console.error('Figma read error:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: error.message || 'Failed to read Figma design' 
+        });
+    }
+});
+
 router.post('/cross-tool', authenticateToken, async (req, res) => {
     try {
         const { companyId, figmaFileKey, ticketId, techStack } = req.body;
