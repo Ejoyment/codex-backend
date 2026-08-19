@@ -428,6 +428,130 @@ router.get('/agents/online', async (req, res) => {
 
 /**
  * @swagger
+ * /api/support/agent/register:
+ *   post:
+ *     summary: Register a new support agent account
+ *     description: Allows a new agent to create their own account. Email is auto-generated using their name with @buildrshq.dev domain.
+ *     tags:
+ *       - Support System
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - name
+ *               - password
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 description: Full name of the agent
+ *                 example: John Doe
+ *               password:
+ *                 type: string
+ *                 description: Password for the agent account
+ *                 example: SecurePassword123
+ *     responses:
+ *       201:
+ *         description: Agent account created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 agent:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                     name:
+ *                       type: string
+ *                     email:
+ *                       type: string
+ *       400:
+ *         description: Invalid input or email already exists
+ */
+// Agent Self-Registration
+router.post('/agent/register', async (req, res) => {
+    try {
+        const { name, password } = req.body;
+
+        // Validation
+        if (!name || !password) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Please provide your name and password' 
+            });
+        }
+
+        if (password.length < 6) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Password must be at least 6 characters long' 
+            });
+        }
+
+        // Generate email from name: firstname@buildrshq.dev
+        // Extract first name, convert to lowercase, remove spaces and special characters
+        const nameParts = name.trim().split(/\s+/);
+        const firstName = nameParts[0].toLowerCase().replace(/[^a-z0-9]/g, '');
+        
+        if (!firstName) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Invalid name provided' 
+            });
+        }
+
+        const generatedEmail = `${firstName}@buildrshq.dev`;
+
+        // Check if agent with this email already exists
+        const existingAgent = await SupportAgent.findOne({ email: generatedEmail });
+        if (existingAgent) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'An agent account with this email already exists. Please contact admin if this is your account.' 
+            });
+        }
+
+        // Create the agent account
+        const agent = new SupportAgent({
+            name: name.trim(),
+            email: generatedEmail,
+            password: password,
+            role: 'agent',
+            status: 'offline'
+        });
+
+        await agent.save();
+
+        res.status(201).json({
+            success: true,
+            message: 'Agent account created successfully!',
+            agent: {
+                id: agent._id,
+                name: agent.name,
+                email: agent.email,
+                role: agent.role
+            },
+            loginUrl: '/support-admin.html'
+        });
+    } catch (error) {
+        console.error('Agent registration error:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to create agent account' 
+        });
+    }
+});
+
+/**
+ * @swagger
  * /api/support/setup/demo-agent:
  *   post:
  *     summary: Setup demo support agent

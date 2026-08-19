@@ -88,6 +88,107 @@ router.get('/tokens', authenticateToken, async (req, res) => {
 
 /**
  * @swagger
+ * /api/ai-context/figma/context:
+ *   get:
+ *     summary: Get unified design context (live Figma node tree + stored design tokens + component list)
+ *     description: |
+ *       Returns a comprehensive design context object that combines the live
+ *       Figma node structure (summarised for AI consumption), all previously
+ *       ingested design tokens, and a flat list of components/instances found
+ *       in the file or node.  Optimised for AI code generation and design
+ *       parity workflows.
+ *     tags:
+ *       - AI Context Engine
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: fileKey
+ *         in: query
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Figma file key
+ *       - name: nodeId
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: Optional Figma node ID to scope the context
+ *       - name: contextType
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: string
+ *           enum: [codegen, audit]
+ *           default: codegen
+ *         description: Context format — 'codegen' for AI code generation, 'audit' for detailed review
+ *     responses:
+ *       200:
+ *         description: Unified design context
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 context:
+ *                   type: object
+ *                   properties:
+ *                     fileKey:
+ *                       type: string
+ *                     nodeId:
+ *                       type: string
+ *                       nullable: true
+ *                     file:
+ *                       type: object
+ *                     fetchedAt:
+ *                       type: string
+ *                       format: date-time
+ *                     nodeTree:
+ *                       type: object
+ *                       description: Summarised Figma node tree (max depth 5)
+ *                     designSystem:
+ *                       type: object
+ *                       description: Flattened design tokens grouped by type
+ *                     tokenCount:
+ *                       type: integer
+ *                     components:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                     componentCount:
+ *                       type: integer
+ *       400:
+ *         description: Missing fileKey
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/context', authenticateToken, async (req, res) => {
+    try {
+        const { fileKey, nodeId, contextType } = req.query;
+        if (!fileKey) {
+            return res.status(400).json({ success: false, message: 'fileKey is required' });
+        }
+
+        const context = await figmaContextService.getDesignContext(
+            req.userId,
+            fileKey,
+            nodeId || null,
+            contextType || 'codegen'
+        );
+        res.json({ success: true, context });
+    } catch (error) {
+        console.error('Get design context error:', error);
+        const status = error.message?.includes('Figma not connected') ? 403 : 500;
+        res.status(status).json({ success: false, message: error.message });
+    }
+});
+
+/**
+ * @swagger
  * /api/ai-config/cross-tool:
  *   post:
  *     summary: Build unified AI context from all connected tools

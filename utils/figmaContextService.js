@@ -218,13 +218,196 @@ async function recordTokenUsage(userId, fileKey, tokenName) {
     }
 }
 
+/**
+ * Walk a Figma node tree and produce a lightweight component/layout summary
+ * suitable for AI code generation.  Each entry contains the node name, type,
+ * bounding box, and any fills / typography / border-radius that can be
+ * extracted inline.
+ */
+function summarizeNodeTree(node, depth = 0, maxDepth = 5) {
+    if (!node || depth > maxDepth) return null;
+
+    const summary = {
+        id: node.id || null,
+        name: node.name || null,
+        type: node.type || null,
+        depth
+    };
+
+    if (node.absoluteBoundingBox) {
+        summary.boundingBox = {
+            x: Math.round(node.absoluteBoundingBox.x || 0),
+            y: Math.round(node.absoluteBoundingBox.y || 0),
+            width: Math.round(node.absoluteBoundingBox.width || 0),
+            height: Math.round(node.absoluteBoundingBox.height || 0)
+        };
+    }
+
+    // Inline fills (solid colors only for brevity)
+    if (Array.isArray(node.fills)) {
+        const solidFills = node.fills.filter(f => f && f.type === 'SOLID' && f.color);
+        if (solidFills.length > 0) {
+            summary.fills = solidFills.map(f => {
+                const c = f.color;
+                const r = Math.round((c.r || 0) * 255);
+                const g = Math.round((c.g || 0) * 255);
+                const b = Math.round((c.b || 0) * 255);
+                return { hex: `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`, opacity: c.a ?? 1 };
+            });
+        }
+    }
+
+    // Inline typography
+    if (node.style && (node.style.fontSize || node.style.fontFamily)) {
+        summary.typography = {
+            fontFamily: node.style.fontFamily || null,
+            fontSize: node.style.fontSize || null,
+            fontWeight: node.style.fontWeight || null,
+            lineHeight: node.style.lineHeight || null,
+            letterSpacing: node.style.letterSpacing || null,
+            textAlign: node.style.textAlignHorizontal || null
+        };
+    }
+
+    // Border radius
+    if (node.cornerRadius !== undefined && node.cornerRadius !== null) {
+        summary.borderRadius = node.cornerRadius;
+    }
+
+    // Layout hints
+    if (node.layoutMode) {
+        summary.layout = {
+            mode: node.layoutMode,
+            gap: node.itemSpacing || null,
+            padding: {
+                top: node.paddingTop || null,
+                right: node.paddingRight || null,
+                bottom: node.paddingBottom || null,
+                left: node.paddingLeft || null
+            }
+        };
+    }
+
+    // Component metadata
+    if (node.componentId || node.componentKey) {
+        summary.component = {
+            id: node.componentId || null,
+            key: node.componentKey || null,
+            name: node.componentName || null
+        };
+    }
+
+    // Recurse into children
+    if (Array.isArray(node.children) && node.children.length > 0) {
+        summary.children = node.children
+            .map(child => summarizeNodeTree(child, depth + 1, maxDepth))
+            .filter(Boolean);
+    }
+
+    return summary;
+}
+
+/**
+ * Build a comprehensive, unified design context for a Figma file (optionally
+ * scoped to a single node).  This combines:
+ *   • The live Figma node tree (summarised for AI consumption)
+ *   • All previously-ingested design tokens from the database
+ *   • A flattened "design system" block optimised for code generation
+ *
+ * @param {string} userId   - Authenticated user ID
+ * @param {string} fileKey  - Figma file key
+ * @param {string|null} nodeId - Optional Figma node ID to scope the context
+ * @param {string} contextType - 'codegen' (default) or 'audit'
+ * @returns {Promise<object>} Unified design context
+ */
+async function getDesignContext(userId, fileKey, nodeId = null, contextType = 'codegen') {
+    const integration = await getFigmaIntegration(userId);
+
+    // 1. Fetch the live Figma file/node structure
+    const endpoint = nodeId
+        ? `/files/${fileKey}/nodes?ids=${encodeURIComponent(nodeId)}`
+        : `/files/${fileKey}?geometry=paths`;
+    const fileData = await figmaAPI(integration.accessToken, endpoint);
+
+    // Normalise: the /nodes endpoint returns { nodes: { [id]: { document } } }
+    // while the /files endpoint returns { document, components, styles, ... }
+    let rootNode = null;
+    let fileMeta = {};
+
+    if (fileData.nodes && nodeId) {
+        const nodeEntry = fileData.nodes[nodeId];
+        rootNode = nodeEntry?.document || null;
+        fileMeta = {
+            name: fileData.name || null,
+            lastModified: fileData.lastModified || null,
+            version: fileData.version || null
+        };
+    } else if (fileData.document) {
+        rootNode = nodeId
+            ? (fileData.document.children?.find(c => c.id === nodeId) || fileData.document)
+            : fileData.document;
+        fileMeta = {
+            name: fileData.name || null,
+            lastModified: fileData.lastModified || null,
+            version: fileData.version || null,
+            editorType: fileData.editorType || null
+        };
+    }
+
+    // 2. Retrieve stored design tokens
+    const tokensResult = await getDesignTokensForAI(userId, fileKey, contextType);
+
+    // 3. Summarise the node tree for AI consumption
+    const nodeTree = rootNode ? summarizeNodeTree(rootNode) : null;
+
+    // 4. Build a flat component list (top-level components / instances)
+    const components = [];
+    function collectComponents(node) {
+        if (!node) return;
+        if (node.type === 'COMPONENT' || node.type === 'COMPONENT_SET' || node.type === 'INSTANCE') {
+            components.push({
+                id: node.id,
+                name: node.name,
+                type: node.type,
+                componentKey: node.componentKey || node.componentId || null
+            });
+        }
+        if (Array.isArray(node.children)) {
+            node.children.forEach(collectComponents);
+        }
+    }
+    if (rootNode) collectComponents(rootNode);
+
+    // 5. Assemble the unified context
+    const context = {
+        fileKey,
+        nodeId: nodeId || null,
+        file: fileMeta,
+        fetchedAt: new Date().toISOString(),
+        nodeTree,
+        designSystem: tokensResult.designSystem || tokensResult,
+        tokenCount: tokensResult.tokenCount || 0,
+        components,
+        componentCount: components.length
+    };
+
+    // For 'audit' context type, include the raw grouped tokens as well
+    if (contextType === 'audit') {
+        context.rawTokens = tokensResult;
+    }
+
+    return context;
+}
+
 module.exports = {
     getFigmaIntegration,
     figmaAPI,
     ingestDesignTokens,
     getDesignTokensForAI,
+    getDesignContext,
     recordTokenUsage,
     extractColorTokens,
     extractTypographyTokens,
-    extractSpacingTokens
+    extractSpacingTokens,
+    summarizeNodeTree
 };
