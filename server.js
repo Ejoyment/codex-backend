@@ -40,6 +40,8 @@ function createServer() {
         cors: {
             origin: [
                 process.env.FRONTEND_URL || 'http://localhost:5500',
+                'https://buildrshq.dev',
+                'http://buildrshq.dev',
                 'https://codexincenterprise.online',
                 'http://codexincenterprise.online'
             ],
@@ -90,6 +92,8 @@ app.set('trust proxy', 1);
 app.use(cors({
     origin: [
         process.env.FRONTEND_URL || 'http://localhost:5500',
+        'https://buildrshq.dev',
+        'http://buildrshq.dev',
         'https://codexincenterprise.online',
         'http://codexincenterprise.online'
     ],

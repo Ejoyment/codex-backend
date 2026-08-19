@@ -28,14 +28,14 @@ const paystackPayments = [
         date: '12/02/2026'
     },
     {
-        email: 'admin@codexincenterprise.online',
+        email: 'admin@buildrshq.dev',
         authCode: 'AUTH_746v51j7mr',
         reference: '0mm8osadt9',
         amount: 50,
         date: '11/02/2026'
     },
     {
-        email: 'admin@codexincenterprise.online',
+        email: 'admin@buildrshq.dev',
         authCode: 'AUTH_9i2egzrcft',
         reference: 'w9obbnjeft',
         amount: 50,

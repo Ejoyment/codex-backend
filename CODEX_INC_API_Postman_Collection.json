@@ -609,7 +609,7 @@
     },
     {
       "key": "frontend_url",
-      "value": "https://codexincenterprise.online",
+      "value": "https://buildrshq.dev",
       "type": "string",
       "description": "Frontend URL for callbacks"
     },

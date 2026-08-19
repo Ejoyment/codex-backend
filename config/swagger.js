@@ -9,7 +9,7 @@ const options = {
       version: '1.0.0',
       contact: {
         name: 'BUILDRSHQ Support',
-        email: 'admin@codexincenterprise.online'
+        email: 'admin@buildrshq.dev'
       },
       license: {
         name: 'ISC'

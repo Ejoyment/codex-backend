@@ -306,14 +306,14 @@ const sendWelcomeEmail = async (email, fullName) => {
                         </div>
                         
                         <p style="text-align: center;">
-                            <a href="${process.env.FRONTEND_URL || 'https://codexincenterprise.online'}/sign_in.html" class="button">
+                            <a href="${process.env.FRONTEND_URL || 'https://buildrshq.dev'}/sign_in.html" class="button">
                                 Sign In to Your Dashboard →
                             </a>
                         </p>
                         
                         <p style="margin-top: 30px;">
                             <strong>Need help getting started?</strong><br>
-                            Check out our <a href="${process.env.FRONTEND_URL || 'https://codexincenterprise.online'}/docs" style="color: #667eea;">documentation</a> or contact support at support@buildrshq.com
+                            Check out our <a href="${process.env.FRONTEND_URL || 'https://buildrshq.dev'}/docs" style="color: #667eea;">documentation</a> or contact support at support@buildrshq.com
                         </p>
                     </div>
                     <div class="footer">
@@ -381,7 +381,7 @@ const sendInvitationEmail = async (invitation) => {
         return { success: true };
     }
 
-    const acceptUrl = `${process.env.FRONTEND_URL || 'https://codexincenterprise.online'}/accept-invitation.html?token=${invitation.token}`;
+    const acceptUrl = `${process.env.FRONTEND_URL || 'https://buildrshq.dev'}/accept-invitation.html?token=${invitation.token}`;
 
     const emailData = {
         from: process.env.EMAIL_FROM || 'CODEX INC <onboarding@resend.dev>',
