@@ -15,7 +15,8 @@ module.exports = (io) => {
         
         try {
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
-            socket.userId = decoded.userId;
+            // JWT is signed with `{ id: userId }` (see routes/auth.js generateToken)
+            socket.userId = decoded.userId || decoded.id;
             socket.user = decoded;
             next();
         } catch (error) {

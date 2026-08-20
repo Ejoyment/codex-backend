@@ -284,27 +284,51 @@
             }
         }
 
-        // Load subscription info
+        // Load subscription info - uses getCurrentUser for reliability (same as teams.html)
         async function loadSubscription() {
             try {
-                const response = await fetch(`${API_URL}/subscription/current`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                const data = await response.json();
+                // Use getCurrentUser which reliably returns subscription data via /api/auth/me
+                const result = await api.getCurrentUser(token);
                 
-                if (data.success && data.subscription) {
+                if (result.success && result.user) {
+                    const user = result.user;
+                    const tier = user.subscription?.tier || 'freebie';
                     const badge = document.getElementById('subscriptionBadge');
+                    
                     if (badge) {
                         const tierNames = {
                             freebie: 'Free',
+                            starter: 'Free',
                             professional: 'Pro',
                             enterprise: 'Enterprise'
                         };
-                        badge.textContent = tierNames[data.subscription.tier] || 'Free';
+                        badge.textContent = tierNames[tier] || 'Free';
                     }
                 }
             } catch (error) {
                 console.error('Error loading subscription:', error);
+                // Fallback: try the subscription endpoint directly
+                try {
+                    const response = await fetch(`${API_URL}/subscription/current`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const data = await response.json();
+                    
+                    if (data.success && data.subscription) {
+                        const badge = document.getElementById('subscriptionBadge');
+                        if (badge) {
+                            const tierNames = {
+                                freebie: 'Free',
+                                starter: 'Free',
+                                professional: 'Pro',
+                                enterprise: 'Enterprise'
+                            };
+                            badge.textContent = tierNames[data.subscription.tier] || 'Free';
+                        }
+                    }
+                } catch (fallbackError) {
+                    console.error('Fallback subscription load also failed:', fallbackError);
+                }
             }
         }
 
