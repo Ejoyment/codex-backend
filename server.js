@@ -62,6 +62,10 @@ async function startServer(port = process.env.PORT || 3000) {
     const meetingSocket = require('./utils/meetingSocket');
     meetingSocket(socket);
 
+    // Messaging Socket.IO namespace for real-time team chat
+    const messagingSocket = require('./utils/messagingSocket');
+    messagingSocket(socket);
+
     // Realtime collaboration namespace: presence, hover cursors, inline audio, design sync
     const realtimeBus = require('./utils/realtimeBus');
     realtimeBus.setIO(socket);

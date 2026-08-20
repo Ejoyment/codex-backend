@@ -90,10 +90,15 @@ router.get('/channels', authenticateToken, async (req, res) => {
     try {
         const { companyId } = req.query;
         
+        // Public channels are visible to ALL company members;
+        // private/direct channels are visible only to their members
         const channels = await Channel.find({
             company: companyId,
             archived: false,
-            'members.user': req.userId
+            $or: [
+                { type: 'public' },
+                { 'members.user': req.userId }
+            ]
         })
             .populate('members.user', 'fullName email profilePicture')
             .populate('lastMessage')
