@@ -236,6 +236,23 @@ module.exports = (io) => {
             }
         });
         
+        // Host ends meeting for everyone
+        socket.on('meeting-ended', async ({ roomId }) => {
+            try {
+                const meeting = await MeetingRoom.findOne({ roomId });
+                if (meeting) {
+                    meeting.status = 'completed';
+                    meeting.endedAt = new Date();
+                    await meeting.save();
+                }
+                // Notify all participants in the room
+                meetingNamespace.to(roomId).emit('meeting-ended');
+                console.log(`Meeting ended for room: ${roomId}`);
+            } catch (error) {
+                console.error('Meeting ended error:', error);
+            }
+        });
+
         // Leave room
         socket.on('leave-room', async ({ roomId }) => {
             try {
