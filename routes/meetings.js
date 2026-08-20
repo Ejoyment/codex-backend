@@ -118,8 +118,12 @@ router.get('/', authenticateToken, async (req, res) => {
         }
         
         if (upcoming === 'true') {
-            query.scheduledAt = { $gte: new Date() };
-            query.status = { $in: ['scheduled', 'ongoing'] };
+            // Show upcoming meetings AND any currently-ongoing meetings,
+            // even if their scheduledStart time has already passed
+            query.$or = [
+                { scheduledAt: { $gte: new Date() }, status: { $in: ['scheduled', 'ongoing'] } },
+                { status: 'ongoing' }
+            ];
         }
         
         const meetings = await MeetingRoom.find(query)
