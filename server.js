@@ -42,8 +42,8 @@ function createServer() {
                 process.env.FRONTEND_URL || 'http://localhost:5500',
                 'https://buildrshq.dev',
                 'http://buildrshq.dev',
-                'https://codexincenterprise.online',
-                'http://codexincenterprise.online'
+                'https://buildrshq.dev',
+                'http://buildrshq.dev'
             ],
             credentials: true
         }
@@ -94,8 +94,8 @@ app.use(cors({
         process.env.FRONTEND_URL || 'http://localhost:5500',
         'https://buildrshq.dev',
         'http://buildrshq.dev',
-        'https://codexincenterprise.online',
-        'http://codexincenterprise.online'
+        'https://buildrshq.dev',
+        'http://buildrshq.dev'
     ],
     credentials: true
 }));
