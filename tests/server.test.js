@@ -12,10 +12,7 @@ process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
 process.env.NODE_ENV = 'test';
 process.env.GOOGLE_CLIENT_ID = 'test-google-client-id';
 process.env.GOOGLE_CLIENT_SECRET = 'test-google-client-secret';
-process.env.GOOGLE_CALLBACK_URL = 'http://localhost:3000/auth/google/callback';
-process.env.FACEBOOK_APP_ID = 'test-facebook-app-id';
-process.env.FACEBOOK_APP_SECRET = 'test-facebook-app-secret';
-process.env.FACEBOOK_CALLBACK_URL = 'http://localhost:3000/auth/facebook/callback';
+process.env.GOOGLE_CALLBACK_URL = 'http://localhost:3000/api/auth/google/callback';
 process.env.FRONTEND_URL = 'http://localhost:5500';
 process.env.PAYSTACK_SECRET_KEY = 'test-paystack-key';
 process.env.FLUTTERWAVE_SECRET_KEY = 'test-flutterwave-key';
@@ -147,15 +144,6 @@ jest.mock('dotenv', () => ({
 // Mock passport strategies
 jest.mock('passport-google-oauth20', () => {
   const MockStrategy = class GoogleStrategy {
-    constructor(options, verify) {
-      this.options = options;
-      this.verify = verify;
-    }
-  };
-  return { Strategy: MockStrategy };
-});
-jest.mock('passport-facebook', () => {
-  const MockStrategy = class FacebookStrategy {
     constructor(options, verify) {
       this.options = options;
       this.verify = verify;
