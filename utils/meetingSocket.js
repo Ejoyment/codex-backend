@@ -1,6 +1,7 @@
 // Meeting Socket.IO Handler - WebRTC Signaling Server
 const jwt = require('jsonwebtoken');
 const MeetingRoom = require('../models/MeetingRoom');
+const User = require('../models/User');
 
 module.exports = (io) => {
     const meetingNamespace = io.of('/meeting');
@@ -15,7 +16,6 @@ module.exports = (io) => {
         
         try {
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
-            // JWT is signed with `{ id: userId }` (see routes/auth.js generateToken)
             socket.userId = decoded.userId || decoded.id;
             socket.user = decoded;
             next();
@@ -28,11 +28,32 @@ module.exports = (io) => {
     meetingNamespace.on('connection', (socket) => {
         console.log(`Meeting user connected: ${socket.userId}`);
         
+        // Join user-specific room for targeted real-time updates (profile changes, etc.)
+        socket.join(`user:${socket.userId}`);
+        
         // Join room
         socket.on('join-room', async ({ roomId, userId }) => {
             try {
                 socket.join(roomId);
                 socket.roomId = roomId;
+                
+                // Fetch real user profile from DB so name/picture are accurate
+                let userName = 'User';
+                let profilePicture = null;
+                let userEmail = null;
+                
+                try {
+                    const user = await User.findById(userId).select('fullName email profilePicture');
+                    if (user) {
+                        userName = user.fullName || 'User';
+                        profilePicture = user.profilePicture || null;
+                        userEmail = user.email || null;
+                        socket.userName = userName;
+                        socket.profilePicture = profilePicture;
+                    }
+                } catch (err) {
+                    console.error('Failed to fetch user for meeting room:', err.message);
+                }
                 
                 // Update meeting status
                 const meeting = await MeetingRoom.findOne({ roomId });
@@ -60,13 +81,15 @@ module.exports = (io) => {
                     await meeting.save();
                 }
                 
-                // Notify others
+                // Notify others with full profile data
                 socket.to(roomId).emit('user-connected', {
                     userId: socket.userId,
-                    userName: socket.user?.fullName || 'User'
+                    userName,
+                    profilePicture,
+                    email: userEmail
                 });
                 
-                console.log(`User ${socket.userId} joined room: ${roomId}`);
+                console.log(`User ${socket.userId} joined room: ${roomId} as ${userName}`);
             } catch (error) {
                 console.error('Join room error:', error);
                 socket.emit('error', { message: error.message });
@@ -78,7 +101,7 @@ module.exports = (io) => {
             socket.to(roomId).emit('offer', {
                 offer,
                 userId: socket.userId,
-                userName
+                userName: userName || socket.userName || 'User'
             });
         });
         
@@ -103,7 +126,7 @@ module.exports = (io) => {
             meetingNamespace.to(roomId).emit('chat-message', {
                 message,
                 userId: socket.userId,
-                userName,
+                userName: userName || socket.userName || 'User',
                 timestamp: new Date()
             });
         });
@@ -112,7 +135,7 @@ module.exports = (io) => {
         socket.on('raise-hand', ({ roomId, userName }) => {
             socket.to(roomId).emit('hand-raised', {
                 userId: socket.userId,
-                userName
+                userName: userName || socket.userName || 'User'
             });
         });
         
@@ -137,6 +160,29 @@ module.exports = (io) => {
             socket.to(roomId).emit('camera-toggled', {
                 userId: socket.userId,
                 isCameraOn
+            });
+        });
+        
+        // Screen share started
+        socket.on('screen-share-started', ({ roomId }) => {
+            socket.to(roomId).emit('screen-share-started', {
+                userId: socket.userId,
+                userName: socket.userName || 'User'
+            });
+        });
+        
+        // Screen share stopped
+        socket.on('screen-share-stopped', ({ roomId }) => {
+            socket.to(roomId).emit('screen-share-stopped', {
+                userId: socket.userId
+            });
+        });
+        
+        // Profile updated - broadcast to room so all participants see changes in real-time
+        socket.on('profile-updated', ({ roomId, profileData }) => {
+            meetingNamespace.to(roomId).emit('profile-updated', {
+                userId: socket.userId,
+                ...profileData
             });
         });
         
@@ -192,7 +238,6 @@ module.exports = (io) => {
                 }
                 
                 meeting.recording.endedAt = new Date();
-                // In production, save recording URL from media server
                 meeting.recording.url = `recordings/${roomId}_${Date.now()}.webm`;
                 
                 await meeting.save();
@@ -221,7 +266,6 @@ module.exports = (io) => {
                 
                 const breakoutRoomId = `${roomId}_breakout_${Date.now()}`;
                 
-                // Notify participants to join breakout room
                 participants.forEach(userId => {
                     meetingNamespace.to(roomId).emit('join-breakout-room', {
                         breakoutRoomId,
@@ -245,7 +289,6 @@ module.exports = (io) => {
                     meeting.endedAt = new Date();
                     await meeting.save();
                 }
-                // Notify all participants in the room
                 meetingNamespace.to(roomId).emit('meeting-ended');
                 console.log(`Meeting ended for room: ${roomId}`);
             } catch (error) {
@@ -272,7 +315,8 @@ module.exports = (io) => {
                 }
                 
                 socket.to(roomId).emit('user-disconnected', {
-                    userId: socket.userId
+                    userId: socket.userId,
+                    userName: socket.userName || 'User'
                 });
                 
                 socket.leave(roomId);
@@ -305,7 +349,8 @@ module.exports = (io) => {
                     }
                     
                     socket.to(socket.roomId).emit('user-disconnected', {
-                        userId: socket.userId
+                        userId: socket.userId,
+                        userName: socket.userName || 'User'
                     });
                 } catch (error) {
                     console.error('Disconnect cleanup error:', error);

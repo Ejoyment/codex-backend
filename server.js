@@ -73,6 +73,10 @@ async function startServer(port = process.env.PORT || 3000) {
     const collabRealtimeSocket = require('./utils/collabRealtimeSocket');
     collabRealtimeSocket(socket);
 
+    // Real-time event broadcaster for REST routes (profile updates, etc.)
+    const realTimeEvents = require('./utils/realTimeEvents');
+    realTimeEvents.setIO(socket);
+
     // Ephemeral sandbox provisioner (Instant Bug Handoff)
     const sandboxProvisioner = require('./utils/sandboxProvisioner');
     sandboxProvisioner.init(socket);
@@ -498,6 +502,14 @@ io.on('connection', (socket) => {
                 const fileId = room.replace('file:', '');
                 collaborationService.removeClient(fileId, socket);
             }
+        });
+    });
+    
+    // Profile updated - broadcast to user's own room so all their tabs receive updates
+    socket.on('profile-updated', ({ profileData }) => {
+        socket.to(`user:${socket.userId}`).emit('profile-updated', {
+            userId: socket.userId,
+            ...profileData
         });
     });
 });
