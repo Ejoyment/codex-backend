@@ -17,7 +17,7 @@ const userSchema = new mongoose.Schema({
     password: {
         type: String,
         required: function() {
-            return !this.googleId && !this.facebookId;
+            return !this.googleId;
         }
     },
     isVerified: {
@@ -25,10 +25,6 @@ const userSchema = new mongoose.Schema({
         default: false
     },
     googleId: {
-        type: String,
-        sparse: true
-    },
-    facebookId: {
         type: String,
         sparse: true
     },
@@ -107,7 +103,7 @@ const userSchema = new mongoose.Schema({
     },
     authProvider: {
         type: String,
-        enum: ['local', 'google', 'facebook'],
+        enum: ['local', 'google'],
         default: 'local'
     },
     createdAt: {

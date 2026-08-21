@@ -50,6 +50,13 @@ const authLimiter = rateLimit({
     message: { success: false, message: 'Too many attempts, please try again later.' }
 });
 
+// Stricter rate limit for OAuth initiation (prevent redirect loops/abuse)
+const oauthLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 20, // 20 OAuth initiations per window
+    message: { success: false, message: 'Too many OAuth attempts. Please try again later.' }
+});
+
 // Generate JWT token
 const generateToken = (userId) => {
     return jwt.sign({ id: userId }, process.env.JWT_SECRET, { expiresIn: '7d' });
@@ -300,7 +307,7 @@ router.post('/signin', authLimiter, async (req, res) => {
  *         description: Redirect to Google OAuth
  */
 // Google OAuth
-router.get('/google', 
+router.get('/google', oauthLimiter,
     passport.authenticate('google', { scope: ['profile', 'email'] })
 );
 
@@ -327,48 +334,17 @@ router.get('/google/callback',
         // Generate token
         const token = generateToken(req.user._id);
         
-        // Redirect to frontend with token
-        res.redirect(`${process.env.FRONTEND_URL}/auth-success.html?token=${token}&provider=google`);
-    }
-);
+        // Set httpOnly cookie for security (token not visible in JS/browser history)
+        res.cookie('auth_token', token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+        });
 
-/**
- * @swagger
- * /api/auth/facebook:
- *   get:
- *     summary: Initiate Facebook OAuth login
- *     tags:
- *       - Authentication
- *     description: Redirects the user to Facebook for OAuth authentication
- *     responses:
- *       302:
- *         description: Redirect to Facebook OAuth
- */
-// Facebook OAuth
-router.get('/facebook',
-    passport.authenticate('facebook', { scope: ['email'] })
-);
-
-/**
- * @swagger
- * /api/auth/facebook/callback:
- *   get:
- *     summary: Facebook OAuth callback
- *     tags:
- *       - Authentication
- *     description: Handles the callback from Facebook OAuth and redirects with JWT token
- *     responses:
- *       302:
- *         description: Redirect to frontend with token
- */
-router.get('/facebook/callback',
-    passport.authenticate('facebook', { failureRedirect: '/sign_in.html' }),
-    (req, res) => {
-        // Generate token
-        const token = generateToken(req.user._id);
-        
-        // Redirect to frontend with token
-        res.redirect(`${process.env.FRONTEND_URL}/auth-success.html?token=${token}&provider=facebook`);
+        // Redirect with token in fragment (not query) — fragment is not sent to server in referrers
+        // Also pass in query for backwards compatibility with existing frontends
+        res.redirect(`${process.env.FRONTEND_URL}/auth-success.html#token=${token}&provider=google`);
     }
 );
 
