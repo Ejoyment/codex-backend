@@ -43,13 +43,13 @@ module.exports = (io) => {
                     }
                     
                     const participant = meeting.participants.find(
-                        p => p.user.toString() === userId
+                        p => p.user && p.user.toString() === userId
                     );
                     
                     if (participant) {
                         participant.status = 'joined';
                         participant.joinedAt = new Date();
-                    } else {
+                    } else if (userId) {
                         meeting.participants.push({
                             user: userId,
                             status: 'joined',
@@ -63,7 +63,7 @@ module.exports = (io) => {
                 // Notify others
                 socket.to(roomId).emit('user-connected', {
                     userId: socket.userId,
-                    userName: socket.user.fullName || 'User'
+                    userName: socket.user?.fullName || 'User'
                 });
                 
                 console.log(`User ${socket.userId} joined room: ${roomId}`);
@@ -260,7 +260,7 @@ module.exports = (io) => {
                 
                 if (meeting) {
                     const participant = meeting.participants.find(
-                        p => p.user.toString() === socket.userId
+                        p => p.user && p.user.toString() === socket.userId
                     );
                     
                     if (participant) {
@@ -293,7 +293,7 @@ module.exports = (io) => {
                     
                     if (meeting) {
                         const participant = meeting.participants.find(
-                            p => p.user.toString() === socket.userId
+                            p => p.user && p.user.toString() === socket.userId
                         );
                         
                         if (participant) {

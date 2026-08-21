@@ -339,12 +339,12 @@ router.post('/:id/join', authenticateToken, async (req, res) => {
             return res.status(404).json({ success: false, message: 'Meeting not found' });
         }
         
-        const participant = meeting.participants.find(p => p.user.toString() === req.userId);
+        const participant = meeting.participants.find(p => p.user && p.user.toString() === req.userId);
         
         if (participant) {
             participant.status = 'joined';
             participant.joinedAt = new Date();
-        } else {
+        } else if (req.userId) {
             meeting.participants.push({
                 user: req.userId,
                 status: 'joined',
@@ -399,7 +399,7 @@ router.post('/:id/leave', authenticateToken, async (req, res) => {
             return res.status(404).json({ success: false, message: 'Meeting not found' });
         }
         
-        const participant = meeting.participants.find(p => p.user.toString() === req.userId);
+        const participant = meeting.participants.find(p => p.user && p.user.toString() === req.userId);
         
         if (participant) {
             participant.status = 'left';
