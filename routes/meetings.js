@@ -118,12 +118,13 @@ router.get('/', authenticateToken, async (req, res) => {
         }
         
         if (upcoming === 'true') {
-            // Show upcoming meetings AND any currently-ongoing meetings,
-            // even if their scheduledStart time has already passed
-            query.$or = [
-                { scheduledAt: { $gte: new Date() }, status: { $in: ['scheduled', 'ongoing'] } },
-                { status: 'ongoing' }
-            ];
+            // "Upcoming" = any meeting that has not finished yet (scheduled or ongoing).
+            // Do NOT filter by scheduledAt >= now: a newly created meeting whose
+            // scheduled time has already passed (e.g. timezone/clock differences
+            // between the browser and the server) must still be visible so it can
+            // be joined. Completed/cancelled meetings are excluded (they belong
+            // to the "Past" view, which filters by status=completed).
+            query.status = { $in: ['scheduled', 'ongoing'] };
         }
         
         const meetings = await MeetingRoom.find(query)
