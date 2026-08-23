@@ -7,8 +7,8 @@
 const os = require('os');
 const path = require('path');
 const fs = require('fs').promises;
-const CodeFile = require('../models/CodeFile');
-const { emitWorkspaceChange } = require('../realTimeEvents');
+const CodeFile = require('./models/CodeFile');
+const { emitWorkspaceChange } = require('./realTimeEvents');
 
 class TerminalService {
   constructor() {
