@@ -3,6 +3,8 @@ const router = express.Router();
 const CodeFile = require('../models/CodeFile');
 const { authenticateToken } = require('../middleware/auth');
 const { getAllowedLanguages, isLanguageAllowed, getAllLanguagesWithStatus } = require('../utils/languageRestrictions');
+const vfs = require('../utils/virtualFileSystem');
+const { emitWorkspaceChange } = require('../utils/realTimeEvents');
 
 /**
  * @swagger
@@ -135,6 +137,35 @@ router.post('/files', authenticateToken, async (req, res) => {
         
         await codeFile.populate('createdBy', 'fullName email profilePicture');
         
+        // Update VFS index
+        try {
+            const existingIndex = vfs.indexes.get(companyId);
+            if (existingIndex) {
+                existingIndex.set(codeFile.path, {
+                    id: codeFile._id.toString(),
+                    name: codeFile.name,
+                    path: codeFile.path,
+                    size: codeFile.size,
+                    language: codeFile.language,
+                    lastModified: codeFile.updatedAt,
+                    createdBy: codeFile.createdBy
+                });
+            }
+        } catch (vfsError) {
+            console.error('VFS index update error:', vfsError);
+        }
+        
+        // Emit real-time event
+        emitWorkspaceChange(companyId, 'file:created', {
+            file: {
+                _id: codeFile._id,
+                name: codeFile.name,
+                path: codeFile.path,
+                language: codeFile.language,
+                company: codeFile.company
+            }
+        });
+        
         res.json({
             success: true,
             file: codeFile
@@ -225,9 +256,40 @@ router.post('/files/batch', authenticateToken, async (req, res) => {
                 
                 await codeFile.populate('createdBy', 'fullName email profilePicture');
                 createdFiles.push(codeFile);
+                
+                // Update VFS index
+                try {
+                    const existingIndex = vfs.indexes.get(companyId);
+                    if (existingIndex) {
+                        existingIndex.set(codeFile.path, {
+                            id: codeFile._id.toString(),
+                            name: codeFile.name,
+                            path: codeFile.path,
+                            size: codeFile.size,
+                            language: codeFile.language,
+                            lastModified: codeFile.updatedAt,
+                            createdBy: codeFile.createdBy
+                        });
+                    }
+                } catch (vfsError) {
+                    console.error('VFS index update error:', vfsError);
+                }
             } catch (error) {
                 errors.push({ name: fileData.name, error: error.message });
             }
+        }
+        
+        // Emit real-time event for batch creation
+        if (createdFiles.length > 0) {
+            emitWorkspaceChange(companyId, 'files:created', {
+                files: createdFiles.map(f => ({
+                    _id: f._id,
+                    name: f.name,
+                    path: f.path,
+                    language: f.language,
+                    company: f.company
+                }))
+            });
         }
         
         res.json({
@@ -424,6 +486,34 @@ router.put('/files/:id', authenticateToken, async (req, res) => {
         await file.save();
         await file.populate('lastModifiedBy', 'fullName email profilePicture');
         
+        // Update VFS cache and index
+        try {
+            const workspaceId = file.company.toString();
+            const cacheKey = `${workspaceId}:${file._id}`;
+            const index = vfs.indexes.get(workspaceId);
+            if (index && index.has(file.path)) {
+                const metadata = index.get(file.path);
+                metadata.size = file.size;
+                metadata.lastModified = file.updatedAt;
+                if (name) metadata.name = file.name;
+            }
+            vfs.cache.set(cacheKey, file.toObject());
+        } catch (vfsError) {
+            console.error('VFS update error:', vfsError);
+        }
+        
+        // Emit real-time event
+        emitWorkspaceChange(file.company.toString(), 'file:updated', {
+            file: {
+                _id: file._id,
+                name: file.name,
+                path: file.path,
+                language: file.language,
+                content: file.content,
+                company: file.company
+            }
+        });
+        
         res.json({
             success: true,
             file
@@ -436,11 +526,31 @@ router.put('/files/:id', authenticateToken, async (req, res) => {
 // Delete file
 router.delete('/files/:id', authenticateToken, async (req, res) => {
     try {
-        const file = await CodeFile.findByIdAndDelete(req.params.id);
+        const file = await CodeFile.findById(req.params.id);
         
         if (!file) {
             return res.status(404).json({ success: false, message: 'File not found' });
         }
+        
+        const workspaceId = file.company.toString();
+        const fileId = file._id.toString();
+        const filePath = file.path;
+        
+        await CodeFile.findByIdAndDelete(req.params.id);
+        
+        // Update VFS
+        try {
+            vfs.deleteFile(fileId, workspaceId);
+        } catch (vfsError) {
+            console.error('VFS delete error:', vfsError);
+        }
+        
+        // Emit real-time event
+        emitWorkspaceChange(workspaceId, 'file:deleted', {
+            fileId,
+            path: filePath,
+            company: workspaceId
+        });
         
         res.json({
             success: true,

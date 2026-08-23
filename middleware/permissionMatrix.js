@@ -41,6 +41,7 @@ class PermissionMatrix {
       
       // VFS operations
       'vfs:read': ['freebie', 'professional', 'enterprise'],
+      'vfs:write': ['professional', 'enterprise'],
       'vfs:search': ['professional', 'enterprise'],
       'vfs:index': ['enterprise'],
       

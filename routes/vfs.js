@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const vfs = require('../utils/virtualFileSystem');
 const codeSearchService = require('../utils/codeSearchService');
+const CodeFile = require('../models/CodeFile');
 const { authenticateToken } = require('../middleware/auth');
 const permissionMatrix = require('../middleware/permissionMatrix');
 
@@ -417,6 +418,178 @@ router.get('/search-stats', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('VFS search stats error:', error);
+    res.status(500).json({ error: 'Failed to get search stats' });
+  }
+});
+
+/**
+ * Create a new file via VFS
+ * POST /api/vfs/files
+ */
+router.post('/files', authenticateToken, permissionMatrix.requirePermission('vfs', 'write'), async (req, res) => {
+  try {
+    const { name, language, content, path, companyId, projectId } = req.body;
+    
+    if (!name || !companyId) {
+      return res.status(400).json({ error: 'name and companyId are required' });
+    }
+    
+    const file = await vfs.createFile({
+      name,
+      language: (language || 'text').toLowerCase(),
+      content: content || '',
+      path: path || '/',
+      company: companyId,
+      project: projectId,
+      createdBy: req.userId,
+      lastModifiedBy: req.userId
+    }, companyId);
+    
+    emitWorkspaceChange(companyId, 'file:created', {
+      file: {
+        _id: file._id,
+        name: file.name,
+        path: file.path,
+        language: file.language,
+        company: file.company
+      }
+    });
+    
+    res.json({
+      success: true,
+      file: file.toObject ? file.toObject() : file
+    });
+  } catch (error) {
+    console.error('VFS create file error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * Update a file via VFS
+ * PUT /api/vfs/files/:fileId
+ */
+router.put('/files/:fileId', authenticateToken, permissionMatrix.requirePermission('vfs', 'write'), async (req, res) => {
+  try {
+    const { fileId } = req.params;
+    const { content, name, language } = req.body;
+    
+    const file = await CodeFile.findById(fileId);
+    if (!file) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+    
+    if (content !== undefined) file.content = content;
+    if (name) file.name = name;
+    if (language) file.language = language.toLowerCase();
+    file.lastModifiedBy = req.userId;
+    file.updatedAt = new Date();
+    
+    await file.save();
+    
+    // Update VFS cache and index
+    const workspaceId = file.company.toString();
+    await vfs.writeFile(fileId, file.content, workspaceId);
+    
+    emitWorkspaceChange(workspaceId, 'file:updated', {
+      file: {
+        _id: file._id,
+        name: file.name,
+        path: file.path,
+        language: file.language,
+        content: file.content,
+        company: file.company
+      }
+    });
+    
+    res.json({
+      success: true,
+      file: file.toObject ? file.toObject() : file
+    });
+  } catch (error) {
+    console.error('VFS update file error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * Delete a file via VFS
+ * DELETE /api/vfs/files/:fileId
+ */
+router.delete('/files/:fileId', authenticateToken, permissionMatrix.requirePermission('vfs', 'write'), async (req, res) => {
+  try {
+    const { fileId } = req.params;
+    
+    const file = await CodeFile.findById(fileId);
+    if (!file) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+    
+    const workspaceId = file.company.toString();
+    
+    await CodeFile.findByIdAndDelete(fileId);
+    await vfs.deleteFile(fileId, workspaceId);
+    
+    emitWorkspaceChange(workspaceId, 'file:deleted', {
+      fileId,
+      path: file.path,
+      company: workspaceId
+    });
+    
+    res.json({
+      success: true,
+      message: 'File deleted successfully'
+    });
+  } catch (error) {
+    console.error('VFS delete file error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * Create a new folder via VFS
+ * POST /api/vfs/folders
+ * Folders are virtual - represented by the path hierarchy.
+ * This endpoint creates a placeholder file to establish the folder structure.
+ */
+router.post('/folders', authenticateToken, permissionMatrix.requirePermission('vfs', 'write'), async (req, res) => {
+  try {
+    const { name, path, companyId, projectId } = req.body;
+    
+    if (!name || !companyId) {
+      return res.status(400).json({ error: 'name and companyId are required' });
+    }
+    
+    const folderPath = path === '/' ? `/${name}` : `${path}/${name}`;
+    
+    // Create a .gitkeep placeholder file to establish the folder in the tree
+    const file = await vfs.createFile({
+      name: '.gitkeep',
+      language: 'text',
+      content: '',
+      path: folderPath,
+      company: companyId,
+      project: projectId,
+      createdBy: req.userId,
+      lastModifiedBy: req.userId
+    }, companyId);
+    
+    emitWorkspaceChange(companyId, 'folder:created', {
+      name,
+      path: folderPath,
+      company: companyId
+    });
+    
+    res.json({
+      success: true,
+      folder: {
+        name,
+        path: folderPath,
+        placeholderFile: file.toObject ? file.toObject() : file
+      }
+    });
+  } catch (error) {
+    console.error('VFS create folder error:', error);
     res.status(500).json({ error: error.message });
   }
 });

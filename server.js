@@ -512,6 +512,21 @@ io.on('connection', (socket) => {
             ...profileData
         });
     });
+    
+    // Join workspace room for real-time file/folder updates
+    socket.on('workspace:join', ({ workspaceId }) => {
+        if (workspaceId) {
+            socket.join(`workspace:${workspaceId}`);
+            console.log(`User ${socket.userId} joined workspace: ${workspaceId}`);
+        }
+    });
+    
+    socket.on('workspace:leave', ({ workspaceId }) => {
+        if (workspaceId) {
+            socket.leave(`workspace:${workspaceId}`);
+            console.log(`User ${socket.userId} left workspace: ${workspaceId}`);
+        }
+    });
 });
 
 console.log('✓ Socket.IO collaboration server initialized');

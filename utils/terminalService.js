@@ -7,11 +7,14 @@
 const os = require('os');
 const path = require('path');
 const fs = require('fs').promises;
+const CodeFile = require('./models/CodeFile');
+const { emitWorkspaceChange } = require('./realTimeEvents');
 
 class TerminalService {
   constructor() {
     this.terminals = new Map(); // sessionId -> terminal instance
     this.workspaces = new Map(); // sessionId -> workspace path
+    this.watchers = new Map(); // sessionId -> fs watcher
     this.usePty = false;
 
     // Try to load node-pty (may fail on some platforms)
@@ -23,6 +26,201 @@ class TerminalService {
     } catch (error) {
       console.log('⚠ node-pty not available, using simulated terminal');
       this.usePty = false;
+    }
+  }
+
+  /**
+   * Sync a file created in terminal to the CodeFile model
+   */
+  async syncFileToVFS(sessionId, filePath, workspaceId, userId) {
+    try {
+      const terminal = this.terminals.get(sessionId);
+      if (!terminal) return;
+      
+      const relativePath = path.relative(terminal.workspacePath, filePath);
+      const fileName = path.basename(filePath);
+      const ext = path.extname(fileName).toLowerCase();
+      const langMap = {
+        '.js': 'javascript', '.ts': 'typescript', '.py': 'python', '.java': 'java',
+        '.html': 'html', '.css': 'css', '.json': 'json', '.md': 'markdown',
+        '.go': 'go', '.rs': 'rust', '.cpp': 'cpp', '.c': 'c',
+        '.php': 'php', '.rb': 'ruby', '.sh': 'shell', '.sql': 'sql'
+      };
+      
+      // Check if file already exists in DB
+      const existing = await CodeFile.findOne({
+        company: workspaceId,
+        path: '/' + relativePath.replace(/\\/g, '/')
+      });
+      
+      if (!existing) {
+        let content = '';
+        try {
+          content = await fs.readFile(filePath, 'utf8');
+        } catch (e) {
+          content = '';
+        }
+        
+        const codeFile = await CodeFile.create({
+          name: fileName,
+          language: langMap[ext] || 'text',
+          content,
+          company: workspaceId,
+          path: '/' + relativePath.replace(/\\/g, '/'),
+          createdBy: userId,
+          lastModifiedBy: userId
+        });
+        
+        // Update VFS index
+        const vfs = require('./virtualFileSystem');
+        const index = vfs.indexes.get(workspaceId);
+        if (index) {
+          index.set(codeFile.path, {
+            id: codeFile._id.toString(),
+            name: codeFile.name,
+            path: codeFile.path,
+            size: codeFile.size,
+            language: codeFile.language,
+            lastModified: codeFile.updatedAt,
+            createdBy: codeFile.createdBy
+          });
+        }
+        
+        // Emit real-time event
+        emitWorkspaceChange(workspaceId, 'file:created', {
+          file: {
+            _id: codeFile._id,
+            name: codeFile.name,
+            path: codeFile.path,
+            language: codeFile.language,
+            company: codeFile.company
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Sync file to VFS error:', error);
+    }
+  }
+
+  /**
+   * Sync a deleted file from terminal to the CodeFile model
+   */
+  async syncDeletedFileFromVFS(sessionId, filePath, workspaceId) {
+    try {
+      const terminal = this.terminals.get(sessionId);
+      if (!terminal) return;
+      
+      const relativePath = path.relative(terminal.workspacePath, filePath);
+      const vfsPath = '/' + relativePath.replace(/\\/g, '/');
+      
+      const file = await CodeFile.findOne({
+        company: workspaceId,
+        path: vfsPath
+      });
+      
+      if (file) {
+        await CodeFile.findByIdAndDelete(file._id);
+        
+        // Update VFS index
+        const vfs = require('./virtualFileSystem');
+        try {
+          await vfs.deleteFile(file._id.toString(), workspaceId);
+        } catch (vfsError) {
+          console.error('VFS delete error:', vfsError);
+        }
+        
+        // Emit real-time event
+        emitWorkspaceChange(workspaceId, 'file:deleted', {
+          fileId: file._id.toString(),
+          path: vfsPath,
+          company: workspaceId
+        });
+      }
+    } catch (error) {
+      console.error('Sync deleted file from VFS error:', error);
+    }
+  }
+
+  /**
+   * Watch PTY terminal directory for changes and sync to VFS
+   */
+  setupDirectoryWatcher(sessionId) {
+    const terminal = this.terminals.get(sessionId);
+    if (!terminal || terminal.type !== 'pty') return;
+    
+    try {
+      const watcher = fs.watch(terminal.workspacePath, { recursive: true }, async (eventType, filename) => {
+        if (!filename) return;
+        
+        const fullPath = path.join(terminal.workspacePath, filename);
+        
+        try {
+          const stats = await fs.stat(fullPath);
+          
+          if (eventType === 'rename' || eventType === 'change') {
+            if (stats.isFile()) {
+              // File created or modified
+              const relativePath = path.relative(terminal.workspacePath, fullPath);
+              const vfsPath = '/' + relativePath.replace(/\\/g, '/');
+              
+              // Check if file exists in DB
+              const existing = await CodeFile.findOne({
+                company: terminal.workspaceId,
+                path: vfsPath
+              });
+              
+              if (!existing) {
+                // New file - sync it
+                await this.syncFileToVFS(sessionId, fullPath, terminal.workspaceId, terminal.userId);
+              } else {
+                // Existing file - update content
+                try {
+                  const content = await fs.readFile(fullPath, 'utf8');
+                  existing.content = content;
+                  existing.updatedAt = new Date();
+                  await existing.save();
+                  
+                  // Update VFS cache
+                  const vfs = require('./virtualFileSystem');
+                  const cacheKey = `${terminal.workspaceId}:${existing._id}`;
+                  vfs.cache.set(cacheKey, existing.toObject());
+                  
+                  // Emit update event
+                  emitWorkspaceChange(terminal.workspaceId, 'file:updated', {
+                    file: {
+                      _id: existing._id,
+                      name: existing.name,
+                      path: existing.path,
+                      language: existing.language,
+                      company: existing.company
+                    }
+                  });
+                } catch (e) {
+                  console.error('PTY file sync update error:', e);
+                }
+              }
+            } else if (stats.isDirectory()) {
+              // Directory change - invalidate VFS index
+              const vfs = require('./virtualFileSystem');
+              vfs.invalidateIndex(terminal.workspaceId);
+              
+              emitWorkspaceChange(terminal.workspaceId, 'folder:changed', {
+                path: '/' + path.relative(terminal.workspacePath, fullPath).replace(/\\/g, '/')
+              });
+            }
+          }
+        } catch (error) {
+          // File might not exist anymore (deleted)
+          if (eventType === 'rename') {
+            const relativePath = path.relative(terminal.workspacePath, fullPath);
+            await this.syncDeletedFileFromVFS(sessionId, fullPath, terminal.workspaceId);
+          }
+        }
+      });
+      
+      this.watchers.set(sessionId, watcher);
+    } catch (error) {
+      console.error('Failed to setup directory watcher:', error);
     }
   }
 
@@ -81,6 +279,11 @@ class TerminalService {
       });
 
       console.log(`✓ Simulated terminal created: ${sessionId}`);
+    }
+
+    // Setup directory watcher for PTY terminals
+    if (this.usePty) {
+      this.setupDirectoryWatcher(sessionId);
     }
 
     return {
@@ -156,7 +359,16 @@ class TerminalService {
         case 'mkdir':
           if (args.length > 0) {
             try {
-              await fs.mkdir(path.join(terminal.cwd, args[0]), { recursive: true });
+              const dirPath = path.join(terminal.cwd, args[0]);
+              await fs.mkdir(dirPath, { recursive: true });
+              
+              // Create .gitkeep so the folder appears in VFS tree
+              const gitkeepPath = path.join(dirPath, '.gitkeep');
+              await fs.writeFile(gitkeepPath, '');
+              
+              // Sync the placeholder to CodeFile model so folder is visible
+              await this.syncFileToVFS(sessionId, gitkeepPath, terminal.workspaceId, terminal.userId);
+              
               output = '';
             } catch (error) {
               output = `mkdir: ${error.message}\n`;
@@ -167,8 +379,12 @@ class TerminalService {
         case 'touch':
           if (args.length > 0) {
             try {
-              await fs.writeFile(path.join(terminal.cwd, args[0]), '');
+              const filePath = path.join(terminal.cwd, args[0]);
+              await fs.writeFile(filePath, '');
               output = '';
+              
+              // Sync to CodeFile model and emit event
+              await this.syncFileToVFS(sessionId, filePath, terminal.workspaceId, terminal.userId);
             } catch (error) {
               output = `touch: ${error.message}\n`;
             }
@@ -202,9 +418,10 @@ class TerminalService {
   cd <dir>  - Change directory
   mkdir     - Create directory
   touch     - Create file
+  rm        - Remove file or directory
   cat       - Display file content
   echo      - Print text
-  clear     - Clear screen
+  clear     - Clear terminal
   help      - Show this help
   exit      - Close terminal
 \n`;
@@ -212,6 +429,27 @@ class TerminalService {
 
         case 'exit':
           output = 'Terminal session ended.\n';
+          break;
+
+        case 'rm':
+          if (args.length > 0) {
+            try {
+              const targetPath = path.join(terminal.cwd, args[0]);
+              const stats = await fs.stat(targetPath);
+              
+              if (stats.isDirectory()) {
+                await fs.rm(targetPath, { recursive: true });
+              } else {
+                await fs.unlink(targetPath);
+              }
+              output = '';
+              
+              // Sync deletion to CodeFile model
+              await this.syncDeletedFileFromVFS(sessionId, targetPath, terminal.workspaceId);
+            } catch (error) {
+              output = `rm: ${error.message}\n`;
+            }
+          }
           break;
 
         default:
@@ -286,6 +524,13 @@ class TerminalService {
 
     if (terminal.type === 'pty') {
       terminal.process.kill();
+    }
+
+    // Clean up watcher
+    const watcher = this.watchers.get(sessionId);
+    if (watcher) {
+      watcher.close();
+      this.watchers.delete(sessionId);
     }
 
     // Clean up workspace directory

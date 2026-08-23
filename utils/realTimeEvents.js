@@ -23,4 +23,16 @@ function emitProfileUpdate(userId, profileData) {
     });
 }
 
-module.exports = { setIO, emitProfileUpdate };
+function emitWorkspaceChange(workspaceId, event, data) {
+    if (!_io) return;
+    
+    // Broadcast to all clients in the workspace room
+    _io.to(`workspace:${workspaceId}`).emit('workspace:change', {
+        workspaceId,
+        event,
+        data,
+        timestamp: new Date().toISOString()
+    });
+}
+
+module.exports = { setIO, emitProfileUpdate, emitWorkspaceChange };
