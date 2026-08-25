@@ -539,7 +539,7 @@ router.post('/agent/register', async (req, res) => {
                 email: agent.email,
                 role: agent.role
             },
-            loginUrl: '/support-admin.html'
+            loginUrl: '/support-admin'
         });
     } catch (error) {
         console.error('Agent registration error:', error);
@@ -599,7 +599,7 @@ router.post('/setup/demo-agent', async (req, res) => {
             message: 'Demo support agent created successfully!',
             email: demoEmail,
             loginHint: 'Use DEMO_AGENT_PASSWORD env var for login',
-            loginUrl: '/support-admin.html'
+            loginUrl: '/support-admin'
         });
     } catch (error) {
         console.error('Setup demo agent error:', error);

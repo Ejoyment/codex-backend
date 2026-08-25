@@ -306,7 +306,7 @@ const sendWelcomeEmail = async (email, fullName) => {
                         </div>
                         
                         <p style="text-align: center;">
-                            <a href="${process.env.FRONTEND_URL || 'https://buildrshq.dev'}/sign_in.html" class="button">
+                            <a href="${process.env.FRONTEND_URL || 'https://buildrshq.dev'}/sign_in" class="button">
                                 Sign In to Your Dashboard →
                             </a>
                         </p>
@@ -381,7 +381,7 @@ const sendInvitationEmail = async (invitation) => {
         return { success: true };
     }
 
-    const acceptUrl = `${process.env.FRONTEND_URL || 'https://buildrshq.dev'}/accept-invitation.html?token=${invitation.token}`;
+    const acceptUrl = `${process.env.FRONTEND_URL || 'https://buildrshq.dev'}/accept-invitation?token=${invitation.token}`;
 
     const emailData = {
         from: process.env.EMAIL_FROM || 'CODEX INC <onboarding@resend.dev>',
@@ -570,12 +570,12 @@ const sendTrialWelcomeEmail = async (email, fullName, trialEndsAt) => {
                         </ul>
                         
                         <p style="text-align: center;">
-                            <a href="${process.env.FRONTEND_URL || 'http://localhost:5500'}/dashboard.html" class="button">Go to Dashboard →</a>
+                            <a href="${process.env.FRONTEND_URL || 'http://localhost:5500'}/dashboard" class="button">Go to Dashboard →</a>
                         </p>
                         
                         <p style="color: #666; font-size: 13px; margin-top: 30px;">
                             Copy the link below to sign in:<br>
-                            ${process.env.FRONTEND_URL || 'http://localhost:5500'}/sign_in.html
+                            ${process.env.FRONTEND_URL || 'http://localhost:5500'}/sign_in
                         </p>
                     </div>
                     <div class="footer">
@@ -658,9 +658,9 @@ const sendTrialReminderEmail = async (email, fullName, daysLeft) => {
                         <p>Your BuildrsHQ free trial has <strong>${dayText}</strong> remaining.</p>
                         <div class="days-left">${daysLeft}</div>
                         ${isLastDay ? '<p>This is your <strong>last day</strong> to enjoy full Starter plan features, including up to 10 projects and basic AI assistance.</p>' : '<p>To continue enjoying Starter features after your trial, <strong>choose a plan</strong> that fits your needs.</p>'}
-                        <a href="${process.env.FRONTEND_URL || 'http://localhost:5500'}/pricing.html" class="button">Upgrade Your Plan →</a>
+                        <a href="${process.env.FRONTEND_URL || 'http://localhost:5500'}/pricing" class="button">Upgrade Your Plan →</a>
                         <br><br>
-                        <a href="${process.env.FRONTEND_URL || 'http://localhost:5500'}/dashboard.html" class="button">&nbsp;Continue to Dashboard&nbsp;</a>
+                        <a href="${process.env.FRONTEND_URL || 'http://localhost:5500'}/dashboard" class="button">&nbsp;Continue to Dashboard&nbsp;</a>
                     </div>
                     <div class="footer">
                         <p><strong>© ${new Date().getFullYear()} BuildrsHQ</strong></p>
@@ -738,7 +738,7 @@ const sendTrialExpiredEmail = async (email, fullName) => {
                         <p>You still have access to the <strong>Free</strong> tier with up to 3 projects and basic AI assistance.</p>
                         <p>Upgrade to <strong>Starter ($50/mo)</strong>, <strong>Professional ($99/mo)</strong>, or <strong>Enterprise ($299/mo)</strong> to unlock more features.</p>
                         
-                        <a href="${process.env.FRONTEND_URL || 'http://localhost:5500'}/pricing.html" class="button">View Plans →</a>
+                        <a href="${process.env.FRONTEND_URL || 'http://localhost:5500'}/pricing" class="button">View Plans →</a>
                     </div>
                     <div class="footer">
                         <p><strong>© ${new Date().getFullYear()} BuildrsHQ</strong></p>

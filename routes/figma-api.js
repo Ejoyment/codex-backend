@@ -434,7 +434,7 @@ router.get('/callback', async (req, res) => {
         );
 
         // Redirect back to your frontend settings page
-        res.redirect(`${process.env.FRONTEND_URL}/settings/integrations?figma=connected`);
+        res.redirect(`${process.env.FRONTEND_URL}/integrations?figma=connected`);
     } catch (error) {
         console.error('Figma OAuth callback error:', error.response?.data || error.message);
         res.status(500).json({ success: false, message: 'Figma connection failed' });

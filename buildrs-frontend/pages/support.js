@@ -14,7 +14,7 @@ export default function Support() {
     e.preventDefault();
     setSubmitted(true);
     try {
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/support/tickets`, {
+      await fetch('/api/support/tickets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('authToken')}` },
         body: JSON.stringify({ subject, message }),

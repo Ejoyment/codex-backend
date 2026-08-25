@@ -15,7 +15,7 @@ export default function AiPair() {
   const startSession = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/ai-pair/session`, {
+      const res = await fetch('/api/ai-pair/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('authToken')}` },
         body: JSON.stringify({ title: 'New Session' }),
@@ -37,7 +37,7 @@ export default function AiPair() {
     setInput('');
     setLoading(true);
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/ai-pair/chat`, {
+      const res = await fetch('/api/ai-pair/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('authToken')}` },
         body: JSON.stringify({ sessionId, message: input }),

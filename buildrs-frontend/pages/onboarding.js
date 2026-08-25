@@ -25,7 +25,7 @@ export default function Onboarding() {
   const complete = async () => {
     setLoading(true);
     try {
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/onboarding`, {
+      await fetch('/api/onboarding', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('authToken')}` },
         body: JSON.stringify({ fullName, company, teamSize, roles, goal, experience }),

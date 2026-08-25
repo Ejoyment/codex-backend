@@ -329,7 +329,7 @@ router.get('/google', oauthLimiter,
  *         description: Redirect to frontend with token
  */
 router.get('/google/callback',
-    passport.authenticate('google', { failureRedirect: '/sign_in.html' }),
+    passport.authenticate('google', { failureRedirect: '/sign_in' }),
     (req, res) => {
         // Generate token
         const token = generateToken(req.user._id);
@@ -344,7 +344,7 @@ router.get('/google/callback',
 
         // Redirect with token in fragment (not query) — fragment is not sent to server in referrers
         // Also pass in query for backwards compatibility with existing frontends
-        res.redirect(`${process.env.FRONTEND_URL}/auth-success.html#token=${token}&provider=google`);
+        res.redirect(`${process.env.FRONTEND_URL}/auth-success#token=${token}&provider=google`);
     }
 );
 

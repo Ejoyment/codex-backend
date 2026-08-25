@@ -310,7 +310,7 @@ const sendWelcomeEmail = async (email, fullName) => {
                         </div>
                         
                         <p style="text-align: center;">
-                            <a href="${process.env.FRONTEND_URL || 'https://buildrshq.dev'}/sign_in.html" class="button">
+                            <a href="${process.env.FRONTEND_URL || 'https://buildrshq.dev'}/sign_in" class="button">
                                 Sign In to Your Dashboard →
                             </a>
                         </p>

@@ -175,10 +175,10 @@ router.get('/github/callback', async (req, res) => {
             { upsert: true, new: true }
         );
 
-        res.redirect(`${process.env.FRONTEND_URL}/settings.html?success=github`);
+        res.redirect(`${process.env.FRONTEND_URL}/settings?success=github`);
     } catch (error) {
         console.error('GitHub OAuth error:', error);
-        res.redirect(`${process.env.FRONTEND_URL}/settings.html?error=github`);
+        res.redirect(`${process.env.FRONTEND_URL}/settings?error=github`);
     }
 });
 
@@ -272,10 +272,10 @@ router.get('/slack/callback', async (req, res) => {
             { upsert: true, new: true }
         );
 
-        res.redirect(`${process.env.FRONTEND_URL}/settings.html?success=slack`);
+        res.redirect(`${process.env.FRONTEND_URL}/settings?success=slack`);
     } catch (error) {
         console.error('Slack OAuth error:', error);
-        res.redirect(`${process.env.FRONTEND_URL}/settings.html?error=slack`);
+        res.redirect(`${process.env.FRONTEND_URL}/settings?error=slack`);
     }
 });
 
@@ -387,10 +387,10 @@ router.get('/discord/callback', async (req, res) => {
             { upsert: true, new: true }
         );
 
-        res.redirect(`${process.env.FRONTEND_URL}/settings.html?success=discord`);
+        res.redirect(`${process.env.FRONTEND_URL}/settings?success=discord`);
     } catch (error) {
         console.error('Discord OAuth error:', error);
-        res.redirect(`${process.env.FRONTEND_URL}/settings.html?error=discord`);
+        res.redirect(`${process.env.FRONTEND_URL}/settings?error=discord`);
     }
 });
 
@@ -484,10 +484,10 @@ router.get('/notion/callback', async (req, res) => {
             { upsert: true, new: true }
         );
 
-        res.redirect(`${process.env.FRONTEND_URL}/settings.html?success=notion`);
+        res.redirect(`${process.env.FRONTEND_URL}/settings?success=notion`);
     } catch (error) {
         console.error('Notion OAuth error:', error);
-        res.redirect(`${process.env.FRONTEND_URL}/settings.html?error=notion`);
+        res.redirect(`${process.env.FRONTEND_URL}/settings?error=notion`);
     }
 });
 
@@ -585,10 +585,10 @@ router.get('/figma/callback', async (req, res) => {
             { upsert: true, new: true }
         );
 
-        res.redirect(`${process.env.FRONTEND_URL}/settings.html?success=figma`);
+        res.redirect(`${process.env.FRONTEND_URL}/settings?success=figma`);
     } catch (error) {
         console.error('Figma OAuth error:', error);
-        res.redirect(`${process.env.FRONTEND_URL}/settings.html?error=figma`);
+        res.redirect(`${process.env.FRONTEND_URL}/settings?error=figma`);
     }
 });
 

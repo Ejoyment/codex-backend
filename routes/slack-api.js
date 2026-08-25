@@ -274,7 +274,7 @@ router.get('/callback', async (req, res) => {
         );
 
         // Redirect back to your frontend settings page
-        res.redirect(`${process.env.FRONTEND_URL}/settings/integrations?slack=connected`);
+        res.redirect(`${process.env.FRONTEND_URL}/integrations?slack=connected`);
     } catch (error) {
         console.error('Slack OAuth callback error:', error.response?.data || error.message);
         res.status(500).json({ success: false, message: 'Slack connection failed' });

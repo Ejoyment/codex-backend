@@ -654,7 +654,7 @@ router.get('/callback', async (req, res) => {
         );
 
         // Redirect back to your frontend settings page
-        res.redirect(`${process.env.FRONTEND_URL}/settings/integrations?discord=connected`);
+        res.redirect(`${process.env.FRONTEND_URL}/integrations?discord=connected`);
     } catch (error) {
         console.error('Discord OAuth callback error:', error.response?.data || error.message);
         res.status(500).json({ success: false, message: 'Discord connection failed' });

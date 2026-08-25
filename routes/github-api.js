@@ -1096,7 +1096,7 @@ router.get('/callback', async (req, res) => {
         );
 
         // Redirect back to your frontend settings page
-        res.redirect(`${process.env.FRONTEND_URL}/settings/integrations?github=connected`);
+        res.redirect(`${process.env.FRONTEND_URL}/integrations?github=connected`);
     } catch (error) {
         console.error('GitHub OAuth callback error:', error.response?.data || error.message);
         res.status(500).json({ success: false, message: 'GitHub connection failed' });

@@ -42,7 +42,7 @@ router.post('/initialize', authenticateToken, async (req, res) => {
             email: user.email,
             amount: amount,
             currency: 'USD',
-            callback_url: `${process.env.FRONTEND_URL}/payment-success.html`,
+            callback_url: `${process.env.FRONTEND_URL}/payment-success`,
             channels: ['card'], // Only allow card payments
             metadata: {
                 userId: userId.toString(),

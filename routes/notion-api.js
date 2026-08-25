@@ -331,7 +331,7 @@ router.get('/callback', async (req, res) => {
         );
 
         // Redirect back to your frontend settings page
-        res.redirect(`${process.env.FRONTEND_URL}/settings/integrations?notion=connected`);
+        res.redirect(`${process.env.FRONTEND_URL}/integrations?notion=connected`);
     } catch (error) {
         console.error('Notion OAuth callback error:', error.response?.data || error.message);
         res.status(500).json({ success: false, message: 'Notion connection failed' });

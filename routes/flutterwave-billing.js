@@ -48,7 +48,7 @@ router.post('/initialize', authenticateToken, async (req, res) => {
             tx_ref: `txref_${Date.now()}_${userId}`,
             amount: 50, // $50.00 USD (Starter plan)
             currency: 'USD',
-            redirect_url: `${process.env.FRONTEND_URL || 'http://localhost:5500'}/payment-success.html`,
+            redirect_url: `${process.env.FRONTEND_URL || 'http://localhost:5500'}/payment-success`,
             customer: {
                 email: user.email,
                 name: user.fullName,
