@@ -4,9 +4,11 @@ import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { authApi } from '../lib/api';
+import useAuthStore from '../store/authStore';
 
 export default function VerifyEmail() {
   const router = useRouter();
+  const setAuth = useAuthStore((s) => s.setAuth);
   const [inputs, setInputs] = useState(['', '', '', '']);
   const [submitting, setSubmitting] = useState(false);
 
@@ -43,7 +45,10 @@ export default function VerifyEmail() {
       const result = await authApi.verifyOTP(sessionStorage.getItem('userEmail'), otp);
       if (result.success) {
         sessionStorage.setItem('otp', otp);
-        if (result.token) localStorage.setItem('authToken', result.token);
+        if (result.token) {
+          localStorage.setItem('authToken', result.token);
+          setAuth(result.token, result.user || null);
+        }
         router.push('/verify-success');
       } else {
         alert(result.message || 'Invalid OTP. Please try again.');
