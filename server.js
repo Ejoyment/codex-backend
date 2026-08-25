@@ -639,6 +639,20 @@ terminalNamespace.on('connection', (socket) => {
             socket.emit('terminal:error', { message: error.message });
         }
     });
+
+    // Relay workspace changes from main namespace to PTY sessions
+    socket.on('workspace:change', async (payload) => {
+        try {
+            const { workspaceId, event, data } = payload;
+            for (const [sessionId, terminal] of terminalService.terminals) {
+                if (terminal.workspaceId === workspaceId && terminal.type === 'pty') {
+                    await terminalService.applyPtyDelta(sessionId, event, data);
+                }
+            }
+        } catch (error) {
+            console.error('Terminal workspace change error:', error);
+        }
+    });
     
     // Disconnect
     socket.on('disconnect', async () => {

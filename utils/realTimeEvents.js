@@ -26,13 +26,17 @@ function emitProfileUpdate(userId, profileData) {
 function emitWorkspaceChange(workspaceId, event, data) {
     if (!_io) return;
     
-    // Broadcast to all clients in the workspace room
-    _io.to(`workspace:${workspaceId}`).emit('workspace:change', {
+    const payload = {
         workspaceId,
         event,
         data,
         timestamp: new Date().toISOString()
-    });
+    };
+    
+    _io.to(`workspace:${workspaceId}`).emit('workspace:change', payload);
+    
+    const terminalNamespace = _io.of('/terminal');
+    terminalNamespace.emit('workspace:change', payload);
 }
 
 module.exports = { setIO, emitProfileUpdate, emitWorkspaceChange };
