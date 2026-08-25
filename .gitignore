@@ -52,7 +52,8 @@ diagnose-*.bat
 !skeleton-loader.html
 
 # CSS files (frontend - not needed in backend repo)
-*.css
+frontend/css/*.css
+!buildrs-frontend/**/*.css
 
 # Frontend JS (not needed in backend repo)
 js/

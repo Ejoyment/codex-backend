@@ -1,0 +1,84 @@
+/* Pricing Component Styles */
+
+.pricing-amount {
+  transition: opacity 0.3s ease;
+}
+
+.pricing-amount.price-updating {
+  opacity: 0.5;
+}
+
+.pricing-toggle {
+  background: linear-gradient(135deg, #2a3441, #1a1f36);
+  border: 2px solid #3b82f6;
+  cursor: pointer;
+}
+
+.pricing-toggle:hover {
+  border-color: #60a5fa;
+}
+
+.pricing-toggle-thumb {
+  transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.pricing-card {
+  transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  background: linear-gradient(135deg, rgba(42, 52, 65, 0.5), rgba(26, 31, 54, 0.5));
+}
+
+.pricing-card:hover:not(.pricing-card[style*="scale-105"]),
+.pricing-card:hover:not(.pricing-card[style*="scale-110"]) {
+  border-color: #3b82f6;
+  transform: translateY(-4px);
+  box-shadow: 0 20px 25px -5px rgba(59, 130, 246, 0.1);
+}
+
+.pricing-btn {
+  position: relative;
+  overflow: hidden;
+}
+
+.pricing-btn::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  transition: width 0.6s, height 0.6s;
+}
+
+.pricing-btn:hover::before {
+  width: 300px;
+  height: 300px;
+}
+
+@media (max-width: 768px) {
+  .pricing-card {
+    scale: 1 !important;
+  }
+  
+  .pricing-card.group {
+    transform: none !important;
+  }
+}
+
+/* Smooth transitions for mobile */
+.pricing-container {
+  animation: fadeIn 0.6s ease-in;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
