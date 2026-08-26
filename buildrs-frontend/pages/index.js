@@ -92,7 +92,7 @@ export default function Index() {
       <Head>
         <title>BuildrsHQ | Ship Better Code, Faster</title>
         <link rel="icon" href="/buildrs.png" />
-        <meta name="google-site-verification" content="......." />
+        <meta name="google-site-verification" content="v_NS74nxlv4nJ2Ij7N3yBx4hG3Q9BcRQEdj8zUe-rzI" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
