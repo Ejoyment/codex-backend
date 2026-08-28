@@ -74,7 +74,7 @@ npm start
 
 ## Production
 
-Deploy to Render, Heroku, or any Node.js hosting platform.
+Deployed on Render
 
 Make sure to set all environment variables in your hosting platform.
 
