@@ -100,13 +100,13 @@ export function sanitize(body) {
 
 export const authApi = {
   signup: (fullName, email, password) =>
-    apiFetch('/auth/signup', {
+    apiFetch('/api/auth/signup', {
       method: 'POST',
       body: JSON.stringify({ fullName, email, password }),
     }),
 
   signin: (email, password) =>
-    apiFetch('/auth/signin', {
+    apiFetch('/api/auth/signin', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     }),
@@ -114,19 +114,19 @@ export const authApi = {
   getMe: () => apiFetch('/auth/me'),
 
   sendOTP: (email) =>
-    apiFetch('/otp/send', {
+    apiFetch('/api/otp/send', {
       method: 'POST',
       body: JSON.stringify({ email }),
     }),
 
   verifyOTP: (email, otp) =>
-    apiFetch('/otp/verify', {
+    apiFetch('/api/otp/verify', {
       method: 'POST',
       body: JSON.stringify({ email, otp }),
     }),
 
   resendOTP: (email) =>
-    apiFetch('/otp/resend', {
+    apiFetch('/api/otp/resend', {
       method: 'POST',
       body: JSON.stringify({ email }),
     }),
@@ -136,109 +136,109 @@ export const authApi = {
 };
 
 export const companyApi = {
-  getMyCompanies: () => apiFetch('/company/my-companies'),
-  getDetails: (companyId) => apiFetch(`/company/${companyId}`),
-  getMembers: (companyId) => apiFetch(`/company/${companyId}/members`),
+  getMyCompanies: () => apiFetch('/api/company/my-companies'),
+  getDetails: (companyId) => apiFetch(`/api/company/${companyId}`),
+  getMembers: (companyId) => apiFetch(`/api/company/${companyId}/members`),
 };
 
 export const subscriptionApi = {
-  getCurrent: () => apiFetch('/subscription/current'),
+  getCurrent: () => apiFetch('/api/subscription/current'),
 };
 
 export const billingApi = {
-  getTrial: () => apiFetch('/trial-billing/status'),
+  getTrial: () => apiFetch('/api/trial-billing/status'),
 };
 
 export const integrationApi = {
-  list: () => apiFetch('/integrations'),
-  github: () => apiFetch('/github'),
-  slack: () => apiFetch('/slack'),
-  discord: () => apiFetch('/discord'),
-  notion: () => apiFetch('/notion'),
-  figma: () => apiFetch('/figma'),
+  list: () => apiFetch('/api/integrations'),
+  github: () => apiFetch('/api/github'),
+  slack: () => apiFetch('/api/slack'),
+  discord: () => apiFetch('/api/discord'),
+  notion: () => apiFetch('/api/notion'),
+  figma: () => apiFetch('/api/figma'),
 };
 
 export const dashboardApi = {
-  getData: () => apiFetch('/dashboard/data'),
-  getPlatformData: (platform) => apiFetch(`/dashboard/data/${platform}`),
-  sync: (platform) => apiFetch(`/dashboard/sync/${platform}`, { method: 'POST' }),
+  getData: () => apiFetch('/api/dashboard/data'),
+  getPlatformData: (platform) => apiFetch(`/api/dashboard/data/${platform}`),
+  sync: (platform) => apiFetch(`/api/dashboard/sync/${platform}`, { method: 'POST' }),
 };
 
 export const githubApi = {
   listRepos: (params = {}) => {
     const qs = new URLSearchParams(params).toString();
-    return apiFetch(`/github/repos${qs ? `?${qs}` : ''}`);
+    return apiFetch(`/api/github/repos${qs ? `?${qs}` : ''}`);
   },
-  getRepo: (owner, repo) => apiFetch(`/github/repos/${owner}/${repo}`),
+  getRepo: (owner, repo) => apiFetch(`/api/github/repos/${owner}/${repo}`),
   getCommits: (owner, repo, params = {}) => {
     const qs = new URLSearchParams(params).toString();
-    return apiFetch(`/github/repos/${owner}/${repo}/commits${qs ? `?${qs}` : ''}`);
+    return apiFetch(`/api/github/repos/${owner}/${repo}/commits${qs ? `?${qs}` : ''}`);
   },
   getIssues: (owner, repo, params = {}) => {
     const qs = new URLSearchParams(params).toString();
-    return apiFetch(`/github/repos/${owner}/${repo}/issues${qs ? `?${qs}` : ''}`);
+    return apiFetch(`/api/github/repos/${owner}/${repo}/issues${qs ? `?${qs}` : ''}`);
   },
   getPulls: (owner, repo, params = {}) => {
     const qs = new URLSearchParams(params).toString();
-    return apiFetch(`/github/repos/${owner}/${repo}/pulls${qs ? `?${qs}` : ''}`);
+    return apiFetch(`/api/github/repos/${owner}/${repo}/pulls${qs ? `?${qs}` : ''}`);
   },
-  getStatus: () => apiFetch('/github/status'),
+  getStatus: () => apiFetch('/api/github/status'),
 };
 
 export const discordApi = {
-  getGuilds: () => apiFetch('/discord/guilds'),
-  getGuildChannels: (guildId) => apiFetch(`/discord/guilds/${guildId}/channels`),
+  getGuilds: () => apiFetch('/api/discord/guilds'),
+  getGuildChannels: (guildId) => apiFetch(`/api/discord/guilds/${guildId}/channels`),
   getChannelMessages: (channelId, params = {}) => {
     const qs = new URLSearchParams(params).toString();
-    return apiFetch(`/discord/channels/${channelId}/messages${qs ? `?${qs}` : ''}`);
+    return apiFetch(`/api/discord/channels/${channelId}/messages${qs ? `?${qs}` : ''}`);
   },
-  getStatus: () => apiFetch('/discord/status'),
+  getStatus: () => apiFetch('/api/discord/status'),
 };
 
 export const figmaApi = {
-  listFiles: () => apiFetch('/figma/files'),
-  getComments: (fileKey) => apiFetch(`/figma/files/${fileKey}/comments`),
-  getStatus: () => apiFetch('/figma/status'),
+  listFiles: () => apiFetch('/api/figma/files'),
+  getComments: (fileKey) => apiFetch(`/api/figma/files/${fileKey}/comments`),
+  getStatus: () => apiFetch('/api/figma/status'),
 };
 
 export const slackApi = {
   listConversations: (params = {}) => {
     const qs = new URLSearchParams(params).toString();
-    return apiFetch(`/slack/conversations/list${qs ? `?${qs}` : ''}`);
+    return apiFetch(`/api/slack/conversations/list${qs ? `?${qs}` : ''}`);
   },
   getHistory: (channelId, params = {}) => {
     const qs = new URLSearchParams(params).toString();
-    return apiFetch(`/slack/conversations/history/${channelId}${qs ? `?${qs}` : ''}`);
+    return apiFetch(`/api/slack/conversations/history/${channelId}${qs ? `?${qs}` : ''}`);
   },
-  getStatus: () => apiFetch('/slack/status'),
+  getStatus: () => apiFetch('/api/slack/status'),
 };
 
 export const aiPairApi = {
   createSession: (data) =>
-    apiFetch('/ai-pair/session', {
+    apiFetch('/api/ai-pair/session', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
   chat: (sessionId, message) =>
-    apiFetch('/ai-pair/chat', {
+    apiFetch('/api/ai-pair/chat', {
       method: 'POST',
       body: JSON.stringify({ sessionId, message }),
     }),
 };
 
 export const messagingApi = {
-  list: () => apiFetch('/messaging'),
+  list: () => apiFetch('/api/messaging'),
   send: (data) =>
-    apiFetch('/messaging', {
+    apiFetch('/api/messaging', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
 };
 
 export const meetingApi = {
-  list: () => apiFetch('/meetings'),
+  list: () => apiFetch('/api/meetings'),
   create: (data) =>
-    apiFetch('/meetings', {
+    apiFetch('/api/meetings', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
@@ -246,34 +246,34 @@ export const meetingApi = {
 
 export const supportApi = {
   createTicket: (data) =>
-    apiFetch('/support/tickets', {
+    apiFetch('/api/support/tickets', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
 };
 
 export const projectApi = {
-  list: () => apiFetch('/projects'),
+  list: () => apiFetch('/api/projects'),
   create: (data) =>
     apiFetch('/projects', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  get: (projectId) => apiFetch(`/projects/${projectId}`),
-  listTasks: () => apiFetch('/projects/tasks'),
+  get: (projectId) => apiFetch(`/api/projects/${projectId}`),
+  listTasks: () => apiFetch('/api/projects/tasks'),
   createTask: (data) =>
-    apiFetch('/projects/tasks', {
+    apiFetch('/api/projects/tasks', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  listProjectTasks: (projectId) => apiFetch(`/projects/${projectId}/tasks`),
+  listProjectTasks: (projectId) => apiFetch(`/api/projects/${projectId}/tasks`),
   createProjectTask: (projectId, data) =>
-    apiFetch(`/projects/${projectId}/tasks`, {
+    apiFetch(`/api/projects/${projectId}/tasks`, {
       method: 'POST',
       body: JSON.stringify(data),
     }),
 };
 
 export const collaborationApi = {
-  getCompanyProjects: (companyId) => apiFetch(`/collaboration/${companyId}/projects`),
+  getCompanyProjects: (companyId) => apiFetch(`/api/collaboration/${companyId}/projects`),
 };
