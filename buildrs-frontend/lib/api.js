@@ -86,6 +86,61 @@ export const integrationApi = {
   figma: () => apiFetch('/api/figma'),
 };
 
+export const dashboardApi = {
+  getData: () => apiFetch('/api/dashboard/data'),
+  getPlatformData: (platform) => apiFetch(`/api/dashboard/data/${platform}`),
+  sync: (platform) => apiFetch(`/api/dashboard/sync/${platform}`, { method: 'POST' }),
+};
+
+export const githubApi = {
+  listRepos: (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return apiFetch(`/api/github/repos${qs ? `?${qs}` : ''}`);
+  },
+  getRepo: (owner, repo) => apiFetch(`/api/github/repos/${owner}/${repo}`),
+  getCommits: (owner, repo, params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return apiFetch(`/api/github/repos/${owner}/${repo}/commits${qs ? `?${qs}` : ''}`);
+  },
+  getIssues: (owner, repo, params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return apiFetch(`/api/github/repos/${owner}/${repo}/issues${qs ? `?${qs}` : ''}`);
+  },
+  getPulls: (owner, repo, params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return apiFetch(`/api/github/repos/${owner}/${repo}/pulls${qs ? `?${qs}` : ''}`);
+  },
+  getStatus: () => apiFetch('/api/github/status'),
+};
+
+export const discordApi = {
+  getGuilds: () => apiFetch('/api/discord/guilds'),
+  getGuildChannels: (guildId) => apiFetch(`/api/discord/guilds/${guildId}/channels`),
+  getChannelMessages: (channelId, params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return apiFetch(`/api/discord/channels/${channelId}/messages${qs ? `?${qs}` : ''}`);
+  },
+  getStatus: () => apiFetch('/api/discord/status'),
+};
+
+export const figmaApi = {
+  listFiles: () => apiFetch('/api/figma/files'),
+  getComments: (fileKey) => apiFetch(`/api/figma/files/${fileKey}/comments`),
+  getStatus: () => apiFetch('/api/figma/status'),
+};
+
+export const slackApi = {
+  listConversations: (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return apiFetch(`/api/slack/conversations/list${qs ? `?${qs}` : ''}`);
+  },
+  getHistory: (channelId, params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return apiFetch(`/api/slack/conversations/history/${channelId}${qs ? `?${qs}` : ''}`);
+  },
+  getStatus: () => apiFetch('/api/slack/status'),
+};
+
 export const aiPairApi = {
   createSession: (data) =>
     apiFetch('/api/ai-pair/session', {
@@ -132,4 +187,21 @@ export const projectApi = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+  get: (projectId) => apiFetch(`/api/projects/${projectId}`),
+  listTasks: () => apiFetch('/api/projects/tasks'),
+  createTask: (data) =>
+    apiFetch('/api/projects/tasks', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  listProjectTasks: (projectId) => apiFetch(`/api/projects/${projectId}/tasks`),
+  createProjectTask: (projectId, data) =>
+    apiFetch(`/api/projects/${projectId}/tasks`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+};
+
+export const collaborationApi = {
+  getCompanyProjects: (companyId) => apiFetch(`/api/collaboration/${companyId}/projects`),
 };

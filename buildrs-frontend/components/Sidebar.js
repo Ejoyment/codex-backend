@@ -13,6 +13,23 @@ const navItems = [
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
 
+function resolveAvatarUrl(user) {
+  const raw = user?.profilePicture || user?.profilePhoto;
+  if (raw && raw.startsWith('/uploads/')) {
+    const apiBase = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/api$/, '');
+    return `${apiBase}${raw}`;
+  }
+  if (raw) return raw;
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.fullName || user?.name || 'User')}&background=3b82f6&color=fff`;
+}
+
+const TIER_LABELS = {
+  freebie: 'Free',
+  starter: 'Free',
+  professional: 'Pro',
+  enterprise: 'Enterprise',
+};
+
 export default function Sidebar({ user, subscription }) {
   const pathname = usePathname();
 
@@ -49,20 +66,20 @@ export default function Sidebar({ user, subscription }) {
           <img
             id="sidebarAvatar"
             className="sidebar-user-avatar"
-            src={user?.profilePicture || `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.fullName || 'User')}&background=3b82f6&color=fff`}
+            src={resolveAvatarUrl(user)}
             alt={user?.fullName || 'User'}
           />
           <div className="sidebar-user-details">
             <div id="sidebarName" className="sidebar-user-name">
-              {user?.fullName || 'Loading...'}
+              {user?.fullName || user?.name || 'Loading...'}
             </div>
             <div id="sidebarRole" className="sidebar-user-role">
-              {user?.role?.join(', ') || 'Team Member'}
+              {user?.role?.join(', ') || 'Member'}
             </div>
           </div>
         </div>
         <div id="subscriptionBadge" className="sidebar-badge">
-          <span>{subscription?.plan || 'Free'}</span>
+          <span>{TIER_LABELS[subscription?.tier] || TIER_LABELS[user?.subscription?.tier] || 'Free'}</span>
         </div>
       </div>
     </aside>
