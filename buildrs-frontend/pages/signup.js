@@ -153,7 +153,7 @@ export default function SignUp() {
             font-size: 14px; font-weight: 700; background: linear-gradient(135deg, #3b82f6, #22d3ee); color: #000;
           }
           .quote-name { font-size: 14px; font-weight: 600; color: #f8fafc; }
-          .quote-role { font-size: 12px; color: #0000; }
+          .quote-role { font-size: 12px; color: rgba(0, 0, 0, 0); }
 
           .feature-list { position: relative; z-index: 10; display: flex; flex-direction: column; gap: 12px; }
           .feature-item { display: flex; align-items: center; gap: 12px; font-size: 14px; color: #94a3b8; }
