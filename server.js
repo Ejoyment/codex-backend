@@ -98,13 +98,19 @@ app.set('trust proxy', 1);
 
 // Middleware
 app.use(cors({
-    origin: [
-        process.env.FRONTEND_URL || 'http://localhost:5500',
-        'https://buildrshq.dev',
-        'http://buildrshq.dev',
-        'https://buildrshq.dev',
-        'http://buildrshq.dev'
-    ],
+    origin: function (origin, callback) {
+        const allowed = [
+            process.env.FRONTEND_URL,
+            'https://buildrshq.dev',
+            'http://buildrshq.dev',
+        ].filter(Boolean);
+
+        if (!origin || allowed.includes(origin) || origin.endsWith('.onrender.com')) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
     credentials: true
 }));
 app.use(express.json());
