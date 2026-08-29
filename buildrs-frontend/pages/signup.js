@@ -108,7 +108,7 @@ export default function SignUp() {
         `}</style>
       </Head>
 
-      <div className="min-h-screen bg-navy flex flex-col">
+      <div className="min-h-screen flex flex-col">
         <div className="cube cube-1" />
         <div className="cube cube-2" />
         <div className="cube cube-3" />
@@ -166,6 +166,9 @@ export default function SignUp() {
                 <div className="input-container">
                   <svg className="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><circle cx="12" cy="16" r="1"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                   <input id="confirmPassword" type={showPassword ? 'text' : 'password'} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="••••••••••" required />
+                  <button type="button" className="toggle-password" onClick={() => setShowPassword((v) => !v)}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  </button>
                 </div>
               </div>
 

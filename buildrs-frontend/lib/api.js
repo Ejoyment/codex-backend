@@ -9,7 +9,7 @@ export async function apiFetch(path, options = {}) {
     ...options.headers,
   };
 
-  const res = await fetch(path, {
+  const res = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
     headers,
   });

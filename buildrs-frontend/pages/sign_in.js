@@ -104,7 +104,7 @@ export default function SignIn() {
         `}</style>
       </Head>
 
-      <div className="min-h-screen bg-navy flex flex-col">
+      <div className="min-h-screen flex flex-col">
         <div className="cube cube-1" />
         <div className="cube cube-2" />
         <div className="cube cube-3" />
