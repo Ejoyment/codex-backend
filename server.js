@@ -103,6 +103,8 @@ app.use(cors({
             process.env.FRONTEND_URL,
             'https://buildrshq.dev',
             'http://buildrshq.dev',
+            'https://www.buildrshq.dev',
+            'http://www.buildrshq.dev',
         ].filter(Boolean);
 
         if (!origin || allowed.includes(origin) || origin.endsWith('.onrender.com')) {
