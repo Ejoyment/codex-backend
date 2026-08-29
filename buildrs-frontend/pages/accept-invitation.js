@@ -3,6 +3,7 @@ import ModernHeader from '../components/ModernHeader';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { useAuth } from '../hooks/useAuth';
+import { apiFetch } from '../lib/api';
 
 export default function AcceptInvitation() {
   const router = useRouter();
@@ -25,9 +26,8 @@ export default function AcceptInvitation() {
       }
 
       try {
-        const res = await fetch('/api/invitations/${invitationToken}/accept', {
+        const res = await apiFetch(`/api/invitations/${invitationToken}/accept`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('authToken')}` },
         });
         const data = await res.json();
         if (data.success) {

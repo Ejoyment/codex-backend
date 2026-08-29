@@ -92,15 +92,13 @@ export default function Profile() {
     try {
       const form = new FormData();
       form.append('profilePicture', file);
-      const token = localStorage.getItem('authToken');
-      const res = await fetch('/api/profile/picture', {
+      const data = await apiFetch('/api/profile/picture', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
         body: form,
       });
-      const data = await res.json();
       if (data.profilePicture) {
         const updated = { ...user, profilePicture: data.profilePicture };
+        const token = localStorage.getItem('authToken');
         setAuth(token, updated);
         showToast('Profile picture updated');
       }
