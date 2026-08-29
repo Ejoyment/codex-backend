@@ -1,4 +1,4 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+const API_BASE_URL = 'https://codex-backend-7utu.onrender.com/api';
 
 export async function apiFetch(path, options = {}) {
   const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
@@ -59,8 +59,8 @@ export const authApi = {
       body: JSON.stringify({ email }),
     }),
 
-  google: () => `${API_BASE_URL}/api/auth/google`,
-  facebook: () => `${API_BASE_URL}/api/auth/facebook`,
+  google: () => `${API_BASE_URL}/auth/google`,
+  facebook: () => `${API_BASE_URL}/auth/facebook`,
 };
 
 export const companyApi = {
