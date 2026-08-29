@@ -122,13 +122,15 @@ export default function SignUp() {
             background: rgba(8, 12, 24, 0.55);
             z-index: 1;
           }
-          .left-panel > *:not(.left-bg):not(.left-overlay) {
-            position: relative;
-            z-index: 10;
-          }
           .left-panel .orb {
             position: absolute;
             z-index: 5;
+          }
+          .left-panel .left-logo,
+          .left-panel .quote,
+          .left-panel .feature-list {
+            position: relative;
+            z-index: 10;
           }
           .orb { position: absolute; border-radius: 50%; pointer-events: none; filter: blur(100px); }
           .orb-blue { background: radial-gradient(circle, rgba(59,130,246,0.35), transparent 70%); }
@@ -244,7 +246,7 @@ export default function SignUp() {
             <div className="logo-text">Buildrs<span>HQ</span></div>
           </Link>
 
-          <div>
+          <div className="quote">
             <blockquote className="quote-text">
               "The AI pair programmer catches real bugs before they hit review. It's like having a senior engineer available 24/7."
             </blockquote>
