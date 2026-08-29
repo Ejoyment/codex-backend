@@ -1,6 +1,6 @@
 import { isTokenExpired, rateLimit, sanitizeInput } from './security';
 
-const API_BASE_URL = 'https://codex-backend-7utu.onrender.com/api';
+const API_BASE_URL = 'https://codex-backend-7utu.onrender.com';
 const DEFAULT_TIMEOUT_MS = 15000;
 const MAX_RETRIES = 2;
 
