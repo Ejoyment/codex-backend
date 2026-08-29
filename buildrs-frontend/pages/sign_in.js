@@ -452,10 +452,10 @@ export default function SignIn() {
           <div className="testimonial">
             <p>"BuildrsHQ is the only platform that actually understands what we're building — not just what we type."</p>
             <div className="testimonial-author">
-              <div className="testimonial-avatar">NK</div>
+              <div className="testimonial-avatar">ET</div>
               <div>
-                <div className="testimonial-name">Nadia K.</div>
-                <div className="testimonial-role">Staff Engineer, Cloudflare</div>
+                <div className="testimonial-name">Ejoymene Tamaraupere David</div>
+                <div className="testimonial-role">CEO, Founder, CODEX INC ENTERPRISE - BUILDRSHQ </div>
               </div>
             </div>
           </div>
