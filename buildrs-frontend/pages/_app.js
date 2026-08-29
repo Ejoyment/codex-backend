@@ -1,4 +1,5 @@
 import '../styles/globals.css';
+import '../styles/workspace.css';
 import { Inter } from 'next/font/google';
 import useAuthStore from '../store/authStore';
 
