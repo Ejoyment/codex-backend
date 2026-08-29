@@ -1,6 +1,6 @@
 import { isTokenExpired, rateLimit, sanitizeInput } from './security';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+const API_BASE_URL = 'https://codex-backend-7utu.onrender.com/api';
 const DEFAULT_TIMEOUT_MS = 15000;
 const MAX_RETRIES = 2;
 
@@ -100,145 +100,145 @@ export function sanitize(body) {
 
 export const authApi = {
   signup: (fullName, email, password) =>
-    apiFetch('/api/auth/signup', {
+    apiFetch('/auth/signup', {
       method: 'POST',
       body: JSON.stringify({ fullName, email, password }),
     }),
 
   signin: (email, password) =>
-    apiFetch('/api/auth/signin', {
+    apiFetch('/auth/signin', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     }),
 
-  getMe: () => apiFetch('/api/auth/me'),
+  getMe: () => apiFetch('/auth/me'),
 
   sendOTP: (email) =>
-    apiFetch('/api/otp/send', {
+    apiFetch('/otp/send', {
       method: 'POST',
       body: JSON.stringify({ email }),
     }),
 
   verifyOTP: (email, otp) =>
-    apiFetch('/api/otp/verify', {
+    apiFetch('/otp/verify', {
       method: 'POST',
       body: JSON.stringify({ email, otp }),
     }),
 
   resendOTP: (email) =>
-    apiFetch('/api/otp/resend', {
+    apiFetch('/otp/resend', {
       method: 'POST',
       body: JSON.stringify({ email }),
     }),
 
-  google: () => `${API_BASE_URL}/api/auth/google`,
-  facebook: () => `${API_BASE_URL}/api/auth/facebook`,
+  google: () => `${API_BASE_URL}/auth/google`,
+  facebook: () => `${API_BASE_URL}/auth/facebook`,
 };
 
 export const companyApi = {
-  getMyCompanies: () => apiFetch('/api/company/my-companies'),
-  getDetails: (companyId) => apiFetch(`/api/company/${companyId}`),
-  getMembers: (companyId) => apiFetch(`/api/company/${companyId}/members`),
+  getMyCompanies: () => apiFetch('/company/my-companies'),
+  getDetails: (companyId) => apiFetch(`/company/${companyId}`),
+  getMembers: (companyId) => apiFetch(`/company/${companyId}/members`),
 };
 
 export const subscriptionApi = {
-  getCurrent: () => apiFetch('/api/subscription/current'),
+  getCurrent: () => apiFetch('/subscription/current'),
 };
 
 export const billingApi = {
-  getTrial: () => apiFetch('/api/trial-billing/status'),
+  getTrial: () => apiFetch('/trial-billing/status'),
 };
 
 export const integrationApi = {
-  list: () => apiFetch('/api/integrations'),
-  github: () => apiFetch('/api/github'),
-  slack: () => apiFetch('/api/slack'),
-  discord: () => apiFetch('/api/discord'),
-  notion: () => apiFetch('/api/notion'),
-  figma: () => apiFetch('/api/figma'),
+  list: () => apiFetch('/integrations'),
+  github: () => apiFetch('/github'),
+  slack: () => apiFetch('/slack'),
+  discord: () => apiFetch('/discord'),
+  notion: () => apiFetch('/notion'),
+  figma: () => apiFetch('/figma'),
 };
 
 export const dashboardApi = {
-  getData: () => apiFetch('/api/dashboard/data'),
-  getPlatformData: (platform) => apiFetch(`/api/dashboard/data/${platform}`),
-  sync: (platform) => apiFetch(`/api/dashboard/sync/${platform}`, { method: 'POST' }),
+  getData: () => apiFetch('/dashboard/data'),
+  getPlatformData: (platform) => apiFetch(`/dashboard/data/${platform}`),
+  sync: (platform) => apiFetch(`/dashboard/sync/${platform}`, { method: 'POST' }),
 };
 
 export const githubApi = {
   listRepos: (params = {}) => {
     const qs = new URLSearchParams(params).toString();
-    return apiFetch(`/api/github/repos${qs ? `?${qs}` : ''}`);
+    return apiFetch(`/github/repos${qs ? `?${qs}` : ''}`);
   },
-  getRepo: (owner, repo) => apiFetch(`/api/github/repos/${owner}/${repo}`),
+  getRepo: (owner, repo) => apiFetch(`/github/repos/${owner}/${repo}`),
   getCommits: (owner, repo, params = {}) => {
     const qs = new URLSearchParams(params).toString();
-    return apiFetch(`/api/github/repos/${owner}/${repo}/commits${qs ? `?${qs}` : ''}`);
+    return apiFetch(`/github/repos/${owner}/${repo}/commits${qs ? `?${qs}` : ''}`);
   },
   getIssues: (owner, repo, params = {}) => {
     const qs = new URLSearchParams(params).toString();
-    return apiFetch(`/api/github/repos/${owner}/${repo}/issues${qs ? `?${qs}` : ''}`);
+    return apiFetch(`/github/repos/${owner}/${repo}/issues${qs ? `?${qs}` : ''}`);
   },
   getPulls: (owner, repo, params = {}) => {
     const qs = new URLSearchParams(params).toString();
-    return apiFetch(`/api/github/repos/${owner}/${repo}/pulls${qs ? `?${qs}` : ''}`);
+    return apiFetch(`/github/repos/${owner}/${repo}/pulls${qs ? `?${qs}` : ''}`);
   },
-  getStatus: () => apiFetch('/api/github/status'),
+  getStatus: () => apiFetch('/github/status'),
 };
 
 export const discordApi = {
-  getGuilds: () => apiFetch('/api/discord/guilds'),
-  getGuildChannels: (guildId) => apiFetch(`/api/discord/guilds/${guildId}/channels`),
+  getGuilds: () => apiFetch('/discord/guilds'),
+  getGuildChannels: (guildId) => apiFetch(`/discord/guilds/${guildId}/channels`),
   getChannelMessages: (channelId, params = {}) => {
     const qs = new URLSearchParams(params).toString();
-    return apiFetch(`/api/discord/channels/${channelId}/messages${qs ? `?${qs}` : ''}`);
+    return apiFetch(`/discord/channels/${channelId}/messages${qs ? `?${qs}` : ''}`);
   },
-  getStatus: () => apiFetch('/api/discord/status'),
+  getStatus: () => apiFetch('/discord/status'),
 };
 
 export const figmaApi = {
-  listFiles: () => apiFetch('/api/figma/files'),
-  getComments: (fileKey) => apiFetch(`/api/figma/files/${fileKey}/comments`),
-  getStatus: () => apiFetch('/api/figma/status'),
+  listFiles: () => apiFetch('/figma/files'),
+  getComments: (fileKey) => apiFetch(`/figma/files/${fileKey}/comments`),
+  getStatus: () => apiFetch('/figma/status'),
 };
 
 export const slackApi = {
   listConversations: (params = {}) => {
     const qs = new URLSearchParams(params).toString();
-    return apiFetch(`/api/slack/conversations/list${qs ? `?${qs}` : ''}`);
+    return apiFetch(`/slack/conversations/list${qs ? `?${qs}` : ''}`);
   },
   getHistory: (channelId, params = {}) => {
     const qs = new URLSearchParams(params).toString();
-    return apiFetch(`/api/slack/conversations/history/${channelId}${qs ? `?${qs}` : ''}`);
+    return apiFetch(`/slack/conversations/history/${channelId}${qs ? `?${qs}` : ''}`);
   },
-  getStatus: () => apiFetch('/api/slack/status'),
+  getStatus: () => apiFetch('/slack/status'),
 };
 
 export const aiPairApi = {
   createSession: (data) =>
-    apiFetch('/api/ai-pair/session', {
+    apiFetch('/ai-pair/session', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
   chat: (sessionId, message) =>
-    apiFetch('/api/ai-pair/chat', {
+    apiFetch('/ai-pair/chat', {
       method: 'POST',
       body: JSON.stringify({ sessionId, message }),
     }),
 };
 
 export const messagingApi = {
-  list: () => apiFetch('/api/messaging'),
+  list: () => apiFetch('/messaging'),
   send: (data) =>
-    apiFetch('/api/messaging', {
+    apiFetch('/messaging', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
 };
 
 export const meetingApi = {
-  list: () => apiFetch('/api/meetings'),
+  list: () => apiFetch('/meetings'),
   create: (data) =>
-    apiFetch('/api/meetings', {
+    apiFetch('/meetings', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
@@ -246,34 +246,34 @@ export const meetingApi = {
 
 export const supportApi = {
   createTicket: (data) =>
-    apiFetch('/api/support/tickets', {
+    apiFetch('/support/tickets', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
 };
 
 export const projectApi = {
-  list: () => apiFetch('/api/projects'),
+  list: () => apiFetch('/projects'),
   create: (data) =>
-    apiFetch('/api/projects', {
+    apiFetch('/projects', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  get: (projectId) => apiFetch(`/api/projects/${projectId}`),
-  listTasks: () => apiFetch('/api/projects/tasks'),
+  get: (projectId) => apiFetch(`/projects/${projectId}`),
+  listTasks: () => apiFetch('/projects/tasks'),
   createTask: (data) =>
-    apiFetch('/api/projects/tasks', {
+    apiFetch('/projects/tasks', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  listProjectTasks: (projectId) => apiFetch(`/api/projects/${projectId}/tasks`),
+  listProjectTasks: (projectId) => apiFetch(`/projects/${projectId}/tasks`),
   createProjectTask: (projectId, data) =>
-    apiFetch(`/api/projects/${projectId}/tasks`, {
+    apiFetch(`/projects/${projectId}/tasks`, {
       method: 'POST',
       body: JSON.stringify(data),
     }),
 };
 
 export const collaborationApi = {
-  getCompanyProjects: (companyId) => apiFetch(`/api/collaboration/${companyId}/projects`),
+  getCompanyProjects: (companyId) => apiFetch(`/collaboration/${companyId}/projects`),
 };

@@ -6,6 +6,7 @@ import { useAuth } from '../hooks/useAuth';
 export default function AuthGuard({ children }) {
   const router = useRouter();
   const token = useAuthStore((s) => s.token);
+  const user = useAuthStore((s) => s.user);
   const { fetchUser } = useAuth();
 
   useEffect(() => {
@@ -14,10 +15,14 @@ export default function AuthGuard({ children }) {
       return;
     }
 
+    if (user) {
+      return;
+    }
+
     fetchUser().catch(() => {
       router.replace('/sign_in');
     });
-  }, [token, router, fetchUser]);
+  }, [token, router, fetchUser, user]);
 
   if (!token) {
     return (

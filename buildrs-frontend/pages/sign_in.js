@@ -120,7 +120,14 @@ export default function SignIn() {
             background: rgba(8, 12, 24, 0.55);
             z-index: 1;
           }
-          .left-panel > *:not(.left-bg):not(.left-overlay) {
+          .left-panel .orb {
+            position: absolute;
+            z-index: 5;
+          }
+          .left-panel .left-logo,
+          .left-panel .stats-grid,
+          .left-panel .live-indicator,
+          .left-panel .testimonial {
             position: relative;
             z-index: 10;
           }

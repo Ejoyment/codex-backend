@@ -161,10 +161,16 @@ export default function SignUp() {
             background: rgba(8, 12, 24, 0.55);
             z-index: 1;
           }
-          .left-panel > *:not(.left-bg):not(.left-overlay) {
-            position: relative; z-index: 10;
+          .left-panel .orb {
+            position: absolute;
+            z-index: 5;
           }
-
+          .left-panel .left-logo,
+          .left-panel .quote,
+          .left-panel .feature-list {
+            position: relative;
+            z-index: 10;
+          }
           .orb { position: absolute; border-radius: 50%; pointer-events: none; filter: blur(100px); }
           .orb-blue { background: radial-gradient(circle, rgba(59,130,246,0.35), transparent 70%); }
           .orb-cyan { background: radial-gradient(circle, rgba(34,211,238,0.25), transparent 70%); }
@@ -186,7 +192,7 @@ export default function SignUp() {
             font-size: 14px; font-weight: 700; background: linear-gradient(135deg, #3b82f6, #22d3ee); color: #000;
           }
           .quote-name { font-size: 14px; font-weight: 600; color: #f8fafc; }
-          .quote-role { font-size: 12px; color: #64748b; }
+          .quote-role { font-size: 12px; font-weight: 600; color: #f8fafc; opacity: 0.6; }
 
           .feature-list { position: relative; z-index: 10; display: flex; flex-direction: column; gap: 12px; }
           .feature-item { display: flex; align-items: center; gap: 12px; font-size: 14px; color: #94a3b8; }
@@ -279,15 +285,15 @@ export default function SignUp() {
             <div className="logo-text">Buildrs<span>HQ</span></div>
           </Link>
 
-          <div>
+          <div className="quote">
             <blockquote className="quote-text">
               "The AI pair programmer catches real bugs before they hit review. It's like having a senior engineer available 24/7."
             </blockquote>
             <div className="quote-author">
-              <div className="quote-avatar">NK</div>
+              <div className="quote-avatar">BT</div>
               <div>
-                <div className="quote-name">Nadia K.</div>
-                <div className="quote-role">Staff Engineer, Cloudflare</div>
+                <div className="quote-name">Beulah Tobin West</div>
+                <div className="quote-role">Co-Founder, BUILDRSHQ</div>
               </div>
             </div>
           </div>
