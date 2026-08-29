@@ -153,7 +153,7 @@ export default function SignUp() {
             font-size: 14px; font-weight: 700; background: linear-gradient(135deg, #3b82f6, #22d3ee); color: #000;
           }
           .quote-name { font-size: 14px; font-weight: 600; color: #f8fafc; }
-          .quote-role { font-size: 12px; color: #64748b; }
+          .quote-role { font-size: 12px; color: #0000; }
 
           .feature-list { position: relative; z-index: 10; display: flex; flex-direction: column; gap: 12px; }
           .feature-item { display: flex; align-items: center; gap: 12px; font-size: 14px; color: #94a3b8; }
@@ -251,10 +251,10 @@ export default function SignUp() {
               "The AI pair programmer catches real bugs before they hit review. It's like having a senior engineer available 24/7."
             </blockquote>
             <div className="quote-author">
-              <div className="quote-avatar">NK</div>
+              <div className="quote-avatar">BT</div>
               <div>
-                <div className="quote-name">Nadia K.</div>
-                <div className="quote-role">Staff Engineer, Cloudflare</div>
+                <div className="quote-name">Beulah Tobin West</div>
+                <div className="quote-role">Co-Founder, BUILDRSHQ</div>
               </div>
             </div>
           </div>
