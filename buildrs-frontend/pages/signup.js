@@ -123,9 +123,13 @@ export default function SignUp() {
             z-index: 1;
           }
           .left-panel > *:not(.left-bg):not(.left-overlay) {
-            position: relative; z-index: 10;
+            position: relative;
+            z-index: 10;
           }
-
+          .left-panel .orb {
+            position: absolute;
+            z-index: 5;
+          }
           .orb { position: absolute; border-radius: 50%; pointer-events: none; filter: blur(100px); }
           .orb-blue { background: radial-gradient(circle, rgba(59,130,246,0.35), transparent 70%); }
           .orb-cyan { background: radial-gradient(circle, rgba(34,211,238,0.25), transparent 70%); }

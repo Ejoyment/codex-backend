@@ -92,6 +92,10 @@ export default function SignIn() {
             position: relative;
             z-index: 10;
           }
+          .left-panel .orb {
+            position: absolute;
+            z-index: 5;
+          }
 
           .orb {
             position: absolute;
