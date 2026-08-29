@@ -1,15 +1,17 @@
 import '../styles/globals.css';
 import '../styles/workspace.css';
 import { Inter } from 'next/font/google';
-import useAuthStore from '../store/authStore';
+import ErrorBoundary from '../components/ErrorBoundary';
 
 const inter = Inter({ subsets: ['latin'] });
 
 function MyApp({ Component, pageProps }) {
   return (
-    <div className={inter.className}>
-      <Component {...pageProps} />
-    </div>
+    <ErrorBoundary>
+      <div className={inter.className}>
+        <Component {...pageProps} />
+      </div>
+    </ErrorBoundary>
   );
 }
 

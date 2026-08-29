@@ -1,7 +1,29 @@
+import { isTokenExpired, rateLimit, sanitizeInput } from './security';
+
 const API_BASE_URL = 'https://codex-backend-7utu.onrender.com/api';
+const DEFAULT_TIMEOUT_MS = 15000;
+const MAX_RETRIES = 2;
 
 export async function apiFetch(path, options = {}) {
   const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+
+  if (token && isTokenExpired(token)) {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('user');
+      localStorage.removeItem('subscription');
+      window.location.href = '/sign_in';
+    }
+    throw new Error('Session expired');
+  }
+
+  const method = (options.method || 'GET').toUpperCase();
+  if (method !== 'GET') {
+    const rl = rateLimit(`api:${path}`, { maxAttempts: 10, windowMs: 60000 });
+    if (!rl.allowed) {
+      throw new Error(`Too many requests. Try again in ${rl.retryAfter}s`);
+    }
+  }
 
   const headers = {
     'Content-Type': 'application/json',
@@ -9,21 +31,71 @@ export async function apiFetch(path, options = {}) {
     ...options.headers,
   };
 
-  const res = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers,
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), options.timeoutMs || DEFAULT_TIMEOUT_MS);
 
-  const data = await res.json().catch(() => ({}));
+  let lastError;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const res = await fetch(`${API_BASE_URL}${path}`, {
+        ...options,
+        headers,
+        signal: controller.signal,
+      });
 
-  if (!res.ok) {
-    const error = new Error(data.message || 'API request failed');
-    error.status = res.status;
-    error.data = data;
-    throw error;
+      clearTimeout(timeoutId);
+
+      if (res.status === 429) {
+        const retryAfter = parseInt(res.headers.get('Retry-After') || '5', 10);
+        throw new Error(`Rate limited. Retry after ${retryAfter}s`);
+      }
+
+      if (res.status === 401) {
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('authToken');
+          localStorage.removeItem('user');
+          localStorage.removeItem('subscription');
+          window.location.href = '/sign_in';
+        }
+        throw new Error('Unauthorized');
+      }
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        const error = new Error(data.message || 'API request failed');
+        error.status = res.status;
+        error.data = data;
+        throw error;
+      }
+
+      return data;
+    } catch (err) {
+      lastError = err;
+      if (err.name === 'AbortError') {
+        throw new Error('Request timed out');
+      }
+      if (err.message === 'Session expired' || err.message === 'Unauthorized') {
+        throw err;
+      }
+      if (attempt < MAX_RETRIES && !options.method) {
+        await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+        continue;
+      }
+      throw err;
+    }
   }
 
-  return data;
+  throw lastError;
+}
+
+export function sanitize(body) {
+  if (typeof body !== 'object' || body === null) return body;
+  const clean = {};
+  for (const [key, value] of Object.entries(body)) {
+    clean[key] = typeof value === 'string' ? sanitizeInput(value) : value;
+  }
+  return clean;
 }
 
 export const authApi = {

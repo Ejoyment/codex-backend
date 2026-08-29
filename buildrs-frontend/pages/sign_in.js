@@ -1,9 +1,12 @@
 import Head from 'next/head';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import { authApi } from '../lib/api';
 import useAuthStore from '../store/authStore';
+import { rateLimit, resetRateLimit, validate, createSubmitGuard } from '../lib/security';
+
+const submitGuard = createSubmitGuard();
 
 export default function SignIn() {
   const router = useRouter();
@@ -11,15 +14,43 @@ export default function SignIn() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [rateLimited, setRateLimited] = useState(false);
   const setAuth = useAuthStore((s) => s.setAuth);
+
+  const validateField = useCallback((name, value) => {
+    const rules = name === 'email' ? ['required', 'email'] : ['required', 'minLength:8'];
+    const result = validate(value, rules);
+    setFieldErrors(prev => {
+      if (result.valid) { const n = { ...prev }; delete n[name]; return n; }
+      return { ...prev, [name]: result.errors[0] };
+    });
+    return result.valid;
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    if (!submitGuard.acquire()) return;
+
+    const emailValid = validateField('email', email);
+    const passValid = validateField('password', password);
+    if (!emailValid || !passValid) { submitGuard.release(); return; }
+
+    const rl = rateLimit('signin', { maxAttempts: 5, windowMs: 300000 });
+    if (!rl.allowed) {
+      setRateLimited(true);
+      setError(`Too many attempts. Try again in ${rl.retryAfter}s`);
+      submitGuard.release();
+      return;
+    }
+
     setLoading(true);
     try {
       const result = await authApi.signin(email, password);
       if (result.success && result.token) {
+        resetRateLimit('signin');
         setAuth(result.token, result.user);
         if (result.user?.onboardingCompleted) {
           router.push('/dashboard');
@@ -44,6 +75,7 @@ export default function SignIn() {
       setError(err.message || 'Network error. Please check if the server is running.');
     } finally {
       setLoading(false);
+      submitGuard.release();
     }
   };
 
@@ -522,7 +554,7 @@ export default function SignIn() {
               <span>or continue with email</span>
             </div>
 
-            <form onSubmit={handleSubmit}>
+            <form onSubmit={handleSubmit} noValidate>
               {error && (
                 <div className="mb-4 p-3 rounded" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.5)', color: '#fca5a5', fontSize: '14px' }}>
                   {error}
@@ -537,8 +569,12 @@ export default function SignIn() {
                   placeholder="alex@company.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  onBlur={() => validateField('email', email)}
+                  autoComplete="email"
+                  maxLength={254}
                   required
                 />
+                {fieldErrors.email && <p style={{ color: '#fca5a5', fontSize: '12px', marginTop: '4px' }}>{fieldErrors.email}</p>}
               </div>
               <div className="form-group">
                 <div className="password-row">
@@ -552,10 +588,14 @@ export default function SignIn() {
                   placeholder="••••••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  onBlur={() => validateField('password', password)}
+                  autoComplete="current-password"
+                  maxLength={128}
                   required
                 />
+                {fieldErrors.password && <p style={{ color: '#fca5a5', fontSize: '12px', marginTop: '4px' }}>{fieldErrors.password}</p>}
               </div>
-              <button type="submit" className="btn-gradient" disabled={loading}>
+              <button type="submit" className="btn-gradient" disabled={loading || rateLimited}>
                 {loading ? (
                   <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full" style={{ animation: 'spin 1s linear infinite' }} />
                 ) : (
