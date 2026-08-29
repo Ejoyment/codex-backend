@@ -111,6 +111,21 @@ export default function SignUp() {
           }
           @media (min-width: 1024px) { .left-panel { display: flex; } }
 
+          .left-bg {
+            position: absolute; inset: 0;
+            background-image: url('/IMG-20260131-WA0114.jpg');
+            background-size: cover; background-position: center; background-repeat: no-repeat;
+            z-index: 0;
+          }
+          .left-overlay {
+            position: absolute; inset: 0;
+            background: rgba(8, 12, 24, 0.55);
+            z-index: 1;
+          }
+          .left-panel > *:not(.left-bg):not(.left-overlay) {
+            position: relative; z-index: 10;
+          }
+
           .orb { position: absolute; border-radius: 50%; pointer-events: none; filter: blur(100px); }
           .orb-blue { background: radial-gradient(circle, rgba(59,130,246,0.35), transparent 70%); }
           .orb-cyan { background: radial-gradient(circle, rgba(34,211,238,0.25), transparent 70%); }
@@ -215,6 +230,8 @@ export default function SignUp() {
 
       <div className="signup-page">
         <div className="left-panel">
+          <div className="left-bg" />
+          <div className="left-overlay" />
           <div className="orb orb-blue" style={{ width: '600px', height: '600px', top: '-200px', right: '-100px', opacity: 0.3 }} />
           <div className="orb orb-cyan" style={{ width: '500px', height: '500px', bottom: '-100px', left: '-100px', opacity: 0.2 }} />
 
