@@ -1,9 +1,12 @@
 import Head from 'next/head';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import { authApi } from '../lib/api';
 import useAuthStore from '../store/authStore';
+import { rateLimit, resetRateLimit, validate, getPasswordStrength, createSubmitGuard } from '../lib/security';
+
+const submitGuard = createSubmitGuard();
 
 export default function SignUp() {
   const router = useRouter();
@@ -14,15 +17,50 @@ export default function SignUp() {
   const [password, setPassword] = useState('');
   const [plan, setPlan] = useState('team');
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [rateLimited, setRateLimited] = useState(false);
   const setAuth = useAuthStore((s) => s.setAuth);
+
+  const passwordStrength = getPasswordStrength(password);
+
+  const validateField = useCallback((name, value) => {
+    const rulesMap = {
+      fullName: ['required', 'fullName', 'noScript'],
+      email: ['required', 'email'],
+      password: ['required', 'password'],
+    };
+    const result = validate(value, rulesMap[name] || ['required']);
+    setFieldErrors(prev => {
+      if (result.valid) { const n = { ...prev }; delete n[name]; return n; }
+      return { ...prev, [name]: result.errors[0] };
+    });
+    return result.valid;
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    if (!submitGuard.acquire()) return;
+
+    const nameValid = validateField('fullName', fullName);
+    const emailValid = validateField('email', email);
+    const passValid = validateField('password', password);
+    if (!nameValid || !emailValid || !passValid) { submitGuard.release(); return; }
+
+    const rl = rateLimit('signup', { maxAttempts: 3, windowMs: 300000 });
+    if (!rl.allowed) {
+      setRateLimited(true);
+      setError(`Too many attempts. Try again in ${rl.retryAfter}s`);
+      submitGuard.release();
+      return;
+    }
+
     setLoading(true);
     try {
       const result = await authApi.signup(fullName, email, password);
       if (result.success) {
+        resetRateLimit('signup');
         sessionStorage.setItem('userEmail', email);
         sessionStorage.setItem('userName', fullName);
         const otpResult = await authApi.sendOTP(email);
@@ -38,6 +76,7 @@ export default function SignUp() {
       setError(err.message || 'Network error. Please check if the server is running.');
     } finally {
       setLoading(false);
+      submitGuard.release();
     }
   };
 
@@ -297,7 +336,7 @@ export default function SignUp() {
               <span>or continue with email</span>
             </div>
 
-            <form onSubmit={handleSubmit}>
+            <form onSubmit={handleSubmit} noValidate>
               {error && (
                 <div className="mb-4 p-3 rounded" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.5)', color: '#fca5a5', fontSize: '14px' }}>
                   {error}
@@ -312,8 +351,12 @@ export default function SignUp() {
                   placeholder="Alex Chen"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
+                  onBlur={() => validateField('fullName', fullName)}
+                  autoComplete="name"
+                  maxLength={100}
                   required
                 />
+                {fieldErrors.fullName && <p style={{ color: '#fca5a5', fontSize: '12px', marginTop: '4px' }}>{fieldErrors.fullName}</p>}
               </div>
               <div className="form-group">
                 <label htmlFor="email" className="form-label">WORK EMAIL</label>
@@ -324,8 +367,12 @@ export default function SignUp() {
                   placeholder="alex@company.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  onBlur={() => validateField('email', email)}
+                  autoComplete="email"
+                  maxLength={254}
                   required
                 />
+                {fieldErrors.email && <p style={{ color: '#fca5a5', fontSize: '12px', marginTop: '4px' }}>{fieldErrors.email}</p>}
               </div>
               <div className="form-group">
                 <label htmlFor="password" className="form-label">PASSWORD</label>
@@ -333,11 +380,25 @@ export default function SignUp() {
                   id="password"
                   type="password"
                   className="input-base"
-                  placeholder="Min. 12 characters"
+                  placeholder="Min. 8 characters"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  onBlur={() => validateField('password', password)}
+                  autoComplete="new-password"
+                  maxLength={128}
                   required
                 />
+                {password.length > 0 && (
+                  <div style={{ marginTop: '6px' }}>
+                    <div style={{ display: 'flex', gap: '4px', marginBottom: '2px' }}>
+                      {[0,1,2,3,4].map(i => (
+                        <div key={i} style={{ flex: 1, height: '3px', borderRadius: '2px', background: i < passwordStrength.score ? passwordStrength.color : '#1e293b' }} />
+                      ))}
+                    </div>
+                    <p style={{ fontSize: '11px', color: '#94a3b8' }}>{passwordStrength.label}</p>
+                  </div>
+                )}
+                {fieldErrors.password && <p style={{ color: '#fca5a5', fontSize: '12px', marginTop: '4px' }}>{fieldErrors.password}</p>}
               </div>
 
               <div className="form-group">
@@ -354,7 +415,7 @@ export default function SignUp() {
                 </div>
               </div>
 
-              <button type="submit" className="btn-gradient" disabled={loading}>
+              <button type="submit" className="btn-gradient" disabled={loading || rateLimited}>
                 {loading ? (
                   <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full" style={{ animation: 'spin 1s linear infinite' }} />
                 ) : (

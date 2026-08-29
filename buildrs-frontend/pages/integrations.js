@@ -1,70 +1,259 @@
+import { useState, useEffect } from 'react';
 import Head from 'next/head';
-import ModernHeader from '../components/ModernHeader';
-import Link from 'next/link';
+import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
-import { useAuth } from '../hooks/useAuth';
+import useAuthStore from '../store/authStore';
+import { apiFetch } from '../lib/api';
+import { Link2, Unlink, ExternalLink, Loader2, Plug } from 'lucide-react';
+
+const PROVIDERS = [
+  {
+    key: 'github',
+    name: 'GitHub',
+    color: 'bg-gray-800',
+    description: 'Sync repositories, track commits, and manage code directly from BuildrsHQ.',
+  },
+  {
+    key: 'discord',
+    name: 'Discord',
+    color: 'bg-indigo-600',
+    description: 'Get real-time notifications and collaborate with your team via Discord channels.',
+  },
+  {
+    key: 'slack',
+    name: 'Slack',
+    color: 'bg-purple-700',
+    description: 'Receive project updates and task alerts in your Slack workspace.',
+  },
+  {
+    key: 'figma',
+    name: 'Figma',
+    color: 'bg-purple-500',
+    description: 'Import designs and collaborate with your design team seamlessly.',
+  },
+  {
+    key: 'notion',
+    name: 'Notion',
+    color: 'bg-gray-900',
+    description: 'Sync documentation, project notes, and knowledge base content.',
+  },
+  {
+    key: 'vscode',
+    name: 'VS Code',
+    color: 'bg-blue-600',
+    description: 'Connect your editor environment for enhanced code sync capabilities.',
+    infoOnly: true,
+  },
+];
 
 export default function Integrations() {
-  const { token } = useAuth();
+  const user = useAuthStore((s) => s.user);
+  const subscription = useAuthStore((s) => s.subscription);
 
-  const integrations = [
-    { name: 'GitHub', desc: 'Sync your repositories and manage code directly from BuildrsHQ', provider: 'github', color: 'bg-gray-900', button: 'Connect GitHub' },
-    { name: 'Figma', desc: 'Import designs and collaborate with your design team', provider: 'figma', color: 'bg-purple-600', button: 'Connect Figma' },
-    { name: 'Slack', desc: 'Get notifications and updates in your Slack workspace', provider: 'slack', color: 'bg-purple-700', button: 'Connect Slack' },
-    { name: 'VS Code', desc: 'Sync your VS Code settings and extensions', provider: 'vscode', color: 'bg-blue-600', button: 'Connect VS Code' },
-    { name: 'Notion', desc: 'Sync documentation and project notes', provider: 'notion', color: 'bg-gray-800', button: 'Connect Notion' },
-  ];
+  const [integrations, setIntegrations] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [connecting, setConnecting] = useState(null);
+  const [disconnecting, setDisconnecting] = useState(null);
+
+  const fetchIntegrations = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await apiFetch('/api/integrations');
+      setIntegrations(data.integrations || []);
+    } catch (err) {
+      console.error('Failed to load integrations:', err);
+      setError(err.message || 'Failed to load integrations');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchIntegrations();
+  }, []);
+
+  const getStatus = (providerKey) => {
+    return integrations.find((i) => i.provider === providerKey);
+  };
+
+  const handleConnect = async (providerKey) => {
+    try {
+      setConnecting(providerKey);
+      const data = await apiFetch(`/api/integrations/${providerKey}/auth`);
+      if (data.url) {
+        window.location.href = data.url;
+      }
+    } catch (err) {
+      console.error(`Failed to initiate ${providerKey} connection:`, err);
+      alert(`Failed to start ${providerKey} connection. Please try again.`);
+    } finally {
+      setConnecting(null);
+    }
+  };
+
+  const handleDisconnect = async (providerKey) => {
+    if (!window.confirm(`Are you sure you want to disconnect ${providerKey}?`)) return;
+    try {
+      setDisconnecting(providerKey);
+      await apiFetch(`/api/integrations/${providerKey}`, { method: 'DELETE' });
+      setIntegrations((prev) => prev.filter((i) => i.provider !== providerKey));
+    } catch (err) {
+      console.error(`Failed to disconnect ${providerKey}:`, err);
+      alert(`Failed to disconnect ${providerKey}. Please try again.`);
+    } finally {
+      setDisconnecting(null);
+    }
+  };
+
+  const connectedCount = integrations.filter((i) => i.isActive).length;
 
   return (
-    <>
+    <AuthGuard>
       <Head>
         <title>Integrations - BuildrsHQ</title>
         <link rel="icon" href="/buildrs.png" />
       </Head>
 
-      <AuthGuard>
-        <div className="min-h-screen bg-gray-50 text-gray-900">
-          <nav className="bg-white shadow-sm">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              <div className="flex justify-between h-16">
-                <div className="flex items-center">
-                  <span className="text-2xl font-bold text-blue-600">BuildrsHQ</span>
-                </div>
-                <div className="flex items-center space-x-4">
-                  <Link href="/dashboard" className="text-gray-700 hover:text-blue-600">Dashboard</Link>
-                  <Link href="/settings" className="text-gray-700 hover:text-blue-600">Settings</Link>
+      <div className="workspace-container">
+        <Sidebar user={user} subscription={subscription} />
+
+        <main className="workspace-main">
+          <header className="workspace-header">
+            <div className="flex items-center gap-6">
+              <h1 className="text-xl font-bold">Integrations</h1>
+              <span className="text-sm text-muted">
+                {connectedCount} of {PROVIDERS.length} connected
+              </span>
+            </div>
+            <div className="flex items-center gap-4">
+              <button type="button" className="btn-workspace btn-secondary" onClick={fetchIntegrations}>
+                Refresh
+              </button>
+            </div>
+          </header>
+
+          <div className="workspace-content">
+            {loading ? (
+              <div className="flex items-center justify-center py-20">
+                <Loader2 className="w-8 h-8 text-blue-400 animate-spin" />
+                <span className="ml-3 text-muted">Loading integrations...</span>
+              </div>
+            ) : error ? (
+              <div className="workspace-card">
+                <div className="workspace-card-body text-center py-12">
+                  <p className="text-red-400 mb-4">{error}</p>
+                  <button type="button" className="btn-workspace btn-primary" onClick={fetchIntegrations}>
+                    Retry
+                  </button>
                 </div>
               </div>
-            </div>
-          </nav>
+            ) : (
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {PROVIDERS.map((provider) => {
+                  const status = getStatus(provider.key);
+                  const isActive = status?.isActive;
+                  const isConnecting = connecting === provider.key;
+                  const isDisconnectingVal = disconnecting === provider.key;
 
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-            <div className="mb-8">
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">Integrations</h1>
-              <p className="text-gray-600">Connect your favorite tools to BuildrsHQ</p>
-            </div>
+                  return (
+                    <div
+                      key={provider.key}
+                      className={`workspace-card ${isActive ? 'border border-green-500/30' : ''}`}
+                    >
+                      <div className="workspace-card-body">
+                        <div className="flex items-start justify-between mb-4">
+                          <div className="flex items-center gap-3">
+                            <div
+                              className={`w-12 h-12 ${provider.color} rounded-lg flex items-center justify-center text-white font-bold text-lg`}
+                            >
+                              {provider.name[0]}
+                            </div>
+                            <div>
+                              <h3 className="font-semibold text-white">{provider.name}</h3>
+                              <p className="text-xs text-muted">Integration</p>
+                            </div>
+                          </div>
+                          {provider.infoOnly ? (
+                            <span className="px-2 py-1 bg-blue-500/20 text-blue-400 text-xs rounded-full">
+                              Info Only
+                            </span>
+                          ) : isActive ? (
+                            <span className="px-2 py-1 bg-green-500/20 text-green-400 text-xs rounded-full">
+                              Connected
+                            </span>
+                          ) : (
+                            <span className="px-2 py-1 bg-gray-500/20 text-gray-400 text-xs rounded-full">
+                              Not Connected
+                            </span>
+                          )}
+                        </div>
 
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {integrations.map((item) => (
-                <div key={item.provider} className="bg-white rounded-lg shadow-sm p-6 border-2 border-gray-200 hover:border-blue-500 transition">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center space-x-3">
-                      <div className={`w-12 h-12 ${item.color} rounded-lg flex items-center justify-center text-white font-bold`}>{item.name[0]}</div>
-                      <div>
-                        <h3 className="font-semibold text-gray-900">{item.name}</h3>
-                        <p className="text-xs text-gray-500">Integration</p>
+                        <p className="text-sm text-muted mb-4">{provider.description}</p>
+
+                        {isActive && status && (
+                          <div className="text-xs text-muted mb-4 space-y-1">
+                            {status.providerUsername && (
+                              <p>
+                                <span className="text-white font-medium">{status.providerUsername}</span>
+                              </p>
+                            )}
+                            {status.providerEmail && (
+                              <p>{status.providerEmail}</p>
+                            )}
+                            {status.lastSyncedAt && (
+                              <p>
+                                Last synced: {new Date(status.lastSyncedAt).toLocaleDateString()}
+                              </p>
+                            )}
+                          </div>
+                        )}
+
+                        <div className="flex gap-2">
+                          {provider.infoOnly ? (
+                            <span className="flex-1 text-center py-2 text-sm text-muted">
+                              Built-in feature
+                            </span>
+                          ) : isActive ? (
+                            <button
+                              type="button"
+                              className="btn-workspace btn-secondary flex-1 flex items-center justify-center gap-2"
+                              onClick={() => handleDisconnect(provider.key)}
+                              disabled={isDisconnectingVal}
+                            >
+                              {isDisconnectingVal ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Unlink className="w-4 h-4" />
+                              )}
+                              Disconnect
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn-workspace btn-primary flex-1 flex items-center justify-center gap-2"
+                              onClick={() => handleConnect(provider.key)}
+                              disabled={isConnecting}
+                            >
+                              {isConnecting ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Link2 className="w-4 h-4" />
+                              )}
+                              Connect
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
-                    <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full">Not Connected</span>
-                  </div>
-                  <p className="text-sm text-gray-600 mb-4">{item.desc}</p>
-                  <button className="w-full bg-gray-900 text-white py-2 rounded-lg hover:bg-gray-800 transition">{item.button}</button>
-                </div>
-              ))}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
-        </div>
-      </AuthGuard>
-    </>
+        </main>
+      </div>
+    </AuthGuard>
   );
 }
