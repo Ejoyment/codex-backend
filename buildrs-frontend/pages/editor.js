@@ -1,10 +1,44 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Head from 'next/head';
 import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch } from '../lib/api';
 import { Save, Plus, ChevronDown, FileCode, Trash2 } from 'lucide-react';
+import Editor from '@monaco-editor/react';
+
+function getMonacoLanguage(lang) {
+  if (!lang) return 'plaintext';
+  const l = lang.toLowerCase();
+  const map = {
+    js: 'javascript',
+    javascript: 'javascript',
+    ts: 'typescript',
+    typescript: 'typescript',
+    tsx: 'typescript',
+    jsx: 'javascript',
+    py: 'python',
+    python: 'python',
+    html: 'html',
+    css: 'css',
+    json: 'json',
+    md: 'markdown',
+    markdown: 'markdown',
+    yaml: 'yaml',
+    yml: 'yaml',
+    sh: 'shell',
+    bash: 'shell',
+    go: 'go',
+    rust: 'rust',
+    java: 'java',
+    cpp: 'cpp',
+    c: 'c',
+    sql: 'sql',
+    dockerfile: 'dockerfile',
+    plaintext: 'plaintext',
+  };
+  return map[l] || l;
+}
 
 export default function Editor() {
   const user = useAuthStore((s) => s.user);
@@ -26,7 +60,6 @@ export default function Editor() {
   const [dirty, setDirty] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef(null);
-  const textareaRef = useRef(null);
   const originalContentRef = useRef('');
 
   useEffect(() => {
@@ -76,26 +109,13 @@ export default function Editor() {
     setStatus(null);
   }
 
-  function handleContentChange(e) {
-    const val = e.target.value;
+  const monacoLanguage = useMemo(() => getMonacoLanguage(selectedFile?.language), [selectedFile?.language]);
+
+  const handleEditorChange = useCallback((value) => {
+    const val = value ?? '';
     setContent(val);
     setDirty(val !== originalContentRef.current);
-  }
-
-  function handleKeyDown(e) {
-    if (e.key === 'Tab') {
-      e.preventDefault();
-      const ta = textareaRef.current;
-      const start = ta.selectionStart;
-      const end = ta.selectionEnd;
-      const newContent = content.substring(0, start) + '  ' + content.substring(end);
-      setContent(newContent);
-      setDirty(newContent !== originalContentRef.current);
-      requestAnimationFrame(() => {
-        ta.selectionStart = ta.selectionEnd = start + 2;
-      });
-    }
-  }
+  }, []);
 
   async function handleSave() {
     if (!selectedFile) return;
@@ -312,16 +332,26 @@ export default function Editor() {
                         {saving ? 'Saving...' : 'Save'}
                       </button>
                     </div>
-                    <textarea
-                      ref={textareaRef}
-                      value={content}
-                      onChange={handleContentChange}
-                      onKeyDown={handleKeyDown}
-                      spellCheck={false}
-                      className="w-full bg-gray-900 border border-gray-700 rounded-lg p-4 text-sm font-mono text-gray-200 leading-relaxed resize-none focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30"
-                      style={{ minHeight: '500px', tabSize: 2 }}
-                      placeholder="Start typing your code..."
-                    />
+                    <div className="border border-gray-700 rounded-lg overflow-hidden">
+                      <Editor
+                        height="500px"
+                        language={monacoLanguage}
+                        value={content}
+                        onChange={handleEditorChange}
+                        theme="vs-dark"
+                        options={{
+                          fontSize: 14,
+                          minimap: { enabled: false },
+                          scrollBeyondLastLine: false,
+                          wordWrap: 'on',
+                          tabSize: 2,
+                          automaticLayout: true,
+                          bracketPairColorization: { enabled: true },
+                          suggestOnTriggerCharacters: true,
+                        }}
+                        loading={<div className="flex items-center justify-center h-[500px] text-gray-400">Loading editor...</div>}
+                      />
+                    </div>
                   </div>
                 )}
               </div>
