@@ -30,7 +30,7 @@ export async function apiFetch(path, options = {}) {
   const headers = {
     ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...options.headers,
+    ...(options.headers || {}),
   };
 
   // Never send JSON Content-Type with FormData — let browser set multipart boundary
