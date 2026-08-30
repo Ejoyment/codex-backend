@@ -37,12 +37,28 @@ export default function SupportAdmin() {
   const [sending, setSending] = useState(false);
 
   const loadTickets = useCallback(async () => {
+    const token = getAgentToken();
+    if (!token) {
+      setTickets([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
-      const data = await apiFetch('/api/support/tickets');
-      setTickets(data.tickets || []);
+      const data = await agentFetch('/api/support/agent/tickets');
+      // Backend returns array directly for agent tickets
+      const ticketsArray = Array.isArray(data) ? data : data.tickets || [];
+      setTickets(ticketsArray);
     } catch (e) {
       console.error('Failed to load tickets', e);
+      // Fallback to user tickets endpoint if agent endpoint fails
+      try {
+        const fallback = await apiFetch('/api/support/tickets');
+        const ticketsArray = Array.isArray(fallback) ? fallback : fallback.tickets || [];
+        setTickets(ticketsArray);
+      } catch (err) {
+        setTickets([]);
+      }
     } finally {
       setLoading(false);
     }
@@ -61,6 +77,32 @@ export default function SupportAdmin() {
     if (agent) loadTickets();
   }, [agent, loadTickets]);
 
+  const getAgentToken = () => {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem('supportAgentToken');
+  };
+
+  const agentFetch = async (path, options = {}) => {
+    const token = getAgentToken();
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options.headers,
+    };
+    const res = await fetch(`https://codex-backend-7utu.onrender.com${path}`, {
+      ...options,
+      headers,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const error = new Error(data.error || data.message || 'API request failed');
+      error.status = res.status;
+      error.data = data;
+      throw error;
+    }
+    return data;
+  };
+
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoginLoading(true);
@@ -72,7 +114,11 @@ export default function SupportAdmin() {
       });
       setAgent(data.agent);
       localStorage.setItem('supportAgent', JSON.stringify(data.agent));
+      if (data.token) {
+        localStorage.setItem('supportAgentToken', data.token);
+      }
       setShowLogin(false);
+      loadTickets();
     } catch (err) {
       setLoginError(err.message || 'Login failed');
     } finally {
@@ -80,18 +126,25 @@ export default function SupportAdmin() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      const token = getAgentToken();
+      if (token) {
+        await agentFetch('/api/support/agent/logout', { method: 'POST' }).catch(() => {});
+      }
+    } catch {}
     setAgent(null);
     localStorage.removeItem('supportAgent');
+    localStorage.removeItem('supportAgentToken');
   };
 
   const handleStatusChange = async (ticketId, status) => {
     try {
-      await apiFetch(`/api/support/tickets/${ticketId}/status`, {
+      await agentFetch(`/api/support/agent/tickets/${ticketId}/status`, {
         method: 'PUT',
         body: JSON.stringify({ status }),
       });
-      setTickets((prev) => prev.map((t) => (t._id === ticketId ? { ...t, status } : t)));
+      setTickets((prev) => prev.map((t) => (t.ticketId === ticketId || t._id === ticketId ? { ...t, status } : t)));
     } catch (e) {
       alert('Failed to update status');
     }
@@ -100,11 +153,10 @@ export default function SupportAdmin() {
   const handleAssign = async (ticketId) => {
     if (!agent) return;
     try {
-      await apiFetch(`/api/support/tickets/${ticketId}/assign`, {
+      await agentFetch(`/api/support/agent/tickets/${ticketId}/assign`, {
         method: 'PUT',
-        body: JSON.stringify({ agentId: agent.id }),
       });
-      setTickets((prev) => prev.map((t) => (t._id === ticketId ? { ...t, assignedTo: agent.id } : t)));
+      setTickets((prev) => prev.map((t) => (t.ticketId === ticketId || t._id === ticketId ? { ...t, assignedTo: agent.id, status: 'in-progress' } : t)));
     } catch (e) {
       alert('Failed to assign ticket');
     }
@@ -114,14 +166,24 @@ export default function SupportAdmin() {
     if (!replyContent.trim()) return;
     setSending(true);
     try {
-      await apiFetch(`/api/support/tickets/${ticketId}/messages`, {
+      await agentFetch(`/api/support/tickets/${ticketId}/messages`, {
         method: 'POST',
         body: JSON.stringify({ content: replyContent }),
       });
       setReplyContent('');
       loadTickets();
     } catch (e) {
-      alert('Failed to send reply');
+      // Fallback to user endpoint if agent endpoint fails
+      try {
+        await apiFetch(`/api/support/tickets/${ticketId}/messages`, {
+          method: 'POST',
+          body: JSON.stringify({ content: replyContent }),
+        });
+        setReplyContent('');
+        loadTickets();
+      } catch (err) {
+        alert('Failed to send reply');
+      }
     } finally {
       setSending(false);
     }
