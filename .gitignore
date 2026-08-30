@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+buildrs-frontend/.next/
 
 # Environment variables
 .env
