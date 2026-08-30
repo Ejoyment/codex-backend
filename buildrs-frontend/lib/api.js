@@ -139,7 +139,6 @@ export const authApi = {
     }),
 
   google: () => `${API_BASE_URL}/api/auth/google`,
-  facebook: () => `${API_BASE_URL}/api/auth/facebook`,
 };
 
 export const companyApi = {
