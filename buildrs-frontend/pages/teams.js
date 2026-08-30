@@ -37,7 +37,11 @@ export default function Teams() {
     try {
       setLoadingMembers(true);
       const res = await apiFetch(`/api/company/${companyId}/members`);
-      setMembers(res.members || []);
+      const valid = (res.members || []).filter(m => m && m.user);
+      if (valid.length !== (res.members || []).length) {
+        console.warn(`Filtered ${ (res.members || []).length - valid.length } member(s) with missing user reference for company ${companyId}`);
+      }
+      setMembers(valid);
     } catch (err) {
       console.error('Failed to fetch members:', err);
       setMembers([]);
