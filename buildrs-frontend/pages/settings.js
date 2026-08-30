@@ -6,6 +6,7 @@ import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch, subscriptionApi, integrationApi } from '../lib/api';
 import { rateLimit, validate, createSubmitGuard } from '../lib/security';
+import { getAvatarUrl } from '../lib/utils';
 import { User, Shield, CreditCard, Plug, Camera, Save, ExternalLink, Unplug, Loader2 } from 'lucide-react';
 
 const submitGuard = createSubmitGuard();
@@ -153,10 +154,7 @@ export default function Settings() {
   const getIntegration = (providerId) =>
     integrations.find((i) => i.provider === providerId);
 
-  const profilePictureUrl =
-    user?.profilePicture ||
-    user?.profilePhoto ||
-    `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.fullName || user?.name || 'User')}&background=3b82f6&color=fff&size=128`;
+  const profilePictureUrl = getAvatarUrl(user, user?.fullName || user?.name || 'User');
 
   return (
     <AuthGuard>
@@ -205,6 +203,11 @@ export default function Settings() {
                         src={profilePictureUrl}
                         alt={user?.fullName || 'User'}
                         className="w-20 h-20 rounded-full object-cover border-2 border-gray-600"
+                        onError={(e) => {
+                          if (e.currentTarget.src !== profilePictureUrl) return;
+                          const fallback = `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.fullName || user?.name || 'User')}&background=3b82f6&color=fff&size=128`;
+                          e.currentTarget.src = fallback;
+                        }}
                       />
                       <div>
                         <label className="btn-workspace btn-secondary cursor-pointer inline-flex items-center gap-2">

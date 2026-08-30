@@ -5,6 +5,7 @@ import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch } from '../lib/api';
 import { rateLimit, validate, createSubmitGuard } from '../lib/security';
+import { getAvatarUrl } from '../lib/utils';
 import { Camera, Save, Loader2, User, Mail, Briefcase, Shield, CheckCircle } from 'lucide-react';
 
 const submitGuard = createSubmitGuard();
@@ -109,10 +110,7 @@ export default function Profile() {
     }
   };
 
-  const profilePictureUrl =
-    user?.profilePicture ||
-    user?.profilePhoto ||
-    `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.fullName || user?.name || 'User')}&background=3b82f6&color=fff&size=128`;
+  const profilePictureUrl = getAvatarUrl(user, user?.fullName || user?.name || 'User');
 
   return (
     <AuthGuard>

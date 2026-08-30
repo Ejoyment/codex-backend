@@ -5,6 +5,7 @@ import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch } from '../lib/api';
+import { getAvatarUrl } from '../lib/utils';
 import {
   Mic, MicOff, Video, VideoOff, Monitor, PhoneOff, Send, Users, MessageSquare, Clock
 } from 'lucide-react';
@@ -345,11 +346,7 @@ export default function MeetingRoom() {
                             <div key={p._id || idx} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-800/50">
                               <img
                                 className="w-8 h-8 rounded-full"
-                                src={
-                                  p.profilePicture ||
-                                  p.profilePhoto ||
-                                  `https://ui-avatars.com/api/?name=${encodeURIComponent(p.fullName || p.name || 'User')}&background=3b82f6&color=fff`
-                                }
+                                src={getAvatarUrl(p, p?.fullName || p?.name || 'User')}
                                 alt={p.fullName || p.name || 'User'}
                               />
                               <div className="flex-1 min-w-0">

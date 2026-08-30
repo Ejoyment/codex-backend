@@ -7,6 +7,7 @@ import useAuthStore from '../store/authStore';
 import { apiFetch } from '../lib/api';
 import { useCurrentCompany, NoWorkspaceEmptyState } from '../hooks/useCurrentCompany';
 import { getTierLimits, normalizeTier } from '../lib/tier';
+import { getAvatarUrl } from '../lib/utils';
 import { MessageSquare, Plus, Send, Hash, X } from 'lucide-react';
 
 export default function Messaging() {
@@ -126,10 +127,7 @@ export default function Messaging() {
 
   function senderAvatar(msg) {
     if (typeof msg.sender === 'object') {
-      const pic = msg.sender.profilePicture || msg.sender.profilePhoto;
-      if (pic) return pic;
-      const name = msg.sender.fullName || msg.sender.name || 'U';
-      return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=3b82f6&color=fff&size=32`;
+      return getAvatarUrl(msg.sender, msg.sender?.fullName || msg.sender?.name || 'U');
     }
     return `https://ui-avatars.com/api/?name=U&background=3b82f6&color=fff&size=32`;
   }
