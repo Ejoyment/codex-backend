@@ -73,13 +73,14 @@ describe('Bug 3 — Monaco editor', () => {
   test('editor.js imports Monaco', () => {
     const editor = readFrontend('pages/editor.js');
     expect(editor).toMatch(/@monaco-editor\/react/);
-    expect(editor).toMatch(/import Editor from '@monaco-editor\/react'/);
+    expect(editor).toMatch(/from '@monaco-editor\/react'/);
+    expect(editor).toMatch(/MonacoEditor/);
   });
 
   test('editor.js uses Editor component not textarea for code', () => {
     const editor = readFrontend('pages/editor.js');
-    // Should have <Editor height="500px" language={monacoLanguage}
-    expect(editor).toMatch(/<Editor/);
+    // Should have <MonacoEditor height="500px" language={monacoLanguage}
+    expect(editor).toMatch(/<MonacoEditor/);
     expect(editor).toMatch(/monacoLanguage/);
     expect(editor).toMatch(/getMonacoLanguage/);
     expect(editor).toMatch(/handleEditorChange/);
