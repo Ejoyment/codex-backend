@@ -199,7 +199,12 @@ router.get('/my-companies', authenticateToken, async (req, res) => {
                 await company.save();
             }
             
-            const userMember = company.members.find(m => m.user._id.toString() === req.userId);
+            const _brokenMy = company.members.filter(m => !m.user);
+            if (_brokenMy.length > 0) {
+                console.warn(`Company ${company._id} has ${_brokenMy.length} member(s) with missing user reference`, _brokenMy.map(m => m._id));
+            }
+            const userMember = company.members.filter(m => m.user).find(m => m.user._id.toString() === req.userId);
+            const validCount = company.members.filter(m => m.user).length;
             return {
                 id: company._id,
                 name: company.name,
@@ -207,7 +212,7 @@ router.get('/my-companies', authenticateToken, async (req, res) => {
                 description: company.description,
                 logo: company.logo,
                 owner: company.owner,
-                memberCount: company.members.length,
+                memberCount: validCount,
                 memberLimit: company.subscription.memberLimit,
                 tier: company.subscription.tier,
                 userRole: userMember?.role || 'member',
@@ -307,8 +312,12 @@ router.get('/:companyId', authenticateToken, async (req, res) => {
             });
         }
         
-        // Check if user is a member
-        const isMember = company.members.some(m => m.user._id.toString() === req.userId);
+        // Check if user is a member (defensive against null populated user refs)
+        const _brokenForDetail = company.members.filter(m => !m.user);
+        if (_brokenForDetail.length > 0) {
+            console.warn(`Company ${company._id} has ${_brokenForDetail.length} member(s) with missing user reference`, _brokenForDetail.map(m => m._id));
+        }
+        const isMember = company.members.filter(m => m.user).some(m => m.user._id.toString() === req.userId);
         if (!isMember) {
             return res.status(403).json({
                 success: false,
@@ -390,8 +399,13 @@ router.get('/:companyId/members', authenticateToken, async (req, res) => {
             });
         }
         
-        // Check if user is a member
-        const isMember = company.members.some(m => m.user._id.toString() === req.userId);
+        const brokenMembers = company.members.filter(m => !m.user);
+        if (brokenMembers.length > 0) {
+            console.warn(`Company ${company._id} has ${brokenMembers.length} member(s) with missing user reference`, brokenMembers.map(m => m._id));
+        }
+        const validMembers = company.members.filter(m => m.user);
+        // Check if user is a member (defensive against null user refs)
+        const isMember = validMembers.some(m => m.user._id.toString() === req.userId);
         if (!isMember) {
             return res.status(403).json({
                 success: false,
@@ -401,7 +415,7 @@ router.get('/:companyId/members', authenticateToken, async (req, res) => {
         
         res.json({
             success: true,
-            members: company.members
+            members: validMembers
         });
     } catch (error) {
         console.error('Get members error:', error);

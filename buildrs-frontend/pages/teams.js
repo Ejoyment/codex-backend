@@ -5,7 +5,8 @@ import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch } from '../lib/api';
-import { Plus, Users, Crown, X, Send, ChevronRight, Building2 } from 'lucide-react';
+import { getTierLimits, normalizeTier } from '../lib/tier';
+import { Plus, Users, Crown, X, Send, ChevronRight, Building2, Settings, Save, Loader2 } from 'lucide-react';
 
 export default function Teams() {
   const router = useRouter();
@@ -19,6 +20,19 @@ export default function Teams() {
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+
+  const tier = normalizeTier(subscription?.tier);
+  const tierLimits = getTierLimits(tier);
+  const memberCountForLimit = selectedCompany ? (members.length || selectedCompany.memberCount || 0) : 0;
+  const memberLimitForCheck = selectedCompany?.memberLimit ?? tierLimits.maxMembers;
+  const inviteAtLimit = memberLimitForCheck !== -1 && memberCountForLimit >= memberLimitForCheck;
+
+  const handleSettingsUpdated = (updated) => {
+    setCompanies((prev) => prev.map((c) => (c._id === updated._id || c._id === updated.id ? { ...c, ...updated } : c)));
+    setSelectedCompany((prev) => (prev ? { ...prev, ...updated } : prev));
+    setShowSettingsModal(false);
+  };
 
   const fetchCompanies = useCallback(async () => {
     try {
@@ -37,7 +51,11 @@ export default function Teams() {
     try {
       setLoadingMembers(true);
       const res = await apiFetch(`/api/company/${companyId}/members`);
-      setMembers(res.members || []);
+      const valid = (res.members || []).filter(m => m && m.user);
+      if (valid.length !== (res.members || []).length) {
+        console.warn(`Filtered ${ (res.members || []).length - valid.length } member(s) with missing user reference for company ${companyId}`);
+      }
+      setMembers(valid);
     } catch (err) {
       console.error('Failed to fetch members:', err);
       setMembers([]);
@@ -93,10 +111,17 @@ export default function Teams() {
               </h1>
             </div>
             <div className="flex items-center gap-3">
+              {inviteAtLimit && selectedCompany && (
+                <span className="text-xs text-yellow-400 hidden sm:inline">
+                  Member limit reached — <button type="button" onClick={() => router.push('/pricing')} className="underline hover:text-yellow-300">Upgrade to {tier === 'freebie' ? 'Professional' : 'Enterprise'}</button>
+                </span>
+              )}
               <button
                 type="button"
-                className="btn-workspace btn-secondary"
-                onClick={() => setShowInviteModal(true)}
+                className={`btn-workspace btn-secondary ${inviteAtLimit ? 'opacity-50 cursor-not-allowed' : ''}`}
+                onClick={() => !inviteAtLimit && setShowInviteModal(true)}
+                disabled={inviteAtLimit}
+                title={inviteAtLimit ? `Member limit reached (${memberLimitForCheck} members)` : 'Invite a member'}
               >
                 <Send className="w-4 h-4" />
                 <span>Invite Member</span>
@@ -123,6 +148,7 @@ export default function Teams() {
                 members={members}
                 loadingMembers={loadingMembers}
                 currentUser={user}
+                onOpenSettings={() => setShowSettingsModal(true)}
               />
             ) : companies.length === 0 ? (
               <EmptyState onCreateClick={() => setShowCreateModal(true)} />
@@ -157,6 +183,14 @@ export default function Teams() {
           companies={companies}
           selectedCompanyId={selectedCompany?._id}
           onClose={() => setShowInviteModal(false)}
+        />
+      )}
+
+      {showSettingsModal && selectedCompany && (
+        <CompanySettingsModal
+          company={selectedCompany}
+          onClose={() => setShowSettingsModal(false)}
+          onUpdated={handleSettingsUpdated}
         />
       )}
     </AuthGuard>
@@ -220,8 +254,9 @@ function TeamCard({ company, currentUser, onClick }) {
   );
 }
 
-function TeamDetail({ company, members, loadingMembers, currentUser }) {
-  const isOwner = company.owner === currentUser?._id;
+function TeamDetail({ company, members, loadingMembers, currentUser, onOpenSettings }) {
+  const isOwner = company.owner === currentUser?._id || company.owner?._id === currentUser?._id;
+  const canManage = isOwner || company.userRole === 'admin' || company.userRole === 'owner';
 
   return (
     <div className="space-y-6">
@@ -245,6 +280,17 @@ function TeamDetail({ company, members, loadingMembers, currentUser }) {
               <p className="text-gray-400 ml-15">{company.description}</p>
             )}
           </div>
+          {canManage && (
+            <button
+              type="button"
+              onClick={onOpenSettings}
+              className="btn-workspace btn-secondary inline-flex items-center gap-2"
+              title="Team settings"
+            >
+              <Settings className="w-4 h-4" />
+              <span className="hidden sm:inline">Settings</span>
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-6 text-sm text-gray-400 pt-4 border-t border-gray-700/50">
@@ -548,6 +594,92 @@ function InviteMemberModal({ companies, selectedCompanyId, onClose }) {
               className="px-6 py-2.5 border-none rounded-lg bg-blue-500 text-white text-sm font-semibold disabled:opacity-60"
             >
               {submitting ? 'Sending...' : success ? 'Sent!' : 'Send Invitation'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function CompanySettingsModal({ company, onClose, onUpdated }) {
+  const [name, setName] = useState(company.name || '');
+  const [description, setDescription] = useState(company.description || '');
+  const [allowMemberInvites, setAllowMemberInvites] = useState(company.settings?.allowMemberInvites ?? true);
+  const [requireApproval, setRequireApproval] = useState(company.settings?.requireApproval ?? false);
+  const [defaultRole, setDefaultRole] = useState(company.settings?.defaultRole || 'member');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(false);
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await apiFetch(`/api/company/${company._id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ name: name.trim(), description: description.trim() }),
+      });
+      const settingsRes = await apiFetch(`/api/company/${company._id}/settings`, {
+        method: 'PUT',
+        body: JSON.stringify({ allowMemberInvites, requireApproval, defaultRole }),
+      });
+      const updated = { ...company, name: res.company?.name || name.trim(), description: description.trim(), settings: settingsRes.settings || { allowMemberInvites, requireApproval, defaultRole } };
+      setSuccess(true);
+      setTimeout(() => onUpdated(updated), 800);
+    } catch (err) {
+      setError(err.message || 'Failed to update settings');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[9999] p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl p-8 max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-between items-center mb-6">
+          <h3 className="text-xl font-bold text-slate-900">Team Settings</h3>
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {error && <div className="mb-4 p-3 rounded-lg bg-red-50 text-red-600 text-sm">{error}</div>}
+        {success && <div className="mb-4 p-3 rounded-lg bg-green-50 text-green-600 text-sm">Settings saved!</div>}
+
+        <form onSubmit={handleSave} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Team Name</label>
+            <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-900" required maxLength={100} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Description</label>
+            <textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-900 resize-y" placeholder="What does this team work on?" />
+          </div>
+          <div className="border-t border-slate-200 pt-4 space-y-3">
+            <h4 className="text-sm font-semibold text-slate-800">Permissions</h4>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input type="checkbox" checked={allowMemberInvites} onChange={(e) => setAllowMemberInvites(e.target.checked)} className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+              <span className="text-sm text-slate-700">Allow members to invite others</span>
+            </label>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input type="checkbox" checked={requireApproval} onChange={(e) => setRequireApproval(e.target.checked)} className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+              <span className="text-sm text-slate-700">Require approval for new members</span>
+            </label>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Default role for new members</label>
+              <select value={defaultRole} onChange={(e) => setDefaultRole(e.target.value)} className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-900">
+                <option value="member">Member</option>
+                <option value="viewer">Viewer</option>
+              </select>
+            </div>
+          </div>
+          <div className="flex gap-3 justify-end mt-6">
+            <button type="button" onClick={onClose} className="px-6 py-2.5 border border-slate-300 rounded-lg bg-white text-slate-700 text-sm">Cancel</button>
+            <button type="submit" disabled={saving} className="px-6 py-2.5 border-none rounded-lg bg-blue-500 text-white text-sm font-semibold inline-flex items-center gap-2 disabled:opacity-60">
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              {saving ? 'Saving...' : 'Save Settings'}
             </button>
           </div>
         </form>

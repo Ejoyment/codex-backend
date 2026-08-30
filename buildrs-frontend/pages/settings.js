@@ -115,14 +115,13 @@ export default function Settings() {
     try {
       const form = new FormData();
       form.append('profilePicture', file);
-      const token = localStorage.getItem('authToken');
-      const res = await fetch('/api/profile/picture', {
+      const data = await apiFetch('/api/profile/picture', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
         body: form,
       });
-      const data = await res.json();
+      // Backend returns { success: true, profilePicture: '/uploads/profiles/...' } — see routes/profile.js POST /picture
       if (data.profilePicture) {
+        const token = localStorage.getItem('authToken');
         const updated = { ...user, profilePicture: data.profilePicture };
         setAuth(token, updated);
       }

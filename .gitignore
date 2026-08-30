@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+buildrs-frontend/.next/
 
 # Environment variables
 .env
@@ -72,3 +73,7 @@ coverage/
 .idea/
 .env.production
 QUICK_ADD_RESEND_KEY.txt
+
+# Temporary Node 24 bump — do not push to main (see TEMP_NEXT_BUMP.txt)
+TEMP_NEXT_BUMP.txt
+buildrs-frontend/NEXT_BUMP_NOTE.txt

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/router';
 import { useAuth } from '../hooks/useAuth';
+import { apiFetch } from '../lib/api';
 
 export default function Onboarding() {
   const router = useRouter();
@@ -25,9 +26,8 @@ export default function Onboarding() {
   const complete = async () => {
     setLoading(true);
     try {
-      await fetch('/api/onboarding', {
+      await apiFetch('/api/onboarding', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('authToken')}` },
         body: JSON.stringify({ fullName, company, teamSize, roles, goal, experience }),
       });
       router.push('/dashboard');

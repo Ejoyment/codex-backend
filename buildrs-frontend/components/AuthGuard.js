@@ -2,11 +2,13 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/router';
 import useAuthStore from '../store/authStore';
 import { useAuth } from '../hooks/useAuth';
+import { subscriptionApi } from '../lib/api';
 
 export default function AuthGuard({ children }) {
   const router = useRouter();
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
+  const subscription = useAuthStore((s) => s.subscription);
   const { fetchUser } = useAuth();
 
   useEffect(() => {
@@ -16,13 +18,21 @@ export default function AuthGuard({ children }) {
     }
 
     if (user) {
+      // Even when user is cached, ensure subscription/tier is populated centrally
+      if (!subscription) {
+        subscriptionApi.getCurrent()
+          .then((res) => {
+            if (res.subscription) useAuthStore.getState().setSubscription(res.subscription);
+          })
+          .catch(() => {});
+      }
       return;
     }
 
     fetchUser().catch(() => {
       router.replace('/sign_in');
     });
-  }, [token, router, fetchUser, user]);
+  }, [token, router, fetchUser, user, subscription]);
 
   if (!token) {
     return (

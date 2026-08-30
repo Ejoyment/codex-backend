@@ -25,11 +25,18 @@ export async function apiFetch(path, options = {}) {
     }
   }
 
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
+
   const headers = {
-    'Content-Type': 'application/json',
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...options.headers,
   };
+
+  // Never send JSON Content-Type with FormData — let browser set multipart boundary
+  if (isFormData && headers['Content-Type']) {
+    delete headers['Content-Type'];
+  }
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), options.timeoutMs || DEFAULT_TIMEOUT_MS);
@@ -111,7 +118,7 @@ export const authApi = {
       body: JSON.stringify({ email, password }),
     }),
 
-  getMe: () => apiFetch('/auth/me'),
+  getMe: () => apiFetch('/api/auth/me'),
 
   sendOTP: (email) =>
     apiFetch('/api/otp/send', {
@@ -131,8 +138,7 @@ export const authApi = {
       body: JSON.stringify({ email }),
     }),
 
-  google: () => `${API_BASE_URL}/auth/google`,
-  facebook: () => `${API_BASE_URL}/auth/facebook`,
+  google: () => `${API_BASE_URL}/api/auth/google`,
 };
 
 export const companyApi = {
@@ -255,7 +261,7 @@ export const supportApi = {
 export const projectApi = {
   list: () => apiFetch('/api/projects'),
   create: (data) =>
-    apiFetch('/projects', {
+    apiFetch('/api/projects', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
