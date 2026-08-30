@@ -1,14 +1,12 @@
-import Head from 'next/head';
-import ModernHeader from '../components/ModernHeader';
-import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/router';
-import { useAuth } from '../hooks/useAuth';
+import useAuthStore from '../store/authStore';
 import { apiFetch } from '../lib/api';
 
 export default function Onboarding() {
   const router = useRouter();
-  const { user } = useAuth();
+  const user = useAuthStore((s) => s.user);
+  const setAuth = useAuthStore((s) => s.setAuth);
   const [step, setStep] = useState(1);
   const [fullName, setFullName] = useState('');
   const [company, setCompany] = useState('');
@@ -17,6 +15,7 @@ export default function Onboarding() {
   const [goal, setGoal] = useState('');
   const [experience, setExperience] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const toggleRole = (role) => setRoles((prev) => (prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role]));
 
@@ -25,15 +24,23 @@ export default function Onboarding() {
 
   const complete = async () => {
     setLoading(true);
+    setError('');
+    const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
     try {
-      await apiFetch('/api/auth/complete-onboarding', {
+      const res = await apiFetch('/api/auth/complete-onboarding', {
         method: 'POST',
         body: JSON.stringify({ fullName, company, teamSize, role: roles, goals: [goal].filter(Boolean) }),
+        returnErrorData: true,
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
-      router.push('/dashboard');
+      if (res.user) {
+        setAuth(token, res.user);
+        router.replace('/dashboard');
+      } else {
+        setError('Onboarding completed, but could not load updated profile.');
+      }
     } catch (e) {
-      console.error(e);
-      router.push('/dashboard');
+      setError(e.data?.message || e.message || 'Failed to complete onboarding.');
     } finally {
       setLoading(false);
     }
@@ -172,6 +179,7 @@ export default function Onboarding() {
             <div className="bg-[#1a2332] rounded-2xl border border-gray-700 p-8 md:p-12 text-center">
               <h2 className="text-3xl font-bold text-white mb-4">You're all set!</h2>
               <p className="text-gray-300 mb-8">Your personalized BuildrsHQ experience is ready.</p>
+              {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
               <button type="button" onClick={complete} disabled={loading} className="px-8 py-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl hover:shadow-lg transition font-semibold">
                 {loading ? 'Saving...' : 'Go to Dashboard'}
               </button>
