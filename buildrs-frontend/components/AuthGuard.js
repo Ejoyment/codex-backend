@@ -19,12 +19,16 @@ export default function AuthGuard({ children }) {
 
     const ensureUserAndRoute = async () => {
       let current = user;
-      try {
-        const data = await fetchUser();
-        current = data.user;
-      } catch {
-        router.replace('/sign_in');
-        return;
+      if (!current) {
+        try {
+          const data = await fetchUser();
+          current = data.user;
+        } catch (err) {
+          if (err.status === 401) {
+            router.replace('/sign_in');
+          }
+          return;
+        }
       }
 
       if (!current?.onboardingCompleted) {
