@@ -5,9 +5,16 @@ import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch } from '../lib/api';
 import { Bot, Send, Plus, ChevronRight, Code, AlertCircle, Loader2, MessageSquare } from 'lucide-react';
+import { getTierLimits, normalizeTier } from '../lib/tier';
+import { useRouter } from 'next/router';
 
 const LANGUAGES = ['JavaScript', 'TypeScript', 'Python', 'Java', 'Go', 'Rust', 'C++', 'Ruby', 'PHP'];
-const AI_LIMIT = 50;
+
+function getAiLimitForTier(tier) {
+  const limits = getTierLimits(tier);
+  const v = limits.maxAiMessagesPerDay;
+  return v === -1 ? Infinity : v;
+}
 
 function formatTime(dateStr) {
   const d = new Date(dateStr);
@@ -43,6 +50,10 @@ function renderCodeBlocks(text) {
 export default function AiPair() {
   const user = useAuthStore((s) => s.user);
   const subscription = useAuthStore((s) => s.subscription);
+  const router = useRouter();
+  const tier = normalizeTier(subscription?.tier);
+  const aiLimit = getAiLimitForTier(tier);
+  const aiEnabled = getTierLimits(tier).features.aiPair || aiLimit > 0;
 
   const [sessions, setSessions] = useState([]);
   const [activeSession, setActiveSession] = useState(null);
@@ -56,8 +67,12 @@ export default function AiPair() {
   const [selectedRepo, setSelectedRepo] = useState('');
   const [selectedLang, setSelectedLang] = useState('JavaScript');
   const [creatingSession, setCreatingSession] = useState(false);
-  const [remaining, setRemaining] = useState(AI_LIMIT);
+  const [remaining, setRemaining] = useState(aiLimit);
   const messagesEndRef = useRef(null);
+
+  useEffect(() => {
+    setRemaining(aiLimit);
+  }, [aiLimit]);
 
   useEffect(() => {
     fetchSessions();
@@ -102,7 +117,7 @@ export default function AiPair() {
         setSessions((prev) => [sess, ...prev]);
         setActiveSession(sess);
         setMessages([]);
-        setRemaining(AI_LIMIT);
+        setRemaining(aiLimit);
         setShowNewSession(false);
       }
     } catch (err) {
@@ -155,7 +170,7 @@ export default function AiPair() {
   function selectSession(sess) {
     setActiveSession(sess);
     setMessages([]);
-    setRemaining(AI_LIMIT);
+    setRemaining(aiLimit);
     setError(null);
   }
 
@@ -177,8 +192,18 @@ export default function AiPair() {
                 <h1 className="text-xl font-bold">AI Pair Programming</h1>
               </div>
               <span className="text-xs text-gray-400 bg-navy-light px-2 py-1 rounded border border-gray-700">
-                {remaining}/{AI_LIMIT} messages
+                {aiLimit === Infinity ? `${remaining} messages` : `${remaining}/${aiLimit} messages/day`}
+                {tier === 'freebie' && ' · Free tier'}
               </span>
+              {tier === 'freebie' && (
+                <button
+                  type="button"
+                  onClick={() => router.push('/pricing')}
+                  className="text-xs text-yellow-400 hover:text-yellow-300 underline"
+                >
+                  Upgrade to Professional
+                </button>
+              )}
             </div>
             <div className="flex items-center gap-3">
               {activeSession && (

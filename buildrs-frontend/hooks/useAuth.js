@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/router';
 import useAuthStore from '../store/authStore';
-import { authApi } from '../lib/api';
+import { authApi, subscriptionApi } from '../lib/api';
 
 export function useAuth() {
   const router = useRouter();
@@ -61,6 +61,16 @@ export function useAuth() {
         if (typeof window !== 'undefined') {
           localStorage.setItem('user', JSON.stringify(data.user));
         }
+      }
+      // Centrally fetch subscription/tier so every workspace page has it
+      // Previously only settings.js (billing tab) and editor.js fetched it
+      try {
+        const subRes = await subscriptionApi.getCurrent();
+        if (subRes.subscription) {
+          useAuthStore.getState().setSubscription(subRes.subscription);
+        }
+      } catch {
+        // non-fatal — keep existing subscription
       }
       return data;
     } catch (err) {

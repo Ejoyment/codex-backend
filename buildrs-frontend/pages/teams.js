@@ -5,6 +5,7 @@ import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch } from '../lib/api';
+import { getTierLimits, normalizeTier } from '../lib/tier';
 import { Plus, Users, Crown, X, Send, ChevronRight, Building2 } from 'lucide-react';
 
 export default function Teams() {
@@ -19,6 +20,12 @@ export default function Teams() {
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
+
+  const tier = normalizeTier(subscription?.tier);
+  const tierLimits = getTierLimits(tier);
+  const memberCountForLimit = selectedCompany ? (members.length || selectedCompany.memberCount || 0) : 0;
+  const memberLimitForCheck = selectedCompany?.memberLimit ?? tierLimits.maxMembers;
+  const inviteAtLimit = memberLimitForCheck !== -1 && memberCountForLimit >= memberLimitForCheck;
 
   const fetchCompanies = useCallback(async () => {
     try {
@@ -97,10 +104,17 @@ export default function Teams() {
               </h1>
             </div>
             <div className="flex items-center gap-3">
+              {inviteAtLimit && selectedCompany && (
+                <span className="text-xs text-yellow-400 hidden sm:inline">
+                  Member limit reached — <button type="button" onClick={() => router.push('/pricing')} className="underline hover:text-yellow-300">Upgrade to {tier === 'freebie' ? 'Professional' : 'Enterprise'}</button>
+                </span>
+              )}
               <button
                 type="button"
-                className="btn-workspace btn-secondary"
-                onClick={() => setShowInviteModal(true)}
+                className={`btn-workspace btn-secondary ${inviteAtLimit ? 'opacity-50 cursor-not-allowed' : ''}`}
+                onClick={() => !inviteAtLimit && setShowInviteModal(true)}
+                disabled={inviteAtLimit}
+                title={inviteAtLimit ? `Member limit reached (${memberLimitForCheck} members)` : 'Invite a member'}
               >
                 <Send className="w-4 h-4" />
                 <span>Invite Member</span>
