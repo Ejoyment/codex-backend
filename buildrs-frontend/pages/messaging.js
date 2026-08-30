@@ -1,14 +1,21 @@
 import { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
+import { useRouter } from 'next/router';
 import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch } from '../lib/api';
+import { useCurrentCompany, NoWorkspaceEmptyState } from '../hooks/useCurrentCompany';
+import { getTierLimits, normalizeTier } from '../lib/tier';
 import { MessageSquare, Plus, Send, Hash, X } from 'lucide-react';
 
 export default function Messaging() {
   const user = useAuthStore((s) => s.user);
   const subscription = useAuthStore((s) => s.subscription);
+  const router = useRouter();
+  const { hasCompany, loading: companyLoading, companies: hookCompanies } = useCurrentCompany();
+  const tierLimits = getTierLimits(normalizeTier(subscription?.tier));
+  const canUseChat = tierLimits.features.teamChat;
 
   const [channels, setChannels] = useState([]);
   const [selectedChannel, setSelectedChannel] = useState(null);
@@ -149,7 +156,19 @@ export default function Messaging() {
           </header>
 
           <div className="workspace-content">
-            <div className="bg-navy-light rounded-lg border border-gray-700 h-[calc(100vh-140px)] flex">
+            {companyLoading ? (
+              <div className="flex items-center justify-center py-20 text-gray-400">Loading workspace...</div>
+            ) : !hasCompany ? (
+              <NoWorkspaceEmptyState onCreateClick={() => router.push('/teams')} />
+            ) : !canUseChat ? (
+              <div className="flex flex-col items-center justify-center py-20 text-center">
+                <MessageSquare className="w-12 h-12 text-gray-600 mb-4" />
+                <h3 className="text-lg font-semibold text-white mb-1">Team Chat requires Professional</h3>
+                <p className="text-sm text-gray-400 mb-6 max-w-sm">Upgrade to unlock messaging, channels, and team chat.</p>
+                <button type="button" onClick={() => router.push('/pricing')} className="cta-button px-6 py-3 rounded-lg">Upgrade to Professional</button>
+              </div>
+            ) : (
+              <div className="bg-navy-light rounded-lg border border-gray-700 h-[calc(100vh-140px)] flex">
               {/* Channel List */}
               <div className="w-72 border-r border-gray-700 flex flex-col">
                 <div className="p-4 border-b border-gray-700">
@@ -257,7 +276,7 @@ export default function Messaging() {
                   </>
                 )}
               </div>
-            </div>
+            )}
           </div>
         </main>
       </div>

@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import Head from 'next/head';
+import { useRouter } from 'next/router';
 import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch } from '../lib/api';
+import { NoWorkspaceEmptyState } from '../hooks/useCurrentCompany';
 import { Plus, X, BookOpen, ChevronDown } from 'lucide-react';
 
 const CATEGORIES = [
@@ -30,6 +32,7 @@ const PRIORITY_BADGES = {
 export default function TeamMemory() {
   const user = useAuthStore((s) => s.user);
   const subscription = useAuthStore((s) => s.subscription);
+  const router = useRouter();
 
   const [companies, setCompanies] = useState([]);
   const [selectedCompany, setSelectedCompany] = useState(null);
@@ -123,7 +126,9 @@ export default function TeamMemory() {
           </header>
 
           <div className="workspace-content p-6">
-            {loading ? (
+            {!loading && companies.length === 0 ? (
+              <NoWorkspaceEmptyState onCreateClick={() => router.push('/teams')} />
+            ) : loading ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {[1, 2, 3, 4].map((i) => (
                   <div key={i} className="workspace-card animate-pulse">
