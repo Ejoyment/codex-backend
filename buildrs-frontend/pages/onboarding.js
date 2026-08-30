@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import Head from 'next/head';
 import { useRouter } from 'next/router';
 import useAuthStore from '../store/authStore';
 import { apiFetch } from '../lib/api';
