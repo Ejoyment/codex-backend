@@ -67,12 +67,20 @@ export default function SignIn() {
           } else {
             alert(otpResult.message || 'Error sending verification code');
           }
+        } else {
+          setError(result.message || 'Please verify your email before signing in.');
         }
       } else {
         setError(result.message || 'Sign in failed');
       }
     } catch (err) {
-      setError(err.message || 'Network error. Please check if the server is running.');
+      if (err.status === 401) {
+        setError('Invalid email or password');
+      } else if (err.data?.message) {
+        setError(err.data.message);
+      } else {
+        setError(err.message || 'Network error. Please check if the server is running.');
+      }
     } finally {
       setLoading(false);
       submitGuard.release();

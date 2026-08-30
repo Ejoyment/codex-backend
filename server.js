@@ -42,8 +42,14 @@ function createServer() {
                 process.env.FRONTEND_URL || 'http://localhost:5500',
                 'https://buildrshq.dev',
                 'http://buildrshq.dev',
-                'https://buildrshq.dev',
-                'http://buildrshq.dev'
+                'https://www.buildrshq.dev',
+                'http://www.buildrshq.dev',
+                'http://localhost:3000',
+                'http://localhost:3001',
+                'http://localhost:3002',
+                'http://localhost:5500',
+                'http://127.0.0.1:3000',
+                'http://127.0.0.1:3001',
             ],
             credentials: true
         }
@@ -105,9 +111,15 @@ app.use(cors({
             'http://buildrshq.dev',
             'https://www.buildrshq.dev',
             'http://www.buildrshq.dev',
+            'http://localhost:3000',
+            'http://localhost:3001',
+            'http://localhost:3002',
+            'http://localhost:5500',
+            'http://127.0.0.1:3000',
+            'http://127.0.0.1:3001',
         ].filter(Boolean);
 
-        if (!origin || allowed.includes(origin) || origin.endsWith('.onrender.com')) {
+        if (!origin || allowed.includes(origin) || origin.endsWith('.onrender.com') || origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
             callback(null, true);
         } else {
             callback(new Error('Not allowed by CORS'));
