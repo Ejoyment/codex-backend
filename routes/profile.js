@@ -180,7 +180,8 @@ router.put('/', authenticateToken, async (req, res) => {
             skills: user.skills,
             timezone: user.timezone,
             language: user.language,
-            status: user.status
+            status: user.status,
+            onboardingCompleted: user.onboardingCompleted
         };
         
         realTimeEvents.emitProfileUpdate(user._id.toString(), profileData);
@@ -201,7 +202,8 @@ router.put('/', authenticateToken, async (req, res) => {
                 skills: user.skills,
                 timezone: user.timezone,
                 language: user.language,
-                status: user.status
+                status: user.status,
+                onboardingCompleted: user.onboardingCompleted
             }
         });
     } catch (error) {

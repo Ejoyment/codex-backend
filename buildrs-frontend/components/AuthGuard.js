@@ -17,28 +17,23 @@ export default function AuthGuard({ children }) {
       return;
     }
 
-    if (user) {
-      if (!subscription) {
-        subscriptionApi.getCurrent()
-          .then((res) => {
-            if (res.subscription) useAuthStore.getState().setSubscription(res.subscription);
-          })
-          .catch(() => {});
+    const ensureUserAndRoute = async () => {
+      let current = user;
+      try {
+        const data = await fetchUser();
+        current = data.user;
+      } catch {
+        router.replace('/sign_in');
+        return;
       }
-      if (!user.onboardingCompleted) {
-        router.replace('/onboarding');
-      }
-      return;
-    }
 
-    fetchUser().then((data) => {
-      if (data.user && !data.user.onboardingCompleted) {
+      if (!current?.onboardingCompleted) {
         router.replace('/onboarding');
       }
-    }).catch(() => {
-      router.replace('/sign_in');
-    });
-  }, [token, router, fetchUser, user, subscription]);
+    };
+
+    ensureUserAndRoute();
+  }, [token, router, fetchUser, user]);
 
   if (!token) {
     return (

@@ -91,7 +91,10 @@ export default function Settings() {
         method: 'PUT',
         body: JSON.stringify({ fullName: name, email: user.email }),
       });
-      if (data.user) setAuth(localStorage.getItem('authToken'), data.user);
+      if (data.user) {
+        const token = localStorage.getItem('authToken');
+        setAuth(token, { ...user, ...data.user });
+      }
       alert('Profile updated');
     } catch {
       alert('Update failed');

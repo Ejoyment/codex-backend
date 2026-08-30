@@ -67,7 +67,7 @@ export default function Profile() {
       });
       if (data.user) {
         const token = localStorage.getItem('authToken');
-        setAuth(token, data.user);
+        setAuth(token, { ...user, ...data.user });
       }
       showToast('Profile updated successfully');
     } catch {
