@@ -25,11 +25,18 @@ export async function apiFetch(path, options = {}) {
     }
   }
 
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
+
   const headers = {
-    'Content-Type': 'application/json',
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...options.headers,
   };
+
+  // Never send JSON Content-Type with FormData — let browser set multipart boundary
+  if (isFormData && headers['Content-Type']) {
+    delete headers['Content-Type'];
+  }
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), options.timeoutMs || DEFAULT_TIMEOUT_MS);
