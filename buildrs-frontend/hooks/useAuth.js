@@ -12,14 +12,13 @@ export function useAuth() {
     setError(null);
     try {
       const data = await authApi.signup(fullName, email, password);
-      if (data.token) {
-        setAuth(data.token, data.user);
-        router.push('/onboarding');
-        return data;
-      }
       return data;
     } catch (err) {
-      setError(err.message);
+      if (err.data?.message) {
+        setError(err.data.message);
+      } else {
+        setError(err.message);
+      }
       throw err;
     } finally {
       setLoading(false);
@@ -33,12 +32,26 @@ export function useAuth() {
       const data = await authApi.signin(email, password);
       if (data.token) {
         setAuth(data.token, data.user);
-        router.push('/dashboard');
+        if (data.user?.onboardingCompleted) {
+          router.push('/dashboard');
+        } else {
+          router.push('/onboarding');
+        }
         return data;
       }
+      if (data.requiresVerification) {
+        return data;
+      }
+      setError(data.message || 'Sign in failed');
       return data;
     } catch (err) {
-      setError(err.message);
+      if (err.status === 401) {
+        setError('Invalid email or password');
+      } else if (err.data?.message) {
+        setError(err.data.message);
+      } else {
+        setError(err.message);
+      }
       throw err;
     } finally {
       setLoading(false);
@@ -62,8 +75,6 @@ export function useAuth() {
           localStorage.setItem('user', JSON.stringify(data.user));
         }
       }
-      // Centrally fetch subscription/tier so every workspace page has it
-      // Previously only settings.js (billing tab) and editor.js fetched it
       try {
         const subRes = await subscriptionApi.getCurrent();
         if (subRes.subscription) {

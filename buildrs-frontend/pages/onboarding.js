@@ -26,9 +26,9 @@ export default function Onboarding() {
   const complete = async () => {
     setLoading(true);
     try {
-      await apiFetch('/api/onboarding', {
+      await apiFetch('/api/auth/complete-onboarding', {
         method: 'POST',
-        body: JSON.stringify({ fullName, company, teamSize, roles, goal, experience }),
+        body: JSON.stringify({ fullName, company, teamSize, role: roles, goals: [goal].filter(Boolean) }),
       });
       router.push('/dashboard');
     } catch (e) {

@@ -55,7 +55,11 @@ export default function VerifyEmail() {
         setInputs(['', '', '', '']);
       }
     } catch (err) {
-      alert('Network error. Please try again.');
+      if (err.data?.message) {
+        alert(err.data.message);
+      } else {
+        alert('Network error. Please try again.');
+      }
     } finally {
       setSubmitting(false);
     }
@@ -71,7 +75,11 @@ export default function VerifyEmail() {
         alert(result.message || 'Error resending code');
       }
     } catch (err) {
-      alert('Network error. Please try again.');
+      if (err.data?.message) {
+        alert(err.data.message);
+      } else {
+        alert('Network error. Please try again.');
+      }
     }
   };
 

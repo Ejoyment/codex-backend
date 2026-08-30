@@ -54,22 +54,27 @@ export async function apiFetch(path, options = {}) {
 
       if (res.status === 429) {
         const retryAfter = parseInt(res.headers.get('Retry-After') || '5', 10);
-        throw new Error(`Rate limited. Retry after ${retryAfter}s`);
+        const error = new Error(`Rate limited. Retry after ${retryAfter}s`);
+        error.status = 429;
+        throw error;
       }
 
+      const data = await res.json().catch(() => ({}));
+
       if (res.status === 401) {
-        if (typeof window !== 'undefined') {
+        if (typeof window !== 'undefined' && !options.returnErrorData) {
           localStorage.removeItem('authToken');
           localStorage.removeItem('user');
           localStorage.removeItem('subscription');
           window.location.href = '/sign_in';
         }
-        throw new Error('Unauthorized');
+        const error = new Error(data.message || 'Unauthorized');
+        error.status = 401;
+        error.data = data;
+        throw error;
       }
 
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
+      if (!res.ok && !options.returnErrorData) {
         const error = new Error(data.message || 'API request failed');
         error.status = res.status;
         error.data = data;
@@ -110,12 +115,14 @@ export const authApi = {
     apiFetch('/api/auth/signup', {
       method: 'POST',
       body: JSON.stringify({ fullName, email, password }),
+      returnErrorData: true,
     }),
 
   signin: (email, password) =>
     apiFetch('/api/auth/signin', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
+      returnErrorData: true,
     }),
 
   getMe: () => apiFetch('/api/auth/me'),
@@ -124,18 +131,21 @@ export const authApi = {
     apiFetch('/api/otp/send', {
       method: 'POST',
       body: JSON.stringify({ email }),
+      returnErrorData: true,
     }),
 
   verifyOTP: (email, otp) =>
     apiFetch('/api/otp/verify', {
       method: 'POST',
       body: JSON.stringify({ email, otp }),
+      returnErrorData: true,
     }),
 
   resendOTP: (email) =>
     apiFetch('/api/otp/resend', {
       method: 'POST',
       body: JSON.stringify({ email }),
+      returnErrorData: true,
     }),
 
   google: () => `${API_BASE_URL}/api/auth/google`,

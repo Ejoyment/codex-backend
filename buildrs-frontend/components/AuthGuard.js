@@ -18,7 +18,6 @@ export default function AuthGuard({ children }) {
     }
 
     if (user) {
-      // Even when user is cached, ensure subscription/tier is populated centrally
       if (!subscription) {
         subscriptionApi.getCurrent()
           .then((res) => {
@@ -26,10 +25,17 @@ export default function AuthGuard({ children }) {
           })
           .catch(() => {});
       }
+      if (!user.onboardingCompleted) {
+        router.replace('/onboarding');
+      }
       return;
     }
 
-    fetchUser().catch(() => {
+    fetchUser().then((data) => {
+      if (data.user && !data.user.onboardingCompleted) {
+        router.replace('/onboarding');
+      }
+    }).catch(() => {
       router.replace('/sign_in');
     });
   }, [token, router, fetchUser, user, subscription]);
