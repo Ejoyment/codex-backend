@@ -155,20 +155,143 @@ router.post('/agent/logout', verifySupportAgent, async (req, res) => {
  *                 ticket:
  *                   type: object
  */
-// Create Support Ticket (Public)
+// Middleware to verify user token (for user ticket routes)
+const verifyUser = async (req, res, next) => {
+    try {
+        const token = req.headers.authorization?.split(' ')[1];
+        if (!token) {
+            return res.status(401).json({ error: 'No token provided' });
+        }
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const userId = decoded.id || decoded.userId;
+        if (!userId) {
+            return res.status(401).json({ error: 'Invalid token' });
+        }
+        req.userId = userId;
+        next();
+    } catch (error) {
+        res.status(401).json({ error: 'Invalid token' });
+    }
+};
+
+// Get tickets for authenticated user (supports ?userId= filter for frontend)
+router.get('/tickets', async (req, res) => {
+    try {
+        const token = req.headers.authorization?.split(' ')[1];
+        let filter = {};
+        if (token) {
+            try {
+                const decoded = jwt.verify(token, process.env.JWT_SECRET);
+                const userId = decoded.id || decoded.userId;
+                if (userId) {
+                    // If userId query param provided, filter by it; otherwise filter by authenticated user
+                    const requestedUserId = req.query.userId || userId;
+                    // Only allow users to see their own tickets unless they're querying their own
+                    filter.userId = requestedUserId;
+                }
+            } catch (e) {
+                // Invalid token, fall back to query param if provided
+                if (req.query.userId) {
+                    filter.userId = req.query.userId;
+                }
+            }
+        } else if (req.query.userId) {
+            filter.userId = req.query.userId;
+        }
+        const tickets = await SupportTicket.find(filter).sort({ updatedAt: -1 }).limit(100);
+        res.json({ success: true, tickets });
+    } catch (error) {
+        console.error('Get tickets error:', error);
+        res.status(500).json({ error: 'Failed to fetch tickets' });
+    }
+});
+
+// Add message to ticket (user or agent) — detects sender from token if provided
+router.post('/tickets/:ticketId/messages', async (req, res) => {
+    try {
+        const { content, message, sender } = req.body;
+        const text = content || message;
+        if (!text || !text.trim()) {
+            return res.status(400).json({ error: 'Message content is required' });
+        }
+        // Detect sender: try agent token first, then user token, fallback to body sender or 'user'
+        let senderType = sender || 'user';
+        let senderName = 'User';
+        const authHeader = req.headers.authorization;
+        if (authHeader) {
+            const token = authHeader.split(' ')[1];
+            try {
+                const decoded = jwt.verify(token, process.env.JWT_SECRET);
+                if (decoded.agentId) {
+                    senderType = 'agent';
+                    try {
+                        const agent = await SupportAgent.findById(decoded.agentId);
+                        if (agent) senderName = agent.name;
+                    } catch {}
+                } else if (decoded.id || decoded.userId) {
+                    senderType = 'user';
+                    try {
+                        const User = require('../models/User');
+                        const user = await User.findById(decoded.id || decoded.userId);
+                        if (user) senderName = user.fullName || 'User';
+                    } catch {}
+                }
+            } catch (e) {
+                // Invalid token, keep default
+            }
+        }
+        const ticket = await SupportTicket.findOne({ ticketId: req.params.ticketId });
+        if (!ticket) {
+            // Also try by _id
+            const byId = await SupportTicket.findById(req.params.ticketId);
+            if (!byId) {
+                return res.status(404).json({ error: 'Ticket not found' });
+            }
+            byId.messages.push({
+                sender: senderType,
+                senderName,
+                message: text.trim(),
+                timestamp: new Date()
+            });
+            await byId.save();
+            const lastMessage = byId.messages[byId.messages.length - 1];
+            return res.json({ success: true, message: lastMessage });
+        }
+        ticket.messages.push({
+            sender: senderType,
+            senderName,
+            message: text.trim(),
+            timestamp: new Date()
+        });
+        await ticket.save();
+        const lastMessage = ticket.messages[ticket.messages.length - 1];
+        res.json({ success: true, message: lastMessage });
+    } catch (error) {
+        console.error('Add message error:', error);
+        res.status(500).json({ error: 'Failed to add message' });
+    }
+});
+
+// Create Support Ticket (Public) — now handles both backend and frontend field names
 router.post('/tickets', async (req, res) => {
     try {
-        const { subject, guestName, guestEmail, message, userId } = req.body;
+        const { subject, guestName, guestEmail, message, description, content, userId, priority } = req.body;
+        const ticketMessage = message || description || content;
+
+        if (!subject || !ticketMessage) {
+            return res.status(400).json({ error: 'Subject and message are required' });
+        }
 
         const ticket = new SupportTicket({
-            subject,
+            subject: subject.trim(),
             guestName: guestName || 'Guest',
             guestEmail,
             userId: userId || null,
+            priority: priority || 'medium',
             messages: [{
                 sender: 'user',
                 senderName: guestName || 'Guest',
-                message,
+                message: ticketMessage,
                 timestamp: new Date()
             }]
         });
@@ -176,6 +299,7 @@ router.post('/tickets', async (req, res) => {
         await ticket.save();
 
         res.json({
+            success: true,
             ticketId: ticket.ticketId,
             ticket
         });
