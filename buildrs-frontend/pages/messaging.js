@@ -276,6 +276,7 @@ export default function Messaging() {
                   </>
                 )}
               </div>
+              </div>
             )}
           </div>
         </main>

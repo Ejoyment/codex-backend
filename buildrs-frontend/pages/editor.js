@@ -5,7 +5,7 @@ import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch } from '../lib/api';
 import { Save, Plus, ChevronDown, FileCode, Trash2 } from 'lucide-react';
-import Editor from '@monaco-editor/react';
+import MonacoEditor from '@monaco-editor/react';
 
 function getMonacoLanguage(lang) {
   if (!lang) return 'plaintext';
@@ -333,7 +333,7 @@ export default function Editor() {
                       </button>
                     </div>
                     <div className="border border-gray-700 rounded-lg overflow-hidden">
-                      <Editor
+                      <MonacoEditor
                         height="500px"
                         language={monacoLanguage}
                         value={content}
