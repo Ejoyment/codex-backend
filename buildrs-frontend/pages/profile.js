@@ -5,6 +5,8 @@ import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch } from '../lib/api';
 import { rateLimit, validate, createSubmitGuard } from '../lib/security';
+import { Camera, Save, Loader2, User, Mail, Briefcase, Shield } from 'lucide-react';
+import useToastStore from '../store/toastStore';
 import { getAvatarUrl } from '../lib/utils';
 import { Camera, Save, Loader2, User, Mail, Briefcase, Shield, CheckCircle } from 'lucide-react';
 
@@ -18,25 +20,14 @@ export default function Profile() {
   const [name, setName] = useState('');
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [toast, setToast] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
+  const toast = useToastStore();
 
   useEffect(() => {
     if (user) {
       setName(user.fullName || '');
     }
   }, [user]);
-
-  useEffect(() => {
-    if (toast) {
-      const t = setTimeout(() => setToast(null), 3000);
-      return () => clearTimeout(t);
-    }
-  }, [toast]);
-
-  const showToast = (message, type = 'success') => {
-    setToast({ message, type });
-  };
 
   const validateField = useCallback((value) => {
     const result = validate(value, ['required', 'fullName', 'noScript']);
@@ -54,7 +45,7 @@ export default function Profile() {
 
     const rl = rateLimit('profile-save', { maxAttempts: 5, windowMs: 60000 });
     if (!rl.allowed) {
-      showToast(`Too many requests. Wait ${rl.retryAfter}s`, 'error');
+      toast.error(`Too many requests. Wait ${rl.retryAfter}s`);
       submitGuard.release();
       return;
     }
@@ -69,9 +60,9 @@ export default function Profile() {
         const token = localStorage.getItem('authToken');
         setAuth(token, { ...user, ...data.user });
       }
-      showToast('Profile updated successfully');
+      toast.success('Profile updated successfully');
     } catch {
-      showToast('Failed to update profile', 'error');
+      toast.error('Failed to update profile');
     } finally {
       setSaving(false);
       submitGuard.release();
@@ -81,12 +72,13 @@ export default function Profile() {
   const uploadPicture = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    e.target.value = '';
     if (file.size > 5 * 1024 * 1024) {
-      showToast('File too large (max 5MB)', 'error');
+      toast.error('File too large — max 5MB');
       return;
     }
     if (!file.type.startsWith('image/')) {
-      showToast('Only image files are allowed', 'error');
+      toast.error('Only image files are allowed');
       return;
     }
     setUploading(true);
@@ -101,15 +93,27 @@ export default function Profile() {
         const updated = { ...user, profilePicture: data.profilePicture };
         const token = localStorage.getItem('authToken');
         setAuth(token, updated);
-        showToast('Profile picture updated');
+        toast.success('Profile picture updated');
+      } else {
+        toast.error(data.message || 'Upload failed');
       }
-    } catch {
-      showToast('Failed to upload picture', 'error');
+    } catch (err) {
+      toast.error(err.message || 'Failed to upload picture');
     } finally {
       setUploading(false);
     }
   };
 
+  const getProfilePictureUrl = (pic) => {
+    if (!pic) return `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.fullName || user?.name || 'User')}&background=3b82f6&color=fff&size=128`;
+    if (pic.startsWith('http')) return pic;
+    if (pic.startsWith('/uploads/')) {
+      const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'https://codex-backend-7utu.onrender.com').replace(/\/api$/, '');
+      return `${apiBase}${pic}`;
+    }
+    return pic;
+  };
+  const profilePictureUrl = getProfilePictureUrl(user?.profilePicture || user?.profilePhoto);
   const profilePictureUrl = getAvatarUrl(user, user?.fullName || user?.name || 'User');
 
   return (
@@ -130,19 +134,6 @@ export default function Profile() {
           </header>
 
           <div className="workspace-content">
-            {/* Toast */}
-            {toast && (
-              <div
-                className={`mb-6 flex items-center gap-2 px-4 py-3 rounded-lg text-sm font-medium transition-opacity ${
-                  toast.type === 'error'
-                    ? 'bg-red-500/10 border border-red-500/30 text-red-400'
-                    : 'bg-green-500/10 border border-green-500/30 text-green-400'
-                }`}
-              >
-                <CheckCircle className="w-4 h-4 flex-shrink-0" />
-                {toast.message}
-              </div>
-            )}
 
             <div className="max-w-2xl">
               <div className="workspace-card">

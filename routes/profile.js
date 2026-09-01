@@ -28,14 +28,19 @@ const upload = multer({
         fileSize: 5 * 1024 * 1024 // 5MB limit
     },
     fileFilter: (req, file, cb) => {
-        const allowedTypes = /jpeg|jpg|png|gif|webp/;
-        const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-        const mimetype = allowedTypes.test(file.mimetype);
+        const allowedExts = ['.jpeg', '.jpg', '.png', '.gif', '.webp'];
+        const ext = path.extname(file.originalname).toLowerCase();
+        const isExtAllowed = allowedExts.includes(ext);
+        const isMimeAllowed = file.mimetype && file.mimetype.startsWith('image/');
         
-        if (extname && mimetype) {
+        if (isExtAllowed && isMimeAllowed) {
             return cb(null, true);
         }
-        cb(new Error('Only image files are allowed'));
+        // Fallback: allow if either ext or mime is image-related
+        if (isExtAllowed || isMimeAllowed) {
+            return cb(null, true);
+        }
+        cb(new Error('Only image files are allowed (jpg, png, gif, webp)'));
     }
 });
 

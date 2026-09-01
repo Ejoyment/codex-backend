@@ -5,6 +5,7 @@ import { useRouter } from 'next/router';
 import { authApi } from '../lib/api';
 import useAuthStore from '../store/authStore';
 import { rateLimit, resetRateLimit, validate, createSubmitGuard } from '../lib/security';
+import useToastStore from '../store/toastStore';
 
 const submitGuard = createSubmitGuard();
 
@@ -17,6 +18,7 @@ export default function SignIn() {
   const [fieldErrors, setFieldErrors] = useState({});
   const [rateLimited, setRateLimited] = useState(false);
   const setAuth = useAuthStore((s) => s.setAuth);
+  const toast = useToastStore();
 
   const validateField = useCallback((name, value) => {
     const rules = name === 'email' ? ['required', 'email'] : ['required', 'minLength:8'];
@@ -58,17 +60,20 @@ export default function SignIn() {
           router.push('/onboarding');
         }
       } else if (result.requiresVerification) {
-        const confirmVerify = confirm(`${result.message || 'Please verify your email.'}\n\nWould you like to verify your email now?`);
-        if (confirmVerify) {
-          sessionStorage.setItem('userEmail', result.email || email);
+        toast.info(result.message || 'Please verify your email. Sending code...');
+        sessionStorage.setItem('userEmail', result.email || email);
+        try {
           const otpResult = await authApi.sendOTP(result.email || email);
           if (otpResult.success) {
+            toast.success('Verification code sent');
             router.push('/verify-email');
           } else {
-            alert(otpResult.message || 'Error sending verification code');
+            toast.error(otpResult.message || 'Error sending verification code');
+            setError(otpResult.message || 'Error sending verification code');
           }
-        } else {
-          setError(result.message || 'Please verify your email before signing in.');
+        } catch (otpErr) {
+          toast.error(otpErr.message || 'Error sending verification code');
+          setError(otpErr.message || 'Error sending verification code');
         }
       } else {
         setError(result.message || 'Sign in failed');

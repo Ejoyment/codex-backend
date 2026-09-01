@@ -4,6 +4,7 @@ import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch } from '../lib/api';
+import useToastStore from '../store/toastStore';
 import { MessageSquare, User, RefreshCw, Send } from 'lucide-react';
 
 const STATUS_OPTIONS = ['open', 'in_progress', 'resolved', 'closed'];
@@ -35,6 +36,7 @@ export default function SupportAdmin() {
   const [expandedId, setExpandedId] = useState(null);
   const [replyContent, setReplyContent] = useState('');
   const [sending, setSending] = useState(false);
+  const toast = useToastStore();
 
   const loadTickets = useCallback(async () => {
     const token = getAgentToken();
@@ -145,8 +147,9 @@ export default function SupportAdmin() {
         body: JSON.stringify({ status }),
       });
       setTickets((prev) => prev.map((t) => (t.ticketId === ticketId || t._id === ticketId ? { ...t, status } : t)));
+      toast.success('Status updated');
     } catch (e) {
-      alert('Failed to update status');
+      toast.error('Failed to update status');
     }
   };
 
@@ -157,8 +160,9 @@ export default function SupportAdmin() {
         method: 'PUT',
       });
       setTickets((prev) => prev.map((t) => (t.ticketId === ticketId || t._id === ticketId ? { ...t, assignedTo: agent.id, status: 'in-progress' } : t)));
+      toast.success('Ticket assigned to you');
     } catch (e) {
-      alert('Failed to assign ticket');
+      toast.error('Failed to assign ticket');
     }
   };
 
@@ -171,6 +175,7 @@ export default function SupportAdmin() {
         body: JSON.stringify({ content: replyContent }),
       });
       setReplyContent('');
+      toast.success('Reply sent');
       loadTickets();
     } catch (e) {
       // Fallback to user endpoint if agent endpoint fails
@@ -180,9 +185,10 @@ export default function SupportAdmin() {
           body: JSON.stringify({ content: replyContent }),
         });
         setReplyContent('');
+        toast.success('Reply sent');
         loadTickets();
       } catch (err) {
-        alert('Failed to send reply');
+        toast.error('Failed to send reply');
       }
     } finally {
       setSending(false);

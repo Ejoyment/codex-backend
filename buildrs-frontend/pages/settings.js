@@ -8,6 +8,7 @@ import { apiFetch, subscriptionApi, integrationApi } from '../lib/api';
 import { rateLimit, validate, createSubmitGuard } from '../lib/security';
 import { getAvatarUrl } from '../lib/utils';
 import { User, Shield, CreditCard, Plug, Camera, Save, ExternalLink, Unplug, Loader2 } from 'lucide-react';
+import useToastStore from '../store/toastStore';
 
 const submitGuard = createSubmitGuard();
 
@@ -41,6 +42,7 @@ export default function Settings() {
   const [integrations, setIntegrations] = useState([]);
   const [loadingIntegrations, setLoadingIntegrations] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
+  const toast = useToastStore();
 
   useEffect(() => {
     if (user) {
@@ -80,7 +82,7 @@ export default function Settings() {
 
     const rl = rateLimit('settings-save', { maxAttempts: 5, windowMs: 60000 });
     if (!rl.allowed) {
-      alert(`Too many requests. Wait ${rl.retryAfter}s`);
+      toast.error(`Too many requests. Wait ${rl.retryAfter}s`);
       submitGuard.release();
       return;
     }
@@ -91,13 +93,15 @@ export default function Settings() {
         method: 'PUT',
         body: JSON.stringify({ fullName: name, email: user.email }),
       });
+      if (data.user) setAuth(localStorage.getItem('authToken'), data.user);
+      toast.success('Profile updated successfully');
       if (data.user) {
         const token = localStorage.getItem('authToken');
         setAuth(token, { ...user, ...data.user });
       }
       alert('Profile updated');
     } catch {
-      alert('Update failed');
+      toast.error('Failed to update profile');
     } finally {
       setSaving(false);
       submitGuard.release();
@@ -107,12 +111,14 @@ export default function Settings() {
   const uploadPicture = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    // Reset input value to allow re-upload of same file after error
+    e.target.value = '';
     if (file.size > 5 * 1024 * 1024) {
-      alert('File too large (max 5MB)');
+      toast.error('File too large — max 5MB');
       return;
     }
     if (!file.type.startsWith('image/')) {
-      alert('Only image files are allowed');
+      toast.error('Only image files are allowed');
       return;
     }
     setUploading(true);
@@ -128,9 +134,12 @@ export default function Settings() {
         const token = localStorage.getItem('authToken');
         const updated = { ...user, profilePicture: data.profilePicture };
         setAuth(token, updated);
+        toast.success('Profile picture updated');
+      } else {
+        toast.error(data.message || 'Upload failed');
       }
-    } catch {
-      alert('Upload failed');
+    } catch (err) {
+      toast.error(err.message || 'Failed to upload picture');
     } finally {
       setUploading(false);
     }
@@ -140,8 +149,8 @@ export default function Settings() {
     try {
       const data = await apiFetch(`/api/integrations/${provider}/auth`);
       if (data.url) window.location.href = data.url;
-    } catch {
-      alert('Failed to start OAuth flow');
+    } catch (err) {
+      toast.error(err.message || 'Failed to start OAuth flow');
     }
   };
 
@@ -149,14 +158,25 @@ export default function Settings() {
     try {
       await apiFetch(`/api/integrations/${provider}/disconnect`, { method: 'POST' });
       setIntegrations((prev) => prev.filter((i) => i.provider !== provider));
-    } catch {
-      alert('Disconnect failed');
+      toast.success(`${provider} disconnected`);
+    } catch (err) {
+      toast.error(err.message || 'Disconnect failed');
     }
   };
 
   const getIntegration = (providerId) =>
     integrations.find((i) => i.provider === providerId);
 
+  const getProfilePictureUrl = (pic) => {
+    if (!pic) return `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.fullName || user?.name || 'User')}&background=3b82f6&color=fff&size=128`;
+    if (pic.startsWith('http')) return pic;
+    if (pic.startsWith('/uploads/')) {
+      const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'https://codex-backend-7utu.onrender.com').replace(/\/api$/, '');
+      return `${apiBase}${pic}`;
+    }
+    return pic;
+  };
+  const profilePictureUrl = getProfilePictureUrl(user?.profilePicture || user?.profilePhoto);
   const profilePictureUrl = getAvatarUrl(user, user?.fullName || user?.name || 'User');
 
   return (
