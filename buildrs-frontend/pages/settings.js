@@ -167,16 +167,6 @@ export default function Settings() {
   const getIntegration = (providerId) =>
     integrations.find((i) => i.provider === providerId);
 
-  const getProfilePictureUrl = (pic) => {
-    if (!pic) return `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.fullName || user?.name || 'User')}&background=3b82f6&color=fff&size=128`;
-    if (pic.startsWith('http')) return pic;
-    if (pic.startsWith('/uploads/')) {
-      const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'https://codex-backend-7utu.onrender.com').replace(/\/api$/, '');
-      return `${apiBase}${pic}`;
-    }
-    return pic;
-  };
-  const profilePictureUrl = getProfilePictureUrl(user?.profilePicture || user?.profilePhoto);
   const profilePictureUrl = getAvatarUrl(user, user?.fullName || user?.name || 'User');
 
   return (

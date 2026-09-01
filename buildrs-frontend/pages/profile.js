@@ -5,10 +5,9 @@ import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch } from '../lib/api';
 import { rateLimit, validate, createSubmitGuard } from '../lib/security';
-import { Camera, Save, Loader2, User, Mail, Briefcase, Shield } from 'lucide-react';
+import { Camera, Save, Loader2, User, Mail, Briefcase, Shield, CheckCircle } from 'lucide-react';
 import useToastStore from '../store/toastStore';
 import { getAvatarUrl } from '../lib/utils';
-import { Camera, Save, Loader2, User, Mail, Briefcase, Shield, CheckCircle } from 'lucide-react';
 
 const submitGuard = createSubmitGuard();
 
@@ -104,16 +103,6 @@ export default function Profile() {
     }
   };
 
-  const getProfilePictureUrl = (pic) => {
-    if (!pic) return `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.fullName || user?.name || 'User')}&background=3b82f6&color=fff&size=128`;
-    if (pic.startsWith('http')) return pic;
-    if (pic.startsWith('/uploads/')) {
-      const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'https://codex-backend-7utu.onrender.com').replace(/\/api$/, '');
-      return `${apiBase}${pic}`;
-    }
-    return pic;
-  };
-  const profilePictureUrl = getProfilePictureUrl(user?.profilePicture || user?.profilePhoto);
   const profilePictureUrl = getAvatarUrl(user, user?.fullName || user?.name || 'User');
 
   return (
