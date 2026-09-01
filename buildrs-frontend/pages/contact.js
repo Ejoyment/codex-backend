@@ -3,15 +3,17 @@ import ModernHeader from '../components/ModernHeader';
 import Link from 'next/link';
 import { useState } from 'react';
 import { Mail, MessageSquare, Users, Twitter } from 'lucide-react';
+import useToastStore from '../store/toastStore';
 
 export default function Contact() {
   const [form, setForm] = useState({ firstName: '', lastName: '', email: '', company: '', subject: 'General Inquiry', message: '' });
+  const toast = useToastStore();
 
   const onChange = (e) => setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
 
   const onSubmit = (e) => {
     e.preventDefault();
-    alert('Message sent. We will get back to you soon.');
+    toast.success('Message sent. We will get back to you soon.');
     setForm({ firstName: '', lastName: '', email: '', company: '', subject: 'General Inquiry', message: '' });
   };
 

@@ -2,11 +2,13 @@ import Head from 'next/head';
 import ModernHeader from '../components/ModernHeader';
 import Link from 'next/link';
 import { useState } from 'react';
+import useToastStore from '../store/toastStore';
 
 export default function Demo() {
   const [form, setForm] = useState({ fullName: '', email: '', company: '', teamSize: '', date: '', message: '' });
+  const toast = useToastStore();
   const onChange = (e) => setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
-  const onSubmit = (e) => { e.preventDefault(); alert('Demo request received. We will reach out shortly.'); setForm({ fullName: '', email: '', company: '', teamSize: '', date: '', message: '' }); };
+  const onSubmit = (e) => { e.preventDefault(); toast.success('Demo request received. We will reach out shortly.'); setForm({ fullName: '', email: '', company: '', teamSize: '', date: '', message: '' }); };
 
   return (
     <>

@@ -5,10 +5,12 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { authApi } from '../lib/api';
 import useAuthStore from '../store/authStore';
+import useToastStore from '../store/toastStore';
 
 export default function VerifyEmail() {
   const router = useRouter();
   const setAuth = useAuthStore((s) => s.setAuth);
+  const toast = useToastStore();
   const [inputs, setInputs] = useState(['', '', '', '']);
   const [submitting, setSubmitting] = useState(false);
 
@@ -39,7 +41,10 @@ export default function VerifyEmail() {
   const submit = async (e) => {
     e.preventDefault();
     const otp = inputs.join('');
-    if (otp.length !== 4) return alert('Please enter the complete 4-digit code');
+    if (otp.length !== 4) {
+      toast.error('Please enter the complete 4-digit code');
+      return;
+    }
     setSubmitting(true);
     try {
       const result = await authApi.verifyOTP(sessionStorage.getItem('userEmail'), otp);
@@ -49,16 +54,17 @@ export default function VerifyEmail() {
           localStorage.setItem('authToken', result.token);
           setAuth(result.token, result.user || null);
         }
+        toast.success('Email verified successfully');
         router.push('/verify-success');
       } else {
-        alert(result.message || 'Invalid OTP. Please try again.');
+        toast.error(result.message || 'Invalid OTP. Please try again.');
         setInputs(['', '', '', '']);
       }
     } catch (err) {
       if (err.data?.message) {
-        alert(err.data.message);
+        toast.error(err.data.message);
       } else {
-        alert('Network error. Please try again.');
+        toast.error('Network error. Please try again.');
       }
     } finally {
       setSubmitting(false);
@@ -69,16 +75,16 @@ export default function VerifyEmail() {
     try {
       const result = await authApi.resendOTP(sessionStorage.getItem('userEmail'));
       if (result.success) {
-        alert('Verification code has been resent to your email!');
+        toast.success('Verification code has been resent to your email!');
         setInputs(['', '', '', '']);
       } else {
-        alert(result.message || 'Error resending code');
+        toast.error(result.message || 'Error resending code');
       }
     } catch (err) {
       if (err.data?.message) {
-        alert(err.data.message);
+        toast.error(err.data.message);
       } else {
-        alert('Network error. Please try again.');
+        toast.error('Network error. Please try again.');
       }
     }
   };

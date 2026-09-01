@@ -4,6 +4,8 @@ import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch } from '../lib/api';
+import useToastStore from '../store/toastStore';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Link2, Unlink, ExternalLink, Loader2, Plug } from 'lucide-react';
 
 const PROVIDERS = [
@@ -55,6 +57,8 @@ export default function Integrations() {
   const [error, setError] = useState(null);
   const [connecting, setConnecting] = useState(null);
   const [disconnecting, setDisconnecting] = useState(null);
+  const toast = useToastStore();
+  const [confirmDisconnect, setConfirmDisconnect] = useState(null);
 
   const fetchIntegrations = async () => {
     try {
@@ -87,21 +91,28 @@ export default function Integrations() {
       }
     } catch (err) {
       console.error(`Failed to initiate ${providerKey} connection:`, err);
-      alert(`Failed to start ${providerKey} connection. Please try again.`);
+      toast.error(`Failed to start ${providerKey} connection. Please try again.`);
     } finally {
       setConnecting(null);
     }
   };
 
   const handleDisconnect = async (providerKey) => {
-    if (!window.confirm(`Are you sure you want to disconnect ${providerKey}?`)) return;
+    setConfirmDisconnect(providerKey);
+  };
+
+  const handleConfirmDisconnect = async () => {
+    const providerKey = confirmDisconnect;
+    if (!providerKey) return;
+    setConfirmDisconnect(null);
     try {
       setDisconnecting(providerKey);
       await apiFetch(`/api/integrations/${providerKey}`, { method: 'DELETE' });
       setIntegrations((prev) => prev.filter((i) => i.provider !== providerKey));
+      toast.success(`${providerKey} disconnected`);
     } catch (err) {
       console.error(`Failed to disconnect ${providerKey}:`, err);
-      alert(`Failed to disconnect ${providerKey}. Please try again.`);
+      toast.error(`Failed to disconnect ${providerKey}. Please try again.`);
     } finally {
       setDisconnecting(null);
     }
@@ -254,6 +265,14 @@ export default function Integrations() {
           </div>
         </main>
       </div>
+      <ConfirmDialog
+        isOpen={!!confirmDisconnect}
+        onClose={() => setConfirmDisconnect(null)}
+        onConfirm={handleConfirmDisconnect}
+        title="Disconnect Integration"
+        message={`Are you sure you want to disconnect ${confirmDisconnect}?`}
+        confirmText="Disconnect"
+      />
     </AuthGuard>
   );
 }
