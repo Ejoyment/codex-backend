@@ -252,7 +252,10 @@ export const messagingApi = {
 };
 
 export const meetingApi = {
-  list: () => apiFetch('/api/meetings'),
+  list: (companyId, params = {}) => {
+    const qs = new URLSearchParams({ companyId, ...params }).toString();
+    return apiFetch(`/api/meetings${qs ? `?${qs}` : ''}`);
+  },
   create: (data) =>
     apiFetch('/api/meetings', {
       method: 'POST',

@@ -8,6 +8,8 @@ import {
   slackApi,
   projectApi,
   collaborationApi,
+  meetingApi,
+  companyApi,
 } from '../lib/api';
 
 const REFRESH_INTERVAL_MS = 30000;
@@ -127,6 +129,9 @@ export function useDashboard() {
   const [integrations, setIntegrations] = useState(null); // null = loading, [] = empty
   const [activity, setActivity] = useState(null);
   const [projects, setProjects] = useState(null);
+  const [tasks, setTasks] = useState(null);
+  const [companies, setCompanies] = useState(null);
+  const [meetings, setMeetings] = useState(null);
   const [loading, setLoading] = useState(true);
   const mounted = useRef(true);
 
@@ -266,9 +271,55 @@ export function useDashboard() {
     }
   }, []);
 
+  const loadTasks = useCallback(async () => {
+    try {
+      const data = await projectApi.listTasks();
+      if (mounted.current) {
+        setTasks(data.success ? (data.tasks || []) : []);
+      }
+    } catch {
+      if (mounted.current) setTasks([]);
+    }
+  }, []);
+
+  const loadCompanies = useCallback(async () => {
+    try {
+      const data = await companyApi.getMyCompanies();
+      if (mounted.current) {
+        setCompanies(data.success ? (data.companies || []) : []);
+      }
+    } catch {
+      if (mounted.current) setCompanies([]);
+    }
+  }, []);
+
+  const loadMeetings = useCallback(async () => {
+    try {
+      const companiesData = await companyApi.getMyCompanies();
+      const companies = companiesData.success ? companiesData.companies : [];
+      const upcoming = [];
+
+      for (const company of companies) {
+        try {
+          const data = await meetingApi.list(company.id, { upcoming: 'true' });
+          if (data.success && data.meetings) {
+            upcoming.push(...data.meetings);
+          }
+        } catch {
+          // skip company meetings on failure
+        }
+      }
+
+      upcoming.sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt));
+      if (mounted.current) setMeetings(upcoming);
+    } catch {
+      if (mounted.current) setMeetings([]);
+    }
+  }, []);
+
   const refreshAll = useCallback(async () => {
-    await Promise.all([loadStats(), loadIntegrationsHub(), loadActivity(), loadProjects()]);
-  }, [loadStats, loadIntegrationsHub, loadActivity, loadProjects]);
+    await Promise.all([loadStats(), loadIntegrationsHub(), loadActivity(), loadProjects(), loadTasks(), loadCompanies(), loadMeetings()]);
+  }, [loadStats, loadIntegrationsHub, loadActivity, loadProjects, loadTasks, loadCompanies, loadMeetings]);
 
   useEffect(() => {
     mounted.current = true;
@@ -290,5 +341,5 @@ export function useDashboard() {
     };
   }, [refreshAll]);
 
-  return { stats, trial, integrations, activity, projects, loading, refreshAll, loadStats, loadProjects };
+  return { stats, trial, integrations, activity, projects, tasks, companies, meetings, loading, refreshAll, loadStats, loadProjects, loadTasks, loadMeetings };
 }

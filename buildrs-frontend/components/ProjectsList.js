@@ -1,11 +1,11 @@
-import { Github, Users, FolderKanban, FileText } from 'lucide-react';
+import { Github, Users, FolderKanban, FileText, ExternalLink } from 'lucide-react';
 
 const STATUS_STYLES = {
-  active: { bg: '#dbeafe', text: '#1e40af', label: 'Active' },
-  planning: { bg: '#fef3c7', text: '#92400e', label: 'Planning' },
-  'on-hold': { bg: '#fee2e2', text: '#991b1b', label: 'On Hold' },
-  completed: { bg: '#d1fae5', text: '#065f46', label: 'Completed' },
-  archived: { bg: '#f3f4f6', text: '#4b5563', label: 'Archived' },
+  active: { bg: '#1e3a5f', text: '#60a5fa', label: 'Active' },
+  planning: { bg: '#3d2f0f', text: '#fbbf24', label: 'Planning' },
+  'on-hold': { bg: '#3d1f1a', text: '#f87171', label: 'On Hold' },
+  completed: { bg: '#0f3d2e', text: '#34d399', label: 'Completed' },
+  archived: { bg: '#111827', text: '#9ca3af', label: 'Archived' },
 };
 
 function ProjectIcon({ type }) {
@@ -14,30 +14,14 @@ function ProjectIcon({ type }) {
   return <FolderKanban className="w-6 h-6" />;
 }
 
-function ProjectStats({ project }) {
-  if (project.type === 'github') {
-    return (
-      <>
-        <span>⭐ {project.stats.stars || 0}</span>
-        <span>🔱 {project.stats.forks || 0}</span>
-        {project.stats.language && <span>• {project.stats.language}</span>}
-      </>
-    );
-  }
-  if (project.type === 'local') {
-    return (
-      <>
-        <span>📊 {project.stats.progress || 0}% complete</span>
-        <span>🎯 {project.stats.priority || 'medium'}</span>
-      </>
-    );
-  }
+function ProgressBar({ value }) {
+  const safe = Number(value) || 0;
+  const width = `${Math.min(Math.max(safe, 0), 100)}%`;
+
   return (
-    <>
-      <span>📊 {project.stats.progress || 0}% complete</span>
-      <span>👥 {project.stats.members || 0} members</span>
-      <span>🎯 {project.stats.priority || 'medium'}</span>
-    </>
+    <div className="w-full h-1.5 bg-gray-700 rounded-full overflow-hidden">
+      <div className="h-full bg-blue-500 rounded-full" style={{ width }} />
+    </div>
   );
 }
 
@@ -66,15 +50,15 @@ export default function ProjectsList({ projects, onViewAll }) {
     <div className="flex flex-col gap-3">
       {projects.map((project, idx) => {
         const status = STATUS_STYLES[project.status] || STATUS_STYLES.active;
-        const iconColor =
-          project.type === 'github' ? '#e2e8f0' : project.type === 'local' ? '#3b82f6' : '#8b5cf6';
+        const iconColor = project.type === 'github' ? '#e2e8f0' : project.type === 'local' ? '#3b82f6' : '#8b5cf6';
         const iconBg = project.type === 'github' ? '#111827' : '#2a1f4d';
+        const progress = project.stats?.progress || 0;
 
         return (
           <div
             key={`${project.name}-${idx}`}
             className="flex gap-4 p-4 border border-gray-700 rounded-lg transition hover:border-gray-500 cursor-pointer"
-            onClick={() => (project.url ? window.open(project.url, '_blank') : onViewAll())}
+            onClick={() => (project.url ? window.open(project.url, '_blank') : onViewAll?.())}
           >
             <div
               className="w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0"
@@ -93,8 +77,33 @@ export default function ProjectsList({ projects, onViewAll }) {
                 </span>
               </div>
               <p className="text-xs text-gray-400 mb-2 truncate">{project.description}</p>
-              <div className="flex gap-4 text-[11px] text-gray-500">
-                <ProjectStats project={project} />
+              <ProgressBar value={progress} />
+              <div className="flex items-center justify-between mt-2">
+                <div className="flex gap-3 text-[11px] text-gray-500">
+                  {project.type === 'github' && (
+                    <>
+                      <span>⭐ {project.stats?.stars || 0}</span>
+                      <span>🔱 {project.stats?.forks || 0}</span>
+                      {project.stats?.language && <span>• {project.stats.language}</span>}
+                    </>
+                  )}
+                  {project.type === 'local' && (
+                    <>
+                      <span>📊 {progress}%</span>
+                      <span>🎯 {project.stats?.priority || 'medium'}</span>
+                    </>
+                  )}
+                  {project.type === 'team' && (
+                    <>
+                      <span>📊 {progress}%</span>
+                      <span>👥 {project.stats?.members || 0}</span>
+                      <span>🎯 {project.stats?.priority || 'medium'}</span>
+                    </>
+                  )}
+                </div>
+                {project.url && (
+                  <ExternalLink className="w-3.5 h-3.5 text-gray-500" />
+                )}
               </div>
             </div>
           </div>

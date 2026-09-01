@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { CheckSquare, CheckCircle2, Users, Github, Figma, Clock } from 'lucide-react';
+import { CheckSquare, CheckCircle2, Users, Github, Figma, Clock, MessageSquare, ExternalLink } from 'lucide-react';
 
 const ICON_STYLES = {
   task: { bg: '#1e3a5f', color: '#3b82f6', Icon: CheckSquare },
@@ -11,6 +11,65 @@ const ICON_STYLES = {
   figma: { bg: '#3d1f1a', color: '#f24e1e', Icon: Figma },
   slack: { bg: '#3d2f0f', color: '#e01e5a', Icon: Users },
 };
+
+function groupByDate(items) {
+  const groups = [];
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today.getTime() - 86400000);
+  const weekAgo = new Date(today.getTime() - 7 * 86400000);
+
+  const buckets = {
+    Today: [],
+    Yesterday: [],
+    'This Week': [],
+    Older: [],
+  };
+
+  for (const item of items) {
+    const date = new Date(item.timestamp);
+    const day = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    if (day.getTime() === today.getTime()) buckets.Today.push(item);
+    else if (day.getTime() === yesterday.getTime()) buckets.Yesterday.push(item);
+    else if (date >= weekAgo) buckets.ThisWeek.push(item);
+    else buckets.Older.push(item);
+  }
+
+  for (const [label, entries] of Object.entries(buckets)) {
+    if (entries.length > 0) groups.push({ label, items: entries });
+  }
+
+  return groups;
+}
+
+function ActionButton({ href, label, onClick }) {
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className="text-[11px] text-blue-400 hover:text-blue-300 font-medium inline-flex items-center gap-1"
+      >
+        {label}
+        <ExternalLink className="w-3 h-3" />
+      </button>
+    );
+  }
+
+  if (href) {
+    return (
+      <Link
+        href={href}
+        className="text-[11px] text-blue-400 hover:text-blue-300 font-medium inline-flex items-center gap-1"
+      >
+        {label}
+        <ExternalLink className="w-3 h-3" />
+      </Link>
+    );
+  }
+
+  return null;
+}
 
 export default function ActivityFeed({ activity }) {
   if (activity === null) {
@@ -33,31 +92,43 @@ export default function ActivityFeed({ activity }) {
     );
   }
 
+  const grouped = groupByDate(activity);
+
   return (
-    <div className="flex flex-col gap-2">
-      {activity.map((item, idx) => {
-        const style = ICON_STYLES[item.icon] || ICON_STYLES[item.type] || ICON_STYLES.integration;
-        const { Icon } = style;
-        return (
-          <div
-            key={idx}
-            className="flex gap-4 p-3 rounded-lg transition hover:bg-white/5"
-          >
-            <div
-              className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
-              style={{ background: style.bg, color: style.color }}
-            >
-              <Icon className="w-5 h-5" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="font-medium text-sm mb-0.5 text-white">{item.title}</div>
-              <div className="text-xs text-gray-400 truncate">
-                {item.description} - {item.relativeTime}
+    <div className="flex flex-col gap-4">
+      {grouped.map((group) => (
+        <div key={group.label} className="flex flex-col gap-2">
+          <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">{group.label}</p>
+          {group.items.map((item, idx) => {
+            const style = ICON_STYLES[item.icon] || ICON_STYLES[item.type] || ICON_STYLES.integration;
+            const { Icon } = style;
+            return (
+              <div
+                key={`${item.title}-${idx}`}
+                className="flex gap-3 p-3 rounded-lg transition hover:bg-white/5"
+              >
+                <div
+                  className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+                  style={{ background: style.bg, color: style.color }}
+                >
+                  <Icon className="w-4 h-4" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="font-medium text-sm mb-0.5 text-white truncate">{item.title}</div>
+                    {item.actionLabel && (
+                      <ActionButton href={item.href} label={item.actionLabel} onClick={item.onClick} />
+                    )}
+                  </div>
+                  <div className="text-xs text-gray-400 truncate">
+                    {item.description} - {item.relativeTime}
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
-        );
-      })}
+            );
+          })}
+        </div>
+      ))}
     </div>
   );
 }
