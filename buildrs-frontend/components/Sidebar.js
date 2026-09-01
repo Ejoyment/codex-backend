@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { LayoutDashboard, CheckSquare, Users, Code, Settings, MessageSquare, Sparkles } from 'lucide-react';
+import { getAvatarUrl } from '../lib/utils';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -12,16 +13,6 @@ const navItems = [
   { href: '/messaging', label: 'Messaging', icon: MessageSquare },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
-
-function resolveAvatarUrl(user) {
-  const raw = user?.profilePicture || user?.profilePhoto;
-  if (raw && raw.startsWith('/uploads/')) {
-    const apiBase = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/api$/, '');
-    return `${apiBase}${raw}`;
-  }
-  if (raw) return raw;
-  return `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.fullName || user?.name || 'User')}&background=3b82f6&color=fff`;
-}
 
 const TIER_LABELS = {
   freebie: 'Free',
@@ -66,7 +57,7 @@ export default function Sidebar({ user, subscription }) {
           <img
             id="sidebarAvatar"
             className="sidebar-user-avatar"
-            src={resolveAvatarUrl(user)}
+            src={getAvatarUrl(user, user?.fullName || user?.name || 'User')}
             alt={user?.fullName || 'User'}
           />
           <div className="sidebar-user-details">

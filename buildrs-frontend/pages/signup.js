@@ -3,7 +3,6 @@ import Link from 'next/link';
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import { authApi } from '../lib/api';
-import useAuthStore from '../store/authStore';
 import { rateLimit, resetRateLimit, validate, getPasswordStrength, createSubmitGuard } from '../lib/security';
 
 const submitGuard = createSubmitGuard();
@@ -19,7 +18,6 @@ export default function SignUp() {
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
   const [rateLimited, setRateLimited] = useState(false);
-  const setAuth = useAuthStore((s) => s.setAuth);
 
   const passwordStrength = getPasswordStrength(password);
 
@@ -122,7 +120,7 @@ export default function SignUp() {
             <h2 className="verify-title">Check your email</h2>
             <p className="verify-text">We sent a verification link to</p>
             <p className="verify-email">{email}</p>
-            <Link to="/verify-email" className="btn-gradient">Open verification page →</Link>
+                    <Link href="/verify-email" className="btn-gradient">Open verification page →</Link>
             <div className="verify-footer">
               Didn&apos;t receive it?{' '}
               <button onClick={async () => { await authApi.resendOTP(email); }}>Resend email</button>

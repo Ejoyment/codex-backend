@@ -5,6 +5,7 @@ import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch, companyApi, projectApi } from '../lib/api';
+import { getAvatarUrl } from '../lib/utils';
 import { Plus, FolderOpen, Users, Calendar, X } from 'lucide-react';
 
 export default function Workspace() {
@@ -107,11 +108,7 @@ export default function Workspace() {
               </button>
               <img
                 className="avatar"
-                src={
-                  user?.profilePicture ||
-                  user?.profilePhoto ||
-                  `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.fullName || user?.name || 'User')}&background=3b82f6&color=fff`
-                }
+                src={getAvatarUrl(user, user?.fullName || user?.name || 'User')}
                 alt={user?.fullName || 'User'}
               />
             </div>

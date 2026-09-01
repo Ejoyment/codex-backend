@@ -6,6 +6,7 @@ import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch } from '../lib/api';
 import { getTierLimits, normalizeTier } from '../lib/tier';
+import { getAvatarUrl } from '../lib/utils';
 import { Plus, Users, Crown, X, Send, ChevronRight, Building2, Settings, Save, Loader2 } from 'lucide-react';
 
 export default function Teams() {
@@ -327,10 +328,7 @@ function TeamDetail({ company, members, loadingMembers, currentUser, onOpenSetti
 
 function MemberRow({ member }) {
   const { user: u, role, joinedAt } = member;
-  const avatarSrc =
-    u?.profilePicture ||
-    u?.profilePhoto ||
-    `https://ui-avatars.com/api/?name=${encodeURIComponent(u?.fullName || u?.name || 'U')}&background=3b82f6&color=fff`;
+  const avatarSrc = getAvatarUrl(u, u?.fullName || u?.name || 'U');
 
   return (
     <div className="flex items-center justify-between px-6 py-4 hover:bg-white/5 transition-colors">

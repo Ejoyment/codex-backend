@@ -7,6 +7,8 @@ import { apiFetch } from '../lib/api';
 import { rateLimit, validate, createSubmitGuard } from '../lib/security';
 import { Camera, Save, Loader2, User, Mail, Briefcase, Shield } from 'lucide-react';
 import useToastStore from '../store/toastStore';
+import { getAvatarUrl } from '../lib/utils';
+import { Camera, Save, Loader2, User, Mail, Briefcase, Shield, CheckCircle } from 'lucide-react';
 
 const submitGuard = createSubmitGuard();
 
@@ -56,7 +58,7 @@ export default function Profile() {
       });
       if (data.user) {
         const token = localStorage.getItem('authToken');
-        setAuth(token, data.user);
+        setAuth(token, { ...user, ...data.user });
       }
       toast.success('Profile updated successfully');
     } catch {
@@ -112,6 +114,7 @@ export default function Profile() {
     return pic;
   };
   const profilePictureUrl = getProfilePictureUrl(user?.profilePicture || user?.profilePhoto);
+  const profilePictureUrl = getAvatarUrl(user, user?.fullName || user?.name || 'User');
 
   return (
     <AuthGuard>

@@ -12,6 +12,7 @@ import CreateProjectModal from '../components/CreateProjectModal';
 import CreateTaskModal from '../components/CreateTaskModal';
 import useAuthStore from '../store/authStore';
 import { useDashboard } from '../hooks/useDashboard';
+import { getAvatarUrl } from '../lib/utils';
 import { Bell, Plus } from 'lucide-react';
 
 export default function Dashboard() {
@@ -56,11 +57,7 @@ export default function Dashboard() {
               </button>
               <img
                 className="avatar"
-                src={
-                  user?.profilePicture ||
-                  user?.profilePhoto ||
-                  `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.fullName || user?.name || 'User')}&background=3b82f6&color=fff`
-                }
+                src={getAvatarUrl(user, user?.fullName || user?.name || 'User')}
                 alt={user?.fullName || 'User'}
               />
             </div>
@@ -84,7 +81,10 @@ export default function Dashboard() {
                 <div className="workspace-card-body">
                   <div className="flex flex-col gap-3">
                     <button type="button" className="btn-workspace btn-primary" onClick={() => setShowTaskModal(true)}>
-                      <Plus className="w-4 h-4" />
+                    
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                      </svg>
                       Create Task
                     </button>
                     <button
@@ -92,6 +92,9 @@ export default function Dashboard() {
                       className="btn-workspace btn-secondary"
                       onClick={() => router.push('/teams?action=invite')}
                     >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                    </svg>
                       Invite Team
                     </button>
                     <button
@@ -99,6 +102,9 @@ export default function Dashboard() {
                       className="btn-workspace btn-secondary"
                       onClick={() => router.push('/source-code')}
                     >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path>
+                    </svg>
                       View Code
                     </button>
                     <button
@@ -106,6 +112,9 @@ export default function Dashboard() {
                       className="btn-workspace btn-secondary"
                       onClick={() => router.push('/ai-pair')}
                     >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path>
+                    </svg>
                       AI Pair Chat
                     </button>
                   </div>

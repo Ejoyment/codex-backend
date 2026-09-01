@@ -6,6 +6,7 @@ import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch, subscriptionApi, integrationApi } from '../lib/api';
 import { rateLimit, validate, createSubmitGuard } from '../lib/security';
+import { getAvatarUrl } from '../lib/utils';
 import { User, Shield, CreditCard, Plug, Camera, Save, ExternalLink, Unplug, Loader2 } from 'lucide-react';
 import useToastStore from '../store/toastStore';
 
@@ -94,6 +95,11 @@ export default function Settings() {
       });
       if (data.user) setAuth(localStorage.getItem('authToken'), data.user);
       toast.success('Profile updated successfully');
+      if (data.user) {
+        const token = localStorage.getItem('authToken');
+        setAuth(token, { ...user, ...data.user });
+      }
+      alert('Profile updated');
     } catch {
       toast.error('Failed to update profile');
     } finally {
@@ -171,6 +177,7 @@ export default function Settings() {
     return pic;
   };
   const profilePictureUrl = getProfilePictureUrl(user?.profilePicture || user?.profilePhoto);
+  const profilePictureUrl = getAvatarUrl(user, user?.fullName || user?.name || 'User');
 
   return (
     <AuthGuard>
@@ -219,6 +226,11 @@ export default function Settings() {
                         src={profilePictureUrl}
                         alt={user?.fullName || 'User'}
                         className="w-20 h-20 rounded-full object-cover border-2 border-gray-600"
+                        onError={(e) => {
+                          if (e.currentTarget.src !== profilePictureUrl) return;
+                          const fallback = `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.fullName || user?.name || 'User')}&background=3b82f6&color=fff&size=128`;
+                          e.currentTarget.src = fallback;
+                        }}
                       />
                       <div>
                         <label className="btn-workspace btn-secondary cursor-pointer inline-flex items-center gap-2">

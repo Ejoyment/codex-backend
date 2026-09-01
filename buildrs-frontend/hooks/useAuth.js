@@ -85,7 +85,9 @@ export function useAuth() {
       }
       return data;
     } catch (err) {
-      clearAuth();
+      if (err.status === 401) {
+        clearAuth();
+      }
       throw err;
     } finally {
       setLoading(false);
