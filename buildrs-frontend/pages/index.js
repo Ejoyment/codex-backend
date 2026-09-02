@@ -4,6 +4,63 @@ import { useState } from 'react';
 
 export default function Index() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [heroView, setHeroView] = useState('editor');
+  const [featureFile, setFeatureFile] = useState('main.tsx');
+  const [terminalInput, setTerminalInput] = useState('');
+  const [terminalHistory, setTerminalHistory] = useState([
+    'Welcome to BuildrsHQ Terminal',
+    'Type `help` for available commands',
+    '',
+    '$ npm run dev',
+    '> buildrs-app@1.0.0 dev',
+    '> next dev --port 3000',
+    '',
+    '  ▲ Next.js 14.0.4',
+    '  - Local:        http://localhost:3000',
+    '  - Environments: .env.local',
+    '',
+    ' ✓ Ready in 2.3s',
+  ]);
+  const [aiChat, setAiChat] = useState([
+    { role: 'assistant', text: 'I can help optimize your Dashboard component. Consider using useMemo for the data transformation.' },
+  ]);
+  const [aiInput, setAiInput] = useState('');
+
+  const handleTerminalSubmit = (e) => {
+    e.preventDefault();
+    const cmd = terminalInput.trim();
+    if (!cmd) return;
+    const newHistory = [...terminalHistory, `$ ${cmd}`];
+    if (cmd === 'help') {
+      newHistory.push('Available: ls, pwd, git status, clear, help');
+    } else if (cmd === 'clear') {
+      setTerminalHistory([]);
+      setTerminalInput('');
+      return;
+    } else if (cmd === 'ls') {
+      newHistory.push('src/  components/  hooks/  package.json  README.md');
+    } else if (cmd === 'pwd') {
+      newHistory.push('/Users/mac/codex-backend/buildrs-app');
+    } else if (cmd === 'git status') {
+      newHistory.push('On branch main');
+      newHistory.push('Changes not staged for commit:');
+      newHistory.push('  modified:   src/components/Dashboard.tsx');
+      newHistory.push('  modified:   src/hooks/useMetrics.ts');
+    } else {
+      newHistory.push(`Command not found: ${cmd}`);
+    }
+    setTerminalHistory(newHistory);
+    setTerminalInput('');
+  };
+
+  const handleAiSend = (e) => {
+    e.preventDefault();
+    if (!aiInput.trim()) return;
+    const userMsg = { role: 'user', text: aiInput };
+    const aiMsg = { role: 'assistant', text: 'That looks good! I suggest adding error handling for the fetch call and maybe a loading state while metrics are being loaded.' };
+    setAiChat((prev) => [...prev, userMsg, aiMsg]);
+    setAiInput('');
+  };
 
   return (
     <>
@@ -158,6 +215,22 @@ export default function Index() {
                       </div>
                     </div>
 
+                    {/* Mock Tabs */}
+                    <div className="flex border-b border-gray-700 bg-[#0f172a] overflow-x-auto">
+                      {['editor', 'terminal', 'ai'].map((view) => (
+                        <button
+                          key={view}
+                          type="button"
+                          onClick={() => setHeroView(view)}
+                          className={`px-4 py-2 text-xs font-medium whitespace-nowrap transition ${
+                            heroView === view ? 'bg-[#0f172a] text-white border-b-2 border-blue-500' : 'text-gray-400 hover:text-white hover:bg-white/5'
+                          }`}
+                        >
+                          {view === 'editor' ? 'Editor' : view === 'terminal' ? 'Terminal' : 'AI Assistant'}
+                        </button>
+                      ))}
+                    </div>
+
                     <div className="flex">
                       {/* Sidebar */}
                       <div className="editor-sidebar p-4 hidden md:block">
@@ -193,38 +266,94 @@ export default function Index() {
                       </div>
 
                       {/* Main Editor Area */}
-                      <div className="flex-1">
-                        {/* Tabs */}
-                        <div className="flex border-b border-gray-700 bg-[#0f172a]">
-                          <div className="editor-tab active">
-                            <span className="text-gray-400">main.py</span>
-                            <span className="text-gray-500">×</span>
-                          </div>
-                        </div>
-
-                        {/* Code Content */}
-                        <div className="p-4 font-mono text-sm bg-[#0f172a]">
-                          <div className="code-line"><span className="line-number">1</span><span className="text-purple-400">import</span> <span className="text-blue-300">React</span></div>
-                          <div className="code-line"><span className="line-number">2</span>&nbsp;</div>
-                          <div className="code-line"><span className="line-number">3</span><span className="text-purple-400">function</span> <span className="text-yellow-300">App</span>() {'{'}</div>
-                          <div className="code-line"><span className="line-number">4</span>  <span className="text-purple-400">return</span> (</div>
-                          <div className="code-line"><span className="line-number">5</span>    <span className="text-gray-400">&lt;</span><span className="text-blue-300">Dashboard</span> <span className="text-gray-400">/&gt;</span></div>
-                          <div className="code-line"><span className="line-number">6</span>  )</div>
-                          <div className="code-line"><span className="line-number">7</span>{'}'}</div>
-                          <div className="code-line"><span className="line-number">8</span>&nbsp;</div>
-                          <div className="code-line"><span className="line-number">9</span><span className="text-purple-400">export</span> <span className="text-purple-400">default</span> <span className="text-yellow-300">App</span></div>
-                        </div>
-
-                        {/* AI Status Bar */}
-                        <div className="px-4 py-2 bg-[#1e293b] border-t border-gray-700 flex items-center justify-between">
-                          <div className="flex items-center gap-4">
-                            <div className="flex items-center gap-2">
-                              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                              <span className="text-xs text-blue-400">AI is updating code...</span>
+                      <div className="flex-1 min-w-0">
+                        {heroView === 'editor' && (
+                          <>
+                            {/* Tabs */}
+                            <div className="flex border-b border-gray-700 bg-[#0f172a]">
+                              <div className="editor-tab active">
+                                <span className="text-gray-400">main.py</span>
+                                <span className="text-gray-500">×</span>
+                              </div>
                             </div>
-                            <span className="text-xs text-gray-500">Generating code...</span>
+
+                            {/* Code Content */}
+                            <div className="p-4 font-mono text-sm bg-[#0f172a]">
+                              <div className="code-line"><span className="line-number">1</span><span className="text-purple-400">import</span> <span className="text-blue-300">React</span></div>
+                              <div className="code-line"><span className="line-number">2</span>&nbsp;</div>
+                              <div className="code-line"><span className="line-number">3</span><span className="text-purple-400">function</span> <span className="text-yellow-300">App</span>() {'{'}</div>
+                              <div className="code-line"><span className="line-number">4</span>  <span className="text-purple-400">return</span> (</div>
+                              <div className="code-line"><span className="line-number">5</span>    <span className="text-gray-400">&lt;</span><span className="text-blue-300">Dashboard</span> <span className="text-gray-400">/&gt;</span></div>
+                              <div className="code-line"><span className="line-number">6</span>  )</div>
+                              <div className="code-line"><span className="line-number">7</span>{'}'}</div>
+                              <div className="code-line"><span className="line-number">8</span>&nbsp;</div>
+                              <div className="code-line"><span className="line-number">9</span><span className="text-purple-400">export</span> <span className="text-purple-400">default</span> <span className="text-yellow-300">App</span></div>
+                            </div>
+
+                            {/* AI Status Bar */}
+                            <div className="px-4 py-2 bg-[#1e293b] border-t border-gray-700 flex items-center justify-between">
+                              <div className="flex items-center gap-4">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                                  <span className="text-xs text-blue-400">AI is updating code...</span>
+                                </div>
+                                <span className="text-xs text-gray-500">Generating code...</span>
+                              </div>
+                            </div>
+                          </>
+                        )}
+
+                        {heroView === 'terminal' && (
+                          <div className="bg-[#0f172a] p-4 font-mono text-sm">
+                            <div className="text-xs text-gray-400 mb-2 flex items-center gap-2">
+                              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                              BuildrsHQ Terminal — localhost:3000
+                            </div>
+                            <div className="space-y-1 text-gray-300 mb-3 max-h-[200px] overflow-y-auto">
+                              {terminalHistory.map((line, i) => (
+                                <div key={i} className="whitespace-pre-wrap break-words">{line}</div>
+                              ))}
+                            </div>
+                            <form onSubmit={handleTerminalSubmit} className="flex items-center gap-2">
+                              <span className="text-green-400">$</span>
+                              <input
+                                type="text"
+                                value={terminalInput}
+                                onChange={(e) => setTerminalInput(e.target.value)}
+                                className="flex-1 bg-transparent text-gray-300 outline-none text-sm"
+                                placeholder="Type a command..."
+                                autoFocus
+                              />
+                            </form>
                           </div>
-                        </div>
+                        )}
+
+                        {heroView === 'ai' && (
+                          <div className="bg-[#0f172a] p-4 flex flex-col h-[300px]">
+                            <div className="text-xs text-gray-400 mb-3 flex items-center gap-2">
+                              <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse"></div>
+                              AI Assistant — Online
+                            </div>
+                            <div className="flex-1 overflow-y-auto space-y-3 mb-3">
+                              {aiChat.map((msg, i) => (
+                                <div key={i} className={`p-3 rounded-lg text-sm ${msg.role === 'user' ? 'bg-blue-500/10 ml-8' : 'bg-gray-700/50 mr-8'}`}>
+                                  <div className="text-xs text-gray-400 mb-1">{msg.role === 'user' ? 'You' : 'AI'}</div>
+                                  <div className="text-gray-200 whitespace-pre-wrap">{msg.text}</div>
+                                </div>
+                              ))}
+                            </div>
+                            <form onSubmit={handleAiSend} className="flex gap-2">
+                              <input
+                                type="text"
+                                value={aiInput}
+                                onChange={(e) => setAiInput(e.target.value)}
+                                placeholder="Ask AI to explain, refactor, or generate code..."
+                                className="flex-1 px-3 py-2 bg-navy border border-gray-600 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500"
+                              />
+                              <button type="submit" className="cta-button px-4 py-2 rounded-lg text-sm">Send</button>
+                            </form>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -286,16 +415,24 @@ export default function Index() {
                 {/* Left - Code Editor Mockup */}
                 <div className="editor-mockup">
                   {/* Tab Bar */}
-                  <div className="flex items-center gap-1 px-4 py-2 bg-[#1e293b] border-b border-gray-700">
-                    <div className="flex items-center gap-2 px-3 py-1.5 bg-[#0f172a] rounded text-xs text-gray-300">
-                      <span className="text-gray-500">main.tsx</span>
-                    </div>
-                    <div className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-500">
-                      <span>dashboard.tsx</span>
-                    </div>
-                    <div className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-500">
-                      <span>api.ts</span>
-                    </div>
+                  <div className="flex items-center gap-1 px-4 py-2 bg-[#1e293b] border-b border-gray-700 overflow-x-auto">
+                    {[
+                      { id: 'main.tsx', label: 'main.tsx' },
+                      { id: 'dashboard.tsx', label: 'dashboard.tsx' },
+                      { id: 'api.ts', label: 'api.ts' },
+                    ].map((tab) => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setFeatureFile(tab.id)}
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded text-xs whitespace-nowrap transition ${
+                          featureFile === tab.id ? 'bg-[#0f172a] text-gray-300' : 'text-gray-500 hover:text-gray-300'
+                        }`}
+                      >
+                        <span className="text-gray-500">{tab.id.split('.')[0]}</span>
+                        <span>{tab.label}</span>
+                      </button>
+                    ))}
                     <div className="ml-auto flex items-center gap-2">
                       <div className="w-2 h-2 bg-green-500 rounded-full"></div>
                       <span className="text-xs text-green-400">LIVE</span>
@@ -311,7 +448,7 @@ export default function Index() {
                         </div>
                         <span className="text-xs font-semibold">BuildrsHQ</span>
                       </div>
-                      
+
                       <div className="space-y-1">
                         <div className="flex items-center gap-2 px-2 py-1.5 rounded bg-white/5">
                           <div className="w-4 h-4 bg-blue-500 rounded"></div>
@@ -347,24 +484,61 @@ export default function Index() {
 
                     {/* Main Code Area */}
                     <div className="flex-1 p-4 font-mono text-sm bg-[#0f172a]">
-                      <div className="code-line"><span className="line-number">1</span><span className="text-purple-400">import</span> <span className="text-blue-300">React</span><span className="text-gray-400">,</span> <span className="text-purple-400">{'useState'}</span><span className="text-gray-400">,</span> <span className="text-purple-400">{'useMemo'}</span> <span className="text-purple-400">from</span> <span className="text-green-300">'react'</span></div>
-                      <div className="code-line"><span className="line-number">2</span><span className="text-purple-400">import</span> <span className="text-blue-300">{'ChartContainer'}</span><span className="text-gray-400">,</span> <span className="text-blue-300">{'MetricCard'}</span> <span className="text-purple-400">from</span> <span className="text-green-300">'./components'</span></div>
-                      <div className="code-line"><span className="line-number">3</span><span className="text-purple-400">import</span> <span className="text-blue-300">{'useFetchMetrics'}</span> <span className="text-purple-400">from</span> <span className="text-green-300">'../hooks'</span></div>
-                      <div className="code-line"><span className="line-number">4</span>&nbsp;</div>
-                      <div className="code-line"><span className="line-number">5</span><span className="text-purple-400">export</span> <span className="text-purple-400">const</span> <span className="text-yellow-300">DashboardPreview</span><span className="text-gray-400">:</span> <span className="text-blue-300">React.FC</span><span className="text-gray-400">&lt;</span><span className="text-blue-300">DashboardProps</span><span className="text-gray-400">&gt; = (</span><span className="text-orange-300">{'({ projectId })'}</span><span className="text-gray-400">) =&gt; {'{'}</span></div>
-                      <div className="code-line"><span className="line-number">6</span>  <span className="text-purple-400">const</span> <span className="text-blue-300">{'filter'}</span> <span className="text-gray-400">=</span> <span className="text-yellow-300">useState</span><span className="text-gray-400">&lt;</span><span className="text-blue-300">string</span><span className="text-gray-400">&gt;('all')</span></div>
-                      <div className="code-line"><span className="line-number">7</span>  <span className="text-purple-400">const</span> <span className="text-blue-300">{'metrics'}</span> <span className="text-gray-400">=</span> <span className="text-yellow-300">useFetchMetrics</span><span className="text-gray-400">(</span><span className="text-orange-300">{'projectId'}</span><span className="text-gray-400">)</span></div>
-                      <div className="code-line"><span className="line-number">8</span>&nbsp;</div>
-                      <div className="code-line"><span className="line-number">9</span>  <span className="text-gray-500">// Optimize expensive transformations as suggested by BuildrsAI</span></div>
-                      <div className="code-line"><span className="line-number">10</span>  <span className="text-purple-400">const</span> <span className="text-blue-300">{'processedData'}</span> <span className="text-gray-400">=</span> <span className="text-yellow-300">{'useMemo'}</span><span className="text-gray-400">(() =&gt; {'{'}</span></div>
-                      <div className="code-line"><span className="line-number">11</span>    <span className="text-purple-400">return</span> <span className="text-blue-300">{'metrics'}</span><span className="text-gray-400">.</span><span className="text-yellow-300">{'filter'}</span><span className="text-gray-400">(</span><span className="text-orange-300">{'m'}</span> <span className="text-gray-400">=&gt;</span> <span className="text-blue-300">{'m'}</span><span className="text-gray-400">.</span><span className="text-yellow-300">{'status'}</span> <span className="text-gray-400">===</span> <span className="text-green-300">{'filter'}</span><span className="text-gray-400">)</span></div>
-                      <div className="code-line"><span className="line-number">12</span>  <span className="text-gray-400">{'}'}, [metrics, filter])'</span></div>
-                      <div className="code-line"><span className="line-number">13</span>&nbsp;</div>
-                      <div className="code-line"><span className="line-number">14</span>  <span className="text-purple-400">return</span> <span className="text-gray-400">(</span></div>
-                      <div className="code-line"><span className="line-number">15</span>    <span className="text-gray-400">&lt;</span><span className="text-blue-300">{'ChartContainer'}</span> <span className="text-yellow-300">{'title'}</span><span className="text-gray-400">=</span><span className="text-green-300">"Performance Output"</span> <span className="text-yellow-300">{'data'}</span><span className="text-gray-400">=</span><span className="text-gray-400">{'{processedData}'}</span> <span className="text-gray-400">/&gt;</span></div>
-                      <div className="code-line"><span className="line-number">16</span>    <span className="text-gray-400">&lt;</span><span className="text-blue-300">{'MetricCard'}</span> <span className="text-yellow-300">{'label'}</span><span className="text-gray-400">=</span><span className="text-green-300">"Core Web Vitals"</span> <span className="text-yellow-300">{'score'}</span><span className="text-gray-400">=</span><span className="text-gray-400">{'{98}'}</span> <span className="text-gray-400">/&gt;</span></div>
-                      <div className="code-line"><span className="line-number">17</span>  <span className="text-gray-400">{'})'}</span></div>
-                      <div className="code-line"><span className="line-number">18</span><span className="text-gray-400">{'}'}</span></div>
+                      {featureFile === 'main.tsx' && (
+                        <>
+                          <div className="code-line"><span className="line-number">1</span><span className="text-purple-400">import</span> <span className="text-blue-300">React</span><span className="text-gray-400">,</span> <span className="text-purple-400">{'useState'}</span><span className="text-gray-400">,</span> <span className="text-purple-400">{'useMemo'}</span> <span className="text-purple-400">from</span> <span className="text-green-300">'react'</span></div>
+                          <div className="code-line"><span className="line-number">2</span><span className="text-purple-400">import</span> <span className="text-blue-300">{'ChartContainer'}</span><span className="text-gray-400">,</span> <span className="text-blue-300">{'MetricCard'}</span> <span className="text-purple-400">from</span> <span className="text-green-300">'./components'</span></div>
+                          <div className="code-line"><span className="line-number">3</span><span className="text-purple-400">import</span> <span className="text-blue-300">{'useFetchMetrics'}</span> <span className="text-purple-400">from</span> <span className="text-green-300">'../hooks'</span></div>
+                          <div className="code-line"><span className="line-number">4</span>&nbsp;</div>
+                          <div className="code-line"><span className="line-number">5</span><span className="text-purple-400">export</span> <span className="text-purple-400">const</span> <span className="text-yellow-300">DashboardPreview</span><span className="text-gray-400">:</span> <span className="text-blue-300">React.FC</span><span className="text-gray-400">&lt;</span><span className="text-blue-300">DashboardProps</span><span className="text-gray-400">&gt; = (</span><span className="text-orange-300">{'({ projectId })'}</span><span className="text-gray-400">) =&gt; {'{'}</span></div>
+                          <div className="code-line"><span className="line-number">6</span>  <span className="text-purple-400">const</span> <span className="text-blue-300">{'filter'}</span> <span className="text-gray-400">=</span> <span className="text-yellow-300">useState</span><span className="text-gray-400">&lt;</span><span className="text-blue-300">string</span><span className="text-gray-400">&gt;('all')</span></div>
+                          <div className="code-line"><span className="line-number">7</span>  <span className="text-purple-400">const</span> <span className="text-blue-300">{'metrics'}</span> <span className="text-gray-400">=</span> <span className="text-yellow-300">useFetchMetrics</span><span className="text-gray-400">(</span><span className="text-orange-300">{'projectId'}</span><span className="text-gray-400">)</span></div>
+                          <div className="code-line"><span className="line-number">8</span>&nbsp;</div>
+                          <div className="code-line"><span className="line-number">9</span>  <span className="text-gray-500">// Optimize expensive transformations as suggested by BuildrsAI</span></div>
+                          <div className="code-line"><span className="line-number">10</span>  <span className="text-purple-400">const</span> <span className="text-blue-300">{'processedData'}</span> <span className="text-gray-400">=</span> <span className="text-yellow-300">{'useMemo'}</span><span className="text-gray-400">(() =&gt; {'{'}</span></div>
+                          <div className="code-line"><span className="line-number">11</span>    <span className="text-purple-400">return</span> <span className="text-blue-300">{'metrics'}</span><span className="text-gray-400">.</span><span className="text-yellow-300">{'filter'}</span><span className="text-gray-400">(</span><span className="text-orange-300">{'m'}</span> <span className="text-gray-400">=&gt;</span> <span className="text-blue-300">{'m'}</span><span className="text-gray-400">.</span><span className="text-yellow-300">{'status'}</span> <span className="text-gray-400">===</span> <span className="text-green-300">{'filter'}</span><span className="text-gray-400">)</span></div>
+                          <div className="code-line"><span className="line-number">12</span>  <span className="text-gray-400">{'}'}, [metrics, filter])'</span></div>
+                          <div className="code-line"><span className="line-number">13</span>&nbsp;</div>
+                          <div className="code-line"><span className="line-number">14</span>  <span className="text-purple-400">return</span> <span className="text-gray-400">(</span></div>
+                          <div className="code-line"><span className="line-number">15</span>    <span className="text-gray-400">&lt;</span><span className="text-blue-300">{'ChartContainer'}</span> <span className="text-yellow-300">{'title'}</span><span className="text-gray-400">=</span><span className="text-green-300">"Performance Output"</span> <span className="text-yellow-300">{'data'}</span><span className="text-gray-400">=</span><span className="text-gray-400">{'{processedData}'}</span> <span className="text-gray-400">/&gt;</span></div>
+                          <div className="code-line"><span className="line-number">16</span>    <span className="text-gray-400">&lt;</span><span className="text-blue-300">{'MetricCard'}</span> <span className="text-yellow-300">{'label'}</span><span className="text-gray-400">=</span><span className="text-green-300">"Core Web Vitals"</span> <span className="text-yellow-300">{'score'}</span><span className="text-gray-400">=</span><span className="text-gray-400">{'{98}'}</span> <span className="text-gray-400">/&gt;</span></div>
+                          <div className="code-line"><span className="line-number">17</span>  <span className="text-gray-400">{'})'}</span></div>
+                          <div className="code-line"><span className="line-number">18</span><span className="text-gray-400">{'}'}</span></div>
+                        </>
+                      )}
+                      {featureFile === 'dashboard.tsx' && (
+                        <>
+                          <div className="code-line"><span className="line-number">1</span><span className="text-purple-400">import</span> <span className="text-blue-300">React</span> <span className="text-purple-400">from</span> <span className="text-green-300">'react'</span></div>
+                          <div className="code-line"><span className="line-number">2</span><span className="text-purple-400">import</span> <span className="text-blue-300">{'Card'}</span> <span className="text-purple-400">from</span> <span className="text-green-300">'./ui'</span></div>
+                          <div className="code-line"><span className="line-number">3</span>&nbsp;</div>
+                          <div className="code-line"><span className="line-number">4</span><span className="text-purple-400">export</span> <span className="text-purple-400">default</span> <span className="text-purple-400">function</span> <span className="text-yellow-300">Dashboard</span><span className="text-gray-400">() {'{'}</span></div>
+                          <div className="code-line"><span className="line-number">5</span>  <span className="text-purple-400">return</span> <span className="text-gray-400">(</span></div>
+                          <div className="code-line"><span className="line-number">6</span>    <span className="text-gray-400">&lt;</span><span className="text-blue-300">div</span> <span className="text-yellow-300">{'className'}</span><span className="text-gray-400">=</span><span className="text-green-300">"grid gap-4"</span><span className="text-gray-400">&gt;</span></div>
+                          <div className="code-line"><span className="line-number">7</span>      <span className="text-gray-400">&lt;</span><span className="text-blue-300">Card</span><span className="text-gray-400">&gt;</span>Analytics<span className="text-gray-400">&lt;/</span><span className="text-blue-300">Card</span><span className="text-gray-400">&gt;</span></div>
+                          <div className="code-line"><span className="line-number">8</span>      <span className="text-gray-400">&lt;</span><span className="text-blue-300">Card</span><span className="text-gray-400">&gt;</span>Revenue<span className="text-gray-400">&lt;/</span><span className="text-blue-300">Card</span><span className="text-gray-400">&gt;</span></div>
+                          <div className="code-line"><span className="line-number">9</span>    <span className="text-gray-400">&lt;/</span><span className="text-blue-300">div</span><span className="text-gray-400">&gt;</span></div>
+                          <div className="code-line"><span className="line-number">10</span>  <span className="text-gray-400">{'})'}</span></div>
+                          <div className="code-line"><span className="line-number">11</span><span className="text-gray-400">{'}'}</span></div>
+                          <div className="code-line"><span className="line-number">12</span>&nbsp;</div>
+                          <div className="code-line"><span className="line-number">13</span>  <span className="text-gray-500">// AI Suggestion: Add responsive grid</span></div>
+                          <div className="code-line"><span className="line-number">14</span>  <span className="text-purple-400">const</span> <span className="text-blue-300">{'gridCols'}</span> <span className="text-gray-400">=</span> <span className="text-green-300">'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'</span></div>
+                        </>
+                      )}
+                      {featureFile === 'api.ts' && (
+                        <>
+                          <div className="code-line"><span className="line-number">1</span><span className="text-purple-400">import</span> <span className="text-blue-300">{'NextRequest'}</span><span className="text-gray-400">,</span> <span className="text-blue-300">{'NextResponse'}</span> <span className="text-purple-400">from</span> <span className="text-green-300">'next/server'</span></div>
+                          <div className="code-line"><span className="line-number">2</span>&nbsp;</div>
+                          <div className="code-line"><span className="line-number">3</span><span className="text-purple-400">export</span> <span className="text-purple-400">async</span> <span className="text-purple-400">function</span> <span className="text-yellow-300">GET</span><span className="text-gray-400">(</span><span className="text-orange-300">{'request'}</span><span className="text-gray-300">: NextRequest</span><span className="text-gray-400">) {'{'}</span></div>
+                          <div className="code-line"><span className="line-number">4</span>  <span className="text-purple-400">const</span> <span className="text-blue-300">{'data'}</span> <span className="text-gray-400">=</span> <span className="text-purple-400">await</span> <span className="text-yellow-300">fetchMetrics</span><span className="text-gray-400">()</span></div>
+                          <div className="code-line"><span className="line-number">5</span>  <span className="text-purple-400">return</span> <span className="text-blue-300">NextResponse</span><span className="text-gray-400">.</span><span className="text-yellow-300">{'json'}</span><span className="text-gray-400">(</span><span className="text-orange-300">{'data'}</span><span className="text-gray-400">)</span></div>
+                          <div className="code-line"><span className="line-number">6</span><span className="text-gray-400">{'}'}</span></div>
+                          <div className="code-line"><span className="line-number">7</span>&nbsp;</div>
+                          <div className="code-line"><span className="line-number">8</span><span className="text-purple-400">export</span> <span className="text-purple-400">async</span> <span className="text-purple-400">function</span> <span className="text-yellow-300">POST</span><span className="text-gray-400">(</span><span className="text-orange-300">{'request'}</span><span className="text-gray-300">: NextRequest</span><span className="text-gray-400">) {'{'}</span></div>
+                          <div className="code-line"><span className="line-number">9</span>  <span className="text-purple-400">const</span> <span className="text-blue-300">{'body'}</span> <span className="text-gray-400">=</span> <span className="text-purple-400">await</span> <span className="text-orange-300">{'request'}</span><span className="text-gray-400">.</span><span className="text-yellow-300">{'json'}</span><span className="text-gray-400">()</span></div>
+                          <div className="code-line"><span className="line-number">10</span>  <span className="text-purple-400">return</span> <span className="text-blue-300">NextResponse</span><span className="text-gray-400">.</span><span className="text-yellow-300">{'json'}</span><span className="text-gray-400">(</span><span className="text-orange-300">{'{ success: true }'}</span><span className="text-gray-400">)</span></div>
+                          <div className="code-line"><span className="line-number">11</span><span className="text-gray-400">{'}'}</span></div>
+                        </>
+                      )}
                     </div>
 
                     {/* AI Assistant Panel */}
@@ -375,16 +549,24 @@ export default function Index() {
                         </div>
                         <span className="text-sm font-medium">AI Assistant</span>
                       </div>
-                      <p className="text-xs text-gray-400 mb-4">
-                        I can help optimize your Dashboard component. Consider using <span className="text-blue-400">useMemo</span> for the data transformation.
-                      </p>
-                      <div className="bg-[#0f172a] rounded-lg p-3">
+                      <div className="space-y-3 mb-4 max-h-[300px] overflow-y-auto">
+                        {aiChat.map((msg, i) => (
+                          <div key={i} className={`p-2 rounded-lg text-sm ${msg.role === 'user' ? 'bg-blue-500/10 ml-4' : 'bg-white/5 mr-4'}`}>
+                            <div className="text-xs text-gray-400 mb-1">{msg.role === 'user' ? 'You' : 'AI'}</div>
+                            <div className="text-gray-200 whitespace-pre-wrap">{msg.text}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <form onSubmit={handleAiSend} className="flex gap-2">
                         <input
                           type="text"
+                          value={aiInput}
+                          onChange={(e) => setAiInput(e.target.value)}
                           placeholder="Ask AI..."
-                          className="w-full bg-transparent text-xs text-gray-300 placeholder-gray-500 outline-none"
+                          className="flex-1 bg-transparent text-xs text-gray-300 placeholder-gray-500 outline-none border border-gray-600 rounded px-2 py-1"
                         />
-                      </div>
+                        <button type="submit" className="cta-button px-2 py-1 rounded text-xs">Send</button>
+                      </form>
                     </div>
                   </div>
 
