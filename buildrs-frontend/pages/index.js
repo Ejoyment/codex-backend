@@ -364,7 +364,7 @@ export default function Index() {
                       <div className="code-line"><span className="line-number">15</span>    <span className="text-gray-400">&lt;</span><span className="text-blue-300">{'ChartContainer'}</span> <span className="text-yellow-300">{'title'}</span><span className="text-gray-400">=</span><span className="text-green-300">"Performance Output"</span> <span className="text-yellow-300">{'data'}</span><span className="text-gray-400">=</span><span className="text-gray-400">{'{processedData}'}</span> <span className="text-gray-400">/&gt;</span></div>
                       <div className="code-line"><span className="line-number">16</span>    <span className="text-gray-400">&lt;</span><span className="text-blue-300">{'MetricCard'}</span> <span className="text-yellow-300">{'label'}</span><span className="text-gray-400">=</span><span className="text-green-300">"Core Web Vitals"</span> <span className="text-yellow-300">{'score'}</span><span className="text-gray-400">=</span><span className="text-gray-400">{'{98}'}</span> <span className="text-gray-400">/&gt;</span></div>
                       <div className="code-line"><span className="line-number">17</span>  <span className="text-gray-400">{'})'}</span></div>
-                      <div className="code-line"><span className="line-number">18</span><span className="text-gray-400">{'}'}'}</span></div>
+                      <div className="code-line"><span className="line-number">18</span><span className="text-gray-400">{'}'}</span></div>
                     </div>
 
                     {/* AI Assistant Panel */}
@@ -513,9 +513,9 @@ export default function Index() {
                   <h4 className="font-semibold mb-4 text-sm">Resources</h4>
                   <ul className="space-y-2 text-sm text-gray-400">
                     <li><Link href="/docs" className="hover:text-white transition">Docs</Link></li>
-                    <li><Link href="/blog" className="hover:text-white transition">Blogs</a></li>
-                    <li><Link href="/support" className="hover:text-white transition">Guides</a></li>
-                    <li><Link href="/support" className="hover:text-white transition">Help center</a></li>
+                    <li><Link href="/blog" className="hover:text-white transition">Blogs</Link></li>
+                    <li><Link href="/support" className="hover:text-white transition">Guides</Link></li>
+                    <li><Link href="/support" className="hover:text-white transition">Help center</Link></li>
                   </ul>
                 </div>
 
@@ -523,10 +523,10 @@ export default function Index() {
                 <div>
                   <h4 className="font-semibold mb-4 text-sm">Company</h4>
                   <ul className="space-y-2 text-sm text-gray-400">
-                    <li><Link href="/about" className="hover:text-white transition">About us</a></li>
-                    <li><Link href="/careers" className="hover:text-white transition">Careers</a></li>
-                    <li><Link href="/contact" className="hover:text-white transition">Contact</a></li>
-                    <li><Link href="/privacy" className="hover:text-white transition">Privacy</a></li>
+                    <li><Link href="/about" className="hover:text-white transition">About us</Link></li>
+                    <li><Link href="/careers" className="hover:text-white transition">Careers</Link></li>
+                    <li><Link href="/contact" className="hover:text-white transition">Contact</Link></li>
+                    <li><Link href="/privacy" className="hover:text-white transition">Privacy</Link></li>
                   </ul>
                 </div>
               </div>
