@@ -131,11 +131,11 @@ export default function Index() {
                   </div>
                   
                   <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center">
-                      <span className="text-black font-bold text-sm">CX</span>
+                    <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center overflow-hidden">
+                      <img src="/public/1000222021 1 (1).png" alt="Codex Inc" className="w-full h-full object-cover" />
                     </div>
                     <div>
-                      <p className="font-semibold text-sm">A product of codex inc</p>
+                      <p className="font-semibold text-sm">A product of CODEX INC ENTERPRISE</p>
                       <p className="text-xs text-gray-400">(Trusted by teams building the future)</p>
                     </div>
                   </div>
@@ -403,40 +403,32 @@ export default function Index() {
                 {/* Right - Feature Cards */}
                 <div className="space-y-4">
                   <div className="bg-[#1e293b] border border-gray-700 rounded-xl p-6 hover:border-gray-600 transition">
-                    <div className="w-12 h-12 bg-purple-500/20 rounded-lg flex items-center justify-center mb-4">
-                      <svg className="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                      </svg>
+                    <div className="w-12 h-12 rounded-lg mb-4 overflow-hidden bg-white/5">
+                      <img src="/public/986 (1) 1.png" alt="AI Pair Programming" className="w-full h-full object-cover" />
                     </div>
                     <h3 className="text-xl font-semibold mb-2">AI Pair Programming</h3>
                     <p className="text-gray-400 text-sm">Write alongside an intelligent coding assistant that understands your project context and helps you build faster.</p>
                   </div>
 
                   <div className="bg-[#1e293b] border border-gray-700 rounded-xl p-6 hover:border-gray-600 transition">
-                    <div className="w-12 h-12 bg-blue-500/20 rounded-lg flex items-center justify-center mb-4">
-                      <svg className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                      </svg>
+                    <div className="w-12 h-12 rounded-lg mb-4 overflow-hidden bg-white/5">
+                      <img src="/public/987 1.png" alt="Real-Time collaboration" className="w-full h-full object-cover" />
                     </div>
                     <h3 className="text-xl font-semibold mb-2">Real-Time collaboration</h3>
                     <p className="text-gray-400 text-sm">Collaborate with your team in real-time without wasting time switching between different development tools.</p>
                   </div>
 
                   <div className="bg-[#1e293b] border border-gray-700 rounded-xl p-6 hover:border-gray-600 transition">
-                    <div className="w-12 h-12 bg-green-500/20 rounded-lg flex items-center justify-center mb-4">
-                      <svg className="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.10 2.28a10 10 0 00-9.36 9.36c.34.03.5.04.72.04 2.62 0 4.74-2.12 4.74-4.74 0-.22.01-.38.04-.72zM18.6 7.38a10 10 0 00-9.36-9.36c.22.03.5.04.72.04 2.62 0 4.74-2.12 4.74-4.74 0-.22.01-.38.04-.72zM14.88 14.88a4 4 0 01-5.66 0l-2.12 2.12a2 2 0 000 2.83l.71.71a2 2 0 002.83 0l2.12-2.12a4 4 0 010-5.66z" />
-                      </svg>
+                    <div className="w-12 h-12 rounded-lg mb-4 overflow-hidden bg-white/5">
+                      <img src="/public/988 1.png" alt="Intelligent Integrations" className="w-full h-full object-cover" />
                     </div>
                     <h3 className="text-xl font-semibold mb-2">Intelligent Integrations</h3>
                     <p className="text-gray-400 text-sm">Connect Repositories, Development tools, APIs and Team Workflows in one place.</p>
                   </div>
 
                   <div className="bg-[#1e293b] border border-gray-700 rounded-xl p-6 hover:border-gray-600 transition">
-                    <div className="w-12 h-12 bg-orange-500/20 rounded-lg flex items-center justify-center mb-4">
-                      <svg className="w-6 h-6 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                      </svg>
+                    <div className="w-12 h-12 rounded-lg mb-4 overflow-hidden bg-white/5">
+                      <img src="/public/985 (1) 1.png" alt="Team Development" className="w-full h-full object-cover" />
                     </div>
                     <h3 className="text-xl font-semibold mb-2">Team Development</h3>
                     <p className="text-gray-400 text-sm">Give distributed teams a unified environment for Planning, Building, Reviewing and Shipping.</p>
