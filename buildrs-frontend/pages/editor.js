@@ -64,6 +64,62 @@ function LANG_COLORS() {
   };
 }
 
+function buildFileTree(files) {
+  const root = { name: 'root', type: 'folder', children: {} };
+  files.forEach(f => {
+    const parts = (f.path || '/').split('/').filter(Boolean);
+    let cur = root; let rp = '';
+    for (let i = 0; i < parts.length; i++) {
+      rp = rp ? rp + '/' + parts[i] : parts[i];
+      if (i === parts.length - 1) {
+        cur.children[parts[i]] = { ...f, type: 'file' };
+      } else {
+        if (!cur.children[parts[i]]) cur.children[parts[i]] = { name: parts[i], type: 'folder', children: {}, path: rp };
+        cur = cur.children[parts[i]];
+      }
+    }
+  });
+  return root;
+}
+
+function FileTreeNode({ node, depth, selectedId, onSelect, expanded, onToggle }) {
+  if (node.type === 'file' && !node.children) {
+    const isSelected = node._id === selectedId;
+    return (
+      <div className={`flex items-center gap-1 px-2 py-[3px] cursor-pointer text-sm rounded-none transition-colors ${isSelected ? 'bg-blue-500/20 text-blue-300' : 'text-gray-300 hover:bg-white/5'}`}
+        style={{ paddingLeft: `${16 + depth * 14}px` }} onClick={() => onSelect(node)}>
+        <span className="text-xs flex-shrink-0">{getFileIcon(node.name)}</span>
+        <span className="truncate text-xs">{node.name}</span>
+      </div>
+    );
+  }
+  if (node.type === 'folder' || node.children) {
+    const isOpen = expanded[node.path || node.name] !== false;
+    return (
+      <div>
+        <div className="flex items-center gap-1 px-2 py-[3px] cursor-pointer text-sm text-gray-400 hover:text-gray-200 hover:bg-white/5 rounded-none transition-colors"
+          style={{ paddingLeft: `${8 + depth * 14}px` }} onClick={() => onToggle(node.path || node.name)}>
+          <ChevronRight className={`w-3 h-3 transition-transform ${isOpen ? 'rotate-90' : ''}`} />
+          <Folder className={`w-3.5 h-3.5 ${isOpen ? 'text-yellow-400' : 'text-gray-500'}`} />
+          <span className="truncate text-xs font-medium">{node.name}</span>
+        </div>
+        {isOpen && node.children && (
+          <div>
+            {Object.values(node.children).sort((a, b) => {
+              if ((a.type === 'folder' || a.children) !== (b.type === 'folder' || b.children)) return a.children ? -1 : 1;
+              return (a.name || '').localeCompare(b.name || '');
+            }).map((child) => (
+              <FileTreeNode key={child.path || child.name || child._id} node={child} depth={depth + 1}
+                selectedId={selectedId} onSelect={onSelect} expanded={expanded} onToggle={onToggle} />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+  return null;
+}
+
 export default function Editor() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
@@ -147,7 +203,7 @@ export default function Editor() {
   useEffect(() => {
     function handleClickOutside(e) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
-        setShowDropdown(false);
+        setShowProjectSelector(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -357,7 +413,7 @@ async function handleTerminalCommand(cmd, term) {
     setContent(file.content || '');
     originalContentRef.current = file.content || '';
     setDirty(false);
-    setShowDropdown(false);
+    setShowProjectSelector(false);
     setStatus(null);
     apiFetch(`/api/collaboration/file/${file._id}/join`, { method: 'POST' }).catch(() => {});
   }
@@ -370,7 +426,7 @@ async function handleTerminalCommand(cmd, term) {
     setContent(file.content || '');
     originalContentRef.current = file.content || '';
     setDirty(false);
-    setShowDropdown(false);
+    setShowProjectSelector(false);
     setStatus(null);
     apiFetch(`/api/collaboration/file/${file._id}/join`, { method: 'POST' }).catch(() => {});
   };
