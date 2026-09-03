@@ -53,6 +53,9 @@ export default function Editor() {
   const [gitStatus, setGitStatus] = useState(null);
   const [deployments, setDeployments] = useState([]);
   const [sandboxUrl, setSandboxUrl] = useState(null);
+  const [showSubdomainInput, setShowSubdomainInput] = useState(false);
+  const [deploySubdomain, setDeploySubdomain] = useState('');
+  const [deploying, setDeploying] = useState(false);
   const toast = useToastStore();
   const [confirmDiscard, setConfirmDiscard] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -116,11 +119,12 @@ export default function Editor() {
     }
   }, [showTerminal]);
 
-  async function handleTerminalCommand(cmd, term) {
+async function handleTerminalCommand(cmd, term) {
     const trimmed = cmd.trim();
     if (!trimmed) return;
+    // Built-in local shortcuts (no server call needed)
     if (trimmed === 'help') {
-      term.writeln('Available: ls, pwd, git status, clear, help');
+      term.writeln('Available: ls, pwd, git status, clear, help, plus many read-only commands via the server.');
       return;
     }
     if (trimmed === 'clear') {
@@ -145,7 +149,18 @@ export default function Editor() {
       }
       return;
     }
-    term.writeln(`Command "${trimmed}" can't run yet — the server terminal (POST /api/terminal/execute) isn't enabled on the backend.`);
+    // Send unknown commands to the server
+    try {
+      term.writeln(`[running] ${trimmed}`);
+      const data = await apiFetch('/api/terminal/execute', {
+        method: 'POST',
+        body: JSON.stringify({ command: trimmed, fileId: selectedFile?._id }),
+      });
+      const output = data.output || '';
+      output.split('\n').forEach((l) => term.writeln(l));
+    } catch (err) {
+      term.writeln(`Error: ${err.message}`);
+    }
   }
 
   async function loadFiles() {
@@ -360,11 +375,80 @@ export default function Editor() {
   }
 
   async function handleDeploy() {
-    setStatus({ type: 'error', msg: 'Deployments aren\'t enabled yet — the server endpoint (GET/POST /api/deployments) hasn\'t been built.' });
+    if (!selectedFile) {
+      setStatus({ type: 'error', msg: 'Select a file first (deploys its project).' });
+      return;
+    }
+    // Show subdomain input
+    setShowSubdomainInput(true);
+    setDeploySubdomain(selectedFile.name?.replace(/\.[^.]+$/, '').toLowerCase().replace(/[^a-z0-9-]/g, '-') || '');
+  }
+
+  async function confirmDeploy(e) {
+    e.preventDefault();
+    const subdomain = deploySubdomain.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-');
+    if (!subdomain || subdomain.length < 2) {
+      setStatus({ type: 'error', msg: 'Subdomain must be at least 2 characters.' });
+      return;
+    }
+    const projectId = selectedFile.project;
+    if (!projectId) {
+      setStatus({ type: 'error', msg: 'This file is not part of a project. Create a project first.' });
+      return;
+    }
+    try {
+      setDeploying(true);
+      setStatus({ type: 'info', msg: 'Deploying... (this may take a minute)' });
+      const data = await apiFetch('/api/deployments', {
+        method: 'POST',
+        body: JSON.stringify({ projectId, subdomain }),
+      });
+      if (data.deployment) {
+        setDeployments((prev) => [data.deployment, ...prev]);
+        setStatus({ type: 'success', msg: `Deploying to ${subdomain}.buildrshq.dev...` });
+        setShowSubdomainInput(false);
+        setDeploySubdomain('');
+        // Refresh list after a few seconds
+        setTimeout(loadDeployments, 5000);
+      }
+    } catch (err) {
+      setStatus({ type: 'error', msg: `Deploy failed: ${err.message}` });
+    } finally {
+      setDeploying(false);
+    }
+  }
+
+  async function stopDeployment(deploymentId, subdomain) {
+    if (!confirm(`Stop deployment "${subdomain}.buildrshq.dev" and remove the container?`)) return;
+    try {
+      await apiFetch(`/api/deployments/${deploymentId}`, { method: 'DELETE' });
+      setDeployments((prev) => prev.map(d =>
+        d._id === deploymentId ? { ...d, status: 'stopped', deployedUrl: null } : d
+      ));
+      setStatus({ type: 'success', msg: 'Deployment stopped.' });
+    } catch (err) {
+      setStatus({ type: 'error', msg: `Failed to stop: ${err.message}` });
+    }
   }
 
   async function handleSandboxStart() {
-    setStatus({ type: 'error', msg: 'Sandbox isn\'t enabled yet — the server endpoint (POST /api/sandbox/start) hasn\'t been built.' });
+    if (!selectedFile) {
+      setStatus({ type: 'error', msg: 'Select a file to preview first.' });
+      return;
+    }
+    try {
+      setStatus({ type: 'info', msg: 'Starting sandbox...' });
+      const data = await apiFetch('/api/sandbox/start', {
+        method: 'POST',
+        body: JSON.stringify({ fileId: selectedFile._id }),
+      });
+      if (data.sandboxUrl) {
+        setSandboxUrl(data.sandboxUrl);
+        setStatus({ type: 'success', msg: 'Sandbox ready!' });
+      }
+    } catch (err) {
+      setStatus({ type: 'error', msg: `Sandbox error: ${err.message}` });
+    }
   }
 
   const TABS = [
@@ -652,13 +736,62 @@ export default function Editor() {
                   <div className="workspace-card-header"><h2 className="workspace-card-title flex items-center gap-2"><Rocket className="w-4 h-4" /> Deployments</h2></div>
                   <div className="workspace-card-body">
                     <div className="flex gap-2 mb-4">
-                      <button type="button" onClick={handleDeploy} className="cta-button px-4 py-2 rounded-lg">Deploy Current File</button>
+                      <button type="button" onClick={handleDeploy} className="cta-button px-4 py-2 rounded-lg">Deploy Current Project</button>
                       <button type="button" onClick={loadDeployments} className="btn-workspace btn-secondary">Refresh</button>
                     </div>
+
+                    {showSubdomainInput && (
+                      <form onSubmit={confirmDeploy} className="mb-4 p-4 bg-navy rounded-lg border border-gray-700">
+                        <label className="block text-sm font-medium mb-1">Choose a subdomain:</label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={deploySubdomain}
+                            onChange={(e) => setDeploySubdomain(e.target.value.replace(/[^a-z0-9-]/g, '-').toLowerCase())}
+                            placeholder="my-app"
+                            className="form-input w-full font-mono"
+                            autoFocus
+                            required
+                            minLength={2}
+                          />
+                          <span className="text-sm text-gray-400 whitespace-nowrap">.buildrshq.dev</span>
+                        </div>
+                        <div className="flex gap-2 mt-3">
+                          <button type="submit" disabled={deploying || deploySubdomain.length < 2} className="cta-button px-4 py-2 rounded-lg">
+                            {deploying ? 'Deploying...' : 'Deploy'}
+                          </button>
+                          <button type="button" onClick={() => setShowSubdomainInput(false)} className="btn-workspace btn-secondary">Cancel</button>
+                        </div>
+                      </form>
+                    )}
+
                     {deployments.length === 0 ? <p className="text-sm text-gray-500">No deployments yet</p> : deployments.map((d, i) => (
                       <div key={i} className="flex items-center justify-between p-3 bg-navy rounded-lg border border-gray-700 mb-2">
-                        <div><div className="text-sm font-medium">{d.id || d._id || `Deploy #${i + 1}`}</div><div className="text-xs text-gray-500">{d.status || 'pending'} • {d.createdAt ? new Date(d.createdAt).toLocaleString() : ''}</div></div>
-                        <span className={`text-xs px-2 py-1 rounded-full ${d.status === 'success' ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-gray-400'}`}>{d.status || 'pending'}</span>
+                        <div className="flex-1">
+                          <div className="text-sm font-medium">
+                            {d.deployedUrl ? (
+                              <a href={d.deployedUrl} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">{d.deployedUrl}</a>
+                            ) : d.subdomain ? (
+                              <span>{d.subdomain}.buildrshq.dev</span>
+                            ) : (
+                              <span>{d._id || `Deploy #${i + 1}`}</span>
+                            )}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {d.status} {(d.projectId?.name ? `• ${d.projectId.name}` : '')} • {d.createdAt ? new Date(d.createdAt).toLocaleString() : ''}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs px-2 py-1 rounded-full ${
+                            d.status === 'success' ? 'bg-green-500/20 text-green-400' :
+                            d.status === 'failed' ? 'bg-red-500/20 text-red-400' :
+                            d.status === 'building' || d.status === 'deploying' ? 'bg-yellow-500/20 text-yellow-400' :
+                            'bg-gray-500/20 text-gray-400'
+                          }`}>{d.status}</span>
+                          {(d.status === 'success' || d.status === 'failed') && (
+                            <button type="button" onClick={() => stopDeployment(d._id, d.subdomain)} className="text-xs text-red-400 hover:text-red-300">Stop</button>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
