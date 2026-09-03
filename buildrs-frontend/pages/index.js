@@ -204,7 +204,7 @@ export default function Index() {
                     {/* Window Header */}
                     <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
                       <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center">
+                        <div className="w-8 h-8 rounded transparent flex items-center justify-center">
                           <img src="/buildrs.png" alt="BuildrsHQ" className="w-5 h-5" />
                         </div>
                         <span className="text-sm font-medium">BuildrsHQ Workspace</span>
@@ -238,11 +238,15 @@ export default function Index() {
                         <div className="mb-4">
                           <div className="text-xs text-gray-500 mb-2">PROJECTS</div>
                           <div className="flex items-center gap-2 px-2 py-1.5 rounded bg-white/5 mb-1">
-                            <div className="w-4 h-4 bg-blue-500 rounded"></div>
+                            <div className="w-4 h-4 bg-blue-500 rounded">
+                              <span className="text-[10px] text-black font-bold">AW</span>
+                            </div>
                             <span className="text-xs text-gray-300">Acme Web app</span>
                           </div>
                           <div className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-white/5">
-                            <div className="w-4 h-4 bg-purple-500 rounded"></div>
+                            <div className="w-4 h-4 bg-purple-500 rounded">
+                              <span className="text-[10px] text-black font-bold">MD</span>
+                            </div>
                             <span className="text-xs text-gray-300">Mobile Dashboard</span>
                           </div>
                         </div>
@@ -369,7 +373,7 @@ export default function Index() {
                     </div>
                     <div className="bg-[#0f172a] rounded-lg p-3">
                       <div className="flex items-center gap-2 mb-2">
-                        <div className="w-6 h-6 rounded bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center">
+                        <div className="w-6 h-6 rounded transparent flex items-center justify-center">
                           <img src="/buildrs.png" alt="" className="w-4 h-4" />
                         </div>
                         <span className="text-sm font-semibold">BuildrsHQ Dashboard</span>
@@ -443,7 +447,7 @@ export default function Index() {
                     {/* Editor Sidebar */}
                     <div className="w-48 bg-[#1e293b] border-r border-gray-700 p-4 hidden lg:block">
                       <div className="flex items-center gap-2 mb-4">
-                        <div className="w-6 h-6 rounded bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center">
+                        <div className="w-6 h-6 rounded transparent flex items-center justify-center">
                           <img src="/buildrs.png" alt="" className="w-4 h-4" />
                         </div>
                         <span className="text-xs font-semibold">BuildrsHQ</span>
@@ -636,7 +640,7 @@ export default function Index() {
                 {/* Brand Column */}
                 <div className="col-span-2">
                   <div className="flex items-center space-x-2 mb-4">
-                    <div className="w-8 h-8 rounded bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center">
+                    <div className="w-8 h-8 rounded transparent flex items-center justify-center">
                       <img src="/buildrs.png" alt="" className="w-5 h-5" />
                     </div>
                     <span className="text-xl font-semibold">BuildrsHQ</span>
