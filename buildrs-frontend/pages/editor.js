@@ -8,6 +8,7 @@ import { Save, Plus, ChevronDown, FileCode, Trash2, Terminal, Bot, Layers, Rocke
 import MonacoEditor from '@monaco-editor/react';
 import useToastStore from '../store/toastStore';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { useCurrentCompany } from '../hooks/useCurrentCompany';
 
 function getMonacoLanguage(lang) {
   if (!lang) return 'plaintext';
@@ -58,14 +59,22 @@ export default function Editor() {
   const dropdownRef = useRef(null);
   const terminalRef = useRef(null);
   const originalContentRef = useRef('');
+  const aiSessionRef = useRef(null);
+  const { selectedCompany } = useCurrentCompany();
+  const workspaceId = selectedCompany?._id;
 
   useEffect(() => {
     loadFiles();
     loadLanguages();
     loadCollaborators();
-    loadGitStatus();
     loadDeployments();
   }, []);
+
+  useEffect(() => {
+    if (workspaceId) {
+      loadGitStatus();
+    }
+  }, [workspaceId]);
 
   useEffect(() => {
     function handleClickOutside(e) {
@@ -118,15 +127,25 @@ export default function Editor() {
       term.clear();
       return;
     }
-    try {
-      const res = await apiFetch('/api/terminal/execute', {
-        method: 'POST',
-        body: JSON.stringify({ command: trimmed, fileId: selectedFile?._id }),
-      });
-      term.writeln(res.output || 'Done');
-    } catch (e) {
-      term.writeln(`Error: ${e.message}`);
+    if (trimmed === 'ls') {
+      term.writeln((files.length ? files.map((f) => f.name).join('  ') : '(no files)'));
+      return;
     }
+    if (trimmed === 'pwd') {
+      term.writeln('/home/buildrs');
+      return;
+    }
+    if (trimmed === 'git status') {
+      if (gitStatus) {
+        term.writeln(`On branch ${gitStatus.branch || 'main'}`);
+        const mods = gitStatus.modified || [];
+        term.writeln(mods.length ? `${mods.length} file(s) modified` : 'nothing to commit, working tree clean');
+      } else {
+        term.writeln('Not a git repository (or git not set up for this workspace).');
+      }
+      return;
+    }
+    term.writeln(`Command "${trimmed}" can't run yet — the server terminal (POST /api/terminal/execute) isn't enabled on the backend.`);
   }
 
   async function loadFiles() {
@@ -157,17 +176,29 @@ export default function Editor() {
   }
 
   async function loadGitStatus() {
+    if (!workspaceId) return;
     try {
-      const data = await apiFetch('/api/git/status').catch(() => null);
+      const data = await apiFetch(`/api/git/status/${workspaceId}`).catch(() => null);
       if (data) setGitStatus(data);
     } catch {}
   }
 
   async function loadDeployments() {
     try {
-      const data = await apiFetch('/api/deployments').catch(() => ({ deployments: [] }));
-      setDeployments(data.deployments || []);
+      const data = await apiFetch('/api/deployments').catch(() => null);
+      if (data && data.deployments) setDeployments(data.deployments);
     } catch {}
+  }
+
+  async function ensureAiSession() {
+    if (aiSessionRef.current) return aiSessionRef.current;
+    const data = await apiFetch('/api/ai-pair/session', {
+      method: 'POST',
+      body: JSON.stringify({ sessionName: `Editor session ${new Date().toLocaleString()}` }),
+    });
+    if (!data.success) throw new Error(data.message || 'Could not start an AI session');
+    aiSessionRef.current = data.session;
+    return data.session;
   }
 
   async function handleAiHelperSend(e) {
@@ -179,12 +210,19 @@ export default function Editor() {
     setAiInput('');
     setAiLoading(true);
     try {
-      const data = await apiFetch('/api/ai-pair/message', {
+      const session = await ensureAiSession();
+      const companyId = selectedCompany?._id;
+      const data = await apiFetch('/api/ai-pair/chat', {
         method: 'POST',
-        body: JSON.stringify({ message: input, fileContext: selectedFile ? { name: selectedFile.name, content: content.slice(0, 2000) } : null }),
+        body: JSON.stringify({
+          sessionId: session._id,
+          message: input,
+          companyId,
+          codeContext: selectedFile ? { currentFile: { name: selectedFile.name, content: content.slice(0, 2000) } } : undefined,
+        }),
       });
-      const aiMsg = { role: 'assistant', content: data.response?.message || data.message || 'No response' };
-      setAiMessages((prev) => [...prev, aiMsg]);
+      const reply = data.message?.content || data.message || 'No response';
+      setAiMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
     } catch (err) {
       setAiMessages((prev) => [...prev, { role: 'assistant', content: `Error: ${err.message}` }]);
     } finally {
@@ -302,8 +340,18 @@ export default function Editor() {
   };
 
   async function handleGitAction(action) {
+    if (!workspaceId) {
+      setStatus({ type: 'error', msg: 'You need to be in a workspace to use version control.' });
+      return;
+    }
     try {
-      const data = await apiFetch(`/api/git/${action}`, { method: 'POST', body: JSON.stringify({ fileId: selectedFile?._id }) });
+      if (action === 'status') {
+        const data = await apiFetch(`/api/git/status/${workspaceId}`);
+        setGitStatus(data);
+        setStatus({ type: 'success', msg: 'Git status refreshed' });
+        return;
+      }
+      const data = await apiFetch(`/api/git/${action}`, { method: 'POST', body: JSON.stringify({ workspaceId, fileId: selectedFile?._id }) });
       setGitStatus(data);
       setStatus({ type: 'success', msg: `Git ${action} done` });
     } catch (e) {
@@ -312,23 +360,11 @@ export default function Editor() {
   }
 
   async function handleDeploy() {
-    try {
-      const data = await apiFetch('/api/deployments', { method: 'POST', body: JSON.stringify({ fileId: selectedFile?._id }) });
-      setDeployments((prev) => [data.deployment, ...prev]);
-      setStatus({ type: 'success', msg: 'Deployment started' });
-    } catch (e) {
-      setStatus({ type: 'error', msg: e.message });
-    }
+    setStatus({ type: 'error', msg: 'Deployments aren\'t enabled yet — the server endpoint (GET/POST /api/deployments) hasn\'t been built.' });
   }
 
   async function handleSandboxStart() {
-    try {
-      const data = await apiFetch('/api/sandbox/start', { method: 'POST', body: JSON.stringify({ fileId: selectedFile?._id }) });
-      setSandboxUrl(data.url || data.sandboxUrl);
-      setActiveTab('sandbox');
-    } catch (e) {
-      setStatus({ type: 'error', msg: e.message });
-    }
+    setStatus({ type: 'error', msg: 'Sandbox isn\'t enabled yet — the server endpoint (POST /api/sandbox/start) hasn\'t been built.' });
   }
 
   const TABS = [

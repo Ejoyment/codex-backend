@@ -47,6 +47,7 @@ diagnose-*.bat
 *.md
 !README.md
 !API_DOCUMENTATION.md
+!BACKEND_REQUIRED.md
 
 # HTML files (frontend - not needed in backend repo)
 *.html
