@@ -279,6 +279,7 @@ export const projectApi = {
       body: JSON.stringify(data),
     }),
   get: (projectId) => apiFetch(`/api/projects/${projectId}`),
+  listProjectFiles: (projectId) => apiFetch(`/api/projects/${projectId}/files`),
   listTasks: () => apiFetch('/api/projects/tasks'),
   createTask: (data) =>
     apiFetch('/api/projects/tasks', {

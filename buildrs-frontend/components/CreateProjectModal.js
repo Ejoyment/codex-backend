@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
-import { projectApi } from '../lib/api';
+import { projectApi, companyApi } from '../lib/api';
+import useAuthStore from '../store/authStore';
+import useToastStore from '../store/toastStore';
 
 export default function CreateProjectModal({ onClose, onCreated }) {
   const [name, setName] = useState('');
@@ -8,6 +10,8 @@ export default function CreateProjectModal({ onClose, onCreated }) {
   const [priority, setPriority] = useState('medium');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  const user = useAuthStore((s) => s.user);
+  const toast = useToastStore();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -23,6 +27,10 @@ export default function CreateProjectModal({ onClose, onCreated }) {
         priority,
       });
       if (result.success !== false) {
+        // Try to auto-create a company workspace for the project
+        try {
+          await companyApi.create({ name: trimmedName });
+        } catch {}
         onCreated?.(result.project);
         onClose();
       } else {

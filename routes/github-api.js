@@ -1164,4 +1164,130 @@ router.delete('/disconnect', verifyToken, async (req, res) => {
     }
 });
 
+// ===== TREE / RECURSIVE FILE LISTING =====
+
+/**
+ * @swagger
+ * /api/github/repos/{owner}/{repo}/git/tree:
+ *   get:
+ *     summary: Get the full file tree of a GitHub repository
+ *     tags:
+ *       - GitHub API
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: owner
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: repo
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - name: ref
+ *         in: query
+ *         schema:
+ *           type: string
+ *           default: HEAD
+ *       - name: recursive
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *     responses:
+ *       200:
+ *         description: File tree structure
+ *       401:
+ *         description: Unauthorized
+ */
+router.get('/repos/:owner/:repo/git/tree', verifyToken, async (req, res) => {
+    try {
+        const integration = await getGitHubIntegration(req.userId);
+        const { owner, repo } = req.params;
+        const { ref = 'HEAD', recursive = 1 } = req.query;
+
+        // First get the default branch's latest commit SHA to get the tree
+        const refData = await githubAPI(integration.accessToken, `/repos/${owner}/${repo}/git/ref/heads/${ref === 'HEAD' ? 'main' : ref}`);
+        const commitSha = refData.object.sha;
+
+        const commitData = await githubAPI(integration.accessToken, `/repos/${owner}/${repo}/git/commits/${commitSha}`);
+        const treeSha = commitData.tree.sha;
+
+        // Get the recursive tree
+        const treeData = await githubAPI(integration.accessToken, `/repos/${owner}/${repo}/git/trees/${treeSha}?recursive=${recursive}`);
+
+        // Transform to a flat file list like VFS
+        const files = (treeData.tree || [])
+            .filter(item => item.type === 'blob')
+            .map(item => ({
+                name: item.path.split('/').pop(),
+                path: '/' + item.path,
+                type: 'file',
+                size: item.size,
+                sha: item.sha,
+                language: item.path.includes('.') ? item.path.split('.').pop() : 'text'
+            }));
+
+        const folders = (treeData.tree || [])
+            .filter(item => item.type === 'tree')
+            .map(item => ({
+                name: item.path.split('/').pop(),
+                path: '/' + item.path,
+                type: 'folder',
+                sha: item.sha
+            }));
+
+        res.json({
+            success: true,
+            files,
+            folders,
+            treeSha,
+            commitSha
+        });
+    } catch (error) {
+        // Fallback: try to get contents via the Contents API non-recursively
+        try {
+            const integration = await getGitHubIntegration(req.userId);
+            const { owner, repo } = req.params;
+            const contents = await githubAPI(integration.accessToken, `/repos/${owner}/${repo}/contents`);
+            
+            const files = [];
+            const folders = [];
+            
+            for (const item of contents) {
+                if (item.type === 'file') {
+                    files.push({
+                        name: item.name,
+                        path: '/' + item.path,
+                        type: 'file',
+                        size: item.size,
+                        sha: item.sha,
+                        language: item.name.includes('.') ? item.name.split('.').pop() : 'text'
+                    });
+                } else if (item.type === 'dir') {
+                    folders.push({
+                        name: item.name,
+                        path: '/' + item.path,
+                        type: 'folder',
+                        sha: item.sha
+                    });
+                }
+            }
+
+            res.json({
+                success: true,
+                files,
+                folders,
+                treeSha: null,
+                commitSha: null,
+                note: 'Non-recursive listing (root level only)'
+            });
+        } catch (fallbackError) {
+            res.status(500).json({ success: false, message: error.message });
+        }
+    }
+});
+
 module.exports = router;

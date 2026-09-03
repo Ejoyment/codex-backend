@@ -1,10 +1,17 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
-import { apiFetch } from '../lib/api';
-import { Save, Plus, ChevronDown, FileCode, Trash2, Terminal, Bot, Layers, Rocket, Box, Users, GitBranch, Eye, Split, Maximize2, X } from 'lucide-react';
+import { apiFetch, projectApi } from '../lib/api';
+import {
+  Save, Plus, ChevronDown, FileCode, Trash2, Terminal as TerminalIcon,
+  Bot, Layers, Rocket, Box, Users, GitBranch, Eye, Split, Maximize2, X,
+  FolderOpen, Search, Settings, ChevronRight, File, FileText, Code2,
+  Folder, FolderPlus, AlertCircle, CheckCircle, XCircle, RefreshCw,
+  Home, ExternalLink, FilePlus, List, Play, Square
+} from 'lucide-react';
 import MonacoEditor from '@monaco-editor/react';
 import useToastStore from '../store/toastStore';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -24,7 +31,41 @@ function getMonacoLanguage(lang) {
   return map[l] || l;
 }
 
+function detectLanguage(filename) {
+  const ext = (filename || '').split('.').pop()?.toLowerCase() || '';
+  const map = {
+    js: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript',
+    py: 'python', java: 'java', go: 'go', rs: 'rust', cpp: 'cpp', c: 'c',
+    rb: 'ruby', php: 'php', html: 'html', css: 'css', json: 'json',
+    yml: 'yaml', yaml: 'yaml', md: 'markdown', sh: 'shell', bash: 'shell', sql: 'sql',
+  };
+  return map[ext] || 'text';
+}
+
+function getFileIcon(name) {
+  const ext = (name || '').split('.').pop()?.toLowerCase() || '';
+  const iconMap = {
+    js: '\uD83D\uDCDC', jsx: '\u269B\uFE0F', ts: '\uD83D\uDCD8', tsx: '\u269B\uFE0F',
+    py: '\uD83D\uDC0D', java: '\u2615', go: '\uD83D\uDD35', rs: '\uD83E\uDD80',
+    html: '\uD83C\uDF10', css: '\uD83C\uDFA8', json: '\uD83D\uDCCB', md: '\uD83D\uDCDD',
+    yml: '\u2699\uFE0F', yaml: '\u2699\uFE0F', sh: '\uD83D\uDCBB', bash: '\uD83D\uDCBB',
+    sql: '\uD83D\uDDC3\uFE0F',
+  };
+  return iconMap[ext] || '\uD83D\uDCC4';
+}
+
+function LANG_COLORS() {
+  return {
+    javascript: '#f7df1e', typescript: '#3178c6', python: '#3776ab',
+    java: '#ed8b00', go: '#00add8', rust: '#dea584', cpp: '#00599c',
+    c: '#555555', ruby: '#cc342d', php: '#777bb4', html: '#e34c26',
+    css: '#563d7c', json: '#292929', yaml: '#cb171e', markdown: '#083fa1',
+    shell: '#89e051', sql: '#e38c00', text: '#6e7681',
+  };
+}
+
 export default function Editor() {
+  const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const subscription = useAuthStore((s) => s.subscription);
 
@@ -42,8 +83,7 @@ export default function Editor() {
   const [creating, setCreating] = useState(false);
   const [status, setStatus] = useState(null);
   const [dirty, setDirty] = useState(false);
-  const [showDropdown, setShowDropdown] = useState(false);
-  const [activeTab, setActiveTab] = useState('editor'); // editor, terminal, preview, ai, deploy, sandbox, collab, git
+  const [activeTab, setActiveTab] = useState('editor');
   const [showTerminal, setShowTerminal] = useState(false);
   const [showAiHelper, setShowAiHelper] = useState(false);
   const [aiInput, setAiInput] = useState('');
@@ -66,11 +106,25 @@ export default function Editor() {
   const { selectedCompany } = useCurrentCompany();
   const workspaceId = selectedCompany?._id;
 
+  // Project and GitHub repo state
+  const [projects, setProjects] = useState([]);
+  const [selectedProject, setSelectedProject] = useState(null);
+  const [githubRepos, setGithubRepos] = useState([]);
+  const [selectedRepo, setSelectedRepo] = useState(null);
+  const [showProjectSelector, setShowProjectSelector] = useState(false);
+  const [expandedFolders, setExpandedFolders] = useState({});
+  const [fileFilter, setFileFilter] = useState('');
+
+  // Derived
+  const tree = useMemo(() => buildFileTree(files), [files]);
+
   useEffect(() => {
     loadFiles();
     loadLanguages();
     loadCollaborators();
     loadDeployments();
+    loadProjects();
+    loadGithubRepos();
   }, []);
 
   useEffect(() => {
@@ -78,6 +132,17 @@ export default function Editor() {
       loadGitStatus();
     }
   }, [workspaceId]);
+
+  // Load project/repo files when selection changes
+  useEffect(() => {
+    if (selectedProject) {
+      loadProjectFiles(selectedProject._id || selectedProject.id);
+    } else if (selectedRepo) {
+      loadGithubRepoFiles(selectedRepo);
+    } else {
+      loadFiles();
+    }
+  }, [selectedProject, selectedRepo]);
 
   useEffect(() => {
     function handleClickOutside(e) {
@@ -170,6 +235,44 @@ async function handleTerminalCommand(cmd, term) {
       setFiles(data.files || []);
     } catch {
       setStatus({ type: 'error', msg: 'Failed to load files' });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadProjects() {
+    try {
+      const data = await projectApi.list();
+      setProjects(data.projects || []);
+    } catch {}
+  }
+
+  async function loadProjectFiles(projectId) {
+    setLoading(true);
+    try {
+      const data = await projectApi.listProjectFiles(projectId);
+      setFiles(data.files || []);
+    } catch {
+      setFiles([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadGithubRepos() {
+    try {
+      const data = await apiFetch('/api/github/repos?per_page=20');
+      setGithubRepos(data.repositories || []);
+    } catch {}
+  }
+
+  async function loadGithubRepoFiles(repo) {
+    setLoading(true);
+    try {
+      const data = await apiFetch(`/api/github/repos/${repo.owner}/${repo.name}/git/tree?recursive=1`);
+      setFiles(data.files || []);
+    } catch {
+      setFiles([]);
     } finally {
       setLoading(false);
     }
@@ -528,54 +631,81 @@ async function handleTerminalCommand(cmd, term) {
 
           <div className="workspace-content p-6 flex-1 flex gap-6">
             {/* File Manager Sidebar */}
-            <div className="w-72 shrink-0">
+            <div className="w-72 shrink-0 flex flex-col gap-4">
+              {/* Project / Repo Selector */}
               <div className="workspace-card">
                 <div className="workspace-card-header">
                   <div className="flex items-center justify-between">
-                    <h2 className="workspace-card-title">Files</h2>
-                    {files.length > 0 && (
-                      <div className="relative" ref={dropdownRef}>
-                        <button type="button" className="btn-workspace btn-secondary flex items-center gap-2" onClick={() => setShowDropdown(!showDropdown)}>
-                          <FileCode className="w-4 h-4" />
-                          <span className="max-w-[150px] truncate">{selectedFile ? selectedFile.name : 'Select'}</span>
-                          <ChevronDown className="w-4 h-4" />
-                        </button>
-                        {showDropdown && (
-                          <div className="absolute right-0 mt-2 w-72 bg-navy-light border border-gray-600 rounded-lg shadow-xl z-50 max-h-64 overflow-y-auto">
-                            {files.map((file) => (
-                              <div key={file._id} className={`flex items-center justify-between px-4 py-2 cursor-pointer hover:bg-white/5 ${selectedFile?._id === file._id ? 'bg-blue-500/10 text-blue-300' : 'text-gray-300'}`}>
-                                <div className="flex items-center gap-2 flex-1 min-w-0" onClick={() => selectFile(file)}>
-                                  <FileCode className="w-4 h-4 shrink-0" />
-                                  <span className="truncate text-sm">{file.name}</span>
-                                </div>
-                                <button type="button" className="ml-2 p-1 rounded hover:bg-red-500/20 text-gray-500 hover:text-red-400 shrink-0" onClick={(e) => { e.stopPropagation(); handleDelete(file); }}>
-                                  <Trash2 className="w-3 h-3" />
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
+                    <h2 className="workspace-card-title flex items-center gap-2">
+                      <FolderOpen className="w-4 h-4" />
+                      Files
+                    </h2>
+                    <div className="relative" ref={dropdownRef}>
+                      <button type="button" className="btn-workspace btn-secondary text-xs flex items-center gap-1" onClick={() => setShowProjectSelector(!showProjectSelector)}>
+                        <span className="max-w-[120px] truncate">
+                          {selectedProject ? selectedProject.name
+                            : selectedRepo ? (selectedRepo.fullName || selectedRepo.name)
+                            : 'Workspace'}
+                        </span>
+                        <ChevronDown className="w-3 h-3" />
+                      </button>
+                      {showProjectSelector && (
+                        <div className="absolute right-0 mt-1 w-64 bg-navy-light border border-gray-600 rounded-lg shadow-xl z-50 max-h-64 overflow-y-auto">
+                          <button type="button"
+                            className="w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-white/10 flex items-center gap-2"
+                            onClick={() => { setSelectedProject(null); setSelectedRepo(null); setShowProjectSelector(false); }}>
+                            <FolderOpen className="w-3.5 h-3.5 text-gray-400" /> Workspace Files
+                          </button>
+                          {projects.length > 0 && (
+                            <div className="px-3 pt-2 pb-1 text-[10px] text-gray-500 uppercase font-semibold">Projects</div>
+                          )}
+                          {projects.map(p => (
+                            <button key={p._id || p.id} type="button"
+                              className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-white/10 flex items-center gap-2"
+                              onClick={() => { setSelectedProject(p); setSelectedRepo(null); setShowProjectSelector(false); }}>
+                              <Folder className="w-3.5 h-3.5 text-blue-400" /> {p.name}
+                            </button>
+                          ))}
+                          {githubRepos.length > 0 && (
+                            <div className="px-3 pt-2 pb-1 text-[10px] text-gray-500 uppercase font-semibold">GitHub Repos</div>
+                          )}
+                          {githubRepos.map(r => (
+                            <button key={r.id || r.fullName} type="button"
+                              className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-white/10 flex items-center gap-2"
+                              onClick={() => { setSelectedRepo(r); setSelectedProject(null); setShowProjectSelector(false); }}>
+                              <GitBranch className="w-3.5 h-3.5 text-gray-400" /> {r.fullName || r.name}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-                <div className="p-3 space-y-1 max-h-[60vh] overflow-y-auto">
+                {/* File filter */}
+                <div className="px-3 pb-2">
+                  <input type="text" className="w-full px-2 py-1.5 bg-navy border border-gray-600 rounded text-xs text-gray-300 outline-none focus:border-blue-500"
+                    placeholder="Filter files..." value={fileFilter} onChange={e => setFileFilter(e.target.value)} />
+                </div>
+                <div className="px-3 pb-3 space-y-0.5 max-h-[55vh] overflow-y-auto">
                   {loading ? (
                     <div className="flex items-center justify-center py-10"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-400" /></div>
                   ) : files.length === 0 ? (
                     <div className="text-center py-10">
                       <FileCode className="w-8 h-8 text-gray-600 mx-auto mb-2" />
-                      <p className="text-sm text-gray-400 mb-3">No files yet</p>
+                      <p className="text-sm text-gray-400 mb-3">No files</p>
                       <button type="button" className="cta-button px-3 py-1.5 rounded-lg text-sm" onClick={() => setShowNewModal(true)}>Create File</button>
                     </div>
                   ) : (
-                    files.map((file) => (
-                      <button key={file._id} type="button" onClick={() => selectFile(file)} className={`w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 text-sm ${selectedFile?._id === file._id ? 'bg-blue-500/20 text-blue-300' : 'hover:bg-white/5 text-gray-300'}`}>
-                        <FileCode className="w-4 h-4 shrink-0" />
-                        <span className="truncate">{file.name}</span>
-                        {file.language && <span className="ml-auto text-xs text-gray-500">{file.language}</span>}
-                      </button>
-                    ))
+                    <div>
+                      {/* Render File Tree with Folders */}
+                      <FileTreeNode node={tree} depth={-1} selectedId={selectedFile?._id}
+                        onSelect={(file) => {
+                          selectFile(file);
+                        }}
+                        expanded={expandedFolders}
+                        onToggle={(path) => setExpandedFolders(prev => ({ ...prev, [path]: prev[path] === false ? true : false }))}
+                      />
+                    </div>
                   )}
                 </div>
               </div>
@@ -857,6 +987,28 @@ async function handleTerminalCommand(cmd, term) {
               <div ref={terminalRef} className="h-64 overflow-hidden" />
             </div>
           )}
+
+          {/* Status Bar */}
+          <div className="flex items-center h-[22px] bg-blue-600 text-white text-[11px] px-2 flex-shrink-0 select-none">
+            <div className="flex items-center gap-2 mr-auto">
+              <GitBranch className="w-2.5 h-2.5" />
+              <span>{gitStatus?.branch || 'main'}</span>
+              {gitStatus?.modified?.length > 0 && <span className="text-yellow-200 font-medium">{gitStatus.modified.length}</span>}
+            </div>
+            <div className="flex items-center gap-3">
+              {status && (
+                <span className={`flex items-center gap-1 ${status.type === 'success' ? 'text-green-200' : 'text-red-200'}`}>
+                  {status.type === 'success' ? <CheckCircle className="w-2.5 h-2.5" /> : <XCircle className="w-2.5 h-2.5" />}
+                  {status.msg}
+                </span>
+              )}
+              <span>{selectedFile ? (selectedFile.language || detectLanguage(selectedFile.name) || 'plaintext').toUpperCase() : ''}</span>
+              <span>Ln {selectedFile ? 1 : '-'}, Col {selectedFile ? 1 : '-'}</span>
+              <span>UTF-8</span>
+              <span>Spaces: 4</span>
+              <span>{subscription?.tier === 'enterprise' ? 'Enterprise' : subscription?.tier === 'professional' ? 'Pro' : 'Free'}</span>
+            </div>
+          </div>
         </main>
       </div>
 

@@ -4,6 +4,7 @@ const { authenticateToken } = require('../middleware/auth');
 const { enforceProjectLimit } = require('../middleware/trial');
 const LocalProject = require('../models/LocalProject');
 const LocalTask = require('../models/LocalTask');
+const CodeFile = require('../models/CodeFile');
 
 /**
  * @swagger
@@ -581,6 +582,64 @@ router.get('/:projectId/tasks', authenticateToken, async (req, res) => {
     } catch (error) {
         console.error('Get project tasks error:', error);
         res.status(500).json({ success: false, message: 'Error fetching tasks' });
+    }
+});
+
+/**
+ * @swagger
+ * /api/projects/{projectId}/files:
+ *   get:
+ *     summary: Get all code files for a project
+ *     tags:
+ *       - Projects
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: projectId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: List of files in the project
+ *       404:
+ *         description: Project not found
+ */
+// Get files for a project (from VFS / CodeFile collection)
+router.get('/:projectId/files', authenticateToken, async (req, res) => {
+    try {
+        const userId = req.userId || req.user.userId || req.user.id;
+        const { projectId } = req.params;
+
+        // Verify project ownership
+        const project = await LocalProject.findOne({ _id: projectId, userId });
+        if (!project) {
+            return res.status(404).json({ success: false, message: 'Project not found' });
+        }
+
+        // If project has a workspaceId, use that; otherwise use project's company
+        const query = project.workspaceId 
+            ? { company: project.workspaceId }
+            : { project: projectId };
+
+        const files = await CodeFile.find(query)
+            .select('name path language size updatedAt createdAt')
+            .sort({ path: 1, name: 1 })
+            .lean();
+
+        res.json({
+            success: true,
+            files,
+            project: {
+                id: project._id,
+                name: project.name,
+                description: project.description
+            }
+        });
+    } catch (error) {
+        console.error('Get project files error:', error);
+        res.status(500).json({ success: false, message: 'Error fetching project files' });
     }
 });
 
