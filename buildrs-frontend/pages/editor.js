@@ -311,7 +311,12 @@ async function handleTerminalCommand(cmd, term) {
       setCreating(true);
       const data = await apiFetch('/api/code-editor/files', {
         method: 'POST',
-        body: JSON.stringify({ name: newFileName, language: newFileLang, content: newFileContent }),
+        body: JSON.stringify({
+          name: newFileName,
+          language: newFileLang,
+          content: newFileContent,
+          companyId: workspaceId,
+        }),
       });
       setFiles((prev) => [...prev, data.file]);
       setSelectedFile(data.file);

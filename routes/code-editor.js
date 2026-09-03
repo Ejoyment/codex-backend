@@ -124,11 +124,32 @@ router.post('/files', authenticateToken, async (req, res) => {
             });
         }
         
+        // Determine company: use companyId from body, or look up user's companies
+        let effectiveCompanyId = companyId;
+        if (!effectiveCompanyId) {
+            // Try to find a company the user belongs to
+            const Company = require('../models/Company');
+            const userCompany = await Company.findOne({
+                $or: [
+                    { owner: req.userId },
+                    { 'members.user': req.userId }
+                ]
+            }).select('_id').lean();
+            if (userCompany) {
+                effectiveCompanyId = userCompany._id;
+            } else {
+                return res.status(400).json({
+                    success: false,
+                    message: 'You must be in a workspace/company to create files.'
+                });
+            }
+        }
+        
         const codeFile = await CodeFile.create({
             name,
             language: language.toLowerCase(),
             content: content || '',
-            company: companyId,
+            company: effectiveCompanyId,
             project: projectId,
             createdBy: req.userId,
             lastModifiedBy: req.userId,
@@ -139,7 +160,7 @@ router.post('/files', authenticateToken, async (req, res) => {
         
         // Update VFS index
         try {
-            const existingIndex = vfs.indexes.get(companyId);
+            const existingIndex = vfs.indexes.get(effectiveCompanyId);
             if (existingIndex) {
                 existingIndex.set(codeFile.path, {
                     id: codeFile._id.toString(),
