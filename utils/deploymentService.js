@@ -114,6 +114,9 @@ CMD ["python", "app.py"]
 COPY . /usr/share/nginx/html
 EXPOSE 80
 `;
+  return { runtime: 'static', dockerfile, exposePort: 80 };
+}
+
 async function deployProject(subdomain, files) {
   const sanitizedSubdomain = subdomain.toLowerCase().replace(/[^a-z0-9-]/g, '-');
   if (!sanitizedSubdomain || sanitizedSubdomain.length < 2) {
@@ -182,5 +185,3 @@ async function isSubdomainTaken(subdomain) {
 }
 
 module.exports = { sshExec, writeRemoteFile, detectRuntime, deployProject, stopDeployment, isSubdomainTaken };
-  return { runtime: 'static', dockerfile, exposePort: 80 };
-}
