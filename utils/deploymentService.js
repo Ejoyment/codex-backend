@@ -93,8 +93,8 @@ function sshExec(command) {
       if (!SSH_HOST) return reject(new Error('DEPLOY_SSH_HOST env not set'));
       const key = getKeyFile();
       const out = execSync(
-        `ssh -i "${key}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p ${SSH_PORT} ${SSH_USER}@${SSH_HOST} ${JSON.stringify(command)}`,
-        { timeout: 120000, maxBuffer: 10 * 1024 * 1024, encoding: 'utf8' }
+        `ssh -i "${key}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=20 -p ${SSH_PORT} ${SSH_USER}@${SSH_HOST} ${JSON.stringify(command)}`,
+        { timeout: 300000, maxBuffer: 20 * 1024 * 1024, encoding: 'utf8' }
       );
       resolve(out.trim());
     } catch (err) {
@@ -192,7 +192,7 @@ async function deployProject(subdomain, files) {
   --name ${containerName} \
   --restart unless-stopped \
   --label "traefik.enable=true" \
-  --label "traefik.http.routers.${sanitizedSubdomain}.rule=Host(\`${sanitizedSubdomain}.${DOMAIN}\`)" \
+  --label "traefik.http.routers.${sanitizedSubdomain}.rule=Host(\`${sanitizedSubdomain}.${DOMAIN}\`) || Host(\`www.${sanitizedSubdomain}.${DOMAIN}\`)" \
   --label "traefik.http.routers.${sanitizedSubdomain}.entrypoints=websecure" \
   --label "traefik.http.routers.${sanitizedSubdomain}.tls.certresolver=letsencrypt" \
   --label "traefik.http.services.${sanitizedSubdomain}.loadbalancer.server.port=${exposePort}" \

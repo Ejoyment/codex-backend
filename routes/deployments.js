@@ -15,6 +15,21 @@ const depService = require('../utils/deploymentService');
 // List deployments for the logged-in user
 router.get('/', authenticateToken, async (req, res) => {
     try {
+        // Auto-fail stale deployments stuck in "building" for > 10 minutes
+        // (e.g. the async deploy lost its callback on a server restart)
+        const staleThreshold = new Date(Date.now() - 10 * 60 * 1000);
+        await Deployment.updateMany(
+            {
+                userId: req.userId,
+                status: { $in: ['pending', 'building', 'deploying'] },
+                updatedAt: { $lt: staleThreshold }
+            },
+            {
+                status: 'failed',
+                errorMessage: 'Deployment timed out. Please try again.'
+            }
+        );
+
         const deployments = await Deployment.find({ userId: req.userId })
             .sort({ createdAt: -1 })
             .populate('projectId', 'name')
