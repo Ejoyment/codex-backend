@@ -734,7 +734,8 @@ async function handleTerminalCommand(cmd, term) {
         setTimeout(loadDeployments, 5000);
       }
     } catch (err) {
-      setStatus({ type: 'error', msg: `Deploy failed: ${err.message}` });
+      const msg = err?.data?.error || err?.data?.message || err?.message || 'Deploy failed';
+      setStatus({ type: 'error', msg });
     } finally {
       setDeploying(false);
     }
@@ -1155,32 +1156,39 @@ async function handleTerminalCommand(cmd, term) {
                     )}
 
                     {deployments.length === 0 ? <p className="text-sm text-gray-500">No deployments yet</p> : deployments.map((d, i) => (
-                      <div key={i} className="flex items-center justify-between p-3 bg-navy rounded-lg border border-gray-700 mb-2">
-                        <div className="flex-1">
-                          <div className="text-sm font-medium">
-                            {d.deployedUrl ? (
-                              <a href={d.deployedUrl} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">{d.deployedUrl}</a>
-                            ) : d.subdomain ? (
-                              <span>{d.subdomain}.buildrshq.dev</span>
-                            ) : (
-                              <span>{d._id || `Deploy #${i + 1}`}</span>
+                      <div key={i} className="p-3 bg-navy rounded-lg border border-gray-700 mb-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <div className="text-sm font-medium">
+                              {d.deployedUrl ? (
+                                <a href={d.deployedUrl} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">{d.deployedUrl}</a>
+                              ) : d.subdomain ? (
+                                <span>{d.subdomain}.buildrshq.dev</span>
+                              ) : (
+                                <span>{d._id || `Deploy #${i + 1}`}</span>
+                              )}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {d.status} {(d.projectId?.name ? `• ${d.projectId.name}` : '')} • {d.createdAt ? new Date(d.createdAt).toLocaleString() : ''}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className={`text-xs px-2 py-1 rounded-full ${
+                              d.status === 'success' ? 'bg-green-500/20 text-green-400' :
+                              d.status === 'failed' ? 'bg-red-500/20 text-red-400' :
+                              d.status === 'building' || d.status === 'deploying' ? 'bg-yellow-500/20 text-yellow-400' :
+                              'bg-gray-500/20 text-gray-400'
+                            }`}>{d.status}</span>
+                            {(d.status === 'success' || d.status === 'failed') && (
+                              <button type="button" onClick={() => stopDeployment(d._id, d.subdomain)} className="text-xs text-red-400 hover:text-red-300">Stop</button>
                             )}
                           </div>
-                          <div className="text-xs text-gray-500">
-                            {d.status} {(d.projectId?.name ? `• ${d.projectId.name}` : '')} • {d.createdAt ? new Date(d.createdAt).toLocaleString() : ''}
+                        </div>
+                        {d.status === 'failed' && d.errorMessage && (
+                          <div className="mt-2 text-xs text-red-300/80 bg-red-500/10 border border-red-500/20 rounded p-2">
+                            Error: {d.errorMessage}
                           </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className={`text-xs px-2 py-1 rounded-full ${
-                            d.status === 'success' ? 'bg-green-500/20 text-green-400' :
-                            d.status === 'failed' ? 'bg-red-500/20 text-red-400' :
-                            d.status === 'building' || d.status === 'deploying' ? 'bg-yellow-500/20 text-yellow-400' :
-                            'bg-gray-500/20 text-gray-400'
-                          }`}>{d.status}</span>
-                          {(d.status === 'success' || d.status === 'failed') && (
-                            <button type="button" onClick={() => stopDeployment(d._id, d.subdomain)} className="text-xs text-red-400 hover:text-red-300">Stop</button>
-                          )}
-                        </div>
+                        )}
                       </div>
                     ))}
                   </div>

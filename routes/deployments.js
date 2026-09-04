@@ -36,6 +36,13 @@ router.post('/', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: 'projectId and subdomain are required' });
         }
 
+        // Fail fast with a clear message if the deployment backend isn't configured
+        if (!process.env.DEPLOY_SSH_HOST || !process.env.DEPLOY_SSH_KEY) {
+            return res.status(503).json({
+                error: 'Deployment backend is not configured. Set DEPLOY_SSH_HOST and DEPLOY_SSH_KEY environment variables on the server.'
+            });
+        }
+
         const sanitized = subdomain.toLowerCase().replace(/[^a-z0-9-]/g, '-');
         if (!sanitized || sanitized.length < 2) {
             return res.status(400).json({ error: 'Subdomain must be at least 2 characters (a-z, 0-9, hyphens)' });
