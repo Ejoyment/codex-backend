@@ -105,8 +105,12 @@ function sshExec(command) {
 
 async function writeRemoteFile(remotePath, content) {
   const base64 = Buffer.from(content || '').toString('base64');
-  await sshExec(`mkdir -p "$(dirname "${remotePath}")"`);
-  await sshExec(`echo "${base64}" | base64 -d > "${remotePath}"`);
+  // Compute the parent directory client-side to avoid nested shell quotes
+  const parentDir = remotePath.includes('/')
+    ? remotePath.slice(0, remotePath.lastIndexOf('/'))
+    : '.';
+  await sshExec(`mkdir -p '${parentDir}'`);
+  await sshExec(`echo '${base64}' | base64 -d > '${remotePath}'`);
 }
 
 function detectRuntime(files) {

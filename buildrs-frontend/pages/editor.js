@@ -148,6 +148,7 @@ export default function Editor() {
   const [dirty, setDirty] = useState(false);
   const [cursorPos, setCursorPos] = useState({ line: 1, col: 1 });
   const [activeTab, setActiveTab] = useState('editor');
+  const [activeSidebar, setActiveSidebar] = useState('explorer');
   const [showTerminal, setShowTerminal] = useState(false);
   const [showAiHelper, setShowAiHelper] = useState(false);
   const [aiInput, setAiInput] = useState('');
@@ -794,53 +795,42 @@ async function handleTerminalCommand(cmd, term) {
         <link rel="icon" href="/buildrs.png" />
       </Head>
 
-      <div className="min-h-screen bg-navy flex">
+      <div className="h-screen bg-[#1e1e1e] flex overflow-hidden">
         <Sidebar user={user} subscription={subscription} />
 
-        <main className="workspace-main flex-1 ml-64 flex flex-col">
-          <header className="workspace-header">
-            <div className="flex items-center gap-6">
-              <h1 className="text-xl font-bold">Code Editor</h1>
-              {selectedFile && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                  <FileCode className="w-3 h-3" />
-                  {selectedFile.language || 'plain'}
-                </span>
-              )}
-              {collaborators.length > 0 && (
-                <span className="inline-flex items-center gap-1 text-xs text-green-400">
-                  <Users className="w-3 h-3" /> {collaborators.length} collaborating
-                </span>
-              )}
+        <main className="flex-1 ml-64 flex flex-col min-w-0">
+          {/* VS Code title bar */}
+          <header className="flex items-center h-9 bg-[#323233] border-b border-[#3e3e42] px-3 flex-shrink-0 select-none">
+            <div className="flex items-center gap-2 text-xs text-gray-400">
+              <span className="text-blue-400 font-semibold">BuildrsHQ</span>
+              <span className="text-gray-600">/</span>
+              <span className="text-gray-300 truncate">{selectedProject?.name || selectedRepo?.fullName || 'editor'}</span>
+            </div>
+            <div className="flex-1 text-center text-xs text-gray-500 truncate">
+              {selectedFile ? selectedFile.name : 'No file open'}
             </div>
             <div className="flex items-center gap-2">
-              {dirty && <span className="text-xs text-amber-400 font-medium">Unsaved</span>}
-              <button type="button" className={`btn-workspace ${showTerminal ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setShowTerminal(!showTerminal)} title="Toggle Terminal">
-                <Terminal className="w-4 h-4" />
-              </button>
-              <button type="button" className={`btn-workspace ${showAiHelper ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setShowAiHelper(!showAiHelper)} title="AI Helper">
-                <Bot className="w-4 h-4" />
-              </button>
-              <button type="button" className="btn-workspace btn-primary" onClick={() => setShowNewModal(true)}>
-                <Plus className="w-4 h-4" />
-                <span>New File</span>
-              </button>
-              <button type="button" className="btn-workspace btn-secondary" onClick={() => setShowNewFolderModal(true)}>
-                <FolderPlus className="w-4 h-4" />
-                <span>New Folder</span>
-              </button>
+              {dirty && <span className="text-[10px] text-amber-400 font-medium">Unsaved</span>}
+              {selectedFile && (
+                <button type="button" className="text-[11px] px-2 py-0.5 rounded bg-blue-600 text-white hover:bg-blue-500 transition-colors flex items-center gap-1" onClick={handleSave} disabled={saving || !dirty}>
+                  <Save className="w-3 h-3" />{saving ? '...' : 'Save'}
+                </button>
+              )}
+              <button type="button" className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white" onClick={() => setShowNewModal(true)} title="New File"><FilePlus className="w-3.5 h-3.5" /></button>
+              <button type="button" className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white" onClick={() => setShowNewFolderModal(true)} title="New Folder"><FolderPlus className="w-3.5 h-3.5" /></button>
+              <button type="button" className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white" onClick={() => setShowTerminal(!showTerminal)} title="Toggle Terminal"><Terminal className="w-3.5 h-3.5" /></button>
             </div>
           </header>
 
-          {/* Tabs */}
-          <div className="flex items-center gap-1 px-6 py-2 border-b border-gray-700 bg-navy-light overflow-x-auto">
+          {/* Feature tab bar (VS Code style) */}
+          <div className="flex items-center gap-0.5 px-2 h-9 bg-[#252526] border-b border-[#3e3e42] overflow-x-auto flex-shrink-0">
             {TABS.map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
                 type="button"
                 onClick={() => setActiveTab(id)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap flex items-center gap-1.5 transition ${
-                  activeTab === id ? 'bg-blue-500 text-white' : 'bg-navy text-gray-400 hover:text-white hover:bg-white/5'
+                className={`px-3 h-8 text-xs font-medium whitespace-nowrap flex items-center gap-1.5 transition-colors border-b-2 ${
+                  activeTab === id ? 'text-white border-blue-500 bg-[#1e1e1e]' : 'text-gray-400 border-transparent hover:text-white hover:bg-white/5'
                 }`}
               >
                 <Icon className="w-3.5 h-3.5" />
@@ -849,108 +839,85 @@ async function handleTerminalCommand(cmd, term) {
             ))}
           </div>
 
-          <div className="workspace-content p-6 flex-1 flex gap-6">
-            {/* File Manager Sidebar */}
-            <div className="w-72 shrink-0 flex flex-col gap-4">
-              {/* Project / Repo Selector */}
-              <div className="workspace-card">
-                <div className="workspace-card-header">
-                  <div className="flex items-center justify-between">
-                    <h2 className="workspace-card-title flex items-center gap-2">
-                      <FolderOpen className="w-4 h-4" />
-                      Files
-                    </h2>
-                    <div className="relative" ref={dropdownRef}>
-                      <button type="button" className="btn-workspace btn-secondary text-xs flex items-center gap-1" onClick={() => setShowProjectSelector(!showProjectSelector)}>
-                        <span className="max-w-[120px] truncate">
-                          {selectedProject ? selectedProject.name
-                            : selectedRepo ? (selectedRepo.fullName || selectedRepo.name)
-                            : 'Workspace'}
-                        </span>
-                        <ChevronDown className="w-3 h-3" />
+          {/* Main editor workspace: activity bar + explorer + editor */}
+          <div className="flex-1 flex min-h-0">
+            {/* Activity bar */}
+            <div className="w-12 bg-[#333333] border-r border-[#3e3e42] flex flex-col items-center py-1 flex-shrink-0">
+              <button type="button" className={`w-12 h-12 flex items-center justify-center relative ${activeSidebar === 'explorer' ? 'text-white' : 'text-gray-500 hover:text-white'}`} onClick={() => setActiveSidebar('explorer')} title="Explorer">
+                <FolderOpen className="w-5 h-5" />
+                {activeSidebar === 'explorer' && <span className="absolute left-0 top-1 bottom-1 w-0.5 bg-blue-500" />}
+              </button>
+              <button type="button" className={`w-12 h-12 flex items-center justify-center relative ${activeSidebar === 'git' ? 'text-white' : 'text-gray-500 hover:text-white'}`} onClick={() => setActiveSidebar('git')} title="Source Control">
+                <GitBranch className="w-5 h-5" />
+              </button>
+              <button type="button" className={`w-12 h-12 flex items-center justify-center relative ${activeSidebar === 'ai' ? 'text-white' : 'text-gray-500 hover:text-white'}`} onClick={() => setActiveSidebar('ai')} title="AI Assistant">
+                <Bot className="w-5 h-5" />
+              </button>
+              <div className="flex-1" />
+              <button type="button" className="w-12 h-12 flex items-center justify-center text-gray-500 hover:text-white" title="Settings">
+                <Settings className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Explorer sidebar */}
+            <div className="w-64 bg-[#252526] border-r border-[#3e3e42] flex flex-col flex-shrink-0 overflow-hidden">
+              {/* Explorer header */}
+              <div className="flex items-center justify-between px-3 py-2 border-b border-[#3e3e42]/60">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Explorer</span>
+                <div className="flex items-center gap-1">
+                  <button type="button" className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white" onClick={() => setShowNewModal(true)} title="New File"><FilePlus className="w-3.5 h-3.5" /></button>
+                  <button type="button" className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white" onClick={() => setShowNewFolderModal(true)} title="New Folder"><FolderPlus className="w-3.5 h-3.5" /></button>
+                  <button type="button" className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white" onClick={reloadFiles} title="Refresh"><RefreshCw className="w-3.5 h-3.5" /></button>
+                </div>
+              </div>
+
+              {/* Project selector */}
+              <div className="relative px-2 py-1.5 border-b border-[#3e3e42]/60">
+                <button type="button" className="w-full flex items-center gap-2 px-2 py-1 bg-white/5 rounded text-xs text-gray-300 hover:bg-white/10 transition-colors" onClick={() => setShowProjectSelector(!showProjectSelector)}>
+                  <FolderOpen className="w-3.5 h-3.5 text-blue-400" />
+                  <span className="truncate">{selectedProject ? selectedProject.name : selectedRepo ? (selectedRepo.fullName || selectedRepo.name) : 'Workspace'}</span>
+                  <ChevronDown className={`w-3 h-3 ml-auto transition-transform ${showProjectSelector ? 'rotate-180' : ''}`} />
+                </button>
+                {showProjectSelector && (
+                  <div className="absolute left-2 right-2 top-full mt-1 bg-[#252526] border border-gray-600 rounded shadow-xl z-50 max-h-64 overflow-y-auto">
+                    <button type="button" className="w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-white/10 flex items-center gap-2" onClick={() => { setSelectedProject(null); setSelectedRepo(null); setShowProjectSelector(false); }}>
+                      <FolderOpen className="w-3.5 h-3.5 text-gray-400" /> Workspace Files
+                    </button>
+                    {projects.length > 0 && <div className="px-3 pt-2 pb-1 text-[10px] text-gray-500 uppercase font-semibold">Projects</div>}
+                    {projects.map(p => (
+                      <button key={p._id || p.id} type="button" className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-white/10 flex items-center gap-2" onClick={() => { setSelectedProject(p); setSelectedRepo(null); setShowProjectSelector(false); }}>
+                        <Folder className="w-3.5 h-3.5 text-blue-400" /> {p.name}
                       </button>
-                      {showProjectSelector && (
-                        <div className="absolute right-0 mt-1 w-64 bg-navy-light border border-gray-600 rounded-lg shadow-xl z-50 max-h-64 overflow-y-auto">
-                          <button type="button"
-                            className="w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-white/10 flex items-center gap-2"
-                            onClick={() => { setSelectedProject(null); setSelectedRepo(null); setShowProjectSelector(false); }}>
-                            <FolderOpen className="w-3.5 h-3.5 text-gray-400" /> Workspace Files
-                          </button>
-                          {projects.length > 0 && (
-                            <div className="px-3 pt-2 pb-1 text-[10px] text-gray-500 uppercase font-semibold">Projects</div>
-                          )}
-                          {projects.map(p => (
-                            <button key={p._id || p.id} type="button"
-                              className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-white/10 flex items-center gap-2"
-                              onClick={() => { setSelectedProject(p); setSelectedRepo(null); setShowProjectSelector(false); }}>
-                              <Folder className="w-3.5 h-3.5 text-blue-400" /> {p.name}
-                            </button>
-                          ))}
-                          {githubRepos.length > 0 && (
-                            <div className="px-3 pt-2 pb-1 text-[10px] text-gray-500 uppercase font-semibold">GitHub Repos</div>
-                          )}
-                          {githubRepos.map(r => (
-                            <button key={r.id || r.fullName} type="button"
-                              className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-white/10 flex items-center gap-2"
-                              onClick={() => { setSelectedRepo(r); setSelectedProject(null); setShowProjectSelector(false); }}>
-                              <GitBranch className="w-3.5 h-3.5 text-gray-400" /> {r.fullName || r.name}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                    ))}
+                    {githubRepos.length > 0 && <div className="px-3 pt-2 pb-1 text-[10px] text-gray-500 uppercase font-semibold">GitHub Repos</div>}
+                    {githubRepos.map(r => (
+                      <button key={r.id || r.fullName} type="button" className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-white/10 flex items-center gap-2" onClick={() => { setSelectedRepo(r); setSelectedProject(null); setShowProjectSelector(false); }}>
+                        <GitBranch className="w-3.5 h-3.5 text-gray-400" /> {r.fullName || r.name}
+                      </button>
+                    ))}
                   </div>
-                </div>
-                {/* File filter */}
-                <div className="px-3 pb-2">
-                  <input type="text" className="w-full px-2 py-1.5 bg-navy border border-gray-600 rounded text-xs text-gray-300 outline-none focus:border-blue-500"
-                    placeholder="Filter files..." value={fileFilter} onChange={e => setFileFilter(e.target.value)} />
-                </div>
-                <div className="px-3 pb-3 space-y-0.5 max-h-[55vh] overflow-y-auto">
-                  {loading ? (
-                    <div className="flex items-center justify-center py-10"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-400" /></div>
-                  ) : files.length === 0 ? (
-                    <div className="text-center py-10">
-                      <FileCode className="w-8 h-8 text-gray-600 mx-auto mb-2" />
-                      <p className="text-sm text-gray-400 mb-3">No files</p>
-                      <button type="button" className="cta-button px-3 py-1.5 rounded-lg text-sm" onClick={() => setShowNewModal(true)}>Create File</button>
-                    </div>
-                  ) : (
-                    <div>
-                      {/* Render File Tree with Folders */}
-                      <FileTreeNode node={tree} depth={-1} selectedId={selectedFile?._id}
-                        onSelect={(file) => {
-                          selectFile(file);
-                        }}
-                        expanded={expandedFolders}
-                        onToggle={(path) => setExpandedFolders(prev => ({ ...prev, [path]: prev[path] === false ? true : false }))}
-                      />
-                    </div>
-                  )}
-                </div>
+                )}
               </div>
 
-              {/* Git / Version Control Mini */}
-              <div className="workspace-card mt-4">
-                <div className="workspace-card-header"><h3 className="workspace-card-title flex items-center gap-2"><GitBranch className="w-4 h-4" /> Version Control</h3></div>
-                <div className="p-3 space-y-2">
-                  <div className="text-xs text-gray-400">{gitStatus ? `${gitStatus.branch || 'main'} • ${gitStatus.modified?.length || 0} changes` : 'Git not initialized'}</div>
-                  <div className="flex gap-2">
-                    <button type="button" onClick={() => handleGitAction('status')} className="btn-workspace btn-secondary flex-1 text-xs">Status</button>
-                    <button type="button" onClick={() => handleGitAction('commit')} className="btn-workspace btn-secondary flex-1 text-xs">Commit</button>
-                    <button type="button" onClick={() => handleGitAction('push')} className="btn-workspace btn-primary flex-1 text-xs">Push</button>
-                  </div>
-                </div>
+              {/* File filter */}
+              <div className="px-2 py-1 border-b border-[#3e3e42]/60">
+                <input type="text" className="w-full px-2 py-1 bg-[#1e1e1e] border border-[#3e3e42] text-xs text-gray-300 rounded outline-none focus:border-blue-500"
+                  placeholder="Filter files..." value={fileFilter} onChange={e => setFileFilter(e.target.value)} />
               </div>
 
-              {/* Collaborators */}
-              <div className="workspace-card mt-4">
-                <div className="workspace-card-header"><h3 className="workspace-card-title flex items-center gap-2"><Users className="w-4 h-4" /> Collaborators</h3></div>
-                <div className="p-3">
-                  {collaborators.length === 0 ? <p className="text-xs text-gray-500">No one else here</p> : collaborators.map((c, i) => (
-                    <div key={i} className="flex items-center gap-2 text-sm text-gray-300"><div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center text-xs">{c.name?.[0] || 'U'}</div><span>{c.name || c.email || 'Anonymous'}</span></div>
-                  ))}
-                </div>
+              {/* File tree */}
+              <div className="flex-1 overflow-y-auto py-1">
+                {loading ? (
+                  <div className="flex items-center justify-center py-10"><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-400" /></div>
+                ) : files.length === 0 ? (
+                  <div className="text-center py-10 px-3">
+                    <FileCode className="w-8 h-8 text-gray-600 mx-auto mb-2" />
+                    <p className="text-xs text-gray-500 mb-3">No files yet</p>
+                    <button type="button" className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-500" onClick={() => setShowNewModal(true)}>Create File</button>
+                  </div>
+                ) : (
+                  <FileTreeNode node={tree} depth={-1} selectedId={selectedFile?._id} onSelect={selectFile} expanded={expandedFolders} onToggle={(path) => setExpandedFolders(prev => ({ ...prev, [path]: prev[path] === false ? true : false }))} />
+                )}
               </div>
             </div>
 
