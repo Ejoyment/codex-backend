@@ -49,6 +49,11 @@ router.post('/', authenticateToken, async (req, res) => {
         }
 
         // Verify the user owns the project — accept either a local project or a team project
+        const validId = typeof projectId === 'string' && /^[0-9a-fA-F]{24}$/.test(projectId);
+        if (!validId) {
+            return res.status(400).json({ error: 'Invalid projectId' });
+        }
+
         const localProject = await LocalProject.findOne({ _id: projectId, userId: req.userId }).lean();
         const teamProject = !localProject
             ? await TeamProject.findOne({ _id: projectId, owner: req.userId }).lean()
@@ -72,13 +77,28 @@ router.post('/', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: 'Project has no files to deploy. Create a file in the editor first.' });
         }
 
-        // Create deployment record (pending)
-        const deployment = await Deployment.create({
-            userId: req.userId,
-            projectId,
-            subdomain: sanitized,
-            status: 'building'
-        });
+        // Reuse an existing deployment for this subdomain (re-deploy) instead of
+        // failing on the unique index — but never touch another user's deployment.
+        let deployment = await Deployment.findOne({ subdomain: sanitized });
+        if (deployment && deployment.userId.toString() !== req.userId.toString()) {
+            return res.status(409).json({ error: 'Subdomain already taken by another user.' });
+        }
+        if (deployment) {
+            deployment.userId = req.userId;
+            deployment.projectId = projectId;
+            deployment.status = 'building';
+            deployment.errorMessage = null;
+            deployment.deployedUrl = null;
+            deployment.containerId = null;
+            await deployment.save();
+        } else {
+            deployment = await Deployment.create({
+                userId: req.userId,
+                projectId,
+                subdomain: sanitized,
+                status: 'building'
+            });
+        }
 
         const deployId = deployment._id;
 
@@ -132,7 +152,10 @@ router.post('/', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Create deployment error:', error);
-        res.status(500).json({ error: 'Failed to start deployment' });
+        const msg = error.code === 11000
+            ? 'A deployment with this subdomain already exists.'
+            : error.message || 'Failed to start deployment';
+        res.status(500).json({ error: 'Failed to start deployment: ' + msg });
     }
 });
 
