@@ -188,17 +188,23 @@ async function deployProject(subdomain, files) {
     throw new Error(`Docker build failed: ${err.message}`);
   });
 
-  const runCmd = `docker run -d \
-  --name ${containerName} \
-  --restart unless-stopped \
-  --label "traefik.enable=true" \
-  --label "traefik.http.routers.${sanitizedSubdomain}.rule=Host(\`${sanitizedSubdomain}.${DOMAIN}\`) || Host(\`www.${sanitizedSubdomain}.${DOMAIN}\`)" \
-  --label "traefik.http.routers.${sanitizedSubdomain}.entrypoints=websecure" \
-  --label "traefik.http.routers.${sanitizedSubdomain}.tls.certresolver=letsencrypt" \
-  --label "traefik.http.services.${sanitizedSubdomain}.loadbalancer.server.port=${exposePort}" \
-  ${containerName}`;
+  // Write the docker run command to a script file (base64 transfer) so the
+  // Traefik `Host()` backticks are never interpreted by an intermediate shell.
+  const runScript = `#!/bin/bash
+docker rm -f ${containerName} 2>/dev/null || true
+docker run -d \\
+  --name ${containerName} \\
+  --restart unless-stopped \\
+  --label 'traefik.enable=true' \\
+  --label 'traefik.http.routers.${sanitizedSubdomain}.rule=Host(\`${sanitizedSubdomain}.${DOMAIN}\`) || Host(\`www.${sanitizedSubdomain}.${DOMAIN}\`)' \\
+  --label 'traefik.http.routers.${sanitizedSubdomain}.entrypoints=websecure' \\
+  --label 'traefik.http.routers.${sanitizedSubdomain}.tls.certresolver=letsencrypt' \\
+  --label 'traefik.http.services.${sanitizedSubdomain}.loadbalancer.server.port=${exposePort}' \\
+  ${containerName}
+`;
 
-  const containerId = (await sshExec(runCmd)).trim();
+  await writeRemoteFile(`${deploymentDir}/run.sh`, runScript);
+  const containerId = (await sshExec(`bash ${deploymentDir}/run.sh`)).trim();
   console.log(`[deploy] ${containerName} started (${containerId})`);
 
   try { await sshExec(`docker image prune -f 2>/dev/null || true`); } catch (_) {}
