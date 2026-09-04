@@ -6,7 +6,7 @@ import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch, projectApi } from '../lib/api';
 import {
-  Save, Plus, ChevronDown, FileCode, Trash2, Terminal as TerminalIcon,
+  Save, Plus, ChevronDown, FileCode, Trash2, Terminal,
   Bot, Layers, Rocket, Box, Users, GitBranch, Eye, Split, Maximize2, X,
   FolderOpen, Search, Settings, ChevronRight, File, FileText, Code2,
   Folder, FolderPlus, AlertCircle, CheckCircle, XCircle, RefreshCw,
