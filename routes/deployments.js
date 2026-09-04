@@ -37,9 +37,9 @@ router.post('/', authenticateToken, async (req, res) => {
         }
 
         // Fail fast with a clear message if the deployment backend isn't configured
-        if (!process.env.DEPLOY_SSH_HOST || !process.env.DEPLOY_SSH_KEY) {
+        if (!process.env.DEPLOY_SSH_HOST || (!process.env.DEPLOY_SSH_KEY && !process.env.DEPLOY_SSH_KEY_FILE)) {
             return res.status(503).json({
-                error: 'Deployment backend is not configured. Set DEPLOY_SSH_HOST and DEPLOY_SSH_KEY environment variables on the server.'
+                error: 'Deployment backend is not configured. Set DEPLOY_SSH_HOST and DEPLOY_SSH_KEY (or DEPLOY_SSH_KEY_FILE) environment variables on the server.'
             });
         }
 
