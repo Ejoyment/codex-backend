@@ -4,6 +4,28 @@ const emailService = require('../utils/emailServiceResend');
 const User = require('../models/User');
 
 /**
+ * Get or create a subscription for a user.
+ * Never blocks a user for having no subscription record — instead creates
+ * a default freebie/starter subscription so the rest of the app keeps working.
+ */
+async function getOrCreateSubscription(userId) {
+    let subscription = await Subscription.findOne({ userId });
+    if (!subscription) {
+        subscription = new Subscription({
+            userId,
+            tier: 'starter',
+            status: 'trial',
+            trialStartedAt: new Date(),
+            trialEndsAt: new Date(Date.now() + (14 * 24 * 60 * 60 * 1000)),
+            pricing: { amount: 0, currency: 'USD', interval: 'trial' }
+        });
+        await subscription.save();
+        console.log(`Auto-created starter trial subscription for user ${userId}`);
+    }
+    return subscription;
+}
+
+/**
  * Trial Enforcement Middleware
  * 
  * Checks:
@@ -27,14 +49,7 @@ const checkTrialStatus = async (req, res, next) => {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         const userId = decoded.userId || decoded.id;
         
-        const subscription = await Subscription.findOne({ userId });
-        if (!subscription) {
-            return res.status(403).json({
-                success: false,
-                message: 'No subscription found',
-                requiresUpgrade: true
-            });
-        }
+        const subscription = await getOrCreateSubscription(userId);
 
         const user = await User.findById(userId);
         if (!user) {
@@ -136,13 +151,10 @@ const enforceProjectLimit = async (req, res, next) => {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         const userId = decoded.userId || decoded.id;
         
-        const subscription = await Subscription.findOne({ userId });
-        if (!subscription) {
-            return res.status(403).json({ success: false, message: 'No subscription found' });
-        }
+        const subscription = await getOrCreateSubscription(userId);
 
-        const maxProjects = subscription.features.maxProjects; // 0 = unlimited
-        if (maxProjects === 0 || subscription.features.unlimitedProjects) {
+        const maxProjects = subscription.features?.maxProjects ?? 0; // 0 = unlimited
+        if (maxProjects === 0 || subscription.features?.unlimitedProjects) {
             return next();
         }
 
@@ -179,13 +191,10 @@ const enforceAIAccess = async (req, res, next) => {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         const userId = decoded.userId || decoded.id;
         
-        const subscription = await Subscription.findOne({ userId });
-        if (!subscription) {
-            return res.status(403).json({ success: false, message: 'No subscription found' });
-        }
+        const subscription = await getOrCreateSubscription(userId);
 
         // Check if user has basic or advanced AI assistance
-        const hasAIAccess = subscription.features.basicAiAssistance || subscription.features.advancedAiAssistance;
+        const hasAIAccess = subscription.features?.basicAiAssistance || subscription.features?.advancedAiAssistance;
 
         if (!hasAIAccess) {
             return res.status(403).json({
