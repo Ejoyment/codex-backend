@@ -16,7 +16,8 @@ const SSH_HOST = process.env.DEPLOY_SSH_HOST;
 const SSH_PORT = parseInt(process.env.DEPLOY_SSH_PORT || '22');
 const SSH_USER = process.env.DEPLOY_SSH_USER || 'deployer';
 const DOMAIN = process.env.DEPLOY_DOMAIN || 'buildrshq.dev';
-const DEPLOY_ROOT = process.env.DEPLOY_ROOT || '~/deployments';
+// Relative to the SSH user's home directory — always writable.
+const DEPLOY_SUBDIR = (process.env.DEPLOY_ROOT || 'deployments').replace(/^\/+/, '').replace(/^~\/?/, '');
 
 function getRawKey() {
   if (process.env.DEPLOY_SSH_KEY) return process.env.DEPLOY_SSH_KEY;
@@ -30,12 +31,12 @@ function getRawKey() {
 let keyFile = null;
 let homeDirCache = null;
 
-// Resolve the remote user's home directory once, so `~/deployments` works.
+// Resolve the remote user's home directory once.
 async function getHomeDir() {
   if (homeDirCache) return homeDirCache;
   try {
     const out = await sshExec('echo $HOME');
-    homeDirCache = out.trim() || '/home/deployer';
+    homeDirCache = (out.trim() || '/home/deployer').replace(/\/+$/, '');
   } catch (_) {
     homeDirCache = '/home/deployer';
   }
@@ -136,32 +137,16 @@ async function deployProject(subdomain, files) {
     throw new Error('Subdomain must be at least 2 characters');
   }
 
-  // Resolve `~` in DEPLOY_ROOT to the remote user's home directory
+  // Always deploy inside the SSH user's home directory (always writable)
   const homeDir = await getHomeDir();
-  const deployBase = DEPLOY_ROOT.startsWith('~/')
-    ? homeDir + DEPLOY_ROOT.slice(1)
-    : DEPLOY_ROOT;
-
-  let deploymentDir = `${deployBase}/${sanitizedSubdomain}`;
+  const deployBase = `${homeDir}/${DEPLOY_SUBDIR}`;
+  const deploymentDir = `${deployBase}/${sanitizedSubdomain}`;
   const containerName = `deploy-${sanitizedSubdomain}`;
 
   const { runtime, dockerfile, exposePort } = detectRuntime(files);
-  console.log(`[deploy] Runtime: ${runtime}, port: ${exposePort}`);
+  console.log(`[deploy] Runtime: ${runtime}, port: ${exposePort}, dir: ${deploymentDir}`);
 
-  // Create the deployment directory. If the configured path isn't writable
-  // (e.g. /opt with a non-root user), fall back to the home directory.
-  try {
-    await sshExec(`mkdir -p ${deploymentDir}`);
-  } catch (err) {
-    if (/permission denied/i.test(err.message)) {
-      const homeDeployDir = `${homeDir}/deployments/${sanitizedSubdomain}`;
-      console.log(`[deploy] ${deploymentDir} not writable, using ${homeDeployDir}`);
-      deploymentDir = homeDeployDir;
-      await sshExec(`mkdir -p ${deploymentDir}`);
-    } else {
-      throw err;
-    }
-  }
+  await sshExec(`mkdir -p ${deploymentDir}`);
 
   for (const file of files) {
     const relPath = file.path
@@ -204,7 +189,8 @@ async function stopDeployment(subdomain) {
   try {
     await sshExec(`docker rm -f ${containerName} 2>/dev/null || true`);
     await sshExec(`docker rmi ${containerName} 2>/dev/null || true`);
-    await sshExec(`rm -rf ${DEPLOY_ROOT}/${sanitized}`);
+    const homeDir = await getHomeDir();
+    await sshExec(`rm -rf ${homeDir}/${DEPLOY_SUBDIR}/${sanitized} 2>/dev/null || true`);
   } catch (_) {}
 }
 
