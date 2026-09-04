@@ -75,7 +75,7 @@ export async function apiFetch(path, options = {}) {
       }
 
       if (!res.ok && !options.returnErrorData) {
-        const error = new Error(data.message || 'API request failed');
+        const error = new Error(data.message || data.error || 'API request failed');
         error.status = res.status;
         error.data = data;
         throw error;

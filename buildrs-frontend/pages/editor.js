@@ -750,7 +750,8 @@ async function handleTerminalCommand(cmd, term) {
       ));
       setStatus({ type: 'success', msg: 'Deployment stopped.' });
     } catch (err) {
-      setStatus({ type: 'error', msg: `Failed to stop: ${err.message}` });
+      const msg = err?.data?.message || err?.data?.error || err?.message || 'Failed to stop';
+      setStatus({ type: 'error', msg });
     }
   }
 

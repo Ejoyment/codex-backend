@@ -139,14 +139,23 @@ router.post('/', authenticateToken, async (req, res) => {
 // Delete/stop a deployment
 router.delete('/:id', authenticateToken, async (req, res) => {
     try {
-        const deployment = await Deployment.findOne({ _id: req.params.id, userId: req.userId });
-        if (!deployment) {
-            return res.status(404).json({ error: 'Deployment not found' });
+        const { id } = req.params;
+        if (!id || !id.match(/^[0-9a-fA-F]{24}$/)) {
+            return res.status(400).json({ message: 'Invalid deployment id' });
         }
 
-        // Stop the Docker container
+        const deployment = await Deployment.findOne({ _id: id, userId: req.userId });
+        if (!deployment) {
+            return res.status(404).json({ message: 'Deployment not found' });
+        }
+
+        // Stop the Docker container (best-effort — never block the DB update on it)
         if (deployment.subdomain) {
-            await depService.stopDeployment(deployment.subdomain);
+            try {
+                await depService.stopDeployment(deployment.subdomain);
+            } catch (stopErr) {
+                console.warn('[deploy] Could not reach VPS to stop container:', stopErr.message);
+            }
         }
 
         // Mark as stopped in DB
@@ -154,10 +163,10 @@ router.delete('/:id', authenticateToken, async (req, res) => {
         deployment.deployedUrl = null;
         await deployment.save();
 
-        res.json({ message: 'Deployment stopped and cleaned up' });
+        res.json({ success: true, message: 'Deployment stopped and cleaned up' });
     } catch (error) {
         console.error('Delete deployment error:', error);
-        res.status(500).json({ error: 'Failed to stop deployment' });
+        res.status(500).json({ message: 'Failed to stop deployment: ' + (error.message || 'unknown error') });
     }
 });
 
