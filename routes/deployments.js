@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const Deployment = require('../models/Deployment');
 const TeamProject = require('../models/TeamProject');
+const LocalProject = require('../models/LocalProject');
 const CodeFile = require('../models/CodeFile');
 const { authenticateToken } = require('../middleware/auth');
 const depService = require('../utils/deploymentService');
@@ -16,9 +17,10 @@ router.get('/', authenticateToken, async (req, res) => {
     try {
         const deployments = await Deployment.find({ userId: req.userId })
             .sort({ createdAt: -1 })
-            .populate('projectId', 'name');
+            .populate('projectId', 'name')
+            .lean();
 
-        res.json({ deployments });
+        res.json({ success: true, deployments });
     } catch (error) {
         console.error('List deployments error:', error);
         res.status(500).json({ error: 'Failed to fetch deployments' });
@@ -28,7 +30,7 @@ router.get('/', authenticateToken, async (req, res) => {
 // Create a new deployment (spins up a real Docker container)
 router.post('/', authenticateToken, async (req, res) => {
     try {
-        const { projectId, subdomain } = req.body;
+        const { projectId, subdomain, companyId } = req.body;
 
         if (!projectId || !subdomain) {
             return res.status(400).json({ error: 'projectId and subdomain are required' });
@@ -39,27 +41,28 @@ router.post('/', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: 'Subdomain must be at least 2 characters (a-z, 0-9, hyphens)' });
         }
 
-        // Verify project exists and user has access
-        const project = await TeamProject.findOne({ _id: projectId, owner: req.userId });
-        if (!project) {
+        // Verify the user owns the project — accept either a local project or a team project
+        const localProject = await LocalProject.findOne({ _id: projectId, userId: req.userId }).lean();
+        const teamProject = !localProject
+            ? await TeamProject.findOne({ _id: projectId, owner: req.userId }).lean()
+            : null;
+
+        if (!localProject && !teamProject) {
             return res.status(404).json({ error: 'Project not found or not owned by you' });
         }
 
-        // Check subdomain availability
-        try {
-            const taken = await depService.isSubdomainTaken(sanitized);
-            if (taken) {
-                return res.status(409).json({ error: 'Subdomain already taken. Choose another.' });
-            }
-        } catch (_) {
-            // If SSH check fails, we still proceed (first deployment may be setting things up)
-            console.warn('[deploy] Could not check subdomain, continuing anyway');
-        }
+        const project = localProject || teamProject;
 
-        // Get all files in this project
-        const files = await CodeFile.find({ project: projectId });
+        // Determine which workspace/company the files are stored under
+        const workspaceId = project.workspaceId || companyId || project.company?.toString();
+
+        // Collect files for the project — prefer project-scoped files, fall back to workspace-scoped files
+        let files = await CodeFile.find({ project: projectId }).lean();
+        if (files.length === 0 && workspaceId) {
+            files = await CodeFile.find({ company: workspaceId }).lean();
+        }
         if (files.length === 0) {
-            return res.status(400).json({ error: 'Project has no files to deploy' });
+            return res.status(400).json({ error: 'Project has no files to deploy. Create a file in the editor first.' });
         }
 
         // Create deployment record (pending)
@@ -81,17 +84,31 @@ router.post('/', authenticateToken, async (req, res) => {
                     content: f.content || '',
                 }));
 
-                // Deploy to VPS
-                const { containerId, url } = await depService.deployProject(sanitized, fileData);
+                let containerId = null;
+                let url = `https://${sanitized}.buildrshq.dev`;
+
+                try {
+                    const result = await depService.deployProject(sanitized, fileData);
+                    containerId = result.containerId;
+                    url = result.url || url;
+                } catch (depErr) {
+                    // Deployment infra may not be reachable — mark as failed but keep the record
+                    console.error(`[deploy] ${sanitized} failed:`, depErr.message);
+                    await Deployment.findByIdAndUpdate(deployId, {
+                        status: 'failed',
+                        errorMessage: depErr.message
+                    });
+                    return;
+                }
 
                 await Deployment.findByIdAndUpdate(deployId, {
                     containerId,
                     deployedUrl: url,
                     status: 'success'
                 });
-                console.log(`[deploy] ✅ ${sanitized}.buildrshq.dev is live`);
+                console.log(`[deploy] ${sanitized}.buildrshq.dev is live`);
             } catch (err) {
-                console.error(`[deploy] ❌ ${sanitized} failed:`, err.message);
+                console.error(`[deploy] ${sanitized} failed:`, err.message);
                 await Deployment.findByIdAndUpdate(deployId, {
                     status: 'failed',
                     errorMessage: err.message
@@ -100,6 +117,7 @@ router.post('/', authenticateToken, async (req, res) => {
         });
 
         res.status(201).json({
+            success: true,
             deployment: {
                 ...deployment.toObject(),
                 deployedUrl: `https://${sanitized}.buildrshq.dev`

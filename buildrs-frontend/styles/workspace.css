@@ -326,7 +326,13 @@
   color: #94a3b8 !important;
 }
 
-/* ---- Responsive --------------------------------------------------------- */
+/* ---- Monaco remote cursor widget -------------------------------------- */
+
+.remote-cursor-widget {
+  width: 2px !important;
+  background: #a78bfa;
+  box-shadow: 0 0 0 1px #a78bfa;
+}
 
 @media (max-width: 1024px) {
   .workspace-sidebar {

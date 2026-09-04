@@ -13,9 +13,12 @@ import {
   Home, ExternalLink, FilePlus, List, Play, Square
 } from 'lucide-react';
 import MonacoEditor from '@monaco-editor/react';
+import { io } from 'socket.io-client';
 import useToastStore from '../store/toastStore';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useCurrentCompany } from '../hooks/useCurrentCompany';
+
+const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3000';
 
 function getMonacoLanguage(lang) {
   if (!lang) return 'plaintext';
@@ -136,9 +139,14 @@ export default function Editor() {
   const [newFileName, setNewFileName] = useState('');
   const [newFileLang, setNewFileLang] = useState('javascript');
   const [newFileContent, setNewFileContent] = useState('');
+  const [newFilePath, setNewFilePath] = useState('/');
+  const [showNewFolderModal, setShowNewFolderModal] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [newFolderPath, setNewFolderPath] = useState('/');
   const [creating, setCreating] = useState(false);
   const [status, setStatus] = useState(null);
   const [dirty, setDirty] = useState(false);
+  const [cursorPos, setCursorPos] = useState({ line: 1, col: 1 });
   const [activeTab, setActiveTab] = useState('editor');
   const [showTerminal, setShowTerminal] = useState(false);
   const [showAiHelper, setShowAiHelper] = useState(false);
@@ -146,6 +154,10 @@ export default function Editor() {
   const [aiMessages, setAiMessages] = useState([]);
   const [aiLoading, setAiLoading] = useState(false);
   const [collaborators, setCollaborators] = useState([]);
+  const [remoteCursors, setRemoteCursors] = useState({});
+  const [figmaFiles, setFigmaFiles] = useState([]);
+  const [selectedFigmaFile, setSelectedFigmaFile] = useState(null);
+  const socketRef = useRef(null);
   const [gitStatus, setGitStatus] = useState(null);
   const [deployments, setDeployments] = useState([]);
   const [sandboxUrl, setSandboxUrl] = useState(null);
@@ -181,6 +193,7 @@ export default function Editor() {
     loadDeployments();
     loadProjects();
     loadGithubRepos();
+    loadFigmaFiles();
   }, []);
 
   useEffect(() => {
@@ -199,6 +212,51 @@ export default function Editor() {
       loadFiles();
     }
   }, [selectedProject, selectedRepo]);
+
+  // Real-time collaboration: connect socket + join file room + cursor presence
+  useEffect(() => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+    if (!token) return;
+    const socket = io(SOCKET_URL, { auth: { token }, transports: ['websocket', 'polling'] });
+    socketRef.current = socket;
+
+    socket.on('collab:user-joined', ({ user }) => {
+      setCollaborators(prev => {
+        const exists = prev.some(c => c.userId === user?.userId || c.id === user?.id);
+        if (exists) return prev;
+        return [...prev, user || {}];
+      });
+      setStatus({ type: 'success', msg: 'Collaborator joined' });
+      setTimeout(() => setStatus(null), 2000);
+    });
+
+    socket.on('collab:user-left', ({ userId }) => {
+      setCollaborators(prev => prev.filter(c => c.userId !== userId));
+      setRemoteCursors(prev => { const n = { ...prev }; delete n[userId]; return n; });
+    });
+
+    socket.on('collab:cursor-update', ({ userId, userName, cursor }) => {
+      setRemoteCursors(prev => ({ ...prev, [userId]: { userName, cursor, ts: Date.now() } }));
+    });
+
+    return () => {
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, []);
+
+  // Join the current file's room + broadcast own cursor
+  useEffect(() => {
+    const socket = socketRef.current;
+    if (!socket || !selectedFile?._id) return;
+    socket.emit('collab:join', {
+      fileId: selectedFile._id,
+      user: { userId: user?.id || user?._id, name: user?.fullName || user?.name || 'You', email: user?.email },
+    });
+    return () => {
+      socket.emit('collab:leave', { fileId: selectedFile._id });
+    };
+  }, [selectedFile?._id, user]);
 
   useEffect(() => {
     function handleClickOutside(e) {
@@ -319,6 +377,13 @@ async function handleTerminalCommand(cmd, term) {
     try {
       const data = await apiFetch('/api/github/repos?per_page=20');
       setGithubRepos(data.repositories || []);
+    } catch {}
+  }
+
+  async function loadFigmaFiles() {
+    try {
+      const data = await apiFetch('/api/figma/files').catch(() => null);
+      if (data && data.files) setFigmaFiles(data.files);
     } catch {}
   }
 
@@ -463,35 +528,124 @@ async function handleTerminalCommand(cmd, term) {
     }
   }
 
+  // Monaco editor mount: broadcast cursor + render remote collaborators
+  function handleEditorMount(editor, monaco) {
+    const decorationsCollection = editor.createDecorationsCollection([]);
+    const currentUserName = user?.fullName || user?.name || 'You';
+
+    editor.onDidChangeCursorPosition((e) => {
+      setCursorPos({ line: e.position.lineNumber, col: e.position.column });
+      const socket = socketRef.current;
+      if (socket && selectedFile?._id) {
+        socket.emit('collab:cursor', {
+          fileId: selectedFile._id,
+          userId: user?.id || user?._id,
+          userName: currentUserName,
+          cursor: { line: e.position.lineNumber, column: e.position.column },
+        });
+      }
+    });
+
+    // Re-render remote cursor decorations whenever remoteCursors changes
+    const renderRemote = () => {
+      const decos = [];
+      Object.values(remoteCursors).forEach(({ userName, cursor }) => {
+        if (!cursor) return;
+        const pos = { lineNumber: cursor.line, column: cursor.column || 1 };
+        const range = new monaco.Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column);
+        decos.push({
+          range,
+          options: {
+            className: 'remote-cursor-widget',
+            hoverMessage: { value: `${userName} is here` },
+            stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
+            zIndex: 1000,
+          },
+        });
+      });
+      decorationsCollection.set(decos);
+    };
+    renderRemote();
+  }
+
   async function handleCreateFile(e) {
     e.preventDefault();
     if (!newFileName.trim()) return;
     try {
       setCreating(true);
+      const filePath = newFilePath || '/';
+      const payload = {
+        name: newFileName.trim(),
+        language: newFileLang,
+        content: newFileContent,
+        companyId: selectedProject?.workspaceId || workspaceId,
+        projectId: selectedProject?._id || selectedProject?.id || null,
+        path: filePath,
+      };
       const data = await apiFetch('/api/code-editor/files', {
         method: 'POST',
-        body: JSON.stringify({
-          name: newFileName,
-          language: newFileLang,
-          content: newFileContent,
-          companyId: workspaceId,
-        }),
+        body: JSON.stringify(payload),
       });
-      setFiles((prev) => [...prev, data.file]);
-      setSelectedFile(data.file);
-      setContent(data.file.content || '');
-      originalContentRef.current = data.file.content || '';
-      setDirty(false);
+      if (!data.success && !data.file) {
+        throw new Error(data.message || 'Create failed');
+      }
+      const created = data.file || data;
+      // Persist the file and reload from the server so it never disappears
       setShowNewModal(false);
       setNewFileName('');
       setNewFileLang('javascript');
       setNewFileContent('');
       setStatus({ type: 'success', msg: 'File created' });
       setTimeout(() => setStatus(null), 2000);
+      await reloadFiles();
+      if (created) openFile(created);
     } catch (err) {
       setStatus({ type: 'error', msg: err.message || 'Create failed' });
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function handleCreateFolder(e) {
+    e.preventDefault();
+    if (!newFolderName.trim()) return;
+    try {
+      setCreating(true);
+      const folderPath = newFolderPath || '/';
+      const data = await apiFetch('/api/vfs/folders', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: newFolderName.trim(),
+          path: folderPath,
+          companyId: selectedProject?.workspaceId || workspaceId,
+          projectId: selectedProject?._id || selectedProject?.id || null,
+        }),
+      });
+      if (!data.success) {
+        throw new Error(data.error || 'Folder create failed');
+      }
+      setShowNewFolderModal(false);
+      setNewFolderName('');
+      setStatus({ type: 'success', msg: 'Folder created' });
+      setTimeout(() => setStatus(null), 2000);
+      // Expand the newly created folder in the tree
+      const fp = (folderPath === '/' ? '' : folderPath) + '/' + newFolderName.trim();
+      setExpandedFolders(prev => ({ ...prev, [fp]: true }));
+      await reloadFiles();
+    } catch (err) {
+      setStatus({ type: 'error', msg: err.message || 'Folder create failed' });
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function reloadFiles() {
+    if (selectedProject) {
+      await loadProjectFiles(selectedProject._id || selectedProject.id);
+    } else if (selectedRepo) {
+      await loadGithubRepoFiles(selectedRepo);
+    } else {
+      await loadFiles();
     }
   }
 
@@ -555,9 +709,9 @@ async function handleTerminalCommand(cmd, term) {
       setStatus({ type: 'error', msg: 'Subdomain must be at least 2 characters.' });
       return;
     }
-    const projectId = selectedFile.project;
+    const projectId = selectedProject?._id || selectedProject?.id || selectedFile?.project;
     if (!projectId) {
-      setStatus({ type: 'error', msg: 'This file is not part of a project. Create a project first.' });
+      setStatus({ type: 'error', msg: 'Select a project in the Files panel before deploying.' });
       return;
     }
     try {
@@ -565,7 +719,11 @@ async function handleTerminalCommand(cmd, term) {
       setStatus({ type: 'info', msg: 'Deploying... (this may take a minute)' });
       const data = await apiFetch('/api/deployments', {
         method: 'POST',
-        body: JSON.stringify({ projectId, subdomain }),
+        body: JSON.stringify({
+          projectId,
+          subdomain,
+          companyId: selectedProject?.workspaceId || workspaceId,
+        }),
       });
       if (data.deployment) {
         setDeployments((prev) => [data.deployment, ...prev]);
@@ -664,6 +822,10 @@ async function handleTerminalCommand(cmd, term) {
               <button type="button" className="btn-workspace btn-primary" onClick={() => setShowNewModal(true)}>
                 <Plus className="w-4 h-4" />
                 <span>New File</span>
+              </button>
+              <button type="button" className="btn-workspace btn-secondary" onClick={() => setShowNewFolderModal(true)}>
+                <FolderPlus className="w-4 h-4" />
+                <span>New Folder</span>
               </button>
             </div>
           </header>
@@ -814,7 +976,7 @@ async function handleTerminalCommand(cmd, term) {
                       </div>
                     ) : (
                       <div className="border border-gray-700 rounded-lg overflow-hidden flex-1">
-                        <MonacoEditor height="500px" language={monacoLanguage} value={content} onChange={handleEditorChange} theme="vs-dark" options={{ fontSize: 14, minimap: { enabled: false }, scrollBeyondLastLine: false, wordWrap: 'on', tabSize: 2, automaticLayout: true, bracketPairColorization: { enabled: true } }} loading={<div className="flex items-center justify-center h-[500px] text-gray-400">Loading editor...</div>} />
+                        <MonacoEditor height="500px" language={monacoLanguage} value={content} onChange={handleEditorChange} onMount={handleEditorMount} theme="vs-dark" options={{ fontSize: 14, minimap: { enabled: false }, scrollBeyondLastLine: false, wordWrap: 'on', tabSize: 2, automaticLayout: true, bracketPairColorization: { enabled: true } }} loading={<div className="flex items-center justify-center h-[500px] text-gray-400">Loading editor...</div>} />
                       </div>
                     )}
                   </div>
@@ -851,8 +1013,27 @@ async function handleTerminalCommand(cmd, term) {
                   <div className="workspace-card-body p-0">
                     <div className="grid grid-cols-2 gap-0 min-h-[500px]">
                       <div className="border-r border-gray-700 p-2">
-                        <div className="text-xs text-gray-500 mb-2">Design</div>
-                        <div className="bg-navy-dark rounded p-4 h-[460px] flex items-center justify-center"><span className="text-gray-500">Figma / Design preview</span></div>
+                        <div className="text-xs text-gray-500 mb-2">Figma Design</div>
+                        {figmaFiles.length === 0 ? (
+                          <div className="bg-navy-dark rounded p-4 h-[460px] flex flex-col items-center justify-center text-center">
+                            <Layers className="w-10 h-10 text-gray-600 mb-3" />
+                            <p className="text-sm text-gray-400 mb-2">No Figma files connected</p>
+                            <a href="/integrations" className="btn-workspace btn-secondary text-xs">Connect Figma</a>
+                          </div>
+                        ) : (
+                          <div className="bg-navy-dark rounded h-[460px] overflow-y-auto">
+                            <div className="p-2 space-y-1">
+                              {figmaFiles.map((f) => (
+                                <button key={f.key || f.id} type="button"
+                                  onClick={() => setSelectedFigmaFile(f)}
+                                  className={`w-full text-left px-3 py-2 rounded text-xs transition ${selectedFigmaFile?.key === f.key || selectedFigmaFile?.id === f.id ? 'bg-blue-500/20 text-blue-300' : 'text-gray-300 hover:bg-white/5'}`}>
+                                  <div className="font-medium truncate">{f.name || f.key}</div>
+                                  <div className="text-[10px] text-gray-500">{f.last_modified ? new Date(f.last_modified).toLocaleDateString() : ''}</div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                       <div className="p-2">
                         <div className="text-xs text-gray-500 mb-2">Code</div>
@@ -890,13 +1071,30 @@ async function handleTerminalCommand(cmd, term) {
                 <div className="workspace-card flex-1">
                   <div className="workspace-card-header"><h2 className="workspace-card-title flex items-center gap-2"><Users className="w-4 h-4" /> Collaboration</h2></div>
                   <div className="workspace-card-body">
-                    <p className="text-sm text-gray-400 mb-4">Real-time Yjs collaboration. Share the file link to invite others.</p>
+                    <div className="mb-4 p-3 bg-navy rounded-lg border border-gray-700">
+                      <p className="text-xs text-gray-400 mb-2">Invite others to edit this file in real time.</p>
+                      <div className="flex gap-2">
+                        <input readOnly value={selectedFile ? `${window.location.origin}/editor?file=${selectedFile._id}` : `${window.location.origin}/editor`} className="flex-1 px-3 py-2 bg-navy border border-gray-600 rounded-lg text-xs text-gray-300" onFocus={(e) => e.target.select()} />
+                        <button type="button" className="btn-workspace btn-primary text-xs" onClick={() => { navigator.clipboard?.writeText(selectedFile ? `${window.location.origin}/editor?file=${selectedFile._id}` : `${window.location.origin}/editor`); setStatus({ type: 'success', msg: 'Invite link copied' }); setTimeout(() => setStatus(null), 2000); }}>Copy Link</button>
+                      </div>
+                    </div>
+                    <p className="text-sm text-gray-400 mb-2">Active collaborators ({collaborators.length}):</p>
                     <div className="space-y-2">
-                      {collaborators.length === 0 ? <p className="text-sm text-gray-500">No active collaborators</p> : collaborators.map((c, i) => (
+                      {collaborators.length === 0 ? <p className="text-sm text-gray-500">No active collaborators yet</p> : collaborators.map((c, i) => (
                         <div key={i} className="flex items-center gap-3 p-3 bg-navy rounded-lg border border-gray-700">
-                          <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-sm">{c.name?.[0] || 'U'}</div>
-                          <div><div className="text-sm font-medium">{c.name || 'Anonymous'}</div><div className="text-xs text-gray-500">{c.email || 'cursor at line ' + (c.cursor || 1)}</div></div>
+                          <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-sm text-white">{c.name?.[0] || 'U'}</div>
+                          <div>
+                            <div className="text-sm font-medium">{c.name || 'Anonymous'}</div>
+                            <div className="text-xs text-gray-500">{c.email || 'Connected'}</div>
+                          </div>
                           <span className="ml-auto w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                        </div>
+                      ))}
+                      {Object.values(remoteCursors).filter((rc) => rc.userName !== (user?.fullName || user?.name)).map((rc, i) => (
+                        <div key={`cursor-${i}`} className="flex items-center gap-3 p-2 bg-navy rounded-lg border border-blue-500/30">
+                          <div className="w-6 h-6 rounded-full bg-purple-500 flex items-center justify-center text-xs text-white">{(rc.userName || 'U')[0]}</div>
+                          <div className="text-xs text-gray-300">{rc.userName} is editing at line {rc.cursor?.line}, col {rc.cursor?.column}</div>
+                          <span className="ml-auto w-2 h-2 bg-purple-400 rounded-full animate-pulse" />
                         </div>
                       ))}
                     </div>
@@ -1080,6 +1278,10 @@ async function handleTerminalCommand(cmd, term) {
                 <input type="text" value={newFileName} onChange={(e) => setNewFileName(e.target.value)} placeholder="e.g. app.js" className="form-input w-full" autoFocus required />
               </div>
               <div>
+                <label className="block text-sm font-medium mb-1">Path (folder)</label>
+                <input type="text" value={newFilePath} onChange={(e) => setNewFilePath(e.target.value)} placeholder="/src" className="form-input w-full" />
+              </div>
+              <div>
                 <label className="block text-sm font-medium mb-1">Language</label>
                 <select value={newFileLang} onChange={(e) => setNewFileLang(e.target.value)} className="form-input w-full">
                   {(languages.length > 0 ? languages : [{ name: 'javascript' }, { name: 'python' }, { name: 'typescript' }, { name: 'html' }, { name: 'css' }, { name: 'json' }, { name: 'markdown' }, { name: 'plaintext' }]).map((lang) => (
@@ -1096,6 +1298,32 @@ async function handleTerminalCommand(cmd, term) {
                 <button type="submit" className="cta-button px-4 py-2 rounded-lg text-white font-medium flex items-center gap-2" disabled={creating || !newFileName.trim()}>
                   <Plus className="w-4 h-4" />
                   {creating ? 'Creating...' : 'Create File'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {showNewFolderModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-navy-light border border-gray-700 rounded-xl w-full max-w-lg shadow-2xl">
+            <div className="p-6 border-b border-gray-700">
+              <h2 className="text-lg font-bold flex items-center gap-2"><FolderPlus className="w-5 h-5" />Create New Folder</h2>
+            </div>
+            <form onSubmit={handleCreateFolder} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Folder Name</label>
+                <input type="text" value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)} placeholder="e.g. src" className="form-input w-full" autoFocus required />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Parent Path</label>
+                <input type="text" value={newFolderPath} onChange={(e) => setNewFolderPath(e.target.value)} placeholder="/" className="form-input w-full" />
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button type="button" className="btn-workspace btn-secondary px-4 py-2 rounded-lg" onClick={() => setShowNewFolderModal(false)}>Cancel</button>
+                <button type="submit" className="cta-button px-4 py-2 rounded-lg text-white font-medium flex items-center gap-2" disabled={creating || !newFolderName.trim()}>
+                  <FolderPlus className="w-4 h-4" />
+                  {creating ? 'Creating...' : 'Create Folder'}
                 </button>
               </div>
             </form>

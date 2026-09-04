@@ -208,6 +208,7 @@ const collaborationOverlayRoutes = require('./routes/collaboration-overlay');
 const debugHandoffRoutes = require('./routes/debug-handoff');
 const collabRealtimeRoutes = require('./routes/collab-realtime');
 const designSyncRoutes = require('./routes/design-sync');
+const deploymentRoutes = require('./routes/deployments');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/otp', otpRoutes);
@@ -246,6 +247,7 @@ app.use('/api/vfs', vfsRoutes);
 app.use('/api/terminal', terminalRoutes);
 app.use('/api/git', gitRoutes);
 app.use('/api/debug', debugRoutes);
+app.use('/api/deployments', deploymentRoutes);
 app.use('/api/agent-confirmation', agentConfirmationRoutes);
 // Project routes (enforcement of project limits handled in route handlers)
 app.use('/api/projects', projectRoutes);
@@ -508,6 +510,20 @@ io.on('connection', (socket) => {
             console.log(`User ${socket.userId} left file: ${fileId}`);
         } catch (error) {
             console.error('Leave error:', error);
+        }
+    });
+
+    // Lightweight cursor presence (plain JSON, no Yjs required)
+    socket.on('collab:cursor', ({ fileId, userId, userName, cursor }) => {
+        try {
+            socket.to(`file:${fileId}`).emit('collab:cursor-update', {
+                userId: userId || socket.userId,
+                userName: userName || 'Anonymous',
+                cursor,
+                ts: Date.now()
+            });
+        } catch (error) {
+            console.error('Cursor broadcast error:', error);
         }
     });
     
