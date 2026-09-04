@@ -43,6 +43,30 @@ async function getHomeDir() {
   return homeDirCache;
 }
 
+// Find a writable deployment base by trying multiple locations.
+async function findWritableBase() {
+  const homeDir = await getHomeDir();
+  const candidates = [
+    `${homeDir}/deployments`,
+    `${homeDir}/${DEPLOY_SUBDIR}`,
+    '/var/tmp/deployments',
+    '/tmp/deployments',
+  ];
+  for (const dir of candidates) {
+    try {
+      await sshExec(`mkdir -p ${dir} && touch ${dir}/.writetest && rm -f ${dir}/.writetest`);
+      return dir;
+    } catch (_) {
+      // try next
+    }
+  }
+  throw new Error(
+    'No writable deployment directory found on the VPS. ' +
+    `Tried: ${candidates.join(', ')}. ` +
+    'Ensure the SSH user can write to its home directory or /var/tmp.'
+  );
+}
+
 function getKeyFile() {
   if (keyFile) return keyFile;
   const rawKey = getRawKey();
@@ -137,9 +161,8 @@ async function deployProject(subdomain, files) {
     throw new Error('Subdomain must be at least 2 characters');
   }
 
-  // Always deploy inside the SSH user's home directory (always writable)
-  const homeDir = await getHomeDir();
-  const deployBase = `${homeDir}/${DEPLOY_SUBDIR}`;
+  // Always deploy inside a writable directory on the VPS
+  const deployBase = await findWritableBase();
   const deploymentDir = `${deployBase}/${sanitizedSubdomain}`;
   const containerName = `deploy-${sanitizedSubdomain}`;
 

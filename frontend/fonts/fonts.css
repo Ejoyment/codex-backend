@@ -1,0 +1,53 @@
+/* Space Grotesk Font Face Declaration */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
+
+/* Fallback to Leading if needed */
+@font-face {
+    font-family: 'Leading';
+    src: url('Leading-Regular.woff2') format('woff2'),
+         url('Leading-Regular.woff') format('woff'),
+         url('Leading-Regular.ttf') format('truetype');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Leading';
+    src: url('Leading-Bold.woff2') format('woff2'),
+         url('Leading-Bold.woff') format('woff'),
+         url('Leading-Bold.ttf') format('truetype');
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Leading';
+    src: url('Leading-Light.woff2') format('woff2'),
+         url('Leading-Light.woff') format('woff'),
+         url('Leading-Light.ttf') format('truetype');
+    font-weight: 300;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Leading';
+    src: url('Leading-Medium.woff2') format('woff2'),
+         url('Leading-Medium.woff') format('woff'),
+         url('Leading-Medium.ttf') format('truetype');
+    font-weight: 500;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Leading';
+    src: url('Leading-SemiBold.woff2') format('woff2'),
+         url('Leading-SemiBold.woff') format('woff'),
+         url('Leading-SemiBold.ttf') format('truetype');
+    font-weight: 600;
+    font-style: normal;
+    font-display: swap;
+}
