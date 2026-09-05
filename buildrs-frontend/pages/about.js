@@ -1,152 +1,169 @@
 import Head from 'next/head';
-import ModernHeader from '../components/ModernHeader';
 import Link from 'next/link';
-import { Lightbulb, Shield, Users, Zap } from 'lucide-react';
+import SiteShell from '../components/SiteShell';
+
+const VALUES = [
+  {
+    num: '01',
+    title: 'Your code stays yours',
+    desc: 'We never train AI on your source. Tenant-owned memory and encrypted project context, full stop.',
+  },
+  {
+    num: '02',
+    title: 'Craft over volume',
+    desc: 'One workspace that is genuinely good at the whole pipeline beats ten tools that are each fine at a slice.',
+  },
+  {
+    num: '03',
+    title: 'Speed is a feature',
+    desc: 'Context-switching is the tax we are built to refund. Every screen is an attempt to remove a tab.',
+  },
+  {
+    num: '04',
+    title: 'Global by default',
+    desc: 'Local payment rails, async culture, and a remote-first team built for teams everywhere.',
+  },
+];
+
+const TIMELINE = [
+  ['the problem', 'Devs lose ~40% of the week to context-switching between 10+ disconnected tools.'],
+  ['the insight', 'AI siloed in a chat tab has no context. Collaboration bolted on after the fact has no teeth.'],
+  ['the bet', 'Put code, AI with real codebase memory, and real-time teamwork in one surface.'],
+  ['today', 'Buildrs runs in the browser with CRDT co-editing, sandboxed terminals, and pay-as-you-go billing worldwide.'],
+];
 
 export default function About() {
   return (
     <>
       <Head>
-        <title>About Us - BuildrsHQ</title>
+        <title>About — BuildrsHQ</title>
+        <meta
+          name="description"
+          content="Buildrs by CODEX INC — the unified development command center. Built to collapse the fragmented dev toolchain into one workspace."
+        />
         <link rel="icon" href="/buildrs.png" />
       </Head>
 
-      <div className="min-h-screen bg-[#0a1628] text-white overflow-x-hidden">
-        <div className="cube cube-1" />
-        <div className="cube cube-2" />
-        <div className="cube cube-3" />
+      <SiteShell>
+        {/* Hero */}
+        <section className="relative overflow-hidden pt-36 pb-20 sm:pt-44">
+          <div className="mkt-hero-bg" />
+          <div className="relative mx-auto max-w-[1200px] px-5 sm:px-8">
+            <p className="mkt-eyebrow mb-6">
+              <span className="dot">●</span> buildrs · about
+            </p>
+            <h1 className="mkt-h1">
+              Built for teams
+              <br />
+              that <span className="accent">ship</span>.
+            </h1>
+            <p className="mkt-sub mt-6 max-w-[560px]">
+              Buildrs is a product of CODEX INC ENTERPRISE. We took the eleven-tool ritual
+              of modern development and rebuilt it as one command center.
+            </p>
+          </div>
+        </section>
 
-        <ModernHeader
-          navigation={[
-            { href: '/features', label: 'Features' },
-            { href: '/pricing', label: 'Pricing' },
-            { href: '/blog', label: 'Blog' },
-            { href: '/docs', label: 'Docs' },
-          ]}
-          ctaButtons={[
-            { href: '/sign_in', label: 'Sign In' },
-            { href: '/signup', label: 'Start Free Trial', primary: true },
-          ]}
-        />
-
-        <div className="h-20" />
-
-        <section className="py-20 px-4">
-          <div className="max-w-7xl mx-auto">
-            <div className="text-center mb-16">
-              <h1 className="text-5xl md:text-6xl font-bold mb-6">Building the Future of Development</h1>
-              <p className="text-xl text-gray-300 max-w-3xl mx-auto">We're on a mission to make every developer extraordinarily productive with AI-powered tools</p>
+        {/* Story / timeline */}
+        <section className="border-t border-[#ffffff0d]">
+          <div className="mx-auto grid max-w-[1200px] gap-12 px-5 py-20 sm:px-8 lg:grid-cols-[0.8fr_1.2fr]">
+            <div>
+              <p className="mkt-eyebrow mb-4">
+                <span className="dot">●</span> why we built this
+              </p>
+              <h2 className="mkt-h2">From tab chaos to one workspace.</h2>
+              <p className="mkt-sub mt-5">
+                Every developer knows the feeling: GitHub open, Slack pinging, ChatGPT on the
+                side, a terminal buried somewhere. Feedback loops break, context evaporates,
+                and the actual building gets the leftovers.
+              </p>
+              <p className="mt-4 text-[14px] leading-relaxed text-[#a8adba]">
+                Buildrs was built so the loop never breaks — an AI pair programmer that has
+                read your repo, co-editing that cannot conflict, and standups that live where
+                the code is.
+              </p>
             </div>
 
-            <div className="grid lg:grid-cols-2 gap-12 mb-20">
-              <div className="bg-[#1a2332] p-12 rounded-2xl border border-gray-700">
-                <h2 className="text-3xl font-bold mb-6">Our Mission</h2>
-                <p className="text-gray-300 text-lg leading-relaxed">
-                  At BuildrsHQ, we believe that AI should amplify human creativity, not replace it. We're building tools that help developers focus on what matters most: solving problems and building amazing products.
-                </p>
-              </div>
-              <div className="bg-[#1a2332] p-12 rounded-2xl border border-gray-700">
-                <h2 className="text-3xl font-bold mb-6">Our Vision</h2>
-                <p className="text-gray-300 text-lg leading-relaxed">
-                  We envision a world where every developer has access to intelligent tools that make coding more intuitive, collaborative, and enjoyable.
-                </p>
-              </div>
-            </div>
-
-            <div className="mb-20">
-              <h2 className="text-4xl font-bold text-center mb-12">Our Values</h2>
-              <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-                <div className="text-center">
-                  <div className="w-16 h-16 bg-blue-500 rounded-full mx-auto mb-4 flex items-center justify-center"><Lightbulb className="w-8 h-8 text-white" /></div>
-                  <h3 className="text-xl font-bold mb-2">Innovation</h3>
-                  <p className="text-gray-300">Pushing boundaries with cutting-edge AI technology</p>
-                </div>
-                <div className="text-center">
-                  <div className="w-16 h-16 bg-green-500 rounded-full mx-auto mb-4 flex items-center justify-center"><Shield className="w-8 h-8 text-white" /></div>
-                  <h3 className="text-xl font-bold mb-2">Privacy</h3>
-                  <p className="text-gray-300">Your code is yours. We never train on it</p>
-                </div>
-                <div className="text-center">
-                  <div className="w-16 h-16 bg-purple-500 rounded-full mx-auto mb-4 flex items-center justify-center"><Users className="w-8 h-8 text-white" /></div>
-                  <h3 className="text-xl font-bold mb-2">Community</h3>
-                  <p className="text-gray-300">Building together with developers worldwide</p>
-                </div>
-                <div className="text-center">
-                  <div className="w-16 h-16 bg-yellow-500 rounded-full mx-auto mb-4 flex items-center justify-center"><Zap className="w-8 h-8 text-white" /></div>
-                  <h3 className="text-xl font-bold mb-2">Speed</h3>
-                  <p className="text-gray-300">Making developers 10x more productive</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="mb-20">
-              <h2 className="text-4xl font-bold text-center mb-12">Meet Our Team</h2>
-              <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-                <div className="team-card bg-[#1a2332] rounded-xl overflow-hidden border border-gray-700">
-                  <div className="h-48 bg-gradient-to-br from-blue-500 to-purple-600" />
-                  <div className="p-6">
-                    <h3 className="text-xl font-bold mb-1">Ejoymene David</h3>
-                    <p className="text-blue-400 mb-3">CEO & Founder</p>
-                    <p className="text-gray-300 text-sm">Oracle AI Certified Professional and OSCP holder with 2+ years AI industry experience</p>
+            <div className="grid gap-px overflow-hidden rounded-xl border border-[#ffffff12] bg-[#ffffff12]">
+              {TIMELINE.map(([tag, text], i) => (
+                <div key={tag} className="flex gap-5 bg-[#0d0d12] p-6">
+                  <p className="mkt-num text-sm text-[#525764]">{`0${i + 1}`}</p>
+                  <div>
+                    <p className="mkt-mono text-[10.5px] uppercase tracking-widest text-[#2fd6e6]">{tag}</p>
+                    <p className="mt-2 text-[13.5px] leading-relaxed text-[#a8adba]">{text}</p>
                   </div>
                 </div>
-              </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Values */}
+        <section className="border-t border-[#ffffff0d]">
+          <div className="mx-auto max-w-[1200px] px-5 py-20 sm:px-8">
+            <p className="mkt-eyebrow mb-4">
+              <span className="dot">●</span> values
+            </p>
+            <h2 className="mkt-h2 mb-12">What we optimize for.</h2>
+            <div className="grid gap-px overflow-hidden rounded-xl border border-[#ffffff12] bg-[#ffffff12] sm:grid-cols-2">
+              {VALUES.map((v) => (
+                <div key={v.num} className="bg-[#0d0d12] p-7">
+                  <p className="mkt-num text-sm text-[#2fd6e6]">{v.num}</p>
+                  <h3 className="mkt-h3 mt-4">{v.title}</h3>
+                  <p className="mt-3 text-[13.5px] leading-relaxed text-[#a8adba]">{v.desc}</p>
+                </div>
+              ))}
             </div>
 
-            <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl p-12 text-center">
-              <h2 className="text-3xl font-bold mb-4">Join Us on This Journey</h2>
-              <p className="text-xl mb-8 opacity-90">We're always looking for talented people to join our team</p>
-              <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <Link href="/careers" className="bg-white text-blue-600 px-8 py-3 rounded-lg font-medium hover:bg-gray-100 transition">View Open Positions</Link>
-                <Link href="/contact" className="border-2 border-white px-8 py-3 rounded-lg font-medium hover:bg-white/10 transition">Get in Touch</Link>
+            {/* Team */}
+            <div className="mt-16 grid gap-8 lg:grid-cols-[0.8fr_1.2fr]">
+              <p className="mkt-eyebrow">
+                <span className="dot">●</span> the builder
+              </p>
+              <div className="mkt-card max-w-[520px] p-7">
+                <div className="flex items-center gap-5">
+                  <div
+                    className="mkt-mono flex h-14 w-14 items-center justify-center rounded-full text-[16px] font-semibold text-[#04181b]"
+                    style={{ background: '#2fd6e6' }}
+                  >
+                    ED
+                  </div>
+                  <div>
+                    <h3 className="mkt-h3">Ejoymene David</h3>
+                    <p className="mkt-mono mt-1 text-[11px] uppercase tracking-widest text-[#686e7c]">
+                      CEO & founder · codex inc
+                    </p>
+                  </div>
+                </div>
+                <p className="mt-5 text-[13.5px] leading-relaxed text-[#a8adba]">
+                  Oracle AI-certified professional with a security background. Built Buildrs to
+                  give every team — from Lagos to San Francisco — the same ability to ship that
+                  big platforms have.
+                </p>
               </div>
             </div>
           </div>
         </section>
 
-        <footer className="bg-navy-dark border-t border-gray-700 py-12 px-4 sm:px-6 lg:px-8">
-          <div className="max-w-7xl mx-auto">
-            <div className="grid md:grid-cols-4 gap-8 mb-8">
-              <div>
-                <div className="flex items-center space-x-2 mb-4">
-                  <div className="w-8 h-8 bg-transparent-accent rounded"><img src="/buildrs.png" alt="" /></div>
-                  <span className="text-xl font-semibold">BuildrsHQ</span>
-                </div>
-                <p className="text-gray-400 mb-4">The AI-first code editor built to make you extraordinarily productive.</p>
-              </div>
-              <div>
-                <h4 className="font-semibold mb-4">Product</h4>
-                <ul className="space-y-2 text-gray-400">
-                  <li><Link href="/features" className="hover:text-white">Features</Link></li>
-                  <li><Link href="/pricing" className="hover:text-white">Pricing</Link></li>
-                  <li><Link href="/changelog" className="hover:text-white">Changelog</Link></li>
-                </ul>
-              </div>
-              <div>
-                <h4 className="font-semibold mb-4">Company</h4>
-                <ul className="space-y-2 text-gray-400">
-                  <li><Link href="/about" className="hover:text-white">About</Link></li>
-                  <li><Link href="/blog" className="hover:text-white">Blog</Link></li>
-                  <li><Link href="/careers" className="hover:text-white">Careers</Link></li>
-                  <li><Link href="/contact" className="hover:text-white">Contact</Link></li>
-                </ul>
-              </div>
-              <div>
-                <h4 className="font-semibold mb-4">Resources</h4>
-                <ul className="space-y-2 text-gray-400">
-                  <li><Link href="/docs" className="hover:text-white">Documentation</Link></li>
-                  <li><Link href="/support" className="hover:text-white">Support</Link></li>
-                  <li><Link href="/privacy" className="hover:text-white">Privacy</Link></li>
-                  <li><Link href="/terms" className="hover:text-white">Terms</Link></li>
-                </ul>
-              </div>
-            </div>
-            <div className="border-t border-gray-700 mt-8 pt-8 text-center text-gray-400">
-              <p>&copy; 2026 BuildrsHQ. All rights reserved.</p>
+        {/* CTA */}
+        <section className="relative overflow-hidden border-t border-[#ffffff0d]">
+          <div className="mkt-hero-bg" />
+          <div className="relative mx-auto max-w-[1200px] px-5 py-24 text-center sm:px-8">
+            <h2 className="mkt-h2 mx-auto max-w-[560px]">Come see it working.</h2>
+            <p className="mkt-sub mx-auto mt-5 max-w-[420px]">
+              No sales deck required — the workspace is live and free to try.
+            </p>
+            <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
+              <Link href="/signup" className="mkt-btn mkt-btn-primary !px-7 !py-3 !text-[15px]">
+                Start building <span className="mkt-arrow">→</span>
+              </Link>
+              <Link href="/careers" className="mkt-btn !px-7 !py-3 !text-[15px]">
+                Work with us
+              </Link>
             </div>
           </div>
-        </footer>
-      </div>
+        </section>
+      </SiteShell>
     </>
   );
 }

@@ -1,119 +1,132 @@
 import Head from 'next/head';
-import ModernHeader from '../components/ModernHeader';
-import Link from 'next/link';
 import { useState } from 'react';
 import useToastStore from '../store/toastStore';
+import SiteShell from '../components/SiteShell';
+
+const SELLING_POINTS = [
+  ['ai', 'a 30-minute run-through of the workspace, your stack in mind'],
+  ['live', 'see real co-editing, the AI pair, and a standup in one session'],
+  ['billing', 'pricing fit for your team size and region answered honestly'],
+];
 
 export default function Demo() {
   const [form, setForm] = useState({ fullName: '', email: '', company: '', teamSize: '', date: '', message: '' });
   const toast = useToastStore();
+
   const onChange = (e) => setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
-  const onSubmit = (e) => { e.preventDefault(); toast.success('Demo request received. We will reach out shortly.'); setForm({ fullName: '', email: '', company: '', teamSize: '', date: '', message: '' }); };
+
+  const onSubmit = (e) => {
+    e.preventDefault();
+    toast.success('Demo request received. We will reach out shortly.');
+    setForm({ fullName: '', email: '', company: '', teamSize: '', date: '', message: '' });
+  };
 
   return (
     <>
       <Head>
-        <title>Schedule a Demo - BuildrsHQ</title>
+        <title>Schedule a Demo — BuildrsHQ</title>
+        <meta
+          name="description"
+          content="Book a personalized walkthrough of Buildrs — see co-editing, the AI pair, and standups live."
+        />
         <link rel="icon" href="/buildrs.png" />
       </Head>
 
-      <div className="min-h-screen bg-[#0a1628] text-white overflow-x-hidden">
-        <div className="cube cube-1" />
-        <div className="cube cube-2" />
-        <div className="cube cube-3" />
-
-        <ModernHeader
-          navigation={[
-            { href: '/features', label: 'Features' },
-            { href: '/pricing', label: 'Pricing' },
-            { href: '/blog', label: 'Blog' },
-            { href: '/changelog', label: 'Changelog' },
-          ]}
-          ctaButtons={[
-            { href: '/sign_in', label: 'Sign In' },
-            { href: '/signup', label: 'Start Free Trial', primary: true },
-          ]}
-        />
-
-        <div className="h-20" />
-
-        <section className="content py-20 px-4">
-          <div className="max-w-2xl mx-auto">
-            <h1 className="text-5xl font-bold mb-6 text-center">Schedule a Demo</h1>
-            <p className="text-xl text-gray-300 mb-12 text-center">See BuildrsHQ in action with a personalized demo</p>
-
-            <div className="bg-[#1a2332] p-8 rounded-xl border border-gray-700">
-              <form onSubmit={onSubmit} className="space-y-6">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Full Name</label>
-                  <input type="text" name="fullName" value={form.fullName} onChange={onChange} className="w-full px-4 py-3 bg-[#0a1628] border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500" placeholder="John Doe" required />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Work Email</label>
-                  <input type="email" name="email" value={form.email} onChange={onChange} className="w-full px-4 py-3 bg-[#0a1628] border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500" placeholder="john@company.com" required />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Company Name</label>
-                  <input type="text" name="company" value={form.company} onChange={onChange} className="w-full px-4 py-3 bg-[#0a1628] border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500" placeholder="Acme Inc" required />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Team Size</label>
-                  <select name="teamSize" value={form.teamSize} onChange={onChange} className="w-full px-4 py-3 bg-[#0a1628] border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500" required>
-                    <option value="">Select team size</option>
-                    <option value="1-10">1-10 people</option>
-                    <option value="11-50">11-50 people</option>
-                    <option value="51-200">51-200 people</option>
-                    <option value="200+">200+ people</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Preferred Date</label>
-                  <input type="date" name="date" value={form.date} onChange={onChange} className="w-full px-4 py-3 bg-[#0a1628] border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500" required />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Message (Optional)</label>
-                  <textarea name="message" rows="4" value={form.message} onChange={onChange} className="w-full px-4 py-3 bg-[#0a1628] border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500" placeholder="Tell us about your needs..." />
-                </div>
-                <button type="submit" className="w-full bg-blue-500 text-white px-6 py-4 rounded-lg font-semibold hover:bg-blue-600 transition">Schedule Demo</button>
-              </form>
-            </div>
+      <SiteShell>
+        {/* Hero */}
+        <section className="relative overflow-hidden pt-36 pb-16 sm:pt-44">
+          <div className="mkt-hero-bg" />
+          <div className="relative mx-auto max-w-[1200px] px-5 sm:px-8">
+            <p className="mkt-eyebrow mb-6">
+              <span className="dot">●</span> buildrs · demo
+            </p>
+            <h1 className="mkt-h1">
+              See it <span className="accent">live</span>.
+            </h1>
+            <p className="mkt-sub mt-6 max-w-[520px]">
+              A personalized walkthrough of the workspace — 30 minutes, your questions answered
+              with the product on screen.
+            </p>
           </div>
         </section>
 
-        <footer className="bg-[#070F34] border-t border-gray-700 py-12 px-4">
-          <div className="max-w-7xl mx-auto grid md:grid-cols-4 gap-8">
-            <div>
-              <h4 className="font-semibold mb-4">Product</h4>
-              <ul className="space-y-2 text-gray-400">
-                <li><Link href="/features" className="hover:text-white">Features</Link></li>
-                <li><Link href="/pricing" className="hover:text-white">Pricing</Link></li>
-                <li><Link href="/changelog" className="hover:text-white">Changelog</Link></li>
-              </ul>
+        {/* Split */}
+        <section className="mx-auto grid max-w-[1200px] gap-10 px-5 pb-20 sm:px-8 lg:grid-cols-[0.9fr_1.1fr]">
+          <div>
+            <p className="mkt-eyebrow mb-6">
+              <span className="dot">●</span> what you’ll see
+            </p>
+            <div className="space-y-px overflow-hidden rounded-xl border border-[#ffffff12] bg-[#ffffff12]">
+              {SELLING_POINTS.map(([tag, text]) => (
+                <div key={tag} className="flex gap-5 bg-[#0d0d12] p-6">
+                  <span className="mkt-pill flex-shrink-0">{tag}</span>
+                  <p className="text-[13.5px] leading-relaxed text-[#a8adba]">{text}</p>
+                </div>
+              ))}
             </div>
-            <div>
-              <h4 className="font-semibold mb-4">Company</h4>
-              <ul className="space-y-2 text-gray-400">
-                <li><Link href="/about" className="hover:text-white">About</Link></li>
-                <li><Link href="/blog" className="hover:text-white">Blog</Link></li>
-                <li><Link href="/careers" className="hover:text-white">Careers</Link></li>
-                <li><Link href="/contact" className="hover:text-white">Contact</Link></li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-semibold mb-4">Resources</h4>
-              <ul className="space-y-2 text-gray-400">
-                <li><Link href="/docs" className="hover:text-white">Documentation</Link></li>
-                <li><Link href="/support" className="hover:text-white">Support</Link></li>
-                <li><Link href="/privacy" className="hover:text-white">Privacy</Link></li>
-                <li><Link href="/terms" className="hover:text-white">Terms</Link></li>
-              </ul>
+            <div className="mkt-card mt-6 p-6">
+              <div className="mkt-live mb-2">
+                <span className="dot" />
+                <span className="mkt-mono text-[11px] uppercase tracking-widest text-[#686e7c]">
+                  no slideware — the live workspace
+                </span>
+              </div>
+              <p className="text-[13px] leading-relaxed text-[#a8adba]">
+                We demo the real product, not a deck. Bring your stack and we’ll talk through how
+                Buildrs would sit in it.
+              </p>
             </div>
           </div>
-          <div className="border-t border-gray-700 mt-8 pt-8 text-center text-gray-400">
-            <p>&copy; 2026 BuildrsHQ. All rights reserved.</p>
+
+          <div className="mkt-card p-8 sm:p-10">
+            <h2 className="mkt-h3">Request a slot</h2>
+            <form onSubmit={onSubmit} className="mt-7 space-y-6">
+              <div className="grid gap-6 sm:grid-cols-2">
+                <div>
+                  <label className="mkt-label">Full name</label>
+                  <input type="text" name="fullName" value={form.fullName} onChange={onChange} className="mkt-input" placeholder="Jane Doe" required />
+                </div>
+                <div>
+                  <label className="mkt-label">Work email</label>
+                  <input type="email" name="email" value={form.email} onChange={onChange} className="mkt-input" placeholder="jane@company.com" required />
+                </div>
+              </div>
+              <div className="grid gap-6 sm:grid-cols-2">
+                <div>
+                  <label className="mkt-label">Company</label>
+                  <input type="text" name="company" value={form.company} onChange={onChange} className="mkt-input" placeholder="Acme Inc" required />
+                </div>
+                <div>
+                  <label className="mkt-label">Team size</label>
+                  <select name="teamSize" value={form.teamSize} onChange={onChange} className="mkt-select" required>
+                    <option value="">Select</option>
+                    <option value="1-10">1–10 people</option>
+                    <option value="11-50">11–50 people</option>
+                    <option value="51-200">51–200 people</option>
+                    <option value="200+">200+ people</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="mkt-label">Preferred date</label>
+                <input type="date" name="date" value={form.date} onChange={onChange} className="mkt-input" required
+                  style={{ colorScheme: 'dark' }}
+                />
+              </div>
+              <div>
+                <label className="mkt-label">Message <span className="normal-case tracking-normal">(optional)</span></label>
+                <textarea name="message" rows="3" value={form.message} onChange={onChange} className="mkt-textarea" placeholder="Anything we should prep for?" />
+              </div>
+              <button type="submit" className="mkt-btn mkt-btn-primary w-full justify-center !py-3.5 text-[15px]">
+                Request demo <span className="mkt-arrow">→</span>
+              </button>
+              <p className="mkt-mono text-center text-[11px] text-[#525764]">
+                replies within one business day · no obligation
+              </p>
+            </form>
           </div>
-        </footer>
-      </div>
+        </section>
+      </SiteShell>
     </>
   );
 }

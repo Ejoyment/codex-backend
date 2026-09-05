@@ -1,717 +1,515 @@
 import Head from 'next/head';
 import Link from 'next/link';
 import { useState } from 'react';
+import SiteShell from '../components/SiteShell';
+
+const HELP = {
+  help:
+    'available: deploy, status, team, pair, clear',
+  deploy:
+    '✓ building latest commit\n✓ deploying to acme.buildrshq.dev\n✓ live in 6.4s — https://acme.buildrshq.dev',
+  status:
+    '● platform: online   |  latency 42ms\n● index: 1,284 files  |  3 teammates online',
+  team:
+    'acme/core — 4 online\n  · ada … editing src/components/dashboard.tsx\n  · rowan … reviewing PR #128\n  · you in room: standup in 12m',
+  pair:
+    '▸ reading codebase · 1,284 files · 2.1s\n▸ validating refactor for dashboard.tsx\n✓ applied — 3 files changed, 42 lines removed',
+  clear: '',
+};
+
+const STACK = [
+  {
+    name: 'Workspace',
+    status: 'live',
+    badge: 'CRDT · yjs',
+    desc: 'Co-edit files with live cursors and presence — conflict-free.',
+  },
+  {
+    name: 'AI pair',
+    status: 'live',
+    badge: 'Groq · Gemini',
+    desc: 'An assistant with real memory of your codebase, not a paste-in tab.',
+  },
+  {
+    name: 'Terminal',
+    status: 'live',
+    badge: 'xterm · sandbox',
+    desc: 'Run, debug, and test in a secure in-browser sandbox.',
+  },
+  {
+    name: 'Tasks',
+    status: 'live',
+    badge: 'roles · kanban',
+    desc: 'Plan, assign, and track work two tabs away from the code.',
+  },
+  {
+    name: 'Meetings',
+    status: 'beta',
+    badge: 'standups · review',
+    desc: 'Standups and live code review, inside the workspace.',
+  },
+  {
+    name: 'Chat',
+    status: 'live',
+    badge: 'threads · search',
+    desc: 'Async talk that lives beside the code it is about.',
+  },
+  {
+    name: 'Integrations',
+    status: 'live',
+    badge: 'github · slack · figma',
+    desc: 'Connect the stack you already run today.',
+  },
+  {
+    name: 'Support agents',
+    status: 'beta',
+    badge: 'ai · tickets',
+    desc: 'Tickets answered by AI with full project context.',
+  },
+];
+
+const BUILD = [
+  {
+    icon: '⌥',
+    title: 'Code editor',
+    tag: 'LSP · multi-cursor',
+    desc: 'An editor with language intelligence, inline AI completions, and a virtual file system.',
+  },
+  {
+    icon: 'AI',
+    title: 'AI pair programmer',
+    tag: 'memory · refactor',
+    desc: 'Explains code, writes tests, and refactors against your real repository context.',
+  },
+  {
+    icon: '>_',
+    title: 'Sandbox terminal',
+    tag: 'xterm · gated exec',
+    desc: 'Full shell in the browser with command gating — experiment without risk.',
+  },
+  {
+    icon: '⌘',
+    title: 'Source control',
+    tag: 'PRs · diffs',
+    desc: 'Pull requests, reviews, and diffs rendered inside the workspace, not a separate app.',
+  },
+];
+
+const COLLAB = [
+  {
+    num: '01',
+    title: 'Live co-editing',
+    desc: 'Cursors, selections, and edits stream in real time over Yjs CRDT — no lock files, no merge pain.',
+  },
+  {
+    num: '02',
+    title: 'Presence & rooms',
+    desc: 'See who is on, where they are working, and hop into a room or a standup without leaving the tab.',
+  },
+  {
+    num: '03',
+    title: 'Threads on code',
+    desc: 'Chat and review threads anchor to files and lines, so decisions keep their context.',
+  },
+  {
+    num: '04',
+    title: 'Roles that scale',
+    desc: 'Company profiles, role-based permissions, and audit logs from two-person teams to enterprise.',
+  },
+];
+
+const RUN = [
+  {
+    tag: 'projects',
+    title: 'Everything in scope',
+    desc: 'Projects, tasks, activity, and deployments tracked in one surface you can route a whole sprint through.',
+  },
+  {
+    tag: 'billing',
+    title: 'Paid how you pay',
+    desc: 'Stripe, Paystack, and Flutterwave — localized rails for teams in Africa, Asia, and everywhere.',
+  },
+  {
+    tag: 'security',
+    title: 'Enterprise-ready',
+    desc: 'JWT + OAuth, audit logs, and SOC 2-ready infrastructure with SSO on the enterprise tier.',
+  },
+];
+
+const WHY = [
+  {
+    num: '01',
+    title: 'Kill the switch-tax',
+    desc: 'Developers lose up to 40% of their week to context-switching across a scattered toolchain. Buildrs keeps code, chat, and AI in one place.',
+  },
+  {
+    num: '02',
+    title: 'AI with your context',
+    desc: 'The pair programmer indexes your repo and your workflows — so a suggestion arrives already knowing the codebase.',
+  },
+  {
+    num: '03',
+    title: 'Real-time by design',
+    desc: 'CRDT co-editing, presence, standups, and threads are the kernel of the product, not bolt-on plugins.',
+  },
+  {
+    num: '04',
+    title: 'Global and secure',
+    desc: 'Stripe, Paystack, Flutterwave. SSO, audit logs, SOC 2-ready. Priced honestly, built to ship anywhere.',
+  },
+];
 
 export default function Index() {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [heroView, setHeroView] = useState('editor');
-  const [featureFile, setFeatureFile] = useState('main.tsx');
-  const [terminalInput, setTerminalInput] = useState('');
-  const [terminalHistory, setTerminalHistory] = useState([
-    'Welcome to BuildrsHQ Terminal',
-    'Type `help` for available commands',
-    '',
-    '$ npm run dev',
-    '> buildrs-app@1.0.0 dev',
-    '> next dev --port 3000',
-    '',
-    '  ▲ Next.js 14.0.4',
-    '  - Local:        http://localhost:3000',
-    '  - Environments: .env.local',
-    '',
-    ' ✓ Ready in 2.3s',
+  const [lines, setLines] = useState([
+    { text: 'buildrs@workspace ~ $ buildrs status', cls: 'd' },
+    { text: '● platform: online  ·  1,284 files indexed  ·  3 teammates online', cls: 'ok' },
+    { text: '' },
+    { text: 'type `deploy`, `pair`, `team` or `help`', cls: 'd' },
   ]);
-  const [aiChat, setAiChat] = useState([
-    { role: 'assistant', text: 'I can help optimize your Dashboard component. Consider using useMemo for the data transformation.' },
-  ]);
-  const [aiInput, setAiInput] = useState('');
+  const [input, setInput] = useState('');
 
-  const handleTerminalSubmit = (e) => {
+  const run = (e) => {
     e.preventDefault();
-    const cmd = terminalInput.trim();
-    if (!cmd) return;
-    const newHistory = [...terminalHistory, `$ ${cmd}`];
-    if (cmd === 'help') {
-      newHistory.push('Available: ls, pwd, git status, clear, help');
-    } else if (cmd === 'clear') {
-      setTerminalHistory([]);
-      setTerminalInput('');
+    const cmd = input.trim().toLowerCase();
+    if (cmd === 'clear') {
+      setLines([]);
+      setInput('');
       return;
-    } else if (cmd === 'ls') {
-      newHistory.push('src/  components/  hooks/  package.json  README.md');
-    } else if (cmd === 'pwd') {
-      newHistory.push('/Users/mac/codex-backend/buildrs-app');
-    } else if (cmd === 'git status') {
-      newHistory.push('On branch main');
-      newHistory.push('Changes not staged for commit:');
-      newHistory.push('  modified:   src/components/Dashboard.tsx');
-      newHistory.push('  modified:   src/hooks/useMetrics.ts');
-    } else {
-      newHistory.push(`Command not found: ${cmd}`);
     }
-    setTerminalHistory(newHistory);
-    setTerminalInput('');
-  };
-
-  const handleAiSend = (e) => {
-    e.preventDefault();
-    if (!aiInput.trim()) return;
-    const userMsg = { role: 'user', text: aiInput };
-    const aiMsg = { role: 'assistant', text: 'That looks good! I suggest adding error handling for the fetch call and maybe a loading state while metrics are being loaded.' };
-    setAiChat((prev) => [...prev, userMsg, aiMsg]);
-    setAiInput('');
+    const out = HELP[cmd] ?? `command not found: ${cmd}`;
+    setLines((prev) => [
+      ...prev,
+      { text: `buildrs@workspace ~ $ ${cmd}`, cls: 'd' },
+      ...String(out)
+        .split('\n')
+        .map((t) => ({ text: t, cls: 'ok' })),
+      { text: '' },
+    ]);
+    setInput('');
   };
 
   return (
     <>
       <Head>
-        <title>BuildrsHQ | Ship Better Code, Faster</title>
+        <title>BuildrsHQ — The Unified Development Command Center</title>
+        <meta
+          name="description"
+          content="AI pair programming, live co-editing, tasks, and meetings — your entire dev stack in one workspace. Free to start, no credit card."
+        />
         <link rel="icon" href="/buildrs.png" />
         <meta name="google-site-verification" content="NInX_C65m0qT6XHwkGnzhfNT-uR1ZbkUdm6BhFJNTVc" />
-        <style>{`
-          * { font-family: 'Space Grotesk', sans-serif; }
-          body { overflow-x: hidden; }
-          .content-wrapper { position: relative; z-index: 1; }
-          .modern-header {
-            position: fixed; top: 20px; left: 20px; right: 20px; z-index: 50;
-            backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-            background-color: rgba(26,31,54,0.85); border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.3); transition: all 0.3s ease;
-          }
-          .modern-header:hover { box-shadow: 0 12px 40px rgba(0,0,0,0.4); }
-          @media (max-width: 640px) { .modern-header { top: 10px; left: 10px; right: 10px; border-radius: 12px; } }
-          .nav-link { position: relative; transition: all 0.2s ease; }
-          .nav-link::after {
-            content: ''; position: absolute; bottom: -2px; left: 50%; width: 0; height: 2px;
-            background: linear-gradient(to right, #3b82f6, #8b5cf6); transition: all 0.3s ease; transform: translateX(-50%);
-          }
-          .nav-link:hover::after { width: 80%; }
-          .cta-button {
-            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); transition: all 0.3s ease;
-          }
-          .cta-button:hover { box-shadow: 0 10px 25px -5px rgba(99,102,241,0.5); transform: scale(1.05); }
-          .integration-scroll {
-            overflow: hidden; position: relative; width: 100%;
-            mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
-            -webkit-mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
-          }
-          .integration-track { display: flex; gap: 4rem; animation: scroll 30s linear infinite; width: fit-content; }
-          .integration-item { flex: 0 0 auto; min-width: 120px; }
-          @keyframes scroll { from { transform: translateX(0); } to { transform: translateX(calc(-50% - 2rem)); } }
-          .integration-scroll:hover .integration-track { animation-play-state: paused; }
-          .editor-mockup {
-            background: #0f172a; border: 1px solid #334155; border-radius: 12px; overflow: hidden;
-            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
-          }
-          .editor-sidebar {
-            background: #1e293b; border-right: 1px solid #334155; width: 200px;
-          }
-          .editor-tab {
-            padding: 8px 12px; font-size: 12px; color: #94a3b8; border-bottom: 1px solid #334155;
-            display: flex; align-items: center; gap: 8px;
-          }
-          .editor-tab.active { background: #0f172a; color: #e2e8f0; }
-          .code-line { height: 20px; display: flex; align-items: center; gap: 12px; padding: 0 16px; font-size: 13px; font-family: 'Courier New', monospace; }
-          .line-number { color: #475569; width: 20px; text-align: right; flex-shrink: 0; }
-        `}</style>
       </Head>
 
-      <div className="min-h-screen bg-[#0B0C15] text-white overflow-x-hidden">
-        <div className="content-wrapper">
-          {/* Header */}
-          <header className="modern-header">
-            <div className="max-w-7xl mx-auto px-6 sm:px-8 lg:px-10">
-              <div className="flex justify-between items-center h-16">
-                <Link href="/" className="flex items-center space-x-3 group">
-                  <div className="w-20 h-10 flex items-center justify-center transform">
-                    <img src="/buildrs.png" alt="BuildrsHQ" className="w-20 h-16" />
-                  </div>
-                  <span className="text-xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">BuildrsHQ</span>
+      <SiteShell>
+        {/* ── Hero ─────────────────────────────────────────── */}
+        <section className="relative overflow-hidden pt-32 pb-16 sm:pt-40">
+          <div className="mkt-hero-bg" />
+          <div className="mkt-dots" />
+          <div className="relative mx-auto grid max-w-[1200px] items-center gap-14 px-5 sm:px-8 lg:grid-cols-[1.05fr_0.95fr]">
+            <div>
+              <p className="mkt-eyebrow mb-7">
+                <span className="dot">●</span> buildrs · unified dev command center
+              </p>
+              <h1 className="mkt-h1">
+                Your whole dev stack.
+                <br />
+                One <span className="accent">command center</span>.
+              </h1>
+              <p className="mkt-sub mt-7 max-w-[520px]">
+                Buildrs collapses the eleven-tool ritual — GitHub, Slack, ChatGPT, Figma,
+                Notion — into a single workspace. AI pair programming, live co-editing, tasks,
+                and standups, side by side with your code.
+              </p>
+              <div className="mt-9 flex flex-wrap items-center gap-3">
+                <Link href="/signup" className="mkt-btn mkt-btn-primary !px-6 !py-3 !text-[15px]">
+                  Start building <span className="mkt-arrow">→</span>
                 </Link>
-                <nav className="hidden lg:flex items-center space-x-1">
-                  <Link href="/features" className="nav-link px-4 py-2 rounded-lg text-gray-300 hover:text-white hover:bg-white/5">Product</Link>
-                  <Link href="/pricing" className="nav-link px-4 py-2 rounded-lg text-gray-300 hover:text-white hover:bg-white/5">Solutions</Link>
-                  <Link href="/blog" className="nav-link px-4 py-2 rounded-lg text-gray-300 hover:text-white hover:bg-white/5">Resources</Link>
-                  <Link href="/pricing" className="nav-link px-4 py-2 rounded-lg text-gray-300 hover:text-white hover:bg-white/5">Pricing</Link>
-                </nav>
-                <div className="hidden lg:flex items-center space-x-3">
-                  <Link href="/sign_in" className="px-6 py-2.5 rounded-lg text-white hover:bg-white/5 transition-all duration-200 font-medium">Sign in</Link>
-                  <Link href="/signup" className="cta-button px-6 py-2.5 rounded-lg text-white font-medium">Get Started</Link>
-                </div>
-                <button type="button" onClick={() => setMenuOpen((v) => !v)} className="lg:hidden p-2 rounded-lg hover:bg-white/5 transition-colors" aria-label="Toggle mobile menu">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
-                </button>
+                <Link href="/demo" className="mkt-btn !px-6 !py-3 !text-[15px]">
+                  Explore the platform <span className="mkt-arrow">↗</span>
+                </Link>
               </div>
-            </div>
-            <div className={`${menuOpen ? 'block' : 'hidden'} lg:hidden border-t border-white/10 bg-[#0B0C15]/95 backdrop-blur-lg`}>
-              <div className="max-w-7xl mx-auto px-4 py-4 space-y-2">
-                <Link href="/features" className="block px-4 py-3 rounded-lg text-gray-300 hover:text-white hover:bg-white/5 transition-all">Product</Link>
-                <Link href="/pricing" className="block px-4 py-3 rounded-lg text-gray-300 hover:text-white hover:bg-white/5 transition-all">Solutions</Link>
-                <Link href="/blog" className="block px-4 py-3 rounded-lg text-gray-300 hover:text-white hover:bg-white/5 transition-all">Resources</Link>
-                <Link href="/pricing" className="block px-4 py-3 rounded-lg text-gray-300 hover:text-white hover:bg-white/5 transition-all">Pricing</Link>
-                <div className="pt-4 space-y-2">
-                  <Link href="/sign_in" className="block px-4 py-3 rounded-lg text-center text-white hover:bg-white/5 transition-all font-medium">Sign in</Link>
-                  <Link href="/signup" className="block px-4 py-3 rounded-lg text-center cta-button text-white font-medium">Get Started</Link>
-                </div>
-              </div>
-            </div>
-          </header>
-
-          {/* Hero Section */}
-          <section className="pt-32 pb-20 px-4 sm:px-6 lg:px-8">
-            <div className="max-w-7xl mx-auto">
-              <div className="grid lg:grid-cols-2 gap-12 items-center">
-                {/* Left Column */}
-                <div>
-                  <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10 mb-8">
-                    <span className="w-2 h-2 rounded-full bg-purple-500"></span>
-                    <span className="text-sm text-gray-300">AI Powered Software development</span>
-                  </div>
-                  
-                  <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold mb-6 leading-tight">
-                    Build Software<br />
-                    together at<br />
-                    <span className="bg-gradient-to-r from-purple-400 to-blue-500 bg-clip-text text-transparent">AI speed</span>
-                  </h1>
-                  
-                  <p className="text-lg text-gray-300 mb-8 max-w-lg">
-                    BuildrsHQ combines AI pair programming, real-time collaboration, and intelligent integrations in one powerful development workspace for modern teams.
-                  </p>
-                  
-                  <div className="flex flex-col sm:flex-row gap-4 mb-12">
-                    <Link href="/signup" className="cta-button px-8 py-3 rounded-lg text-white font-medium inline-flex items-center justify-center gap-2">
-                      Start Building
-                    </Link>
-                    <Link href="/demo" className="px-8 py-3 rounded-lg font-medium border border-gray-600 hover:bg-white/5 transition inline-flex items-center justify-center gap-2">
-                      Explore Platform
-                    </Link>
-                  </div>
-                  
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center overflow-hidden">
-                      <img src="/1000222021 1 (1).png" alt="Codex Inc" className="w-full h-full object-cover" />
-                    </div>
-                    <div>
-                      <p className="font-semibold text-sm">A product of CODEX INC ENTERPRISE</p>
-                      <p className="text-xs text-gray-400">(Trusted by teams building the future)</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Right Column - Workspace Mockup */}
-                <div className="relative">
-                  <div className="editor-mockup">
-                    {/* Window Header */}
-                    <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded transparent flex items-center justify-center">
-                          <img src="/buildrs.png" alt="BuildrsHQ" className="w-5 h-5" />
-                        </div>
-                        <span className="text-sm font-medium">BuildrsHQ Workspace</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                        <span className="text-xs text-green-400">LIVE</span>
-                      </div>
-                    </div>
-
-                    {/* Mock Tabs */}
-                    <div className="flex border-b border-gray-700 bg-[#0f172a] overflow-x-auto">
-                      {['editor', 'terminal', 'ai'].map((view) => (
-                        <button
-                          key={view}
-                          type="button"
-                          onClick={() => setHeroView(view)}
-                          className={`px-4 py-2 text-xs font-medium whitespace-nowrap transition ${
-                            heroView === view ? 'bg-[#0f172a] text-white border-b-2 border-blue-500' : 'text-gray-400 hover:text-white hover:bg-white/5'
-                          }`}
-                        >
-                          {view === 'editor' ? 'Editor' : view === 'terminal' ? 'Terminal' : 'AI Assistant'}
-                        </button>
-                      ))}
-                    </div>
-
-                    <div className="flex">
-                      {/* Sidebar */}
-                      <div className="editor-sidebar p-4 hidden md:block">
-                        <div className="text-xs text-gray-400 mb-4">OVERVIEW</div>
-                        <div className="mb-4">
-                          <div className="text-xs text-gray-500 mb-2">PROJECTS</div>
-                          <div className="flex items-center gap-2 px-2 py-1.5 rounded bg-white/5 mb-1">
-                            <div className="w-4 h-4 bg-blue-500 rounded">
-                              <span className="text-[10px] text-black font-bold">AW</span>
-                            </div>
-                            <span className="text-xs text-gray-300">Acme Web app</span>
-                          </div>
-                          <div className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-white/5">
-                            <div className="w-4 h-4 bg-purple-500 rounded">
-                              <span className="text-[10px] text-black font-bold">MD</span>
-                            </div>
-                            <span className="text-xs text-gray-300">Mobile Dashboard</span>
-                          </div>
-                        </div>
-                        <div className="mb-4">
-                          <div className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-white/5">
-                            <div className="w-4 h-4 bg-cyan-500 rounded flex items-center justify-center">
-                              <span className="text-[10px] text-black font-bold">AI</span>
-                            </div>
-                            <span className="text-xs text-gray-300">AI Assistant</span>
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-gray-500 mb-2">TOOLS</div>
-                          <div className="space-y-1">
-                            <div className="text-xs text-gray-400 px-2 py-1">AI Chat</div>
-                            <div className="text-xs text-gray-400 px-2 py-1">Pull requests</div>
-                            <div className="text-xs text-gray-400 px-2 py-1">Integrations</div>
-                            <div className="text-xs text-gray-400 px-2 py-1">Settings</div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Main Editor Area */}
-                      <div className="flex-1 min-w-0">
-                        {heroView === 'editor' && (
-                          <>
-                            {/* Tabs */}
-                            <div className="flex border-b border-gray-700 bg-[#0f172a]">
-                              <div className="editor-tab active">
-                                <span className="text-gray-400">main.py</span>
-                                <span className="text-gray-500">×</span>
-                              </div>
-                            </div>
-
-                            {/* Code Content */}
-                            <div className="p-4 font-mono text-sm bg-[#0f172a]">
-                              <div className="code-line"><span className="line-number">1</span><span className="text-purple-400">import</span> <span className="text-blue-300">React</span></div>
-                              <div className="code-line"><span className="line-number">2</span>&nbsp;</div>
-                              <div className="code-line"><span className="line-number">3</span><span className="text-purple-400">function</span> <span className="text-yellow-300">App</span>() {'{'}</div>
-                              <div className="code-line"><span className="line-number">4</span>  <span className="text-purple-400">return</span> (</div>
-                              <div className="code-line"><span className="line-number">5</span>    <span className="text-gray-400">&lt;</span><span className="text-blue-300">Dashboard</span> <span className="text-gray-400">/&gt;</span></div>
-                              <div className="code-line"><span className="line-number">6</span>  )</div>
-                              <div className="code-line"><span className="line-number">7</span>{'}'}</div>
-                              <div className="code-line"><span className="line-number">8</span>&nbsp;</div>
-                              <div className="code-line"><span className="line-number">9</span><span className="text-purple-400">export</span> <span className="text-purple-400">default</span> <span className="text-yellow-300">App</span></div>
-                            </div>
-
-                            {/* AI Status Bar */}
-                            <div className="px-4 py-2 bg-[#1e293b] border-t border-gray-700 flex items-center justify-between">
-                              <div className="flex items-center gap-4">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                                  <span className="text-xs text-blue-400">AI is updating code...</span>
-                                </div>
-                                <span className="text-xs text-gray-500">Generating code...</span>
-                              </div>
-                            </div>
-                          </>
-                        )}
-
-                        {heroView === 'terminal' && (
-                          <div className="bg-[#0f172a] p-4 font-mono text-sm">
-                            <div className="text-xs text-gray-400 mb-2 flex items-center gap-2">
-                              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                              BuildrsHQ Terminal — localhost:3000
-                            </div>
-                            <div className="space-y-1 text-gray-300 mb-3 max-h-[200px] overflow-y-auto">
-                              {terminalHistory.map((line, i) => (
-                                <div key={i} className="whitespace-pre-wrap break-words">{line}</div>
-                              ))}
-                            </div>
-                            <form onSubmit={handleTerminalSubmit} className="flex items-center gap-2">
-                              <span className="text-green-400">$</span>
-                              <input
-                                type="text"
-                                value={terminalInput}
-                                onChange={(e) => setTerminalInput(e.target.value)}
-                                className="flex-1 bg-transparent text-gray-300 outline-none text-sm"
-                                placeholder="Type a command..."
-                                autoFocus
-                              />
-                            </form>
-                          </div>
-                        )}
-
-                        {heroView === 'ai' && (
-                          <div className="bg-[#0f172a] p-4 flex flex-col h-[300px]">
-                            <div className="text-xs text-gray-400 mb-3 flex items-center gap-2">
-                              <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse"></div>
-                              AI Assistant — Online
-                            </div>
-                            <div className="flex-1 overflow-y-auto space-y-3 mb-3">
-                              {aiChat.map((msg, i) => (
-                                <div key={i} className={`p-3 rounded-lg text-sm ${msg.role === 'user' ? 'bg-blue-500/10 ml-8' : 'bg-gray-700/50 mr-8'}`}>
-                                  <div className="text-xs text-gray-400 mb-1">{msg.role === 'user' ? 'You' : 'AI'}</div>
-                                  <div className="text-gray-200 whitespace-pre-wrap">{msg.text}</div>
-                                </div>
-                              ))}
-                            </div>
-                            <form onSubmit={handleAiSend} className="flex gap-2">
-                              <input
-                                type="text"
-                                value={aiInput}
-                                onChange={(e) => setAiInput(e.target.value)}
-                                placeholder="Ask AI to explain, refactor, or generate code..."
-                                className="flex-1 px-3 py-2 bg-navy border border-gray-600 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500"
-                              />
-                              <button type="submit" className="cta-button px-4 py-2 rounded-lg text-sm">Send</button>
-                            </form>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Floating Live Preview Card */}
-                  <div className="absolute -bottom-6 -right-6 bg-[#1e293b] border border-gray-700 rounded-xl p-4 shadow-2xl hidden lg:block">
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="text-xs text-gray-400">Live Preview</span>
-                      <div className="flex items-center gap-1">
-                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                        <span className="text-xs text-green-400">Connected</span>
-                      </div>
-                    </div>
-                    <div className="bg-[#0f172a] rounded-lg p-3">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="w-6 h-6 rounded transparent flex items-center justify-center">
-                          <img src="/buildrs.png" alt="" className="w-4 h-4" />
-                        </div>
-                        <span className="text-sm font-semibold">BuildrsHQ Dashboard</span>
-                      </div>
-                      <p className="text-xs text-gray-400 mb-3">AI Powered workplace</p>
-                      <button className="w-full py-1.5 bg-purple-600 hover:bg-purple-700 rounded text-xs font-medium transition">
-                        Get Started →
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {/* Divider */}
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="h-px bg-gradient-to-r from-transparent via-purple-500/50 to-transparent"></div>
-          </div>
-
-          {/* Everything In One Place Section */}
-          <section className="py-20 px-4 sm:px-6 lg:px-8">
-            <div className="max-w-4xl mx-auto text-center">
-              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10 mb-6">
-                <span className="text-sm text-gray-300">Everything In One Place</span>
-              </div>
-              
-              <h2 className="text-4xl md:text-5xl font-bold mb-6">
-                Everything your team needs to<br />
-                build together
-              </h2>
-              
-              <p className="text-lg text-gray-300 max-w-2xl mx-auto">
-                From AI assistance to deployments, BuildrsHQ provides all the tools modern development teams need to ship better software faster.
+              <p className="mkt-mono mt-8 text-xs text-[#525764]">
+                free plan · no credit card · ready in under a minute
               </p>
             </div>
-          </section>
 
-          {/* Features Split Section */}
-          <section className="py-16 px-4 sm:px-6 lg:px-8">
-            <div className="max-w-7xl mx-auto">
-              <div className="grid lg:grid-cols-2 gap-12 items-start">
-                {/* Left - Code Editor Mockup */}
-                <div className="editor-mockup">
-                  {/* Tab Bar */}
-                  <div className="flex items-center gap-1 px-4 py-2 bg-[#1e293b] border-b border-gray-700 overflow-x-auto">
+            {/* Terminal */}
+            <div className="mkt-term relative">
+              <div className="mkt-term-bar">
+                <span className="dot" />
+                <span className="dot" />
+                <span className="dot" />
+                <span className="title mkt-mono">buildrs — acme/core · workspace</span>
+              </div>
+              <div className="mkt-term-body min-h-[300px]">
+                {lines.map((line, i) => (
+                  <div key={i} className="whitespace-pre-wrap">
+                    <span className={line.cls}>{line.text}</span>
+                  </div>
+                ))}
+                <form onSubmit={run} className="flex items-center gap-2">
+                  <span className="p">$</span>
+                  <input
+                    type="text"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    className="mkt-term-input flex-1"
+                    placeholder="run deploy / pair / team"
+                    aria-label="terminal command"
+                  />
+                </form>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ── Live strip ───────────────────────────────────── */}
+        <section className="border-y border-[#ffffff0d]">
+          <div className="mx-auto grid max-w-[1200px] grid-cols-2 gap-px px-5 py-0 sm:px-8 lg:grid-cols-4">
+            {[
+              { k: '10+', v: 'tools replaced by one workspace', note: 'github · slack · figma · notion' },
+              { k: '3', v: 'payment rails · Stripe · Paystack · Flutterwave', note: 'priced in USD, paid locally' },
+              { k: '0', v: 'merge conflicts on live co-edits', note: 'yjs CRDT conflict resolution' },
+              { k: '24/7', v: 'AI pair programmer, always on', note: 'groq + google generative ai' },
+            ].map((s) => (
+              <div key={s.k} className="px-2 py-8 sm:px-4">
+                <p className="mkt-num text-3xl text-white sm:text-4xl">{s.k}</p>
+                <p className="mt-3 text-[13px] leading-snug text-[#a8adba]">{s.v}</p>
+                <p className="mkt-mono mt-2 text-[10.5px] text-[#525764]">{s.note}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* ── The stack ────────────────────────────────────── */}
+        <section className="mx-auto max-w-[1200px] px-5 py-24 sm:px-8">
+          <div className="mb-10 flex items-end justify-between gap-6">
+            <div>
+              <p className="mkt-eyebrow mb-4">
+                <span className="dot">●</span> buildrs · the stack
+              </p>
+              <h2 className="mkt-h2">One workspace, every layer.</h2>
+            </div>
+            <p className="mkt-mono hidden text-[11px] uppercase tracking-widest text-[#525764] lg:block">
+              click a layer
+            </p>
+          </div>
+
+          <div className="mkt-grid grid-cols-1 md:grid-cols-2">
+            {STACK.map((s) => (
+              <Link key={s.name} href="/features" className="mkt-cell group block">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="mkt-h3 flex items-center gap-3">
+                    <span className="mkt-mono text-sm text-[#525764]">▸</span>
+                    {s.name}
+                  </h3>
+                  <span className={`mkt-pill ${s.status}`}>{s.status}</span>
+                </div>
+                <p className="mt-3 text-[13.5px] leading-relaxed text-[#a8adba]">
+                  <span className="mkt-mono text-[10.5px] uppercase tracking-widest text-[#686e7c]">it can: </span>
+                  {s.desc}
+                </p>
+                <p className="mkt-mono mt-4 text-[10.5px] uppercase tracking-widest text-[#525764]">
+                  {s.badge}
+                </p>
+              </Link>
+            ))}
+          </div>
+        </section>
+
+        {/* ── Build ────────────────────────────────────────── */}
+        <section className="mx-auto max-w-[1200px] px-5 pb-24 sm:px-8">
+          <div className="mb-10">
+            <p className="mkt-eyebrow mb-4">
+              <span className="dot">●</span> build
+            </p>
+            <h2 className="mkt-h2 max-w-[640px]">
+              Every surface you need to write and ship code.
+            </h2>
+          </div>
+          <div className="grid gap-px overflow-hidden rounded-xl border border-[#ffffff12] bg-[#ffffff12] sm:grid-cols-2">
+            {BUILD.map((b) => (
+              <div key={b.title} className="group bg-[#0d0d12] p-7 transition-colors hover:bg-[#121219]">
+                <div className="mkt-mono mb-5 flex h-9 w-9 items-center justify-center rounded-md border border-[#ffffff14] text-[13px] text-[#2fd6e6]">
+                  {b.icon}
+                </div>
+                <h3 className="mkt-h3">{b.title}</h3>
+                <p className="mkt-mono mt-1 text-[10.5px] uppercase tracking-widest text-[#525764]">{b.tag}</p>
+                <p className="mt-3 text-[13.5px] leading-relaxed text-[#a8adba]">{b.desc}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* ── Collaborate ──────────────────────────────────── */}
+        <section className="border-y border-[#ffffff0d] bg-[#0a0a0d]">
+          <div className="mx-auto max-w-[1200px] px-5 py-24 sm:px-8">
+            <div className="grid gap-12 lg:grid-cols-[0.9fr_1.1fr]">
+              <div>
+                <p className="mkt-eyebrow mb-4">
+                  <span className="dot">●</span> collaborate
+                </p>
+                <h2 className="mkt-h2">Built live, from the first commit.</h2>
+                <p className="mkt-sub mt-5 max-w-[420px]">
+                  The workspace is real-time at its core — because shipping is a team sport,
+                  not a relay of file drops.
+                </p>
+                <div className="mt-8 rounded-lg border border-[#ffffff12] bg-[#0d0d12] p-5">
+                  <div className="mkt-live mb-3">
+                    <span className="dot" />
+                    <span className="mkt-mono text-[11px] uppercase tracking-widest text-[#686e7c]">
+                      4 teammates online in acme/core
+                    </span>
+                  </div>
+                  <div className="space-y-2">
                     {[
-                      { id: 'main.tsx', label: 'main.tsx' },
-                      { id: 'dashboard.tsx', label: 'dashboard.tsx' },
-                      { id: 'api.ts', label: 'api.ts' },
-                    ].map((tab) => (
-                      <button
-                        key={tab.id}
-                        type="button"
-                        onClick={() => setFeatureFile(tab.id)}
-                        className={`flex items-center gap-2 px-3 py-1.5 rounded text-xs whitespace-nowrap transition ${
-                          featureFile === tab.id ? 'bg-[#0f172a] text-gray-300' : 'text-gray-500 hover:text-gray-300'
-                        }`}
-                      >
-                        <span className="text-gray-500">{tab.id.split('.')[0]}</span>
-                        <span>{tab.label}</span>
-                      </button>
+                      ['ada', 'src/components/dashboard.tsx', '#2fd6e6'],
+                      ['rowan', 'reviewing PR #128', '#e5b84a'],
+                      ['kai', 'room: standup in 12m', '#686e7c'],
+                      ['you', 'editing cards.tsx', '#2fd6e6'],
+                    ].map(([name, act, color]) => (
+                      <div key={name} className="flex items-center gap-3 text-[13px]">
+                        <span
+                          className="mkt-mono flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-semibold text-[#04181b]"
+                          style={{ background: color }}
+                        >
+                          {name.slice(0, 1).toUpperCase()}
+                        </span>
+                        <span className="mkt-mono text-[#a8adba]">{name}</span>
+                        <span className="mkt-mono text-[#525764]">{act}</span>
+                      </div>
                     ))}
-                    <div className="ml-auto flex items-center gap-2">
-                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                      <span className="text-xs text-green-400">LIVE</span>
-                    </div>
-                  </div>
-
-                  <div className="flex">
-                    {/* Editor Sidebar */}
-                    <div className="w-48 bg-[#1e293b] border-r border-gray-700 p-4 hidden lg:block">
-                      <div className="flex items-center gap-2 mb-4">
-                        <div className="w-6 h-6 rounded transparent flex items-center justify-center">
-                          <img src="/buildrs.png" alt="" className="w-4 h-4" />
-                        </div>
-                        <span className="text-xs font-semibold">BuildrsHQ</span>
-                      </div>
-
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2 px-2 py-1.5 rounded bg-white/5">
-                          <div className="w-4 h-4 bg-blue-500 rounded"></div>
-                          <span className="text-xs text-gray-300">Projects</span>
-                        </div>
-                        <div className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-white/5">
-                          <div className="w-4 h-4 bg-gray-600 rounded"></div>
-                          <span className="text-xs text-gray-400">Source Code</span>
-                        </div>
-                        <div className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-white/5">
-                          <div className="w-4 h-4 bg-cyan-500 rounded flex items-center justify-center">
-                            <span className="text-[10px] text-black font-bold">AI</span>
-                          </div>
-                          <span className="text-xs text-gray-400">AI Pair</span>
-                        </div>
-                        <div className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-white/5">
-                          <div className="w-4 h-4 bg-gray-600 rounded"></div>
-                          <span className="text-xs text-gray-400">Tasks</span>
-                        </div>
-                        <div className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-white/5">
-                          <div className="w-4 h-4 bg-gray-600 rounded"></div>
-                          <span className="text-xs text-gray-400">Integrations</span>
-                        </div>
-                      </div>
-
-                      <div className="mt-8">
-                        <div className="text-xs text-gray-500 mb-2">Workspace</div>
-                        <div className="text-xs text-gray-400 px-2 py-1">Acme Web App</div>
-                        <div className="text-xs text-gray-400 px-2 py-1">Mobile Dashboard</div>
-                        <div className="text-xs text-gray-400 px-2 py-1">API Service</div>
-                      </div>
-                    </div>
-
-                    {/* Main Code Area */}
-                    <div className="flex-1 p-4 font-mono text-sm bg-[#0f172a]">
-                      {featureFile === 'main.tsx' && (
-                        <>
-                          <div className="code-line"><span className="line-number">1</span><span className="text-purple-400">import</span> <span className="text-blue-300">React</span><span className="text-gray-400">,</span> <span className="text-purple-400">{'useState'}</span><span className="text-gray-400">,</span> <span className="text-purple-400">{'useMemo'}</span> <span className="text-purple-400">from</span> <span className="text-green-300">'react'</span></div>
-                          <div className="code-line"><span className="line-number">2</span><span className="text-purple-400">import</span> <span className="text-blue-300">{'ChartContainer'}</span><span className="text-gray-400">,</span> <span className="text-blue-300">{'MetricCard'}</span> <span className="text-purple-400">from</span> <span className="text-green-300">'./components'</span></div>
-                          <div className="code-line"><span className="line-number">3</span><span className="text-purple-400">import</span> <span className="text-blue-300">{'useFetchMetrics'}</span> <span className="text-purple-400">from</span> <span className="text-green-300">'../hooks'</span></div>
-                          <div className="code-line"><span className="line-number">4</span>&nbsp;</div>
-                          <div className="code-line"><span className="line-number">5</span><span className="text-purple-400">export</span> <span className="text-purple-400">const</span> <span className="text-yellow-300">DashboardPreview</span><span className="text-gray-400">:</span> <span className="text-blue-300">React.FC</span><span className="text-gray-400">&lt;</span><span className="text-blue-300">DashboardProps</span><span className="text-gray-400">&gt; = (</span><span className="text-orange-300">{'({ projectId })'}</span><span className="text-gray-400">) =&gt; {'{'}</span></div>
-                          <div className="code-line"><span className="line-number">6</span>  <span className="text-purple-400">const</span> <span className="text-blue-300">{'filter'}</span> <span className="text-gray-400">=</span> <span className="text-yellow-300">useState</span><span className="text-gray-400">&lt;</span><span className="text-blue-300">string</span><span className="text-gray-400">&gt;('all')</span></div>
-                          <div className="code-line"><span className="line-number">7</span>  <span className="text-purple-400">const</span> <span className="text-blue-300">{'metrics'}</span> <span className="text-gray-400">=</span> <span className="text-yellow-300">useFetchMetrics</span><span className="text-gray-400">(</span><span className="text-orange-300">{'projectId'}</span><span className="text-gray-400">)</span></div>
-                          <div className="code-line"><span className="line-number">8</span>&nbsp;</div>
-                          <div className="code-line"><span className="line-number">9</span>  <span className="text-gray-500">// Optimize expensive transformations as suggested by BuildrsAI</span></div>
-                          <div className="code-line"><span className="line-number">10</span>  <span className="text-purple-400">const</span> <span className="text-blue-300">{'processedData'}</span> <span className="text-gray-400">=</span> <span className="text-yellow-300">{'useMemo'}</span><span className="text-gray-400">(() =&gt; {'{'}</span></div>
-                          <div className="code-line"><span className="line-number">11</span>    <span className="text-purple-400">return</span> <span className="text-blue-300">{'metrics'}</span><span className="text-gray-400">.</span><span className="text-yellow-300">{'filter'}</span><span className="text-gray-400">(</span><span className="text-orange-300">{'m'}</span> <span className="text-gray-400">=&gt;</span> <span className="text-blue-300">{'m'}</span><span className="text-gray-400">.</span><span className="text-yellow-300">{'status'}</span> <span className="text-gray-400">===</span> <span className="text-green-300">{'filter'}</span><span className="text-gray-400">)</span></div>
-                          <div className="code-line"><span className="line-number">12</span>  <span className="text-gray-400">{'}'}, [metrics, filter])'</span></div>
-                          <div className="code-line"><span className="line-number">13</span>&nbsp;</div>
-                          <div className="code-line"><span className="line-number">14</span>  <span className="text-purple-400">return</span> <span className="text-gray-400">(</span></div>
-                          <div className="code-line"><span className="line-number">15</span>    <span className="text-gray-400">&lt;</span><span className="text-blue-300">{'ChartContainer'}</span> <span className="text-yellow-300">{'title'}</span><span className="text-gray-400">=</span><span className="text-green-300">"Performance Output"</span> <span className="text-yellow-300">{'data'}</span><span className="text-gray-400">=</span><span className="text-gray-400">{'{processedData}'}</span> <span className="text-gray-400">/&gt;</span></div>
-                          <div className="code-line"><span className="line-number">16</span>    <span className="text-gray-400">&lt;</span><span className="text-blue-300">{'MetricCard'}</span> <span className="text-yellow-300">{'label'}</span><span className="text-gray-400">=</span><span className="text-green-300">"Core Web Vitals"</span> <span className="text-yellow-300">{'score'}</span><span className="text-gray-400">=</span><span className="text-gray-400">{'{98}'}</span> <span className="text-gray-400">/&gt;</span></div>
-                          <div className="code-line"><span className="line-number">17</span>  <span className="text-gray-400">{'})'}</span></div>
-                          <div className="code-line"><span className="line-number">18</span><span className="text-gray-400">{'}'}</span></div>
-                        </>
-                      )}
-                      {featureFile === 'dashboard.tsx' && (
-                        <>
-                          <div className="code-line"><span className="line-number">1</span><span className="text-purple-400">import</span> <span className="text-blue-300">React</span> <span className="text-purple-400">from</span> <span className="text-green-300">'react'</span></div>
-                          <div className="code-line"><span className="line-number">2</span><span className="text-purple-400">import</span> <span className="text-blue-300">{'Card'}</span> <span className="text-purple-400">from</span> <span className="text-green-300">'./ui'</span></div>
-                          <div className="code-line"><span className="line-number">3</span>&nbsp;</div>
-                          <div className="code-line"><span className="line-number">4</span><span className="text-purple-400">export</span> <span className="text-purple-400">default</span> <span className="text-purple-400">function</span> <span className="text-yellow-300">Dashboard</span><span className="text-gray-400">() {'{'}</span></div>
-                          <div className="code-line"><span className="line-number">5</span>  <span className="text-purple-400">return</span> <span className="text-gray-400">(</span></div>
-                          <div className="code-line"><span className="line-number">6</span>    <span className="text-gray-400">&lt;</span><span className="text-blue-300">div</span> <span className="text-yellow-300">{'className'}</span><span className="text-gray-400">=</span><span className="text-green-300">"grid gap-4"</span><span className="text-gray-400">&gt;</span></div>
-                          <div className="code-line"><span className="line-number">7</span>      <span className="text-gray-400">&lt;</span><span className="text-blue-300">Card</span><span className="text-gray-400">&gt;</span>Analytics<span className="text-gray-400">&lt;/</span><span className="text-blue-300">Card</span><span className="text-gray-400">&gt;</span></div>
-                          <div className="code-line"><span className="line-number">8</span>      <span className="text-gray-400">&lt;</span><span className="text-blue-300">Card</span><span className="text-gray-400">&gt;</span>Revenue<span className="text-gray-400">&lt;/</span><span className="text-blue-300">Card</span><span className="text-gray-400">&gt;</span></div>
-                          <div className="code-line"><span className="line-number">9</span>    <span className="text-gray-400">&lt;/</span><span className="text-blue-300">div</span><span className="text-gray-400">&gt;</span></div>
-                          <div className="code-line"><span className="line-number">10</span>  <span className="text-gray-400">{'})'}</span></div>
-                          <div className="code-line"><span className="line-number">11</span><span className="text-gray-400">{'}'}</span></div>
-                          <div className="code-line"><span className="line-number">12</span>&nbsp;</div>
-                          <div className="code-line"><span className="line-number">13</span>  <span className="text-gray-500">// AI Suggestion: Add responsive grid</span></div>
-                          <div className="code-line"><span className="line-number">14</span>  <span className="text-purple-400">const</span> <span className="text-blue-300">{'gridCols'}</span> <span className="text-gray-400">=</span> <span className="text-green-300">'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'</span></div>
-                        </>
-                      )}
-                      {featureFile === 'api.ts' && (
-                        <>
-                          <div className="code-line"><span className="line-number">1</span><span className="text-purple-400">import</span> <span className="text-blue-300">{'NextRequest'}</span><span className="text-gray-400">,</span> <span className="text-blue-300">{'NextResponse'}</span> <span className="text-purple-400">from</span> <span className="text-green-300">'next/server'</span></div>
-                          <div className="code-line"><span className="line-number">2</span>&nbsp;</div>
-                          <div className="code-line"><span className="line-number">3</span><span className="text-purple-400">export</span> <span className="text-purple-400">async</span> <span className="text-purple-400">function</span> <span className="text-yellow-300">GET</span><span className="text-gray-400">(</span><span className="text-orange-300">{'request'}</span><span className="text-gray-300">: NextRequest</span><span className="text-gray-400">) {'{'}</span></div>
-                          <div className="code-line"><span className="line-number">4</span>  <span className="text-purple-400">const</span> <span className="text-blue-300">{'data'}</span> <span className="text-gray-400">=</span> <span className="text-purple-400">await</span> <span className="text-yellow-300">fetchMetrics</span><span className="text-gray-400">()</span></div>
-                          <div className="code-line"><span className="line-number">5</span>  <span className="text-purple-400">return</span> <span className="text-blue-300">NextResponse</span><span className="text-gray-400">.</span><span className="text-yellow-300">{'json'}</span><span className="text-gray-400">(</span><span className="text-orange-300">{'data'}</span><span className="text-gray-400">)</span></div>
-                          <div className="code-line"><span className="line-number">6</span><span className="text-gray-400">{'}'}</span></div>
-                          <div className="code-line"><span className="line-number">7</span>&nbsp;</div>
-                          <div className="code-line"><span className="line-number">8</span><span className="text-purple-400">export</span> <span className="text-purple-400">async</span> <span className="text-purple-400">function</span> <span className="text-yellow-300">POST</span><span className="text-gray-400">(</span><span className="text-orange-300">{'request'}</span><span className="text-gray-300">: NextRequest</span><span className="text-gray-400">) {'{'}</span></div>
-                          <div className="code-line"><span className="line-number">9</span>  <span className="text-purple-400">const</span> <span className="text-blue-300">{'body'}</span> <span className="text-gray-400">=</span> <span className="text-purple-400">await</span> <span className="text-orange-300">{'request'}</span><span className="text-gray-400">.</span><span className="text-yellow-300">{'json'}</span><span className="text-gray-400">()</span></div>
-                          <div className="code-line"><span className="line-number">10</span>  <span className="text-purple-400">return</span> <span className="text-blue-300">NextResponse</span><span className="text-gray-400">.</span><span className="text-yellow-300">{'json'}</span><span className="text-gray-400">(</span><span className="text-orange-300">{'{ success: true }'}</span><span className="text-gray-400">)</span></div>
-                          <div className="code-line"><span className="line-number">11</span><span className="text-gray-400">{'}'}</span></div>
-                        </>
-                      )}
-                    </div>
-
-                    {/* AI Assistant Panel */}
-                    <div className="w-64 bg-[#1e293b] border-l border-gray-700 p-4 hidden xl:block">
-                      <div className="flex items-center gap-2 mb-4">
-                        <div className="w-6 h-6 bg-purple-500 rounded flex items-center justify-center">
-                          <span className="text-xs text-white font-bold">AI</span>
-                        </div>
-                        <span className="text-sm font-medium">AI Assistant</span>
-                      </div>
-                      <div className="space-y-3 mb-4 max-h-[300px] overflow-y-auto">
-                        {aiChat.map((msg, i) => (
-                          <div key={i} className={`p-2 rounded-lg text-sm ${msg.role === 'user' ? 'bg-blue-500/10 ml-4' : 'bg-white/5 mr-4'}`}>
-                            <div className="text-xs text-gray-400 mb-1">{msg.role === 'user' ? 'You' : 'AI'}</div>
-                            <div className="text-gray-200 whitespace-pre-wrap">{msg.text}</div>
-                          </div>
-                        ))}
-                      </div>
-                      <form onSubmit={handleAiSend} className="flex gap-2">
-                        <input
-                          type="text"
-                          value={aiInput}
-                          onChange={(e) => setAiInput(e.target.value)}
-                          placeholder="Ask AI..."
-                          className="flex-1 bg-transparent text-xs text-gray-300 placeholder-gray-500 outline-none border border-gray-600 rounded px-2 py-1"
-                        />
-                        <button type="submit" className="cta-button px-2 py-1 rounded text-xs">Send</button>
-                      </form>
-                    </div>
-                  </div>
-
-                  {/* Bottom Bar */}
-                  <div className="px-4 py-2 bg-[#1e293b] border-t border-gray-700 flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                        <span className="text-xs text-gray-400">main</span>
-                      </div>
-                      <span className="text-xs text-gray-500">3 changes</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Right - Feature Cards */}
-                <div className="space-y-4">
-                  <div className="bg-[#1e293b] border border-gray-700 rounded-xl p-6 hover:border-gray-600 transition">
-                    <div className="w-12 h-12 rounded-lg mb-4 overflow-hidden bg-white/5">
-                      <img src="/986 (1) 1.png" alt="AI Pair Programming" className="w-full h-full object-cover" />
-                    </div>
-                    <h3 className="text-xl font-semibold mb-2">AI Pair Programming</h3>
-                    <p className="text-gray-400 text-sm">Write alongside an intelligent coding assistant that understands your project context and helps you build faster.</p>
-                  </div>
-
-                  <div className="bg-[#1e293b] border border-gray-700 rounded-xl p-6 hover:border-gray-600 transition">
-                    <div className="w-12 h-12 rounded-lg mb-4 overflow-hidden bg-white/5">
-                      <img src="/987 1.png" alt="Real-Time collaboration" className="w-full h-full object-cover" />
-                    </div>
-                    <h3 className="text-xl font-semibold mb-2">Real-Time collaboration</h3>
-                    <p className="text-gray-400 text-sm">Collaborate with your team in real-time without wasting time switching between different development tools.</p>
-                  </div>
-
-                  <div className="bg-[#1e293b] border border-gray-700 rounded-xl p-6 hover:border-gray-600 transition">
-                    <div className="w-12 h-12 rounded-lg mb-4 overflow-hidden bg-white/5">
-                      <img src="/988 1.png" alt="Intelligent Integrations" className="w-full h-full object-cover" />
-                    </div>
-                    <h3 className="text-xl font-semibold mb-2">Intelligent Integrations</h3>
-                    <p className="text-gray-400 text-sm">Connect Repositories, Development tools, APIs and Team Workflows in one place.</p>
-                  </div>
-
-                  <div className="bg-[#1e293b] border border-gray-700 rounded-xl p-6 hover:border-gray-600 transition">
-                    <div className="w-12 h-12 rounded-lg mb-4 overflow-hidden bg-white/5">
-                      <img src="/985 (1) 1.png" alt="Team Development" className="w-full h-full object-cover" />
-                    </div>
-                    <h3 className="text-xl font-semibold mb-2">Team Development</h3>
-                    <p className="text-gray-400 text-sm">Give distributed teams a unified environment for Planning, Building, Reviewing and Shipping.</p>
-                  </div>
-
-                  <div className="text-center pt-4">
-                    <Link href="/features" className="inline-flex items-center gap-2 text-purple-400 hover:text-purple-300 font-medium transition">
-                      Explore all Features
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 8l4 4m0 0l-4 4m4-4H3" />
-                      </svg>
-                    </Link>
                   </div>
                 </div>
               </div>
-            </div>
-          </section>
 
-          {/* Footer */}
-          <footer className="bg-[#0B0C15] border-t border-gray-800 py-16 px-4 sm:px-6 lg:px-8">
-            <div className="max-w-7xl mx-auto">
-              <div className="grid grid-cols-2 md:grid-cols-6 gap-8">
-                {/* Brand Column */}
-                <div className="col-span-2">
-                  <div className="flex items-center space-x-2 mb-4">
-                    <div className="w-8 h-8 rounded transparent flex items-center justify-center">
-                      <img src="/buildrs.png" alt="" className="w-5 h-5" />
-                    </div>
-                    <span className="text-xl font-semibold">BuildrsHQ</span>
+              <div className="grid gap-px overflow-hidden rounded-xl border border-[#ffffff12] bg-[#ffffff12] sm:grid-cols-2">
+                {COLLAB.map((c) => (
+                  <div key={c.num} className="bg-[#0d0d12] p-7 transition-colors hover:bg-[#121219]">
+                    <p className="mkt-num text-sm text-[#2fd6e6]">{c.num}</p>
+                    <h3 className="mkt-h3 mt-4">{c.title}</h3>
+                    <p className="mt-3 text-[13.5px] leading-relaxed text-[#a8adba]">{c.desc}</p>
                   </div>
-                  <p className="text-gray-400 text-sm mb-6 max-w-xs">
-                    "AI powered development platform for modern tech teams building the future"
-                  </p>
-                  <div className="flex items-center gap-4">
-                    <a href="#" className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition">
-                      <span className="text-xs font-bold">X</span>
-                    </a>
-                    <a href="#" className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition">
-                      <span className="text-xs font-bold">in</span>
-                    </a>
-                    <a href="#" className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition">
-                      <span className="text-xs font-bold">📷</span>
-                    </a>
-                    <a href="#" className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition">
-                      <span className="text-xs font-bold">♪</span>
-                    </a>
-                  </div>
-                </div>
-
-                {/* Product */}
-                <div>
-                  <h4 className="font-semibold mb-4 text-sm">Product</h4>
-                  <ul className="space-y-2 text-sm text-gray-400">
-                    <li><Link href="/features" className="hover:text-white transition">Features</Link></li>
-                    <li><Link href="/integrations" className="hover:text-white transition">Integrations</Link></li>
-                    <li><Link href="/ai-pair" className="hover:text-white transition">AI assistant</Link></li>
-                    <li><Link href="/changelog" className="hover:text-white transition">Changelog</Link></li>
-                  </ul>
-                </div>
-
-                {/* Solutions */}
-                <div>
-                  <h4 className="font-semibold mb-4 text-sm">Solutions</h4>
-                  <ul className="space-y-2 text-sm text-gray-400">
-                    <li><Link href="/pricing" className="hover:text-white transition">Enterprise</Link></li>
-                    <li><Link href="/pricing" className="hover:text-white transition">Startups</Link></li>
-                    <li><Link href="/pricing" className="hover:text-white transition">Remote teams</Link></li>
-                    <li><Link href="/pricing" className="hover:text-white transition">Agencies</Link></li>
-                  </ul>
-                </div>
-
-                {/* Resources */}
-                <div>
-                  <h4 className="font-semibold mb-4 text-sm">Resources</h4>
-                  <ul className="space-y-2 text-sm text-gray-400">
-                    <li><Link href="/docs" className="hover:text-white transition">Docs</Link></li>
-                    <li><Link href="/blog" className="hover:text-white transition">Blogs</Link></li>
-                    <li><Link href="/support" className="hover:text-white transition">Guides</Link></li>
-                    <li><Link href="/support" className="hover:text-white transition">Help center</Link></li>
-                  </ul>
-                </div>
-
-                {/* Company */}
-                <div>
-                  <h4 className="font-semibold mb-4 text-sm">Company</h4>
-                  <ul className="space-y-2 text-sm text-gray-400">
-                    <li><Link href="/about" className="hover:text-white transition">About us</Link></li>
-                    <li><Link href="/careers" className="hover:text-white transition">Careers</Link></li>
-                    <li><Link href="/contact" className="hover:text-white transition">Contact</Link></li>
-                    <li><Link href="/privacy" className="hover:text-white transition">Privacy</Link></li>
-                  </ul>
-                </div>
+                ))}
               </div>
             </div>
-          </footer>
-        </div>
-      </div>
+          </div>
+        </section>
+
+        {/* ── Run / production ─────────────────────────────── */}
+        <section className="mx-auto max-w-[1200px] px-5 py-24 sm:px-8">
+          <div className="mb-10">
+            <p className="mkt-eyebrow mb-4">
+              <span className="dot">●</span> run
+            </p>
+            <h2 className="mkt-h2 max-w-[680px]">The platform your org actually operates on.</h2>
+            <p className="mkt-sub mt-5 max-w-[560px]">
+              Projects, billing, and security that hold up under real load — never a bolt-on afterthought.
+            </p>
+          </div>
+          <div className="grid gap-px overflow-hidden rounded-xl border border-[#ffffff12] bg-[#ffffff12] md:grid-cols-3">
+            {RUN.map((r) => (
+              <div key={r.title} className="bg-[#0d0d12] p-7 transition-colors hover:bg-[#121219]">
+                <p className="mkt-mono text-[10.5px] uppercase tracking-widest text-[#686e7c]">{r.tag}</p>
+                <h3 className="mkt-h3 mt-4">{r.title}</h3>
+                <p className="mt-3 text-[13.5px] leading-relaxed text-[#a8adba]">{r.desc}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="mkt-term mt-8">
+            <div className="mkt-term-bar">
+              <span className="dot" />
+              <span className="dot" />
+              <span className="dot" />
+              <span className="title mkt-mono">buildrs — live status</span>
+              <span className="mkt-live ml-auto">
+                <span className="dot" />
+                <span className="text-[11px] capitalize text-[#2fd6e6]">live</span>
+              </span>
+            </div>
+            <div className="mkt-term-body grid gap-x-8 gap-y-1 sm:grid-cols-2">
+              <div><span className="d">next.js</span> · edge rendering</div>
+              <div><span className="d">yjs</span> · conflict-free editing</div>
+              <div><span className="d">xterm.js</span> · sandboxed shell</div>
+              <div><span className="d">paystack</span> · <span className="d">flutterwave</span> · <span className="d">stripe</span></div>
+              <div><span className="d">mongo</span> · audit-logged</div>
+              <div><span className="ok">● buildrshq.dev — stable</span></div>
+            </div>
+          </div>
+        </section>
+
+        {/* ── Why ──────────────────────────────────────────── */}
+        <section className="border-t border-[#ffffff0d]">
+          <div className="mx-auto max-w-[1200px] px-5 py-24 sm:px-8">
+            <div className="mb-12">
+              <p className="mkt-eyebrow mb-4">
+                <span className="dot">●</span> why buildrs
+              </p>
+              <h2 className="mkt-h2">Designed for teams that ship.</h2>
+            </div>
+            <div className="grid gap-x-16 gap-y-12 md:grid-cols-2">
+              {WHY.map((w) => (
+                <div key={w.num} className="flex gap-6 border-t border-[#ffffff12] pt-6">
+                  <p className="mkt-num text-sm text-[#525764]">{w.num}</p>
+                  <div>
+                    <h3 className="mkt-h3">{w.title}</h3>
+                    <p className="mt-2.5 text-[14px] leading-relaxed text-[#a8adba]">{w.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* ── Community ────────────────────────────────────── */}
+        <section className="mx-auto max-w-[1200px] px-5 pb-24 sm:px-8">
+          <div className="mb-10">
+            <p className="mkt-eyebrow mb-4">
+              <span className="dot">●</span> community
+            </p>
+            <h2 className="mkt-h2">Built in the open. Join in.</h2>
+          </div>
+          <div className="mkt-grid grid-cols-1 md:grid-cols-3">
+            {[
+              { name: 'X', handle: '@buildrshq', desc: 'Ship logs, launches, and build-in-public threads.' },
+              { name: 'GitHub', handle: 'github.com/codex-inc', desc: 'The pieces that are open, licensed to stay that way.' },
+              { name: 'Discord', handle: 'buildrshq community', desc: 'Talk to the builders — dev, feedback, and showcase.' },
+            ].map((c) => (
+              <div key={c.name} className="mkt-cell">
+                <div className="flex items-center justify-between">
+                  <h3 className="mkt-h3">{c.name}</h3>
+                  <span className="mkt-link-arrow">↗</span>
+                </div>
+                <p className="mkt-mono mt-1.5 text-xs text-[#686e7c]">{c.handle}</p>
+                <p className="mt-3 text-[13.5px] leading-relaxed text-[#a8adba]">{c.desc}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* ── Final CTA ────────────────────────────────────── */}
+        <section className="relative overflow-hidden border-t border-[#ffffff0d]">
+          <div className="mkt-hero-bg" />
+          <div className="relative mx-auto max-w-[1200px] px-5 py-28 text-center sm:px-8">
+            <p className="mkt-eyebrow mb-6">
+              <span className="dot">●</span> get started
+            </p>
+            <h2 className="mkt-h2 mx-auto max-w-[640px]">Pick a layer. Start there.</h2>
+            <p className="mkt-sub mx-auto mt-5 max-w-[440px]">
+              One workspace, no credit card, no migration project. Your first build is minutes away.
+            </p>
+            <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
+              <Link href="/signup" className="mkt-btn mkt-btn-primary !px-7 !py-3 !text-[15px]">
+                Start building <span className="mkt-arrow">→</span>
+              </Link>
+              <Link href="/features" className="mkt-btn !px-7 !py-3 !text-[15px]">
+                See the features
+              </Link>
+            </div>
+          </div>
+        </section>
+      </SiteShell>
     </>
   );
 }

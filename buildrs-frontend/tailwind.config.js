@@ -16,8 +16,8 @@ module.exports = {
         'purple-accent': '#8b5cf6',
       },
       fontFamily: {
-        sans: ['Space Grotesk', 'system-ui', 'sans-serif'],
-        mono: ['Consolas', 'Courier New', 'monospace'],
+        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        mono: ['ui-monospace', 'SF Mono', 'SFMono-Regular', 'Cascadia Code', 'Menlo', 'Consolas', 'monospace'],
       },
       animation: {
         'fade-in': 'fadeIn 0.5s ease-out forwards',

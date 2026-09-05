@@ -1,88 +1,168 @@
 import Head from 'next/head';
-import ModernHeader from '../components/ModernHeader';
 import Link from 'next/link';
-import { Calendar, MessageSquare, Users, BookOpen, LifeBuoy } from 'lucide-react';
+import { useState } from 'react';
+import SiteShell from '../components/SiteShell';
 
-const posts = [
-  { date: 'February 8, 2026', title: 'Introducing AI Pair Programming', desc: 'Learn how our new AI pair programming feature can help you code faster and smarter.', gradient: 'from-blue-500 to-purple-600' },
-  { date: 'February 5, 2026', title: '10 Tips for Better Code Reviews', desc: 'Best practices for conducting effective code reviews in your team.', gradient: 'from-green-500 to-blue-600' },
-  { date: 'February 1, 2026', title: 'Building Scalable Microservices', desc: 'A comprehensive guide to designing and deploying microservices architecture.', gradient: 'from-purple-500 to-pink-600' },
-];
-
-const footerLinks = [
-  { title: 'Product', links: [{ href: '/features', label: 'Features' }, { href: '/pricing', label: 'Pricing' }, { href: '/changelog', label: 'Changelog' }] },
-  { title: 'Company', links: [{ href: '/about', label: 'About' }, { href: '/blog', label: 'Blog' }, { href: '/careers', label: 'Careers' }, { href: '/contact', label: 'Contact' }] },
-  { title: 'Resources', links: [{ href: '/docs', label: 'Documentation' }, { href: '/support', label: 'Support' }, { href: '/demo', label: 'Schedule Demo' }] },
-  { title: 'Legal', links: [{ href: '/privacy', label: 'Privacy Policy' }, { href: '/terms', label: 'Terms of Service' }] },
+const POSTS = [
+  {
+    date: '2026-02-08',
+    tag: 'feature',
+    title: 'Introducing AI pair programming',
+    desc: 'An assistant that has read your repo — refactors, explains, and writes tests against real project context, not a paste-in tab.',
+  },
+  {
+    date: '2026-02-05',
+    tag: 'practice',
+    title: '10 tips for better code reviews',
+    desc: 'Practical reviewing habits for teams that ship on a cadence — and why live review beats async-at-a-distance.',
+  },
+  {
+    date: '2026-02-01',
+    tag: 'architecture',
+    title: 'Building with microservices, sanely',
+    desc: 'A field guide to designing and deploying microservices without trading your team’s sanity for scale.',
+  },
+  {
+    date: '2026-01-24',
+    tag: 'product',
+    title: 'Why we chose Yjs CRDT over OT',
+    desc: 'The conflict-free editing decisions behind live co-editing, and what it means when your team is in the same file.',
+  },
+  {
+    date: '2026-01-18',
+    tag: 'ops',
+    title: 'The sandbox terminal, explained',
+    desc: 'How gated in-browser execution keeps experiments safe without sending your team off-platform.',
+  },
+  {
+    date: '2026-01-09',
+    tag: 'company',
+    title: 'Shipping to 54 countries from day one',
+    desc: 'Stripe, Paystack, and Flutterwave — how localized payment rails shaped how Buildrs bills.',
+  },
 ];
 
 export default function Blog() {
+  const [subscribed, setSubscribed] = useState(false);
+  const [email, setEmail] = useState('');
+
+  const subscribe = (e) => {
+    e.preventDefault();
+    if (!email.trim()) return;
+    setSubscribed(true);
+  };
+
+  const [featured, ...rest] = POSTS;
+
   return (
     <>
       <Head>
-        <title>Blog - BuildrsHQ</title>
+        <title>Blog — BuildrsHQ</title>
+        <meta
+          name="description"
+          content="Build-in-public notes, engineering deep dives, and product updates from the Buildrs team."
+        />
         <link rel="icon" href="/buildrs.png" />
       </Head>
 
-      <div className="min-h-screen bg-[#0a1628] text-white overflow-x-hidden">
-        <div className="cube cube-1" />
-        <div className="cube cube-2" />
-        <div className="cube cube-3" />
-
-        <ModernHeader
-          navigation={[
-            { href: '/features', label: 'Features' },
-            { href: '/pricing', label: 'Pricing' },
-            { href: '/blog', label: 'Blog' },
-            { href: '/changelog', label: 'Changelog' },
-          ]}
-          ctaButtons={[
-            { href: '/sign_in', label: 'Sign In' },
-            { href: '/signup', label: 'Start Free Trial', primary: true },
-          ]}
-        />
-
-        <div className="h-20" />
-
-        <section className="content py-20 px-4">
-          <div className="max-w-7xl mx-auto">
-            <h1 className="text-5xl md:text-6xl font-bold mb-6 text-center">Blog</h1>
-            <p className="text-xl text-gray-300 mb-12 text-center">Latest updates, tutorials, and insights from the CODEX team</p>
-
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {posts.map((post, i) => (
-                <article key={i} className="bg-[#1a2332] rounded-xl border border-gray-700 overflow-hidden hover:border-blue-500 transition">
-                  <div className={`h-48 bg-gradient-to-br ${post.gradient}`} />
-                  <div className="p-6">
-                    <div className="text-sm text-gray-400 mb-2">{post.date}</div>
-                    <h3 className="text-xl font-bold mb-3">{post.title}</h3>
-                    <p className="text-gray-300 mb-4">{post.desc}</p>
-                    <Link href="#" className="text-blue-400 hover:text-blue-300">Read more →</Link>
-                  </div>
-                </article>
-              ))}
-            </div>
+      <SiteShell>
+        {/* Hero */}
+        <section className="relative overflow-hidden pt-36 pb-16 sm:pt-44">
+          <div className="mkt-hero-bg" />
+          <div className="relative mx-auto max-w-[1200px] px-5 sm:px-8">
+            <p className="mkt-eyebrow mb-6">
+              <span className="dot">●</span> buildrs · journal
+            </p>
+            <h1 className="mkt-h1">
+              Written while
+              <br />
+              <span className="accent">building</span>.
+            </h1>
+            <p className="mkt-sub mt-6 max-w-[520px]">
+              Build logs, engineering notes, and updates from the team shipping Buildrs.
+            </p>
           </div>
         </section>
 
-        <footer className="content bg-[#070F34] border-t border-gray-700 py-16 px-4">
-          <div className="max-w-7xl mx-auto grid md:grid-cols-4 gap-8 mb-12">
-            {footerLinks.map((group) => (
-              <div key={group.title}>
-                <h4 className="text-lg font-bold mb-4">{group.title}</h4>
-                <ul className="space-y-2 text-gray-400">
-                  {group.links.map((link) => (
-                    <li key={link.href}><Link href={link.href} className="hover:text-white transition">{link.label}</Link></li>
-                  ))}
-                </ul>
+        {/* Featured */}
+        <section className="mx-auto max-w-[1200px] px-5 sm:px-8">
+          <Link href="#" className="mkt-card group block">
+            <div className="grid gap-0 lg:grid-cols-[1.15fr_0.85fr]">
+              <div className="p-8 sm:p-10">
+                <div className="flex items-center gap-3">
+                  <span className="mkt-pill live">featured</span>
+                  <span className="mkt-mono text-[11px] uppercase tracking-widest text-[#686e7c]">
+                    {featured.date}
+                  </span>
+                </div>
+                <h2 className="mkt-h2 mt-6 group-hover:text-white">{featured.title}</h2>
+                <p className="mkt-sub mt-4 max-w-[560px]">{featured.desc}</p>
+                <span className="mkt-btn mt-8 inline-flex !text-[14px]">
+                  Read the post <span className="mkt-arrow">→</span>
+                </span>
               </div>
+              <div className="mkt-term m-0 rounded-none border-0 border-l border-[#ffffff12]">
+                <div className="mkt-term-body">
+                  <div><span className="d">$</span> <span className="d">buildrs ai pair --explain</span></div>
+                  <div className="mt-1.5"><span className="p">▸</span> indexing codebase · 1,284 files</div>
+                  <div><span className="p">▸</span> reading src/components/dashboard.tsx</div>
+                  <div className="mt-1.5"><span className="ok">✓</span> refactor applied — 42 lines removed</div>
+                  <div className="mt-4 text-[#525764]">— from <span className="ok">ai pair, v2.5</span></div>
+                </div>
+              </div>
+            </div>
+          </Link>
+        </section>
+
+        {/* Grid */}
+        <section className="mx-auto max-w-[1200px] px-5 py-16 sm:px-8">
+          <div className="grid gap-px overflow-hidden rounded-xl border border-[#ffffff12] bg-[#ffffff12] md:grid-cols-2 lg:grid-cols-3">
+            {rest.map((post) => (
+              <Link key={post.title} href="#" className="group bg-[#0d0d12] p-7 transition-colors hover:bg-[#121219]">
+                <div className="flex items-center gap-3">
+                  <span className="mkt-pill">{post.tag}</span>
+                  <span className="mkt-mono text-[10.5px] uppercase tracking-widest text-[#525764]">
+                    {post.date}
+                  </span>
+                </div>
+                <h3 className="mkt-h3 mt-5 leading-snug group-hover:text-white">{post.title}</h3>
+                <p className="mt-3 text-[13.5px] leading-relaxed text-[#a8adba]">{post.desc}</p>
+                <span className="mkt-link-arrow mt-5 inline-block text-[13px]">read →</span>
+              </Link>
             ))}
           </div>
-          <div className="border-t border-gray-700 pt-8 text-center text-gray-400">
-            <p>&copy; 2026 BuildrsHQ. All rights reserved.</p>
+        </section>
+
+        {/* Newsletter */}
+        <section className="mx-auto max-w-[1200px] px-5 pb-24 sm:px-8">
+          <div className="mkt-card flex flex-col gap-6 p-8 sm:flex-row sm:items-center sm:justify-between sm:p-10">
+            <div>
+              <h2 className="mkt-h3">Shipping notes, monthly.</h2>
+              <p className="mt-2 text-[13.5px] text-[#a8adba]">
+                One email a month: what shipped, what broke, what is next. No noise.
+              </p>
+            </div>
+            {subscribed ? (
+              <p className="mkt-mono text-[13px] text-[#2fd6e6]">✓ subscribed — see you next month</p>
+            ) : (
+              <form onSubmit={subscribe} className="flex w-full max-w-[400px] gap-2">
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="mkt-input flex-1"
+                  placeholder="you@company.com"
+                  aria-label="email"
+                />
+                <button type="submit" className="mkt-btn mkt-btn-primary flex-shrink-0">
+                  Subscribe
+                </button>
+              </form>
+            )}
           </div>
-        </footer>
-      </div>
+        </section>
+      </SiteShell>
     </>
   );
 }

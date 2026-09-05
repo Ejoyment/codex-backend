@@ -1,86 +1,131 @@
 import Head from 'next/head';
-import ModernHeader from '../components/ModernHeader';
 import Link from 'next/link';
+import SiteShell from '../components/SiteShell';
 
-const versions = [
-  { version: '2.5.0', tag: 'Latest', date: 'February 8, 2026', items: ['Added AI pair programming feature', 'Improved code completion speed by 40%', 'Fixed terminal rendering issues on Windows', 'Enhanced syntax highlighting for 15+ languages'] },
-  { version: '2.4.0', date: 'January 25, 2026', items: ['New collaborative editing features', 'Improved Git integration', 'Fixed memory leak in large projects', 'Updated documentation'] },
-  { version: '2.3.0', date: 'January 10, 2026', items: ['Added dark mode themes', 'Performance improvements', 'Bug fixes and stability improvements'] },
+const VERSIONS = [
+  {
+    version: '2.5.0',
+    latest: true,
+    date: '2026-02-08',
+    changes: [
+      ['feature', 'AI pair programming — an assistant with codebase memory'],
+      ['perf', 'Code completion speed improved ~40%'],
+      ['fix', 'Terminal rendering on Windows'],
+      ['feature', 'Syntax highlighting for 15+ languages'],
+    ],
+  },
+  {
+    version: '2.4.0',
+    date: '2026-01-25',
+    changes: [
+      ['feature', 'Collaborative editing with live presence'],
+      ['feature', 'Git integration: diffs and PR views in the workspace'],
+      ['fix', 'Memory leak in large projects'],
+      ['docs', 'Documentation overhaul for onboarding'],
+    ],
+  },
+  {
+    version: '2.3.0',
+    date: '2026-01-10',
+    changes: [
+      ['feature', 'Additional workspace themes'],
+      ['perf', 'Editor indexing performance'],
+      ['fix', 'Stability and crash fixes throughout'],
+    ],
+  },
+  {
+    version: '2.2.0',
+    date: '2025-12-19',
+    changes: [
+      ['feature', 'Paystack and Flutterwave billing rails'],
+      ['feature', 'Sandbox terminal gating controls'],
+      ['perf', 'First-load bundle reduced'],
+    ],
+  },
 ];
 
-const footerLinks = [
-  { title: 'Product', links: [{ href: '/features', label: 'Features' }, { href: '/pricing', label: 'Pricing' }, { href: '/changelog', label: 'Changelog' }] },
-  { title: 'Company', links: [{ href: '/about', label: 'About' }, { href: '/blog', label: 'Blog' }, { href: '/careers', label: 'Careers' }] },
-  { title: 'Resources', links: [{ href: '/docs', label: 'Documentation' }, { href: '/support', label: 'Support' }] },
-  { title: 'Legal', links: [{ href: '/privacy', label: 'Privacy Policy' }, { href: '/terms', label: 'Terms of Service' }] },
-];
+const KIND_COLOR = {
+  feature: 'text-[#2fd6e6]',
+  perf: 'text-[#e5b84a]',
+  fix: 'text-[#a8adba]',
+  docs: 'text-[#686e7c]',
+};
 
 export default function Changelog() {
   return (
     <>
       <Head>
-        <title>Changelog - BuildrsHQ</title>
+        <title>Changelog — BuildrsHQ</title>
+        <meta
+          name="description"
+          content="See what shipped in Buildrs — features, fixes, and performance notes, release by release."
+        />
         <link rel="icon" href="/buildrs.png" />
       </Head>
 
-      <div className="min-h-screen bg-[#0a1628] text-white overflow-x-hidden">
-        <div className="cube cube-1" />
-        <div className="cube cube-2" />
-        <div className="cube cube-3" />
-
-        <ModernHeader
-          navigation={[
-            { href: '/features', label: 'Features' },
-            { href: '/pricing', label: 'Pricing' },
-            { href: '/blog', label: 'Blog' },
-            { href: '/changelog', label: 'Changelog' },
-          ]}
-          ctaButtons={[
-            { href: '/sign_in', label: 'Sign In' },
-            { href: '/signup', label: 'Start Free Trial', primary: true },
-          ]}
-        />
-
-        <div className="h-20" />
-
-        <section className="content py-20 px-4">
-          <div className="max-w-4xl mx-auto">
-            <h1 className="text-5xl md:text-6xl font-bold mb-6 text-center">Changelog</h1>
-            <p className="text-xl text-gray-300 mb-12 text-center">Track all updates and improvements to BuildrsHQ</p>
-
-            <div className="space-y-8">
-              {versions.map((v) => (
-                <div key={v.version} className="bg-[#1a2332] p-8 rounded-xl border border-gray-700">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-2xl font-bold">Version {v.version}</h3>
-                    {v.tag && <span className="bg-green-500 text-white px-3 py-1 rounded-full text-sm">{v.tag}</span>}
-                  </div>
-                  <div className="text-gray-400 mb-4">{v.date}</div>
-                  <ul className="space-y-2 text-gray-300">
-                    {v.items.map((item, idx) => (<li key={idx}>• {item}</li>))}
-                  </ul>
-                </div>
-              ))}
-            </div>
+      <SiteShell>
+        {/* Hero */}
+        <section className="relative overflow-hidden pt-36 pb-16 sm:pt-44">
+          <div className="mkt-hero-bg" />
+          <div className="relative mx-auto max-w-[1200px] px-5 sm:px-8">
+            <p className="mkt-eyebrow mb-6">
+              <span className="dot">●</span> buildrs · changelog
+            </p>
+            <h1 className="mkt-h1">
+              What <span className="accent">shipped</span> lately.
+            </h1>
+            <p className="mkt-sub mt-6 max-w-[480px]">
+              Every release, logged in the open. Latest: v2.5.0 — AI pair programming.
+            </p>
           </div>
         </section>
 
-        <footer className="content bg-[#070F34] border-t border-gray-700 py-16 px-4">
-          <div className="max-w-7xl mx-auto grid md:grid-cols-4 gap-8 mb-12">
-            {footerLinks.map((group) => (
-              <div key={group.title}>
-                <h4 className="text-lg font-bold mb-4">{group.title}</h4>
-                <ul className="space-y-2 text-gray-400">
-                  {group.links.map((link) => (<li key={link.href}><Link href={link.href} className="hover:text-white transition">{link.label}</Link></li>))}
+        {/* Versions */}
+        <section className="mx-auto max-w-[820px] px-5 sm:px-8">
+          <div className="divide-y divide-[#ffffff0d] overflow-hidden rounded-xl border border-[#ffffff12] bg-[#0d0d12]">
+            {VERSIONS.map((v) => (
+              <div key={v.version} className="flex flex-col gap-6 p-7 sm:flex-row sm:gap-10 sm:p-8">
+                <div className="sm:w-[150px] sm:shrink-0">
+                  <div className="flex items-center gap-2.5">
+                    <p className="mkt-num text-lg text-white">v{v.version}</p>
+                    {v.latest && <span className="mkt-pill live">latest</span>}
+                  </div>
+                  <p className="mkt-mono mt-2 text-[11px] uppercase tracking-widest text-[#525764]">{v.date}</p>
+                </div>
+                <ul className="flex-1 space-y-3">
+                  {v.changes.map(([kind, text]) => (
+                    <li key={text} className="flex items-start gap-3 text-[13.5px]">
+                      <span className={`mkt-mono mt-0.5 text-[12px] ${KIND_COLOR[kind]}`}>+</span>
+                      <span className="leading-relaxed text-[#a8adba]">{text}</span>
+                    </li>
+                  ))}
                 </ul>
               </div>
             ))}
           </div>
-          <div className="border-t border-gray-700 pt-8 text-center text-gray-400">
-            <p>&copy; 2026 BuildrsHQ. All rights reserved.</p>
+
+          <p className="mkt-mono mt-6 text-center text-[11px] text-[#525764]">
+            earlier releases · chronicled in the docs →{' '}
+            <Link href="/docs" className="text-[#2fd6e6]">docs/buildrs/changelog</Link>
+          </p>
+        </section>
+
+        {/* CTA */}
+        <section className="relative overflow-hidden mt-20 border-t border-[#ffffff0d]">
+          <div className="mkt-hero-bg" />
+          <div className="relative mx-auto max-w-[1200px] px-5 py-24 text-center sm:px-8">
+            <h2 className="mkt-h2 mx-auto max-w-[560px]">New this week is shipping fast.</h2>
+            <p className="mkt-sub mx-auto mt-5 max-w-[400px]">
+              The fastest way to test a release is to open the workspace.
+            </p>
+            <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
+              <Link href="/signup" className="mkt-btn mkt-btn-primary !px-7 !py-3 !text-[15px]">
+                Try the latest <span className="mkt-arrow">→</span>
+              </Link>
+            </div>
           </div>
-        </footer>
-      </div>
+        </section>
+      </SiteShell>
     </>
   );
 }

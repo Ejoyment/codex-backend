@@ -1,5 +1,6 @@
 import '../styles/globals.css';
 import '../styles/workspace.css';
+import '../styles/marketing.css';
 import { Inter } from 'next/font/google';
 import ErrorBoundary from '../components/ErrorBoundary';
 import { ToastContainer } from '../components/Toast';

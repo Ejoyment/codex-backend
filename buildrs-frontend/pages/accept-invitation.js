@@ -1,9 +1,9 @@
 import Head from 'next/head';
-import ModernHeader from '../components/ModernHeader';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { useAuth } from '../hooks/useAuth';
 import { apiFetch } from '../lib/api';
+import SiteShell from '../components/SiteShell';
 
 export default function AcceptInvitation() {
   const router = useRouter();
@@ -54,36 +54,44 @@ export default function AcceptInvitation() {
         <link rel="icon" href="/buildrs.png" />
       </Head>
 
-      <div className="min-h-screen bg-[#0a1628] text-white flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-[#1a2332] rounded-2xl border border-gray-700 p-8 text-center">
-          {status === 'processing' && (
-            <>
-              <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-6" />
-              <h1 className="text-2xl font-bold mb-2">Accepting Invitation</h1>
-              <p className="text-gray-300">{message}</p>
-            </>
-          )}
-          {status === 'success' && (
-            <>
-              <div className="w-16 h-16 bg-green-500 rounded-full mx-auto mb-6 flex items-center justify-center">
-                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
-              </div>
-              <h1 className="text-2xl font-bold mb-2">Invitation Accepted</h1>
-              <p className="text-gray-300 mb-6">{message}</p>
-            </>
-          )}
-          {status === 'error' && (
-            <>
-              <div className="w-16 h-16 bg-red-500 rounded-full mx-auto mb-6 flex items-center justify-center">
-                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-              </div>
-              <h1 className="text-2xl font-bold mb-2">Oops!</h1>
-              <p className="text-gray-300 mb-6">{message}</p>
-              <button type="button" onClick={() => router.push('/dashboard')} className="cta-button px-6 py-3 rounded-lg text-white font-medium">Go to Dashboard</button>
-            </>
-          )}
-        </div>
-      </div>
+      <SiteShell footer={false}>
+        <section className="flex min-h-[85vh] items-center justify-center px-5">
+          <div className="mkt-card w-full max-w-md p-8 text-center">
+            <div className="relative mx-auto mb-6 flex h-14 w-14 items-center justify-center">
+              {status === 'processing' && (
+                <div
+                  className="absolute inset-0 rounded-full border-2 border-[#2fd6e6] border-t-transparent"
+                  style={{ animation: 'mkt-spin 1s linear infinite' }}
+                />
+              )}
+              {status === 'success' && (
+                <div className="mkt-mono flex h-14 w-14 items-center justify-center rounded-full border border-[#2fd6e680] text-[20px] text-[#2fd6e6]">✓</div>
+              )}
+              {status === 'error' && (
+                <div className="mkt-mono flex h-14 w-14 items-center justify-center rounded-full border border-[#e5b84a80] text-[20px] text-[#e5b84a]">!</div>
+              )}
+            </div>
+            <p className="mkt-eyebrow mb-3">
+              <span className="dot">●</span> buildrs · invitation
+            </p>
+            <h1 className="mkt-h3 text-xl">
+              {status === 'processing' && 'Accepting invitation'}
+              {status === 'success' && 'Invitation accepted'}
+              {status === 'error' && 'Something went wrong'}
+            </h1>
+            <p className="mt-3 text-[13.5px] text-[#a8adba]">{message}</p>
+            {status === 'error' && (
+              <button
+                type="button"
+                onClick={() => router.push('/dashboard')}
+                className="mkt-btn mt-6 w-full justify-center"
+              >
+                Go to dashboard
+              </button>
+            )}
+          </div>
+        </section>
+      </SiteShell>
     </>
   );
 }

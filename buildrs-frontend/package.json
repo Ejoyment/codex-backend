@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
+    "@next/swc-darwin-arm64": "^16.3.4",
     "@paystack/inline-js": "2.24.0",
     "@stripe/stripe-js": "3.5.0",
     "@xterm/addon-fit": "^0.10.0",

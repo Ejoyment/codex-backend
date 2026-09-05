@@ -1,6 +1,6 @@
 import Head from 'next/head';
-import ModernHeader from '../components/ModernHeader';
 import Link from 'next/link';
+import SiteShell from '../components/SiteShell';
 
 export default function SetupSupportAgent() {
   return (
@@ -9,16 +9,20 @@ export default function SetupSupportAgent() {
         <title>Setup Support Agent - BuildrsHQ</title>
         <link rel="icon" href="/buildrs.png" />
       </Head>
-      <div className="min-h-screen bg-navy flex flex-col">
-        <ModernHeader navigation={[]} ctaButtons={[{ href: '/sign_in', label: 'Sign In' }, { href: '/signup', label: 'Start Free Trial', primary: true }]} />
-        <main className="flex-1 flex items-center justify-center px-4">
-          <div className="max-w-md w-full bg-navy-light rounded-lg p-8 border border-gray-700">
-            <h1 className="text-2xl font-bold mb-4 text-center">Setup Support Agent</h1>
-            <p className="text-gray-400 text-center mb-6">This setup flow is coming soon.</p>
-            <Link href="/support" className="block text-center cta-button px-4 py-2 rounded-lg text-white font-medium">Go to Support</Link>
+      <SiteShell footer={false}>
+        <section className="flex min-h-[85vh] items-center justify-center px-5">
+          <div className="mkt-card w-full max-w-md p-8 text-center">
+            <p className="mkt-eyebrow mb-4">
+              <span className="dot">●</span> buildrs · setup
+            </p>
+            <h1 className="mkt-h3 text-xl">Setup support agent</h1>
+            <p className="mt-3 text-[13.5px] text-[#a8adba]">This setup flow is coming soon.</p>
+            <Link href="/support" className="mkt-btn mkt-btn-primary mt-6 w-full justify-center">
+              Go to support <span className="mkt-arrow">→</span>
+            </Link>
           </div>
-        </main>
-      </div>
+        </section>
+      </SiteShell>
     </>
   );
 }
