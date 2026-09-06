@@ -2982,3 +2982,197 @@
   border-color: var(--ws-blue);
   box-shadow: 0 0 0 3px rgba(47, 214, 230, 0.12);
 }
+
+/* ==========================================================================
+   Integrations – enterprise tier
+   Catalog of external provider cards with connect/disconnect flows.
+   ========================================================================== */
+
+.int-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.1rem;
+}
+@media (max-width: 1024px) {
+  .int-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 640px) {
+  .int-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.int-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--ws-border);
+  border-radius: 14px;
+  background: #0d0d12;
+  padding: 1.1rem;
+  transition: border-color 0.18s ease, transform 0.18s ease, background 0.18s ease;
+  position: relative;
+  overflow: hidden;
+}
+.int-card:hover {
+  border-color: var(--ws-border-strong);
+  background: #101016;
+}
+.int-card.is-active {
+  border-color: rgba(47, 214, 230, 0.35);
+  background: linear-gradient(180deg, rgba(47, 214, 230, 0.04), rgba(13, 13, 18, 0) 55%);
+}
+.int-card.is-active::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 1rem;
+  right: 1rem;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, rgba(47, 214, 230, 0.7), transparent);
+}
+.int-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.9rem;
+}
+.int-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-width: 0;
+}
+.int-ico {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid var(--ws-border-strong);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1.05rem;
+  flex-shrink: 0;
+}
+.int-name {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--ws-text);
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.int-sub {
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, 'Cascadia Code', Menlo, Consolas, monospace;
+  font-size: 0.625rem;
+  letter-spacing: 0.05em;
+  color: var(--ws-text-faint);
+  margin-top: 0.2rem;
+  text-transform: uppercase;
+}
+.int-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.625rem;
+  font-weight: 600;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  flex-shrink: 0;
+  border: 1px solid transparent;
+}
+.int-pill .dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+}
+.int-pill.is-on {
+  background: rgba(52, 211, 153, 0.1);
+  border-color: rgba(52, 211, 153, 0.25);
+  color: #34d399;
+}
+.int-pill.is-on .dot {
+  background: #34d399;
+}
+.int-pill.is-off {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--ws-border);
+  color: var(--ws-text-faint);
+}
+.int-pill.is-off .dot {
+  background: #565d6b;
+}
+.int-pill.is-info {
+  background: rgba(47, 214, 230, 0.08);
+  border-color: rgba(47, 214, 230, 0.25);
+  color: #2fd6e6;
+}
+.int-desc {
+  font-size: 0.81rem;
+  line-height: 1.55;
+  color: var(--ws-text-muted);
+  margin-bottom: 0.9rem;
+  flex: 1;
+}
+.int-meta {
+  border-top: 1px solid var(--ws-border);
+  padding: 0.65rem 0 0.8rem;
+  margin-bottom: 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.int-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.72rem;
+  color: var(--ws-text-muted);
+  min-width: 0;
+}
+.int-meta-row svg {
+  flex-shrink: 0;
+  color: var(--ws-text-faint);
+}
+.int-meta-val {
+  font-weight: 600;
+  color: var(--ws-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.int-meta-val.is-dim {
+  font-weight: 500;
+  color: var(--ws-text-faint);
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, 'Cascadia Code', Menlo, Consolas, monospace;
+  font-size: 0.68rem;
+}
+.int-actions {
+  display: flex;
+  gap: 0.6rem;
+}
+.int-actions .btn-workspace {
+  flex: 1;
+  justify-content: center;
+}
+.int-footnote {
+  flex: 1;
+  text-align: center;
+  padding: 0.5rem 0;
+  font-size: 0.78rem;
+  color: var(--ws-text-faint);
+}
+.int-ico-warn {
+  background: rgba(229, 184, 74, 0.1);
+  border-color: rgba(229, 184, 74, 0.25);
+  color: #e5b84a;
+}
+.int-ico-err {
+  background: rgba(248, 113, 113, 0.1);
+  border-color: rgba(248, 113, 113, 0.25);
+  color: #f87171;
+}
