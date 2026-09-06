@@ -287,34 +287,34 @@ function AddConventionModal({ companyId, onClose, onCreated }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[9999] p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[9999] p-4" onClick={onClose}>
       <div
-        className="bg-white rounded-xl p-8 max-w-lg w-full"
+        className="ws-modal p-8 max-w-lg w-full"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-center mb-6">
-          <h3 className="text-xl font-bold text-slate-900">Add Convention</h3>
+          <h3 className="ws-modal-title">Add Convention</h3>
           <button
             type="button"
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 text-2xl leading-none"
+            className="text-[#565d6b] hover:text-[#eceef1] text-2xl leading-none"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {error && (
-          <div className="mb-4 p-3 rounded-lg bg-red-50 text-red-600 text-sm">{error}</div>
+          <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">{error}</div>
         )}
 
         <form onSubmit={handleSubmit}>
           <div className="grid grid-cols-2 gap-4 mb-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Category</label>
+              <label className="ws-label">Category</label>
               <select
                 value={form.category}
                 onChange={(e) => update('category', e.target.value)}
-                className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-900"
+                className="ws-select"
               >
                 {CATEGORIES.map((c) => (
                   <option key={c.value} value={c.value}>
@@ -324,11 +324,11 @@ function AddConventionModal({ companyId, onClose, onCreated }) {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Priority</label>
+              <label className="ws-label">Priority</label>
               <select
                 value={form.priority}
                 onChange={(e) => update('priority', e.target.value)}
-                className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-900"
+                className="ws-select"
               >
                 <option value="low">Low</option>
                 <option value="medium">Medium</option>
@@ -339,49 +339,49 @@ function AddConventionModal({ companyId, onClose, onCreated }) {
           </div>
 
           <div className="mb-4">
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Rule *</label>
+            <label className="ws-label">Rule *</label>
             <input
               type="text"
               required
               value={form.rule}
               onChange={(e) => update('rule', e.target.value)}
               placeholder="e.g. Use functional components over class components"
-              className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-900"
+              className="ws-input"
             />
           </div>
 
           <div className="mb-4">
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Description</label>
+            <label className="ws-label">Description</label>
             <textarea
               rows={3}
               value={form.description}
               onChange={(e) => update('description', e.target.value)}
               placeholder="Explain the convention and why it matters..."
-              className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-900 resize-y"
+              className="ws-input resize-y"
             />
           </div>
 
           <div className="mb-4">
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">
-              Examples <span className="text-slate-400 font-normal">(one per line)</span>
+            <label className="ws-label">
+              Examples <span className="text-[#565d6b] font-normal">(one per line)</span>
             </label>
             <textarea
               rows={3}
               value={form.examples}
               onChange={(e) => update('examples', e.target.value)}
               placeholder="const useAuth = () => useStore(...)&#10;export default function MyComponent() {}"
-              className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-900 font-mono resize-y"
+              className="ws-input resize-y font-mono"
             />
           </div>
 
           <div className="mb-6">
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Tech Stack</label>
+            <label className="ws-label">Tech Stack</label>
             <input
               type="text"
               value={form.techStack}
               onChange={(e) => update('techStack', e.target.value)}
               placeholder="e.g. React, TypeScript, Next.js"
-              className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-900"
+              className="ws-input"
             />
           </div>
 
@@ -389,7 +389,7 @@ function AddConventionModal({ companyId, onClose, onCreated }) {
             <button
               type="button"
               onClick={onClose}
-              className="px-6 py-2.5 border border-slate-300 rounded-lg bg-white text-slate-700 text-sm"
+              className="btn-workspace btn-secondary"
             >
               Cancel
             </button>

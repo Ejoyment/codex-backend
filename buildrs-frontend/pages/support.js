@@ -51,48 +51,48 @@ function CreateTicketModal({ onClose, onCreated }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[9999] p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl p-8 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[9999] p-4" onClick={onClose}>
+      <div className="ws-modal p-8 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-between items-center mb-6">
-          <h3 className="text-xl font-bold text-slate-900">New Support Ticket</h3>
-          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600">
+          <h3 className="ws-modal-title">New Support Ticket</h3>
+          <button type="button" onClick={onClose} className="text-[#565d6b] hover:text-[#eceef1]">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {error && <div className="mb-4 p-3 rounded-lg bg-red-50 text-red-600 text-sm">{error}</div>}
+        {error && <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">{error}</div>}
 
         <form onSubmit={handleSubmit}>
           <div className="mb-4">
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Subject *</label>
+            <label className="ws-label">Subject *</label>
             <input
               type="text"
               required
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
-              className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
+              className="ws-input"
               placeholder="Brief summary of your issue"
             />
           </div>
 
           <div className="mb-4">
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Description *</label>
+            <label className="ws-label">Description *</label>
             <textarea
               required
               rows="5"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500 resize-none"
+              className="ws-input resize-none"
               placeholder="Describe your issue in detail..."
             />
           </div>
 
           <div className="mb-6">
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Priority</label>
+            <label className="ws-label">Priority</label>
             <select
               value={priority}
               onChange={(e) => setPriority(e.target.value)}
-              className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:border-blue-500"
+              className="ws-select"
             >
               <option value="low">Low</option>
               <option value="medium">Medium</option>

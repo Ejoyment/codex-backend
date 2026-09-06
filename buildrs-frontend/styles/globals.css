@@ -9,7 +9,7 @@
     font-family: 'Space Grotesk', system-ui, sans-serif;
   }
   body {
-    background-color: #1a1f36;
+    background-color: #08080b;
     color: #ffffff;
     overflow-x: hidden;
   }
@@ -176,13 +176,16 @@
   }
 
   .cta-button {
-    background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
-    transition: all 0.3s ease;
+    background: #2fd6e6;
+    color: #06141a !important;
+    font-weight: 600;
+    transition: all 0.2s ease;
   }
 
   .cta-button:hover {
-    box-shadow: 0 10px 25px -5px rgba(59, 130, 246, 0.5);
-    transform: scale(1.05);
+    background: #53dfee;
+    box-shadow: 0 8px 24px -6px rgba(47, 214, 230, 0.45);
+    transform: translateY(-1px);
   }
 }
 

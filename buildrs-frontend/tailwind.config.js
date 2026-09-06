@@ -8,12 +8,20 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        navy: '#1a1f36',
-        'navy-light': '#2a3441',
-        'navy-dark': '#070F34',
-        'blue-accent': '#3b82f6',
-        'green-accent': '#10b981',
-        'purple-accent': '#8b5cf6',
+        navy: '#08080b',
+        'navy-light': '#0d0d12',
+        'navy-dark': '#0a0b10',
+        'navy-lighter': '#14151c',
+        'blue-accent': '#2fd6e6',
+        'green-accent': '#34d399',
+        'purple-accent': '#a78bfa',
+        blue: {
+          300: '#7ee8f4',
+          400: '#53dfee',
+          500: '#2fd6e6',
+          600: '#1fb6c9',
+          700: '#1795a8',
+        },
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],

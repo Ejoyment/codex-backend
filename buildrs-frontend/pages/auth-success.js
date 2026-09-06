@@ -64,13 +64,13 @@ export default function AuthSuccess() {
         <link rel="icon" href="/buildrs.png" />
       </Head>
 
-      <div className="min-h-screen bg-[#0a1628] text-white flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-[#1a2332] rounded-2xl border border-gray-700 p-8 text-center">
+      <div className="min-h-screen bg-[#08080b] text-white flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-[#0d0d12] rounded-2xl border border-[#ffffff12] p-8 text-center">
           <div className="w-16 h-16 bg-green-500 rounded-full mx-auto mb-6 flex items-center justify-center">
             <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
           </div>
           <h1 className="text-3xl font-bold mb-4">Authentication Successful</h1>
-          <p className="text-gray-300 mb-8">Completing authentication...</p>
+          <p className="text-[#a8adba] mb-8">Completing authentication...</p>
           <div className="w-8 h-8 border-4 border-white border-t-transparent rounded-full mx-auto" style={{ animation: 'spin 1s linear infinite' }} />
         </div>
       </div>

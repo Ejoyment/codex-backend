@@ -33,7 +33,7 @@ export default function IntegrationsHub({ integrations }) {
         >
           <div
             className="w-12 h-12 mb-3"
-            style={{ color: integration.connected ? '#3b82f6' : '#94a3b8' }}
+            style={{ color: integration.connected ? '#2fd6e6' : '#9aa1ae' }}
           >
             <BrandIcon platform={integration.platform} className="w-12 h-12" />
           </div>

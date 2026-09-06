@@ -2,14 +2,14 @@ import Link from 'next/link';
 import { CheckSquare, CheckCircle2, Users, Github, Figma, Clock, MessageSquare, ExternalLink } from 'lucide-react';
 
 const ICON_STYLES = {
-  task: { bg: '#1e3a5f', color: '#3b82f6', Icon: CheckSquare },
-  completed: { bg: '#0f3d2e', color: '#10b981', Icon: CheckCircle2 },
-  team: { bg: '#2a1f4d', color: '#8b5cf6', Icon: Users },
-  integration: { bg: '#3d2f0f', color: '#f59e0b', Icon: Clock },
-  github: { bg: '#111827', color: '#e2e8f0', Icon: Github },
-  discord: { bg: '#1e2247', color: '#5865F2', Icon: Users },
-  figma: { bg: '#3d1f1a', color: '#f24e1e', Icon: Figma },
-  slack: { bg: '#3d2f0f', color: '#e01e5a', Icon: Users },
+  task: { bg: 'rgba(47,214,230,0.12)', color: '#2fd6e6', Icon: CheckSquare },
+  completed: { bg: 'rgba(52,211,153,0.12)', color: '#34d399', Icon: CheckCircle2 },
+  team: { bg: 'rgba(167,139,250,0.12)', color: '#a78bfa', Icon: Users },
+  integration: { bg: 'rgba(229,184,74,0.12)', color: '#e5b84a', Icon: Clock },
+  github: { bg: 'rgba(255,255,255,0.06)', color: '#e2e8f0', Icon: Github },
+  discord: { bg: 'rgba(88,101,242,0.15)', color: '#8492f6', Icon: Users },
+  figma: { bg: 'rgba(242,78,30,0.12)', color: '#f4684e', Icon: Figma },
+  slack: { bg: 'rgba(224,30,90,0.12)', color: '#f0507e', Icon: Users },
 };
 
 function groupByDate(items) {

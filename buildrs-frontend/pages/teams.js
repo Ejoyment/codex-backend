@@ -419,49 +419,49 @@ function CreateTeamModal({ onClose, onCreated }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[9999] p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[9999] p-4" onClick={onClose}>
       <div
-        className="bg-white rounded-xl p-8 max-w-md w-full"
+        className="ws-modal p-8 max-w-md w-full"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-center mb-6">
-          <h3 className="text-xl font-bold text-slate-900">Create Team</h3>
-          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600">
+          <h3 className="ws-modal-title">Create Team</h3>
+          <button type="button" onClick={onClose} className="text-[#565d6b] hover:text-[#eceef1]">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {error && (
-          <div className="mb-4 p-3 rounded-lg bg-red-50 text-red-600 text-sm">{error}</div>
+          <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">{error}</div>
         )}
 
         <form onSubmit={handleSubmit}>
           <div className="mb-4">
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Team Name *</label>
+            <label className="ws-label">Team Name *</label>
             <input
               type="text"
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Engineering"
-              className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-900"
+              className="ws-input"
             />
           </div>
           <div className="mb-4">
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Description</label>
+            <label className="ws-label">Description</label>
             <textarea
               rows={3}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="What does this team work on?"
-              className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-900 resize-y"
+              className="ws-input resize-y"
             />
           </div>
           <div className="flex gap-3 justify-end mt-6">
             <button
               type="button"
               onClick={onClose}
-              className="px-6 py-2.5 border border-slate-300 rounded-lg bg-white text-slate-700 text-sm"
+              className="btn-workspace btn-secondary"
             >
               Cancel
             </button>
@@ -518,35 +518,35 @@ function InviteMemberModal({ companies, selectedCompanyId, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[9999] p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[9999] p-4" onClick={onClose}>
       <div
-        className="bg-white rounded-xl p-8 max-w-md w-full"
+        className="ws-modal p-8 max-w-md w-full"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-center mb-6">
-          <h3 className="text-xl font-bold text-slate-900">Invite Member</h3>
-          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600">
+          <h3 className="ws-modal-title">Invite Member</h3>
+          <button type="button" onClick={onClose} className="text-[#565d6b] hover:text-[#eceef1]">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {error && (
-          <div className="mb-4 p-3 rounded-lg bg-red-50 text-red-600 text-sm">{error}</div>
+          <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">{error}</div>
         )}
         {success && (
-          <div className="mb-4 p-3 rounded-lg bg-green-50 text-green-600 text-sm">
+          <div className="mb-4 p-3 rounded-lg bg-green-500/10 border border-green-500/30 text-green-400 text-sm">
             Invitation sent successfully!
           </div>
         )}
 
         <form onSubmit={handleSubmit}>
           <div className="mb-4">
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Team *</label>
+            <label className="ws-label">Team *</label>
             <select
               required
               value={companyId}
               onChange={(e) => setCompanyId(e.target.value)}
-              className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-900"
+              className="ws-select"
             >
               <option value="">Select a team</option>
               {companies.map((c) => (
@@ -557,22 +557,22 @@ function InviteMemberModal({ companies, selectedCompanyId, onClose }) {
             </select>
           </div>
           <div className="mb-4">
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Email *</label>
+            <label className="ws-label">Email *</label>
             <input
               type="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="teammate@example.com"
-              className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-900"
+              className="ws-input"
             />
           </div>
           <div className="mb-4">
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Role</label>
+            <label className="ws-label">Role</label>
             <select
               value={role}
               onChange={(e) => setRole(e.target.value)}
-              className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-900"
+              className="ws-select"
             >
               <option value="member">Member</option>
               <option value="admin">Admin</option>
@@ -582,7 +582,7 @@ function InviteMemberModal({ companies, selectedCompanyId, onClose }) {
             <button
               type="button"
               onClick={onClose}
-              className="px-6 py-2.5 border border-slate-300 rounded-lg bg-white text-slate-700 text-sm"
+              className="btn-workspace btn-secondary"
             >
               Cancel
             </button>
@@ -634,47 +634,47 @@ function CompanySettingsModal({ company, onClose, onUpdated }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[9999] p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl p-8 max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[9999] p-4" onClick={onClose}>
+      <div className="ws-modal p-8 max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-between items-center mb-6">
-          <h3 className="text-xl font-bold text-slate-900">Team Settings</h3>
-          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600">
+          <h3 className="ws-modal-title">Team Settings</h3>
+          <button type="button" onClick={onClose} className="text-[#565d6b] hover:text-[#eceef1]">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {error && <div className="mb-4 p-3 rounded-lg bg-red-50 text-red-600 text-sm">{error}</div>}
-        {success && <div className="mb-4 p-3 rounded-lg bg-green-50 text-green-600 text-sm">Settings saved!</div>}
+        {error && <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">{error}</div>}
+        {success && <div className="mb-4 p-3 rounded-lg bg-green-500/10 border border-green-500/30 text-green-400 text-sm">Settings saved!</div>}
 
         <form onSubmit={handleSave} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Team Name</label>
-            <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-900" required maxLength={100} />
+            <label className="ws-label">Team Name</label>
+            <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="ws-input" required maxLength={100} />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Description</label>
-            <textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-900 resize-y" placeholder="What does this team work on?" />
+            <label className="ws-label">Description</label>
+            <textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} className="ws-input resize-y" placeholder="What does this team work on?" />
           </div>
-          <div className="border-t border-slate-200 pt-4 space-y-3">
-            <h4 className="text-sm font-semibold text-slate-800">Permissions</h4>
+          <div className="border-t border-[#ffffff0d] pt-4 space-y-3">
+            <h4 className="text-sm font-semibold text-[#eceef1]">Permissions</h4>
             <label className="flex items-center gap-3 cursor-pointer">
               <input type="checkbox" checked={allowMemberInvites} onChange={(e) => setAllowMemberInvites(e.target.checked)} className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
-              <span className="text-sm text-slate-700">Allow members to invite others</span>
+              <span className="text-sm text-[#a8adba]">Allow members to invite others</span>
             </label>
             <label className="flex items-center gap-3 cursor-pointer">
               <input type="checkbox" checked={requireApproval} onChange={(e) => setRequireApproval(e.target.checked)} className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
-              <span className="text-sm text-slate-700">Require approval for new members</span>
+              <span className="text-sm text-[#a8adba]">Require approval for new members</span>
             </label>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Default role for new members</label>
-              <select value={defaultRole} onChange={(e) => setDefaultRole(e.target.value)} className="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm text-slate-900">
+              <label className="ws-label">Default role for new members</label>
+              <select value={defaultRole} onChange={(e) => setDefaultRole(e.target.value)} className="ws-select">
                 <option value="member">Member</option>
                 <option value="viewer">Viewer</option>
               </select>
             </div>
           </div>
           <div className="flex gap-3 justify-end mt-6">
-            <button type="button" onClick={onClose} className="px-6 py-2.5 border border-slate-300 rounded-lg bg-white text-slate-700 text-sm">Cancel</button>
+            <button type="button" onClick={onClose} className="btn-workspace btn-secondary">Cancel</button>
             <button type="submit" disabled={saving} className="px-6 py-2.5 border-none rounded-lg bg-blue-500 text-white text-sm font-semibold inline-flex items-center gap-2 disabled:opacity-60">
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
               {saving ? 'Saving...' : 'Save Settings'}
