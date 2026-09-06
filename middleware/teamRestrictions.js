@@ -305,7 +305,7 @@ async function checkUserSubscription(req, res, next) {
         }
 
         req.subscription = subscription;
-        req.userId = decoded.id;
+        req.userId = decoded.userId || decoded.id || decoded._id;
         next();
     } catch (error) {
         console.error('User subscription check error:', error);

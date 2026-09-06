@@ -20,7 +20,8 @@ const authenticateToken = (req, res, next) => {
         if (err) {
             return res.status(403).json({ success: false, message: 'Invalid token' });
         }
-        req.userId = decoded.id; // Store as req.userId for consistency
+        // Normalize user ID across token payload shapes ({ id }, { userId }, { _id })
+        req.userId = decoded.userId || decoded.id || decoded._id;
         next();
     });
 };

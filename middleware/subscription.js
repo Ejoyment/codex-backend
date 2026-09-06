@@ -53,7 +53,7 @@ const requireFeature = (featureName) => {
 
             // Attach subscription to request
             req.subscription = subscription;
-            req.userId = decoded.id;
+            req.userId = decoded.userId || decoded.id || decoded._id;
             
             next();
         } catch (error) {
@@ -126,7 +126,7 @@ const requireTier = (minTier) => {
             }
 
             req.subscription = subscription;
-            req.userId = decoded.id;
+            req.userId = decoded.userId || decoded.id || decoded._id;
             
             next();
         } catch (error) {
