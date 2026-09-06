@@ -11,6 +11,7 @@ import {
   Code2,
   Loader2,
   FolderTree,
+  Search,
 } from 'lucide-react';
 
 const LANG_COLORS = {
@@ -80,37 +81,37 @@ function FileTree({ files, selectedFile, onSelect }) {
 
   if (files.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-        <FolderTree className="w-12 h-12 text-gray-600 mb-4" />
-        <p className="text-gray-400 text-sm">No source files found</p>
+      <div className="src-empty py-10">
+        <div className="src-empty-ico">
+          <FolderTree className="w-6 h-6" />
+        </div>
+        <p className="dash-empty-title">No source files found</p>
       </div>
     );
   }
 
   return (
-    <div className="py-2">
+    <div>
       {sortedLangs.map((lang) => (
-        <div key={lang} className="mb-2">
+        <div key={lang} className="src-lang-group">
           <button
             type="button"
             onClick={() =>
               setOpenDirs((prev) => ({ ...prev, [lang]: !prev[lang] }))
             }
-            className="flex items-center gap-2 w-full text-left py-1.5 px-2 rounded text-xs font-semibold uppercase tracking-wider text-gray-400 hover:bg-white/5 transition-colors"
+            className="src-lang-head"
           >
             {openDirs[lang] === false ? (
-              <ChevronRight className="w-3 h-3 text-gray-500" />
+              <ChevronRight className="w-3 h-3" />
             ) : (
-              <ChevronDown className="w-3 h-3 text-gray-500" />
+              <ChevronDown className="w-3 h-3" />
             )}
             <span
-              className="w-2 h-2 rounded-full flex-shrink-0"
+              className="src-lang-dot"
               style={{ background: LANG_COLORS[lang] || '#6e7681' }}
             />
             <span>{lang}</span>
-            <span className="text-gray-600 font-normal">
-              ({grouped[lang].length})
-            </span>
+            <span className="src-lang-count">{grouped[lang].length}</span>
           </button>
           {openDirs[lang] !== false &&
             grouped[lang]
@@ -120,12 +121,7 @@ function FileTree({ files, selectedFile, onSelect }) {
                   key={file._id}
                   type="button"
                   onClick={() => onSelect(file)}
-                  className={`flex items-center gap-2 w-full text-left py-1.5 px-2 rounded text-sm transition-colors ${
-                    selectedFile?._id === file._id
-                      ? 'bg-blue-600/20 text-blue-400'
-                      : 'text-gray-300 hover:bg-white/5 hover:text-white'
-                  }`}
-                  style={{ paddingLeft: '24px' }}
+                  className={`src-file ${selectedFile?._id === file._id ? 'is-active' : ''}`}
                 >
                   <FileCode
                     className="w-4 h-4 flex-shrink-0"
@@ -133,7 +129,7 @@ function FileTree({ files, selectedFile, onSelect }) {
                       color: LANG_COLORS[lang] || '#6e7681',
                     }}
                   />
-                  <span className="truncate">{file.name}</span>
+                  <span>{file.name}</span>
                 </button>
               ))}
         </div>
@@ -152,6 +148,16 @@ export default function SourceCode() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [clock, setClock] = useState('');
+
+  useEffect(() => {
+    const tick = () => {
+      setClock(new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }));
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -205,122 +211,137 @@ export default function SourceCode() {
         <link rel="icon" href="/buildrs.png" />
       </Head>
 
-      <div className="min-h-screen bg-navy flex">
+      <div className="workspace-container">
         <Sidebar user={user} subscription={subscription} />
 
-        <main className="workspace-main ml-64 flex-1 min-h-screen flex flex-col">
-          <header className="workspace-header">
+        <main className="workspace-main">
+          <header className="workspace-header dash-header">
+            <div>
+              <p className="dash-crumb">
+                BuildrsHQ <span className="sep">/</span> Source Code
+              </p>
+              <h1 className="dash-title">Source Code</h1>
+              <div className="dash-statusline">
+                <span className="status-indicator status-online" />
+                <span>Repository explorer</span>
+                <span className="dash-clock">· {clock || '—:——:——'}</span>
+              </div>
+            </div>
             <div className="flex items-center gap-3">
-              <Code2 className="w-5 h-5 text-blue-400" />
-              <h1 className="text-xl font-bold">Source Code</h1>
               {!loading && (
-                <span className="text-sm text-gray-500">
+                <span className="dash-pill hidden md:inline-flex">
+                  <span className="dot" />
                   {displayFiles.length} file{displayFiles.length !== 1 ? 's' : ''}
                 </span>
               )}
-            </div>
-            <div className="flex items-center gap-3">
-              <input
-                type="text"
-                placeholder="Search files..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="px-3 py-1.5 bg-navy-light border border-gray-700 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-accent w-56"
-              />
+              <div className="src-search">
+                <Search className="w-4 h-4" />
+                <input
+                  type="text"
+                  placeholder="Search files..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
             </div>
           </header>
 
-          <div className="workspace-content flex-1 flex overflow-hidden">
-            <div className="flex w-full h-full gap-0">
-              {/* Left panel — file tree */}
-              <div className="w-72 flex-shrink-0 border-r border-gray-700 flex flex-col bg-navy-light/30 rounded-l-lg overflow-hidden">
-                <div className="px-4 py-3 border-b border-gray-700 flex items-center gap-2">
-                  <FolderTree className="w-4 h-4 text-gray-400" />
-                  <span className="text-sm font-medium text-gray-300">
-                    Files
-                  </span>
-                </div>
-                <div className="flex-1 overflow-y-auto">
-                  {loading ? (
-                    <div className="flex flex-col items-center justify-center py-12 text-gray-500">
-                      <Loader2 className="w-6 h-6 animate-spin mb-2" />
-                      <span className="text-sm">Loading files...</span>
-                    </div>
-                  ) : error ? (
-                    <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-                      <p className="text-red-400 text-sm mb-1">Error loading files</p>
-                      <p className="text-gray-500 text-xs">{error}</p>
-                    </div>
+          <div className="workspace-content">
+            <div className="src-content">
+              <div className="src-shell">
+                {/* Left panel — file tree */}
+                <aside className="src-pane">
+                  <div className="src-pane-head">
+                    <FolderTree className="w-4 h-4" style={{ color: '#2fd6e6' }} />
+                    <span className="src-pane-title">Files</span>
+                    {!loading && <span className="src-count">{displayFiles.length}</span>}
+                  </div>
+                  <div className="src-tree">
+                    {loading ? (
+                      <div className="dash-empty">
+                        <div className="dash-empty-ico">
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                        </div>
+                        <p className="dash-empty-title">Loading files...</p>
+                      </div>
+                    ) : error ? (
+                      <div className="dash-empty">
+                        <p className="dash-empty-title">Error loading files</p>
+                        <p className="dash-empty-sub">{error}</p>
+                      </div>
+                    ) : (
+                      <FileTree
+                        files={displayFiles}
+                        selectedFile={selectedFile}
+                        onSelect={setSelectedFile}
+                      />
+                    )}
+                  </div>
+                </aside>
+
+                {/* Right panel — code viewer */}
+                <div className="src-viewer">
+                  {selectedFile ? (
+                    <>
+                      <div className="src-viewer-head">
+                        <FileCode
+                          className="w-4 h-4 flex-shrink-0"
+                          style={{
+                            color:
+                              LANG_COLORS[
+                                selectedFile.language ||
+                                  detectLanguage(selectedFile.name)
+                              ] || '#6e7681',
+                          }}
+                        />
+                        <span className="src-viewer-name">
+                          {selectedFile.name}
+                        </span>
+                        <span
+                          className="src-lang-badge"
+                          style={{
+                            background:
+                              (LANG_COLORS[
+                                selectedFile.language ||
+                                  detectLanguage(selectedFile.name)
+                              ] || '#6e7681') + '22',
+                            color:
+                              LANG_COLORS[
+                                selectedFile.language ||
+                                  detectLanguage(selectedFile.name)
+                              ] || '#6e7681',
+                          }}
+                        >
+                          {(selectedFile.language ||
+                            detectLanguage(selectedFile.name)
+                          ).toUpperCase()}
+                        </span>
+                        <span className="src-updated">
+                          {selectedFile.updatedAt
+                            ? new Date(
+                                selectedFile.updatedAt
+                              ).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                            : ''}
+                        </span>
+                      </div>
+                      <div className="src-canvas">
+                        <pre className="src-code">
+                          {selectedFile.content || '(empty file)'}
+                        </pre>
+                      </div>
+                    </>
                   ) : (
-                    <FileTree
-                      files={displayFiles}
-                      selectedFile={selectedFile}
-                      onSelect={setSelectedFile}
-                    />
+                    <div className="src-empty">
+                      <div className="src-empty-ico">
+                        <Code2 className="w-7 h-7" />
+                      </div>
+                      <p className="dash-empty-title">Select a file to view its source</p>
+                      <p className="dash-empty-sub">
+                        Click any file in the tree on the left
+                      </p>
+                    </div>
                   )}
                 </div>
-              </div>
-
-              {/* Right panel — code viewer */}
-              <div className="flex-1 flex flex-col bg-navy-light/10 rounded-r-lg overflow-hidden">
-                {selectedFile ? (
-                  <>
-                    <div className="px-4 py-3 border-b border-gray-700 flex items-center gap-3">
-                      <FileCode
-                        className="w-4 h-4 flex-shrink-0"
-                        style={{
-                          color:
-                            LANG_COLORS[
-                              selectedFile.language ||
-                                detectLanguage(selectedFile.name)
-                            ] || '#6e7681',
-                        }}
-                      />
-                      <span className="text-sm font-medium text-white truncate">
-                        {selectedFile.name}
-                      </span>
-                      <span
-                        className="text-[10px] px-1.5 py-0.5 rounded font-mono font-semibold"
-                        style={{
-                          background:
-                            (LANG_COLORS[
-                              selectedFile.language ||
-                                detectLanguage(selectedFile.name)
-                            ] || '#6e7681') + '22',
-                          color:
-                            LANG_COLORS[
-                              selectedFile.language ||
-                                detectLanguage(selectedFile.name)
-                            ] || '#6e7681',
-                        }}
-                      >
-                        {(selectedFile.language ||
-                          detectLanguage(selectedFile.name)
-                        ).toUpperCase()}
-                      </span>
-                      <span className="ml-auto text-xs text-gray-500">
-                        {selectedFile.updatedAt
-                          ? new Date(
-                              selectedFile.updatedAt
-                            ).toLocaleDateString()
-                          : ''}
-                      </span>
-                    </div>
-                    <div className="flex-1 overflow-auto">
-                      <pre className="p-4 text-sm text-gray-200 font-mono leading-relaxed whitespace-pre-wrap break-words">
-                        {selectedFile.content || '(empty file)'}
-                      </pre>
-                    </div>
-                  </>
-                ) : (
-                  <div className="flex-1 flex flex-col items-center justify-center text-gray-500">
-                    <Code2 className="w-16 h-16 mb-4 opacity-20" />
-                    <p className="text-sm">Select a file to view its source</p>
-                    <p className="text-xs text-gray-600 mt-1">
-                      Click any file in the tree on the left
-                    </p>
-                  </div>
-                )}
               </div>
             </div>
           </div>
