@@ -77,6 +77,7 @@ export default function MeetingRoom() {
   const chatEndRef = useRef(null);
 
   const socketRef = useRef(null);
+  const socketRetryRef = useRef(0);
   const localStreamRef = useRef(null);
   const screenStreamRef = useRef(null);
   const pcsRef = useRef({});
@@ -233,8 +234,18 @@ export default function MeetingRoom() {
 
     socket.on('connect_error', (err) => {
       console.error('Meeting socket connect error:', err.message);
+      const attempts = socketRetryRef.current + 1;
+      socketRetryRef.current = attempts;
       setSocketStatus('error');
-      setError('Realtime connection failed. Rejoining...');
+      if (attempts <= 5) {
+        setError(`Realtime connection lost. Reconnecting... (attempt ${attempts}/5)`);
+        setTimeout(() => {
+          if (socketRef.current) { socketRef.current.disconnect(); socketRef.current = null; }
+          attachSocket();
+        }, 2500 * attempts);
+      } else {
+        setError('Cannot reach the realtime server. Check your connection and rejoin the meeting.');
+      }
     });
 
     socket.on('room-users', ({ users }) => {

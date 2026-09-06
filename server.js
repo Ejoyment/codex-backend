@@ -38,19 +38,27 @@ function createServer() {
     server = http.createServer(app);
     io = socketIO(server, {
         cors: {
-            origin: [
-                process.env.FRONTEND_URL || 'http://localhost:5500',
-                'https://buildrshq.dev',
-                'http://buildrshq.dev',
-                'https://www.buildrshq.dev',
-                'http://www.buildrshq.dev',
-                'http://localhost:3000',
-                'http://localhost:3001',
-                'http://localhost:3002',
-                'http://localhost:5500',
-                'http://127.0.0.1:3000',
-                'http://127.0.0.1:3001',
-            ],
+            origin: function (origin, callback) {
+                const allowed = [
+                    process.env.FRONTEND_URL,
+                    'https://buildrshq.dev',
+                    'http://buildrshq.dev',
+                    'https://www.buildrshq.dev',
+                    'http://www.buildrshq.dev',
+                    'http://localhost:3000',
+                    'http://localhost:3001',
+                    'http://localhost:3002',
+                    'http://localhost:5500',
+                    'http://127.0.0.1:3000',
+                    'http://127.0.0.1:3001',
+                ].filter(Boolean);
+
+                if (!origin || allowed.includes(origin) || origin.endsWith('.onrender.com') || /^http:\/\/localhost:\d+$/.test(origin) || /^http:\/\/127\.0\.0\.1:\d+$/.test(origin)) {
+                    callback(null, true);
+                } else {
+                    callback(null, false);
+                }
+            },
             credentials: true
         }
     });
