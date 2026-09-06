@@ -65,6 +65,7 @@ export default function MeetingRoom() {
   const [isSharing, setIsSharing] = useState(false);
   const [localStream, setLocalStream] = useState(null);
   const [peers, setPeers] = useState({});
+  const [mySocketId, setMySocketId] = useState(null);
 
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
@@ -78,6 +79,7 @@ export default function MeetingRoom() {
 
   const socketRef = useRef(null);
   const socketRetryRef = useRef(0);
+  const mySocketIdRef = useRef(null);
   const bufferedCandidatesRef = useRef({});
   const negotiateTimersRef = useRef({});
   const localStreamRef = useRef(null);
@@ -292,6 +294,8 @@ export default function MeetingRoom() {
 
     socket.on('connect', () => {
       setSocketStatus('connected');
+      mySocketIdRef.current = socket.id;
+      setMySocketId(socket.id);
       if (roomIdRef.current) {
         socket.emit('join-room', { roomId: roomIdRef.current, userId: myId });
       }
@@ -315,37 +319,37 @@ export default function MeetingRoom() {
 
     socket.on('room-users', ({ users }) => {
       (users || []).forEach((u) => {
-        if (String(u.userId) !== myId) {
-          negotiate(u.userId, u.userName, u.profilePicture);
+        if (u.socketId && u.socketId !== mySocketIdRef.current) {
+          negotiate(u.socketId, u.userName, u.profilePicture);
         }
       });
     });
 
-    socket.on('user-connected', ({ userId, userName, profilePicture }) => {
-      if (String(userId) === myId) return;
-      const pc = pcsRef.current[userId];
+    socket.on('user-connected', ({ socketId, userId, userName, profilePicture }) => {
+      if (!socketId || socketId === mySocketIdRef.current) return;
+      const pc = pcsRef.current[socketId];
       if (!pc || pc.connectionState !== 'connected') {
-        scheduleNegotiate(userId, userName, profilePicture);
+        scheduleNegotiate(socketId, userName, profilePicture);
       }
     });
 
-    socket.on('user-disconnected', ({ userId }) => {
-      if (String(userId) !== myId) disconnectPeer(userId);
+    socket.on('user-disconnected', ({ socketId, userId }) => {
+      if (socketId && socketId !== mySocketIdRef.current) disconnectPeer(socketId);
     });
 
-    socket.on('offer', ({ offer, userId, userName }) => {
-      if (String(userId) === myId) return;
-      answerOffer(userId, offer, userName, null);
+    socket.on('offer', ({ offer, socketId, userId, userName }) => {
+      if (!socketId || socketId === mySocketIdRef.current) return;
+      answerOffer(socketId, offer, userName, null);
     });
 
-    socket.on('answer', ({ answer, userId }) => {
-      if (String(userId) === myId) return;
-      acceptAnswer(userId, answer);
+    socket.on('answer', ({ answer, socketId, userId }) => {
+      if (!socketId || socketId === mySocketIdRef.current) return;
+      acceptAnswer(socketId, answer);
     });
 
-    socket.on('ice-candidate', ({ candidate, userId }) => {
-      if (!candidate || String(userId) === myId) return;
-      bufferIce(userId, candidate);
+    socket.on('ice-candidate', ({ candidate, socketId, userId }) => {
+      if (!candidate || !socketId || socketId === mySocketIdRef.current) return;
+      bufferIce(socketId, candidate);
     });
 
     socket.on('chat-message', ({ userId, userName, message, timestamp }) => {
@@ -364,24 +368,33 @@ export default function MeetingRoom() {
       });
     });
 
-    socket.on('mic-toggled', ({ userId, isMicOn }) => {
-      const peer = peersRef.current[userId];
-      if (peer) { peer.muted = !isMicOn; syncPeers(); }
+    const peerKeyFor = (socketId, userId) => {
+      if (socketId && peersRef.current[socketId]) return socketId;
+      if (userId) {
+        const keys = Object.keys(peersRef.current).filter((k) => String(peersRef.current[k].userId) === String(userId));
+        if (keys.length === 1) return keys[0];
+      }
+      return null;
+    };
+
+    socket.on('mic-toggled', ({ socketId, userId, isMicOn }) => {
+      const key = peerKeyFor(socketId, userId);
+      if (key && peersRef.current[key]) { peersRef.current[key].muted = !isMicOn; syncPeers(); }
     });
 
-    socket.on('camera-toggled', ({ userId, isCameraOn }) => {
-      const peer = peersRef.current[userId];
-      if (peer) { peer.cameraOn = isCameraOn; syncPeers(); }
+    socket.on('camera-toggled', ({ socketId, userId, isCameraOn }) => {
+      const key = peerKeyFor(socketId, userId);
+      if (key && peersRef.current[key]) { peersRef.current[key].cameraOn = isCameraOn; syncPeers(); }
     });
 
-    socket.on('screen-share-started', ({ userId }) => {
-      const peer = peersRef.current[userId];
-      if (peer) { peer.sharing = true; syncPeers(); }
+    socket.on('screen-share-started', ({ socketId, userId }) => {
+      const key = peerKeyFor(socketId, userId);
+      if (key && peersRef.current[key]) { peersRef.current[key].sharing = true; syncPeers(); }
     });
 
-    socket.on('screen-share-stopped', ({ userId }) => {
-      const peer = peersRef.current[userId];
-      if (peer) { peer.sharing = false; syncPeers(); }
+    socket.on('screen-share-stopped', ({ socketId, userId }) => {
+      const key = peerKeyFor(socketId, userId);
+      if (key && peersRef.current[key]) { peersRef.current[key].sharing = false; syncPeers(); }
     });
 
     socket.on('meeting-ended', () => { router.push('/meetings'); });
@@ -561,7 +574,7 @@ export default function MeetingRoom() {
     return parts.join(':');
   };
 
-  const remotePeers = Object.entries(peers).filter(([pid]) => pid !== myId);
+  const remotePeers = Object.entries(peers).filter(([pid]) => pid !== mySocketId);
   const isHost = String(meeting?.host?._id || meeting?.host || '') === myId;
 
   if (loading) {

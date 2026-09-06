@@ -29,6 +29,9 @@ module.exports = (io) => {
         console.log(`Meeting user connected: ${socket.userId}`);
         socket.data.userId = socket.userId;
         
+        // Socket-specific room so WebRTC signaling reaches ONE socket (a user can have several sessions)
+        socket.join(`socket:${socket.id}`);
+        
         // Join user-specific room for targeted real-time updates (profile changes, etc.)
         socket.join(`user:${socket.userId}`);
         
@@ -51,6 +54,9 @@ module.exports = (io) => {
                         userEmail = user.email || null;
                         socket.userName = userName;
                         socket.profilePicture = profilePicture;
+                        socket.data.userName = userName;
+                        socket.data.profilePicture = profilePicture;
+                        socket.data.userEmail = userEmail;
                     }
                 } catch (err) {
                     console.error('Failed to fetch user for meeting room:', err.message);
@@ -82,49 +88,33 @@ module.exports = (io) => {
                     await meeting.save();
                 }
                 
-                // Notify others with full profile data
+                // Notify others with full profile data + the new socket's identity so peers
+                // can be keyed by socket.id (a single user may have several sessions).
                 socket.to(roomId).emit('user-connected', {
+                    socketId: socket.id,
                     userId: socket.userId,
                     userName,
                     profilePicture,
                     email: userEmail
                 });
 
-                // Tell the new joiner who is already in the room so they can render all tiles immediately.
-                // Only count participants whose sockets are CURRENTLY connected (avoids ghost/stale tiles),
-                // and always emit (even an empty roster) so the joiner's signaling is deterministic.
-                const roomUsers = (meeting && meeting.participants.filter(p => p.user && p.status === 'joined'))
-                    .map(p => ({ userId: String(p.user), status: p.status }));
-                if (roomUsers && roomUsers.length > 0) {
-                    const populated = await User.find({ _id: { $in: roomUsers.map(u => u.userId) } })
-                        .select('fullName email profilePicture');
-                    const usersById = {};
-                    populated.forEach(u => { usersById[String(u._id)] = u; });
-
-                    let connectedUserIds = null;
-                    try {
-                        const roomSockets = await meetingNamespace.in(roomId).fetchSockets();
-                        connectedUserIds = new Set(roomSockets.map(s => s.data && s.data.userId ? String(s.data.userId) : null).filter(Boolean));
-                    } catch (err) {
-                        connectedUserIds = null;
-                    }
-
-                    const filtered = roomUsers.filter(u => String(u.userId) !== String(socket.userId))
-                        .filter(u => !connectedUserIds || connectedUserIds.has(String(u.userId)));
-
-                    const list = filtered.map(u => {
-                        const prof = usersById[u.userId] || {};
-                        return {
-                            userId: u.userId,
-                            userName: prof.fullName || 'User',
-                            profilePicture: prof.profilePicture || null,
-                            email: prof.email || null
-                        };
-                    });
-                    socket.emit('room-users', { users: list });
-                } else {
-                    socket.emit('room-users', { users: [] });
+                // Tell the new joiner which sockets are already in the room (people are
+                // keyed by socket.id downstream, so list every live socket, not users).
+                let peerList = [];
+                try {
+                    const roomSockets = await meetingNamespace.in(roomId).fetchSockets();
+                    peerList = roomSockets
+                        .filter(s => s.data && String(s.data.userId) !== String(socket.userId))
+                        .map(s => ({
+                            socketId: s.id,
+                            userId: String(s.data.userId),
+                            userName: s.data.userName || 'User',
+                            profilePicture: s.data.profilePicture || null
+                        }));
+                } catch (err) {
+                    console.error('Failed to list room sockets:', err.message);
                 }
+                socket.emit('room-users', { users: peerList });
                 
                 console.log(`User ${socket.userId} joined room: ${roomId} as ${userName}`);
             } catch (error) {
@@ -133,27 +123,30 @@ module.exports = (io) => {
             }
         });
         
-        // WebRTC signaling - Offer (delivered only to the target peer)
+        // WebRTC signaling - Offer (delivered only to the target socket)
         socket.on('offer', ({ offer, to, roomId, userName }) => {
-            socket.to('user:' + to).emit('offer', {
+            socket.to('socket:' + to).emit('offer', {
                 offer,
+                socketId: socket.id,
                 userId: socket.userId,
                 userName: userName || socket.userName || 'User'
             });
         });
         
-        // WebRTC signaling - Answer (delivered only to the target peer)
+        // WebRTC signaling - Answer (delivered only to the target socket)
         socket.on('answer', ({ answer, to, roomId }) => {
-            socket.to('user:' + to).emit('answer', {
+            socket.to('socket:' + to).emit('answer', {
                 answer,
+                socketId: socket.id,
                 userId: socket.userId
             });
         });
         
-        // WebRTC signaling - ICE Candidate (delivered only to the target peer)
+        // WebRTC signaling - ICE Candidate (delivered only to the target socket)
         socket.on('ice-candidate', ({ candidate, to, roomId }) => {
-            socket.to('user:' + to).emit('ice-candidate', {
+            socket.to('socket:' + to).emit('ice-candidate', {
                 candidate,
+                socketId: socket.id,
                 userId: socket.userId
             });
         });
@@ -187,6 +180,7 @@ module.exports = (io) => {
         // Mic toggle
         socket.on('mic-toggle', ({ roomId, isMicOn }) => {
             socket.to(roomId).emit('mic-toggled', {
+                socketId: socket.id,
                 userId: socket.userId,
                 isMicOn
             });
@@ -195,6 +189,7 @@ module.exports = (io) => {
         // Camera toggle
         socket.on('camera-toggle', ({ roomId, isCameraOn }) => {
             socket.to(roomId).emit('camera-toggled', {
+                socketId: socket.id,
                 userId: socket.userId,
                 isCameraOn
             });
@@ -203,6 +198,7 @@ module.exports = (io) => {
         // Screen share started
         socket.on('screen-share-started', ({ roomId }) => {
             socket.to(roomId).emit('screen-share-started', {
+                socketId: socket.id,
                 userId: socket.userId,
                 userName: socket.userName || 'User'
             });
@@ -211,6 +207,7 @@ module.exports = (io) => {
         // Screen share stopped
         socket.on('screen-share-stopped', ({ roomId }) => {
             socket.to(roomId).emit('screen-share-stopped', {
+                socketId: socket.id,
                 userId: socket.userId
             });
         });
@@ -352,6 +349,7 @@ module.exports = (io) => {
                 }
                 
                 socket.to(roomId).emit('user-disconnected', {
+                    socketId: socket.id,
                     userId: socket.userId,
                     userName: socket.userName || 'User'
                 });
@@ -386,6 +384,7 @@ module.exports = (io) => {
                     }
                     
                     socket.to(socket.roomId).emit('user-disconnected', {
+                        socketId: socket.id,
                         userId: socket.userId,
                         userName: socket.userName || 'User'
                     });
