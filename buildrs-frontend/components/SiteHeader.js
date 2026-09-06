@@ -18,7 +18,7 @@ export default function SiteHeader() {
           <Link href="/" className="flex items-center gap-2.5">
             <img src="/buildrs.png" alt="BuildrsHQ" className="h-6 w-6 rounded" />
             <span className="text-[15px] font-semibold tracking-tight text-white">
-              buildrs
+              Buildrs
             </span>
             <span className="mkt-mono text-[10px] uppercase tracking-widest text-[#686e7c]">
               · hq
