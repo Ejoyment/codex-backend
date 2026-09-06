@@ -78,6 +78,8 @@ export default function MeetingRoom() {
 
   const socketRef = useRef(null);
   const socketRetryRef = useRef(0);
+  const bufferedCandidatesRef = useRef({});
+  const negotiateTimersRef = useRef({});
   const localStreamRef = useRef(null);
   const screenStreamRef = useRef(null);
   const pcsRef = useRef({});
@@ -143,6 +145,7 @@ export default function MeetingRoom() {
     }
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
     pcsRef.current[peerId] = pc;
+    const peer = ensurePeer(peerId, userName, profilePicture);
 
     pc.onicecandidate = (e) => {
       if (e.candidate && socketRef.current && roomIdRef.current) {
@@ -151,7 +154,6 @@ export default function MeetingRoom() {
     };
 
     pc.ontrack = (event) => {
-      const peer = ensurePeer(peerId, userName, profilePicture);
       if (event.streams && event.streams[0]) {
         peer.stream = event.streams[0];
         peer.connected = true;
@@ -167,11 +169,15 @@ export default function MeetingRoom() {
 
     pc.onconnectionstatechange = () => {
       const state = pc.connectionState;
-      if (state === 'disconnected' || state === 'failed' || state === 'closed') {
-        if (peersRef.current[peerId]) {
-          peersRef.current[peerId].connected = false;
-          syncPeers();
-        }
+      if (state === 'connected') {
+        peer.connected = true;
+        syncPeers();
+      } else if (state === 'disconnected' || state === 'failed') {
+        peer.connected = false;
+        syncPeers();
+      } else if (state === 'closed') {
+        delete peersRef.current[peerId];
+        syncPeers();
       }
     };
 
@@ -184,10 +190,23 @@ export default function MeetingRoom() {
     return pc;
   }, [ensurePeer, syncPeers]);
 
-  const startCall = useCallback(async (peerId, userName, profilePicture) => {
+  const flushIce = useCallback((peerId, pc) => {
+    const buf = bufferedCandidatesRef.current[peerId] || [];
+    bufferedCandidatesRef.current[peerId] = [];
+    buf.forEach((c) => {
+      try { pc && pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {}); } catch { /* ignore */ }
+    });
+  }, []);
+
+  // Deterministic negotiation: the joiner who receives the roster offers immediately;
+  // anyone who sees a peer join schedules a backup offer in case the first is lost.
+  const negotiate = useCallback(async (peerId, userName, profilePicture) => {
+    if (!localStreamRef.current) return;
     const pc = createPeerConnection(peerId, userName, profilePicture);
+    if (pc.connectionState === 'connected' || pc.signalingState !== 'stable') return;
     try {
       const offer = await pc.createOffer();
+      if (pc.signalingState !== 'stable') return;
       await pc.setLocalDescription(offer);
       if (socketRef.current && roomIdRef.current) {
         socketRef.current.emit('offer', { offer: pc.localDescription, to: peerId, roomId: roomIdRef.current, userName: myName });
@@ -197,16 +216,27 @@ export default function MeetingRoom() {
     }
   }, [createPeerConnection, myName]);
 
-  const answerCall = useCallback(async (peerId, offer, userName, profilePicture) => {
+  const scheduleNegotiate = useCallback((peerId, userName, profilePicture) => {
+    if (negotiateTimersRef.current[peerId]) clearTimeout(negotiateTimersRef.current[peerId]);
+    negotiateTimersRef.current[peerId] = setTimeout(() => {
+      delete negotiateTimersRef.current[peerId];
+      const pc = pcsRef.current[peerId];
+      if (!pc || pc.connectionState !== 'connected') {
+        negotiate(peerId, userName, profilePicture);
+      }
+    }, 3500);
+  }, [negotiate]);
+
+  const answerOffer = useCallback(async (peerId, offer, userName, profilePicture) => {
     let pc = pcsRef.current[peerId];
     if (pc && pc.signalingState !== 'stable') {
       try { pc.close(); } catch { /* ignore */ }
       delete pcsRef.current[peerId];
     }
     pc = createPeerConnection(peerId, userName, profilePicture);
-    ensurePeer(peerId, userName, profilePicture);
     try {
       await pc.setRemoteDescription(offer);
+      flushIce(peerId, pc);
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       if (socketRef.current && roomIdRef.current) {
@@ -215,7 +245,42 @@ export default function MeetingRoom() {
     } catch (err) {
       console.error('Answer error for', peerId, err);
     }
-  }, [createPeerConnection, ensurePeer]);
+  }, [createPeerConnection, flushIce]);
+
+  const acceptAnswer = useCallback(async (peerId, answer) => {
+    const pc = pcsRef.current[peerId];
+    if (!pc || pc.signalingState !== 'have-local-offer') return;
+    try {
+      await pc.setRemoteDescription(answer);
+      flushIce(peerId, pc);
+    } catch (err) {
+      console.error('Set remote answer failed for', peerId, err);
+    }
+  }, [flushIce]);
+
+  const bufferIce = useCallback((peerId, candidate) => {
+    const pc = pcsRef.current[peerId];
+    if (pc && pc.remoteDescription) {
+      try { pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {}); } catch { /* ignore */ }
+    } else {
+      bufferedCandidatesRef.current[peerId] = bufferedCandidatesRef.current[peerId] || [];
+      bufferedCandidatesRef.current[peerId].push(candidate);
+    }
+  }, []);
+
+  const disconnectPeer = useCallback((peerId) => {
+    if (negotiateTimersRef.current[peerId]) {
+      clearTimeout(negotiateTimersRef.current[peerId]);
+      delete negotiateTimersRef.current[peerId];
+    }
+    delete bufferedCandidatesRef.current[peerId];
+    if (pcsRef.current[peerId]) {
+      try { pcsRef.current[peerId].close(); } catch { /* ignore */ }
+      delete pcsRef.current[peerId];
+    }
+    delete peersRef.current[peerId];
+    syncPeers();
+  }, [syncPeers]);
 
   const attachSocket = useCallback(() => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
@@ -251,48 +316,36 @@ export default function MeetingRoom() {
     socket.on('room-users', ({ users }) => {
       (users || []).forEach((u) => {
         if (String(u.userId) !== myId) {
-          ensurePeer(u.userId, u.userName, u.profilePicture);
-          startCall(u.userId, u.userName, u.profilePicture);
+          negotiate(u.userId, u.userName, u.profilePicture);
         }
       });
     });
 
     socket.on('user-connected', ({ userId, userName, profilePicture }) => {
       if (String(userId) === myId) return;
-      ensurePeer(userId, userName, profilePicture);
+      const pc = pcsRef.current[userId];
+      if (!pc || pc.connectionState !== 'connected') {
+        scheduleNegotiate(userId, userName, profilePicture);
+      }
     });
 
     socket.on('user-disconnected', ({ userId }) => {
-      if (pcsRef.current[userId]) {
-        try { pcsRef.current[userId].close(); } catch { /* ignore */ }
-        delete pcsRef.current[userId];
-      }
-      delete peersRef.current[userId];
-      syncPeers();
+      if (String(userId) !== myId) disconnectPeer(userId);
     });
 
     socket.on('offer', ({ offer, userId, userName }) => {
       if (String(userId) === myId) return;
-      answerCall(userId, offer, userName, null);
+      answerOffer(userId, offer, userName, null);
     });
 
     socket.on('answer', ({ answer, userId }) => {
       if (String(userId) === myId) return;
-      const pc = pcsRef.current[userId];
-      if (pc && pc.remoteDescription && pc.signalingState !== 'stable') return;
-      if (pc && answer) pc.setRemoteDescription(answer).catch(() => {});
+      acceptAnswer(userId, answer);
     });
 
     socket.on('ice-candidate', ({ candidate, userId }) => {
       if (!candidate || String(userId) === myId) return;
-      const pc = pcsRef.current[userId];
-      if (!pc) {
-        const peer = peersRef.current[userId];
-        const pc2 = createPeerConnection(userId, peer?.userName, peer?.profilePicture);
-        pc2.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
-        return;
-      }
-      pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
+      bufferIce(userId, candidate);
     });
 
     socket.on('chat-message', ({ userId, userName, message, timestamp }) => {
@@ -332,7 +385,7 @@ export default function MeetingRoom() {
     });
 
     socket.on('meeting-ended', () => { router.push('/meetings'); });
-  }, [myId, myName, ensurePeer, startCall, answerCall, createPeerConnection, syncPeers, router]);
+  }, [myId, myName, negotiate, scheduleNegotiate, disconnectPeer, answerOffer, acceptAnswer, bufferIce, syncPeers, router]);
 
   const joinRoom = useCallback(async () => {
     if (!roomIdRef.current || joinedRef.current) return;
@@ -376,6 +429,9 @@ export default function MeetingRoom() {
       if (roomIdRef.current) socketRef.current.emit('leave-room', { roomId: roomIdRef.current });
       socketRef.current.disconnect();
     }
+    Object.values(negotiateTimersRef.current).forEach((t) => clearTimeout(t));
+    negotiateTimersRef.current = {};
+    bufferedCandidatesRef.current = {};
     Object.values(pcsRef.current).forEach((pc) => { try { pc.close(); } catch { /* ignore */ } });
     pcsRef.current = {};
     peersRef.current = {};
@@ -458,6 +514,9 @@ export default function MeetingRoom() {
     if (meetingDocId) {
       apiFetch(`/api/meetings/${meetingDocId}/leave`, { method: 'POST' }).catch(() => {});
     }
+    Object.values(negotiateTimersRef.current).forEach((t) => clearTimeout(t));
+    negotiateTimersRef.current = {};
+    bufferedCandidatesRef.current = {};
     Object.values(pcsRef.current).forEach((pc) => { try { pc.close(); } catch { /* ignore */ } });
     pcsRef.current = {};
     peersRef.current = {};

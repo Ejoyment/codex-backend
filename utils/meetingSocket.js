@@ -27,6 +27,7 @@ module.exports = (io) => {
     // Connection handler
     meetingNamespace.on('connection', (socket) => {
         console.log(`Meeting user connected: ${socket.userId}`);
+        socket.data.userId = socket.userId;
         
         // Join user-specific room for targeted real-time updates (profile changes, etc.)
         socket.join(`user:${socket.userId}`);
@@ -89,7 +90,9 @@ module.exports = (io) => {
                     email: userEmail
                 });
 
-                // Tell the new joiner who is already in the room so they can render all tiles immediately
+                // Tell the new joiner who is already in the room so they can render all tiles immediately.
+                // Only count participants whose sockets are CURRENTLY connected (avoids ghost/stale tiles),
+                // and always emit (even an empty roster) so the joiner's signaling is deterministic.
                 const roomUsers = (meeting && meeting.participants.filter(p => p.user && p.status === 'joined'))
                     .map(p => ({ userId: String(p.user), status: p.status }));
                 if (roomUsers && roomUsers.length > 0) {
@@ -97,7 +100,19 @@ module.exports = (io) => {
                         .select('fullName email profilePicture');
                     const usersById = {};
                     populated.forEach(u => { usersById[String(u._id)] = u; });
-                    const list = roomUsers.filter(u => String(u.userId) !== String(socket.userId)).map(u => {
+
+                    let connectedUserIds = null;
+                    try {
+                        const roomSockets = await meetingNamespace.in(roomId).fetchSockets();
+                        connectedUserIds = new Set(roomSockets.map(s => s.data && s.data.userId ? String(s.data.userId) : null).filter(Boolean));
+                    } catch (err) {
+                        connectedUserIds = null;
+                    }
+
+                    const filtered = roomUsers.filter(u => String(u.userId) !== String(socket.userId))
+                        .filter(u => !connectedUserIds || connectedUserIds.has(String(u.userId)));
+
+                    const list = filtered.map(u => {
                         const prof = usersById[u.userId] || {};
                         return {
                             userId: u.userId,
@@ -107,6 +122,8 @@ module.exports = (io) => {
                         };
                     });
                     socket.emit('room-users', { users: list });
+                } else {
+                    socket.emit('room-users', { users: [] });
                 }
                 
                 console.log(`User ${socket.userId} joined room: ${roomId} as ${userName}`);
