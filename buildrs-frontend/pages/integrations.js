@@ -180,36 +180,45 @@ export default function Integrations() {
           </header>
 
           <div className="workspace-content">
-            <div className="dash-kpis" style={{ marginBottom: '1.5rem' }}>
-              <div className="dash-kpi dash-kpi-blue"
-                onClick={() => {}}
-                style={{ cursor: 'default' }}
-              >
-                <div className="dash-kpi-ico"><Plug2 className="w-4 h-4" /></div>
-                <div>
-                  <p className="dash-kpi-val">{connectedCount}<span className="dash-kpi-unit">/{availableCount}</span></p>
-                  <p className="dash-kpi-label">Connected</p>
+            <div className="grid grid-cols-2 xl:grid-cols-4 gap-4" style={{ marginBottom: '1.5rem' }}>
+              <div className="dash-kpi dash-kpi-blue" style={{ cursor: 'default' }}>
+                <div className="dash-kpi-head">
+                  <span className="dash-kpi-eyebrow">Connected</span>
+                  <span className="dash-kpi-ico"><Plug2 className="w-4 h-4" /></span>
+                </div>
+                <div className="dash-kpi-value">{connectedCount}</div>
+                <div className="dash-kpi-meta-row">
+                  <span className="dash-kpi-meta">of {availableCount} available</span>
                 </div>
               </div>
               <div className="dash-kpi dash-kpi-green" style={{ cursor: 'default' }}>
-                <div className="dash-kpi-ico"><Link2 className="w-4 h-4" /></div>
-                <div>
-                  <p className="dash-kpi-val">{unconnectedCount}</p>
-                  <p className="dash-kpi-label">Ready to connect</p>
+                <div className="dash-kpi-head">
+                  <span className="dash-kpi-eyebrow">Ready to connect</span>
+                  <span className="dash-kpi-ico"><Link2 className="w-4 h-4" /></span>
+                </div>
+                <div className="dash-kpi-value">{unconnectedCount}</div>
+                <div className="dash-kpi-meta-row">
+                  <span className="dash-kpi-meta">not yet configured</span>
                 </div>
               </div>
               <div className="dash-kpi dash-kpi-orange" style={{ cursor: 'default' }}>
-                <div className="dash-kpi-ico"><ExternalLink className="w-4 h-4" /></div>
-                <div>
-                  <p className="dash-kpi-val">{integrations.length}</p>
-                  <p className="dash-kpi-label">Total connections</p>
+                <div className="dash-kpi-head">
+                  <span className="dash-kpi-eyebrow">Total connections</span>
+                  <span className="dash-kpi-ico"><ExternalLink className="w-4 h-4" /></span>
+                </div>
+                <div className="dash-kpi-value">{integrations.length}</div>
+                <div className="dash-kpi-meta-row">
+                  <span className="dash-kpi-meta">across your workspace</span>
                 </div>
               </div>
               <div className="dash-kpi dash-kpi-purple" style={{ cursor: 'default' }}>
-                <div className="dash-kpi-ico"><User className="w-4 h-4" /></div>
-                <div>
-                  <p className="dash-kpi-val">{infoCount}</p>
-                  <p className="dash-kpi-label">Built-in features</p>
+                <div className="dash-kpi-head">
+                  <span className="dash-kpi-eyebrow">Built-in features</span>
+                  <span className="dash-kpi-ico"><User className="w-4 h-4" /></span>
+                </div>
+                <div className="dash-kpi-value">{infoCount}</div>
+                <div className="dash-kpi-meta-row">
+                  <span className="dash-kpi-meta">included with your tier</span>
                 </div>
               </div>
             </div>

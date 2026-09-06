@@ -146,33 +146,45 @@ export default function TeamMemory() {
               <NoWorkspaceEmptyState onCreateClick={() => router.push('/teams')} />
             ) : (
               <>
-                <div className="dash-kpis" style={{ marginBottom: '1.5rem' }}>
+                <div className="grid grid-cols-2 xl:grid-cols-4 gap-4" style={{ marginBottom: '1.5rem' }}>
                   <div className="dash-kpi dash-kpi-blue" style={{ cursor: 'default' }}>
-                    <div className="dash-kpi-ico"><BookMarked className="w-4 h-4" /></div>
-                    <div>
-                      <p className="dash-kpi-val">{conventions.length}</p>
-                      <p className="dash-kpi-label">Total rules</p>
+                    <div className="dash-kpi-head">
+                      <span className="dash-kpi-eyebrow">Total rules</span>
+                      <span className="dash-kpi-ico"><BookMarked className="w-4 h-4" /></span>
+                    </div>
+                    <div className="dash-kpi-value">{conventions.length}</div>
+                    <div className="dash-kpi-meta-row">
+                      <span className="dash-kpi-meta">stored in memory</span>
                     </div>
                   </div>
                   <div className="dash-kpi dash-kpi-purple" style={{ cursor: 'default' }}>
-                    <div className="dash-kpi-ico"><Layers className="w-4 h-4" /></div>
-                    <div>
-                      <p className="dash-kpi-val">{activeCategories.length}<span className="dash-kpi-unit">/{CATEGORIES.length}</span></p>
-                      <p className="dash-kpi-label">Categories covered</p>
+                    <div className="dash-kpi-head">
+                      <span className="dash-kpi-eyebrow">Categories covered</span>
+                      <span className="dash-kpi-ico"><Layers className="w-4 h-4" /></span>
+                    </div>
+                    <div className="dash-kpi-value">{activeCategories.length}</div>
+                    <div className="dash-kpi-meta-row">
+                      <span className="dash-kpi-meta">of {CATEGORIES.length} categories</span>
                     </div>
                   </div>
                   <div className="dash-kpi dash-kpi-green" style={{ cursor: 'default' }}>
-                    <div className="dash-kpi-ico"><BookOpen className="w-4 h-4" /></div>
-                    <div>
-                      <p className="dash-kpi-val">{conventions.filter((c) => c.examples?.length > 0).length}</p>
-                      <p className="dash-kpi-label">With examples</p>
+                    <div className="dash-kpi-head">
+                      <span className="dash-kpi-eyebrow">With examples</span>
+                      <span className="dash-kpi-ico"><BookOpen className="w-4 h-4" /></span>
+                    </div>
+                    <div className="dash-kpi-value">{conventions.filter((c) => c.examples?.length > 0).length}</div>
+                    <div className="dash-kpi-meta-row">
+                      <span className="dash-kpi-meta">docs with samples</span>
                     </div>
                   </div>
                   <div className="dash-kpi dash-kpi-orange" style={{ cursor: 'default' }}>
-                    <div className="dash-kpi-ico"><AlertTriangle className="w-4 h-4" /></div>
-                    <div>
-                      <p className="dash-kpi-val">{urgentCount}</p>
-                      <p className="dash-kpi-label">High / urgent</p>
+                    <div className="dash-kpi-head">
+                      <span className="dash-kpi-eyebrow">High / urgent</span>
+                      <span className="dash-kpi-ico"><AlertTriangle className="w-4 h-4" /></span>
+                    </div>
+                    <div className="dash-kpi-value">{urgentCount}</div>
+                    <div className="dash-kpi-meta-row">
+                      <span className="dash-kpi-meta">needs attention</span>
                     </div>
                   </div>
                 </div>
