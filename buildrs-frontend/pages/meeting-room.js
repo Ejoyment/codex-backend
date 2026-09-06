@@ -1,22 +1,25 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
-import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch } from '../lib/api';
 import { getAvatarUrl } from '../lib/utils';
 import {
-  Mic, MicOff, Video, VideoOff, Monitor, PhoneOff, Send, Users, MessageSquare, Clock
+  Mic, MicOff, Video, VideoOff, Monitor, PhoneOff, Send, Users, MessageSquare,
+  Clock, Copy, Check, ShieldCheck, Minus, ArrowLeft, Loader2,
 } from 'lucide-react';
+
+const getInitials = (name) =>
+  String(name || 'U').split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
 
 export default function MeetingRoom() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
-  const subscription = useAuthStore((s) => s.subscription);
-  const { meetingId } = router.query;
+  const { roomId, meetingId, id } = router.query;
 
   const [meeting, setMeeting] = useState(null);
+  const [meetingDocId, setMeetingDocId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [connected, setConnected] = useState(false);
@@ -30,52 +33,82 @@ export default function MeetingRoom() {
   const [chatInput, setChatInput] = useState('');
   const [showChat, setShowChat] = useState(true);
   const [showParticipants, setShowParticipants] = useState(true);
+  const [copied, setCopied] = useState(false);
+  const autoJoinedRef = useRef(false);
 
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const timerRef = useRef(null);
   const chatEndRef = useRef(null);
 
-  const fetchMeeting = useCallback(async () => {
-    if (!meetingId) return;
+  const lookupKey = roomId || meetingId || id;
+
+  const resolveMeeting = useCallback(async () => {
+    if (!lookupKey) return;
     try {
       setLoading(true);
       setError(null);
-      const data = await apiFetch(`/api/meetings/${meetingId}`);
-      if (data.success) {
+      const path = roomId ? `/api/meetings/room/${encodeURIComponent(roomId)}` : `/api/meetings/${encodeURIComponent(lookupKey)}`;
+      const data = await apiFetch(path);
+      if (data.success && data.meeting) {
         setMeeting(data.meeting);
+        setMeetingDocId(data.meeting._id);
       }
     } catch (err) {
       setError(err.message || 'Failed to load meeting');
     } finally {
       setLoading(false);
     }
-  }, [meetingId]);
+  }, [lookupKey, roomId]);
+
+  const startTimer = useCallback(() => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      setElapsedSeconds((s) => s + 1);
+    }, 1000);
+  }, []);
 
   const joinMeeting = useCallback(async () => {
-    if (!meetingId || joining) return;
+    if (!meetingDocId || joining) return;
     try {
       setJoining(true);
       setError(null);
-      const data = await apiFetch(`/api/meetings/${meetingId}/join`, { method: 'POST' });
+      const data = await apiFetch(`/api/meetings/${meetingDocId}/join`, { method: 'POST' });
       if (data.success) {
-        setMeeting(data.meeting);
+        setMeeting(data.meeting || meeting);
         setConnected(true);
         setElapsedSeconds(0);
-        timerRef.current = setInterval(() => {
-          setElapsedSeconds((s) => s + 1);
-        }, 1000);
+        startTimer();
       }
     } catch (err) {
       setError(err.message || 'Failed to join meeting');
     } finally {
       setJoining(false);
     }
-  }, [meetingId, joining]);
+  }, [meetingDocId, joining, meeting, startTimer]);
+
+  useEffect(() => {
+    if (meeting && meetingDocId && !connected && !autoJoinedRef.current) {
+      autoJoinedRef.current = true;
+      joinMeeting();
+    }
+  }, [meeting, meetingDocId, connected, joinMeeting]);
+
+  useEffect(() => {
+    resolveMeeting();
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [resolveMeeting]);
+
+  useEffect(() => {
+    if (chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [chatMessages]);
 
   const leaveMeeting = useCallback(async () => {
-    if (!meetingId) return;
     try {
-      await apiFetch(`/api/meetings/${meetingId}/leave`, { method: 'POST' });
+      if (meetingDocId) await apiFetch(`/api/meetings/${meetingDocId}/leave`, { method: 'POST' });
     } catch {
       // proceed with local cleanup even if API fails
     } finally {
@@ -88,31 +121,7 @@ export default function MeetingRoom() {
       setElapsedSeconds(0);
       router.push('/meetings');
     }
-  }, [meetingId, router]);
-
-  useEffect(() => {
-    fetchMeeting();
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [fetchMeeting]);
-
-  useEffect(() => {
-    if (chatEndRef.current) {
-      chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [chatMessages]);
-
-  const formatTime = (totalSeconds) => {
-    const hrs = Math.floor(totalSeconds / 3600);
-    const mins = Math.floor((totalSeconds % 3600) / 60);
-    const secs = totalSeconds % 60;
-    const parts = [];
-    if (hrs > 0) parts.push(String(hrs).padStart(2, '0'));
-    parts.push(String(mins).padStart(2, '0'));
-    parts.push(String(secs).padStart(2, '0'));
-    return parts.join(':');
-  };
+  }, [meetingDocId, router]);
 
   const handleSendChat = (e) => {
     e.preventDefault();
@@ -130,6 +139,32 @@ export default function MeetingRoom() {
     setChatInput('');
   };
 
+  const handleCopyRoom = async () => {
+    try {
+      await navigator.clipboard.writeText(meeting?.roomId || '');
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // clipboard unavailable
+    }
+  };
+
+  const formatTime = (totalSeconds) => {
+    const hrs = Math.floor(totalSeconds / 3600);
+    const mins = Math.floor((totalSeconds % 3600) / 60);
+    const secs = totalSeconds % 60;
+    const parts = [];
+    if (hrs > 0) parts.push(String(hrs).padStart(2, '0'));
+    parts.push(String(mins).padStart(2, '0'));
+    parts.push(String(secs).padStart(2, '0'));
+    return parts.join(':');
+  };
+
+  const remainParticipants = (meeting?.participants || []).filter((p) => {
+    const uid = p?.user?._id || p?._id;
+    return uid !== user?._id;
+  });
+
   if (loading) {
     return (
       <AuthGuard>
@@ -137,18 +172,11 @@ export default function MeetingRoom() {
           <title>Meeting Room - BuildrsHQ</title>
           <link rel="icon" href="/buildrs.png" />
         </Head>
-        <div className="min-h-screen bg-navy flex">
-          <Sidebar user={user} subscription={subscription} />
-          <main className="workspace-main flex-1 ml-64">
-            <header className="workspace-header">
-              <h1 className="text-xl font-bold">Meeting Room</h1>
-            </header>
-            <div className="p-6">
-              <div className="flex items-center justify-center h-64">
-                <div className="text-gray-400">Loading meeting...</div>
-              </div>
-            </div>
-          </main>
+        <div className="mrr-page" style={{ alignItems: 'center', justifyContent: 'center' }}>
+          <div className="flex items-center gap-3 text-[#8b93a1]">
+            <Loader2 className="w-5 h-5 animate-spin" />
+            <span className="text-sm">Entering meeting room...</span>
+          </div>
         </div>
       </AuthGuard>
     );
@@ -161,267 +189,270 @@ export default function MeetingRoom() {
         <link rel="icon" href="/buildrs.png" />
       </Head>
 
-      <div className="min-h-screen bg-navy flex">
-        <Sidebar user={user} subscription={subscription} />
+      <div className="mrr-page">
+        <div className="mrr-topbar">
+          <button type="button" className="mrr-brand" onClick={() => router.push('/dashboard')} title="Back to Dashboard">
+            <span className="mrr-dot" />
+            <span>Buildrs <em>HQ</em></span>
+          </button>
 
-        <main className="workspace-main flex-1 ml-64">
-          <header className="workspace-header">
-            <div className="flex items-center gap-4">
-              <h1 className="text-xl font-bold">{meeting?.title || 'Meeting Room'}</h1>
-              {connected && (
-                <div className="flex items-center gap-2 text-sm">
-                  <span className="status-indicator status-online" />
-                  <span className="text-green-400">Connected</span>
-                </div>
-              )}
-            </div>
-            <div className="flex items-center gap-4">
-              {connected && (
-                <div className="flex items-center gap-2 text-gray-300 text-sm font-mono">
-                  <Clock className="w-4 h-4" />
-                  <span>{formatTime(elapsedSeconds)}</span>
-                </div>
-              )}
-              <button
-                type="button"
-                className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
-                onClick={leaveMeeting}
-              >
-                <PhoneOff className="w-4 h-4" />
-                <span>Leave Meeting</span>
-              </button>
-            </div>
-          </header>
+          <div className="mrr-title-wrap">
+            <h1 className="mrr-title">{meeting?.title || 'Meeting Room'}</h1>
+            <span className={`mrr-live ${connected ? '' : 'is-idle'}`}>
+              <span className="mrr-pulse" />
+              {connected ? 'Live' : 'Idle'}
+            </span>
+          </div>
 
-          <div className="workspace-content">
-            {error && (
-              <div className="mb-4 p-3 bg-red-900/30 border border-red-700 rounded-lg text-red-300 text-sm">
-                {error}
-              </div>
+          <div className="mrr-top-right">
+            <span className="mrr-enc"><ShieldCheck className="w-3.5 h-3.5" /> Encrypted</span>
+            {connected && (
+              <span className="mrr-timer">
+                <Clock className="w-3.5 h-3.5" />
+                <b>{formatTime(elapsedSeconds)}</b>
+              </span>
             )}
+            {connected && (
+              <button type="button" className="mrr-leave" onClick={leaveMeeting}>
+                <PhoneOff className="w-3.5 h-3.5" />
+                Leave
+              </button>
+            )}
+          </div>
+        </div>
 
-            {!connected && !meeting && (
-              <div className="flex flex-col items-center justify-center py-20">
-                <div className="text-gray-400 mb-4">Meeting not found or unavailable.</div>
-                <button
-                  type="button"
-                  className="cta-button"
-                  onClick={() => router.push('/meetings')}
-                >
+        <div className="mrr-body">
+          {error && (
+            <div style={{ position: 'absolute', top: '4.5rem', left: '50%', transform: 'translateX(-50%)', zIndex: 20, width: 'min(520px, 90vw)' }}>
+              <div className="mrr-error">
+                <Minus className="w-4 h-4 flex-shrink-0" />
+                <p>{error}</p>
+              </div>
+            </div>
+          )}
+
+          {!connected && meeting && (
+            <div className="mrr-lobby">
+              <div className="mrr-lobby-card">
+                <h2 className="mrr-lobby-title">{meeting.title || 'Meeting Room'}</h2>
+                <p className="mrr-lobby-sub">
+                  by {meeting.host?.fullName || meeting.host?.name || 'Host'}
+                  {meeting.scheduledAt ? ` · ${new Date(meeting.scheduledAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}` : ''}
+                </p>
+                <div className="mrr-lobby-row">
+                  {meeting.roomId}
+                  <button type="button" className="mrr-lobby-copy" onClick={handleCopyRoom} title="Copy room code">
+                    {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+                <div className="mrr-lobby-count">
+                  {(meeting.participants || []).length || 1} participant{(meeting.participants || []).length !== 1 ? 's' : ''} · join to enter the room
+                </div>
+                <button type="button" className="mrr-join" onClick={joinMeeting} disabled={joining}>
+                  {joining ? <Loader2 className="w-4 h-4 animate-spin" /> : <Video className="w-4 h-4" />}
+                  {joining ? 'Joining...' : 'Join Meeting'}
+                </button>
+                <button type="button" className="mrr-back" onClick={() => router.push('/meetings')}>
+                  <ArrowLeft className="w-3.5 h-3.5" />
                   Back to Meetings
                 </button>
               </div>
-            )}
+            </div>
+          )}
 
-            {!connected && meeting && (
-              <div className="flex flex-col items-center justify-center py-20">
-                <div className="workspace-card max-w-md w-full text-center">
-                  <div className="workspace-card-header">
-                    <h2 className="workspace-card-title">{meeting.title}</h2>
-                  </div>
-                  <div className="workspace-card-body flex flex-col items-center gap-4">
-                    <div className="text-gray-400 text-sm">
-                      Room ID: <span className="text-gray-200 font-mono">{meeting.roomId}</span>
+          {!connected && !meeting && (
+            <div className="mrr-lobby">
+              <div className="mrr-lobby-card">
+                <h2 className="mrr-lobby-title">Meeting unavailable</h2>
+                <p className="mrr-lobby-sub">The meeting could not be loaded or has already ended.</p>
+                <button type="button" className="mrr-back" onClick={() => router.push('/meetings')}>
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  Back to Meetings
+                </button>
+              </div>
+            </div>
+          )}
+
+          {connected && (
+            <>
+              <div className="mrr-stage">
+                <div className="mrr-grid">
+                  <div className="mrr-tile is-self">
+                    <div className="mrr-avatar" style={{ position: 'relative', zIndex: 1 }}>
+                      {user?.profilePicture ? (
+                        <img src={getAvatarUrl(user, user?.fullName || user?.name)} alt={user?.fullName || 'You'} />
+                      ) : (
+                        getInitials(user?.fullName || user?.name)
+                      )}
                     </div>
-                    {meeting.participants && (
-                      <div className="text-gray-400 text-sm">
-                        {meeting.participants.length} participant{meeting.participants.length !== 1 ? 's' : ''} in lobby
-                      </div>
-                    )}
-                    <button
-                      type="button"
-                      className="cta-button mt-2"
-                      onClick={joinMeeting}
-                      disabled={joining}
-                    >
-                      {joining ? 'Joining...' : 'Join Meeting'}
-                    </button>
+                    <span className="mrr-tile-label">
+                      <span className="mrr-status-dot" />
+                      {user?.fullName || user?.name || 'You'} <span className="mrr-role">· You</span>
+                    </span>
+                    <span className="mrr-mute-chip" title={isMuted ? 'Muted' : 'Mic on'}>
+                      {isMuted ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
+                    </span>
                   </div>
+
+                  {remainParticipants.map((p) => {
+                    const pUser = p?.user || p;
+                    const name = pUser?.fullName || pUser?.name || 'Participant';
+                    const isHost = String(pUser?._id || pUser?.id || '') === String(meeting?.host?._id || meeting?.host || '');
+                    const pfp = pUser?.profilePicture || pUser?.avatar || p?.profilePicture;
+                    return (
+                      <div key={pUser?._id || p?._id || name} className="mrr-tile">
+                        <div className="mrr-avatar" style={{ position: 'relative', zIndex: 1 }}>
+                          {pfp ? (
+                            <img src={getAvatarUrl(pUser, name)} alt={name} />
+                          ) : (
+                            getInitials(name)
+                          )}
+                        </div>
+                        <span className="mrr-tile-label">
+                          <span className="mrr-status-dot" />
+                          {name} {isHost && <span className="mrr-role">· Host</span>}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="mrr-controls">
+                  <button
+                    type="button"
+                    className={`mrr-ctrl ${isMuted ? 'is-muted' : ''}`}
+                    onClick={() => setIsMuted((v) => !v)}
+                    title={isMuted ? 'Unmute' : 'Mute'}
+                  >
+                    {isMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                  </button>
+                  <button
+                    type="button"
+                    className={`mrr-ctrl ${!isCameraOn ? 'is-muted' : ''}`}
+                    onClick={() => setIsCameraOn((v) => !v)}
+                    title={isCameraOn ? 'Turn off camera' : 'Turn on camera'}
+                  >
+                    {isCameraOn ? <Video className="w-4 h-4" /> : <VideoOff className="w-4 h-4" />}
+                  </button>
+                  <button
+                    type="button"
+                    className={`mrr-ctrl ${isScreenSharing ? 'is-brand' : ''}`}
+                    onClick={() => setIsScreenSharing((v) => !v)}
+                    title={isScreenSharing ? 'Stop sharing' : 'Share screen'}
+                  >
+                    <Monitor className="w-4 h-4" />
+                  </button>
+                  <button type="button" className="mrr-ctrl is-danger" onClick={leaveMeeting} title="Leave meeting">
+                    <PhoneOff className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
-            )}
 
-            {connected && (
-              <div className="flex gap-4" style={{ height: 'calc(100vh - 180px)' }}>
-                <div className="flex-1 flex flex-col gap-4">
-                  <div className="flex-1 bg-navy-light rounded-lg border border-gray-700 flex items-center justify-center relative min-h-[400px]">
-                    <div className="text-gray-500 text-lg">Video feed</div>
-                    <div className="absolute bottom-4 left-4 flex items-center gap-2 bg-black/50 px-3 py-1.5 rounded-lg">
-                      <div className="w-2 h-2 bg-green-400 rounded-full" />
-                      <span className="text-xs text-gray-300">
-                        {user?.fullName || user?.name || 'You'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-center gap-3 py-3">
+              <div className="mrr-panel">
+                <div className="mrr-panel-head">
+                  <div className="mrr-tabs">
                     <button
                       type="button"
-                      className={`p-3 rounded-full transition-colors ${
-                        isMuted
-                          ? 'bg-red-600 hover:bg-red-700 text-white'
-                          : 'bg-gray-700 hover:bg-gray-600 text-gray-200'
-                      }`}
-                      onClick={() => setIsMuted(!isMuted)}
-                      title={isMuted ? 'Unmute' : 'Mute'}
-                    >
-                      {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-                    </button>
-
-                    <button
-                      type="button"
-                      className={`p-3 rounded-full transition-colors ${
-                        !isCameraOn
-                          ? 'bg-red-600 hover:bg-red-700 text-white'
-                          : 'bg-gray-700 hover:bg-gray-600 text-gray-200'
-                      }`}
-                      onClick={() => setIsCameraOn(!isCameraOn)}
-                      title={isCameraOn ? 'Turn off camera' : 'Turn on camera'}
-                    >
-                      {isCameraOn ? <Video className="w-5 h-5" /> : <VideoOff className="w-5 h-5" />}
-                    </button>
-
-                    <button
-                      type="button"
-                      className={`p-3 rounded-full transition-colors ${
-                        isScreenSharing
-                          ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                          : 'bg-gray-700 hover:bg-gray-600 text-gray-200'
-                      }`}
-                      onClick={() => setIsScreenSharing(!isScreenSharing)}
-                      title={isScreenSharing ? 'Stop sharing' : 'Share screen'}
-                    >
-                      <Monitor className="w-5 h-5" />
-                    </button>
-
-                    <button
-                      type="button"
-                      className="p-3 rounded-full bg-red-600 hover:bg-red-700 text-white transition-colors"
-                      onClick={leaveMeeting}
-                      title="Leave meeting"
-                    >
-                      <PhoneOff className="w-5 h-5" />
-                    </button>
-                  </div>
-                </div>
-
-                <div className="w-80 flex flex-col gap-4">
-                  <div className="flex bg-navy-light rounded-lg border border-gray-700 overflow-hidden">
-                    <button
-                      type="button"
-                      className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium transition-colors ${
-                        showParticipants
-                          ? 'bg-gray-700 text-white'
-                          : 'text-gray-400 hover:text-gray-200'
-                      }`}
+                      className={`mrr-tab ${showParticipants && !showChat ? 'is-on' : ''}`}
                       onClick={() => { setShowParticipants(true); setShowChat(false); }}
                     >
-                      <Users className="w-4 h-4" />
+                      <Users className="w-3.5 h-3.5" />
                       People
+                      <span className="mrr-tab-count">{(meeting?.participants?.length || 0) + 1}</span>
                     </button>
                     <button
                       type="button"
-                      className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium transition-colors ${
-                        showChat
-                          ? 'bg-gray-700 text-white'
-                          : 'text-gray-400 hover:text-gray-200'
-                      }`}
+                      className={`mrr-tab ${showChat ? 'is-on' : ''}`}
                       onClick={() => { setShowChat(true); setShowParticipants(false); }}
                     >
-                      <MessageSquare className="w-4 h-4" />
+                      <MessageSquare className="w-3.5 h-3.5" />
                       Chat
+                      <span className="mrr-tab-count">{chatMessages.length}</span>
                     </button>
                   </div>
-
-                  {showParticipants && (
-                    <div className="flex-1 bg-navy-light rounded-lg border border-gray-700 flex flex-col overflow-hidden">
-                      <div className="px-4 py-3 border-b border-gray-700">
-                        <h3 className="text-sm font-semibold text-gray-200">
-                          Participants ({meeting?.participants?.length || 0})
-                        </h3>
-                      </div>
-                      <div className="flex-1 overflow-y-auto p-2">
-                        {meeting?.participants?.length > 0 ? (
-                          meeting.participants.map((p, idx) => (
-                            <div key={p._id || idx} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-800/50">
-                              <img
-                                className="w-8 h-8 rounded-full"
-                                src={getAvatarUrl(p, p?.fullName || p?.name || 'User')}
-                                alt={p.fullName || p.name || 'User'}
-                              />
-                              <div className="flex-1 min-w-0">
-                                <div className="text-sm text-gray-200 truncate">
-                                  {p.fullName || p.name || 'User'}
-                                </div>
-                                {p._id === meeting?.host && (
-                                  <div className="text-xs text-yellow-400">Host</div>
-                                )}
-                              </div>
-                              <div className="w-2 h-2 bg-green-400 rounded-full flex-shrink-0" />
-                            </div>
-                          ))
-                        ) : (
-                          <div className="text-center text-gray-500 text-sm py-4">No participants yet</div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {showChat && (
-                    <div className="flex-1 bg-navy-light rounded-lg border border-gray-700 flex flex-col overflow-hidden">
-                      <div className="px-4 py-3 border-b border-gray-700">
-                        <h3 className="text-sm font-semibold text-gray-200">Meeting Chat</h3>
-                      </div>
-                      <div className="flex-1 overflow-y-auto p-3 space-y-3">
-                        {chatMessages.length === 0 && (
-                          <div className="text-center text-gray-500 text-sm py-4">
-                            No messages yet. Start the conversation!
-                          </div>
-                        )}
-                        {chatMessages.map((msg) => (
-                          <div key={msg.id} className={`flex flex-col ${msg.isOwn ? 'items-end' : 'items-start'}`}>
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="text-xs text-gray-400">{msg.sender}</span>
-                              <span className="text-xs text-gray-600">{msg.time}</span>
-                            </div>
-                            <div
-                              className={`px-3 py-2 rounded-lg text-sm max-w-[85%] ${
-                                msg.isOwn
-                                  ? 'bg-blue-600 text-white'
-                                  : 'bg-gray-700 text-gray-200'
-                              }`}
-                            >
-                              {msg.text}
-                            </div>
-                          </div>
-                        ))}
-                        <div ref={chatEndRef} />
-                      </div>
-                      <form onSubmit={handleSendChat} className="p-3 border-t border-gray-700">
-                        <div className="flex gap-2">
-                          <input
-                            type="text"
-                            className="flex-1 bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-blue-500"
-                            placeholder="Type a message..."
-                            value={chatInput}
-                            onChange={(e) => setChatInput(e.target.value)}
-                          />
-                          <button
-                            type="submit"
-                            className="p-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white transition-colors"
-                            disabled={!chatInput.trim()}
-                          >
-                            <Send className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </form>
-                    </div>
-                  )}
                 </div>
+
+                {showParticipants && !showChat && (
+                  <div className="mrr-panel-body">
+                    <div className="mrr-panel-list">
+                      <div className="mrr-person">
+                        <div className="mrr-avatar" style={{ width: 34, height: 34, fontSize: '0.8rem' }}>
+                          {user?.profilePicture ? (
+                            <img src={getAvatarUrl(user, user?.fullName || user?.name)} alt={user?.fullName || 'You'} />
+                          ) : (
+                            getInitials(user?.fullName || user?.name)
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="mrr-person-name">{user?.fullName || user?.name || 'You'} (You)</div>
+                          {String(meeting?.host?._id || meeting?.host || '') === String(user?._id || '') && (
+                            <div className="mrr-person-role">Host</div>
+                          )}
+                        </div>
+                        <span className="mrr-person-status" />
+                      </div>
+
+                      {(meeting?.participants || []).map((p) => {
+                        const pUser = p?.user || p;
+                        const name = pUser?.fullName || pUser?.name || 'Participant';
+                        const isHost = String(pUser?._id || pUser?.id || '') === String(meeting?.host?._id || meeting?.host || '');
+                        const pfp = pUser?.profilePicture || pUser?.avatar || p?.profilePicture;
+                        return (
+                          <div key={pUser?._id || p?._id || name} className="mrr-person">
+                            <div className="mrr-avatar" style={{ width: 34, height: 34, fontSize: '0.8rem' }}>
+                              {pfp ? (
+                                <img src={getAvatarUrl(pUser, name)} alt={name} />
+                              ) : (
+                                getInitials(name)
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="mrr-person-name">{name}</div>
+                              {isHost && <div className="mrr-person-role">Host</div>}
+                            </div>
+                            <span className="mrr-person-status" />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {showChat && (
+                  <div className="mrr-chat">
+                    <div className="mrr-chat-list">
+                      {chatMessages.length === 0 && (
+                        <div className="mrr-chat-empty">No messages yet. Start the conversation.</div>
+                      )}
+                      {chatMessages.map((msg) => (
+                        <div key={msg.id} className={`mrr-msg ${msg.isOwn ? 'is-own' : ''}`}>
+                          <div className="mrr-msg-meta">
+                            <span>{msg.sender}</span>
+                            <span>{msg.time}</span>
+                          </div>
+                          <div className="mrr-msg-bubble">{msg.text}</div>
+                        </div>
+                      ))}
+                      <div ref={chatEndRef} />
+                    </div>
+                    <form onSubmit={handleSendChat} className="mrr-chat-form">
+                      <input
+                        type="text"
+                        className="mrr-chat-input"
+                        placeholder="Type a message..."
+                        value={chatInput}
+                        onChange={(e) => setChatInput(e.target.value)}
+                      />
+                      <button type="submit" className="mrr-chat-send" disabled={!chatInput.trim()}>
+                        <Send className="w-4 h-4" />
+                      </button>
+                    </form>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        </main>
+            </>
+          )}
+        </div>
       </div>
     </AuthGuard>
   );
