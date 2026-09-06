@@ -4359,12 +4359,22 @@
 .ed-dot.is-yellow { background: #febc2e; }
 .ed-dot.is-green { background: #28c840; }
 .ed-menubar-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
   font-size: 0.72rem;
   font-weight: 700;
   color: #d4d4d4;
   letter-spacing: 0.01em;
   white-space: nowrap;
   flex-shrink: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+.ed-menubar-brand:hover {
+  color: #ffffff;
 }
 .ed-menubar-brand em {
   font-style: normal;

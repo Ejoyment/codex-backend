@@ -8,7 +8,7 @@ import {
   Save, ChevronDown, ChevronRight, FileCode, Terminal, Bot, Layers, Rocket, Box,
   Users, GitBranch, Eye, X, FolderOpen, Search, Settings, Folder, Trash2,
   FolderPlus, AlertCircle, CheckCircle, XCircle, RefreshCw, Puzzle, HelpCircle,
-  FilePlus, Play, Loader2,
+  FilePlus, Play, Loader2, LayoutDashboard,
 } from 'lucide-react';
 import MonacoEditor from '@monaco-editor/react';
 import { io } from 'socket.io-client';
@@ -318,6 +318,9 @@ export default function Editor() {
       } else if (k === 'n') {
         e.preventDefault();
         setShowNewModal(true);
+      } else if (k === 'd' && e.shiftKey) {
+        e.preventDefault();
+        router.push('/dashboard');
       }
     }
     window.addEventListener('keydown', onKey);
@@ -896,6 +899,8 @@ export default function Editor() {
         { label: 'Save', kbd: '⌘S', run: handleSave },
         { label: null },
         { label: 'Close Editor', kbd: '⌘W', run: () => { if (selectedFileRef.current) closeTab(selectedFileRef.current); } },
+        { label: null },
+        { label: 'Back to Dashboard', kbd: '⌘⇧D', run: () => router.push('/dashboard') },
       ],
     },
     {
@@ -996,7 +1001,10 @@ export default function Editor() {
             <span className="ed-dot is-yellow" />
             <span className="ed-dot is-green" />
           </div>
-          <div className="ed-menubar-brand">Buildrs <em>HQ</em></div>
+          <button type="button" className="ed-menubar-brand" onClick={() => router.push('/dashboard')} title="Back to Dashboard">
+            <LayoutDashboard className="w-3.5 h-3.5" />
+            <span>Buildrs <em>HQ</em></span>
+          </button>
           <nav className="ed-menubars" ref={menuRef}>
             {MENU_ITEMS.map((m) => (
               <div key={m.id} style={{ position: 'relative' }}>
