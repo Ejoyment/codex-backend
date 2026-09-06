@@ -1,10 +1,59 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Head from 'next/head';
 import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch, projectApi, companyApi } from '../lib/api';
-import { Send, Clock, CheckCircle2, AlertCircle, ListChecks } from 'lucide-react';
+import {
+  Send,
+  Clock,
+  CheckCircle2,
+  AlertCircle,
+  Check,
+  ListChecks,
+  Building2,
+  MessageSquare,
+  ListTodo,
+  History,
+} from 'lucide-react';
+
+function groupStandups(items) {
+  const groups = [];
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today.getTime() - 86400000);
+  const weekAgo = new Date(today.getTime() - 7 * 86400000);
+
+  const buckets = { Today: [], Yesterday: [], 'This Week': [], Earlier: [] };
+  for (const item of items) {
+    const date = new Date(item.timestamp);
+    const day = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    if (day.getTime() === today.getTime()) buckets.Today.push(item);
+    else if (day.getTime() === yesterday.getTime()) buckets.Yesterday.push(item);
+    else if (date >= weekAgo) buckets['This Week'].push(item);
+    else buckets.Earlier.push(item);
+  }
+  for (const [label, entries] of Object.entries(buckets)) {
+    if (entries.length > 0) groups.push({ label, items: entries });
+  }
+  return groups;
+}
+
+function initials(name) {
+  return (name || 'U')
+    .split(/\s+/)
+    .map((p) => p[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
+}
+
+const TASK_META_STYLE = {
+  pending: 'Pending',
+  in_progress: 'In progress',
+  in_review: 'In review',
+  completed: 'Done',
+};
 
 export default function Standup() {
   const user = useAuthStore((s) => s.user);
@@ -24,6 +73,16 @@ export default function Standup() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
+  const [clock, setClock] = useState('');
+
+  useEffect(() => {
+    const tick = () => {
+      setClock(new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }));
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     async function loadData() {
@@ -69,6 +128,13 @@ export default function Standup() {
       prev.includes(taskId) ? prev.filter((id) => id !== taskId) : [...prev, taskId]
     );
   }
+
+  const todayCount = useMemo(
+    () => pastStandups.filter((s) => new Date(s.timestamp).toDateString() === new Date().toDateString()).length,
+    [pastStandups]
+  );
+
+  const groupedStandups = useMemo(() => groupStandups(pastStandups), [pastStandups]);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -116,6 +182,8 @@ export default function Standup() {
     }
   }
 
+  const todayLabel = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+
   return (
     <AuthGuard>
       <Head>
@@ -123,235 +191,371 @@ export default function Standup() {
         <link rel="icon" href="/buildrs.png" />
       </Head>
 
-      <div className="min-h-screen bg-navy flex">
+      <div className="workspace-container">
         <Sidebar user={user} subscription={subscription} />
 
-        <main className="workspace-main flex-1 ml-64">
-          <header className="workspace-header">
-            <div className="flex items-center gap-6">
-              <h1 className="text-xl font-bold">Standup</h1>
-              <span className="text-sm text-muted">Daily updates & progress</span>
+        <main className="workspace-main">
+          <header className="workspace-header dash-header">
+            <div>
+              <p className="dash-crumb">
+                BuildrsHQ <span className="sep">/</span> Standup
+              </p>
+              <h1 className="dash-title">Daily Standup</h1>
+              <div className="dash-statusline">
+                <span className="status-indicator status-online" />
+                <span>Sync your progress</span>
+                <span className="dash-clock">· {clock || '—:——:——'}</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="dash-pill">
+                <span className="dot" />
+{todayLabel}
+              </span>
             </div>
           </header>
 
-          <div className="workspace-content p-6">
-            {error && (
-              <div className="mb-6 p-4 rounded-lg bg-red-500/10 border border-red-500/30 flex items-center gap-3">
-                <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
-                <p className="text-red-300 text-sm">{error}</p>
-              </div>
-            )}
-
-            {success && (
-              <div className="mb-6 p-4 rounded-lg bg-green-500/10 border border-green-500/30 flex items-center gap-3">
-                <CheckCircle2 className="w-5 h-5 text-green-400 flex-shrink-0" />
-                <p className="text-green-300 text-sm">{success}</p>
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit}>
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2 space-y-6">
-                  <div className="workspace-card">
-                    <div className="workspace-card-header">
-                      <h2 className="workspace-card-title flex items-center gap-2">
-                        <Clock className="w-4 h-4 text-blue-400" />
-                        What did you do yesterday?
-                      </h2>
-                    </div>
-                    <div className="workspace-card-body">
-                      <textarea
-                        className="form-textarea w-full"
-                        rows={4}
-                        placeholder="Describe what you accomplished yesterday..."
-                        value={yesterday}
-                        onChange={(e) => setYesterday(e.target.value)}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="workspace-card">
-                    <div className="workspace-card-header">
-                      <h2 className="workspace-card-title flex items-center gap-2">
-                        <ListChecks className="w-4 h-4 text-green-400" />
-                        What are you working on today?
-                      </h2>
-                    </div>
-                    <div className="workspace-card-body">
-                      <textarea
-                        className="form-textarea w-full"
-                        rows={4}
-                        placeholder="Describe your plan for today..."
-                        value={today}
-                        onChange={(e) => setToday(e.target.value)}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="workspace-card">
-                    <div className="workspace-card-header">
-                      <h2 className="workspace-card-title flex items-center gap-2">
-                        <AlertCircle className="w-4 h-4 text-orange-400" />
-                        Any blockers?
-                      </h2>
-                    </div>
-                    <div className="workspace-card-body">
-                      <textarea
-                        className="form-textarea w-full"
-                        rows={3}
-                        placeholder="Anything slowing you down or blocking progress?"
-                        value={blockers}
-                        onChange={(e) => setBlockers(e.target.value)}
-                      />
-                    </div>
-                  </div>
+          <div className="workspace-content">
+            <div className="std-content">
+              {error && (
+                <div className="std-alert std-alert-error">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  <p>{error}</p>
                 </div>
+              )}
 
-                <div className="space-y-6">
-                  <div className="workspace-card">
-                    <div className="workspace-card-header">
-                      <h2 className="workspace-card-title">Related Tasks</h2>
-                    </div>
-                    <div className="workspace-card-body">
-                      {loading ? (
-                        <p className="text-sm text-muted">Loading tasks...</p>
-                      ) : tasks.length === 0 ? (
-                        <p className="text-sm text-muted">No tasks found</p>
-                      ) : (
-                        <div className="space-y-2 max-h-48 overflow-y-auto">
-                          {tasks.map((task) => (
-                            <label
-                              key={task._id}
-                              className="flex items-center gap-2 p-2 rounded hover:bg-white/5 cursor-pointer"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={selectedTasks.includes(task._id)}
-                                onChange={() => toggleTask(task._id)}
-                                className="rounded border-gray-600 bg-navy text-blue-500 focus:ring-blue-500"
-                              />
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm text-gray-200 truncate">{task.title}</p>
-                                <div className="flex items-center gap-2 mt-0.5">
-                                  <span className="text-xs text-muted">{task.status}</span>
-                                  {task.priority && (
-                                    <span className="text-xs text-muted">· {task.priority}</span>
-                                  )}
-                                </div>
-                              </div>
-                            </label>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="workspace-card">
-                    <div className="workspace-card-header">
-                      <h2 className="workspace-card-title">Post to Channel</h2>
-                    </div>
-                    <div className="workspace-card-body space-y-3">
-                      <div>
-                        <label className="block text-sm text-muted mb-1">Company</label>
-                        <select
-                          className="form-textarea w-full text-sm"
-                          value={selectedCompany}
-                          onChange={(e) => setSelectedCompany(e.target.value)}
-                        >
-                          {companies.map((c) => (
-                            <option key={c._id} value={c._id}>
-                              {c.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm text-muted mb-1">Channel</label>
-                        <select
-                          className="form-textarea w-full text-sm"
-                          value={selectedChannel}
-                          onChange={(e) => setSelectedChannel(e.target.value)}
-                        >
-                          <option value="">Select a channel</option>
-                          {channels.map((ch) => (
-                            <option key={ch._id} value={ch._id}>
-                              {ch.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={submitting}
-                    className="cta-button w-full flex items-center justify-center gap-2"
-                  >
-                    <Send className="w-4 h-4" />
-                    {submitting ? 'Submitting...' : 'Submit Standup'}
-                  </button>
+              {success && (
+                <div className="std-alert std-alert-success">
+                  <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                  <p>{success}</p>
                 </div>
-              </div>
-            </form>
+              )}
 
-            {pastStandups.length > 0 && (
-              <div className="mt-8">
-                <h2 className="text-lg font-bold mb-4">Past Standups</h2>
-                <div className="space-y-4">
-                  {pastStandups.map((s) => (
-                    <div key={s._id} className="workspace-card">
-                      <div className="workspace-card-header">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-muted">
-                            {new Date(s.timestamp).toLocaleString()}
+              <form onSubmit={handleSubmit} onKeyDown={(e) => {
+                if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                  e.preventDefault();
+                  handleSubmit(e);
+                }
+              }}>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                  <div className="lg:col-span-2 space-y-5">
+                    <div className="std-comp">
+                      <div className="std-block">
+                        <div className="std-block-head">
+                          <span className="std-block-ico std-ico-y">
+                            <Clock className="w-4 h-4" />
                           </span>
-                          <span className="text-sm text-muted">{s.author}</span>
+                          <div>
+                            <p className="std-block-title">What did you do yesterday?</p>
+                            <p className="std-block-hint">Accomplishments · work completed</p>
+                          </div>
+                          <span className="std-count">{yesterday.length}/1000</span>
                         </div>
+                        <textarea
+                          className="std-textarea"
+                          rows={4}
+                          maxLength={1000}
+                          placeholder="Describe what you accomplished yesterday..."
+                          value={yesterday}
+                          onChange={(e) => setYesterday(e.target.value)}
+                        />
                       </div>
-                      <div className="workspace-card-body space-y-3">
-                        {s.yesterday && (
+
+                      <div className="std-block">
+                        <div className="std-block-head">
+                          <span className="std-block-ico std-ico-t">
+                            <ListChecks className="w-4 h-4" />
+                          </span>
                           <div>
-                            <p className="text-xs font-medium text-blue-400 mb-1">Yesterday</p>
-                            <p className="text-sm text-gray-300">{s.yesterday}</p>
+                            <p className="std-block-title">What are you working on today?</p>
+                            <p className="std-block-hint">Plan · focus for the day</p>
                           </div>
-                        )}
-                        {s.today && (
+                          <span className="std-count">{today.length}/1000</span>
+                        </div>
+                        <textarea
+                          className="std-textarea"
+                          rows={4}
+                          maxLength={1000}
+                          placeholder="Describe your plan for today..."
+                          value={today}
+                          onChange={(e) => setToday(e.target.value)}
+                        />
+                      </div>
+
+                      <div className="std-block">
+                        <div className="std-block-head">
+                          <span className="std-block-ico std-ico-b">
+                            <AlertCircle className="w-4 h-4" />
+                          </span>
                           <div>
-                            <p className="text-xs font-medium text-green-400 mb-1">Today</p>
-                            <p className="text-sm text-gray-300">{s.today}</p>
+                            <p className="std-block-title">Any blockers?</p>
+                            <p className="std-block-hint">Impediments · help requested</p>
                           </div>
-                        )}
-                        {s.blockers && (
-                          <div>
-                            <p className="text-xs font-medium text-orange-400 mb-1">Blockers</p>
-                            <p className="text-sm text-gray-300">{s.blockers}</p>
-                          </div>
-                        )}
-                        {s.relatedTasks?.length > 0 && (
-                          <div>
-                            <p className="text-xs font-medium text-purple-400 mb-1">Related Tasks</p>
-                            <div className="flex flex-wrap gap-1">
-                              {s.relatedTasks.map((taskId) => {
-                                const task = tasks.find((t) => t._id === taskId);
-                                return (
-                                  <span
-                                    key={taskId}
-                                    className="text-xs bg-white/10 px-2 py-0.5 rounded"
-                                  >
-                                    {task?.title || taskId}
-                                  </span>
-                                );
-                              })}
+                          <span className="std-count">{blockers.length}/1000</span>
+                        </div>
+                        <textarea
+                          className="std-textarea"
+                          rows={3}
+                          maxLength={1000}
+                          placeholder="Anything slowing you down or blocking progress?"
+                          value={blockers}
+                          onChange={(e) => setBlockers(e.target.value)}
+                        />
+                      </div>
+
+                      <div className="std-submit-bar">
+                        <span className="std-note">
+                          Submit with <span className="std-kbd">⌘</span><span className="std-kbd">↵</span>
+                        </span>
+                        <button
+                          type="submit"
+                          disabled={submitting}
+                          className="btn-workspace btn-primary"
+                        >
+                          <Send className="w-4 h-4" />
+                          {submitting ? 'Submitting...' : 'Submit Standup'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-5">
+                    <div className="workspace-card">
+                      <div className="workspace-card-header flex items-center justify-between">
+                        <div className="flex items-center gap-2.5">
+                          <span className="card-ico">
+                            <ListTodo className="w-4 h-4" />
+                          </span>
+                          <h2 className="workspace-card-title">Related Tasks</h2>
+                        </div>
+                        <span className="badge-count">{selectedTasks.length} selected</span>
+                      </div>
+                      <div className="workspace-card-body">
+                        {loading ? (
+                          <p className="text-sm text-muted">Loading tasks...</p>
+                        ) : tasks.length === 0 ? (
+                          <div className="dash-empty">
+                            <div className="dash-empty-ico">
+                              <ListTodo className="w-5 h-5" />
                             </div>
+                            <p className="dash-empty-title">No tasks found</p>
+                            <p className="dash-empty-sub">Create tasks to link them to your standup.</p>
+                          </div>
+                        ) : (
+                          <div className="std-task-list">
+                            {tasks.map((task) => {
+                              const checked = selectedTasks.includes(task._id);
+                              return (
+                                <div
+                                  key={task._id}
+                                  className={`std-task-row ${checked ? 'is-checked' : ''}`}
+                                  onClick={() => toggleTask(task._id)}
+                                >
+                                  <span className="std-check">
+                                    <Check className="w-3 h-3" />
+                                  </span>
+                                  <div className="std-task-main">
+                                    <p className="std-task-title">{task.title}</p>
+                                    <p className="std-task-meta">
+                                      {TASK_META_STYLE[task.status] || task.status}
+                                      {task.priority ? ` · ${task.priority}` : ''}
+                                    </p>
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
                         )}
                       </div>
                     </div>
-                  ))}
+
+                    <div className="workspace-card">
+                      <div className="workspace-card-header flex items-center gap-2.5">
+                        <span className="card-ico">
+                          <MessageSquare className="w-4 h-4" />
+                        </span>
+                        <h2 className="workspace-card-title">Post To</h2>
+                      </div>
+                      <div className="workspace-card-body space-y-4">
+                        <div>
+                          <label className="ws-label">Company</label>
+                          <select
+                            className="ws-select"
+                            value={selectedCompany}
+                            onChange={(e) => setSelectedCompany(e.target.value)}
+                          >
+                            {companies.length === 0 && <option value="">No companies</option>}
+                            {companies.map((c) => (
+                              <option key={c._id} value={c._id}>
+                                {c.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="ws-label">Channel</label>
+                          <select
+                            className="ws-select"
+                            value={selectedChannel}
+                            onChange={(e) => setSelectedChannel(e.target.value)}
+                          >
+                            <option value="">Select a channel</option>
+                            {channels.map((ch) => (
+                              <option key={ch._id} value={ch._id}>
+                                {ch.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            )}
+              </form>
+
+              {/* Metrics strip */}
+              <section className="dash-section mt-8">
+                <div className="dash-section-head">
+                  <div className="dash-eyebrow">
+                    <span className="dot" />
+                    <b>Rhythm</b> · your standup practice
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+                  <div className="dash-kpi dash-kpi-blue dash-kpi-link" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
+                    <div className="dash-kpi-head">
+                      <span className="dash-kpi-eyebrow">Standups Logged</span>
+                      <span className="dash-kpi-ico"><History className="w-4 h-4" /></span>
+                    </div>
+                    <div className="dash-kpi-value">{pastStandups.length}</div>
+                    <div className="dash-kpi-meta-row">
+                      <span className="dash-kpi-meta">{todayCount} today</span>
+                    </div>
+                  </div>
+                  <div className="dash-kpi dash-kpi-green dash-kpi-link" onClick={() => { window.location.href = '/tasks'; }}>
+                    <div className="dash-kpi-head">
+                      <span className="dash-kpi-eyebrow">Tasks Available</span>
+                      <span className="dash-kpi-ico"><ListTodo className="w-4 h-4" /></span>
+                    </div>
+                    <div className="dash-kpi-value">{tasks.length}</div>
+                    <div className="dash-kpi-meta-row">
+                      <span className="dash-kpi-meta">{selectedTasks.length} linked to this standup</span>
+                    </div>
+                  </div>
+                  <div className="dash-kpi dash-kpi-orange dash-kpi-link" onClick={() => { window.location.href = '/teams'; }}>
+                    <div className="dash-kpi-head">
+                      <span className="dash-kpi-eyebrow">Workspaces</span>
+                      <span className="dash-kpi-ico"><Building2 className="w-4 h-4" /></span>
+                    </div>
+                    <div className="dash-kpi-value">{companies.length}</div>
+                    <div className="dash-kpi-meta-row">
+                      <span className="dash-kpi-meta">where you post</span>
+                    </div>
+                  </div>
+                  <div className="dash-kpi dash-kpi-purple dash-kpi-link" onClick={() => { window.location.href = '/settings#integrations'; }}>
+                    <div className="dash-kpi-head">
+                      <span className="dash-kpi-eyebrow">Channels</span>
+                      <span className="dash-kpi-ico"><MessageSquare className="w-4 h-4" /></span>
+                    </div>
+                    <div className="dash-kpi-value">{channels.length}</div>
+                    <div className="dash-kpi-meta-row">
+                      <span className="dash-kpi-meta">connected for delivery</span>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {/* History */}
+              <section className="dash-section">
+                <div className="dash-section-head">
+                  <div className="dash-eyebrow">
+                    <span className="dot" />
+                    <b>History</b> · past standups
+                  </div>
+                  <span className="badge-count">{pastStandups.length} total</span>
+                </div>
+
+                {pastStandups.length === 0 ? (
+                  <div className="workspace-card">
+                    <div className="workspace-card-body">
+                      <div className="dash-empty">
+                        <div className="dash-empty-ico">
+                          <History className="w-5 h-5" />
+                        </div>
+                        <p className="dash-empty-title">No standups logged yet</p>
+                        <p className="dash-empty-sub">Submit your first daily standup above to build the habit.</p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="std-timeline">
+                    {groupedStandups.map((group) => (
+                      <div key={group.label}>
+                        <div className="feed-group-label">{group.label}</div>
+                        {group.items.map((s) => {
+                          const channelName = channels.find((ch) => ch._id === s.channelId)?.name;
+                          return (
+                            <div key={s._id} className="std-entry">
+                              <div className="std-entry-head">
+                                <div className="std-entry-host">
+                                  <span className="std-avatar">{initials(s.author)}</span>
+                                  <div className="min-w-0">
+                                    <p className="std-entry-name">{s.author}</p>
+                                    <p className="std-entry-time">
+                                      {new Date(s.timestamp).toLocaleString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true })}
+                                    </p>
+                                  </div>
+                                </div>
+                                {(s.channelId || s.companyId) && (
+                                  <span className="std-chip">
+                                    <MessageSquare className="w-3 h-3" />
+                                    {channelName || 'Workspace'}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="space-y-3">
+                                {s.yesterday && (
+                                  <div className="std-section">
+                                    <span className="std-line-label std-line-y">Yesterday</span>
+                                    <p className="std-line-body">{s.yesterday}</p>
+                                  </div>
+                                )}
+                                {s.today && (
+                                  <div className="std-section">
+                                    <span className="std-line-label std-line-t">Today</span>
+                                    <p className="std-line-body">{s.today}</p>
+                                  </div>
+                                )}
+                                {s.blockers && (
+                                  <div className="std-section">
+                                    <span className="std-line-label std-line-b">Blockers</span>
+                                    <p className="std-line-body">{s.blockers}</p>
+                                  </div>
+                                )}
+                                {s.relatedTasks?.length > 0 && (
+                                  <div className="std-section">
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {s.relatedTasks.map((taskId) => {
+                                        const task = tasks.find((t) => t._id === taskId);
+                                        return (
+                                          <span key={taskId} className="std-chip">
+                                            {task?.title || 'Task'}
+                                          </span>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            </div>
           </div>
         </main>
       </div>
