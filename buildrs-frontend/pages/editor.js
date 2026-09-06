@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
@@ -7,10 +6,10 @@ import useAuthStore from '../store/authStore';
 import { apiFetch, projectApi } from '../lib/api';
 import {
   Save, Plus, ChevronDown, FileCode, Trash2, Terminal,
-  Bot, Layers, Rocket, Box, Users, GitBranch, Eye, Split, Maximize2, X,
+  Bot, Layers, Rocket, Box, Users, GitBranch, Eye, Split, Maximize2, Minimize2, X,
   FolderOpen, Search, Settings, ChevronRight, File, FileText, Code2,
   Folder, FolderPlus, AlertCircle, CheckCircle, XCircle, RefreshCw,
-  Home, ExternalLink, FilePlus, List, Play, Square
+  Home, ExternalLink, FilePlus, List, Play, Square, Sparkles
 } from 'lucide-react';
 import MonacoEditor from '@monaco-editor/react';
 import { io } from 'socket.io-client';
@@ -57,20 +56,17 @@ function getFileIcon(name) {
   return iconMap[ext] || '\uD83D\uDCC4';
 }
 
-function LANG_COLORS() {
-  return {
-    javascript: '#f7df1e', typescript: '#3178c6', python: '#3776ab',
-    java: '#ed8b00', go: '#00add8', rust: '#dea584', cpp: '#00599c',
-    c: '#555555', ruby: '#cc342d', php: '#777bb4', html: '#e34c26',
-    css: '#563d7c', json: '#292929', yaml: '#cb171e', markdown: '#083fa1',
-    shell: '#89e051', sql: '#e38c00', text: '#6e7681',
-  };
-}
-
 function buildFileTree(files) {
   const root = { name: 'root', type: 'folder', children: {} };
-  files.forEach(f => {
+  (files || []).forEach((f) => {
     const parts = (f.path || '/').split('/').filter(Boolean);
+    // Files with no folder path live at the root: key them by file name
+    // so they are never dropped from the tree.
+    if (parts.length === 0) {
+      const key = f.name || f._id || Math.random().toString(36).slice(2);
+      root.children[key] = { ...f, type: 'file' };
+      return;
+    }
     let cur = root; let rp = '';
     for (let i = 0; i < parts.length; i++) {
       rp = rp ? rp + '/' + parts[i] : parts[i];
@@ -124,7 +120,6 @@ function FileTreeNode({ node, depth, selectedId, onSelect, expanded, onToggle })
 }
 
 export default function Editor() {
-  const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const subscription = useAuthStore((s) => s.subscription);
 
@@ -168,8 +163,10 @@ export default function Editor() {
   const toast = useToastStore();
   const [confirmDiscard, setConfirmDiscard] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [confirmStop, setConfirmStop] = useState(null);
   const dropdownRef = useRef(null);
   const terminalRef = useRef(null);
+  const terminalTabRef = useRef(null);
   const originalContentRef = useRef('');
   const aiSessionRef = useRef(null);
   const { selectedCompany } = useCurrentCompany();
@@ -183,9 +180,14 @@ export default function Editor() {
   const [showProjectSelector, setShowProjectSelector] = useState(false);
   const [expandedFolders, setExpandedFolders] = useState({});
   const [fileFilter, setFileFilter] = useState('');
+  const [isEditorExpanded, setIsEditorExpanded] = useState(false);
 
-  // Derived
-  const tree = useMemo(() => buildFileTree(files), [files]);
+  // Derived (file filter actually filters the tree)
+  const tree = useMemo(() => {
+    const q = (fileFilter || '').trim().toLowerCase();
+    const list = q ? (files || []).filter((f) => (f.name || '').toLowerCase().includes(q)) : files;
+    return buildFileTree(list);
+  }, [files, fileFilter]);
 
   useEffect(() => {
     loadFiles();
@@ -203,14 +205,14 @@ export default function Editor() {
     }
   }, [workspaceId]);
 
-  // Load project/repo files when selection changes
+  // Load project/repo files when selection changes.
+  // (No fallback loadFiles here: the mount effect already loads workspace
+  // files, so this avoids fetching the file list twice on page load.)
   useEffect(() => {
     if (selectedProject) {
       loadProjectFiles(selectedProject._id || selectedProject.id);
     } else if (selectedRepo) {
       loadGithubRepoFiles(selectedRepo);
-    } else {
-      loadFiles();
     }
   }, [selectedProject, selectedRepo]);
 
@@ -269,12 +271,13 @@ export default function Editor() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Terminal xterm init
+  // Terminal xterm init (separate instances for the tab and the bottom drawer)
   useEffect(() => {
-    if (showTerminal && terminalRef.current && !terminalRef.current.hasChildNodes()) {
+    function initTerm(el) {
+      if (!el || el.hasChildNodes()) return;
       import('xterm').then(({ Terminal: XTerm }) => {
         const term = new XTerm({ theme: { background: '#0f172a' }, fontSize: 13 });
-        term.open(terminalRef.current);
+        term.open(el);
         term.writeln('Welcome to BuildrsHQ Terminal');
         term.writeln('Type `help` for available commands');
         let line = '';
@@ -294,10 +297,12 @@ export default function Editor() {
           }
         });
       }).catch(() => {
-        if (terminalRef.current) terminalRef.current.innerHTML = '<div class="p-4 text-gray-400">Terminal loading failed. Please refresh.</div>';
+        el.innerHTML = '<div class="p-4 text-gray-400">Terminal loading failed. Please refresh.</div>';
       });
     }
-  }, [showTerminal]);
+    if (activeTab === 'terminal') initTerm(terminalTabRef.current);
+    if (showTerminal) initTerm(terminalRef.current);
+  }, [showTerminal, activeTab]);
 
 async function handleTerminalCommand(cmd, term) {
     const trimmed = cmd.trim();
@@ -409,8 +414,14 @@ async function handleTerminalCommand(cmd, term) {
   }
 
   async function loadCollaborators() {
+    // Live collaborators arrive over the socket (collab:user-joined/left).
+    // Only fetch the roster for a real open file; never a placeholder id.
+    if (!selectedFile?._id) {
+      setCollaborators([]);
+      return;
+    }
     try {
-      const data = await apiFetch('/api/collaboration/file/placeholder/users').catch(() => ({ users: [] }));
+      const data = await apiFetch(`/api/collaboration/file/${selectedFile._id}/users`).catch(() => ({ users: [] }));
       setCollaborators(data.users || []);
     } catch {}
   }
@@ -482,6 +493,7 @@ async function handleTerminalCommand(cmd, term) {
     setShowProjectSelector(false);
     setStatus(null);
     apiFetch(`/api/collaboration/file/${file._id}/join`, { method: 'POST' }).catch(() => {});
+    apiFetch(`/api/collaboration/file/${file._id}/users`).then((d) => setCollaborators(d.users || [])).catch(() => {});
   }
 
   const handleConfirmDiscard = () => {
@@ -503,14 +515,16 @@ async function handleTerminalCommand(cmd, term) {
     const val = value ?? '';
     setContent(val);
     setDirty(val !== originalContentRef.current);
-    // Real-time collaboration: broadcast changes
-    if (selectedFile?._id) {
-      // Debounced in real implementation
-    }
-  }, [selectedFile?._id]);
+    // Note: only cursor presence syncs live (see handleEditorMount).
+    // File content sync between collaborators is not implemented yet.
+  }, []);
 
   async function handleSave() {
     if (!selectedFile) return;
+    if (!selectedFile._id) {
+      setStatus({ type: 'error', msg: 'This file is a read-only listing (e.g. GitHub tree) and cannot be saved.' });
+      return;
+    }
     try {
       setSaving(true);
       const data = await apiFetch(`/api/code-editor/files/${selectedFile._id}`, {
@@ -599,7 +613,7 @@ async function handleTerminalCommand(cmd, term) {
       setStatus({ type: 'success', msg: 'File created' });
       setTimeout(() => setStatus(null), 2000);
       await reloadFiles();
-      if (created) openFile(created);
+      if (created && created._id) selectFile(created);
     } catch (err) {
       setStatus({ type: 'error', msg: err.message || 'Create failed' });
     } finally {
@@ -742,19 +756,25 @@ async function handleTerminalCommand(cmd, term) {
     }
   }
 
-  async function stopDeployment(deploymentId, subdomain) {
-    if (!confirm(`Stop deployment "${subdomain}.buildrshq.dev" and remove the container?`)) return;
+  function stopDeployment(deploymentId, subdomain) {
+    setConfirmStop({ deploymentId, subdomain });
+  }
+
+  const handleConfirmStop = async () => {
+    const target = confirmStop;
+    if (!target) return;
+    setConfirmStop(null);
     try {
-      await apiFetch(`/api/deployments/${deploymentId}`, { method: 'DELETE' });
+      await apiFetch(`/api/deployments/${target.deploymentId}`, { method: 'DELETE' });
       setDeployments((prev) => prev.map(d =>
-        d._id === deploymentId ? { ...d, status: 'stopped', deployedUrl: null } : d
+        d._id === target.deploymentId ? { ...d, status: 'stopped', deployedUrl: null } : d
       ));
       setStatus({ type: 'success', msg: 'Deployment stopped.' });
     } catch (err) {
       const msg = err?.data?.message || err?.data?.error || err?.message || 'Failed to stop';
       setStatus({ type: 'error', msg });
     }
-  }
+  };
 
   async function handleSandboxStart() {
     if (!selectedFile) {
@@ -796,11 +816,12 @@ async function handleTerminalCommand(cmd, term) {
       </Head>
 
       <div className="h-screen bg-[#1e1e1e] flex overflow-hidden">
-        <Sidebar user={user} subscription={subscription} />
+        {!isEditorExpanded && <Sidebar user={user} subscription={subscription} />}
 
-        <main className="flex-1 ml-64 flex flex-col min-w-0">
+        <main className={isEditorExpanded ? 'flex-1 flex flex-col min-w-0' : 'flex-1 ml-64 flex flex-col min-w-0'}>
           {/* VS Code title bar */}
           <header className="flex items-center h-9 bg-[#323233] border-b border-[#3e3e42] px-3 flex-shrink-0 select-none">
+            {/* Expand/Collapse button */}
             <div className="flex items-center gap-2 text-xs text-gray-400">
               <span className="text-blue-400 font-semibold">BuildrsHQ</span>
               <span className="text-gray-600">/</span>
@@ -819,6 +840,9 @@ async function handleTerminalCommand(cmd, term) {
               <button type="button" className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white" onClick={() => setShowNewModal(true)} title="New File"><FilePlus className="w-3.5 h-3.5" /></button>
               <button type="button" className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white" onClick={() => setShowNewFolderModal(true)} title="New Folder"><FolderPlus className="w-3.5 h-3.5" /></button>
               <button type="button" className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white" onClick={() => setShowTerminal(!showTerminal)} title="Toggle Terminal"><Terminal className="w-3.5 h-3.5" /></button>
+              <button type="button" className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white" onClick={() => setIsEditorExpanded(!isEditorExpanded)} title={isEditorExpanded ? 'Exit Full Screen' : 'Full Screen'}>
+                {isEditorExpanded ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+              </button>
             </div>
           </header>
 
@@ -842,15 +866,16 @@ async function handleTerminalCommand(cmd, term) {
           {/* Main editor workspace: activity bar + explorer + editor */}
           <div className="flex-1 flex min-h-0">
             {/* Activity bar */}
+            {!isEditorExpanded && (
             <div className="w-12 bg-[#333333] border-r border-[#3e3e42] flex flex-col items-center py-1 flex-shrink-0">
               <button type="button" className={`w-12 h-12 flex items-center justify-center relative ${activeSidebar === 'explorer' ? 'text-white' : 'text-gray-500 hover:text-white'}`} onClick={() => setActiveSidebar('explorer')} title="Explorer">
                 <FolderOpen className="w-5 h-5" />
                 {activeSidebar === 'explorer' && <span className="absolute left-0 top-1 bottom-1 w-0.5 bg-blue-500" />}
               </button>
-              <button type="button" className={`w-12 h-12 flex items-center justify-center relative ${activeSidebar === 'git' ? 'text-white' : 'text-gray-500 hover:text-white'}`} onClick={() => setActiveSidebar('git')} title="Source Control">
+              <button type="button" className={`w-12 h-12 flex items-center justify-center relative ${activeSidebar === 'git' ? 'text-white' : 'text-gray-500 hover:text-white'}`} onClick={() => { setActiveSidebar('git'); setActiveTab('git'); }} title="Source Control">
                 <GitBranch className="w-5 h-5" />
               </button>
-              <button type="button" className={`w-12 h-12 flex items-center justify-center relative ${activeSidebar === 'ai' ? 'text-white' : 'text-gray-500 hover:text-white'}`} onClick={() => setActiveSidebar('ai')} title="AI Assistant">
+              <button type="button" className={`w-12 h-12 flex items-center justify-center relative ${activeSidebar === 'ai' ? 'text-white' : 'text-gray-500 hover:text-white'}`} onClick={() => { setActiveSidebar('ai'); setActiveTab('ai'); }} title="AI Assistant">
                 <Bot className="w-5 h-5" />
               </button>
               <div className="flex-1" />
@@ -858,8 +883,10 @@ async function handleTerminalCommand(cmd, term) {
                 <Settings className="w-5 h-5" />
               </button>
             </div>
+            )}
 
             {/* Explorer sidebar */}
+            {!isEditorExpanded && (
             <div className="w-64 bg-[#252526] border-r border-[#3e3e42] flex flex-col flex-shrink-0 overflow-hidden">
               {/* Explorer header */}
               <div className="flex items-center justify-between px-3 py-2 border-b border-[#3e3e42]/60">
@@ -872,7 +899,7 @@ async function handleTerminalCommand(cmd, term) {
               </div>
 
               {/* Project selector */}
-              <div className="relative px-2 py-1.5 border-b border-[#3e3e42]/60">
+              <div ref={dropdownRef} className="relative px-2 py-1.5 border-b border-[#3e3e42]/60">
                 <button type="button" className="w-full flex items-center gap-2 px-2 py-1 bg-white/5 rounded text-xs text-gray-300 hover:bg-white/10 transition-colors" onClick={() => setShowProjectSelector(!showProjectSelector)}>
                   <FolderOpen className="w-3.5 h-3.5 text-blue-400" />
                   <span className="truncate">{selectedProject ? selectedProject.name : selectedRepo ? (selectedRepo.fullName || selectedRepo.name) : 'Workspace'}</span>
@@ -920,11 +947,12 @@ async function handleTerminalCommand(cmd, term) {
                 )}
               </div>
             </div>
+            )}
 
             {/* Main Content Area */}
             <div className="flex-1 min-w-0 flex flex-col">
               {status && (
-                <div className={`mb-4 px-4 py-2 rounded-lg text-sm font-medium ${status.type === 'success' ? 'bg-green-500/20 text-green-300 border border-green-500/30' : 'bg-red-500/20 text-red-300 border border-red-500/30'}`}>
+                <div className={`mb-4 px-4 py-2 rounded-lg text-sm font-medium ${status.type === 'success' ? 'bg-green-500/20 text-green-300 border border-green-500/30' : status.type === 'info' ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30' : 'bg-red-500/20 text-red-300 border border-red-500/30'}`}>
                   {status.msg}
                 </div>
               )}
@@ -945,7 +973,7 @@ async function handleTerminalCommand(cmd, term) {
                       </div>
                     ) : (
                       <div className="border border-gray-700 rounded-lg overflow-hidden flex-1">
-                        <MonacoEditor height="500px" language={monacoLanguage} value={content} onChange={handleEditorChange} onMount={handleEditorMount} theme="vs-dark" options={{ fontSize: 14, minimap: { enabled: false }, scrollBeyondLastLine: false, wordWrap: 'on', tabSize: 2, automaticLayout: true, bracketPairColorization: { enabled: true } }} loading={<div className="flex items-center justify-center h-[500px] text-gray-400">Loading editor...</div>} />
+                        <MonacoEditor height={isEditorExpanded ? 'calc(100vh - 220px)' : '500px'} language={monacoLanguage} value={content} onChange={handleEditorChange} onMount={handleEditorMount} theme="vs-dark" options={{ fontSize: 14, minimap: { enabled: false }, scrollBeyondLastLine: false, wordWrap: 'on', tabSize: 2, automaticLayout: true, bracketPairColorization: { enabled: true } }} loading={<div className="flex items-center justify-center h-[500px] text-gray-400">Loading editor...</div>} />
                       </div>
                     )}
                   </div>
@@ -956,7 +984,7 @@ async function handleTerminalCommand(cmd, term) {
                 <div className="workspace-card flex-1 flex flex-col">
                   <div className="workspace-card-header"><h2 className="workspace-card-title flex items-center gap-2"><Terminal className="w-4 h-4" /> Terminal</h2></div>
                   <div className="workspace-card-body p-0">
-                    <div ref={terminalRef} className="bg-navy-dark rounded-b-lg min-h-[400px] p-2 font-mono text-sm" />
+                    <div ref={terminalTabRef} className="bg-navy-dark rounded-b-lg min-h-[400px] p-2 font-mono text-sm" />
                   </div>
                 </div>
               )}
@@ -1205,6 +1233,46 @@ async function handleTerminalCommand(cmd, term) {
                 </div>
               </div>
             )}
+
+            {/* AI Suggestions Panel (shown when expanded) */}
+            {isEditorExpanded && (
+              <div className="w-72 shrink-0 bg-[#252526] border-l border-[#3e3e42] flex flex-col">
+                <div className="px-4 py-3 border-b border-[#3e3e42]">
+                  <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-purple-400" />
+                    AI Suggestions
+                  </h3>
+                </div>
+                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                  <div className="bg-[#1e1e1e] rounded-lg p-3 border border-[#3e3e42]">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-2 h-2 rounded-full bg-yellow-400" />
+                      <span className="text-xs font-medium text-yellow-400">Performance</span>
+                    </div>
+                    <p className="text-xs text-gray-300">Optimize re-renders with useMemo</p>
+                  </div>
+                  <div className="bg-[#1e1e1e] rounded-lg p-3 border border-[#3e3e42]">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-2 h-2 rounded-full bg-orange-400" />
+                      <span className="text-xs font-medium text-orange-400">Resilience</span>
+                    </div>
+                    <p className="text-xs text-gray-300">Add error boundary wrapper</p>
+                  </div>
+                  <div className="bg-[#1e1e1e] rounded-lg p-3 border border-[#3e3e42]">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-2 h-2 rounded-full bg-blue-400" />
+                      <span className="text-xs font-medium text-blue-400">Architecture</span>
+                    </div>
+                    <p className="text-xs text-gray-300">Extract API logic to hook</p>
+                  </div>
+                  <div className="mt-4 pt-4 border-t border-[#3e3e42]">
+                    <p className="text-[10px] text-gray-500">Context: {selectedFile?.name || 'No file'}</p>
+                    <p className="text-[10px] text-gray-500">Model: GPT-4o</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
           </div>
 
           {/* Bottom Terminal Drawer */}
@@ -1233,7 +1301,7 @@ async function handleTerminalCommand(cmd, term) {
                 </span>
               )}
               <span>{selectedFile ? (selectedFile.language || detectLanguage(selectedFile.name) || 'plaintext').toUpperCase() : ''}</span>
-              <span>Ln {selectedFile ? 1 : '-'}, Col {selectedFile ? 1 : '-'}</span>
+              <span>Ln {selectedFile ? cursorPos.line : '-'}, Col {selectedFile ? cursorPos.col : '-'}</span>
               <span>UTF-8</span>
               <span>Spaces: 4</span>
               <span>{subscription?.tier === 'enterprise' ? 'Enterprise' : subscription?.tier === 'professional' ? 'Pro' : 'Free'}</span>
@@ -1322,6 +1390,15 @@ async function handleTerminalCommand(cmd, term) {
         title="Delete File"
         message={`Are you sure you want to delete "${confirmDelete?.name || 'this file'}"?`}
         confirmText="Delete"
+        variant="danger"
+      />
+      <ConfirmDialog
+        isOpen={!!confirmStop}
+        onClose={() => setConfirmStop(null)}
+        onConfirm={handleConfirmStop}
+        title="Stop Deployment"
+        message={`Stop deployment "${confirmStop?.subdomain || ''}.buildrshq.dev" and remove the container?`}
+        confirmText="Stop"
         variant="danger"
       />
     </AuthGuard>

@@ -68,6 +68,7 @@ const sendOTPEmail = async (email, otp, fullName = 'User') => {
                         font-size: 15px;
                     }
                     .otp-box { 
+                        background: #667eea;
                         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
                         padding: 30px; 
                         text-align: center; 
@@ -128,9 +129,9 @@ const sendOTPEmail = async (email, otp, fullName = 'User') => {
                         <p>Thank you for signing up with BuildrsHQ! We're excited to have you on board.</p>
                         <p>To complete your registration and verify your email address, please use the verification code below:</p>
                         
-                        <div class="otp-box">
-                            <p class="otp-label">Your Verification Code</p>
-                            <p class="otp-code">${otp}</p>
+                        <div class="otp-box" style="background-color: #667eea; padding: 30px; text-align: center; margin: 30px 0; border-radius: 8px;">
+                            <p class="otp-label" style="color: white; font-size: 14px; margin: 0 0 12px 0;">Your Verification Code</p>
+                            <p class="otp-code" style="font-size: 36px; font-weight: bold; letter-spacing: 12px; color: white; margin: 0; font-family: 'Courier New', monospace;">${otp}</p>
                         </div>
                         
                         <div class="warning">

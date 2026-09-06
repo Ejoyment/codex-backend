@@ -4,7 +4,7 @@ const Invitation = require('../models/Invitation');
 const Company = require('../models/Company');
 const User = require('../models/User');
 const { authenticateToken } = require('../middleware/auth');
-const { sendInvitationEmail } = require('../utils/emailService');
+const { sendInvitationEmail } = require('../utils/emailServiceResend');
 
 /**
  * @swagger

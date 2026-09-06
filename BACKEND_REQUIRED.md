@@ -1,30 +1,42 @@
 # Backend Work Needed for the Editor
 
 This file lists what the server side needs and why. Written in plain language - no jargon.
-The frontend editor page has been updated so its buttons no longer crash, but a few
-features can't actually work until the server endpoints below are created.
-
-The editor calls these endpoints. For each one this says whether it exists today,
-and if not, why it is needed and what the server should return.
+Checked again after the latest main-branch merge: several endpoints that were
+missing before now exist. Only the items marked NEEDS WORK below still need the
+backend person.
 
 ---
 
-## 1. AI Helper - NOW FIXED (no backend work needed)
+## 6. Emails going to spam - NEEDS WORK (Resend domain config)
 
-The editor previously called a URL that did not exist on the server
-(`POST /api/ai-pair/message`). This has been fixed in this PR to use the two
-endpoints that DO exist and work:
+The `from` address in all emails uses `onboarding@resend.dev` (Resend's default
+domain). This is the #1 reason emails land in spam. Fix:
 
-- `POST /api/ai-pair/session` - starts a chat session (already exists)
-- `POST /api/ai-pair/chat` - sends a message and gets a reply (already exists)
+1. Go to https://resend.com/domains
+2. Add your domain (e.g. `buildrshq.dev`)
+3. Add the DNS records Resend gives you (SPF, DKIM, DMARC)
+4. Update `EMAIL_FROM` in `.env` to use your verified domain:
+   `EMAIL_FROM=BuildrsHQ <noreply@buildrshq.dev>`
 
-Same problem exists on the separate AI Pair page (`pages/ai-pair.js`, line 142)
-which still calls `POST /api/ai-pair/message`. That page was NOT changed in this
-PR. It should be switched to `/api/ai-pair/chat` too, exactly like the editor.
+Until this is done, most email providers will treat these as spam.
 
 ---
 
-## 2. Version Control (Git) - NOW FIXED (no backend work needed)
+## 1. AI Helper - editor side done, one page still broken (NEEDS WORK)
+
+The editor's AI chat now uses the two endpoints that DO exist and work:
+
+- `POST /api/ai-pair/session` - starts a chat session (exists)
+- `POST /api/ai-pair/chat` - sends a message and gets a reply (exists)
+
+Still broken: the separate AI Pair page (`pages/ai-pair.js`, line 142) still
+calls `POST /api/ai-pair/message`, which does NOT exist anywhere on the server.
+Either add that endpoint or switch that page to `/api/ai-pair/chat` like the
+editor.
+
+---
+
+## 2. Version Control (Git) - no backend work needed
 
 The editor previously called git endpoints without telling the server which
 workspace it was talking about, so every git call failed.
@@ -42,68 +54,57 @@ message if no workspace is selected.
 
 ---
 
-## 3. Terminal - NEEDS BACKEND WORK
+## 3. Terminal - NEEDS WORK (one endpoint missing)
 
-The editor used to call `POST /api/terminal/execute`. This endpoint does NOT exist
-anywhere in the server code.
+`POST /api/terminal/execute` does NOT exist. The terminal handles help, clear,
+ls, pwd and git status on its own, and anything else currently comes back as an
+error in the terminal window.
 
-Why it is needed: the "Terminal" tab should let the user run commands. Right now
-the terminal can only handle a few simple local tricks (help, clear, ls, pwd,
-git status) and shows a friendly message for everything else.
-
-What the server should do:
-- `POST /api/terminal/execute` which accepts a `{ command, fileId }` body and
-  runs the command, returning `{ output }`. Follow the same style as the existing
-  terminal routes in `routes/terminal.js`.
-- Safety: only allow safe, read-only commands (no `rm`, no shell operators), and
-  only run inside the user's workspace folder.
+Important context for the backend person: the server already runs terminals over
+live socket messages (`terminal:create` / `terminal:input` in `server.js`), not
+over a normal REST address. So there are two options: add a simple
+`POST /api/terminal/execute` that takes `{ command, fileId }` and returns
+`{ output }`, or tell us to switch the editor's terminal to the socket messages.
+Either way only allow safe, read-only commands.
 
 ---
 
-## 4. Deployments - NEEDS BACKEND WORK
+## 4. Deployments - no backend work needed (already exists)
 
-The editor used to call `GET /api/deployments` and `POST /api/deployments`. NEITHER
-of these endpoints exists anywhere in the server code.
+Good news: `GET /api/deployments`, `POST /api/deployments` and
+`DELETE /api/deployments/:id` all exist in `routes/deployments.js` and are
+connected in `server.js`. The editor's calls match what the server expects
+(`projectId`, `subdomain`, `companyId`).
 
-Why it is needed: the "Deployments" tab is supposed to list a user's deployments
-and let them deploy the current file. Right now the buttons just show a message
-that deployments aren't enabled yet.
-
-What the server should do:
-- `GET /api/deployments` - return the list of deployments for the logged-in user:
-  `{ deployments: [...] }` with fields like id, status, createdAt.
-- `POST /api/deployments` - accept `{ fileId }` and start a deployment, returning
-  `{ deployment }`. At minimum it can create a record with status "pending" and
-  update it to "success" later. Needs a database collection to store them.
+Two things the backend person should know:
+- Deploying needs a project selected in the Files panel, not just a file.
+- If deploys fail with "Deployment backend is not configured", the server is
+  missing its `DEPLOY_SSH_HOST` and `DEPLOY_SSH_KEY` settings. That is a server
+  setup issue, not a code bug.
 
 ---
 
-## 5. Sandbox - NEEDS BACKEND WORK
+## 5. Sandbox - NEEDS WORK (one-line fix)
 
-The editor used to call `POST /api/sandbox/start`. This endpoint does NOT exist
-anywhere in the server code.
+`POST /api/sandbox/start` exists in `routes/sandbox.js` and returns exactly
+what the editor expects (`{ sandboxUrl }`), BUT it is never connected in
+`server.js`, so calls to it get a 404. The fix is one line in `server.js`:
 
-Why it is needed: the "Sandbox" tab is supposed to start a live preview of the
-code running in an iframe. Right now the button just shows a message that the
-sandbox isn't enabled yet.
+```js
+app.use('/api/sandbox', sandboxRoutes);
+```
 
-What the server should do:
-- `POST /api/sandbox/start` - accept `{ fileId }` and return a URL the frontend
-  can show in an iframe: `{ url }` or `{ sandboxUrl }`.
-
-Note: the backend already has some sandbox code but under a different address
-(`/api/ai-pair/execute` and sandbox routes inside `routes/debug-handoff.js`).
-Those are separate from what the editor's Sandbox tab needs.
+(with `const sandboxRoutes = require('./routes/sandbox');` at the top).
+After that the Sandbox tab should work with no frontend changes.
 
 ---
 
-## Summary of what to build
+## Summary for the backend person
 
-| Feature      | Endpoint to create                     | Why                                                  |
-|--------------|----------------------------------------|------------------------------------------------------|
-| Terminal     | POST /api/terminal/execute             | Lets the terminal run commands                        |
-| Deployments  | GET + POST /api/deployments            | List deployments and deploy the current file          |
-| Sandbox      | POST /api/sandbox/start                | Start a live preview iframe for the current code      |
-
-Also, separately: switch `pages/ai-pair.js` off the missing `/api/ai-pair/message`
-to the working `/api/ai-pair/chat` (same change already done in the editor).
+| # | Item | Status | What to do |
+|---|------|--------|------------|
+| 1 | AI Pair page (`pages/ai-pair.js:142`) calls missing `POST /api/ai-pair/message` | Needs work | Add the endpoint, or switch the page to working `/api/ai-pair/chat` |
+| 2 | Sandbox 404 | Needs work | One line: connect `routes/sandbox.js` in `server.js` |
+| 3 | Terminal commands beyond help/ls/pwd | Needs work | Add `POST /api/terminal/execute`, or tell us to use the socket terminal messages |
+| 4 | Deployments | OK already | Nothing, unless 503 appears (then set server SSH settings) |
+| 5 | Git, AI chat in editor, file tree, collaborators | OK already | Nothing |
