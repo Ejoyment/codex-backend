@@ -217,6 +217,16 @@ router.get('/', authenticateToken, async (req, res) => {
  *       404:
  *         description: Meeting not found
  */
+// Signaling version — lets you instantly verify which meeting-socket code a deployed
+// backend is actually running (v3 = socket-id peer identity + socket: rooms).
+router.get('/socket-version', authenticateToken, async (req, res) => {
+    res.json({
+        success: true,
+        signalingVersion: 3,
+        note: 'socket-id based peer identity + socket: rooms'
+    });
+});
+
 // Get single meeting
 router.get('/:id', authenticateToken, async (req, res) => {
     try {
