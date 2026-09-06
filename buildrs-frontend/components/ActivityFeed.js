@@ -43,13 +43,10 @@ function groupByDate(items) {
 }
 
 function ActionButton({ href, label, onClick }) {
+  const classes = 'insight-action';
   if (onClick) {
     return (
-      <button
-        type="button"
-        onClick={onClick}
-        className="text-[11px] text-blue-400 hover:text-blue-300 font-medium inline-flex items-center gap-1"
-      >
+      <button type="button" onClick={onClick} className={classes}>
         {label}
         <ExternalLink className="w-3 h-3" />
       </button>
@@ -58,10 +55,7 @@ function ActionButton({ href, label, onClick }) {
 
   if (href) {
     return (
-      <Link
-        href={href}
-        className="text-[11px] text-blue-400 hover:text-blue-300 font-medium inline-flex items-center gap-1"
-      >
+      <Link href={href} className={classes}>
         {label}
         <ExternalLink className="w-3 h-3" />
       </Link>
@@ -78,10 +72,12 @@ export default function ActivityFeed({ activity }) {
 
   if (activity.length === 0) {
     return (
-      <div className="text-center py-8 text-gray-500">
-        <Clock className="w-12 h-12 mx-auto mb-4 text-gray-600" />
-        <p className="text-sm font-medium text-gray-400 mb-1">No recent activity</p>
-        <p className="text-xs text-gray-500">Connect integrations to see your activity here</p>
+      <div className="dash-empty">
+        <div className="dash-empty-ico">
+          <Clock className="w-5 h-5" />
+        </div>
+        <p className="dash-empty-title">No recent activity</p>
+        <p className="dash-empty-sub">Connect integrations to see your activity here</p>
         <Link
           href="/settings#integrations"
           className="inline-block mt-4 px-4 py-2 bg-blue-500 text-white rounded-lg text-sm no-underline"
@@ -95,22 +91,16 @@ export default function ActivityFeed({ activity }) {
   const grouped = groupByDate(activity);
 
   return (
-    <div className="flex flex-col gap-4">
+    <div>
       {grouped.map((group) => (
-        <div key={group.label} className="flex flex-col gap-2">
-          <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">{group.label}</p>
+        <div key={group.label}>
+          <div className="feed-group-label">{group.label}</div>
           {group.items.map((item, idx) => {
             const style = ICON_STYLES[item.icon] || ICON_STYLES[item.type] || ICON_STYLES.integration;
             const { Icon } = style;
             return (
-              <div
-                key={`${item.title}-${idx}`}
-                className="flex gap-3 p-3 rounded-lg transition hover:bg-white/5"
-              >
-                <div
-                  className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
-                  style={{ background: style.bg, color: style.color }}
-                >
+              <div key={`${item.title}-${idx}`} className="feed-row">
+                <div className="feed-ico" style={{ background: style.bg, color: style.color }}>
                   <Icon className="w-4 h-4" />
                 </div>
                 <div className="flex-1 min-w-0">
@@ -120,8 +110,8 @@ export default function ActivityFeed({ activity }) {
                       <ActionButton href={item.href} label={item.actionLabel} onClick={item.onClick} />
                     )}
                   </div>
-                  <div className="text-xs text-gray-400 truncate">
-                    {item.description} - {item.relativeTime}
+                  <div className="feed-meta truncate">
+                    {item.description} <span className="feed-time">— {item.relativeTime}</span>
                   </div>
                 </div>
               </div>

@@ -1,19 +1,21 @@
 import { useRouter } from 'next/router';
-import { Users, Building2, Loader2 } from 'lucide-react';
+import { Building2, Users, ChevronRight } from 'lucide-react';
 
 export default function TeamPulse({ companies = [] }) {
   const router = useRouter();
 
   if (companies.length === 0) {
     return (
-      <div className="text-center py-8 text-gray-500">
-        <Building2 className="w-10 h-10 mx-auto mb-3 text-gray-600" />
-        <p className="text-sm font-medium text-gray-400">No team workspace yet</p>
-        <p className="text-xs text-gray-500">Create or join a company to see team pulse here.</p>
+      <div className="dash-empty">
+        <div className="dash-empty-ico">
+          <Building2 className="w-5 h-5" />
+        </div>
+        <p className="dash-empty-title">No team workspace yet</p>
+        <p className="dash-empty-sub">Create or join a company to see team pulse here.</p>
         <button
           type="button"
           onClick={() => router.push('/teams')}
-          className="mt-3 px-3 py-1.5 bg-blue-500 text-white rounded-lg text-xs font-medium"
+          className="mt-4 px-4 py-2 bg-blue-500 text-white rounded-lg text-sm no-underline font-medium inline-flex items-center gap-1.5"
         >
           Go to Teams
         </button>
@@ -22,31 +24,32 @@ export default function TeamPulse({ companies = [] }) {
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    <div>
       {companies.map((company) => (
         <div
           key={company.id}
-          className="flex items-center gap-4 p-4 rounded-lg border border-gray-700 hover:border-gray-500 transition cursor-pointer"
-          onClick={() => router.push(`/teams`)}
+          className="co-row"
+          onClick={() => router.push('/teams')}
         >
-          <div className="w-10 h-10 rounded-lg bg-navy flex items-center justify-center text-white">
+          <div className="co-ico">
             <Building2 className="w-5 h-5" />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-0.5">
-              <p className="text-sm font-semibold text-white truncate">{company.name}</p>
-              <span className="text-[11px] text-gray-400 capitalize">{company.tier}</span>
+            <div className="flex items-center gap-2">
+              <p className="queue-title">{company.name}</p>
+              {company.tier && <span className="tier-badge">{company.tier}</span>}
             </div>
-            <div className="flex items-center gap-3 text-xs text-gray-400">
-              <span className="flex items-center gap-1">
-                <Users className="w-3.5 h-3.5" />
+            <div className="queue-meta">
+              <span className="queue-due">
+                <Users className="w-3 h-3 inline mr-1 align-text-top" style={{ color: '#565d6b' }} />
                 {company.memberCount || 0} member{(company.memberCount || 0) !== 1 ? 's' : ''}
               </span>
               {company.memberLimit && (
-                <span className="text-gray-500">/ {company.memberLimit} limit</span>
+                <span className="queue-due">/ {company.memberLimit} seat limit</span>
               )}
             </div>
           </div>
+          <ChevronRight className="queue-chevron" />
         </div>
       ))}
     </div>

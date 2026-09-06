@@ -1,5 +1,5 @@
 import { useRouter } from 'next/router';
-import { CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Clock3 } from 'lucide-react';
 
 export default function TrialBanner({ trial }) {
   const router = useRouter();
@@ -7,45 +7,52 @@ export default function TrialBanner({ trial }) {
   if (!trial || !trial.isOnTrial) return null;
 
   const isUrgent = trial.isLastDay || trial.daysLeft <= 3;
-  const bg = trial.isLastDay
-    ? 'rgba(239, 68, 68, 0.1)'
-    : isUrgent
-    ? 'rgba(251, 146, 4, 0.1)'
-    : 'rgba(59, 130, 246, 0.1)';
-  const border = trial.isLastDay
-    ? 'rgba(239, 68, 68, 0.3)'
-    : isUrgent
-    ? 'rgba(251, 146, 4, 0.3)'
-    : 'rgba(59, 130, 246, 0.3)';
+  const isLastDay = trial.isLastDay;
 
+  const theme = isLastDay
+    ? { bg: 'rgba(248,113,113,0.08)', border: 'rgba(248,113,113,0.32)', tint: '#f87171', Icon: AlertTriangle }
+    : isUrgent
+    ? { bg: 'rgba(229,184,74,0.08)', border: 'rgba(229,184,74,0.32)', tint: '#e5b84a', Icon: Clock3 }
+    : { bg: 'rgba(47,214,230,0.08)', border: 'rgba(47,214,230,0.3)', tint: '#2fd6e6', Icon: CheckCircle2 };
+
+  const { Icon } = theme;
+
+  let title;
   let text;
-  if (trial.isLastDay) {
-    text = 'Your free trial ends today! Add a payment method to avoid interruption.';
-  } else if (trial.daysLeft <= 3) {
-    text = `Your free trial ends in ${trial.daysLeft} day${trial.daysLeft !== 1 ? 's' : ''}. Add a payment method to continue.`;
+  if (isLastDay) {
+    title = 'Trial ends today';
+    text = 'Your free trial ends today. Add a payment method to avoid interruption.';
+  } else if (isUrgent) {
+    title = `Trial ends in ${trial.daysLeft} ` + (trial.daysLeft !== 1 ? 'days' : 'day');
+    text = 'Add a payment method to continue uninterrupted.';
   } else {
-    text = `You have ${trial.daysLeft} days left on your free trial. Add a payment method to continue uninterrupted.`;
+    title = `Free trial · ${trial.daysLeft} ` + (trial.daysLeft !== 1 ? 'days' : 'day') + ' remaining';
+    text = 'You are on the Starter plan with full features until your trial ends.';
   }
 
   return (
     <div
-      className="mb-6 p-4 rounded-xl border transition-all duration-300"
-      style={{ background: bg, borderColor: border }}
+      className="mb-6 p-4 rounded-xl border"
+      style={{ background: theme.bg, borderColor: theme.border }}
     >
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center flex-shrink-0">
-            <CheckCircle2 className="w-5 h-5 text-white" />
+          <div
+            className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
+            style={{ background: theme.bg, border: `1px solid ${theme.border}` }}
+          >
+            <Icon className="w-5 h-5" style={{ color: theme.tint }} />
           </div>
           <div>
-            <p className="font-semibold text-blue-400">Free Trial Active</p>
-            <p className="text-sm text-gray-300">{text}</p>
+            <p className="font-semibold text-sm" style={{ color: theme.tint }}>{title}</p>
+            <p className="text-xs text-[#a8adba]">{text}</p>
           </div>
         </div>
         <button
           type="button"
           onClick={() => router.push('/settings?tab=billing')}
-          className="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm font-medium hover:bg-blue-600 transition"
+          className="px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
+          style={{ background: '#2fd6e6', color: '#06141a' }}
         >
           Add Payment Method
         </button>

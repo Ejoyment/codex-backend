@@ -1,11 +1,11 @@
 import { useRouter } from 'next/router';
-import { Video, Calendar, Clock, Users, Loader2 } from 'lucide-react';
+import { Video, Calendar, Clock, Users, ChevronRight } from 'lucide-react';
 
 const STATUS_STYLES = {
-  scheduled: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  ongoing: 'bg-green-500/20 text-green-400 border-green-500/30',
-  completed: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
-  cancelled: 'bg-red-500/20 text-red-400 border-red-500/30',
+  scheduled: { bg: 'rgba(47,214,230,0.1)', text: '#2fd6e6', label: 'Scheduled' },
+  ongoing: { bg: 'rgba(52,211,153,0.12)', text: '#34d399', label: 'Ongoing' },
+  completed: { bg: 'rgba(255,255,255,0.06)', text: '#9aa1ae', label: 'Completed' },
+  cancelled: { bg: 'rgba(248,113,113,0.1)', text: '#f87171', label: 'Cancelled' },
 };
 
 function formatMeetingTime(iso) {
@@ -18,9 +18,9 @@ function formatMeetingTime(iso) {
   const isTomorrow = d.toDateString() === tomorrow.toDateString();
   const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
 
-  if (isToday) return `Today • ${time}`;
-  if (isTomorrow) return `Tomorrow • ${time}`;
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ` • ${time}`;
+  if (isToday) return `Today · ${time}`;
+  if (isTomorrow) return `Tomorrow · ${time}`;
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ` · ${time}`;
 }
 
 export default function UpcomingMeetings({ meetings = [] }) {
@@ -29,14 +29,16 @@ export default function UpcomingMeetings({ meetings = [] }) {
 
   if (upcoming.length === 0) {
     return (
-      <div className="text-center py-8 text-gray-500">
-        <Calendar className="w-10 h-10 mx-auto mb-3 text-gray-600" />
-        <p className="text-sm font-medium text-gray-400">No upcoming meetings</p>
-        <p className="text-xs text-gray-500">Schedule one to keep the team aligned.</p>
+      <div className="dash-empty">
+        <div className="dash-empty-ico">
+          <Calendar className="w-5 h-5" />
+        </div>
+        <p className="dash-empty-title">No upcoming meetings</p>
+        <p className="dash-empty-sub">Schedule one to keep the team aligned.</p>
         <button
           type="button"
           onClick={() => router.push('/meetings')}
-          className="mt-3 px-3 py-1.5 bg-blue-500 text-white rounded-lg text-xs font-medium"
+          className="inline-flex items-center gap-1.5 mt-4 px-4 py-2 bg-blue-500 text-white rounded-lg text-sm no-underline font-medium"
         >
           Schedule Meeting
         </button>
@@ -45,51 +47,52 @@ export default function UpcomingMeetings({ meetings = [] }) {
   }
 
   return (
-    <div className="flex flex-col gap-2">
+    <div>
       {upcoming.map((meeting) => {
         const isJoinable = meeting.status === 'scheduled' || meeting.status === 'ongoing';
+        const status = STATUS_STYLES[meeting.status] || STATUS_STYLES.scheduled;
         const hostName = typeof meeting.host === 'string' ? meeting.host : meeting.host?.fullName || meeting.host?.email || 'Host';
 
         return (
           <div
             key={meeting._id || meeting.id}
-            className="flex items-center gap-3 p-3 rounded-lg border border-gray-700 hover:border-gray-500 transition"
+            className="queue-row"
+            onClick={() => router.push(`/meetings`)}
           >
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <p className="text-sm font-medium text-white truncate">{meeting.title}</p>
-                <span className={`text-[11px] px-2 py-0.5 rounded border ${STATUS_STYLES[meeting.status] || STATUS_STYLES.scheduled}`}>
-                  {meeting.status || 'scheduled'}
-                </span>
+            <div className="queue-main">
+              <div className="flex items-center gap-2">
+                <p className="queue-title">{meeting.title}</p>
               </div>
-              <div className="flex items-center gap-3 text-xs text-gray-400">
-                <span className="flex items-center gap-1">
-                  <Calendar className="w-3.5 h-3.5" />
+              <div className="queue-meta">
+                <span className="pill" style={{ background: status.bg, color: status.text }}>
+                  {status.label}
+                </span>
+                <span className="queue-due">
+                  <Calendar className="w-3 h-3 inline mr-1 align-text-top" style={{ color: '#565d6b' }} />
                   {formatMeetingTime(meeting.scheduledAt)}
                 </span>
-                <span className="flex items-center gap-1">
-                  <Clock className="w-3.5 h-3.5" />
-                  {meeting.duration || 30} min
-                </span>
-                <span className="flex items-center gap-1">
-                  <Users className="w-3.5 h-3.5" />
+                <span className="queue-due">{meeting.duration || 30} min</span>
+                <span className="queue-due">
+                  <Users className="w-3 h-3 inline mr-1 align-text-top" style={{ color: '#565d6b' }} />
                   {meeting.participants?.length || 0}
                 </span>
-                <span className="text-gray-500 truncate">Host: {hostName}</span>
               </div>
+              <div className="queue-hint mt-1">Host — {hostName}</div>
             </div>
-            {isJoinable && (
+            {isJoinable ? (
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   router.push(`/meeting-room/${meeting.roomId || meeting._id}`);
                 }}
-                className="flex-shrink-0 px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-xs font-medium inline-flex items-center gap-1.5"
+                className="join-btn"
               >
                 <Video className="w-3.5 h-3.5" />
                 Join
               </button>
+            ) : (
+              <ChevronRight className="queue-chevron" />
             )}
           </div>
         );

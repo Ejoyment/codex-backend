@@ -1,5 +1,11 @@
 import { useRouter } from 'next/router';
-import { Sparkles, ArrowUpRight, AlertCircle } from 'lucide-react';
+import { Sparkles, ArrowUpRight } from 'lucide-react';
+
+const TONES = {
+  warning: { iconBg: 'rgba(229,184,74,0.1)', iconColor: '#e5b84a', accent: 'rgba(229,184,74,0.4)' },
+  info: { iconBg: 'rgba(47,214,230,0.1)', iconColor: '#2fd6e6', accent: 'rgba(47,214,230,0.4)' },
+  positive: { iconBg: 'rgba(52,211,153,0.1)', iconColor: '#34d399', accent: 'rgba(52,211,153,0.4)' },
+};
 
 export default function AIInsights({ stats = {}, tasks = [], projects = [], meetings = [], integrations = [] }) {
   const router = useRouter();
@@ -18,7 +24,7 @@ export default function AIInsights({ stats = {}, tasks = [], projects = [], meet
       title: 'Open work waiting on you',
       body: `You have ${pendingCount} pending or in-progress task${pendingCount === 1 ? '' : 's'}. Consider triaging them before starting new work.`,
       action: '/tasks',
-      actionLabel: 'Open Tasks',
+      actionLabel: 'Open tasks',
     });
   }
 
@@ -29,7 +35,7 @@ export default function AIInsights({ stats = {}, tasks = [], projects = [], meet
       title: 'Meeting coming up soon',
       body: `You have ${upcomingMeetings} upcoming meeting${upcomingMeetings === 1 ? '' : 's'}. Check your calendar before deep work.`,
       action: '/meetings',
-      actionLabel: 'View Meetings',
+      actionLabel: 'View meetings',
     });
   }
 
@@ -40,7 +46,7 @@ export default function AIInsights({ stats = {}, tasks = [], projects = [], meet
       title: 'Get more from BuildrsHQ',
       body: 'Connect GitHub or create your first project to unlock smarter insights.',
       action: '/integrations',
-      actionLabel: 'Connect Integrations',
+      actionLabel: 'Connect integrations',
     });
   }
 
@@ -51,49 +57,40 @@ export default function AIInsights({ stats = {}, tasks = [], projects = [], meet
       title: 'Great momentum',
       body: `You’ve completed ${completedCount} task${completedCount === 1 ? '' : 's'}. Keep the streak going.`,
       action: '/tasks',
-      actionLabel: 'Review Completed',
+      actionLabel: 'Review completed',
     });
   }
 
   if (insights.length === 0) {
     return (
-      <div className="text-center py-8 text-gray-500">
-        <Sparkles className="w-10 h-10 mx-auto mb-3 text-gray-600" />
-        <p className="text-sm font-medium text-gray-400">No insights yet</p>
-        <p className="text-xs text-gray-500">Add tasks, projects, or meetings to get personalized suggestions.</p>
+      <div className="dash-empty">
+        <div className="dash-empty-ico">
+          <Sparkles className="w-5 h-5" />
+        </div>
+        <p className="dash-empty-title">No insights yet</p>
+        <p className="dash-empty-sub">Add tasks, projects, or meetings to get personalized suggestions.</p>
       </div>
     );
   }
 
-  const toneStyles = {
-    warning: { border: 'border-yellow-500/30', icon: 'text-yellow-400', bg: 'bg-yellow-500/10' },
-    info: { border: 'border-blue-500/30', icon: 'text-blue-400', bg: 'bg-blue-500/10' },
-    positive: { border: 'border-green-500/30', icon: 'text-green-400', bg: 'bg-green-500/10' },
-  };
-
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2.5">
       {insights.map((insight) => {
-        const style = toneStyles[insight.tone] || toneStyles.info;
+        const tone = TONES[insight.tone] || TONES.info;
 
         return (
-          <div
-            key={insight.id}
-            className={`flex items-start gap-3 p-3 rounded-lg border ${style.border} ${style.bg}`}
-          >
-            <Sparkles className={`w-4 h-4 mt-0.5 ${style.icon}`} />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-white">{insight.title}</p>
-              <p className="text-xs text-gray-400 mt-0.5">{insight.body}</p>
+          <div key={insight.id} className="insight-row">
+            <div className="insight-ico" style={{ background: tone.iconBg, color: tone.iconColor }}>
+              <Sparkles className="w-4 h-4" />
             </div>
-            <button
-              type="button"
-              onClick={() => router.push(insight.action)}
-              className="flex-shrink-0 text-xs font-medium text-blue-400 hover:text-blue-300 inline-flex items-center gap-1"
-            >
-              {insight.actionLabel}
-              <ArrowUpRight className="w-3 h-3" />
-            </button>
+            <div className="flex-1 min-w-0">
+              <p className="insight-title">{insight.title}</p>
+              <p className="insight-body">{insight.body}</p>
+              <button type="button" onClick={() => router.push(insight.action)} className="insight-action">
+                {insight.actionLabel}
+                <ArrowUpRight className="w-3 h-3" />
+              </button>
+            </div>
           </div>
         );
       })}

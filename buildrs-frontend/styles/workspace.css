@@ -508,3 +508,738 @@
     margin-left: 0;
   }
 }
+
+/* ==========================================================================
+   Dashboard – enterprise tier
+   Command-centre styling for the authenticated overview page.
+   ========================================================================== */
+
+.dash-content {
+  max-width: 1240px;
+  margin: 0 auto;
+}
+
+/* ---- Header ----------------------------------------------------------- */
+
+.dash-crumb {
+  margin: 0 0 0.4rem;
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, 'Cascadia Code', Menlo, Consolas, monospace;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ws-text-faint);
+}
+.dash-crumb .sep {
+  margin: 0 0.4rem;
+  color: #2c3140;
+}
+.dash-title {
+  font-size: 1.375rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ws-text);
+  line-height: 1.15;
+}
+.dash-statusline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.45rem;
+  font-size: 0.75rem;
+  color: var(--ws-text-faint);
+}
+.dash-clock {
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, 'Cascadia Code', Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.dash-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid var(--ws-border-strong);
+  background: var(--ws-lighter);
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, 'Cascadia Code', Menlo, Consolas, monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ws-text-muted);
+  white-space: nowrap;
+}
+.dash-pill .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--ws-blue);
+  box-shadow: 0 0 0 3px rgba(47, 214, 230, 0.16);
+}
+
+/* ---- Sections --------------------------------------------------------- */
+
+.dash-section {
+  margin-bottom: 1.75rem;
+}
+.dash-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.875rem;
+}
+.dash-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, 'Cascadia Code', Menlo, Consolas, monospace;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ws-text-faint);
+}
+.dash-eyebrow .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--ws-blue);
+  box-shadow: 0 0 0 3px rgba(47, 214, 230, 0.14);
+  flex-shrink: 0;
+}
+.dash-eyebrow b {
+  color: var(--ws-text-muted);
+  font-weight: 600;
+}
+.dash-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--ws-blue);
+  text-decoration: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+.dash-action:hover {
+  color: #53dfee;
+}
+
+/* ---- KPI cards -------------------------------------------------------- */
+
+.dash-kpi {
+  position: relative;
+  overflow: hidden;
+  padding: 1.1rem 1.25rem 1.15rem;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #0e0e14 0%, #0c0c11 100%);
+  border: 1px solid var(--ws-border);
+  border-left: 2px solid var(--ws-blue);
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.dash-kpi::after {
+  content: '';
+  position: absolute;
+  top: -48px;
+  right: -32px;
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  filter: blur(64px);
+  opacity: 0.45;
+  pointer-events: none;
+}
+.dash-kpi-blue   { border-left-color: #2fd6e6; }
+.dash-kpi-blue::after   { background: rgba(47, 214, 230, 0.26); }
+.dash-kpi-green  { border-left-color: #34d399; }
+.dash-kpi-green::after  { background: rgba(52, 211, 153, 0.22); }
+.dash-kpi-orange { border-left-color: #e5b84a; }
+.dash-kpi-orange::after { background: rgba(229, 184, 74, 0.2); }
+.dash-kpi-purple { border-left-color: #a78bfa; }
+.dash-kpi-purple::after { background: rgba(167, 139, 250, 0.22); }
+
+.dash-kpi-link {
+  cursor: pointer;
+}
+.dash-kpi-link:hover {
+  border-color: rgba(47, 214, 230, 0.4);
+  transform: translateY(-2px);
+}
+.dash-kpi-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
+}
+.dash-kpi-eyebrow {
+  display: block;
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, 'Cascadia Code', Menlo, Consolas, monospace;
+  font-size: 10px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--ws-text-faint);
+}
+.dash-kpi-ico {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--ws-border-strong);
+  flex-shrink: 0;
+}
+.dash-kpi-value {
+  font-size: 1.9rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  color: var(--ws-text);
+  font-variant-numeric: tabular-nums;
+}
+.dash-kpi-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+.dash-kpi-meta {
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, 'Cascadia Code', Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: var(--ws-text-faint);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dash-kpi-trend {
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, 'Cascadia Code', Menlo, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 600;
+}
+.dash-kpi-trend.up   { color: #34d399; }
+.dash-kpi-trend.down { color: #f87171; }
+
+/* ---- Card helpers ----------------------------------------------------- */
+
+.card-ico {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(47, 214, 230, 0.09);
+  border: 1px solid rgba(47, 214, 230, 0.22);
+  color: #2fd6e6;
+  flex-shrink: 0;
+}
+.badge-count {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--ws-border-strong);
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, 'Cascadia Code', Menlo, Consolas, monospace;
+  font-size: 0.65rem;
+  color: var(--ws-text-muted);
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.pill-mono {
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, 'Cascadia Code', Menlo, Consolas, monospace;
+}
+
+.link-accent {
+  color: var(--ws-blue);
+  text-decoration: none;
+}
+.link-accent:hover {
+  color: #53dfee;
+}
+
+/* ---- Queue rows (tasks + meetings) ------------------------------------ */
+
+.queue-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 0.25rem;
+  border-bottom: 1px solid var(--ws-border);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.queue-row:last-child {
+  border-bottom: none;
+}
+.queue-row:hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+.queue-row.is-card {
+  padding: 0.7rem 0.75rem;
+  border: 1px solid var(--ws-border);
+  border-radius: 10px;
+  margin-bottom: 0.5rem;
+}
+.queue-row.is-card:last-child {
+  margin-bottom: 0;
+}
+.queue-row.is-card:hover {
+  background: rgba(47, 214, 230, 0.04);
+  border-color: rgba(47, 214, 230, 0.28);
+}
+.queue-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.queue-main {
+  flex: 1;
+  min-width: 0;
+}
+.queue-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--ws-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.queue-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+  flex-wrap: wrap;
+}
+.queue-due {
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, 'Cascadia Code', Menlo, Consolas, monospace;
+  font-size: 0.625rem;
+  color: var(--ws-text-faint);
+}
+.queue-due.over {
+  color: #f87171;
+}
+.queue-warn {
+  width: 14px;
+  height: 14px;
+  color: #f87171;
+  flex-shrink: 0;
+}
+.queue-chevron {
+  width: 15px;
+  height: 15px;
+  color: #3a4050;
+  flex-shrink: 0;
+}
+.queue-row:hover .queue-chevron {
+  color: var(--ws-blue);
+}
+.queue-hint {
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, 'Cascadia Code', Menlo, Consolas, monospace;
+  font-size: 0.625rem;
+  color: var(--ws-text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- Feed rows (activity) --------------------------------------------- */
+
+.feed-row {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.55rem 0.6rem;
+  border-radius: 10px;
+  transition: background 0.15s ease;
+}
+.feed-row:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+.feed-ico {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.feed-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--ws-text);
+}
+.feed-meta {
+  font-size: 0.6875rem;
+  color: var(--ws-text-faint);
+  margin-top: 0.2rem;
+}
+.feed-time {
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, 'Cascadia Code', Menlo, Consolas, monospace;
+}
+
+.feed-group-label {
+  padding: 0.65rem 0.6rem 0.25rem;
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, 'Cascadia Code', Menlo, Consolas, monospace;
+  font-size: 0.625rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ws-text-faint);
+}
+
+.dash-empty {
+  text-align: center;
+  padding: 2rem 1rem;
+  color: var(--ws-text-faint);
+}
+.dash-empty-ico {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  margin: 0 auto 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--ws-border);
+  color: var(--ws-text-muted);
+}
+.dash-empty-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--ws-text-muted);
+  margin-bottom: 0.25rem;
+}
+.dash-empty-sub {
+  font-size: 0.6875rem;
+  color: var(--ws-text-faint);
+}
+
+/* ---- Donut (workplan) ------------------------------------------------- */
+
+.dash-donut-wrap {
+  position: relative;
+  width: 168px;
+  height: 168px;
+  margin: 0 auto;
+}
+.dash-donut-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.dash-donut-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ws-text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.dash-donut-label {
+  margin-top: 0.3rem;
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, 'Cascadia Code', Menlo, Consolas, monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ws-text-faint);
+}
+
+.dash-legend {
+  margin-top: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+.dash-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.75rem;
+}
+.dash-legend-key {
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.dash-legend-label {
+  color: var(--ws-text-muted);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dash-legend-count {
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, 'Cascadia Code', Menlo, Consolas, monospace;
+  font-size: 0.7rem;
+  color: var(--ws-text);
+  font-variant-numeric: tabular-nums;
+}
+.dash-legend-bar {
+  flex: 1;
+  height: 4px;
+  max-width: 90px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+.dash-legend-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+/* ---- Quick action launcher -------------------------------------------- */
+
+.qa-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.65rem;
+}
+.qa-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.9rem;
+  border-radius: 11px;
+  background: var(--ws-navy);
+  border: 1px solid var(--ws-border);
+  cursor: pointer;
+  text-align: left;
+  color: var(--ws-text);
+  transition: all 0.15s ease;
+}
+.qa-tile:hover {
+  border-color: rgba(47, 214, 230, 0.4);
+  background: #0e0e14;
+  transform: translateY(-1px);
+}
+.qa-tile-ico {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(47, 214, 230, 0.09);
+  border: 1px solid rgba(47, 214, 230, 0.22);
+  color: #2fd6e6;
+}
+.qa-tile-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+.qa-tile-hint {
+  font-size: 0.625rem;
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, 'Cascadia Code', Menlo, Consolas, monospace;
+  color: var(--ws-text-faint);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* ---- Projects (table-ish rows) ---------------------------------------- */
+
+.proj-row {
+  display: flex;
+  gap: 0.875rem;
+  padding: 0.875rem 0.9rem;
+  border: 1px solid var(--ws-border);
+  border-radius: 11px;
+  margin-bottom: 0.6rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.proj-row:last-child {
+  margin-bottom: 0;
+}
+.proj-row:hover {
+  background: rgba(47, 214, 230, 0.03);
+  border-color: rgba(47, 214, 230, 0.3);
+}
+.proj-ico {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.proj-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ws-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.proj-desc {
+  font-size: 0.6875rem;
+  color: var(--ws-text-faint);
+  margin: 0.15rem 0 0.6rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.prog-track {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+.prog-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #2fd6e6, #34d399);
+}
+.proj-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.6rem;
+}
+.proj-meta span {
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, 'Cascadia Code', Menlo, Consolas, monospace;
+  font-size: 0.625rem;
+  color: var(--ws-text-faint);
+  white-space: nowrap;
+}
+
+/* ---- Team pulse -------------------------------------------------------- */
+
+.co-row {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  padding: 0.75rem;
+  border: 1px solid var(--ws-border);
+  border-radius: 11px;
+  margin-bottom: 0.6rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.co-row:last-child {
+  margin-bottom: 0;
+}
+.co-row:hover {
+  background: rgba(47, 214, 230, 0.03);
+  border-color: rgba(47, 214, 230, 0.3);
+}
+.co-ico {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, rgba(47, 214, 230, 0.14), rgba(167, 139, 250, 0.14));
+  border: 1px solid rgba(47, 214, 230, 0.22);
+  color: #2fd6e6;
+}
+.tier-badge {
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, 'Cascadia Code', Menlo, Consolas, monospace;
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ws-text-muted);
+  padding: 0.125rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--ws-border);
+}
+
+/* ---- Insights ----------------------------------------------------------- */
+
+.insight-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.7rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.02);
+}
+.insight-ico {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.insight-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--ws-text);
+}
+.insight-body {
+  font-size: 0.6875rem;
+  color: var(--ws-text-faint);
+  margin-top: 0.25rem;
+  line-height: 1.45;
+}
+.insight-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--ws-blue);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+.insight-action:hover {
+  color: #53dfee;
+}
+
+/* ---- Join button (meetings) --------------------------------------------- */
+
+.join-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.8rem;
+  border-radius: 8px;
+  background: var(--ws-blue);
+  color: #06141a;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.join-btn:hover {
+  background: #53dfee;
+}

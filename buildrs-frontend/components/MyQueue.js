@@ -1,18 +1,18 @@
 import { useRouter } from 'next/router';
-import { Inbox, AlertCircle, Loader2 } from 'lucide-react';
+import { Inbox, AlertCircle, ChevronRight } from 'lucide-react';
 
 const STATUS_STYLES = {
-  pending: { bg: '#1f2937', text: '#9ca3af', label: 'Pending' },
+  pending: { bg: 'rgba(154,161,174,0.1)', text: '#9aa1ae', label: 'Pending' },
   in_progress: { bg: 'rgba(47,214,230,0.12)', text: '#2fd6e6', label: 'In Progress' },
-  in_review: { bg: '#3d2f0f', text: '#f59e0b', label: 'In Review' },
+  in_review: { bg: 'rgba(229,184,74,0.12)', text: '#e5b84a', label: 'In Review' },
   completed: { bg: 'rgba(52,211,153,0.12)', text: '#34d399', label: 'Completed' },
 };
 
 const PRIORITY_STYLES = {
-  low: { bg: 'rgba(255,255,255,0.06)', text: '#9ca3af' },
-  medium: { bg: 'rgba(47,214,230,0.12)', text: '#2fd6e6' },
-  high: { bg: '#3d2f0f', text: '#f59e0b' },
-  urgent: { bg: '#3d1f1a', text: '#ef4444' },
+  low: { dot: '#7d8494' },
+  medium: { dot: '#2fd6e6' },
+  high: { dot: '#e5b84a' },
+  urgent: { dot: '#f87171' },
 };
 
 export default function MyQueue({ tasks = [] }) {
@@ -21,47 +21,45 @@ export default function MyQueue({ tasks = [] }) {
 
   if (queue.length === 0) {
     return (
-      <div className="text-center py-8 text-gray-500">
-        <Inbox className="w-10 h-10 mx-auto mb-3 text-gray-600" />
-        <p className="text-sm font-medium text-gray-400">Queue clear</p>
-        <p className="text-xs text-gray-500">No pending or in-progress tasks right now.</p>
+      <div className="dash-empty">
+        <div className="dash-empty-ico">
+          <Inbox className="w-5 h-5" />
+        </div>
+        <p className="dash-empty-title">Queue clear</p>
+        <p className="dash-empty-sub">No pending or in-progress tasks right now.</p>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-2">
+    <div>
       {queue.map((task) => {
         const status = STATUS_STYLES[task.status] || STATUS_STYLES.pending;
         const priority = PRIORITY_STYLES[task.priority] || PRIORITY_STYLES.medium;
         const dueLabel = task.dueDate ? new Date(task.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : null;
-        const isOverdue = dueLabel && new Date(task.dueDate) < new Date() && task.status !== 'completed';
+        const isOverdue = dueLabel && new Date(task.dueDate) < new Date();
 
         return (
-          <div
-            key={task.id}
-            className="flex items-center gap-3 p-3 rounded-lg border border-gray-700 hover:border-gray-500 transition cursor-pointer"
-            onClick={() => router.push('/tasks')}
-          >
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <p className="text-sm font-medium text-white truncate">{task.title}</p>
-                {isOverdue && <AlertCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />}
+          <div key={task.id} className="queue-row" onClick={() => router.push('/tasks')}>
+            <span className="queue-dot" style={{ background: priority.dot }} />
+            <div className="queue-main">
+              <div className="flex items-center gap-2">
+                <p className="queue-title">{task.title}</p>
+                {isOverdue && <AlertCircle className="queue-warn" />}
               </div>
-              <div className="flex items-center gap-2 text-[11px]">
-                <span className="px-2 py-0.5 rounded" style={{ background: status.bg, color: status.text }}>
+              <div className="queue-meta">
+                <span className="pill" style={{ background: status.bg, color: status.text }}>
                   {status.label}
                 </span>
-                <span className="px-2 py-0.5 rounded" style={{ background: priority.bg, color: priority.text }}>
+                <span className="pill pill-mono" style={{ background: 'rgba(255,255,255,0.05)', color: '#9aa1ae' }}>
                   {task.priority}
                 </span>
                 {dueLabel && (
-                  <span className={`text-gray-400 ${isOverdue ? 'text-red-400' : ''}`}>
-                    Due {dueLabel}
-                  </span>
+                  <span className={`queue-due ${isOverdue ? 'over' : ''}`}>Due {dueLabel}</span>
                 )}
               </div>
             </div>
+            <ChevronRight className="queue-chevron" />
           </div>
         );
       })}
