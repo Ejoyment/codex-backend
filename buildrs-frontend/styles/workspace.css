@@ -1543,3 +1543,168 @@
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--ws-border);
 }
+
+/* ==========================================================================
+   Tasks – enterprise tier
+   Task board with segmented filters, KPI strip, and rich task rows.
+   ========================================================================== */
+
+.tsk-content {
+  max-width: 1240px;
+  margin: 0 auto;
+}
+
+/* ---- Segmented filter tabs --------------------------------------------- */
+
+.tsk-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding: 0.25rem;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--ws-border);
+  width: max-content;
+  max-width: 100%;
+}
+.tsk-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.42rem 0.85rem;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ws-text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+.tsk-tab:hover {
+  color: var(--ws-text);
+  background: rgba(255, 255, 255, 0.04);
+}
+.tsk-tab.is-active {
+  background: var(--ws-lighter);
+  border-color: var(--ws-border-strong);
+  color: var(--ws-text);
+  box-shadow: 0 2px 10px -4px rgba(0, 0, 0, 0.5);
+}
+.tsk-tab-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #565d6b;
+}
+.tsk-tab-count {
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, 'Cascadia Code', Menlo, Consolas, monospace;
+  font-size: 0.625rem;
+  color: var(--ws-text-faint);
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--ws-border);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Task list --------------------------------------------------------- */
+
+.tsk-list {
+  border: 1px solid var(--ws-border);
+  border-radius: 14px;
+  overflow: hidden;
+  background: linear-gradient(180deg, #0e0e14 0%, #0c0c11 100%);
+}
+.tsk-row {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  padding: 0.9rem 1.15rem;
+  border-bottom: 1px solid var(--ws-border);
+  transition: background 0.15s ease;
+}
+.tsk-row:last-child {
+  border-bottom: none;
+}
+.tsk-row:hover {
+  background: rgba(47, 214, 230, 0.035);
+}
+.tsk-main {
+  flex: 1;
+  min-width: 0;
+}
+.tsk-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+.tsk-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ws-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tsk-type {
+  flex-shrink: 0;
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, 'Cascadia Code', Menlo, Consolas, monospace;
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ws-text-muted);
+  padding: 0.125rem 0.4rem;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--ws-border);
+}
+.tsk-desc {
+  font-size: 0.75rem;
+  color: var(--ws-text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tsk-side {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+.tsk-date {
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, 'Cascadia Code', Menlo, Consolas, monospace;
+  font-size: 0.625rem;
+  color: var(--ws-text-faint);
+  white-space: nowrap;
+  width: 84px;
+  text-align: right;
+}
+.tsk-chevron {
+  width: 15px;
+  height: 15px;
+  color: #3a4050;
+  flex-shrink: 0;
+  transition: color 0.15s ease;
+}
+.tsk-row:hover .tsk-chevron {
+  color: var(--ws-blue);
+}
+.tsk-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.15s ease;
+}
+.tsk-dot:hover {
+  transform: scale(1.3);
+}
