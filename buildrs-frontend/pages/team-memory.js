@@ -4,7 +4,7 @@ import { useRouter } from 'next/router';
 import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
-import { apiFetch } from '../lib/api';
+import { apiFetch, normalizeCompanies } from '../lib/api';
 import { NoWorkspaceEmptyState } from '../hooks/useCurrentCompany';
 import { Plus, X, BookOpen, ChevronDown, Loader2, BookMarked, Layers, AlertTriangle } from 'lucide-react';
 
@@ -53,9 +53,10 @@ export default function TeamMemory() {
   const loadCompanies = useCallback(async () => {
     try {
       const res = await apiFetch('/api/company/my-companies');
-      if (res.success && res.companies?.length) {
-        setCompanies(res.companies);
-        setSelectedCompany((prev) => prev || res.companies[0]);
+      const companies = normalizeCompanies(res.companies);
+      if (companies.length) {
+        setCompanies(companies);
+        setSelectedCompany((prev) => prev || companies[0]);
       }
     } catch {
       /* no-op */

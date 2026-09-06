@@ -208,6 +208,7 @@ router.get('/my-companies', authenticateToken, async (req, res) => {
             const validCount = company.members.filter(m => m.user).length;
             return {
                 id: company._id,
+                _id: company._id,
                 name: company.name,
                 slug: company.slug,
                 description: company.description,

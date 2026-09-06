@@ -4,7 +4,7 @@ import { useRouter } from 'next/router';
 import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
-import { apiFetch } from '../lib/api';
+import { apiFetch, normalizeCompanies } from '../lib/api';
 import {
   Video,
   Plus,
@@ -275,7 +275,7 @@ export default function Meetings() {
   const fetchCompanies = useCallback(async () => {
     try {
       const res = await apiFetch('/api/company/my-companies');
-      const list = res.companies || [];
+      const list = normalizeCompanies(res.companies);
       setCompanies(list);
       if (list.length > 0) setSelectedCompany(list[0]);
       return list;

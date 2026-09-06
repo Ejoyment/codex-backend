@@ -110,6 +110,10 @@ export function sanitize(body) {
   return clean;
 }
 
+export function normalizeCompanies(list) {
+  return (list || []).map((c) => ({ ...c, id: c.id || c._id, _id: c._id || c.id }));
+}
+
 export const authApi = {
   signup: (fullName, email, password) =>
     apiFetch('/api/auth/signup', {
@@ -152,7 +156,10 @@ export const authApi = {
 };
 
 export const companyApi = {
-  getMyCompanies: () => apiFetch('/api/company/my-companies'),
+  getMyCompanies: async () => {
+    const data = await apiFetch('/api/company/my-companies');
+    return { ...data, companies: normalizeCompanies(data.companies) };
+  },
   getDetails: (companyId) => apiFetch(`/api/company/${companyId}`),
   getMembers: (companyId) => apiFetch(`/api/company/${companyId}/members`),
 };

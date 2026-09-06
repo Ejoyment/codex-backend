@@ -3,7 +3,7 @@ import Head from 'next/head';
 import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
-import { apiFetch, projectApi, companyApi } from '../lib/api';
+import { apiFetch, projectApi, companyApi, normalizeCompanies } from '../lib/api';
 import {
   Send,
   Clock,
@@ -94,7 +94,7 @@ export default function Standup() {
 
         if (tasksRes.success) setTasks(tasksRes.tasks || []);
         if (companiesRes.success) {
-          const comps = companiesRes.companies || [];
+          const comps = normalizeCompanies(companiesRes.companies);
           setCompanies(comps);
           if (comps.length > 0) setSelectedCompany(comps[0]._id);
         }
