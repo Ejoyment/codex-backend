@@ -4,11 +4,30 @@ import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch } from '../lib/api';
-import { Bot, Send, Plus, ChevronRight, Code, AlertCircle, Loader2, MessageSquare } from 'lucide-react';
+import {
+  Bot,
+  Send,
+  Plus,
+  ChevronRight,
+  Code,
+  AlertCircle,
+  Loader2,
+  MessageSquare,
+  Sparkles,
+  X,
+  Copy,
+  Check,
+} from 'lucide-react';
 import { getTierLimits, normalizeTier } from '../lib/tier';
 import { useRouter } from 'next/router';
 
 const LANGUAGES = ['JavaScript', 'TypeScript', 'Python', 'Java', 'Go', 'Rust', 'C++', 'Ruby', 'PHP'];
+
+const ACTION_TINTS = {
+  create: { bg: 'rgba(52, 211, 153, 0.12)', text: '#34d399' },
+  delete: { bg: 'rgba(248, 113, 113, 0.12)', text: '#f87171' },
+  edit: { bg: 'rgba(229, 184, 74, 0.12)', text: '#e5b84a' },
+};
 
 function getAiLimitForTier(tier) {
   const limits = getTierLimits(tier);
@@ -21,7 +40,30 @@ function formatTime(dateStr) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-function renderCodeBlocks(text) {
+function CodeBlock({ lang, code }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard?.writeText(code).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    }).catch(() => {});
+  };
+
+  return (
+    <div className="ail-code">
+      <div className="ail-code-head">
+        <span className="ail-code-lang">{lang ? lang.toUpperCase() : 'CODE'}</span>
+        <button type="button" className="ail-code-copy" onClick={handleCopy}>
+          {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+        </button>
+      </div>
+      <pre><code>{code}</code></pre>
+    </div>
+  );
+}
+
+function renderCodeBlocks(text, keyPrefix = '') {
   if (!text) return text;
   const parts = text.split(/(```[\s\S]*?```)/g);
   return parts.map((part, i) => {
@@ -30,21 +72,28 @@ function renderCodeBlocks(text) {
       const firstNewline = lines.indexOf('\n');
       const lang = firstNewline > -1 ? lines.slice(0, firstNewline).trim() : '';
       const code = firstNewline > -1 ? lines.slice(firstNewline + 1) : lines;
-      return (
-        <div key={i} className="my-2 rounded-lg overflow-hidden border border-gray-700">
-          {lang && (
-            <div className="px-3 py-1 bg-gray-800 text-xs text-gray-400 border-b border-gray-700 font-mono">
-              {lang}
-            </div>
-          )}
-          <pre className="p-3 bg-gray-900 overflow-x-auto">
-            <code className="text-sm text-gray-200 font-mono">{code}</code>
-          </pre>
-        </div>
-      );
+      return <CodeBlock key={`${keyPrefix}${i}`} lang={lang} code={code} />;
     }
-    return <span key={i}>{part}</span>;
+    return <span key={`${keyPrefix}${i}`}>{part}</span>;
   });
+}
+
+function ChangeBlock({ change }) {
+  const tint = ACTION_TINTS[change.action] || ACTION_TINTS.edit;
+  return (
+    <div className="ail-change">
+      <div className="ail-change-head">
+        <Code className="w-3.5 h-3.5 flex-shrink-0" style={{ color: tint.text }} />
+        <span className="ail-change-path">{change.path}</span>
+        <span className="pill ml-auto flex-shrink-0" style={{ background: tint.bg, color: tint.text }}>
+          {change.action}
+        </span>
+      </div>
+      {change.content && (
+        <pre><code>{change.content}</code></pre>
+      )}
+    </div>
+  );
 }
 
 export default function AiPair() {
@@ -68,6 +117,7 @@ export default function AiPair() {
   const [selectedLang, setSelectedLang] = useState('JavaScript');
   const [creatingSession, setCreatingSession] = useState(false);
   const [remaining, setRemaining] = useState(aiLimit);
+  const [clock, setClock] = useState('');
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
@@ -81,6 +131,15 @@ export default function AiPair() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
+
+  useEffect(() => {
+    const tick = () => {
+      setClock(new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }));
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
 
   async function fetchSessions() {
     setLoadingSessions(true);
@@ -181,233 +240,263 @@ export default function AiPair() {
         <link rel="icon" href="/buildrs.png" />
       </Head>
 
-      <div className="min-h-screen bg-navy flex">
+      <div className="workspace-container">
         <Sidebar user={user} subscription={subscription} />
 
-        <main className="workspace-main ml-64 flex flex-col h-screen">
-          <header className="workspace-header flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <Bot className="w-5 h-5 text-blue-400" />
-                <h1 className="text-xl font-bold">AI Pair Programming</h1>
+        <main className="workspace-main">
+          <header className="workspace-header dash-header">
+            <div>
+              <p className="dash-crumb">
+                BuildrsHQ <span className="sep">/</span> AI Pair
+              </p>
+              <h1 className="dash-title">AI Pair Programming</h1>
+              <div className="dash-statusline">
+                <span className="status-indicator status-online" />
+                <span>{activeSession ? `${activeSession.repoName} · ${activeSession.language}` : 'No active session'}</span>
+                <span className="dash-clock">· {clock || '—:——:——'}</span>
               </div>
-              <span className="text-xs text-gray-400 bg-navy-light px-2 py-1 rounded border border-gray-700">
-                {aiLimit === Infinity ? `${remaining} messages` : `${remaining}/${aiLimit} messages/day`}
-                {tier === 'freebie' && ' · Free tier'}
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="dash-pill hidden md:inline-flex">
+                <span className="dot" style={{ background: remaining <= 0 ? '#f87171' : '#2fd6e6' }} />
+                {aiLimit === Infinity ? `${remaining} messages` : `${remaining}/${aiLimit} today`}
               </span>
               {tier === 'freebie' && (
                 <button
                   type="button"
                   onClick={() => router.push('/pricing')}
-                  className="text-xs text-yellow-400 hover:text-yellow-300 underline"
+                  className="dash-action"
                 >
                   Upgrade to Professional
+                  <ChevronRight className="w-3.5 h-3.5" />
                 </button>
-              )}
-            </div>
-            <div className="flex items-center gap-3">
-              {activeSession && (
-                <span className="text-sm text-gray-400">
-                  {activeSession.repoName} &middot; {activeSession.language}
-                </span>
               )}
               <button
                 type="button"
                 onClick={openNewSessionModal}
-                className="cta-button px-4 py-2 rounded-lg text-white font-medium text-sm"
+                className="btn-workspace btn-primary"
               >
-                <Plus className="w-4 h-4 inline mr-1" />
-                New Session
+                <Plus className="w-4 h-4" />
+                <span className="hidden sm:inline">New Session</span>
               </button>
             </div>
           </header>
 
-          <div className="flex flex-1 overflow-hidden">
-            <div className="w-72 border-r border-gray-700 flex flex-col overflow-hidden">
-              <div className="p-3 border-b border-gray-700">
-                <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">Sessions</h2>
-              </div>
-              <div className="flex-1 overflow-y-auto">
-                {loadingSessions ? (
-                  <div className="p-4 text-center">
-                    <Loader2 className="w-5 h-5 text-gray-400 animate-spin mx-auto" />
+          <div className="workspace-content">
+            <div className="ail-content">
+              <div className="ail-shell">
+                {/* Session rail */}
+                <aside className="ail-rail">
+                  <div className="ail-rail-head">
+                    <span className="ail-rail-title">
+                      <MessageSquare className="w-4 h-4" style={{ color: '#2fd6e6' }} />
+                      Sessions
+                    </span>
+                    <button type="button" className="ail-new" onClick={openNewSessionModal} title="New session">
+                      <Plus className="w-3 h-3" />
+                    </button>
                   </div>
-                ) : sessions.length === 0 ? (
-                  <div className="p-4 text-center text-gray-500 text-sm">
-                    No sessions yet
-                  </div>
-                ) : (
-                  sessions.map((sess) => (
-                    <button
-                      key={sess._id}
-                      type="button"
-                      onClick={() => selectSession(sess)}
-                      className={`w-full text-left px-3 py-3 border-b border-gray-800 hover:bg-navy-light transition-colors ${
-                        activeSession?._id === sess._id ? 'bg-navy-light border-l-2 border-l-blue-500' : ''
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-white truncate font-medium">{sess.repoName}</span>
-                        <ChevronRight className="w-3 h-3 text-gray-500 flex-shrink-0" />
+                  <div className="flex-1 overflow-y-auto">
+                    {loadingSessions ? (
+                      <div className="dash-empty">
+                        <div className="dash-empty-ico">
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                        </div>
+                        <p className="dash-empty-title">Loading sessions...</p>
                       </div>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-xs text-gray-400">{sess.language}</span>
-                        <span className={`text-xs px-1.5 py-0.5 rounded ${
-                          sess.status === 'active' ? 'bg-green-900 text-green-300' : 'bg-gray-800 text-gray-400'
-                        }`}>
-                          {sess.status}
+                    ) : sessions.length === 0 ? (
+                      <div className="dash-empty">
+                        <div className="dash-empty-ico">
+                          <Sparkles className="w-5 h-5" />
+                        </div>
+                        <p className="dash-empty-title">No sessions yet</p>
+                        <p className="dash-empty-sub">Start a pairing session to begin.</p>
+                      </div>
+                    ) : (
+                      sessions.map((sess) => {
+                        const isActive = activeSession?._id === sess._id;
+                        return (
+                          <button
+                            key={sess._id}
+                            type="button"
+                            onClick={() => selectSession(sess)}
+                            className={`ail-session ${isActive ? 'is-active' : ''}`}
+                          >
+                            <span className="ail-sess-ico">
+                              <Sparkles className="w-4 h-4" />
+                            </span>
+                            <span className="ail-sess-main">
+                              <span className="ail-sess-top">
+                                <span className="ail-sess-name">{sess.repoName}</span>
+                              </span>
+                              <span className="ail-sess-meta">
+                                <span className="ail-sess-lang">{sess.language}</span>
+                                <span
+                                  className="ail-sess-status"
+                                  style={
+                                    sess.status === 'active'
+                                      ? { background: 'rgba(52,211,153,0.12)', color: '#34d399' }
+                                      : { background: 'rgba(255,255,255,0.05)', color: '#9aa1ae' }
+                                  }
+                                >
+                                  {sess.status}
+                                </span>
+                              </span>
+                              <span className="ail-sess-time">{formatTime(sess.createdAt)}</span>
+                            </span>
+                            <ChevronRight className="w-3.5 h-3.5 flex-shrink-0" style={{ color: isActive ? '#2fd6e6' : '#3a4050' }} />
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </aside>
+
+                {/* Conversation */}
+                <div className="ail-conv">
+                  {error && (
+                    <div className="std-alert std-alert-error mx-4 mt-4">
+                      <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                      <p className="flex-1">{error}</p>
+                      <button type="button" onClick={() => setError(null)} className="text-[#fca5a5] hover:text-white">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="ail-scroll">
+                    {!activeSession ? (
+                      <div className="ail-empty">
+                        <div className="src-empty-ico">
+                          <Bot className="w-7 h-7" />
+                        </div>
+                        <p className="dash-empty-title" style={{ fontSize: '1rem', marginBottom: '0.35rem' }}>
+                          AI Pair Programming
+                        </p>
+                        <p className="dash-empty-sub" style={{ maxWidth: '26rem', lineHeight: '1.5', marginBottom: '1.5rem' }}>
+                          Get real-time coding assistance from AI. Start a new session to begin pairing.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={openNewSessionModal}
+                          className="btn-workspace btn-primary"
+                        >
+                          <Plus className="w-4 h-4" />
+                          Start New Session
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        {messages.map((msg, i) => (
+                          msg.role === 'user' ? (
+                            <div key={i} className="ail-msg-row is-user">
+                              <div className="ail-bubble ail-bubble-user">
+                                <div className="ail-msg-head">
+                                  <span className="ail-msg-who">You</span>
+                                </div>
+                                <span>{msg.content}</span>
+                                {msg.codeChanges && msg.codeChanges.length > 0 && (
+                                  msg.codeChanges.map((change, ci) => <ChangeBlock key={`u${i}-${ci}`} change={change} />)
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <div key={i} className="ail-msg-row">
+                              <div className="ail-bubble ail-bubble-ai">
+                                <div className="ail-msg-head">
+                                  <Bot className="w-3.5 h-3.5" style={{ color: '#2fd6e6' }} />
+                                  <span className="ail-msg-who">AI</span>
+                                </div>
+                                {renderCodeBlocks(msg.content, `a${i}`)}
+                                {msg.codeChanges && msg.codeChanges.length > 0 && (
+                                  msg.codeChanges.map((change, ci) => <ChangeBlock key={`${i}-${ci}`} change={change} />)
+                                )}
+                              </div>
+                            </div>
+                          )
+                        ))}
+                        {loading && (
+                          <div className="ail-msg-row">
+                            <div className="ail-thinking ail-typing">
+                              <Loader2 className="w-4 h-4 animate-spin" style={{ color: '#2fd6e6' }} />
+                              <span className="ail-msg-who">Thinking...</span>
+                            </div>
+                          </div>
+                        )}
+                        <div ref={messagesEndRef} />
+                      </>
+                    )}
+                  </div>
+
+                  {activeSession && (
+                    <form onSubmit={handleSend} className="ail-composer">
+                      <div className="ail-field">
+                        <textarea
+                          value={input}
+                          onChange={(e) => setInput(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(e); } }}
+                          placeholder="Ask AI anything about your code..."
+                          rows={1}
+                          disabled={loading || remaining <= 0}
+                        />
+                        <button
+                          type="submit"
+                          disabled={!input.trim() || loading || remaining <= 0}
+                          className="btn-workspace btn-primary"
+                          title="Send"
+                          style={{ minHeight: '46px' }}
+                        >
+                          <Send className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <div className="ail-composer-note">
+                        {remaining <= 0 ? (
+                          <>
+                            <AlertCircle className="w-3 h-3 ail-limit" />
+                            <span className="ail-limit">Message limit reached for this session</span>
+                          </>
+                        ) : (
+                          <span>Enter to send · Shift+Enter for newline</span>
+                        )}
+                        <span className="ml-auto">
+                          {aiLimit === Infinity ? `${remaining} remaining` : `${remaining}/${aiLimit} messages today`}
                         </span>
                       </div>
-                      <div className="text-xs text-gray-500 mt-1">{formatTime(sess.createdAt)}</div>
-                    </button>
-                  ))
-                )}
-              </div>
-            </div>
-
-            <div className="flex-1 flex flex-col overflow-hidden">
-              {error && (
-                <div className="mx-4 mt-3 p-3 bg-red-900/30 border border-red-700 rounded-lg flex items-center gap-2 text-red-300 text-sm">
-                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                  <span>{error}</span>
-                  <button type="button" onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-300">&times;</button>
-                </div>
-              )}
-
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {!activeSession && !showNewSession ? (
-                  <div className="flex flex-col items-center justify-center h-full text-center">
-                    <Bot className="w-16 h-16 text-gray-600 mb-4" />
-                    <h2 className="text-lg font-semibold text-gray-300 mb-2">AI Pair Programming</h2>
-                    <p className="text-gray-500 text-sm max-w-md mb-6">
-                      Get real-time coding assistance from AI. Start a new session to begin pairing.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={openNewSessionModal}
-                      className="cta-button px-6 py-3 rounded-lg text-white font-medium"
-                    >
-                      <Plus className="w-4 h-4 inline mr-2" />
-                      Start New Session
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    {messages.map((msg, i) => (
-                      <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-[75%] rounded-xl px-4 py-3 ${
-                          msg.role === 'user'
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-navy-light border border-gray-700 text-gray-200'
-                        }`}>
-                          <div className="flex items-center gap-2 mb-1">
-                            {msg.role === 'assistant' && <Bot className="w-3.5 h-3.5 text-blue-400" />}
-                            <span className="text-xs font-medium opacity-70">
-                              {msg.role === 'user' ? 'You' : 'AI'}
-                            </span>
-                          </div>
-                          <div className="text-sm whitespace-pre-wrap leading-relaxed">
-                            {msg.role === 'assistant' ? renderCodeBlocks(msg.content) : msg.content}
-                          </div>
-                          {msg.codeChanges && msg.codeChanges.length > 0 && (
-                            <div className="mt-3 space-y-2">
-                              {msg.codeChanges.map((change, ci) => (
-                                <div key={ci} className="rounded-lg overflow-hidden border border-gray-700">
-                                  <div className="px-3 py-1.5 bg-gray-800 flex items-center gap-2">
-                                    <Code className="w-3 h-3 text-green-400" />
-                                    <span className="text-xs text-gray-300 font-mono">{change.path}</span>
-                                    <span className={`text-xs px-1.5 py-0.5 rounded ml-auto ${
-                                      change.action === 'create' ? 'bg-green-900 text-green-300'
-                                        : change.action === 'delete' ? 'bg-red-900 text-red-300'
-                                          : 'bg-yellow-900 text-yellow-300'
-                                    }`}>
-                                      {change.action}
-                                    </span>
-                                  </div>
-                                  {change.content && (
-                                    <pre className="p-3 bg-gray-900 overflow-x-auto">
-                                      <code className="text-xs text-gray-200 font-mono">{change.content}</code>
-                                    </pre>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                    {loading && (
-                      <div className="flex justify-start">
-                        <div className="bg-navy-light border border-gray-700 rounded-xl px-4 py-3">
-                          <div className="flex items-center gap-2 text-gray-400 text-sm">
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            <span>Thinking...</span>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                    <div ref={messagesEndRef} />
-                  </>
-                )}
-              </div>
-
-              {activeSession && (
-                <form onSubmit={handleSend} className="p-4 border-t border-gray-700">
-                  <div className="flex gap-3 items-end">
-                    <div className="flex-1 relative">
-                      <textarea
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(e); } }}
-                        placeholder="Ask AI anything about your code..."
-                        rows={1}
-                        className="w-full px-4 py-3 bg-navy-light border border-gray-600 rounded-xl text-white text-sm focus:outline-none focus:border-blue-500 resize-none"
-                        style={{ minHeight: '44px', maxHeight: '120px' }}
-                        disabled={loading || remaining <= 0}
-                      />
-                    </div>
-                    <button
-                      type="submit"
-                      disabled={!input.trim() || loading || remaining <= 0}
-                      className="cta-button px-4 py-3 rounded-xl text-white font-medium disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      <Send className="w-4 h-4" />
-                    </button>
-                  </div>
-                  {remaining <= 0 && (
-                    <p className="text-xs text-yellow-500 mt-2 flex items-center gap-1">
-                      <AlertCircle className="w-3 h-3" />
-                      Message limit reached for this session
-                    </p>
+                    </form>
                   )}
-                </form>
-              )}
+                </div>
+              </div>
             </div>
           </div>
         </main>
       </div>
 
       {showNewSession && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="bg-navy-light border border-gray-700 rounded-2xl w-full max-w-md p-6 shadow-2xl">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-lg font-bold text-white">New Session</h2>
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="ws-modal w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-5 border-b border-[rgba(255,255,255,0.09)]">
+              <div className="flex items-center gap-2.5">
+                <span className="card-ico">
+                  <Sparkles className="w-4 h-4" />
+                </span>
+                <h2 className="ws-modal-title">New Session</h2>
+              </div>
               <button
                 type="button"
                 onClick={() => setShowNewSession(false)}
-                className="text-gray-400 hover:text-white"
+                className="text-muted hover:text-white"
               >
-                &times;
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="space-y-4">
+            <div className="p-5 space-y-4">
               <div>
-                <label className="block text-sm text-gray-300 mb-2 font-medium">Repository</label>
+                <label className="ws-label">Repository</label>
                 <select
                   value={selectedRepo}
                   onChange={(e) => setSelectedRepo(e.target.value)}
-                  className="w-full px-3 py-2.5 bg-navy border border-gray-600 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500"
+                  className="ws-select"
                 >
                   <option value="">Select a repository...</option>
                   {repos.map((repo) => (
@@ -419,18 +508,14 @@ export default function AiPair() {
               </div>
 
               <div>
-                <label className="block text-sm text-gray-300 mb-2 font-medium">Language</label>
+                <label className="ws-label">Language</label>
                 <div className="flex flex-wrap gap-2">
                   {LANGUAGES.map((lang) => (
                     <button
                       key={lang}
                       type="button"
                       onClick={() => setSelectedLang(lang)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                        selectedLang === lang
-                          ? 'bg-blue-600 border-blue-500 text-white'
-                          : 'bg-navy border-gray-600 text-gray-400 hover:border-gray-500'
-                      }`}
+                      className={`ail-lang-chip ${selectedLang === lang ? 'is-active' : ''}`}
                     >
                       {lang}
                     </button>
@@ -442,18 +527,18 @@ export default function AiPair() {
                 type="button"
                 onClick={handleCreateSession}
                 disabled={!selectedRepo || creatingSession}
-                className="w-full cta-button px-4 py-3 rounded-xl text-white font-medium disabled:opacity-40 disabled:cursor-not-allowed mt-4"
+                className="btn-workspace btn-primary w-full justify-center mt-2"
               >
                 {creatingSession ? (
-                  <span className="flex items-center justify-center gap-2">
+                  <>
                     <Loader2 className="w-4 h-4 animate-spin" />
                     Creating...
-                  </span>
+                  </>
                 ) : (
-                  <span className="flex items-center justify-center gap-2">
+                  <>
                     <MessageSquare className="w-4 h-4" />
                     Start Session
-                  </span>
+                  </>
                 )}
               </button>
             </div>
