@@ -1708,3 +1708,270 @@
 .tsk-dot:hover {
   transform: scale(1.3);
 }
+
+/* ==========================================================================
+   Teams – enterprise tier
+   Workspace cards, company detail hero, and member roster.
+   ========================================================================== */
+
+.tm-content {
+  max-width: 1240px;
+  margin: 0 auto;
+}
+
+/* ---- Workspace cards --------------------------------------------------- */
+
+.tm-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  padding: 1.15rem 1.2rem;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #0e0e14 0%, #0c0c11 100%);
+  border: 1px solid var(--ws-border);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.tm-card:hover {
+  border-color: rgba(47, 214, 230, 0.4);
+  background: #0e0e14;
+  transform: translateY(-2px);
+}
+.tm-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.tm-id {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+.tm-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 11px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, rgba(47, 214, 230, 0.14), rgba(167, 139, 250, 0.14));
+  border: 1px solid rgba(47, 214, 230, 0.22);
+  color: #2fd6e6;
+}
+.tm-card-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--ws-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tm-card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.tm-desc {
+  font-size: 0.7375rem;
+  color: var(--ws-text-faint);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.tm-chev {
+  width: 16px;
+  height: 16px;
+  color: #3a4050;
+  flex-shrink: 0;
+  margin-top: 0.3rem;
+  transition: color 0.15s ease;
+}
+.tm-card:hover .tm-chev {
+  color: var(--ws-blue);
+}
+.tm-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--ws-border);
+}
+.tm-foot-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--ws-text-muted);
+}
+.tm-capacity {
+  flex: 1;
+  max-width: 190px;
+}
+.tm-cap-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, 'Cascadia Code', Menlo, Consolas, monospace;
+  font-size: 0.625rem;
+  color: var(--ws-text-faint);
+}
+
+/* ---- Detail hero ------------------------------------------------------- */
+
+.tm-hero {
+  background: linear-gradient(180deg, #0e0e14 0%, #0c0c11 100%);
+  border: 1px solid var(--ws-border);
+  border-radius: 14px;
+  padding: 1.4rem 1.5rem;
+}
+.tm-hero-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.5rem;
+  align-items: flex-start;
+  margin-bottom: 1.15rem;
+}
+.tm-hero-id {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-width: 0;
+}
+.tm-hero-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 13px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, rgba(47, 214, 230, 0.16), rgba(167, 139, 250, 0.16));
+  border: 1px solid rgba(47, 214, 230, 0.28);
+  color: #2fd6e6;
+}
+.tm-hero-title {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--ws-text);
+  letter-spacing: -0.02em;
+}
+.tm-hero-sub {
+  margin-top: 0.4rem;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, 'Cascadia Code', Menlo, Consolas, monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ws-text-faint);
+}
+.tm-hero-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--ws-border);
+}
+.tm-hero-capacity {
+  margin-top: 1.15rem;
+}
+.tm-stat-label {
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, 'Cascadia Code', Menlo, Consolas, monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ws-text-faint);
+}
+.tm-stat-value {
+  margin-top: 0.3rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--ws-text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Member roster ----------------------------------------------------- */
+
+.tm-member-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1.25rem;
+  border-bottom: 1px solid var(--ws-border);
+  transition: background 0.15s ease;
+}
+.tm-member-row:hover {
+  background: rgba(47, 214, 230, 0.03);
+}
+.tm-member-row:last-child {
+  border-bottom: none;
+}
+.tm-member-id {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  min-width: 0;
+}
+.tm-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  object-fit: cover;
+  border: 1px solid var(--ws-border-strong);
+  flex-shrink: 0;
+}
+.tm-member-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ws-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tm-member-mail {
+  font-size: 0.7rem;
+  color: var(--ws-text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tm-member-side {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-shrink: 0;
+}
+.tm-joined {
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, 'Cascadia Code', Menlo, Consolas, monospace;
+  font-size: 0.625rem;
+  color: var(--ws-text-faint);
+  white-space: nowrap;
+}
+.tm-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.85rem;
+  border-radius: 9px;
+  border: 1px solid var(--ws-border-strong);
+  background: var(--ws-lighter);
+  color: var(--ws-text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.tm-back:hover {
+  color: var(--ws-text);
+  background: #1a1c25;
+}
