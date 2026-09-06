@@ -98,128 +98,42 @@ export default function SignIn() {
         <title>Sign In - BuildrsHQ</title>
         <link rel="icon" href="/buildrs.png" />
         <style>{`
-          * { margin: 0; padding: 0; box-sizing: border-box; }
-          body { font-family: 'Space Grotesk', sans-serif; background: #0a1628; min-height: 100vh; color: #f8fafc; }
-
-          .signin-page { display: flex; min-height: 100vh; }
-
-          .left-panel {
-            display: none;
-            width: 50%;
-            flex-direction: column;
-            justify-content: space-between;
-            padding: 56px;
-            position: relative;
-            overflow: hidden;
-            background: #0f172a;
-            border-right: 1px solid #1e293b;
-          }
-          @media (min-width: 1024px) {
-            .left-panel { display: flex; }
-          }
-
-          .left-bg {
-            position: absolute;
-            inset: 0;
-            background-image: url('/IMG-20260131-WA0114.jpg');
-            background-size: cover;
-            background-position: center;
-            background-repeat: no-repeat;
-            z-index: 0;
-          }
-          .left-overlay {
-            position: absolute;
-            inset: 0;
-            background: rgba(8, 12, 24, 0.55);
-            z-index: 1;
-          }
-          .left-panel .orb {
-            position: absolute;
-            z-index: 5;
-          }
-          .left-panel .left-logo,
-          .left-panel .stats-grid,
-          .left-panel .live-indicator,
-          .left-panel .testimonial {
-            position: relative;
-            z-index: 10;
-          }
-
-          .orb {
-            position: absolute;
-            border-radius: 50%;
-            pointer-events: none;
-            filter: blur(100px);
-          }
-          .orb-blue {
-            background: radial-gradient(circle, rgba(59,130,246,0.35), transparent 70%);
-          }
-          .orb-cyan {
-            background: radial-gradient(circle, rgba(34,211,238,0.25), transparent 70%);
-          }
-
-          .left-logo {
-            position: relative;
-            z-index: 10;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            text-decoration: none;
-            color: #f8fafc;
-          }
-          .left-logo img {
-            width: 32px;
-            height: 32px;
-            object-fit: contain;
-            transition: transform 0.3s;
-          }
-          .left-logo:hover img {
-            transform: scale(1.1);
-          }
-          .logo-text {
-            font-weight: 700;
-            font-size: 16px;
-            letter-spacing: -0.3px;
-          }
-          .logo-text span {
-            color: #22d3ee;
-          }
-
           .stats-grid {
-            position: relative;
-            z-index: 10;
             display: grid;
             grid-template-columns: repeat(2, 1fr);
-            gap: 16px;
-            margin-bottom: 40px;
+            gap: 12px;
+            margin-bottom: 28px;
           }
           .stat-card {
-            background: rgba(8,17,42,0.8);
-            border: 1px solid #1e293b;
+            background: rgba(13, 13, 18, 0.72);
+            border: 1px solid rgba(255, 255, 255, 0.08);
             border-radius: 12px;
-            padding: 20px;
+            padding: 18px;
             backdrop-filter: blur(12px);
           }
           .stat-value {
-            font-size: 24px;
-            font-weight: 800;
-            margin-bottom: 4px;
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            line-height: 1;
+            margin-bottom: 6px;
           }
           .stat-label {
-            font-size: 12px;
-            color: #64748b;
-            font-family: 'Space Grotesk', monospace;
+            font-size: 11px;
+            color: #686e7c;
+            font-family: ui-monospace, 'SF Mono', SFMono-Regular, 'Cascadia Code', Menlo, Consolas, monospace;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
           }
-
           .live-indicator {
-            position: relative;
-            z-index: 10;
             display: flex;
             align-items: center;
             gap: 8px;
-            font-size: 12px;
-            color: #64748b;
-            font-family: 'Space Grotesk', monospace;
+            font-size: 11px;
+            color: #686e7c;
+            font-family: ui-monospace, 'SF Mono', SFMono-Regular, 'Cascadia Code', Menlo, Consolas, monospace;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
           }
           .ping-dot {
             position: relative;
@@ -227,7 +141,7 @@ export default function SignIn() {
             width: 8px;
             height: 8px;
             border-radius: 999px;
-            background: #22d3ee;
+            background: #2fd6e6;
           }
           .ping-dot::before {
             content: '';
@@ -239,19 +153,17 @@ export default function SignIn() {
           }
 
           .testimonial {
-            position: relative;
-            z-index: 10;
-            background: rgba(8,17,42,0.8);
-            border: 1px solid #1e293b;
-            border-radius: 16px;
-            padding: 24px;
+            background: rgba(13, 13, 18, 0.72);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 14px;
+            padding: 22px;
             backdrop-filter: blur(12px);
           }
           .testimonial p {
             font-size: 14px;
             line-height: 1.6;
-            color: #94a3b8;
-            margin-bottom: 20px;
+            color: #a8adba;
+            margin: 0 0 18px;
           }
           .testimonial-author {
             display: flex;
@@ -259,237 +171,35 @@ export default function SignIn() {
             gap: 12px;
           }
           .testimonial-avatar {
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
+            width: 34px;
+            height: 34px;
+            border-radius: 999px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 14px;
+            font-size: 12px;
             font-weight: 700;
-            background: linear-gradient(135deg, #3b82f6, #22d3ee);
-            color: #000;
+            color: #06141a;
+            background: linear-gradient(135deg, #2fd6e6, #34d399);
           }
           .testimonial-name {
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 600;
-            color: #f8fafc;
+            color: #eceef1;
           }
           .testimonial-role {
-            font-size: 12px;
-            color: #64748b;
+            font-size: 11px;
+            color: #686e7c;
           }
 
-          .right-panel {
-            flex: 1;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 48px;
-            background: #0a1628;
-          }
-          .form-wrapper {
-            width: 100%;
-            max-width: 400px;
-            animation: fadeUp 0.5s ease-out;
-          }
-          .mobile-logo {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            margin-bottom: 40px;
-            text-decoration: none;
-            color: #f8fafc;
-          }
-          .mobile-logo img {
-            width: 32px;
-            height: 32px;
-            object-fit: contain;
-          }
-          .mobile-logo .logo-text {
-            font-weight: 700;
-            font-size: 16px;
-          }
-          .mobile-logo .logo-text span {
-            color: #22d3ee;
-          }
-          @media (min-width: 1024px) {
-            .mobile-logo { display: none; }
-          }
-
-          .form-header {
-            margin-bottom: 32px;
-          }
-          .form-header h1 {
-            font-size: 30px;
-            font-weight: 800;
-            margin-bottom: 8px;
-            color: #f8fafc;
-          }
-          .form-header p {
-            font-size: 14px;
-            color: #94a3b8;
-          }
-          .form-header a {
-            color: #22d3ee;
-            text-decoration: none;
-            font-weight: 600;
-          }
-          .form-header a:hover {
-            text-decoration: underline;
-          }
-
-          .social-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 12px;
-            margin-bottom: 24px;
-          }
-          .btn-ghost {
-            width: 100%;
-            padding: 12px;
-            background: transparent;
-            border: 1px solid #1e293b;
-            border-radius: 8px;
-            color: #e2e8f0;
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            transition: all 0.2s;
-          }
-          .btn-ghost:hover {
-            background: rgba(255,255,255,0.05);
-            border-color: #334155;
-          }
-
-          .divider {
-            position: relative;
-            text-align: center;
-            margin: 24px 0;
-          }
-          .divider::before {
-            content: '';
-            position: absolute;
-            top: 50%;
-            left: 0;
-            right: 0;
-            height: 1px;
-            background: #1e293b;
-          }
-          .divider span {
-            position: relative;
-            background: #0a1628;
-            padding: 0 16px;
-            font-size: 12px;
-            color: #64748b;
-            font-family: 'Space Grotesk', monospace;
-          }
-
-          .form-group {
-            margin-bottom: 20px;
-          }
-          .form-label {
-            display: block;
-            font-size: 12px;
-            font-weight: 500;
-            color: #64748b;
-            margin-bottom: 8px;
-            font-family: 'Space Grotesk', monospace;
-          }
-          .input-base {
-            width: 100%;
-            padding: 12px 16px;
-            background: transparent;
-            border: 1px solid #1e293b;
-            border-radius: 8px;
-            color: #f8fafc;
-            font-size: 14px;
-            outline: none;
-            transition: border-color 0.2s, box-shadow 0.2s;
-          }
-          .input-base:focus {
-            border-color: #22d3ee;
-            box-shadow: 0 0 0 3px rgba(34,211,238,0.1);
-          }
-          .input-base::placeholder {
-            color: #475569;
-          }
-
-          .password-row {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 8px;
-          }
-          .forgot-password {
-            font-size: 12px;
-            color: #64748b;
-            text-decoration: none;
-            transition: color 0.2s;
-          }
-          .forgot-password:hover {
-            color: #22d3ee;
-          }
-
-          .btn-gradient {
-            width: 100%;
-            padding: 14px;
-            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
-            border: none;
-            border-radius: 8px;
-            color: #fff;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            transition: all 0.2s;
-            margin-top: 8px;
-          }
-          .btn-gradient:hover:not(:disabled) {
-            opacity: 0.9;
-            transform: translateY(-1px);
-          }
-          .btn-gradient:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            transform: none;
-          }
-
-          .support-link {
-            display: block;
-            text-align: center;
-            margin-top: 24px;
-            font-size: 12px;
-            color: #64748b;
-            text-decoration: none;
-            transition: color 0.2s;
-          }
-          .support-link:hover {
-            color: #94a3b8;
-          }
-
-          @keyframes fadeUp {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-          }
           @keyframes ping {
             0% { transform: scale(1); opacity: 1; }
             75%, 100% { transform: scale(2); opacity: 0; }
           }
-          @keyframes spin {
-            to { transform: rotate(360deg); }
-          }
         `}</style>
       </Head>
 
-      <div className="signin-page">
+      <div className="signin-page auth-page">
         <div className="left-panel">
           <div className="left-bg" />
           <div className="left-overlay" />
@@ -504,14 +214,18 @@ export default function SignIn() {
           </Link>
 
           <div>
+            <div className="auth-eyebrow" style={{ marginBottom: 24 }}>
+              <span className="dot" />
+              Live network
+            </div>
             <div className="stats-grid">
               {[
-                { label: 'PRs merged today', value: '247', color: '#22d3ee' },
-                { label: 'AI reviews', value: '1,834', color: '#60a5fa' },
-                { label: 'Active sessions', value: '3,291', color: '#818CF8' },
-                { label: 'Avg AI latency', value: '94ms', color: '#34D399' },
+                { label: 'PRs merged today', value: '247', color: '#2fd6e6' },
+                { label: 'AI reviews', value: '1,834', color: '#34d399' },
+                { label: 'Active sessions', value: '3,291', color: '#e5b84a' },
+                { label: 'Avg AI latency', value: '94ms', color: '#2fd6e6' },
               ].map((s, i) => (
-                <div key={s.label} className="stat-card" style={{ animation: 'fadeUp 0.5s ease-out forwards', opacity: 0, animationDelay: `${i * 100}ms` }}>
+                <div key={s.label} className="stat-card" style={{ animation: 'authFadeUp 0.5s ease-out forwards', opacity: 0, animationDelay: `${i * 100}ms` }}>
                   <div className="stat-value" style={{ color: s.color }}>{s.value}</div>
                   <div className="stat-label">{s.label}</div>
                 </div>
@@ -545,6 +259,10 @@ export default function SignIn() {
             </Link>
 
             <div className="form-header">
+              <div className="auth-eyebrow">
+                <span className="dot" />
+                BuildrsHQ account
+              </div>
               <h1>Welcome back</h1>
               <p>
                 Don&apos;t have an account?{' '}

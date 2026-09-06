@@ -1,5 +1,4 @@
 import Head from 'next/head';
-import ModernHeader from '../components/ModernHeader';
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
@@ -94,53 +93,86 @@ export default function VerifyEmail() {
       <Head>
         <title>Verify your Email - BuildrsHQ</title>
         <link rel="icon" href="/buildrs.png" />
+        <style>{`
+          .otp-input {
+            width: 60px;
+            height: 68px;
+            text-align: center;
+            font-family: ui-monospace, 'SF Mono', SFMono-Regular, 'Cascadia Code', Menlo, Consolas, monospace;
+            font-size: 26px;
+            font-weight: 700;
+            color: #2fd6e6;
+            background: #08080b;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+          }
+          .otp-input:focus {
+            border-color: rgba(47, 214, 230, 0.65);
+            box-shadow: 0 0 0 3px rgba(47, 214, 230, 0.12);
+          }
+          .window-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 999px;
+            opacity: 0.75;
+          }
+        `}</style>
       </Head>
 
-      <div className="min-h-screen bg-gray-bg flex items-center justify-center p-4">
-        <div className="w-full max-w-md">
-          <div className="bg-white rounded-lg shadow-lg p-8">
-            <div className="flex items-center justify-between mb-8">
-              <div className="flex items-center space-x-2">
-                <div className="w-8 h-8 bg-navy rounded-full flex items-center justify-center"><span className="text-white text-sm font-bold">B</span></div>
-                <span className="text-base font-semibold text-gray-700">BuildrsHQ</span>
-              </div>
-              <div className="flex space-x-1">
-                <div className="w-3 h-3 bg-red-500 rounded-full" />
-                <div className="w-3 h-3 bg-yellow-500 rounded-full" />
-                <div className="w-3 h-3 bg-green-500 rounded-full" />
-              </div>
+      <div className="verify-page auth-page">
+        <div className="verify-card">
+          <div className="flex items-center justify-between mb-8" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '32px' }}>
+            <Link href="/" className="flex items-center" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
+              <img src="/buildrs.png" alt="BuildrsHQ" width="30" height="30" style={{ borderRadius: 7, objectFit: 'contain' }} />
+              <span className="logo-text">Buildrs<span>HQ</span></span>
+            </Link>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <div className="window-dot" style={{ background: '#f87171' }} />
+              <div className="window-dot" style={{ background: '#e5b84a' }} />
+              <div className="window-dot" style={{ background: '#34d399' }} />
             </div>
+          </div>
 
-            <div className="text-center">
-              <h2 className="text-2xl font-semibold text-gray-800 mb-3">Verify your Email</h2>
-              <p className="text-sm text-gray-600 mb-8">We've sent a verification code to your email address</p>
-
-              <form onSubmit={submit} className="mb-8">
-                <div className="flex justify-center space-x-3 mb-8">
-                  {inputs.map((val, idx) => (
-                    <input
-                      key={idx}
-                      id={`otp-${idx}`}
-                      type="text"
-                      maxLength="1"
-                      value={val}
-                      onChange={(e) => onChange(idx, e.target.value)}
-                      onKeyDown={(e) => onKeyDown(idx, e)}
-                      className="w-14 h-14 text-center border border-gray-300 rounded-lg text-xl font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-                      required
-                    />
-                  ))}
-                </div>
-
-                <button type="submit" disabled={submitting} className="w-full bg-navy text-white py-3 px-4 rounded-lg font-medium hover:bg-blue-800 transition-colors disabled:opacity-50">
-                  {submitting ? 'Verifying...' : 'Verify Email'}
-                </button>
-              </form>
-
-              <p className="text-sm text-gray-500">
-                Didn't receive the code? <button type="button" onClick={resend} className="text-navy hover:underline font-medium">Resend</button>
-              </p>
+          <div style={{ textAlign: 'center' }}>
+            <div className="auth-eyebrow" style={{ justifyContent: 'center', marginBottom: 14 }}>
+              <span className="dot" />
+              Two-factor
             </div>
+            <h2 className="verify-title" style={{ fontSize: 22 }}>Verify your email</h2>
+            <p className="verify-text" style={{ margin: '6px 0 28px' }}>
+              We&apos;ve sent a verification code to your email address
+            </p>
+
+            <form onSubmit={submit} style={{ marginBottom: '10px' }}>
+              <div style={{ display: 'flex', justifyContent: 'center', gap: 12, marginBottom: '28px' }}>
+                {inputs.map((val, idx) => (
+                  <input
+                    key={idx}
+                    id={`otp-${idx}`}
+                    type="text"
+                    maxLength="1"
+                    value={val}
+                    onChange={(e) => onChange(idx, e.target.value)}
+                    onKeyDown={(e) => onKeyDown(idx, e)}
+                    className="otp-input"
+                    required
+                  />
+                ))}
+              </div>
+
+              <button type="submit" disabled={submitting} className="btn-gradient">
+                {submitting ? 'Verifying...' : 'Verify email'}
+              </button>
+            </form>
+
+            <p className="verify-footer">
+              Didn&apos;t receive the code?{' '}
+              <button type="button" onClick={resend} style={{ color: '#2fd6e6', border: 'none', background: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
+                Resend
+              </button>
+            </p>
           </div>
         </div>
       </div>

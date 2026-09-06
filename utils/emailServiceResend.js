@@ -1,157 +1,64 @@
 // Resend Email Service - Production Ready
 // Free tier: 100 emails/day, 3,000/month
-// Works perfectly on Render and all hosting platforms
+// Works on Render and all hosting platforms.
+// All templates render through utils/emailLayout.js for a consistent
+// BuildrsHQ brand look (near-black + teal) with the logo present.
 
+const { renderEmail, BRAND_NAME, FRONTEND_URL } = require('./emailLayout');
+
+const DEFAULT_FROM = 'BuildrsHQ <onboarding@resend.dev>';
+
+// Mock email sender (console fallback when the API key is not configured)
+const sendMockOTP = (email, otp, fullName) => {
+    console.log('\n========================================');
+    console.log('📧 OTP EMAIL (Console Output)');
+    console.log('========================================');
+    console.log('To:', email);
+    console.log('Subject: Your BuildrsHQ verification code');
+    console.log('----------------------------------------');
+    console.log(`Hello ${fullName},`);
+    console.log('');
+    console.log('Your verification code is:');
+    console.log('');
+    console.log(`    🔑 ${otp} 🔑`);
+    console.log('');
+    console.log(`This code will expire in ${process.env.OTP_EXPIRY_MINUTES || 10} minutes.`);
+    console.log('========================================');
+    console.log('⚠️  NOTE: Configure RESEND_API_KEY to send real emails');
+    console.log('⚠️  Get your free API key at: https://resend.com');
+    console.log('========================================\n');
+
+    return { success: true, messageId: 'mock-' + Date.now(), isMock: true };
+};
+
+// Send OTP verification email
 const sendOTPEmail = async (email, otp, fullName = 'User') => {
-    // Check if Resend API key is configured
     const RESEND_API_KEY = process.env.RESEND_API_KEY;
-    
+
     if (!RESEND_API_KEY) {
         console.error('❌ RESEND_API_KEY not configured');
         return sendMockOTP(email, otp, fullName);
     }
 
     const emailData = {
-        from: process.env.EMAIL_FROM || 'CODEX INC <onboarding@resend.dev>',
+        from: process.env.EMAIL_FROM || DEFAULT_FROM,
         to: [email],
-        subject: 'Verify Your Email - BuildrsHQ',
-        html: `
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <style>
-                    body { 
-                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-                        line-height: 1.6; 
-                        color: #333;
-                        margin: 0;
-                        padding: 0;
-                        background-color: #f4f4f4;
-                    }
-                    .container { 
-                        max-width: 600px; 
-                        margin: 40px auto; 
-                        background-color: white;
-                        border-radius: 8px;
-                        overflow: hidden;
-                        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-                    }
-                    .header { 
-                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                        color: white; 
-                        padding: 40px 20px; 
-                        text-align: center;
-                    }
-                    .header h1 {
-                        margin: 0;
-                        font-size: 28px;
-                        font-weight: 600;
-                    }
-                    .header p {
-                        margin: 8px 0 0 0;
-                        opacity: 0.9;
-                        font-size: 14px;
-                    }
-                    .content { 
-                        padding: 40px 30px;
-                    }
-                    .content h2 {
-                        color: #333;
-                        font-size: 20px;
-                        margin: 0 0 20px 0;
-                    }
-                    .content p {
-                        color: #666;
-                        margin: 0 0 16px 0;
-                        font-size: 15px;
-                    }
-                    .otp-box { 
-                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                        padding: 30px; 
-                        text-align: center; 
-                        margin: 30px 0; 
-                        border-radius: 8px;
-                    }
-                    .otp-label {
-                        color: white;
-                        font-size: 14px;
-                        margin: 0 0 12px 0;
-                        opacity: 0.9;
-                    }
-                    .otp-code { 
-                        font-size: 36px; 
-                        font-weight: bold; 
-                        letter-spacing: 12px; 
-                        color: white;
-                        margin: 0;
-                        font-family: 'Courier New', monospace;
-                    }
-                    .warning {
-                        background-color: #fff3cd;
-                        border-left: 4px solid #ffc107;
-                        padding: 16px;
-                        margin: 20px 0;
-                        border-radius: 4px;
-                    }
-                    .warning p {
-                        margin: 0;
-                        color: #856404;
-                        font-size: 14px;
-                    }
-                    .footer { 
-                        background-color: #f8f9fa;
-                        text-align: center; 
-                        padding: 30px 20px;
-                        border-top: 1px solid #e9ecef;
-                    }
-                    .footer p {
-                        margin: 0 0 8px 0;
-                        font-size: 13px; 
-                        color: #6c757d;
-                    }
-                    .footer a {
-                        color: #667eea;
-                        text-decoration: none;
-                    }
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <div class="header">
-                        <h1>🚀 BuildrsHQ</h1>
-                        <p>Enterprise Development Platform</p>
-                    </div>
-                    <div class="content">
-                        <h2>Hello ${fullName}! 👋</h2>
-                        <p>Thank you for signing up with BuildrsHQ! We're excited to have you on board.</p>
-                        <p>To complete your registration and verify your email address, please use the verification code below:</p>
-                        
-                        <div class="otp-box">
-                            <p class="otp-label">Your Verification Code</p>
-                            <p class="otp-code">${otp}</p>
-                        </div>
-                        
-                        <div class="warning">
-                            <p><strong>⏰ Important:</strong> This code will expire in ${process.env.OTP_EXPIRY_MINUTES || 10} minutes for security reasons.</p>
-                        </div>
-                        
-                        <p>If you didn't request this code, you can safely ignore this email. Someone may have entered your email address by mistake.</p>
-                        
-                        <p style="margin-top: 30px;">
-                            <strong>Need help?</strong> Contact our support team at support@buildrshq.com
-                        </p>
-                    </div>
-                    <div class="footer">
-                        <p><strong>© ${new Date().getFullYear()} BuildrsHQ</strong></p>
-                        <p>All rights reserved.</p>
-                        <p style="margin-top: 16px;">This is an automated email, please do not reply.</p>
-                    </div>
-                </div>
-            </body>
-            </html>
-        `
+        subject: 'Your BuildrsHQ verification code',
+        html: renderEmail({
+            eyebrow: 'buildrs · verification',
+            title: `Hi ${fullName},`,
+            paragraphs: [
+                'Welcome to <strong>BuildrsHQ</strong>. Use the code below to verify your email address and activate your account.',
+            ],
+            code: otp,
+            codeLabel: 'Verification code',
+            info: {
+                label: `Code expires in ${process.env.OTP_EXPIRY_MINUTES || 10} minutes. Never share this code.`,
+            },
+            paragraphsAfter: [
+                'If you did not request this code, you can safely ignore this email.',
+            ],
+        }),
     };
 
     try {
@@ -183,147 +90,35 @@ const sendOTPEmail = async (email, otp, fullName = 'User') => {
 // Send welcome email
 const sendWelcomeEmail = async (email, fullName) => {
     const RESEND_API_KEY = process.env.RESEND_API_KEY;
-    
+
     if (!RESEND_API_KEY) {
         console.log(`✅ Welcome email (mock) for: ${fullName} (${email})`);
         return { success: true };
     }
 
+    const signInUrl = `${FRONTEND_URL}/sign_in`;
+
     const emailData = {
-        from: process.env.EMAIL_FROM || 'BuildrsHQ <onboarding@resend.dev>',
+        from: process.env.EMAIL_FROM || DEFAULT_FROM,
         to: [email],
-        subject: 'Welcome to BuildrsHQ! 🎉',
-        html: `
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <style>
-                    body { 
-                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-                        line-height: 1.6; 
-                        color: #333;
-                        margin: 0;
-                        padding: 0;
-                        background-color: #f4f4f4;
-                    }
-                    .container { 
-                        max-width: 600px; 
-                        margin: 40px auto; 
-                        background-color: white;
-                        border-radius: 8px;
-                        overflow: hidden;
-                        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-                    }
-                    .header { 
-                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                        color: white; 
-                        padding: 50px 20px; 
-                        text-align: center;
-                    }
-                    .header h1 {
-                        margin: 0;
-                        font-size: 32px;
-                        font-weight: 600;
-                    }
-                    .content { 
-                        padding: 40px 30px;
-                    }
-                    .content h2 {
-                        color: #333;
-                        font-size: 24px;
-                        margin: 0 0 20px 0;
-                    }
-                    .content p {
-                        color: #666;
-                        margin: 0 0 16px 0;
-                        font-size: 15px;
-                    }
-                    .button { 
-                        display: inline-block;
-                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                        color: white; 
-                        padding: 14px 32px; 
-                        text-decoration: none; 
-                        border-radius: 6px;
-                        font-weight: 600;
-                        margin: 20px 0;
-                        transition: transform 0.2s;
-                    }
-                    .button:hover {
-                        transform: translateY(-2px);
-                    }
-                    .features {
-                        background-color: #f8f9fa;
-                        padding: 24px;
-                        border-radius: 8px;
-                        margin: 24px 0;
-                    }
-                    .feature-item {
-                        margin: 12px 0;
-                        padding-left: 28px;
-                        position: relative;
-                    }
-                    .feature-item:before {
-                        content: "✓";
-                        position: absolute;
-                        left: 0;
-                        color: #667eea;
-                        font-weight: bold;
-                        font-size: 18px;
-                    }
-                    .footer { 
-                        background-color: #f8f9fa;
-                        text-align: center; 
-                        padding: 30px 20px;
-                        border-top: 1px solid #e9ecef;
-                    }
-                    .footer p {
-                        margin: 0 0 8px 0;
-                        font-size: 13px; 
-                        color: #6c757d;
-                    }
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <div class="header">
-                        <h1>🎉 Welcome to BuildrsHQ!</h1>
-                    </div>
-                    <div class="content">
-                        <h2>Hello ${fullName}!</h2>
-                        <p>Your email has been successfully verified! Welcome to the BuildrsHQ Enterprise Development Platform.</p>
-                        
-                        <p>You now have access to:</p>
-                        
-                        <div class="features">
-                            <div class="feature-item">AI-powered code assistance and pair programming</div>
-                            <div class="feature-item">Real-time collaboration with your team</div>
-                            <div class="feature-item">Integrated task and project management</div>
-                            <div class="feature-item">GitHub, Discord, Slack, and more integrations</div>
-                            <div class="feature-item">Advanced analytics and reporting</div>
-                        </div>
-                        
-                        <p style="text-align: center;">
-                            <a href="${process.env.FRONTEND_URL || 'https://buildrshq.dev'}/sign_in" class="button">
-                                Sign In to Your Dashboard →
-                            </a>
-                        </p>
-                        
-                        <p style="margin-top: 30px;">
-                            <strong>Need help getting started?</strong><br>
-                            Check out our <a href="${process.env.FRONTEND_URL || 'https://buildrshq.dev'}/docs" style="color: #667eea;">documentation</a> or contact support at support@buildrshq.com
-                        </p>
-                    </div>
-                    <div class="footer">
-                        <p><strong>© ${new Date().getFullYear()} BuildrsHQ</strong></p>
-                        <p>All rights reserved.</p>
-                    </div>
-                </div>
-            </body>
-            </html>
-        `
+        subject: 'Welcome to BuildrsHQ',
+        html: renderEmail({
+            eyebrow: 'buildrs · welcome',
+            title: "You're in.",
+            greeting: `Hi ${fullName},`,
+            paragraphs: [
+                'Your email is verified and your <strong>BuildrsHQ</strong> workspace is live. Here\u2019s what\u2019s ready for you:',
+            ],
+            features: [
+                'AI code assistance and pair programming',
+                'Real-time collaboration with your team',
+                'Task, project and standup management',
+                'GitHub, Slack, Discord and more integrations',
+                'Analytics and reporting',
+            ],
+            cta: { url: signInUrl, label: 'Sign in to your dashboard' },
+            link: signInUrl,
+        }),
     };
 
     try {
@@ -349,131 +144,41 @@ const sendWelcomeEmail = async (email, fullName) => {
     }
 };
 
-// Mock email sender (fallback when API key is not configured)
-const sendMockOTP = (email, otp, fullName) => {
-    console.log('\n========================================');
-    console.log('📧 OTP EMAIL (Console Output)');
-    console.log('========================================');
-    console.log('To:', email);
-    console.log('Subject: Verify Your Email - BuildrsHQ');
-    console.log('----------------------------------------');
-    console.log(`Hello ${fullName},`);
-    console.log('');
-    console.log('Your verification code is:');
-    console.log('');
-    console.log(`    🔑 ${otp} 🔑`);
-    console.log('');
-    console.log(`This code will expire in ${process.env.OTP_EXPIRY_MINUTES || 10} minutes.`);
-    console.log('========================================');
-    console.log('⚠️  NOTE: Configure RESEND_API_KEY to send real emails');
-    console.log('⚠️  Get your free API key at: https://resend.com');
-    console.log('========================================\n');
-
-    return { success: true, messageId: 'mock-' + Date.now(), isMock: true };
-};
-
 // Send invitation email
 const sendInvitationEmail = async (invitation) => {
     const RESEND_API_KEY = process.env.RESEND_API_KEY;
-    
+
     if (!RESEND_API_KEY) {
         console.log(`✅ Invitation email (mock) for: ${invitation.email}`);
         return { success: true };
     }
 
-    const acceptUrl = `${process.env.FRONTEND_URL || 'https://buildrshq.dev'}/accept-invitation?token=${invitation.token}`;
+    const acceptUrl = `${FRONTEND_URL}/accept-invitation?token=${invitation.token}`;
+    const companyName = invitation.company?.name || 'a workspace';
+    const invitedBy = invitation.invitedBy?.fullName || 'A teammate';
 
     const emailData = {
-        from: process.env.EMAIL_FROM || 'CODEX INC <onboarding@resend.dev>',
+        from: process.env.EMAIL_FROM || DEFAULT_FROM,
         to: [invitation.email],
-        subject: `You're invited to join ${invitation.company.name} on CODEX INC`,
-        html: `
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <style>
-                    body { 
-                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-                        line-height: 1.6; 
-                        color: #333;
-                        margin: 0;
-                        padding: 0;
-                        background-color: #f4f4f4;
-                    }
-                    .container { 
-                        max-width: 600px; 
-                        margin: 40px auto; 
-                        background-color: white;
-                        border-radius: 8px;
-                        overflow: hidden;
-                        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-                    }
-                    .header { 
-                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                        color: white; 
-                        padding: 40px 20px; 
-                        text-align: center;
-                    }
-                    .content { 
-                        padding: 40px 30px;
-                    }
-                    .button { 
-                        display: inline-block;
-                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                        color: white; 
-                        padding: 14px 32px; 
-                        text-decoration: none; 
-                        border-radius: 6px;
-                        font-weight: 600;
-                        margin: 20px 0;
-                    }
-                    .message-box {
-                        background-color: #f8f9fa;
-                        border-left: 4px solid #667eea;
-                        padding: 16px;
-                        margin: 20px 0;
-                        border-radius: 4px;
-                    }
-                    .footer { 
-                        background-color: #f8f9fa;
-                        text-align: center; 
-                        padding: 30px 20px;
-                        border-top: 1px solid #e9ecef;
-                    }
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <div class="header">
-                        <h1>🎉 You're Invited!</h1>
-                    </div>
-                    <div class="content">
-                        <h2>Hello!</h2>
-                        <p><strong>${invitation.invitedBy.fullName}</strong> has invited you to join <strong>${invitation.company.name}</strong> on CODEX INC.</p>
-                        
-                        ${invitation.message ? `<div class="message-box"><em>"${invitation.message}"</em></div>` : ''}
-                        
-                        <p>As a <strong>${invitation.role}</strong>, you'll be able to collaborate with the team on projects, tasks, code, and more.</p>
-                        
-                        <p style="text-align: center;">
-                            <a href="${acceptUrl}" class="button">Accept Invitation →</a>
-                        </p>
-                        
-                        <p style="color: #666; font-size: 13px; margin-top: 30px;">
-                            This invitation will expire in 7 days.<br>
-                            If the button doesn't work, copy and paste this link: ${acceptUrl}
-                        </p>
-                    </div>
-                    <div class="footer">
-                        <p><strong>© ${new Date().getFullYear()} CODEX INC</strong></p>
-                        <p>All rights reserved.</p>
-                    </div>
-                </div>
-            </body>
-            </html>
-        `
+        subject: `You're invited to join ${companyName} on ${BRAND_NAME}`,
+        html: renderEmail({
+            eyebrow: 'buildrs · invitation',
+            title: 'Join',
+            titleWrap: `${companyName} on ${BRAND_NAME}`,
+            greeting: 'Hello,',
+            paragraphs: [
+                `<strong>${invitedBy}</strong> has invited you to join <strong>${companyName}</strong> on BuildrsHQ.`,
+                `As a <strong>${invitation.role}</strong>, you\u2019ll collaborate on projects, tasks, code and standups with the whole team.`,
+            ],
+            quote: invitation.message,
+            info: {
+                label: 'Your seat on the workspace:',
+                value: `${invitation.role}`,
+                accent: true,
+            },
+            cta: { url: acceptUrl, label: 'Accept invitation' },
+            link: acceptUrl,
+        }),
     };
 
     try {
@@ -504,7 +209,7 @@ const sendInvitationEmail = async (invitation) => {
 // Send Trial Welcome Email
 const sendTrialWelcomeEmail = async (email, fullName, trialEndsAt) => {
     const RESEND_API_KEY = process.env.RESEND_API_KEY;
-    
+
     if (!RESEND_API_KEY) {
         console.log('Skipping trial welcome email - RESEND_API_KEY not configured');
         return { success: false, message: 'RESEND_API_KEY not configured' };
@@ -516,76 +221,37 @@ const sendTrialWelcomeEmail = async (email, fullName, trialEndsAt) => {
         day: 'numeric'
     });
 
+    const dashboardUrl = `${FRONTEND_URL}/dashboard`;
+
     const emailData = {
-        from: process.env.EMAIL_FROM || 'BuildrsHQ <onboarding@resend.dev>',
+        from: process.env.EMAIL_FROM || DEFAULT_FROM,
         to: [email],
-        subject: '🎉 Welcome to BuildrsHQ - Your 14-Day Free Trial Awaits!',
-        html: `
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset="UTF-8">
-                <style>
-                    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4; }
-                    .container { max-width: 600px; margin: 40px auto; background-color: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-                    .header { background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%); color: white; padding: 40px 20px; text-align: center; }
-                    .header h1 { margin: 0; font-size: 28px; font-weight: 600; }
-                    .header p { margin: 8px 0 0 0; opacity: 0.9; font-size: 14px; }
-                    .content { padding: 40px 30px; }
-                    .content h2 { margin-top: 0; color: #0f172a; }
-                    .content p { margin-bottom: 16px; font-size: 15px; }
-                    .trial-box { background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 20px; margin: 20px 0; text-align: center; }
-                    .trial-box .date { font-size: 24px; font-weight: 700; color: #0369a1; }
-                    .trial-box .label { font-size: 13px; color: #0c4a6e; margin-top: 4px; }
-                    .button { display: inline-block; background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%); color: white; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; margin: 20px 0; }
-                    .features-list { list-style: none; padding: 0; margin: 20px 0; }
-                    .features-list li { padding: 10px 16px; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 8px; font-size: 14px; color: #475569; }
-                    .features-list li span { color: #10b981; font-weight: 700; margin-right: 8px; }
-                    .footer { background-color: #f8f9fa; text-align: center; padding: 30px 20px; border-top: 1px solid #e9ecef; }
-                    .footer p { margin: 4px 0; font-size: 12px; color: #64748b; }
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <div class="header">
-                        <h1>Welcome to BuildrsHQ! 🎉</h1>
-                        <p>Your 14-day free trial has started</p>
-                    </div>
-                    <div class="content">
-                        <h2>Hello ${fullName},</h2>
-                        <p>Welcome to BuildrsHQ! We're excited to help you build, collaborate, and ship amazing software.</p>
-                        
-                        <div class="trial-box">
-                            <div class="date">${trialEndDate}</div>
-                            <div class="label">Your free trial ends on this date</div>
-                        </div>
-                        
-                        <p>Your <strong>STARTER</strong> trial includes:</p>
-                        <ul class="features-list">
-                            <li><span>✓</span> Up to 10 projects</li>
-                            <li><span>✓</span> Basic AI assistance</li>
-                            <li><span>✓</span> 48-hour support response</li>
-                            <li><span>✓</span> Limited API access</li>
-                            <li><span>✓</span> Community support</li>
-                        </ul>
-                        
-                        <p style="text-align: center;">
-                            <a href="${process.env.FRONTEND_URL || 'http://localhost:5500'}/dashboard" class="button">Go to Dashboard →</a>
-                        </p>
-                        
-                        <p style="color: #666; font-size: 13px; margin-top: 30px;">
-                            Copy the link below to sign in:<br>
-                            ${process.env.FRONTEND_URL || 'http://localhost:5500'}/sign_in
-                        </p>
-                    </div>
-                    <div class="footer">
-                        <p><strong>© ${new Date().getFullYear()} BuildrsHQ</strong></p>
-                        <p>Build, Collaborate, Ship.</p>
-                    </div>
-                </div>
-            </body>
-            </html>
-        `
+        subject: 'Your 14-day BuildrsHQ trial has started',
+        html: renderEmail({
+            eyebrow: 'buildrs · plan',
+            title: 'Welcome to your free trial',
+            greeting: `Hi ${fullName},`,
+            paragraphs: [
+                'Thanks for trying <strong>BuildrsHQ</strong>. You have 14 days to explore everything we\u2019ve built — at no cost.',
+            ],
+            info: {
+                label: 'Trial ends on',
+                value: trialEndDate,
+                accent: true,
+            },
+            paragraphsAfter: [
+                'Your <strong>Starter</strong> trial includes:',
+            ],
+            features: [
+                'Up to 10 projects',
+                'Basic AI assistance',
+                '48-hour support response',
+                'Limited API access',
+                'Community support',
+            ],
+            cta: { url: dashboardUrl, label: 'Go to your dashboard' },
+            link: `${FRONTEND_URL}/sign_in`,
+        }),
     };
 
     try {
@@ -616,7 +282,7 @@ const sendTrialWelcomeEmail = async (email, fullName, trialEndsAt) => {
 // Send Trial Reminder Email (last day)
 const sendTrialReminderEmail = async (email, fullName, daysLeft) => {
     const RESEND_API_KEY = process.env.RESEND_API_KEY;
-    
+
     if (!RESEND_API_KEY) {
         console.log('❌ RESEND_API_KEY not configured');
         return { success: false, message: 'RESEND_API_KEY not configured' };
@@ -626,50 +292,25 @@ const sendTrialReminderEmail = async (email, fullName, daysLeft) => {
     const isLastDay = daysLeft <= 1;
 
     const emailData = {
-        from: process.env.EMAIL_FROM || 'BuildrsHQ <billing@resend.dev>',
+        from: process.env.EMAIL_FROM || DEFAULT_FROM,
         to: [email],
-        subject: isLastDay ? '⚠️ Your BuildrsHQ Trial Ends Today!' : `Your BuildrsHQ Trial Ends in ${daysLeft} Days`,
-        html: `
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset="UTF-8">
-                <style>
-                    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4; }
-                    .container { max-width: 600px; margin: 40px auto; background-color: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-                    .header { background: ${isLastDay ? 'linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)' : 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)'}; color: white; padding: 40px 20px; text-align: center; }
-                    .header h1 { margin: 0; font-size: 26px; font-weight: 600; }
-                    .content { padding: 40px 30px; text-align: center; }
-                    .content p { margin: 16px 0; font-size: 15px; color: #475569; }
-                    .days-left { font-size: 56px; font-weight: 800; color: ${isLastDay ? '#ef4444' : '#3b82f6'}; margin: 10px 0; }
-                    .button { display: inline-block; background: #3b82f6; color: white; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; margin: 20px 0; }
-                    .button-secondary { display: inline-block; background: white; color: #3b82f6; border: 2px solid #3b82f6; padding: 10px 28px; border-radius: 8px; text-decoration: none; font-weight: 600; }
-                    .footer { background-color: #f8f9fa; padding: 30px 20px; border-top: 1px solid #e9ecef; text-align: center; }
-                    .footer > * { font-size: 12px; color: #64748b; margin: 4px 0; }
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <div class="header">
-                        <h1>${isLastDay ? '⏰ Your Trial Ends Today!' : `⏰ Trial Ending Soon`}</h1>
-                    </div>
-                    <div class="content">
-                        <h2>Hi ${fullName},</h2>
-                        <p>Your BuildrsHQ free trial has <strong>${dayText}</strong> remaining.</p>
-                        <div class="days-left">${daysLeft}</div>
-                        ${isLastDay ? '<p>This is your <strong>last day</strong> to enjoy full Starter plan features, including up to 10 projects and basic AI assistance.</p>' : '<p>To continue enjoying Starter features after your trial, <strong>choose a plan</strong> that fits your needs.</p>'}
-                        <a href="${process.env.FRONTEND_URL || 'http://localhost:5500'}/pricing" class="button">Upgrade Your Plan →</a>
-                        <br><br>
-                        <a href="${process.env.FRONTEND_URL || 'http://localhost:5500'}/dashboard" class="button">&nbsp;Continue to Dashboard&nbsp;</a>
-                    </div>
-                    <div class="footer">
-                        <p><strong>© ${new Date().getFullYear()} BuildrsHQ</strong></p>
-                        <p>Build, innovate, ship.</p>
-                    </div>
-                </div>
-            </body>
-            </html>
-        `
+        subject: isLastDay ? 'Your BuildrsHQ trial ends today' : `Your BuildrsHQ trial ends in ${daysLeft} days`,
+        html: renderEmail({
+            eyebrow: 'buildrs · plan',
+            title: isLastDay ? 'Your trial ends today' : 'Your trial ends in',
+            titleWrap: isLastDay ? undefined : `${daysLeft} days`,
+            greeting: `Hi ${fullName},`,
+            paragraphs: [
+                `Your <strong>BuildrsHQ</strong> free trial has <strong>${dayText}</strong> remaining.`,
+                isLastDay
+                    ? 'This is your <strong>last day</strong> to enjoy full Starter plan features, including up to 10 projects and basic AI assistance.'
+                    : 'Choose a plan now to keep enjoying Starter features after your trial ends.',
+            ],
+            code: String(daysLeft),
+            codeLabel: 'Days remaining',
+            cta: { url: `${FRONTEND_URL}/pricing`, label: 'Choose a plan' },
+            link: `${FRONTEND_URL}/dashboard`,
+        }),
     };
 
     try {
@@ -700,54 +341,31 @@ const sendTrialReminderEmail = async (email, fullName, daysLeft) => {
 // Send Trial Expired Email
 const sendTrialExpiredEmail = async (email, fullName) => {
     const RESEND_API_KEY = process.env.RESEND_API_KEY;
-    
+
     if (!RESEND_API_KEY) {
         console.log('Trial expired email - RESEND_API_KEY not configured');
         return { success: false, message: 'RESEND_API_KEY not configured' };
     }
 
     const emailData = {
-        from: process.env.EMAIL_FROM || 'BuildrsHQ <billing@resend.dev>',
+        from: process.env.EMAIL_FROM || DEFAULT_FROM,
         to: [email],
-        subject: 'Your BuildrsHQ Free Trial Has Ended',
-        html: `
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset="UTF-8">
-                <style>
-                    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4; }
-                    .container { max-width: 600px; margin: 40px auto; background-color: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-                    .header { background: linear-gradient(135deg, #64748b 0%, #475569 100%); color: white; padding: 40px 20px; text-align: center; }
-                    .header h1 { margin: 0; font-size: 26px; font-weight: 600; }
-                    .content { padding: 40px 30px; text-align: center; }
-                    .content p { margin: 16px 0; font-size: 15px; color: #475569; }
-                    .button { display: inline-block; background: #3b82f6; color: white; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; margin: 20px 0; }
-                    .footer { background-color: #f8f9fa; padding: 30px 20px; border-top: 1px solid #e9ecef; text-align: center; }
-                    .footer > * { font-size: 12px; color: #64748b; margin: 4px 0; }
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <div class="header">
-                        <h1>Trial Ended</h1>
-                    </div>
-                    <div class="content">
-                        <h2>Hi ${fullName},</h2>
-                        <p>Your 14-day free trial has ended.</p>
-                        <p>You still have access to the <strong>Free</strong> tier with up to 3 projects and basic AI assistance.</p>
-                        <p>Upgrade to <strong>Starter ($50/mo)</strong>, <strong>Professional ($99/mo)</strong>, or <strong>Enterprise ($299/mo)</strong> to unlock more features.</p>
-                        
-                        <a href="${process.env.FRONTEND_URL || 'http://localhost:5500'}/pricing" class="button">View Plans →</a>
-                    </div>
-                    <div class="footer">
-                        <p><strong>© ${new Date().getFullYear()} BuildrsHQ</strong></p>
-                        <p>Build, innovate, ship.</p>
-                    </div>
-                </div>
-            </body>
-            </html>
-        `
+        subject: 'Your BuildrsHQ free trial has ended',
+        html: renderEmail({
+            eyebrow: 'buildrs · plan',
+            title: 'Your free trial has ended',
+            greeting: `Hi ${fullName},`,
+            paragraphs: [
+                'Your 14-day free trial is over — you\u2019re now on the <strong>Free</strong> tier with up to 3 projects and basic AI assistance.',
+                'Upgrade to keep building without limits:',
+            ],
+            features: [
+                'Starter — $50/mo',
+                'Professional — $99/mo',
+                'Enterprise — $299/mo',
+            ],
+            cta: { url: `${FRONTEND_URL}/pricing`, label: 'View plans' },
+        }),
     };
 
     try {
