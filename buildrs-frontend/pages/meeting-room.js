@@ -1,46 +1,94 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
+import { io } from 'socket.io-client';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch } from '../lib/api';
 import { getAvatarUrl } from '../lib/utils';
 import {
   Mic, MicOff, Video, VideoOff, Monitor, PhoneOff, Send, Users, MessageSquare,
-  Clock, Copy, Check, ShieldCheck, Minus, ArrowLeft, Loader2,
+  Clock, Copy, Check, ShieldCheck, Minus, ArrowLeft, Loader2, MonitorDown,
 } from 'lucide-react';
+
+const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3000';
+const ICE_SERVERS = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun2.l.google.com:19302' },
+];
 
 const getInitials = (name) =>
   String(name || 'U').split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+
+function Avatar({ user, name, size = 'md' }) {
+  const pfp = user?.profilePicture || user?.avatar;
+  const style = size === 'lg'
+    ? { width: 72, height: 72, fontSize: '1.6rem' }
+    : size === 'sm' ? { width: 34, height: 34, fontSize: '0.8rem' } : {};
+  return (
+    <div className="mrr-avatar" style={style}>
+      {pfp ? <img src={getAvatarUrl(user, name)} alt={name} /> : getInitials(name)}
+    </div>
+  );
+}
+
+function RemoteVideo({ userId, stream, muted }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (ref.current && stream && ref.current.srcObject !== stream) {
+      ref.current.srcObject = stream;
+    }
+  }, [stream, userId]);
+  useEffect(() => () => { if (ref.current) ref.current.srcObject = null; }, [userId]);
+  return <video ref={ref} autoPlay playsInline muted={muted} style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', inset: 0 }} />;
+}
 
 export default function MeetingRoom() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const { roomId, meetingId, id } = router.query;
 
+  const myId = String(user?._id || user?.id || user?.userId || '');
+  const myName = user?.fullName || user?.name || 'You';
+
   const [meeting, setMeeting] = useState(null);
   const [meetingDocId, setMeetingDocId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [connected, setConnected] = useState(false);
+  const [joined, setJoined] = useState(false);
   const [joining, setJoining] = useState(false);
+  const [socketStatus, setSocketStatus] = useState('idle');
 
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOn, setIsCameraOn] = useState(true);
-  const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
+  const [localStream, setLocalStream] = useState(null);
+  const [peers, setPeers] = useState({});
 
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [showChat, setShowChat] = useState(true);
   const [showParticipants, setShowParticipants] = useState(true);
   const [copied, setCopied] = useState(false);
-  const autoJoinedRef = useRef(false);
 
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const timerRef = useRef(null);
   const chatEndRef = useRef(null);
 
+  const socketRef = useRef(null);
+  const localStreamRef = useRef(null);
+  const screenStreamRef = useRef(null);
+  const pcsRef = useRef({});
+  const peersRef = useRef({});
+  const joinedRef = useRef(false);
+  const roomIdRef = useRef(null);
+
   const lookupKey = roomId || meetingId || id;
+
+  const syncPeers = useCallback(() => {
+    setPeers({ ...peersRef.current });
+  }, []);
 
   const resolveMeeting = useCallback(async () => {
     if (!lookupKey) return;
@@ -52,6 +100,7 @@ export default function MeetingRoom() {
       if (data.success && data.meeting) {
         setMeeting(data.meeting);
         setMeetingDocId(data.meeting._id);
+        roomIdRef.current = data.meeting.roomId;
       }
     } catch (err) {
       setError(err.message || 'Failed to load meeting');
@@ -62,36 +111,243 @@ export default function MeetingRoom() {
 
   const startTimer = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
-    timerRef.current = setInterval(() => {
-      setElapsedSeconds((s) => s + 1);
-    }, 1000);
+    timerRef.current = setInterval(() => setElapsedSeconds((s) => s + 1), 1000);
   }, []);
 
-  const joinMeeting = useCallback(async () => {
-    if (!meetingDocId || joining) return;
+  const ensurePeer = useCallback((peerId, userName, profilePicture) => {
+    let peer = peersRef.current[peerId];
+    const now = Date.now();
+    if (!peer) {
+      peer = {
+        stream: null,
+        joinedAt: now,
+        connected: false,
+        muted: false,
+        cameraOn: true,
+        sharing: false,
+        userName: userName || 'User',
+        profilePicture: profilePicture || null,
+      };
+      peersRef.current[peerId] = peer;
+    }
+    if (userName) peer.userName = userName;
+    if (profilePicture) peer.profilePicture = profilePicture;
+    syncPeers();
+    return peer;
+  }, [syncPeers]);
+
+  const createPeerConnection = useCallback((peerId, userName, profilePicture) => {
+    if (pcsRef.current[peerId] && pcsRef.current[peerId].signalingState !== 'closed') {
+      return pcsRef.current[peerId];
+    }
+    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    pcsRef.current[peerId] = pc;
+
+    pc.onicecandidate = (e) => {
+      if (e.candidate && socketRef.current && roomIdRef.current) {
+        socketRef.current.emit('ice-candidate', { candidate: e.candidate, to: peerId, roomId: roomIdRef.current });
+      }
+    };
+
+    pc.ontrack = (event) => {
+      const peer = ensurePeer(peerId, userName, profilePicture);
+      if (event.streams && event.streams[0]) {
+        peer.stream = event.streams[0];
+        peer.connected = true;
+      } else if (event.track) {
+        if (!peer.stream) {
+          peer.stream = new MediaStream();
+          peer.connected = true;
+        }
+        peer.stream.addTrack(event.track);
+      }
+      syncPeers();
+    };
+
+    pc.onconnectionstatechange = () => {
+      const state = pc.connectionState;
+      if (state === 'disconnected' || state === 'failed' || state === 'closed') {
+        if (peersRef.current[peerId]) {
+          peersRef.current[peerId].connected = false;
+          syncPeers();
+        }
+      }
+    };
+
+    const local = localStreamRef.current;
+    if (local) {
+      local.getTracks().forEach((track) => {
+        try { pc.addTrack(track, local); } catch { /* ignore */ }
+      });
+    }
+    return pc;
+  }, [ensurePeer, syncPeers]);
+
+  const startCall = useCallback(async (peerId, userName, profilePicture) => {
+    const pc = createPeerConnection(peerId, userName, profilePicture);
     try {
-      setJoining(true);
-      setError(null);
-      const data = await apiFetch(`/api/meetings/${meetingDocId}/join`, { method: 'POST' });
-      if (data.success) {
-        setMeeting(data.meeting || meeting);
-        setConnected(true);
-        setElapsedSeconds(0);
-        startTimer();
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      if (socketRef.current && roomIdRef.current) {
+        socketRef.current.emit('offer', { offer: pc.localDescription, to: peerId, roomId: roomIdRef.current, userName: myName });
       }
     } catch (err) {
-      setError(err.message || 'Failed to join meeting');
-    } finally {
-      setJoining(false);
+      console.error('Offer error for', peerId, err);
     }
-  }, [meetingDocId, joining, meeting, startTimer]);
+  }, [createPeerConnection, myName]);
 
-  useEffect(() => {
-    if (meeting && meetingDocId && !connected && !autoJoinedRef.current) {
-      autoJoinedRef.current = true;
-      joinMeeting();
+  const answerCall = useCallback(async (peerId, offer, userName, profilePicture) => {
+    let pc = pcsRef.current[peerId];
+    if (pc && pc.signalingState !== 'stable') {
+      try { pc.close(); } catch { /* ignore */ }
+      delete pcsRef.current[peerId];
     }
-  }, [meeting, meetingDocId, connected, joinMeeting]);
+    pc = createPeerConnection(peerId, userName, profilePicture);
+    ensurePeer(peerId, userName, profilePicture);
+    try {
+      await pc.setRemoteDescription(offer);
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      if (socketRef.current && roomIdRef.current) {
+        socketRef.current.emit('answer', { answer: pc.localDescription, to: peerId, roomId: roomIdRef.current });
+      }
+    } catch (err) {
+      console.error('Answer error for', peerId, err);
+    }
+  }, [createPeerConnection, ensurePeer]);
+
+  const attachSocket = useCallback(() => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+    if (!token) return;
+
+    const socket = io(`${SOCKET_URL}/meeting`, { auth: { token }, transports: ['websocket', 'polling'] });
+    socketRef.current = socket;
+    setSocketStatus('connecting');
+
+    socket.on('connect', () => {
+      setSocketStatus('connected');
+      if (roomIdRef.current) {
+        socket.emit('join-room', { roomId: roomIdRef.current, userId: myId });
+      }
+    });
+
+    socket.on('connect_error', (err) => {
+      console.error('Meeting socket connect error:', err.message);
+      setSocketStatus('error');
+      setError('Realtime connection failed. Rejoining...');
+    });
+
+    socket.on('room-users', ({ users }) => {
+      (users || []).forEach((u) => {
+        if (String(u.userId) !== myId) {
+          ensurePeer(u.userId, u.userName, u.profilePicture);
+          startCall(u.userId, u.userName, u.profilePicture);
+        }
+      });
+    });
+
+    socket.on('user-connected', ({ userId, userName, profilePicture }) => {
+      if (String(userId) === myId) return;
+      ensurePeer(userId, userName, profilePicture);
+    });
+
+    socket.on('user-disconnected', ({ userId }) => {
+      if (pcsRef.current[userId]) {
+        try { pcsRef.current[userId].close(); } catch { /* ignore */ }
+        delete pcsRef.current[userId];
+      }
+      delete peersRef.current[userId];
+      syncPeers();
+    });
+
+    socket.on('offer', ({ offer, userId, userName }) => {
+      if (String(userId) === myId) return;
+      answerCall(userId, offer, userName, null);
+    });
+
+    socket.on('answer', ({ answer, userId }) => {
+      if (String(userId) === myId) return;
+      const pc = pcsRef.current[userId];
+      if (pc && pc.remoteDescription && pc.signalingState !== 'stable') return;
+      if (pc && answer) pc.setRemoteDescription(answer).catch(() => {});
+    });
+
+    socket.on('ice-candidate', ({ candidate, userId }) => {
+      if (!candidate || String(userId) === myId) return;
+      const pc = pcsRef.current[userId];
+      if (!pc) {
+        const peer = peersRef.current[userId];
+        const pc2 = createPeerConnection(userId, peer?.userName, peer?.profilePicture);
+        pc2.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
+        return;
+      }
+      pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
+    });
+
+    socket.on('chat-message', ({ userId, userName, message, timestamp }) => {
+      setChatMessages((prev) => {
+        if (prev.some((m) => m.id === `${userId}-${timestamp}`)) return prev;
+        return [
+          ...prev,
+          {
+            id: `${userId}-${new Date(timestamp).getTime()}`,
+            sender: String(userId) === myId ? myName : userName || 'User',
+            text: message,
+            time: new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            isOwn: String(userId) === myId,
+          },
+        ];
+      });
+    });
+
+    socket.on('mic-toggled', ({ userId, isMicOn }) => {
+      const peer = peersRef.current[userId];
+      if (peer) { peer.muted = !isMicOn; syncPeers(); }
+    });
+
+    socket.on('camera-toggled', ({ userId, isCameraOn }) => {
+      const peer = peersRef.current[userId];
+      if (peer) { peer.cameraOn = isCameraOn; syncPeers(); }
+    });
+
+    socket.on('screen-share-started', ({ userId }) => {
+      const peer = peersRef.current[userId];
+      if (peer) { peer.sharing = true; syncPeers(); }
+    });
+
+    socket.on('screen-share-stopped', ({ userId }) => {
+      const peer = peersRef.current[userId];
+      if (peer) { peer.sharing = false; syncPeers(); }
+    });
+
+    socket.on('meeting-ended', () => { router.push('/meetings'); });
+  }, [myId, myName, ensurePeer, startCall, answerCall, createPeerConnection, syncPeers, router]);
+
+  const joinRoom = useCallback(async () => {
+    if (!roomIdRef.current || joinedRef.current) return;
+    joinedRef.current = true;
+
+    setJoining(true);
+    setError(null);
+    try {
+      if (!localStreamRef.current) {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        localStreamRef.current = stream;
+        setLocalStream(stream);
+      }
+      setJoined(true);
+      setElapsedSeconds(0);
+      startTimer();
+      attachSocket();
+      setSocketStatus('connecting');
+    } catch (err) {
+      joinedRef.current = false;
+      setJoining(false);
+      setError('Unable to access camera/microphone. Check browser permissions.');
+      return;
+    }
+    setJoining(false);
+  }, [attachSocket, startTimer]);
 
   useEffect(() => {
     resolveMeeting();
@@ -101,40 +357,117 @@ export default function MeetingRoom() {
   }, [resolveMeeting]);
 
   useEffect(() => {
-    if (chatEndRef.current) {
-      chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
+    if (chatEndRef.current) chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
 
-  const leaveMeeting = useCallback(async () => {
-    try {
-      if (meetingDocId) await apiFetch(`/api/meetings/${meetingDocId}/leave`, { method: 'POST' });
-    } catch {
-      // proceed with local cleanup even if API fails
-    } finally {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-      setConnected(false);
-      setMeeting(null);
-      setElapsedSeconds(0);
-      router.push('/meetings');
+  useEffect(() => () => {
+    if (socketRef.current) {
+      if (roomIdRef.current) socketRef.current.emit('leave-room', { roomId: roomIdRef.current });
+      socketRef.current.disconnect();
     }
+    Object.values(pcsRef.current).forEach((pc) => { try { pc.close(); } catch { /* ignore */ } });
+    pcsRef.current = {};
+    peersRef.current = {};
+    if (localStreamRef.current) localStreamRef.current.getTracks().forEach((t) => t.stop());
+    if (screenStreamRef.current) screenStreamRef.current.getTracks().forEach((t) => t.stop());
+  }, []);
+
+  const handleToggleMute = () => {
+    const next = !isMuted;
+    setIsMuted(next);
+    if (localStreamRef.current) {
+      localStreamRef.current.getAudioTracks().forEach((t) => { t.enabled = !next; });
+    }
+    if (socketRef.current && roomIdRef.current) {
+      socketRef.current.emit('mic-toggle', { roomId: roomIdRef.current, isMicOn: !next });
+    }
+  };
+
+  const handleToggleCamera = () => {
+    const next = !isCameraOn;
+    setIsCameraOn(next);
+    if (localStreamRef.current) {
+      localStreamRef.current.getVideoTracks().forEach((t) => { t.enabled = next; });
+    }
+    if (socketRef.current && roomIdRef.current) {
+      socketRef.current.emit('camera-toggle', { roomId: roomIdRef.current, isCameraOn: next });
+    }
+  };
+
+  const handleToggleShare = async () => {
+    if (isSharing) {
+      const screenStream = screenStreamRef.current;
+      if (screenStream) screenStream.getTracks().forEach((t) => t.stop());
+      screenStreamRef.current = null;
+      setIsSharing(false);
+      const videoTrack = localStreamRef.current?.getVideoTracks()[0] || null;
+      Object.values(pcsRef.current).forEach((pc) => {
+        const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'video');
+        if (sender && videoTrack) sender.replaceTrack(videoTrack).catch(() => {});
+      });
+      if (socketRef.current && roomIdRef.current) {
+        socketRef.current.emit('screen-share-stopped', { roomId: roomIdRef.current });
+      }
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      screenStreamRef.current = stream;
+      const screenTrack = stream.getVideoTracks()[0];
+      setIsSharing(true);
+      Object.values(pcsRef.current).forEach((pc) => {
+        const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'video');
+        if (sender && screenTrack) sender.replaceTrack(screenTrack).catch(() => {});
+      });
+      stream.getVideoTracks()[0].addEventListener('ended', () => {
+        if (screenStreamRef.current) screenStreamRef.current.getTracks().forEach((t) => t.stop());
+        screenStreamRef.current = null;
+        setIsSharing(false);
+        const videoTrack = localStreamRef.current?.getVideoTracks()[0] || null;
+        Object.values(pcsRef.current).forEach((pc) => {
+          const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'video');
+          if (sender && videoTrack) sender.replaceTrack(videoTrack).catch(() => {});
+        });
+        if (socketRef.current && roomIdRef.current) {
+          socketRef.current.emit('screen-share-stopped', { roomId: roomIdRef.current });
+        }
+      });
+      if (socketRef.current && roomIdRef.current) {
+        socketRef.current.emit('screen-share-started', { roomId: roomIdRef.current });
+      }
+    } catch {
+      // user cancelled screen share prompt
+    }
+  };
+
+  const leaveMeeting = useCallback(() => {
+    if (socketRef.current && roomIdRef.current) {
+      socketRef.current.emit('leave-room', { roomId: roomIdRef.current });
+    }
+    if (meetingDocId) {
+      apiFetch(`/api/meetings/${meetingDocId}/leave`, { method: 'POST' }).catch(() => {});
+    }
+    Object.values(pcsRef.current).forEach((pc) => { try { pc.close(); } catch { /* ignore */ } });
+    pcsRef.current = {};
+    peersRef.current = {};
+    setPeers({});
+    if (localStreamRef.current) localStreamRef.current.getTracks().forEach((t) => t.stop());
+    if (screenStreamRef.current) screenStreamRef.current.getTracks().forEach((t) => t.stop());
+    if (timerRef.current) clearInterval(timerRef.current);
+    setJoined(false);
+    router.push('/meetings');
   }, [meetingDocId, router]);
 
   const handleSendChat = (e) => {
     e.preventDefault();
     if (!chatInput.trim()) return;
+    const text = chatInput.trim();
+    if (socketRef.current && roomIdRef.current) {
+      socketRef.current.emit('chat-message', { roomId: roomIdRef.current, message: text, userName: myName });
+    }
     setChatMessages((prev) => [
       ...prev,
-      {
-        id: Date.now(),
-        sender: user?.fullName || user?.name || 'You',
-        text: chatInput.trim(),
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        isOwn: true,
-      },
+      { id: `local-${Date.now()}`, sender: myName, text, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), isOwn: true },
     ]);
     setChatInput('');
   };
@@ -144,9 +477,7 @@ export default function MeetingRoom() {
       await navigator.clipboard.writeText(meeting?.roomId || '');
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // clipboard unavailable
-    }
+    } catch { /* clipboard unavailable */ }
   };
 
   const formatTime = (totalSeconds) => {
@@ -160,10 +491,8 @@ export default function MeetingRoom() {
     return parts.join(':');
   };
 
-  const remainParticipants = (meeting?.participants || []).filter((p) => {
-    const uid = p?.user?._id || p?._id;
-    return uid !== user?._id;
-  });
+  const remotePeers = Object.entries(peers).filter(([pid]) => pid !== myId);
+  const isHost = String(meeting?.host?._id || meeting?.host || '') === myId;
 
   if (loading) {
     return (
@@ -198,21 +527,19 @@ export default function MeetingRoom() {
 
           <div className="mrr-title-wrap">
             <h1 className="mrr-title">{meeting?.title || 'Meeting Room'}</h1>
-            <span className={`mrr-live ${connected ? '' : 'is-idle'}`}>
+            <span className={`mrr-live ${joined ? '' : 'is-idle'}`}>
               <span className="mrr-pulse" />
-              {connected ? 'Live' : 'Idle'}
+              {joined ? 'Live' : 'Idle'}
             </span>
+            {socketStatus === 'error' && (<span className="mrr-live is-idle" style={{ background: 'rgba(248,113,113,0.12)', borderColor: 'rgba(248,113,113,0.35)', color: '#f87171' }}>Reconnecting</span>)}
           </div>
 
           <div className="mrr-top-right">
             <span className="mrr-enc"><ShieldCheck className="w-3.5 h-3.5" /> Encrypted</span>
-            {connected && (
-              <span className="mrr-timer">
-                <Clock className="w-3.5 h-3.5" />
-                <b>{formatTime(elapsedSeconds)}</b>
-              </span>
+            {joined && (
+              <span className="mrr-timer"><Clock className="w-3.5 h-3.5" /><b>{formatTime(elapsedSeconds)}</b></span>
             )}
-            {connected && (
+            {joined && (
               <button type="button" className="mrr-leave" onClick={leaveMeeting}>
                 <PhoneOff className="w-3.5 h-3.5" />
                 Leave
@@ -231,7 +558,7 @@ export default function MeetingRoom() {
             </div>
           )}
 
-          {!connected && meeting && (
+          {!joined && meeting && (
             <div className="mrr-lobby">
               <div className="mrr-lobby-card">
                 <h2 className="mrr-lobby-title">{meeting.title || 'Meeting Room'}</h2>
@@ -248,7 +575,7 @@ export default function MeetingRoom() {
                 <div className="mrr-lobby-count">
                   {(meeting.participants || []).length || 1} participant{(meeting.participants || []).length !== 1 ? 's' : ''} · join to enter the room
                 </div>
-                <button type="button" className="mrr-join" onClick={joinMeeting} disabled={joining}>
+                <button type="button" className="mrr-join" onClick={joinRoom} disabled={joining}>
                   {joining ? <Loader2 className="w-4 h-4 animate-spin" /> : <Video className="w-4 h-4" />}
                   {joining ? 'Joining...' : 'Join Meeting'}
                 </button>
@@ -260,7 +587,7 @@ export default function MeetingRoom() {
             </div>
           )}
 
-          {!connected && !meeting && (
+          {!joined && !meeting && (
             <div className="mrr-lobby">
               <div className="mrr-lobby-card">
                 <h2 className="mrr-lobby-title">Meeting unavailable</h2>
@@ -273,55 +600,56 @@ export default function MeetingRoom() {
             </div>
           )}
 
-          {connected && (
+          {joined && (
             <>
               <div className="mrr-stage">
                 <div className="mrr-grid">
                   <div className="mrr-tile is-self">
-                    <div className="mrr-avatar" style={{ position: 'relative', zIndex: 1 }}>
-                      {user?.profilePicture ? (
-                        <img src={getAvatarUrl(user, user?.fullName || user?.name)} alt={user?.fullName || 'You'} />
-                      ) : (
-                        getInitials(user?.fullName || user?.name)
-                      )}
-                    </div>
+                    {localStream && isCameraOn && (
+                      <video autoPlay playsInline muted ref={(el) => { if (el && el.srcObject !== localStream) el.srcObject = localStream; }} style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', inset: 0 }} />
+                    )}
+                    {(!localStream || !isCameraOn) && (
+                      <Avatar user={user} name={myName} size="lg" />
+                    )}
                     <span className="mrr-tile-label">
                       <span className="mrr-status-dot" />
-                      {user?.fullName || user?.name || 'You'} <span className="mrr-role">· You</span>
+                      {myName} <span className="mrr-role">· You</span>
                     </span>
                     <span className="mrr-mute-chip" title={isMuted ? 'Muted' : 'Mic on'}>
                       {isMuted ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
                     </span>
                   </div>
 
-                  {remainParticipants.map((p) => {
-                    const pUser = p?.user || p;
-                    const name = pUser?.fullName || pUser?.name || 'Participant';
-                    const isHost = String(pUser?._id || pUser?.id || '') === String(meeting?.host?._id || meeting?.host || '');
-                    const pfp = pUser?.profilePicture || pUser?.avatar || p?.profilePicture;
-                    return (
-                      <div key={pUser?._id || p?._id || name} className="mrr-tile">
-                        <div className="mrr-avatar" style={{ position: 'relative', zIndex: 1 }}>
-                          {pfp ? (
-                            <img src={getAvatarUrl(pUser, name)} alt={name} />
-                          ) : (
-                            getInitials(name)
-                          )}
-                        </div>
-                        <span className="mrr-tile-label">
-                          <span className="mrr-status-dot" />
-                          {name} {isHost && <span className="mrr-role">· Host</span>}
-                        </span>
-                      </div>
-                    );
-                  })}
+                  {remotePeers.map(([pid, peer]) => (
+                    <div key={pid} className="mrr-tile">
+                      {peer.stream ? (
+                        <RemoteVideo userId={pid} stream={peer.stream} muted={peer.muted} />
+                      ) : (
+                        <Avatar user={{ profilePicture: peer.profilePicture }} name={peer.userName} size="lg" />
+                      )}
+                      <span className="mrr-tile-label">
+                        <span className="mrr-status-dot" />
+                        {peer.userName} {peer.connected === false && <span className="mrr-role">· connecting</span>}
+                        {peer.sharing && <span className="mrr-role" style={{ color: '#2fd6e6' }}> · sharing</span>}
+                      </span>
+                      <span className="mrr-mute-chip" title={peer.muted ? 'Muted' : 'Mic on'}>
+                        {peer.muted ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
+                      </span>
+                    </div>
+                  ))}
+
+                  {remotePeers.length === 0 && (
+                    <div className="mrr-tile is-empty" style={{ alignItems: 'center', justifyContent: 'center', gap: '0.75rem' }}>
+                      <span className="mrr-live is-idle"><span className="mrr-pulse" /> Waiting for others to join</span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="mrr-controls">
                   <button
                     type="button"
                     className={`mrr-ctrl ${isMuted ? 'is-muted' : ''}`}
-                    onClick={() => setIsMuted((v) => !v)}
+                    onClick={handleToggleMute}
                     title={isMuted ? 'Unmute' : 'Mute'}
                   >
                     {isMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
@@ -329,18 +657,18 @@ export default function MeetingRoom() {
                   <button
                     type="button"
                     className={`mrr-ctrl ${!isCameraOn ? 'is-muted' : ''}`}
-                    onClick={() => setIsCameraOn((v) => !v)}
+                    onClick={handleToggleCamera}
                     title={isCameraOn ? 'Turn off camera' : 'Turn on camera'}
                   >
                     {isCameraOn ? <Video className="w-4 h-4" /> : <VideoOff className="w-4 h-4" />}
                   </button>
                   <button
                     type="button"
-                    className={`mrr-ctrl ${isScreenSharing ? 'is-brand' : ''}`}
-                    onClick={() => setIsScreenSharing((v) => !v)}
-                    title={isScreenSharing ? 'Stop sharing' : 'Share screen'}
+                    className={`mrr-ctrl ${isSharing ? 'is-brand' : ''}`}
+                    onClick={handleToggleShare}
+                    title={isSharing ? 'Stop sharing' : 'Share screen'}
                   >
-                    <Monitor className="w-4 h-4" />
+                    {isSharing ? <MonitorDown className="w-4 h-4" /> : <Monitor className="w-4 h-4" />}
                   </button>
                   <button type="button" className="mrr-ctrl is-danger" onClick={leaveMeeting} title="Leave meeting">
                     <PhoneOff className="w-4 h-4" />
@@ -358,7 +686,7 @@ export default function MeetingRoom() {
                     >
                       <Users className="w-3.5 h-3.5" />
                       People
-                      <span className="mrr-tab-count">{(meeting?.participants?.length || 0) + 1}</span>
+                      <span className="mrr-tab-count">{remotePeers.length + 1}</span>
                     </button>
                     <button
                       type="button"
@@ -376,44 +704,34 @@ export default function MeetingRoom() {
                   <div className="mrr-panel-body">
                     <div className="mrr-panel-list">
                       <div className="mrr-person">
-                        <div className="mrr-avatar" style={{ width: 34, height: 34, fontSize: '0.8rem' }}>
-                          {user?.profilePicture ? (
-                            <img src={getAvatarUrl(user, user?.fullName || user?.name)} alt={user?.fullName || 'You'} />
-                          ) : (
-                            getInitials(user?.fullName || user?.name)
-                          )}
-                        </div>
+                        <Avatar user={user} name={myName} size="sm" />
                         <div className="min-w-0">
-                          <div className="mrr-person-name">{user?.fullName || user?.name || 'You'} (You)</div>
-                          {String(meeting?.host?._id || meeting?.host || '') === String(user?._id || '') && (
-                            <div className="mrr-person-role">Host</div>
-                          )}
+                          <div className="mrr-person-name">{myName} (You)</div>
+                          {isHost && <div className="mrr-person-role">Host</div>}
                         </div>
                         <span className="mrr-person-status" />
                       </div>
 
-                      {(meeting?.participants || []).map((p) => {
-                        const pUser = p?.user || p;
-                        const name = pUser?.fullName || pUser?.name || 'Participant';
-                        const isHost = String(pUser?._id || pUser?.id || '') === String(meeting?.host?._id || meeting?.host || '');
-                        const pfp = pUser?.profilePicture || pUser?.avatar || p?.profilePicture;
-                        return (
-                          <div key={pUser?._id || p?._id || name} className="mrr-person">
-                            <div className="mrr-avatar" style={{ width: 34, height: 34, fontSize: '0.8rem' }}>
-                              {pfp ? (
-                                <img src={getAvatarUrl(pUser, name)} alt={name} />
-                              ) : (
-                                getInitials(name)
-                              )}
+                      {remotePeers.map(([pid, peer]) => (
+                        <div key={pid} className="mrr-person">
+                          <Avatar user={{ profilePicture: peer.profilePicture }} name={peer.userName} size="sm" />
+                          <div className="min-w-0">
+                            <div className="mrr-person-name">{peer.userName}</div>
+                            <div className="mrr-person-role">
+                              {peer.connected === false ? 'connecting' : peer.sharing ? 'sharing screen' : 'joined'}
                             </div>
-                            <div className="min-w-0">
-                              <div className="mrr-person-name">{name}</div>
-                              {isHost && <div className="mrr-person-role">Host</div>}
-                            </div>
-                            <span className="mrr-person-status" />
                           </div>
-                        );
-                      })}
+                          {peer.connected === false ? (
+                            <span style={{ marginLeft: 'auto', width: 14, height: 14, borderRadius: '50%', border: '2px solid rgba(255,255,255,0.15)' }} />
+                          ) : (
+                            <span className="mrr-person-status" />
+                          )}
+                        </div>
+                      ))}
+
+                      {remotePeers.length === 0 && (
+                        <div className="mrr-chat-empty">No one else is in the room yet.</div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -422,7 +740,7 @@ export default function MeetingRoom() {
                   <div className="mrr-chat">
                     <div className="mrr-chat-list">
                       {chatMessages.length === 0 && (
-                        <div className="mrr-chat-empty">No messages yet. Start the conversation.</div>
+                        <div className="mrr-chat-empty">No messages yet. Everyone in the room sees this chat in real time.</div>
                       )}
                       {chatMessages.map((msg) => (
                         <div key={msg.id} className={`mrr-msg ${msg.isOwn ? 'is-own' : ''}`}>

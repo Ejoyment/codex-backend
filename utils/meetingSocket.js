@@ -88,6 +88,26 @@ module.exports = (io) => {
                     profilePicture,
                     email: userEmail
                 });
+
+                // Tell the new joiner who is already in the room so they can render all tiles immediately
+                const roomUsers = (meeting && meeting.participants.filter(p => p.user && p.status === 'joined'))
+                    .map(p => ({ userId: String(p.user), status: p.status }));
+                if (roomUsers && roomUsers.length > 0) {
+                    const populated = await User.find({ _id: { $in: roomUsers.map(u => u.userId) } })
+                        .select('fullName email profilePicture');
+                    const usersById = {};
+                    populated.forEach(u => { usersById[String(u._id)] = u; });
+                    const list = roomUsers.filter(u => String(u.userId) !== String(socket.userId)).map(u => {
+                        const prof = usersById[u.userId] || {};
+                        return {
+                            userId: u.userId,
+                            userName: prof.fullName || 'User',
+                            profilePicture: prof.profilePicture || null,
+                            email: prof.email || null
+                        };
+                    });
+                    socket.emit('room-users', { users: list });
+                }
                 
                 console.log(`User ${socket.userId} joined room: ${roomId} as ${userName}`);
             } catch (error) {
@@ -96,26 +116,26 @@ module.exports = (io) => {
             }
         });
         
-        // WebRTC signaling - Offer
+        // WebRTC signaling - Offer (delivered only to the target peer)
         socket.on('offer', ({ offer, to, roomId, userName }) => {
-            socket.to(roomId).emit('offer', {
+            socket.to('user:' + to).emit('offer', {
                 offer,
                 userId: socket.userId,
                 userName: userName || socket.userName || 'User'
             });
         });
         
-        // WebRTC signaling - Answer
+        // WebRTC signaling - Answer (delivered only to the target peer)
         socket.on('answer', ({ answer, to, roomId }) => {
-            socket.to(roomId).emit('answer', {
+            socket.to('user:' + to).emit('answer', {
                 answer,
                 userId: socket.userId
             });
         });
         
-        // WebRTC signaling - ICE Candidate
+        // WebRTC signaling - ICE Candidate (delivered only to the target peer)
         socket.on('ice-candidate', ({ candidate, to, roomId }) => {
-            socket.to(roomId).emit('ice-candidate', {
+            socket.to('user:' + to).emit('ice-candidate', {
                 candidate,
                 userId: socket.userId
             });
