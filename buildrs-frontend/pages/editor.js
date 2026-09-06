@@ -1,16 +1,14 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
-import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch, projectApi } from '../lib/api';
 import {
-  Save, Plus, ChevronDown, FileCode, Trash2, Terminal,
-  Bot, Layers, Rocket, Box, Users, GitBranch, Eye, Split, Maximize2, X,
-  FolderOpen, Search, Settings, ChevronRight, File, FileText, Code2,
-  Folder, FolderPlus, AlertCircle, CheckCircle, XCircle, RefreshCw,
-  Home, ExternalLink, FilePlus, List, Play, Square, Loader2
+  Save, ChevronDown, ChevronRight, FileCode, Terminal, Bot, Layers, Rocket, Box,
+  Users, GitBranch, Eye, X, FolderOpen, Search, Settings, Folder, Trash2,
+  FolderPlus, AlertCircle, CheckCircle, XCircle, RefreshCw, Puzzle, HelpCircle,
+  FilePlus, Play, Loader2,
 } from 'lucide-react';
 import MonacoEditor from '@monaco-editor/react';
 import { io } from 'socket.io-client';
@@ -62,7 +60,7 @@ function LANG_COLORS() {
 
 function buildFileTree(files) {
   const root = { name: 'root', type: 'folder', children: {} };
-  files.forEach(f => {
+  files.forEach((f) => {
     const parts = (f.path || '/').split('/').filter(Boolean);
     let cur = root; let rp = '';
     for (let i = 0; i < parts.length; i++) {
@@ -85,7 +83,7 @@ function FileTreeNode({ node, depth, selectedId, onSelect, expanded, onToggle })
       <button
         type="button"
         className={`ed-tree-row ${isSelected ? 'is-selected' : ''}`}
-        style={{ paddingLeft: `${10 + depth * 14}px` }}
+        style={{ paddingLeft: `${6 + depth * 14}px` }}
         onClick={() => onSelect(node)}
       >
         <span className="ed-file-dot" style={{ background: getFileIcon(node.name) }} />
@@ -100,7 +98,7 @@ function FileTreeNode({ node, depth, selectedId, onSelect, expanded, onToggle })
         <button
           type="button"
           className={`ed-tree-row is-folder ${isOpen ? 'is-open' : ''}`}
-          style={{ paddingLeft: `${6 + depth * 14}px` }}
+          style={{ paddingLeft: `${2 + depth * 14}px` }}
           onClick={() => onToggle(node.path || node.name)}
         >
           <ChevronRight className="w-3 h-3 ed-tree-chev" />
@@ -124,6 +122,15 @@ function FileTreeNode({ node, depth, selectedId, onSelect, expanded, onToggle })
   return null;
 }
 
+const FEATURE_MODULES = [
+  { id: 'git', name: 'Version Control', sub: 'Branches, commit, pull & push', icon: GitBranch },
+  { id: 'deploy', name: 'Deployments', sub: 'One-click https deploys → .buildrshq.dev', icon: Rocket },
+  { id: 'terminal', name: 'Integrated Terminal', sub: 'Drive a real sandbox from the IDE', icon: Terminal },
+  { id: 'ai', name: 'AI Pair Assistant', sub: 'Context-aware help on your code', icon: Bot },
+  { id: 'figma', name: 'Figma Sync', sub: 'Design → code split preview', icon: Layers },
+  { id: 'collab', name: 'Live Share', sub: 'Real-time cursors & presence', icon: Users },
+];
+
 export default function Editor() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
@@ -131,6 +138,9 @@ export default function Editor() {
 
   const [files, setFiles] = useState([]);
   const [selectedFile, setSelectedFile] = useState(null);
+  const [openFiles, setOpenFiles] = useState([]);
+  const openContentsRef = useRef({});
+  const openDirtyRef = useRef({});
   const [content, setContent] = useState('');
   const [languages, setLanguages] = useState([]);
   const [tier, setTier] = useState('');
@@ -148,10 +158,9 @@ export default function Editor() {
   const [status, setStatus] = useState(null);
   const [dirty, setDirty] = useState(false);
   const [cursorPos, setCursorPos] = useState({ line: 1, col: 1 });
-  const [activeTab, setActiveTab] = useState('editor');
+  const [sidebarVisible, setSidebarVisible] = useState(true);
   const [activeSidebar, setActiveSidebar] = useState('explorer');
-  const [showTerminal, setShowTerminal] = useState(false);
-  const [showAiHelper, setShowAiHelper] = useState(false);
+  const [panel, setPanel] = useState(null);
   const [aiInput, setAiInput] = useState('');
   const [aiMessages, setAiMessages] = useState([]);
   const [aiLoading, setAiLoading] = useState(false);
@@ -166,17 +175,25 @@ export default function Editor() {
   const [showSubdomainInput, setShowSubdomainInput] = useState(false);
   const [deploySubdomain, setDeploySubdomain] = useState('');
   const [deploying, setDeploying] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const toast = useToastStore();
   const [confirmDiscard, setConfirmDiscard] = useState(null);
+  const [confirmClose, setConfirmClose] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [menuOpen, setMenuOpen] = useState(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [paletteQuery, setPaletteQuery] = useState('');
+  const [paletteIndex, setPaletteIndex] = useState(0);
+  const [aboutOpen, setAboutOpen] = useState(false);
   const dropdownRef = useRef(null);
+  const menuRef = useRef(null);
   const terminalRef = useRef(null);
+  const editorRef = useRef(null);
   const originalContentRef = useRef('');
   const aiSessionRef = useRef(null);
   const { selectedCompany } = useCurrentCompany();
   const workspaceId = selectedCompany?._id;
 
-  // Project and GitHub repo state
   const [projects, setProjects] = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
   const [githubRepos, setGithubRepos] = useState([]);
@@ -185,7 +202,9 @@ export default function Editor() {
   const [expandedFolders, setExpandedFolders] = useState({});
   const [fileFilter, setFileFilter] = useState('');
 
-  // Derived
+  const selectedFileRef = useRef(null);
+  selectedFileRef.current = selectedFile;
+
   const tree = useMemo(() => buildFileTree(files), [files]);
 
   useEffect(() => {
@@ -196,15 +215,16 @@ export default function Editor() {
     loadProjects();
     loadGithubRepos();
     loadFigmaFiles();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     if (workspaceId) {
       loadGitStatus();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId]);
 
-  // Load project/repo files when selection changes
   useEffect(() => {
     if (selectedProject) {
       loadProjectFiles(selectedProject._id || selectedProject.id);
@@ -213,32 +233,33 @@ export default function Editor() {
     } else {
       loadFiles();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProject, selectedRepo]);
 
-  // Real-time collaboration: connect socket + join file room + cursor presence
+  // Real-time collaboration socket
   useEffect(() => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
     if (!token) return;
     const socket = io(SOCKET_URL, { auth: { token }, transports: ['websocket', 'polling'] });
     socketRef.current = socket;
 
-    socket.on('collab:user-joined', ({ user }) => {
-      setCollaborators(prev => {
-        const exists = prev.some(c => c.userId === user?.userId || c.id === user?.id);
+    socket.on('collab:user-joined', ({ user: joiner }) => {
+      setCollaborators((prev) => {
+        const exists = prev.some((c) => c.userId === joiner?.userId || c.id === joiner?.id);
         if (exists) return prev;
-        return [...prev, user || {}];
+        return [...prev, joiner || {}];
       });
       setStatus({ type: 'success', msg: 'Collaborator joined' });
       setTimeout(() => setStatus(null), 2000);
     });
 
     socket.on('collab:user-left', ({ userId }) => {
-      setCollaborators(prev => prev.filter(c => c.userId !== userId));
-      setRemoteCursors(prev => { const n = { ...prev }; delete n[userId]; return n; });
+      setCollaborators((prev) => prev.filter((c) => c.userId !== userId));
+      setRemoteCursors((prev) => { const n = { ...prev }; delete n[userId]; return n; });
     });
 
     socket.on('collab:cursor-update', ({ userId, userName, cursor }) => {
-      setRemoteCursors(prev => ({ ...prev, [userId]: { userName, cursor, ts: Date.now() } }));
+      setRemoteCursors((prev) => ({ ...prev, [userId]: { userName, cursor, ts: Date.now() } }));
     });
 
     return () => {
@@ -247,7 +268,6 @@ export default function Editor() {
     };
   }, []);
 
-  // Join the current file's room + broadcast own cursor
   useEffect(() => {
     const socket = socketRef.current;
     if (!socket || !selectedFile?._id) return;
@@ -265,47 +285,80 @@ export default function Editor() {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
         setShowProjectSelector(false);
       }
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setMenuOpen(null);
+      }
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Global IDE shortcuts
+  useEffect(() => {
+    function onKey(e) {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+      const k = e.key.toLowerCase();
+      if (k === 's') {
+        e.preventDefault();
+        if (selectedFileRef.current) handleSave();
+      } else if (k === 'b') {
+        e.preventDefault();
+        setSidebarVisible((v) => !v);
+      } else if (k === 'p') {
+        e.preventDefault();
+        setPaletteOpen(true);
+        setPaletteQuery('');
+      } else if (k === '`') {
+        e.preventDefault();
+        setPanel((p) => (p === 'terminal' ? null : 'terminal'));
+      } else if (k === 'w') {
+        e.preventDefault();
+        if (selectedFileRef.current) closeTab(selectedFileRef.current);
+      } else if (k === 'n') {
+        e.preventDefault();
+        setShowNewModal(true);
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Terminal xterm init
   useEffect(() => {
-    if (showTerminal && terminalRef.current && !terminalRef.current.hasChildNodes()) {
-      import('xterm').then(({ Terminal: XTerm }) => {
-        const term = new XTerm({ theme: { background: '#0f172a' }, fontSize: 13 });
-        term.open(terminalRef.current);
-        term.writeln('Welcome to BuildrsHQ Terminal');
-        term.writeln('Type `help` for available commands');
-        let line = '';
-        term.onKey(({ key, domEvent }) => {
-          if (domEvent.keyCode === 13) {
-            term.writeln('');
-            handleTerminalCommand(line, term);
-            line = '';
-          } else if (domEvent.keyCode === 8) {
-            if (line.length > 0) {
-              term.write('\b \b');
-              line = line.slice(0, -1);
-            }
-          } else if (key.length === 1) {
-            line += key;
-            term.write(key);
+    if (panel !== 'terminal' || !terminalRef.current || terminalRef.current.hasChildNodes()) return;
+    import('xterm').then(({ Terminal: XTerm }) => {
+      const term = new XTerm({ theme: { background: '#1e1e1e', foreground: '#d4d4d4' }, fontSize: 13, cursorBlink: true });
+      term.open(terminalRef.current);
+      term.writeln('\x1b[36mBuildrsHQ Terminal\x1b[0m — type `help` for commands');
+      let line = '';
+      term.onKey(({ key, domEvent }) => {
+        if (domEvent.keyCode === 13) {
+          term.writeln('');
+          handleTerminalCommand(line, term);
+          line = '';
+        } else if (domEvent.keyCode === 8) {
+          if (line.length > 0) {
+            term.write('\b \b');
+            line = line.slice(0, -1);
           }
-        });
-      }).catch(() => {
-        if (terminalRef.current) terminalRef.current.innerHTML = '<div class="p-4 text-gray-400">Terminal loading failed. Please refresh.</div>';
+        } else if (key.length === 1) {
+          line += key;
+          term.write(key);
+        }
       });
-    }
-  }, [showTerminal]);
+    }).catch(() => {
+      if (terminalRef.current) terminalRef.current.innerHTML = '<div style="padding:1rem;color:#8c8c8c;font-size:0.76rem">Terminal failed to load. Refresh to retry.</div>';
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panel]);
 
-async function handleTerminalCommand(cmd, term) {
+  async function handleTerminalCommand(cmd, term) {
     const trimmed = cmd.trim();
     if (!trimmed) return;
-    // Built-in local shortcuts (no server call needed)
     if (trimmed === 'help') {
-      term.writeln('Available: ls, pwd, git status, clear, help, plus many read-only commands via the server.');
+      term.writeln('Available: ls, pwd, git status, clear, help, plus server commands.');
       return;
     }
     if (trimmed === 'clear') {
@@ -330,7 +383,6 @@ async function handleTerminalCommand(cmd, term) {
       }
       return;
     }
-    // Send unknown commands to the server
     try {
       term.writeln(`[running] ${trimmed}`);
       const data = await apiFetch('/api/terminal/execute', {
@@ -471,31 +523,81 @@ async function handleTerminalCommand(cmd, term) {
     }
   }
 
+  const loadFile = useCallback((file) => {
+    const saved = openContentsRef.current[file._id];
+    const val = saved !== undefined ? saved : file.content || '';
+    setSelectedFile(file);
+    setContent(val);
+    originalContentRef.current = val;
+    setDirty(!!openDirtyRef.current[file._id]);
+    setShowProjectSelector(false);
+    setStatus(null);
+    apiFetch(`/api/collaboration/file/${file._id}/join`, { method: 'POST' }).catch(() => {});
+  }, []);
+
+  const openFile = useCallback((file) => {
+    setOpenFiles((prev) => (prev.some((f) => f._id === file._id) ? prev : [...prev, file]));
+  }, []);
+
   function selectFile(file) {
     if (dirty) {
       setConfirmDiscard(file);
       return;
     }
-    setSelectedFile(file);
-    setContent(file.content || '');
-    originalContentRef.current = file.content || '';
-    setDirty(false);
-    setShowProjectSelector(false);
-    setStatus(null);
-    apiFetch(`/api/collaboration/file/${file._id}/join`, { method: 'POST' }).catch(() => {});
+    openFile(file);
+    loadFile(file);
   }
 
   const handleConfirmDiscard = () => {
     const file = confirmDiscard;
     setConfirmDiscard(null);
     if (!file) return;
-    setSelectedFile(file);
-    setContent(file.content || '');
-    originalContentRef.current = file.content || '';
-    setDirty(false);
-    setShowProjectSelector(false);
-    setStatus(null);
-    apiFetch(`/api/collaboration/file/${file._id}/join`, { method: 'POST' }).catch(() => {});
+    openFile(file);
+    loadFile(file);
+  };
+
+  function closeTab(file, e) {
+    if (e) e.stopPropagation();
+    const i = openFiles.findIndex((o) => o._id === file._id);
+    if (i === -1) return;
+    if (selectedFile?._id === file._id && (dirty || openDirtyRef.current[file._id])) {
+      setConfirmClose(file);
+      return;
+    }
+    doRemoveTab(i);
+  }
+
+  function doRemoveTab(i) {
+    const file = openFiles[i];
+    const next = [...openFiles];
+    next.splice(i, 1);
+    setOpenFiles(next);
+    delete openContentsRef.current[file._id];
+    delete openDirtyRef.current[file._id];
+    if (selectedFile?._id === file._id) {
+      const neighbour = next[i] || next[i - 1];
+      if (neighbour) {
+        const saved = openContentsRef.current[neighbour._id];
+        const val = saved !== undefined ? saved : neighbour.content || '';
+        setSelectedFile(neighbour);
+        setContent(val);
+        originalContentRef.current = val;
+        setDirty(!!openDirtyRef.current[neighbour._id]);
+      } else {
+        setSelectedFile(null);
+        setContent('');
+        originalContentRef.current = '';
+        setDirty(false);
+      }
+    }
+  }
+
+  const handleConfirmClose = () => {
+    const file = confirmClose;
+    setConfirmClose(null);
+    if (!file) return;
+    const i = openFiles.findIndex((o) => o._id === file._id);
+    if (i !== -1) doRemoveTab(i);
   };
 
   const monacoLanguage = useMemo(() => getMonacoLanguage(selectedFile?.language), [selectedFile?.language]);
@@ -503,24 +605,27 @@ async function handleTerminalCommand(cmd, term) {
   const handleEditorChange = useCallback((value) => {
     const val = value ?? '';
     setContent(val);
-    setDirty(val !== originalContentRef.current);
-    // Real-time collaboration: broadcast changes
     if (selectedFile?._id) {
-      // Debounced in real implementation
+      openContentsRef.current[selectedFile._id] = val;
+      openDirtyRef.current[selectedFile._id] = val !== originalContentRef.current;
     }
+    setDirty(val !== originalContentRef.current);
   }, [selectedFile?._id]);
 
   async function handleSave() {
-    if (!selectedFile) return;
+    const file = selectedFile;
+    if (!file) return;
     try {
       setSaving(true);
-      const data = await apiFetch(`/api/code-editor/files/${selectedFile._id}`, {
+      const data = await apiFetch(`/api/code-editor/files/${file._id}`, {
         method: 'PUT',
-        body: JSON.stringify({ content, name: selectedFile.name }),
+        body: JSON.stringify({ content, name: file.name }),
       });
       originalContentRef.current = content;
+      openContentsRef.current[file._id] = content;
+      openDirtyRef.current[file._id] = false;
       setDirty(false);
-      setFiles((prev) => prev.map((f) => (f._id === selectedFile._id ? { ...f, ...data.file } : f)));
+      setFiles((prev) => prev.map((f) => (f._id === file._id ? { ...f, ...data.file } : f)));
       setStatus({ type: 'success', msg: 'File saved' });
       setTimeout(() => setStatus(null), 2000);
     } catch (err) {
@@ -530,8 +635,8 @@ async function handleTerminalCommand(cmd, term) {
     }
   }
 
-  // Monaco editor mount: broadcast cursor + render remote collaborators
   function handleEditorMount(editor, monaco) {
+    editorRef.current = editor;
     const decorationsCollection = editor.createDecorationsCollection([]);
     const currentUserName = user?.fullName || user?.name || 'You';
 
@@ -548,7 +653,6 @@ async function handleTerminalCommand(cmd, term) {
       }
     });
 
-    // Re-render remote cursor decorations whenever remoteCursors changes
     const renderRemote = () => {
       const decos = [];
       Object.values(remoteCursors).forEach(({ userName, cursor }) => {
@@ -592,7 +696,6 @@ async function handleTerminalCommand(cmd, term) {
         throw new Error(data.message || 'Create failed');
       }
       const created = data.file || data;
-      // Persist the file and reload from the server so it never disappears
       setShowNewModal(false);
       setNewFileName('');
       setNewFileLang('javascript');
@@ -600,7 +703,10 @@ async function handleTerminalCommand(cmd, term) {
       setStatus({ type: 'success', msg: 'File created' });
       setTimeout(() => setStatus(null), 2000);
       await reloadFiles();
-      if (created) openFile(created);
+      if (created) {
+        openFile(created);
+        loadFile(created);
+      }
     } catch (err) {
       setStatus({ type: 'error', msg: err.message || 'Create failed' });
     } finally {
@@ -630,9 +736,8 @@ async function handleTerminalCommand(cmd, term) {
       setNewFolderName('');
       setStatus({ type: 'success', msg: 'Folder created' });
       setTimeout(() => setStatus(null), 2000);
-      // Expand the newly created folder in the tree
       const fp = (folderPath === '/' ? '' : folderPath) + '/' + newFolderName.trim();
-      setExpandedFolders(prev => ({ ...prev, [fp]: true }));
+      setExpandedFolders((prev) => ({ ...prev, [fp]: true }));
       await reloadFiles();
     } catch (err) {
       setStatus({ type: 'error', msg: err.message || 'Folder create failed' });
@@ -651,7 +756,115 @@ async function handleTerminalCommand(cmd, term) {
     }
   }
 
-  async function handleDelete(file) {
+  async function handleGitAction(action) {
+    if (!workspaceId) {
+      setStatus({ type: 'error', msg: 'Join a workspace to use version control.' });
+      return;
+    }
+    try {
+      if (action === 'status') {
+        const data = await apiFetch(`/api/git/status/${workspaceId}`);
+        setGitStatus(data);
+        setStatus({ type: 'success', msg: 'Git status refreshed' });
+        return;
+      }
+      const data = await apiFetch(`/api/git/${action}`, { method: 'POST', body: JSON.stringify({ workspaceId, fileId: selectedFile?._id }) });
+      setGitStatus(data);
+      setStatus({ type: 'success', msg: `Git ${action} done` });
+    } catch (e) {
+      setStatus({ type: 'error', msg: `Git ${action} failed: ${e.message}` });
+    }
+  }
+
+  function handleDeploy() {
+    setPanel('deploy');
+    setShowSubdomainInput(true);
+    setDeploySubdomain(selectedFile?.name?.replace(/\.[^.]+$/, '').toLowerCase().replace(/[^a-z0-9-]/g, '-') || '');
+    if (!selectedFile) {
+      setStatus({ type: 'error', msg: 'Select a file first (deploys its project).' });
+    }
+  }
+
+  async function confirmDeploy(e) {
+    e.preventDefault();
+    const subdomain = deploySubdomain.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-');
+    if (!subdomain || subdomain.length < 2) {
+      setStatus({ type: 'error', msg: 'Subdomain must be at least 2 characters.' });
+      return;
+    }
+    const projectId = selectedProject?._id || selectedProject?.id || selectedFile?.project;
+    if (!projectId) {
+      setStatus({ type: 'error', msg: 'Select a project in the Explorer before deploying.' });
+      return;
+    }
+    try {
+      setDeploying(true);
+      setStatus({ type: 'success', msg: 'Deploying...' });
+      const data = await apiFetch('/api/deployments', {
+        method: 'POST',
+        body: JSON.stringify({
+          projectId,
+          subdomain,
+          companyId: selectedProject?.workspaceId || workspaceId,
+        }),
+      });
+      if (data.deployment) {
+        setDeployments((prev) => [data.deployment, ...prev]);
+        setStatus({ type: 'success', msg: `Deploying to ${subdomain}.buildrshq.dev...` });
+        setShowSubdomainInput(false);
+        setDeploySubdomain('');
+        setTimeout(loadDeployments, 5000);
+      }
+    } catch (err) {
+      const msg = err?.data?.error || err?.data?.message || err?.message || 'Deploy failed';
+      setStatus({ type: 'error', msg });
+    } finally {
+      setDeploying(false);
+    }
+  }
+
+  async function stopDeployment(deploymentId, subdomain) {
+    if (!confirm(`Stop deployment "${subdomain}.buildrshq.dev"?`)) return;
+    try {
+      await apiFetch(`/api/deployments/${deploymentId}`, { method: 'DELETE' });
+      setDeployments((prev) => prev.map((d) =>
+        d._id === deploymentId ? { ...d, status: 'stopped', deployedUrl: null } : d
+      ));
+      setStatus({ type: 'success', msg: 'Deployment stopped.' });
+    } catch (err) {
+      setStatus({ type: 'error', msg: err?.data?.message || err?.data?.error || err?.message || 'Failed to stop' });
+    }
+  }
+
+  async function handleSandboxStart() {
+    if (!selectedFile) {
+      setStatus({ type: 'error', msg: 'Select a file to preview first.' });
+      return;
+    }
+    try {
+      setStatus({ type: 'success', msg: 'Starting sandbox...' });
+      const data = await apiFetch('/api/sandbox/start', {
+        method: 'POST',
+        body: JSON.stringify({ fileId: selectedFile._id }),
+      });
+      if (data.sandboxUrl) {
+        setSandboxUrl(data.sandboxUrl);
+        setStatus({ type: 'success', msg: 'Sandbox ready!' });
+        setTimeout(() => setStatus(null), 2000);
+      }
+    } catch (err) {
+      setStatus({ type: 'error', msg: `Sandbox error: ${err.message}` });
+    }
+  }
+
+  const eyebrow = (fn) => {
+    setMenuOpen(null);
+    setPaletteOpen(false);
+    setAboutOpen(false);
+    fn();
+  };
+
+  function handleDelete(file) {
     setConfirmDelete(file);
   }
 
@@ -674,120 +887,99 @@ async function handleTerminalCommand(cmd, term) {
     }
   };
 
-  async function handleGitAction(action) {
-    if (!workspaceId) {
-      setStatus({ type: 'error', msg: 'You need to be in a workspace to use version control.' });
-      return;
-    }
-    try {
-      if (action === 'status') {
-        const data = await apiFetch(`/api/git/status/${workspaceId}`);
-        setGitStatus(data);
-        setStatus({ type: 'success', msg: 'Git status refreshed' });
-        return;
-      }
-      const data = await apiFetch(`/api/git/${action}`, { method: 'POST', body: JSON.stringify({ workspaceId, fileId: selectedFile?._id }) });
-      setGitStatus(data);
-      setStatus({ type: 'success', msg: `Git ${action} done` });
-    } catch (e) {
-      setStatus({ type: 'error', msg: `Git ${action} failed: ${e.message}` });
-    }
-  }
-
-  async function handleDeploy() {
-    if (!selectedFile) {
-      setStatus({ type: 'error', msg: 'Select a file first (deploys its project).' });
-      return;
-    }
-    // Show subdomain input
-    setShowSubdomainInput(true);
-    setDeploySubdomain(selectedFile.name?.replace(/\.[^.]+$/, '').toLowerCase().replace(/[^a-z0-9-]/g, '-') || '');
-  }
-
-  async function confirmDeploy(e) {
-    e.preventDefault();
-    const subdomain = deploySubdomain.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-');
-    if (!subdomain || subdomain.length < 2) {
-      setStatus({ type: 'error', msg: 'Subdomain must be at least 2 characters.' });
-      return;
-    }
-    const projectId = selectedProject?._id || selectedProject?.id || selectedFile?.project;
-    if (!projectId) {
-      setStatus({ type: 'error', msg: 'Select a project in the Files panel before deploying.' });
-      return;
-    }
-    try {
-      setDeploying(true);
-      setStatus({ type: 'info', msg: 'Deploying... (this may take a minute)' });
-      const data = await apiFetch('/api/deployments', {
-        method: 'POST',
-        body: JSON.stringify({
-          projectId,
-          subdomain,
-          companyId: selectedProject?.workspaceId || workspaceId,
-        }),
-      });
-      if (data.deployment) {
-        setDeployments((prev) => [data.deployment, ...prev]);
-        setStatus({ type: 'success', msg: `Deploying to ${subdomain}.buildrshq.dev...` });
-        setShowSubdomainInput(false);
-        setDeploySubdomain('');
-        // Refresh list after a few seconds
-        setTimeout(loadDeployments, 5000);
-      }
-    } catch (err) {
-      const msg = err?.data?.error || err?.data?.message || err?.message || 'Deploy failed';
-      setStatus({ type: 'error', msg });
-    } finally {
-      setDeploying(false);
-    }
-  }
-
-  async function stopDeployment(deploymentId, subdomain) {
-    if (!confirm(`Stop deployment "${subdomain}.buildrshq.dev" and remove the container?`)) return;
-    try {
-      await apiFetch(`/api/deployments/${deploymentId}`, { method: 'DELETE' });
-      setDeployments((prev) => prev.map(d =>
-        d._id === deploymentId ? { ...d, status: 'stopped', deployedUrl: null } : d
-      ));
-      setStatus({ type: 'success', msg: 'Deployment stopped.' });
-    } catch (err) {
-      const msg = err?.data?.message || err?.data?.error || err?.message || 'Failed to stop';
-      setStatus({ type: 'error', msg });
-    }
-  }
-
-  async function handleSandboxStart() {
-    if (!selectedFile) {
-      setStatus({ type: 'error', msg: 'Select a file to preview first.' });
-      return;
-    }
-    try {
-      setStatus({ type: 'info', msg: 'Starting sandbox...' });
-      const data = await apiFetch('/api/sandbox/start', {
-        method: 'POST',
-        body: JSON.stringify({ fileId: selectedFile._id }),
-      });
-      if (data.sandboxUrl) {
-        setSandboxUrl(data.sandboxUrl);
-        setStatus({ type: 'success', msg: 'Sandbox ready!' });
-      }
-    } catch (err) {
-      setStatus({ type: 'error', msg: `Sandbox error: ${err.message}` });
-    }
-  }
-
-  const TABS = [
-    { id: 'editor', label: 'Editor', icon: FileCode },
-    { id: 'terminal', label: 'Terminal', icon: Terminal },
-    { id: 'preview', label: 'Preview', icon: Eye },
-    { id: 'split', label: 'Split', icon: Split },
-    { id: 'ai', label: 'AI Helper', icon: Bot },
-    { id: 'collab', label: 'Collaborators', icon: Users },
-    { id: 'git', label: 'Version Control', icon: GitBranch },
-    { id: 'deploy', label: 'Deployments', icon: Rocket },
-    { id: 'sandbox', label: 'Sandbox', icon: Box },
+  const MENU_ITEMS = [
+    {
+      id: 'file', label: 'File', items: [
+        { label: 'New File', kbd: '⌘N', run: () => setShowNewModal(true) },
+        { label: 'New Folder', kbd: '⇧⌘N', run: () => setShowNewFolderModal(true) },
+        { label: null },
+        { label: 'Save', kbd: '⌘S', run: handleSave },
+        { label: null },
+        { label: 'Close Editor', kbd: '⌘W', run: () => { if (selectedFileRef.current) closeTab(selectedFileRef.current); } },
+      ],
+    },
+    {
+      id: 'edit', label: 'Edit', items: [
+        { label: 'Undo', kbd: '⌘Z', run: () => editorRef.current?.trigger('keyboard', 'undo', null) },
+        { label: 'Redo', kbd: '⇧⌘Z', run: () => editorRef.current?.trigger('keyboard', 'redo', null) },
+        { label: null },
+        { label: 'Command Palette...', kbd: '⌘P', run: () => { setPaletteOpen(true); setPaletteQuery(''); } },
+      ],
+    },
+    {
+      id: 'view', label: 'View', items: [
+        { label: 'Toggle Sidebar', kbd: '⌘B', run: () => setSidebarVisible((v) => !v) },
+        { label: 'Toggle Terminal', kbd: '⌘`', run: () => setPanel((p) => (p === 'terminal' ? null : 'terminal')) },
+        { label: null },
+        { label: 'Explorer', run: () => showSidebar('explorer') },
+        { label: 'Search', run: () => showSidebar('search') },
+        { label: 'Source Control', run: () => showSidebar('scm') },
+        { label: 'Run & Deploy', run: () => showSidebar('run') },
+        { label: 'Live Share', run: () => showSidebar('live') },
+        { label: 'AI Assistant', run: () => showSidebar('ai') },
+        { label: 'Extensions', run: () => showSidebar('extensions') },
+      ],
+    },
+    {
+      id: 'run', label: 'Run', items: [
+        { label: 'Deploy Project...', run: handleDeploy },
+        { label: 'Start Sandbox', run: handleSandboxStart },
+        { label: null },
+        { label: 'Open Terminal', kbd: '⌘`', run: () => setPanel((p) => (p === 'terminal' ? null : 'terminal')) },
+      ],
+    },
+    {
+      id: 'terminal', label: 'Terminal', items: [
+        { label: 'New Terminal', kbd: '⌘`', run: () => setPanel((p) => (p === 'terminal' ? null : 'terminal')) },
+        { label: 'Run git status', run: () => handleGitAction('status') },
+        { label: null },
+        { label: 'Open Deployments', run: () => setPanel('deploy') },
+      ],
+    },
+    {
+      id: 'help', label: 'Help', items: [
+        { label: 'About Buildrs HQ', run: () => setAboutOpen(true) },
+        { label: 'Keyboard Shortcuts', run: () => setAboutOpen(true) },
+        { label: null },
+        { label: 'Support Center', run: () => router.push('/support') },
+      ],
+    },
   ];
+
+  const paletteEntries = (() => {
+    const q = paletteQuery.trim().toLowerCase();
+    const match = (s) => (q ? (s || '').toLowerCase().includes(q) : true);
+    const fileMatches = files.filter((f) => match(f.name)).slice(0, 8).map((f) => ({ kind: 'file', label: f.name, icon: FileCode, file: f }));
+    const cmds = [
+      { kind: 'command', label: 'File: New File', icon: FilePlus, run: () => setShowNewModal(true) },
+      { kind: 'command', label: 'File: Save', icon: Save, run: handleSave },
+      { kind: 'command', label: 'Git: Refresh Status', icon: GitBranch, run: () => handleGitAction('status') },
+      { kind: 'command', label: 'Deploy: Deploy Project', icon: Rocket, run: handleDeploy },
+      { kind: 'command', label: 'Sandbox: Start preview', icon: Box, run: handleSandboxStart },
+      { kind: 'command', label: 'Terminal: Toggle', icon: Terminal, run: () => setPanel((p) => (p === 'terminal' ? null : 'terminal')) },
+      { kind: 'command', label: 'View: Toggle Sidebar', icon: FolderOpen, run: () => setSidebarVisible((v) => !v) },
+      { kind: 'command', label: 'Help: About', icon: HelpCircle, run: () => setAboutOpen(true) },
+    ].filter((c) => match(c.label));
+    return [...fileMatches, ...cmds];
+  })();
+
+  function showSidebar(view) {
+    setActiveSidebar(view);
+    setSidebarVisible(true);
+    setMenuOpen(null);
+  }
+
+  const runPaletteEntry = (entry) => {
+    if (entry.file) selectFile(entry.file);
+    else if (entry.run) entry.run();
+    setPaletteOpen(false);
+    setPaletteQuery('');
+  };
+
+  const extList = languages.filter((l) => l.allowed !== false);
+  const modifiedCount = gitStatus?.modified?.length || 0;
+  const blockCount = languages.filter((l) => l.allowed === false).length;
+  const filePathSegs = selectedFile ? String(selectedFile.path || selectedFile.name || '').split('/').filter(Boolean) : [];
 
   return (
     <AuthGuard>
@@ -797,484 +989,679 @@ async function handleTerminalCommand(cmd, term) {
       </Head>
 
       <div className="ed-page">
-        <Sidebar user={user} subscription={subscription} />
-
-        <main className="ed-main-lg">
-          {/* Editor title bar */}
-          <header className="ed-topbar">
-            <div className="ed-topbar-left">
-              <span className="ed-topbar-crumb">BuildrsHQ</span>
-              <span className="ed-topbar-sep">/</span>
-              <span className="ed-topbar-repo">{selectedProject?.name || selectedRepo?.fullName || 'editor'}</span>
-            </div>
-            <div className="ed-topbar-center">
-              {selectedFile ? selectedFile.name : 'No file open'}
-            </div>
-            <div className="ed-topbar-right">
-              {dirty && (
-                <span className="ed-unsaved">
-                  <span className="dot" />
-                  Unsaved
-                </span>
-              )}
-              {selectedFile && (
-                <button type="button" className="btn-workspace btn-primary" onClick={handleSave} disabled={saving || !dirty}>
-                  <Save className="w-3.5 h-3.5" />{saving ? 'Saving...' : 'Save'}
-                </button>
-              )}
-              <button type="button" className="ed-top-btn" onClick={() => setShowNewModal(true)} title="New File"><FilePlus className="w-3.5 h-3.5" /></button>
-              <button type="button" className="ed-top-btn" onClick={() => setShowNewFolderModal(true)} title="New Folder"><FolderPlus className="w-3.5 h-3.5" /></button>
-              <button type="button" className="ed-top-btn" onClick={() => setShowAiHelper(!showAiHelper)} title="Toggle AI Helper"><Bot className="w-3.5 h-3.5" /></button>
-              <button type="button" className="ed-top-btn" onClick={() => setShowTerminal(!showTerminal)} title="Toggle Terminal"><Terminal className="w-3.5 h-3.5" /></button>
-            </div>
-          </header>
-
-          {/* Feature tab bar */}
-          <div className="ed-tabs">
-            {TABS.map(({ id, label, icon: Icon }) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setActiveTab(id)}
-                className={`ed-tab ${activeTab === id ? 'is-active' : ''}`}
-              >
-                <Icon className="w-3.5 h-3.5" />
-                {label}
-              </button>
-            ))}
+        {/* ---- Menu bar ---- */}
+        <div className="ed-menubar">
+          <div className="ed-window-dots">
+            <span className="ed-dot is-red" />
+            <span className="ed-dot is-yellow" />
+            <span className="ed-dot is-green" />
           </div>
-
-          {/* Main editor workspace: activity bar + explorer + editor */}
-          <div className="ed-body">
-            {/* Activity bar */}
-            <div className="ed-activity">
-              <button type="button" className={`ed-activity-btn ${activeSidebar === 'explorer' ? 'is-active' : ''}`} onClick={() => setActiveSidebar('explorer')} title="Explorer">
-                <FolderOpen className="w-5 h-5" />
-              </button>
-              <button type="button" className={`ed-activity-btn ${activeSidebar === 'git' ? 'is-active' : ''}`} onClick={() => setActiveSidebar('git')} title="Source Control">
-                <GitBranch className="w-5 h-5" />
-              </button>
-              <button type="button" className={`ed-activity-btn ${activeSidebar === 'ai' ? 'is-active' : ''}`} onClick={() => setActiveSidebar('ai')} title="AI Assistant">
-                <Bot className="w-5 h-5" />
-              </button>
-              <div className="ed-activity-grow" />
-              <button type="button" className="ed-activity-btn" title="Settings">
-                <Settings className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Explorer sidebar */}
-            <div className="ed-side">
-              {/* Explorer header */}
-              <div className="ed-side-head">
-                <span className="ed-side-title">Explorer</span>
-                <div className="ed-side-actions">
-                  <button type="button" className="ed-side-btn" onClick={() => setShowNewModal(true)} title="New File"><FilePlus className="w-3.5 h-3.5" /></button>
-                  <button type="button" className="ed-side-btn" onClick={() => setShowNewFolderModal(true)} title="New Folder"><FolderPlus className="w-3.5 h-3.5" /></button>
-                  <button type="button" className="ed-side-btn" onClick={reloadFiles} title="Refresh"><RefreshCw className="w-3.5 h-3.5" /></button>
-                </div>
-              </div>
-
-              {/* Project selector */}
-              <div className="ed-project-wrap">
-                <button type="button" className="ed-project-btn" onClick={() => setShowProjectSelector(!showProjectSelector)}>
-                  <FolderOpen className="w-3.5 h-3.5" />
-                  <span className="ed-project-label">{selectedProject ? selectedProject.name : selectedRepo ? (selectedRepo.fullName || selectedRepo.name) : 'Workspace'}</span>
-                  <ChevronDown className={`w-3 h-3 transition-transform ${showProjectSelector ? 'rotate-180' : ''}`} style={{ color: 'var(--ws-text-faint)' }} />
+          <div className="ed-menubar-brand">Buildrs <em>HQ</em></div>
+          <nav className="ed-menubars" ref={menuRef}>
+            {MENU_ITEMS.map((m) => (
+              <div key={m.id} style={{ position: 'relative' }}>
+                <button
+                  type="button"
+                  className={`ed-menubtn ${menuOpen === m.id ? 'is-open' : ''}`}
+                  onClick={() => setMenuOpen(menuOpen === m.id ? null : m.id)}
+                >
+                  {m.label}
                 </button>
-                {showProjectSelector && (
-                  <div className="ed-drop">
-                    <button type="button" className="ed-drop-item" onClick={() => { setSelectedProject(null); setSelectedRepo(null); setShowProjectSelector(false); }}>
-                      <FolderOpen className="w-3.5 h-3.5" /> Workspace Files
-                    </button>
-                    {projects.length > 0 && <div className="ed-drop-section">Projects</div>}
-                    {projects.map(p => (
-                      <button key={p._id || p.id} type="button" className="ed-drop-item" onClick={() => { setSelectedProject(p); setSelectedRepo(null); setShowProjectSelector(false); }}>
-                        <Folder className="w-3.5 h-3.5" /> {p.name}
-                      </button>
-                    ))}
-                    {githubRepos.length > 0 && <div className="ed-drop-section">GitHub Repos</div>}
-                    {githubRepos.map(r => (
-                      <button key={r.id || r.fullName} type="button" className="ed-drop-item" onClick={() => { setSelectedRepo(r); setSelectedProject(null); setShowProjectSelector(false); }}>
-                        <GitBranch className="w-3.5 h-3.5" /> {r.fullName || r.name}
-                      </button>
-                    ))}
+                {menuOpen === m.id && (
+                  <div className="ed-menudrop">
+                    {m.items.map((it, i) =>
+                      it.label === null ? (
+                        <div key={`s${i}`} className="ed-menudrop-sep" />
+                      ) : (
+                        <button key={it.label} type="button" className="ed-menudrop-item" onClick={() => eyebrow(it.run)}>
+                          <span>{it.label}</span>
+                          {it.kbd && <kbd>{it.kbd}</kbd>}
+                        </button>
+                      )
+                    )}
                   </div>
                 )}
               </div>
+            ))}
+          </nav>
+          <div className="ed-menubar-right">
+            {selectedProject ? selectedProject.name : selectedRepo ? (selectedRepo.fullName || selectedRepo.name) : (workspaceId ? 'Workspace' : 'No workspace')}
+          </div>
+        </div>
 
-              {/* File filter */}
-              <div className="ed-filter-wrap">
-                <input type="text" className="ed-filter"
-                  placeholder="Filter files..." value={fileFilter} onChange={e => setFileFilter(e.target.value)} />
-              </div>
+        {/* ---- Body ---- */}
+        <div className="ed-body">
+          {/* Activity bar */}
+          <nav className="ed-actbar">
+            <button type="button" className={`ed-actbtn ${activeSidebar === 'explorer' ? 'is-active' : ''}`} onClick={() => showSidebar('explorer')} title="Explorer (⌘B)">
+              <FolderOpen className="w-5 h-5" />
+            </button>
+            <button type="button" className={`ed-actbtn ${activeSidebar === 'search' ? 'is-active' : ''}`} onClick={() => showSidebar('search')} title="Search">
+              <Search className="w-5 h-5" />
+            </button>
+            <button type="button" className={`ed-actbtn ${activeSidebar === 'scm' ? 'is-active' : ''}`} onClick={() => showSidebar('scm')} title="Source Control">
+              <GitBranch className="w-5 h-5" />
+              {modifiedCount > 0 && <span className="ed-actbadge">{modifiedCount}</span>}
+            </button>
+            <button type="button" className={`ed-actbtn ${activeSidebar === 'run' ? 'is-active' : ''}`} onClick={() => showSidebar('run')} title="Run & Deploy">
+              <Play className="w-5 h-5" />
+            </button>
+            <button type="button" className={`ed-actbtn ${activeSidebar === 'live' ? 'is-active' : ''}`} onClick={() => showSidebar('live')} title="Live Share">
+              <Users className="w-5 h-5" />
+              {collaborators.length > 0 && <span className="ed-actbadge">{collaborators.length}</span>}
+            </button>
+            <button type="button" className={`ed-actbtn ${activeSidebar === 'ai' ? 'is-active' : ''}`} onClick={() => showSidebar('ai')} title="AI Assistant">
+              <Bot className="w-5 h-5" />
+              {aiLoading && <span className="ed-actbadge">·</span>}
+            </button>
+            <button type="button" className={`ed-actbtn ${activeSidebar === 'extensions' ? 'is-active' : ''}`} onClick={() => showSidebar('extensions')} title="Extensions">
+              <Puzzle className="w-5 h-5" />
+            </button>
+            <div className="ed-actbar-grow" />
+            <button type="button" className="ed-actbtn" onClick={() => setAboutOpen(true)} title="Help & shortcuts">
+              <HelpCircle className="w-5 h-5" />
+            </button>
+            <button type="button" className="ed-actbtn" onClick={() => router.push('/settings')} title="Settings">
+              <Settings className="w-5 h-5" />
+            </button>
+          </nav>
 
-              {/* File tree */}
-              <div className="ed-tree">
-                {loading ? (
-                  <div className="dash-empty">
-                    <div className="dash-empty-ico">
-                      <Loader2 className="w-5 h-5 animate-spin" />
+          {/* ---- Contextual sidebar ---- */}
+          {sidebarVisible && (
+            <aside className="ed-sidebar">
+              {activeSidebar === 'explorer' && (
+                <>
+                  <div className="ed-sidebar-head">
+                    <span className="ed-sidebar-title">Explorer</span>
+                    <div className="ed-sidebar-actions">
+                      <button type="button" className="ed-sidebar-btn" onClick={() => setShowNewModal(true)} title="New File"><FilePlus className="w-3.5 h-3.5" /></button>
+                      <button type="button" className="ed-sidebar-btn" onClick={() => setShowNewFolderModal(true)} title="New Folder"><FolderPlus className="w-3.5 h-3.5" /></button>
+                      <button type="button" className="ed-sidebar-btn" onClick={reloadFiles} title="Refresh"><RefreshCw className="w-3.5 h-3.5" /></button>
                     </div>
-                    <p className="dash-empty-title">Loading files...</p>
                   </div>
-                ) : files.length === 0 ? (
-                  <div className="ed-empty">
-                    <div className="dash-empty-ico">
-                      <FileCode className="w-5 h-5" />
+                  <div className="ed-sidebar-body" style={{ padding: '0.6rem 0.75rem 0.4rem' }}>
+                    <div className="ed-project-wrap" ref={dropdownRef}>
+                      <button type="button" className="ed-project-btn" onClick={() => setShowProjectSelector(!showProjectSelector)}>
+                        <FolderOpen className="w-3.5 h-3.5" />
+                        <span className="ed-project-label">{selectedProject ? selectedProject.name : selectedRepo ? (selectedRepo.fullName || selectedRepo.name) : 'Workspace'}</span>
+                        <ChevronDown className={`w-3 h-3 transition-transform ${showProjectSelector ? 'rotate-180' : ''}`} style={{ color: '#6e6e6e' }} />
+                      </button>
+                      {showProjectSelector && (
+                        <div className="ed-drop">
+                          <button type="button" className="ed-drop-item" onClick={() => { setSelectedProject(null); setSelectedRepo(null); setShowProjectSelector(false); }}>
+                            <FolderOpen className="w-3.5 h-3.5" /> Workspace Files
+                          </button>
+                          {projects.length > 0 && <div className="ed-drop-section">Projects</div>}
+                          {projects.map((p) => (
+                            <button key={p._id || p.id} type="button" className="ed-drop-item" onClick={() => { setSelectedProject(p); setSelectedRepo(null); setShowProjectSelector(false); }}>
+                              <Folder className="w-3.5 h-3.5" /> {p.name}
+                            </button>
+                          ))}
+                          {githubRepos.length > 0 && <div className="ed-drop-section">GitHub Repos</div>}
+                          {githubRepos.map((r) => (
+                            <button key={r.id || r.fullName} type="button" className="ed-drop-item" onClick={() => { setSelectedRepo(r); setSelectedProject(null); setShowProjectSelector(false); }}>
+                              <GitBranch className="w-3.5 h-3.5" /> {r.fullName || r.name}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                    <p className="dash-empty-title">No files yet</p>
-                    <button type="button" className="btn-workspace btn-primary" onClick={() => setShowNewModal(true)}>Create File</button>
+                    <div className="ed-filter-wrap">
+                      <input type="text" className="ed-filter" placeholder="Filter files..."
+                        value={fileFilter} onChange={(e) => setFileFilter(e.target.value)} />
+                    </div>
+                    <div className="ed-tree">
+                      {loading ? (
+                        <div className="ed-empty">
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                          <span className="text-xs">Loading files...</span>
+                        </div>
+                      ) : files.length === 0 ? (
+                        <div className="ed-empty">
+                          <FileCode className="w-6 h-6" />
+                          <p className="text-xs">No files yet</p>
+                          <button type="button" className="btn-workspace btn-primary" onClick={() => setShowNewModal(true)}>Create File</button>
+                        </div>
+                      ) : (
+                        <FileTreeNode node={tree} depth={-1} selectedId={selectedFile?._id} onSelect={selectFile} expanded={expandedFolders}
+                          onToggle={(path) => setExpandedFolders((prev) => ({ ...prev, [path]: prev[path] === false ? true : false }))} />
+                      )}
+                    </div>
                   </div>
-                ) : (
-                  <FileTreeNode node={tree} depth={-1} selectedId={selectedFile?._id} onSelect={selectFile} expanded={expandedFolders} onToggle={(path) => setExpandedFolders(prev => ({ ...prev, [path]: prev[path] === false ? true : false }))} />
-                )}
-              </div>
-            </div>
-
-            {/* Main Content Area */}
-            <div className="ed-main">
-              {status && (
-                <div className={`ed-alert ${status.type === 'success' ? 'ed-alert-success' : 'ed-alert-error'}`}>
-                  {status.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
-                  {status.msg}
-                </div>
+                </>
               )}
 
-              {activeTab === 'editor' && (
-                <div className="ed-pane">
-                  <div className="ed-pane-head">
-                    <h2 className="ed-pane-title"><FileCode className="w-4 h-4" />{selectedFile ? selectedFile.name : 'Editor'}</h2>
-                    {selectedFile && <button type="button" className="btn-workspace btn-primary" onClick={handleSave} disabled={saving || !dirty}><Save className="w-4 h-4" />{saving ? 'Saving...' : 'Save'}</button>}
+              {activeSidebar === 'search' && (
+                <>
+                  <div className="ed-sidebar-head">
+                    <span className="ed-sidebar-title">Search</span>
+                    <div className="ed-sidebar-actions"></div>
                   </div>
-                  <div className="ed-pane-body">
-                    {!selectedFile ? (
-                      <div className="ed-ide-empty">
-                        <div className="dash-empty-ico">
-                          <FileCode className="w-6 h-6" />
-                        </div>
-                        <p className="dash-empty-title">Select a file to start editing</p>
-                      </div>
+                  <div className="ed-sidebar-body">
+                    <div className="ed-search-input-icon">
+                      <Search className="w-3.5 h-3.5" />
+                      <input
+                        type="text"
+                        className="ed-search-input"
+                        placeholder="Search files..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        autoFocus
+                      />
+                    </div>
+                    {searchQuery.trim() ? (
+                      <>
+                        <div className="ed-stat">{files.filter((f) => f.name.toLowerCase().includes(searchQuery.trim().toLowerCase())).length} matching file(s)</div>
+                        {files.filter((f) => f.name.toLowerCase().includes(searchQuery.trim().toLowerCase())).slice(0, 30).map((f) => (
+                          <button key={f._id} type="button" className="ed-search-result" onClick={() => selectFile(f)}>
+                            <span className="ed-file-dot" style={{ background: getFileIcon(f.name) }} />
+                            <span><em>{f.name}</em> <span style={{ color: '#6e6e6e' }}>{f.path && f.path !== '/' ? `— ${f.path}` : ''}</span></span>
+                          </button>
+                        ))}
+                      </>
                     ) : (
-                      <div className="ed-code-wrap">
-                        <MonacoEditor height="100%" language={monacoLanguage} value={content} onChange={handleEditorChange} onMount={handleEditorMount} theme="vs-dark" options={{ fontSize: 14, minimap: { enabled: false }, scrollBeyondLastLine: false, wordWrap: 'on', tabSize: 2, automaticLayout: true, bracketPairColorization: { enabled: true } }} loading={<div className="flex items-center justify-center h-full text-gray-400">Loading editor...</div>} />
+                      <div className="ed-empty">
+                        <Search className="w-6 h-6" />
+                        <p className="text-xs">Type to search across your workspace files</p>
                       </div>
                     )}
                   </div>
-                </div>
+                </>
               )}
 
-              {activeTab === 'terminal' && (
-                <div className="ed-pane">
-                  <div className="ed-pane-head">
-                    <h2 className="ed-pane-title"><Terminal className="w-4 h-4" /> Terminal</h2>
-                  </div>
-                  <div className="ed-pane-body">
-                    <div ref={terminalRef} className="flex-1 min-h-[0px] bg-[#060608] rounded-[10px] p-2 font-mono text-sm overflow-auto border border-[rgba(255,255,255,0.05)]" />
-                  </div>
-                </div>
-              )}
-
-              {activeTab === 'preview' && (
-                <div className="ed-pane">
-                  <div className="ed-pane-head">
-                    <h2 className="ed-pane-title"><Eye className="w-4 h-4" /> Preview</h2>
-                  </div>
-                  <div className="ed-pane-body">
-                    <div className="ed-panel flex-1 min-h-[380px] flex items-center justify-center">
-                      <p className="text-sm" style={{ color: 'var(--ws-text-faint)' }}>Live preview will appear here. Select a file and toggle Design-Code Split.</p>
-                    </div>
-                    <div style={{ display: 'flex', gap: '0.6rem' }}>
-                      <button type="button" onClick={() => setActiveTab('split')} className="btn-workspace btn-secondary"><Split className="w-4 h-4" /> Split View</button>
-                      <button type="button" onClick={() => window.open(sandboxUrl || '#', '_blank')} className="btn-workspace btn-secondary"><Maximize2 className="w-4 h-4" /> Pop Out</button>
+              {activeSidebar === 'scm' && (
+                <>
+                  <div className="ed-sidebar-head">
+                    <span className="ed-sidebar-title">Source Control</span>
+                    <div className="ed-sidebar-actions">
+                      <button type="button" className="ed-sidebar-btn" onClick={() => handleGitAction('status')} title="Refresh status"><RefreshCw className="w-3.5 h-3.5" /></button>
                     </div>
                   </div>
-                </div>
-              )}
-
-              {activeTab === 'split' && (
-                <div className="ed-pane">
-                  <div className="ed-pane-head">
-                    <h2 className="ed-pane-title"><Layers className="w-4 h-4" /> Design-Code Split View</h2>
-                  </div>
-                  <div className="ed-pane-body" style={{ gap: 0, paddingBottom: 0 }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0', minHeight: '0', flex: 1 }}>
-                      <div style={{ borderRight: '1px solid var(--ws-border)', padding: '0.5rem' }}>
-                        <div className="ed-side-title" style={{ margin: '0.2rem 0 0.6rem', color: 'var(--ws-text-faint)' }}>Figma Design</div>
-                        {figmaFiles.length === 0 ? (
-                          <div className="ed-panel" style={{ height: '100%', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', minHeight: '420px' }}>
-                            <Layers className="w-8 h-8" style={{ color: 'var(--ws-text-faint)' }} />
-                            <p className="text-sm" style={{ color: 'var(--ws-text-faint)' }}>No Figma files connected</p>
-                            <a href="/integrations" className="btn-workspace btn-secondary">Connect Figma</a>
-                          </div>
-                        ) : (
-                          <div className="ed-panel" style={{ height: '100%', overflowY: 'auto', minHeight: '420px', padding: '0.5rem' }}>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                              {figmaFiles.map((f) => (
-                                <button key={f.key || f.id} type="button"
-                                  onClick={() => setSelectedFigmaFile(f)}
-                                  className={`ed-drop-item ${selectedFigmaFile?.key === f.key || selectedFigmaFile?.id === f.id ? 'is-active' : ''}`}
-                                  style={selectedFigmaFile?.key === f.key || selectedFigmaFile?.id === f.id ? { background: 'rgba(47,214,230,0.08)', color: 'var(--ws-text)' } : undefined}>
-                                  <div style={{ minWidth: 0 }}>
-                                    <div className="font-medium truncate" style={{ fontSize: '0.78rem' }}>{f.name || f.key}</div>
-                                    <div className="ed-side-title" style={{ color: 'var(--ws-text-faint)' }}>{f.last_modified ? new Date(f.last_modified).toLocaleDateString() : ''}</div>
-                                  </div>
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
+                  <div className="ed-sidebar-body">
+                    <div className="ed-stat">
+                      <span className="ed-badge-dot" style={{ background: '#2fd6e6' }} />
+                      <b>{gitStatus?.branch || 'main'}</b>
+                      <span style={{ color: '#6e6e6e' }}> · {gitStatus ? `${gitStatus.ahead || 0} ahead, ${gitStatus.behind || 0} behind` : 'no git info'}</span>
+                    </div>
+                    {!gitStatus && (
+                      <div className="ed-empty">
+                        <GitBranch className="w-6 h-6" />
+                        <p className="text-xs">Opt in to version control from your workspace settings.</p>
                       </div>
-                      <div style={{ padding: '0.5rem' }}>
-                        <div className="ed-side-title" style={{ margin: '0.2rem 0 0.6rem', color: 'var(--ws-text-faint)' }}>Code</div>
-                        <div className="ed-code-wrap">
-                          <MonacoEditor height="100%" language={monacoLanguage} value={content} onChange={handleEditorChange} theme="vs-dark" options={{ fontSize: 13, minimap: { enabled: false }, automaticLayout: true }} />
+                    )}
+                    <div className="ed-sidebar-title" style={{ padding: '0.1rem 0.55rem' }}>
+                      Changes {modifiedCount > 0 ? `(${modifiedCount})` : ''}
+                    </div>
+                    {modifiedCount === 0 ? (
+                      <p className="text-xs" style={{ color: '#6e6e6e', padding: '0.2rem 0.55rem' }}>
+                        {gitStatus ? 'Working tree clean' : 'No changes'}
+                      </p>
+                    ) : (
+                      (gitStatus?.modified || []).map((name, i) => (
+                        <div key={`${name}-${i}`} className="ed-scm-file">
+                          <GitBranch className="w-3.5 h-3.5" />
+                          <span>{name}</span>
                         </div>
-                      </div>
+                      ))
+                    )}
+                    <div style={{ display: 'flex', gap: '0.4rem', paddingTop: '0.4rem' }}>
+                      <button type="button" className="btn-workspace btn-secondary" style={{ flex: 1 }} onClick={() => handleGitAction('pull')}>Pull</button>
+                      <button type="button" className="btn-workspace btn-secondary" style={{ flex: 1 }} onClick={() => handleGitAction('commit')}>Commit</button>
+                      <button type="button" className="btn-workspace btn-primary" style={{ flex: 1 }} onClick={() => handleGitAction('push')}>Push</button>
                     </div>
                   </div>
-                </div>
+                </>
               )}
 
-              {activeTab === 'ai' && (
-                <div className="ed-pane">
-                  <div className="ed-pane-head">
-                    <h2 className="ed-pane-title"><Bot className="w-4 h-4" /> AI Helper</h2>
+              {activeSidebar === 'run' && (
+                <>
+                  <div className="ed-sidebar-head">
+                    <span className="ed-sidebar-title">Run & Deploy</span>
+                    <div className="ed-sidebar-actions">
+                      <button type="button" className="ed-sidebar-btn" onClick={loadDeployments} title="Refresh deployments"><RefreshCw className="w-3.5 h-3.5" /></button>
+                    </div>
                   </div>
-                  <div className="ed-pane-body">
-                    <div className="ed-chat" style={{ flex: 1, maxHeight: 'none' }}>
-                      {aiMessages.length === 0 ? <p className="ed-chat-gap">Ask AI about your code, get completions, or request refactors.</p> : aiMessages.map((m, i) => (
+                  <div className="ed-sidebar-body">
+                    <div className="ed-stat">
+                      <span className="ed-badge-dot" style={{ background: blockCount ? '#e5b84a' : '#28c840' }} />
+                      {blockCount ? `${blockCount} language(s) locked on your tier` : 'All languages unlocked'}
+                    </div>
+                    <button type="button" className="btn-workspace btn-primary" onClick={handleSandboxStart}>
+                      <Box className="w-4 h-4" /> Start Sandbox
+                    </button>
+                    {sandboxUrl && (
+                      <button type="button" className="btn-workspace btn-secondary" onClick={() => setPanel('preview')}>
+                        <Eye className="w-4 h-4" /> Open Live Preview
+                      </button>
+                    )}
+                    <div className="ed-sidebar-title" style={{ padding: '0.1rem 0.55rem' }}>Deployments</div>
+                    {deployments.length === 0 ? (
+                      <p className="text-xs" style={{ color: '#6e6e6e', padding: '0.2rem 0.55rem' }}>Nothing deployed yet</p>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        {deployments.slice(0, 4).map((d, i) => (
+                          <div key={i} className="ed-scm-file">
+                            <span className="ed-badge-dot" style={{ background: d.status === 'success' ? '#28c840' : d.status === 'failed' ? '#f87171' : '#e5b84a' }} />
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.subdomain ? `${d.subdomain}.buildrshq.dev` : d._id || 'Deployment'}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <button type="button" className="btn-workspace btn-secondary" onClick={handleDeploy}>
+                      <Rocket className="w-4 h-4" /> Deploy Project
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {activeSidebar === 'live' && (
+                <>
+                  <div className="ed-sidebar-head">
+                    <span className="ed-sidebar-title">Live Share</span>
+                    <div className="ed-sidebar-actions"></div>
+                  </div>
+                  <div className="ed-sidebar-body">
+                    <div className="ed-stat">
+                      <span className="ed-badge-dot" style={{ background: '#28c840' }} />
+                      {collaborators.length} collaborator(s) · {Object.keys(remoteCursors).length} remote cursor(s)
+                    </div>
+                    <div className="ed-stat" style={{ lineHeight: 1.8 }}>
+                      <span style={{ color: '#6e6e6e' }}>Invite link</span>
+                      <input
+                        readOnly
+                        value={selectedFile ? `${window.location.origin}/editor?file=${selectedFile._id}` : `${window.location.origin}/editor`}
+                        onFocus={(e) => e.target.select()}
+                        style={{ width: '100%', background: 'transparent', border: 'none', outline: 'none', color: '#d4d4d4', fontSize: '0.68rem' }}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      className="btn-workspace btn-primary"
+                      onClick={() => {
+                        navigator.clipboard?.writeText(selectedFile ? `${window.location.origin}/editor?file=${selectedFile._id}` : `${window.location.origin}/editor`);
+                        setStatus({ type: 'success', msg: 'Invite link copied' });
+                        setTimeout(() => setStatus(null), 2000);
+                      }}
+                    >
+                      Copy Link
+                    </button>
+                    <div className="ed-sidebar-title" style={{ padding: '0.1rem 0.55rem' }}>Active</div>
+                    {collaborators.length === 0 ? (
+                      <p className="text-xs" style={{ color: '#6e6e6e', padding: '0.2rem 0.55rem' }}>No active collaborators yet</p>
+                    ) : (
+                      collaborators.map((c, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.35rem 0.55rem' }}>
+                          <div className="ed-member-av" style={{ background: 'rgba(47,214,230,0.15)', color: '#2fd6e6', width: 26, height: 26, fontSize: '0.7rem' }}>{c.name?.[0] || 'U'}</div>
+                          <div style={{ minWidth: 0 }}>
+                            <div className="text-xs" style={{ color: '#d4d4d4', fontWeight: 600 }}>{c.name || 'Anonymous'}</div>
+                            {c.email && <div className="text-xs" style={{ color: '#6e6e6e' }}>{c.email}</div>}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                    {Object.values(remoteCursors).filter((rc) => rc.userName !== (user?.fullName || user?.name)).map((rc, i) => (
+                      <div key={`cursor-${i}`} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.35rem 0.55rem' }}>
+                        <div className="ed-member-av" style={{ background: 'rgba(167,139,250,0.15)', color: '#a78bfa', width: 26, height: 26, fontSize: '0.7rem' }}>{(rc.userName || 'U')[0]}</div>
+                        <div className="text-xs" style={{ color: '#8c8c8c' }}>{rc.userName} @ line {rc.cursor?.line}, col {rc.cursor?.column}</div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {activeSidebar === 'ai' && (
+                <>
+                  <div className="ed-sidebar-head">
+                    <span className="ed-sidebar-title">AI Assistant</span>
+                    <div className="ed-sidebar-actions"></div>
+                  </div>
+                  <div className="ed-sidebar-body is-ai">
+                    <div className="ed-chat">
+                      {aiMessages.length === 0 ? (
+                        <div className="ed-empty">
+                          <Bot className="w-6 h-6" />
+                          <p className="text-xs">Ask about your code, get completions, or request refactors.</p>
+                        </div>
+                      ) : aiMessages.map((m, i) => (
                         <div key={i} className={`ed-chat-bubble ${m.role === 'user' ? 'is-user' : 'is-ai'}`}>
                           {m.content}
                         </div>
                       ))}
                       {aiLoading && <div className="ed-chat-gap" style={{ color: '#2fd6e6' }}>Thinking...</div>}
                     </div>
-                    <form onSubmit={handleAiHelperSend} className="ed-composer" style={{ padding: 0, paddingTop: '0.6rem', borderTop: 'none' }}>
-                      <input value={aiInput} onChange={(e) => setAiInput(e.target.value)} placeholder="Ask AI to explain, refactor, or generate code..." />
-                      <button type="submit" disabled={aiLoading || !aiInput.trim()} className="btn-workspace btn-primary" style={{ minHeight: 0, padding: '0.5rem 0.85rem' }}><Bot className="w-4 h-4" /></button>
+                    <form onSubmit={handleAiHelperSend} className="ed-composer">
+                      <input value={aiInput} onChange={(e) => setAiInput(e.target.value)} placeholder="Ask AI to explain or refactor..." />
+                      <button type="submit" disabled={aiLoading || !aiInput.trim()} className="btn-workspace btn-primary" style={{ minHeight: 0, padding: '0.45rem 0.7rem' }}>
+                        <Bot className="w-4 h-4" />
+                      </button>
                     </form>
                   </div>
-                </div>
+                </>
               )}
 
-              {activeTab === 'collab' && (
-                <div className="ed-pane">
-                  <div className="ed-pane-head">
-                    <h2 className="ed-pane-title"><Users className="w-4 h-4" /> Collaboration</h2>
+              {activeSidebar === 'extensions' && (
+                <>
+                  <div className="ed-sidebar-head">
+                    <span className="ed-sidebar-title">Extensions</span>
+                    <div className="ed-sidebar-actions"></div>
                   </div>
-                  <div className="ed-pane-body" style={{ overflowY: 'auto' }}>
-                    <div className="ed-panel">
-                      <p className="text-xs mb-2" style={{ color: 'var(--ws-text-muted)' }}>Invite others to edit this file in real time.</p>
-                      <div className="ed-invite-row">
-                        <input readOnly value={selectedFile ? `${window.location.origin}/editor?file=${selectedFile._id}` : `${window.location.origin}/editor`} onFocus={(e) => e.target.select()} />
-                        <button type="button" className="btn-workspace btn-primary" onClick={() => { navigator.clipboard?.writeText(selectedFile ? `${window.location.origin}/editor?file=${selectedFile._id}` : `${window.location.origin}/editor`); setStatus({ type: 'success', msg: 'Invite link copied' }); setTimeout(() => setStatus(null), 2000); }}>Copy Link</button>
+                  <div className="ed-sidebar-body">
+                    <div className="ed-stat">
+                      <span className="ed-badge-dot" style={{ background: blockCount ? '#e5b84a' : '#28c840' }} />
+                      Environment: <b>{tier || subscription?.tier || 'Free'}</b> · {extList.length}/{languages.length || '—'} languages active
+                    </div>
+                    <div className="ed-sidebar-title" style={{ padding: '0.1rem 0.55rem' }}>Productivity</div>
+                    {FEATURE_MODULES.map((m) => (
+                      <div key={m.id} className="ed-ext-item">
+                        <div className="ed-ext-ico"><m.icon className="w-4 h-4" /></div>
+                        <div style={{ minWidth: 0 }}>
+                          <div className="ed-ext-name">{m.name}</div>
+                          <div className="ed-ext-sub">{m.sub}</div>
+                        </div>
+                        <span className="pill pill-mono" style={{ marginLeft: 'auto', background: 'rgba(52,211,153,0.12)', color: '#7bd197' }}>on</span>
                       </div>
-                    </div>
-                    <p className="text-sm mb-2" style={{ color: 'var(--ws-text-muted)' }}>Active collaborators ({collaborators.length}):</p>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
-                      {collaborators.length === 0 ? <p className="text-sm" style={{ color: 'var(--ws-text-faint)' }}>No active collaborators yet</p> : collaborators.map((c, i) => (
-                        <div key={i} className="ed-member">
-                          <div className="ed-member-av" style={{ background: 'rgba(47,214,230,0.15)', color: '#2fd6e6' }}>{c.name?.[0] || 'U'}</div>
-                          <div style={{ minWidth: 0 }}>
-                            <div className="text-sm font-medium" style={{ color: 'var(--ws-text)' }}>{c.name || 'Anonymous'}</div>
-                            <div className="text-xs" style={{ color: 'var(--ws-text-faint)' }}>{c.email || 'Connected'}</div>
+                    ))}
+                    <div className="ed-sidebar-title" style={{ padding: '0.1rem 0.55rem' }}>Languages</div>
+                    {languages.length === 0 ? (
+                      <p className="text-xs" style={{ color: '#6e6e6e', padding: '0.2rem 0.55rem' }}>No language catalog yet</p>
+                    ) : (
+                      languages.map((l) => (
+                        <div key={l.name} className="ed-ext-item" style={{ padding: '0.4rem 0.55rem' }}>
+                          <span className="ed-file-dot" style={{ background: LANG_COLORS()[l.name] || '#8c8c8c', width: 8, height: 8 }} />
+                          <div>
+                            <div className="ed-ext-name" style={{ fontSize: '0.74rem' }}>{l.name}</div>
                           </div>
-                          <span className="ed-live-dot" style={{ marginLeft: 'auto' }} />
+                          <span className={`pill pill-mono ${l.allowed === false ? 'is-free' : ''}`} style={{ marginLeft: 'auto', ...(l.allowed === false ? { background: 'rgba(248,113,113,0.12)', color: '#f87171' } : { background: 'rgba(52,211,153,0.12)', color: '#7bd197' }) }}>
+                            {l.allowed === false ? 'locked' : 'active'}
+                          </span>
                         </div>
-                      ))}
-                      {Object.values(remoteCursors).filter((rc) => rc.userName !== (user?.fullName || user?.name)).map((rc, i) => (
-                        <div key={`cursor-${i}`} className="ed-member" style={{ borderColor: 'rgba(167,139,250,0.3)' }}>
-                          <div className="ed-member-av" style={{ background: 'rgba(167,139,250,0.15)', color: '#a78bfa' }}>{(rc.userName || 'U')[0]}</div>
-                          <div className="text-xs" style={{ color: 'var(--ws-text-muted)' }}>{rc.userName} is editing at line {rc.cursor?.line}, col {rc.cursor?.column}</div>
-                          <span className="ed-live-dot" style={{ marginLeft: 'auto', background: '#a78bfa' }} />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {activeTab === 'git' && (
-                <div className="ed-pane">
-                  <div className="ed-pane-head">
-                    <h2 className="ed-pane-title"><GitBranch className="w-4 h-4" /> Version Control</h2>
-                  </div>
-                  <div className="ed-pane-body">
-                    <div className="ed-status-strip" style={{ display: 'block' }}>
-                      <div className="branch">Branch: {gitStatus?.branch || 'main'}</div>
-                      <div style={{ color: 'var(--ws-text-faint)' }}>{gitStatus ? `${gitStatus.ahead || 0} ahead, ${gitStatus.behind || 0} behind` : 'No git info'}</div>
-                      {gitStatus?.modified?.length > 0 && <div style={{ color: '#e5b84a' }}>{gitStatus.modified.length} modified files</div>}
-                    </div>
-                    <div style={{ display: 'flex', gap: '0.6rem' }}>
-                      <button type="button" onClick={() => handleGitAction('pull')} className="btn-workspace btn-secondary flex-1">Pull</button>
-                      <button type="button" onClick={() => handleGitAction('commit')} className="btn-workspace btn-secondary flex-1">Commit</button>
-                      <button type="button" onClick={() => handleGitAction('push')} className="btn-workspace btn-primary flex-1">Push</button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {activeTab === 'deploy' && (
-                <div className="ed-pane">
-                  <div className="ed-pane-head">
-                    <h2 className="ed-pane-title"><Rocket className="w-4 h-4" /> Deployments</h2>
-                  </div>
-                  <div className="ed-pane-body" style={{ overflowY: 'auto' }}>
-                    <div style={{ display: 'flex', gap: '0.6rem' }}>
-                      <button type="button" onClick={handleDeploy} className="btn-workspace btn-primary">Deploy Current Project</button>
-                      <button type="button" onClick={loadDeployments} className="btn-workspace btn-secondary">Refresh</button>
-                    </div>
-
-                    {showSubdomainInput && (
-                      <form onSubmit={confirmDeploy} className="ed-panel" style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                        <label className="ws-label" style={{ margin: 0 }}>Choose a subdomain</label>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <input
-                            type="text"
-                            value={deploySubdomain}
-                            onChange={(e) => setDeploySubdomain(e.target.value.replace(/[^a-z0-9-]/g, '-').toLowerCase())}
-                            placeholder="my-app"
-                            className="ws-input"
-                            style={{ fontFamily: 'ui-monospace, Menlo, Consolas, monospace' }}
-                            autoFocus
-                            required
-                            minLength={2}
-                          />
-                          <span className="text-sm whitespace-nowrap" style={{ color: 'var(--ws-text-faint)' }}>.buildrshq.dev</span>
-                        </div>
-                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                          <button type="submit" disabled={deploying || deploySubdomain.length < 2} className="btn-workspace btn-primary">
-                            {deploying ? 'Deploying...' : 'Deploy'}
-                          </button>
-                          <button type="button" onClick={() => setShowSubdomainInput(false)} className="btn-workspace btn-secondary">Cancel</button>
-                        </div>
-                      </form>
+                      ))
                     )}
+                  </div>
+                </>
+              )}
+            </aside>
+          )}
 
-                    {deployments.length === 0 ? <p className="text-sm" style={{ color: 'var(--ws-text-faint)' }}>No deployments yet</p> : deployments.map((d, i) => (
-                      <div key={i} className="ed-panel" style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
-                          <div style={{ minWidth: 0 }}>
-                            <div className="text-sm font-medium" style={{ color: 'var(--ws-text)' }}>
-                              {d.deployedUrl ? (
-                                <a href={d.deployedUrl} target="_blank" rel="noreferrer" style={{ color: '#2fd6e6', textDecoration: 'none' }}>{d.deployedUrl}</a>
-                              ) : d.subdomain ? (
-                                <span className="ed-topbar-repo">{d.subdomain}.buildrshq.dev</span>
-                              ) : (
-                                <span>{d._id || `Deploy #${i + 1}`}</span>
-                              )}
+          {/* ---- Editor group ---- */}
+          <div className="ed-main">
+            <div className="ed-tabsbar">
+              {openFiles.map((f) => {
+                const isActive = selectedFile?._id === f._id;
+                const fDirty = openDirtyRef.current[f._id] || (isActive && dirty);
+                return (
+                  <div key={f._id} className={`ed-tabhead ${isActive ? 'is-active' : ''}`} onClick={() => selectFile(f)} role="button">
+                    <span className="ed-file-dot" style={{ background: getFileIcon(f.name) }} />
+                    <span className="ed-tabname">{f.name}</span>
+                    {fDirty ? <span className="ed-tabdirty" /> : null}
+                    <button type="button" className="ed-tabclose" onClick={(e) => closeTab(f, e)} title="Close (⌘W)">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                );
+              })}
+              <div className="ed-tabsbar-right">
+                {selectedFile && (
+                  <>
+                    <button type="button" className="btn-workspace btn-secondary" onClick={() => handleDelete(selectedFile)} title="Delete file" style={{ color: '#f87171' }}>
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button type="button" className="btn-workspace btn-primary" onClick={handleSave} disabled={saving || !dirty}>
+                      <Save className="w-3.5 h-3.5" />{saving ? 'Saving...' : 'Save'}
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="ed-breadcrumb">
+              {selectedFile ? (
+                <>
+                  <FolderOpen className="w-3 h-3" style={{ color: '#2fd6e6' }} />
+                  <span>{selectedProject ? selectedProject.name : selectedRepo ? (selectedRepo.fullName || selectedRepo.name) : 'workspace'}</span>
+                  {filePathSegs.map((seg, i) => (
+                    <span key={`${seg}-${i}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <span className="ed-breadcrumb-sep">›</span>
+                      <span style={i === filePathSegs.length - 1 ? { color: '#d4d4d4' } : undefined}>{seg}</span>
+                    </span>
+                  ))}
+                </>
+              ) : (
+                <span style={{ color: '#6e6e6e' }}>No file open — select a file from the Explorer</span>
+              )}
+            </div>
+
+            <div className="ed-editor">
+              {status && (
+                <div className={`ed-alert ${status.type === 'success' ? 'ed-alert-success' : 'ed-alert-error'}`}>
+                  {status.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
+                  {status.msg}
+                </div>
+              )}
+              {!selectedFile ? (
+                <div className="ed-ide-empty">
+                  <FileCode className="w-8 h-8" />
+                  <p>Select a file to start editing</p>
+                  <button type="button" className="btn-workspace btn-primary" onClick={() => setShowNewModal(true)}>New File</button>
+                </div>
+              ) : (
+                <div className="ed-code-wrap">
+                  <MonacoEditor
+                    height="100%"
+                    language={monacoLanguage}
+                    value={content}
+                    onChange={handleEditorChange}
+                    onMount={handleEditorMount}
+                    theme="vs-dark"
+                    options={{
+                      fontSize: 13,
+                      minimap: { enabled: true },
+                      scrollBeyondLastLine: false,
+                      wordWrap: 'on',
+                      tabSize: 2,
+                      automaticLayout: true,
+                      bracketPairColorization: { enabled: true },
+                      cursorBlinking: 'smooth',
+                      smoothScrolling: true,
+                    }}
+                    loading={<div className="ed-ide-empty">Loading editor...</div>}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* ---- Bottom panel ---- */}
+            {panel && (
+              <div className={`ed-panel ${panel === 'deploy' ? 'is-deploy' : ''}`}>
+                <div className="ed-panelbar">
+                  {[
+                    { id: 'terminal', label: 'Terminal', icon: Terminal },
+                    { id: 'problems', label: 'Problems', icon: AlertCircle },
+                    { id: 'preview', label: 'Preview', icon: Eye },
+                    { id: 'deploy', label: 'Deployments', icon: Rocket },
+                  ].map((t) => (
+                    <button key={t.id} type="button" className={`ed-panel-tab ${panel === t.id ? 'is-active' : ''}`} onClick={() => setPanel(t.id)}>
+                      <t.icon className="w-3.5 h-3.5" /> {t.label}
+                      {t.id === 'problems' && blockCount > 0 && <span style={{ color: '#e5b84a' }}> {blockCount}</span>}
+                    </button>
+                  ))}
+                  <div className="ed-panel-actions">
+                    <button type="button" className="ed-panel-close" onClick={() => setPanel(null)} title="Close panel"><X className="w-4 h-4" /></button>
+                  </div>
+                </div>
+
+                <div className="ed-panel-body">
+                  {panel === 'terminal' && <div ref={terminalRef} className="ed-term-root" />}
+
+                  {panel === 'problems' && (
+                    <>
+                      <div className="ed-stat">
+                        <CheckCircle className="w-3.5 h-3.5 ed-status-ok" style={{ verticalAlign: '-2px', marginRight: '0.4rem' }} />
+                        0 errors · 0 warnings from compiler
+                      </div>
+                      {blockCount > 0 ? (
+                        <div className="ed-stat">
+                          <AlertCircle className="w-3.5 h-3.5" style={{ color: '#e5b84a', verticalAlign: '-2px', marginRight: '0.4rem' }} />
+                          {blockCount} language(s) unavailable on your current tier — upgrade to unlock {blockCount <= 1 ? 'it' : 'them'}.
+                        </div>
+                      ) : null}
+                      {modifiedCount > 0 && (
+                        <div className="ed-stat">
+                          <GitBranch className="w-3.5 h-3.5" style={{ color: '#e5b84a', verticalAlign: '-2px', marginRight: '0.4rem' }} />
+                          {modifiedCount} modified file(s) — commit them from Source Control.
+                        </div>
+                      )}
+                      {!blockCount && !modifiedCount && (
+                        <div className="ed-stat">All systems nominal. No problems to report.</div>
+                      )}
+                    </>
+                  )}
+
+                  {panel === 'preview' && (
+                    sandboxUrl ? (
+                      <iframe src={sandboxUrl} className="w-full flex-1" style={{ background: '#ffffff', border: 'none', borderRadius: '6px', minHeight: 0 }} title="Live preview" />
+                    ) : (
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', minHeight: 0, flex: 1 }}>
+                        <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          <span className="ed-sidebar-title">Figma Design</span>
+                          {figmaFiles.length === 0 ? (
+                            <div className="ed-stat" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.6rem' }}>
+                              <Layers className="w-6 h-6" style={{ color: '#6e6e6e' }} />
+                              <span>No Figma files connected</span>
+                              <a href="/integrations" className="btn-workspace btn-secondary">Connect Figma</a>
                             </div>
-                            <div className="text-xs" style={{ color: 'var(--ws-text-faint)' }}>
-                              {d.status} {(d.projectId?.name ? `• ${d.projectId.name}` : '')} • {d.createdAt ? new Date(d.createdAt).toLocaleString() : ''}
+                          ) : (
+                            <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                              {figmaFiles.map((f) => (
+                                <button key={f.key || f.id} type="button" className="ed-drop-item" onClick={() => setSelectedFigmaFile(f)}>
+                                  <Layers className="w-3.5 h-3.5" />
+                                  <span style={{ minWidth: 0 }}>
+                                    <span className="block truncate text-xs">{f.name || f.key}</span>
+                                    <span className="block text-xs" style={{ color: '#6e6e6e' }}>{f.last_modified ? new Date(f.last_modified).toLocaleDateString() : ''}</span>
+                                  </span>
+                                </button>
+                              ))}
                             </div>
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexShrink: 0 }}>
-                            <span className="pill pill-mono" style={
-                              d.status === 'success' ? { background: 'rgba(52,211,153,0.12)', color: '#34d399' } :
-                              d.status === 'failed' ? { background: 'rgba(248,113,113,0.12)', color: '#f87171' } :
-                              d.status === 'building' || d.status === 'deploying' ? { background: 'rgba(229,184,74,0.12)', color: '#e5b84a' } :
-                              { background: 'rgba(255,255,255,0.05)', color: '#9aa1ae' }
-                            }>{d.status}</span>
-                            {(d.status === 'success' || d.status === 'failed') && (
-                              <button type="button" onClick={() => stopDeployment(d._id, d.subdomain)} className="text-xs" style={{ color: '#f87171' }}>Stop</button>
+                          )}
+                        </div>
+                        <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          <span className="ed-sidebar-title">Code</span>
+                          <div className="ed-code-wrap">
+                            {selectedFile ? (
+                              <MonacoEditor height="100%" language={monacoLanguage} value={content} onChange={handleEditorChange} theme="vs-dark"
+                                options={{ fontSize: 12, minimap: { enabled: false }, automaticLayout: true }} />
+                            ) : (
+                              <div className="ed-ide-empty">Select a file to preview</div>
                             )}
                           </div>
                         </div>
-                        {d.status === 'failed' && d.errorMessage && (
-                          <div className="ed-alert ed-alert-error" style={{ fontSize: '0.72rem', padding: '0.5rem 0.7rem' }}>
-                            Error: {d.errorMessage}
-                          </div>
-                        )}
                       </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+                    )
+                  )}
 
-              {activeTab === 'sandbox' && (
-                <div className="ed-pane">
-                  <div className="ed-pane-head">
-                    <h2 className="ed-pane-title"><Box className="w-4 h-4" /> Sandbox</h2>
-                  </div>
-                  <div className="ed-pane-body">
-                    <div style={{ display: 'flex', gap: '0.6rem' }}>
-                      <button type="button" onClick={handleSandboxStart} className="btn-workspace btn-primary">Start Sandbox</button>
-                      {sandboxUrl && <a href={sandboxUrl} target="_blank" rel="noreferrer" className="btn-workspace btn-secondary">Open in new tab</a>}
-                    </div>
-                    {sandboxUrl ? <iframe src={sandboxUrl} className="w-full bg-white rounded-[10px] border border-[rgba(255,255,255,0.09)]" style={{ flex: 1, minHeight: '440px' }} title="Sandbox" /> : <div className="ed-panel flex-1 min-h-[440px] flex items-center justify-center" style={{ color: 'var(--ws-text-faint)' }}>Sandbox not started</div>}
-                  </div>
-                </div>
-              )}
+                  {panel === 'deploy' && (
+                    <>
+                      <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <button type="button" className="btn-workspace btn-primary" onClick={handleDeploy}>
+                          <Rocket className="w-4 h-4" /> New Deployment
+                        </button>
+                        <button type="button" className="btn-workspace btn-secondary" onClick={loadDeployments}>
+                          <RefreshCw className="w-3.5 h-3.5" /> Refresh
+                        </button>
+                        <span className="text-xs" style={{ color: '#6e6e6e' }}>One-click static deploy → .buildrshq.dev</span>
+                      </div>
 
-              {tier && languages.length > 0 && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.72rem', fontFamily: 'ui-monospace, Menlo, Consolas, monospace', color: 'var(--ws-text-faint)' }}>
-                  <span>Tier: <span style={{ color: '#2fd6e6' }}>{tier}</span></span>
-                  <span>·</span>
-                  <span>{languages.filter((l) => l.allowed).length} languages available</span>
-                  <span>·</span>
-                  <span>{dirty ? 'Unsaved changes' : 'All changes saved'}</span>
-                </div>
-              )}
-            </div>
+                      {showSubdomainInput && (
+                        <form onSubmit={confirmDeploy} className="ed-stat" style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                          <label className="ws-label" style={{ color: '#8c8c8c' }}>Choose a subdomain</label>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <input type="text" value={deploySubdomain} onChange={(e) => setDeploySubdomain(e.target.value.replace(/[^a-z0-9-]/g, '-').toLowerCase())}
+                              placeholder="my-app" className="ws-input"
+                              style={{ fontFamily: 'ui-monospace, Menlo, Consolas, monospace', background: '#1e1e1e', borderColor: '#3c3c3c' }}
+                              autoFocus required minLength={2} />
+                            <span className="text-sm whitespace-nowrap" style={{ color: '#6e6e6e' }}>.buildrshq.dev</span>
+                            <button type="submit" disabled={deploying || deploySubdomain.length < 2} className="btn-workspace btn-primary">
+                              {deploying ? 'Deploying...' : 'Deploy'}
+                            </button>
+                            <button type="button" onClick={() => setShowSubdomainInput(false)} className="btn-workspace btn-secondary">
+                              <X className="w-3.5 h-3.5" /> Cancel
+                            </button>
+                          </div>
+                        </form>
+                      )}
 
-            {/* Right AI Helper Drawer */}
-            {showAiHelper && (
-              <div className="ed-drawer">
-                <div className="ed-drawer-head">
-                  <h3 className="ed-drawer-title"><Bot className="w-4 h-4" /> AI Helper</h3>
-                  <button type="button" onClick={() => setShowAiHelper(false)} className="text-gray-400 hover:text-white"><X className="w-4 h-4" /></button>
+                      {deployments.length === 0 ? (
+                        <div className="ed-stat">No deployments yet — deploy your first project.</div>
+                      ) : (
+                        deployments.map((d, i) => (
+                          <div key={i} className="ed-stat" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
+                            <div style={{ minWidth: 0 }}>
+                              <div className="text-sm" style={{ color: d.deployedUrl ? '#2fd6e6' : '#d4d4d4' }}>
+                                {d.deployedUrl ? (
+                                  <a href={d.deployedUrl} target="_blank" rel="noreferrer" style={{ color: '#2fd6e6' }}>{d.deployedUrl}</a>
+                                ) : d.subdomain ? (
+                                  <span>{d.subdomain}.buildrshq.dev</span>
+                                ) : (
+                                  <span>{d._id || `Deploy #${i + 1}`}</span>
+                                )}
+                              </div>
+                              <div className="text-xs" style={{ color: '#6e6e6e' }}>
+                                {d.status} {(d.projectId?.name ? `• ${d.projectId.name}` : '')} • {d.createdAt ? new Date(d.createdAt).toLocaleString() : ''}
+                              </div>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexShrink: 0 }}>
+                              <span className="pill pill-mono" style={
+                                d.status === 'success' ? { background: 'rgba(52,211,153,0.12)', color: '#7bd197' } :
+                                d.status === 'failed' ? { background: 'rgba(248,113,113,0.12)', color: '#f87171' } :
+                                d.status === 'building' || d.status === 'deploying' ? { background: 'rgba(229,184,74,0.12)', color: '#e5b84a' } :
+                                { background: 'rgba(255,255,255,0.06)', color: '#8c8c8c' }
+                              }>{d.status}</span>
+                              {(d.status === 'success' || d.status === 'failed') && (
+                                <button type="button" onClick={() => stopDeployment(d._id, d.subdomain)} className="text-xs" style={{ color: '#f87171' }}>Stop</button>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      )}
+</>
+                  )}
                 </div>
-                <div className="ed-chat">
-                  {aiMessages.length === 0 ? <p className="ed-chat-gap">Ask anything about your code</p> : aiMessages.map((m, i) => (
-                    <div key={i} className={`ed-chat-bubble ${m.role === 'user' ? 'is-user' : 'is-ai'}`}>{m.content}</div>
-                  ))}
-                  {aiLoading && <div className="ed-chat-gap" style={{ color: '#2fd6e6' }}>Thinking...</div>}
-                </div>
-                <form onSubmit={handleAiHelperSend} className="ed-composer">
-                  <input value={aiInput} onChange={(e) => setAiInput(e.target.value)} placeholder="Ask AI..." />
-                  <button type="submit" className="btn-workspace btn-primary" style={{ minHeight: 0, padding: '0.5rem 0.85rem' }}><Bot className="w-4 h-4" /></button>
-                </form>
               </div>
             )}
           </div>
+        </div>
 
-          {/* Bottom Terminal Drawer */}
-          {showTerminal && (
-            <div className="ed-term">
-              <div className="ed-term-head">
-                <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Terminal className="w-4 h-4" /> Terminal</span>
-                <button type="button" onClick={() => setShowTerminal(false)} className="text-gray-400 hover:text-white"><X className="w-4 h-4" /></button>
-              </div>
-              <div ref={terminalRef} className="h-64 overflow-hidden" />
-            </div>
-          )}
-
-          {/* Status Bar */}
-          <div className="ed-statusbar">
+        {/* ---- Status bar ---- */}
+          <footer className="ed-statusbar">
             <div className="ed-status-left">
-              <GitBranch className="w-3 h-3" />
-              <span>{gitStatus?.branch || 'main'}</span>
-              {gitStatus?.modified?.length > 0 && <span className="ed-status-err">{gitStatus.modified.length}</span>}
+              <span className="ed-status-icon" title="Branch">
+                <GitBranch className="w-3 h-3" />
+                <span>{gitStatus?.branch || 'main'}</span>
+              </span>
+              <span className="ed-status-icon" title="Git sync" onClick={() => handleGitAction('status')}>
+                <RefreshCw className={`w-3 h-3 ${saving || loading ? 'animate-spin' : ''}`} />
+                {modifiedCount > 0 && <span data-badge={modifiedCount}>MC</span>}
+              </span>
+              <span className="ed-status-icon" title="Live collaborators">
+                <Users className="w-3 h-3" />
+                <span>{collaborators.length}{Object.keys(remoteCursors).length > collaborators.length ? '+' : ''}</span>
+              </span>
             </div>
             <div className="ed-status-right">
-              {status && (
-                <span className="ed-status-item">
-                  {status.type === 'success' ? <CheckCircle className="w-3 h-3 ed-status-ok" /> : <XCircle className="w-3 h-3 ed-status-err" />}
-                  <span className={status.type === 'success' ? 'ed-status-ok' : 'ed-status-err'}>{status.msg}</span>
-                </span>
-              )}
-              <span className="ed-status-item">{selectedFile ? (selectedFile.language || detectLanguage(selectedFile.name) || 'plaintext').toUpperCase() : ''}</span>
-              <span className="ed-status-item">Ln {selectedFile ? 1 : '-'}, Col {selectedFile ? 1 : '-'}</span>
+              {dirty && <span className="ed-status-icon" style={{ color: '#e5b84a' }} title="Unsaved changes">● Modified</span>}
+              <button type="button" className="ed-status-item" onClick={() => setPaletteOpen(true)} title="Command Palette (⌘P)">
+                <Search className="w-3 h-3" /> ⌘P
+              </button>
+              <span className="ed-status-item">Ln {cursorPos.line}, Col {cursorPos.col}</span>
+              <span className="ed-status-item">{(selectedFile?.language || detectLanguage(selectedFile?.name) || 'text').toUpperCase()}</span>
               <span className="ed-status-item">UTF-8</span>
-              <span className="ed-status-item">Spaces: 4</span>
-              <span className={`ed-tier-pill ${subscription?.tier === 'enterprise' ? '' : subscription?.tier === 'professional' ? 'is-pro' : 'is-free'}`}>
+              <span className="ed-status-item">Spaces: 2</span>
+              <span className={`ed-tier-badge ${subscription?.tier === 'professional' ? 'is-pro' : subscription?.tier === 'enterprise' ? '' : 'is-free'}`}>
                 {subscription?.tier === 'enterprise' ? 'Enterprise' : subscription?.tier === 'professional' ? 'Pro' : 'Free'}
               </span>
             </div>
-          </div>
-        </main>
-      </div>
+          </footer>
+        </div>
 
       {showNewModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -1312,7 +1699,7 @@ async function handleTerminalCommand(cmd, term) {
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', paddingTop: '0.5rem' }}>
                 <button type="button" className="btn-workspace btn-secondary" onClick={() => setShowNewModal(false)}>Cancel</button>
                 <button type="submit" className="btn-workspace btn-primary flex items-center gap-2" disabled={creating || !newFileName.trim()}>
-                  <Plus className="w-4 h-4" />
+                  <FilePlus className="w-4 h-4" />
                   {creating ? 'Creating...' : 'Create File'}
                 </button>
               </div>
@@ -1320,6 +1707,7 @@ async function handleTerminalCommand(cmd, term) {
           </div>
         </div>
       )}
+
       {showNewFolderModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="ws-modal w-full max-w-lg">
@@ -1352,6 +1740,82 @@ async function handleTerminalCommand(cmd, term) {
           </div>
         </div>
       )}
+
+      {paletteOpen && (
+        <div className="ed-palette-backdrop" onClick={() => setPaletteOpen(false)}>
+          <div className="ed-palette" onClick={(e) => e.stopPropagation()}>
+            <div className="ed-palette-head">
+              <Search className="w-4 h-4" />
+              <input
+                autoFocus
+                className="ed-palette-input"
+                placeholder="Type a command or file name..."
+                value={paletteQuery}
+                onChange={(e) => { setPaletteQuery(e.target.value); setPaletteIndex(0); }}
+                onKeyDown={(e) => {
+                  if (e.key === 'ArrowDown') { e.preventDefault(); setPaletteIndex((i) => Math.min(i + 1, paletteEntries.length - 1)); }
+                  else if (e.key === 'ArrowUp') { e.preventDefault(); setPaletteIndex((i) => Math.max(i - 1, 0)); }
+                  else if (e.key === 'Enter') { e.preventDefault(); const ent = paletteEntries[paletteIndex]; if (ent) runPaletteEntry(ent); }
+                  else if (e.key === 'Escape') { setPaletteOpen(false); }
+                }}
+              />
+            </div>
+            <div className="ed-palette-list">
+              {paletteEntries.length === 0 ? (
+                <div className="ed-palette-empty">No matching commands or files</div>
+              ) : (
+                paletteEntries.map((ent, i) => (
+                  <button key={`${ent.kind}-${ent.label}-${i}`} type="button"
+                    className={`ed-palette-item ${i === paletteIndex ? 'is-hl' : ''}`}
+                    onMouseEnter={() => setPaletteIndex(i)}
+                    onClick={() => runPaletteEntry(ent)}>
+                    <ent.icon className="w-4 h-4" />
+                    <span>{ent.label}</span>
+                    <span className="ed-palette-kind">{ent.kind}</span>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {aboutOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setAboutOpen(false)}>
+          <div className="ws-modal w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-5 border-b border-[rgba(255,255,255,0.09)]">
+              <div className="flex items-center gap-2.5">
+                <span className="card-ico">
+                  <Puzzle className="w-4 h-4" />
+                </span>
+                <h2 className="ws-modal-title">Buildrs HQ IDE</h2>
+              </div>
+              <button type="button" onClick={() => setAboutOpen(false)} className="text-muted hover:text-white"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <p className="text-sm font-medium mb-1" style={{ color: '#eceef1' }}>Version 1.0 · Code editor with Live Share</p>
+                <p className="text-xs" style={{ color: '#9aa1ae', lineHeight: 1.6 }}>
+                  Enterprise editor: version control, one-click deploys, sandboxed terminal,
+                  AI assistance and real-time collaboration.
+                </p>
+              </div>
+              <div>
+                <p className="ws-label">Keyboard Shortcuts</p>
+                <div className="ed-stat" style={{ lineHeight: 2 }}>
+                  ⌘S Save · ⌘B Toggle Sidebar · ⌘P Command Palette<br />
+                  ⌘` Terminal · ⌘W Close Tab · ⌘N New File
+                </div>
+              </div>
+              <div className="flex justify-end gap-3">
+                <a href="/support" className="btn-workspace btn-secondary">Contact Support</a>
+                <button type="button" className="btn-workspace btn-primary" onClick={() => setAboutOpen(false)}>Got it</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <ConfirmDialog
         isOpen={!!confirmDiscard}
         onClose={() => setConfirmDiscard(null)}
@@ -1359,6 +1823,15 @@ async function handleTerminalCommand(cmd, term) {
         title="Unsaved Changes"
         message="You have unsaved changes. Discard them and switch files?"
         confirmText="Discard"
+        variant="warning"
+      />
+      <ConfirmDialog
+        isOpen={!!confirmClose}
+        onClose={() => setConfirmClose(null)}
+        onConfirm={handleConfirmClose}
+        title="Unsaved Changes"
+        message={`Close "${confirmClose?.name || 'this file'}" without saving?`}
+        confirmText="Close"
         variant="warning"
       />
       <ConfirmDialog
@@ -1373,5 +1846,3 @@ async function handleTerminalCommand(cmd, term) {
     </AuthGuard>
   );
 }
-
-
