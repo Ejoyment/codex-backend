@@ -4,20 +4,20 @@ import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch } from '../lib/api';
-import { Plus, X, Send, ChevronDown, ChevronRight, MessageSquare } from 'lucide-react';
+import { Plus, X, Send, ChevronDown, ChevronRight, MessageSquare, Loader2 } from 'lucide-react';
 
-const STATUS_STYLES = {
-  open: 'bg-blue-500/20 text-blue-400 border border-blue-500/30',
-  'in-progress': 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30',
-  resolved: 'bg-green-500/20 text-green-400 border border-green-500/30',
-  closed: 'bg-gray-500/20 text-gray-400 border border-gray-500/30',
+const STATUS_TINTS = {
+  open: { bg: 'rgba(47,214,230,0.12)', text: '#2fd6e6' },
+  'in-progress': { bg: 'rgba(229,184,74,0.12)', text: '#e5b84a' },
+  resolved: { bg: 'rgba(52,211,153,0.12)', text: '#34d399' },
+  closed: { bg: 'rgba(154,161,174,0.1)', text: '#9aa1ae' },
 };
 
-const PRIORITY_STYLES = {
-  low: 'text-gray-400',
-  medium: 'text-yellow-400',
-  high: 'text-orange-400',
-  urgent: 'text-red-400',
+const PRIORITY_TINTS = {
+  low: '#9aa1ae',
+  medium: '#2fd6e6',
+  high: '#e5b84a',
+  urgent: '#f87171',
 };
 
 function CreateTicketModal({ onClose, onCreated }) {
@@ -52,15 +52,20 @@ function CreateTicketModal({ onClose, onCreated }) {
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[9999] p-4" onClick={onClose}>
-      <div className="ws-modal p-8 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
-        <div className="flex justify-between items-center mb-6">
-          <h3 className="ws-modal-title">New Support Ticket</h3>
+      <div className="ws-modal p-6 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center gap-2.5">
+            <span className="card-ico">
+              <MessageSquare className="w-4 h-4" />
+            </span>
+            <h3 className="ws-modal-title">New Support Ticket</h3>
+          </div>
           <button type="button" onClick={onClose} className="text-[#565d6b] hover:text-[#eceef1]">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {error && <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">{error}</div>}
+        {error && <div className="std-alert std-alert-error mb-4">{error}</div>}
 
         <form onSubmit={handleSubmit}>
           <div className="mb-4">
@@ -104,7 +109,7 @@ function CreateTicketModal({ onClose, onCreated }) {
           <button
             type="submit"
             disabled={submitting || !subject.trim() || !description.trim()}
-            className="w-full px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium disabled:opacity-50 transition-colors"
+            className="btn-workspace btn-primary w-full justify-center"
           >
             {submitting ? 'Creating...' : 'Create Ticket'}
           </button>
@@ -118,6 +123,9 @@ function TicketCard({ ticket, onReply }) {
   const [expanded, setExpanded] = useState(false);
   const [reply, setReply] = useState('');
   const [sending, setSending] = useState(false);
+
+  const statusTint = STATUS_TINTS[ticket.status] || STATUS_TINTS.open;
+  const priorityColor = PRIORITY_TINTS[ticket.priority] || '#9aa1ae';
 
   const handleSendReply = async () => {
     if (!reply.trim()) return;
@@ -138,76 +146,74 @@ function TicketCard({ ticket, onReply }) {
   };
 
   return (
-    <div className="bg-navy-light rounded-lg border border-gray-700 overflow-hidden">
+    <div className="sup-card">
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
-        className="w-full text-left px-5 py-4 flex items-center gap-4 hover:bg-white/5 transition-colors"
+        className="sup-head-toggle"
       >
-        <span className="text-gray-400 shrink-0">
+        <span className="sup-chev">
           {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
         </span>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-3 mb-1">
-            <span className="font-medium text-white truncate">{ticket.subject}</span>
-            <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_STYLES[ticket.status] || STATUS_STYLES.open}`}>
+          <div className="sup-subject-row">
+            <span className="sup-subject">{ticket.subject}</span>
+            <span className="pill flex-shrink-0" style={{ background: statusTint.bg, color: statusTint.text }}>
               {ticket.status}
             </span>
           </div>
-          <div className="flex items-center gap-4 text-xs text-gray-400">
-            <span className={PRIORITY_STYLES[ticket.priority] || ''}>{ticket.priority}</span>
-            <span>{ticket.messages?.length || 0} messages</span>
+          <div className="sup-meta-row">
+            <span className="sup-prio" style={{ color: priorityColor }}>{ticket.priority}</span>
+            <span>{ticket.messages?.length || 0} message{(ticket.messages?.length || 0) !== 1 && 's'}</span>
             <span>{new Date(ticket.createdAt).toLocaleDateString()}</span>
           </div>
         </div>
       </button>
 
       {expanded && (
-        <div className="border-t border-gray-700 px-5 py-4">
+        <div className="sup-body">
           {ticket.description && (
-            <p className="text-sm text-gray-300 mb-4 whitespace-pre-wrap">{ticket.description}</p>
+            <p className="sup-desc">{ticket.description}</p>
           )}
 
-          <div className="space-y-3 max-h-80 overflow-y-auto mb-4">
+          <div className="sup-thread">
             {ticket.messages?.length > 0 ? (
-              ticket.messages.map((msg, i) => (
-                <div
-                  key={msg._id || i}
-                  className={`p-3 rounded-lg text-sm ${msg.sender === 'user' || msg.sender === 'customer' ? 'bg-blue-500/10 ml-8' : 'bg-gray-700/50 mr-8'}`}
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-medium text-gray-400">
-                      {msg.sender === 'user' || msg.sender === 'customer' ? 'You' : 'Support'}
-                    </span>
-                    {msg.createdAt && (
-                      <span className="text-xs text-gray-500">{new Date(msg.createdAt).toLocaleString()}</span>
-                    )}
+              ticket.messages.map((msg, i) => {
+                const isUser = msg.sender === 'user' || msg.sender === 'customer';
+                return (
+                  <div key={msg._id || i} className={`sup-bubble ${isUser ? 'is-user' : 'is-support'}`}>
+                    <div className="sup-bubble-head">
+                      <b>{isUser ? 'You' : 'Support'}</b>
+                      {msg.createdAt && (
+                        <span>{new Date(msg.createdAt).toLocaleString()}</span>
+                      )}
+                    </div>
+                    <p className="sup-bubble-text">{msg.content || msg.text}</p>
                   </div>
-                  <p className="text-gray-200 whitespace-pre-wrap">{msg.content || msg.text}</p>
-                </div>
-              ))
+                );
+              })
             ) : (
-              <p className="text-sm text-gray-500 text-center py-2">No messages yet.</p>
+              <p className="sup-thread-empty">No messages yet.</p>
             )}
           </div>
 
           {ticket.status !== 'closed' && (
-            <div className="flex gap-2">
+            <div className="sup-composer">
               <input
                 type="text"
                 value={reply}
                 onChange={(e) => setReply(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="Type a reply..."
-                className="flex-1 px-4 py-2 bg-navy border border-gray-600 rounded-lg text-white text-sm focus:outline-none focus:border-blue-accent"
+                className="ws-input flex-1"
               />
               <button
                 type="button"
                 onClick={handleSendReply}
                 disabled={sending || !reply.trim()}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium disabled:opacity-50 transition-colors flex items-center gap-2"
+                className="btn-workspace btn-primary text-xs flex items-center gap-2"
               >
-                <Send className="w-4 h-4" />
+                <Send className="w-3 h-3" />
                 {sending ? 'Sending...' : 'Send'}
               </button>
             </div>
@@ -225,6 +231,16 @@ export default function Support() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [clock, setClock] = useState('');
+
+  useEffect(() => {
+    const tick = () => {
+      setClock(new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }));
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
 
   const loadTickets = useCallback(async () => {
     try {
@@ -266,6 +282,8 @@ export default function Support() {
     }
   };
 
+  const openCount = tickets.filter((t) => t.status === 'open' || t.status === 'in-progress').length;
+
   return (
     <AuthGuard>
       <Head>
@@ -273,12 +291,24 @@ export default function Support() {
         <link rel="icon" href="/buildrs.png" />
       </Head>
 
-      <div className="min-h-screen bg-navy flex">
+      <div className="workspace-container">
         <Sidebar user={user} subscription={subscription} />
 
-        <main className="workspace-main flex-1 ml-64">
-          <header className="workspace-header">
-            <h1 className="text-xl font-bold">Support</h1>
+        <main className="workspace-main">
+          <header className="workspace-header dash-header">
+            <div>
+              <p className="dash-crumb">
+                BuildrsHQ <span className="sep">/</span> Support
+              </p>
+              <h1 className="dash-title">Support</h1>
+              <div className="dash-statusline">
+                <span className="status-indicator status-online" />
+                <span>
+                  {tickets.length ? `${openCount} open · ${tickets.length} total` : 'Help center'}
+                </span>
+                <span className="dash-clock">· {clock || '—:——:——'}</span>
+              </div>
+            </div>
             <button
               type="button"
               className="btn-workspace btn-primary"
@@ -291,44 +321,49 @@ export default function Support() {
 
           <div className="workspace-content">
             {loading && (
-              <div className="flex items-center justify-center py-20">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
+              <div className="dash-empty" style={{ paddingTop: '4rem' }}>
+                <div className="dash-empty-ico">
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                </div>
+                <p className="dash-empty-title">Loading tickets...</p>
               </div>
             )}
 
             {!loading && error && (
-              <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-red-400 text-sm">
-                {error}
-                <button
-                  type="button"
-                  onClick={loadTickets}
-                  className="ml-3 underline hover:text-red-300"
-                >
+              <div className="std-alert std-alert-error flex items-center justify-between flex-wrap gap-2">
+                <span>{error}</span>
+                <button type="button" onClick={loadTickets} className="sup-retry">
                   Retry
                 </button>
               </div>
             )}
 
             {!loading && !error && tickets.length === 0 && (
-              <div className="text-center py-20">
-                <MessageSquare className="w-12 h-12 text-gray-600 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-400 mb-2">No support tickets</h3>
-                <p className="text-sm text-gray-500 mb-6">
-                  Create a ticket and we&apos;ll get back to you as soon as possible.
-                </p>
-                <button
-                  type="button"
-                  className="btn-workspace btn-primary"
-                  onClick={() => setShowCreateModal(true)}
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Create Your First Ticket</span>
-                </button>
+              <div className="workspace-card">
+                <div className="workspace-card-body flex flex-col items-center justify-center py-16 text-center">
+                  <div className="dash-empty-ico">
+                    <MessageSquare className="w-5 h-5" />
+                  </div>
+                  <p className="dash-empty-title" style={{ fontSize: '1.05rem', marginBottom: '0.4rem' }}>
+                    No support tickets
+                  </p>
+                  <p className="dash-empty-sub" style={{ maxWidth: '26rem', lineHeight: '1.5', marginBottom: '1.5rem' }}>
+                    Create a ticket and we&apos;ll get back to you as soon as possible.
+                  </p>
+                  <button
+                    type="button"
+                    className="btn-workspace btn-primary"
+                    onClick={() => setShowCreateModal(true)}
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Create Your First Ticket</span>
+                  </button>
+                </div>
               </div>
             )}
 
             {!loading && !error && tickets.length > 0 && (
-              <div className="space-y-3">
+              <div className="sup-list">
                 {tickets.map((ticket) => (
                   <TicketCard key={ticket._id} ticket={ticket} onReply={handleReply} />
                 ))}

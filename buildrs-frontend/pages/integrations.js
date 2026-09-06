@@ -6,7 +6,7 @@ import useAuthStore from '../store/authStore';
 import { apiFetch } from '../lib/api';
 import useToastStore from '../store/toastStore';
 import { ConfirmDialog } from '../components/ConfirmDialog';
-import { Link2, Unlink, ExternalLink, Loader2, Plug2, User, Mail, RefreshCw } from 'lucide-react';
+import { Link2, Unlink, ExternalLink, Loader2, Plug2, User, RefreshCw } from 'lucide-react';
 
 const PROVIDERS = [
   {
@@ -246,32 +246,29 @@ export default function Integrations() {
                       key={provider.key}
                       className={`int-card ${isActive ? 'is-active' : ''}`}
                     >
-                      <div className="int-head">
-                        <div className="int-brand">
+                      <div className="int-card-top">
+                        <div className="int-title-row">
                           <div
                             className="int-ico"
                             style={{ background: provider.color.bg, color: provider.color.text }}
                           >
                             {provider.name[0]}
                           </div>
-                          <div className="min-w-0">
+                          <div className="int-name-wrap">
                             <p className="int-name">{provider.name}</p>
-                            <p className="int-sub">Integration</p>
+                            <p className="int-kind">Integration</p>
                           </div>
                         </div>
                         {provider.infoOnly ? (
-                          <span className="int-pill is-info">
-                            <span className="dot" />
+                          <span className="pill int-pill" style={{ background: 'rgba(47,214,230,0.08)', color: '#2fd6e6' }}>
                             Info Only
                           </span>
                         ) : isActive ? (
-                          <span className="int-pill is-on">
-                            <span className="dot" />
+                          <span className="pill int-pill" style={{ background: 'rgba(52,211,153,0.12)', color: '#34d399' }}>
                             Connected
                           </span>
                         ) : (
-                          <span className="int-pill is-off">
-                            <span className="dot" />
+                          <span className="pill int-pill" style={{ background: 'rgba(255,255,255,0.05)', color: '#9aa1ae' }}>
                             Not Connected
                           </span>
                         )}
@@ -279,26 +276,28 @@ export default function Integrations() {
 
                       <p className="int-desc">{provider.description}</p>
 
-                      {isActive && status && (
-                        <div className="int-meta">
-                          {status.providerUsername && (
-                            <div className="int-meta-row">
-                              <User className="w-3.5 h-3.5" />
-                              <span className="int-meta-val">{status.providerUsername}</span>
-                            </div>
-                          )}
-                          {status.providerEmail && (
-                            <div className="int-meta-row">
-                              <Mail className="w-3.5 h-3.5" />
-                              <span className="int-meta-val is-dim">{status.providerEmail}</span>
-                            </div>
-                          )}
-                          <div className="int-meta-row">
-                            <RefreshCw className="w-3.5 h-3.5" />
-                            <span className="int-meta-val is-dim">{formatLastSync(status.lastSyncedAt)}</span>
-                          </div>
+                      <div className="int-meta">
+                        <div className="int-meta-item">
+                          <User className="w-3.5 h-3.5" />
+                          <span className="int-meta-val">
+                            {isActive && status?.providerUsername
+                              ? status.providerUsername
+                              : provider.infoOnly
+                                ? 'Built-in'
+                                : '—'}
+                          </span>
                         </div>
-                      )}
+                        <div className="int-meta-item">
+                          <RefreshCw className="w-3.5 h-3.5" />
+                          <span className="int-meta-val">
+                            {isActive && status?.lastSyncedAt
+                              ? formatLastSync(status.lastSyncedAt)
+                              : provider.infoOnly
+                                ? 'Always available'
+                                : 'No sync yet'}
+                          </span>
+                        </div>
+                      </div>
 
                       <div className="int-actions">
                         {provider.infoOnly ? (

@@ -10,7 +10,7 @@ import {
   Bot, Layers, Rocket, Box, Users, GitBranch, Eye, Split, Maximize2, X,
   FolderOpen, Search, Settings, ChevronRight, File, FileText, Code2,
   Folder, FolderPlus, AlertCircle, CheckCircle, XCircle, RefreshCw,
-  Home, ExternalLink, FilePlus, List, Play, Square
+  Home, ExternalLink, FilePlus, List, Play, Square, Loader2
 } from 'lucide-react';
 import MonacoEditor from '@monaco-editor/react';
 import { io } from 'socket.io-client';
@@ -46,15 +46,8 @@ function detectLanguage(filename) {
 }
 
 function getFileIcon(name) {
-  const ext = (name || '').split('.').pop()?.toLowerCase() || '';
-  const iconMap = {
-    js: '\uD83D\uDCDC', jsx: '\u269B\uFE0F', ts: '\uD83D\uDCD8', tsx: '\u269B\uFE0F',
-    py: '\uD83D\uDC0D', java: '\u2615', go: '\uD83D\uDD35', rs: '\uD83E\uDD80',
-    html: '\uD83C\uDF10', css: '\uD83C\uDFA8', json: '\uD83D\uDCCB', md: '\uD83D\uDCDD',
-    yml: '\u2699\uFE0F', yaml: '\u2699\uFE0F', sh: '\uD83D\uDCBB', bash: '\uD83D\uDCBB',
-    sql: '\uD83D\uDDC3\uFE0F',
-  };
-  return iconMap[ext] || '\uD83D\uDCC4';
+  const lang = detectLanguage(name);
+  return LANG_COLORS()[lang] || '#565d6b';
 }
 
 function LANG_COLORS() {
@@ -89,23 +82,31 @@ function FileTreeNode({ node, depth, selectedId, onSelect, expanded, onToggle })
   if (node.type === 'file' && !node.children) {
     const isSelected = node._id === selectedId;
     return (
-      <div className={`flex items-center gap-1 px-2 py-[3px] cursor-pointer text-sm rounded-none transition-colors ${isSelected ? 'bg-blue-500/20 text-blue-300' : 'text-gray-300 hover:bg-white/5'}`}
-        style={{ paddingLeft: `${16 + depth * 14}px` }} onClick={() => onSelect(node)}>
-        <span className="text-xs flex-shrink-0">{getFileIcon(node.name)}</span>
-        <span className="truncate text-xs">{node.name}</span>
-      </div>
+      <button
+        type="button"
+        className={`ed-tree-row ${isSelected ? 'is-selected' : ''}`}
+        style={{ paddingLeft: `${10 + depth * 14}px` }}
+        onClick={() => onSelect(node)}
+      >
+        <span className="ed-file-dot" style={{ background: getFileIcon(node.name) }} />
+        <span className="ed-tree-name is-file">{node.name}</span>
+      </button>
     );
   }
   if (node.type === 'folder' || node.children) {
     const isOpen = expanded[node.path || node.name] !== false;
     return (
       <div>
-        <div className="flex items-center gap-1 px-2 py-[3px] cursor-pointer text-sm text-gray-400 hover:text-gray-200 hover:bg-white/5 rounded-none transition-colors"
-          style={{ paddingLeft: `${8 + depth * 14}px` }} onClick={() => onToggle(node.path || node.name)}>
-          <ChevronRight className={`w-3 h-3 transition-transform ${isOpen ? 'rotate-90' : ''}`} />
-          <Folder className={`w-3.5 h-3.5 ${isOpen ? 'text-yellow-400' : 'text-gray-500'}`} />
-          <span className="truncate text-xs font-medium">{node.name}</span>
-        </div>
+        <button
+          type="button"
+          className={`ed-tree-row is-folder ${isOpen ? 'is-open' : ''}`}
+          style={{ paddingLeft: `${6 + depth * 14}px` }}
+          onClick={() => onToggle(node.path || node.name)}
+        >
+          <ChevronRight className="w-3 h-3 ed-tree-chev" />
+          <Folder className="w-3.5 h-3.5 ed-folder-ico" />
+          <span className="ed-tree-name">{node.name}</span>
+        </button>
         {isOpen && node.children && (
           <div>
             {Object.values(node.children).sort((a, b) => {
@@ -795,43 +796,47 @@ async function handleTerminalCommand(cmd, term) {
         <link rel="icon" href="/buildrs.png" />
       </Head>
 
-      <div className="h-screen bg-[#1e1e1e] flex overflow-hidden">
+      <div className="ed-page">
         <Sidebar user={user} subscription={subscription} />
 
-        <main className="flex-1 ml-64 flex flex-col min-w-0">
-          {/* VS Code title bar */}
-          <header className="flex items-center h-9 bg-[#323233] border-b border-[#3e3e42] px-3 flex-shrink-0 select-none">
-            <div className="flex items-center gap-2 text-xs text-gray-400">
-              <span className="text-blue-400 font-semibold">BuildrsHQ</span>
-              <span className="text-gray-600">/</span>
-              <span className="text-gray-300 truncate">{selectedProject?.name || selectedRepo?.fullName || 'editor'}</span>
+        <main className="ed-main-lg">
+          {/* Editor title bar */}
+          <header className="ed-topbar">
+            <div className="ed-topbar-left">
+              <span className="ed-topbar-crumb">BuildrsHQ</span>
+              <span className="ed-topbar-sep">/</span>
+              <span className="ed-topbar-repo">{selectedProject?.name || selectedRepo?.fullName || 'editor'}</span>
             </div>
-            <div className="flex-1 text-center text-xs text-gray-500 truncate">
+            <div className="ed-topbar-center">
               {selectedFile ? selectedFile.name : 'No file open'}
             </div>
-            <div className="flex items-center gap-2">
-              {dirty && <span className="text-[10px] text-amber-400 font-medium">Unsaved</span>}
+            <div className="ed-topbar-right">
+              {dirty && (
+                <span className="ed-unsaved">
+                  <span className="dot" />
+                  Unsaved
+                </span>
+              )}
               {selectedFile && (
-                <button type="button" className="text-[11px] px-2 py-0.5 rounded bg-blue-600 text-white hover:bg-blue-500 transition-colors flex items-center gap-1" onClick={handleSave} disabled={saving || !dirty}>
-                  <Save className="w-3 h-3" />{saving ? '...' : 'Save'}
+                <button type="button" className="btn-workspace btn-primary" onClick={handleSave} disabled={saving || !dirty}>
+                  <Save className="w-3.5 h-3.5" />{saving ? 'Saving...' : 'Save'}
                 </button>
               )}
-              <button type="button" className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white" onClick={() => setShowNewModal(true)} title="New File"><FilePlus className="w-3.5 h-3.5" /></button>
-              <button type="button" className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white" onClick={() => setShowNewFolderModal(true)} title="New Folder"><FolderPlus className="w-3.5 h-3.5" /></button>
-              <button type="button" className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white" onClick={() => setShowTerminal(!showTerminal)} title="Toggle Terminal"><Terminal className="w-3.5 h-3.5" /></button>
+              <button type="button" className="ed-top-btn" onClick={() => setShowNewModal(true)} title="New File"><FilePlus className="w-3.5 h-3.5" /></button>
+              <button type="button" className="ed-top-btn" onClick={() => setShowNewFolderModal(true)} title="New Folder"><FolderPlus className="w-3.5 h-3.5" /></button>
+              <button type="button" className="ed-top-btn" onClick={() => setShowAiHelper(!showAiHelper)} title="Toggle AI Helper"><Bot className="w-3.5 h-3.5" /></button>
+              <button type="button" className="ed-top-btn" onClick={() => setShowTerminal(!showTerminal)} title="Toggle Terminal"><Terminal className="w-3.5 h-3.5" /></button>
             </div>
           </header>
 
-          {/* Feature tab bar (VS Code style) */}
-          <div className="flex items-center gap-0.5 px-2 h-9 bg-[#252526] border-b border-[#3e3e42] overflow-x-auto flex-shrink-0">
+          {/* Feature tab bar */}
+          <div className="ed-tabs">
             {TABS.map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
                 type="button"
                 onClick={() => setActiveTab(id)}
-                className={`px-3 h-8 text-xs font-medium whitespace-nowrap flex items-center gap-1.5 transition-colors border-b-2 ${
-                  activeTab === id ? 'text-white border-blue-500 bg-[#1e1e1e]' : 'text-gray-400 border-transparent hover:text-white hover:bg-white/5'
-                }`}
+                className={`ed-tab ${activeTab === id ? 'is-active' : ''}`}
               >
                 <Icon className="w-3.5 h-3.5" />
                 {label}
@@ -840,59 +845,58 @@ async function handleTerminalCommand(cmd, term) {
           </div>
 
           {/* Main editor workspace: activity bar + explorer + editor */}
-          <div className="flex-1 flex min-h-0">
+          <div className="ed-body">
             {/* Activity bar */}
-            <div className="w-12 bg-[#333333] border-r border-[#3e3e42] flex flex-col items-center py-1 flex-shrink-0">
-              <button type="button" className={`w-12 h-12 flex items-center justify-center relative ${activeSidebar === 'explorer' ? 'text-white' : 'text-gray-500 hover:text-white'}`} onClick={() => setActiveSidebar('explorer')} title="Explorer">
+            <div className="ed-activity">
+              <button type="button" className={`ed-activity-btn ${activeSidebar === 'explorer' ? 'is-active' : ''}`} onClick={() => setActiveSidebar('explorer')} title="Explorer">
                 <FolderOpen className="w-5 h-5" />
-                {activeSidebar === 'explorer' && <span className="absolute left-0 top-1 bottom-1 w-0.5 bg-blue-500" />}
               </button>
-              <button type="button" className={`w-12 h-12 flex items-center justify-center relative ${activeSidebar === 'git' ? 'text-white' : 'text-gray-500 hover:text-white'}`} onClick={() => setActiveSidebar('git')} title="Source Control">
+              <button type="button" className={`ed-activity-btn ${activeSidebar === 'git' ? 'is-active' : ''}`} onClick={() => setActiveSidebar('git')} title="Source Control">
                 <GitBranch className="w-5 h-5" />
               </button>
-              <button type="button" className={`w-12 h-12 flex items-center justify-center relative ${activeSidebar === 'ai' ? 'text-white' : 'text-gray-500 hover:text-white'}`} onClick={() => setActiveSidebar('ai')} title="AI Assistant">
+              <button type="button" className={`ed-activity-btn ${activeSidebar === 'ai' ? 'is-active' : ''}`} onClick={() => setActiveSidebar('ai')} title="AI Assistant">
                 <Bot className="w-5 h-5" />
               </button>
-              <div className="flex-1" />
-              <button type="button" className="w-12 h-12 flex items-center justify-center text-gray-500 hover:text-white" title="Settings">
+              <div className="ed-activity-grow" />
+              <button type="button" className="ed-activity-btn" title="Settings">
                 <Settings className="w-5 h-5" />
               </button>
             </div>
 
             {/* Explorer sidebar */}
-            <div className="w-64 bg-[#252526] border-r border-[#3e3e42] flex flex-col flex-shrink-0 overflow-hidden">
+            <div className="ed-side">
               {/* Explorer header */}
-              <div className="flex items-center justify-between px-3 py-2 border-b border-[#3e3e42]/60">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Explorer</span>
-                <div className="flex items-center gap-1">
-                  <button type="button" className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white" onClick={() => setShowNewModal(true)} title="New File"><FilePlus className="w-3.5 h-3.5" /></button>
-                  <button type="button" className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white" onClick={() => setShowNewFolderModal(true)} title="New Folder"><FolderPlus className="w-3.5 h-3.5" /></button>
-                  <button type="button" className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white" onClick={reloadFiles} title="Refresh"><RefreshCw className="w-3.5 h-3.5" /></button>
+              <div className="ed-side-head">
+                <span className="ed-side-title">Explorer</span>
+                <div className="ed-side-actions">
+                  <button type="button" className="ed-side-btn" onClick={() => setShowNewModal(true)} title="New File"><FilePlus className="w-3.5 h-3.5" /></button>
+                  <button type="button" className="ed-side-btn" onClick={() => setShowNewFolderModal(true)} title="New Folder"><FolderPlus className="w-3.5 h-3.5" /></button>
+                  <button type="button" className="ed-side-btn" onClick={reloadFiles} title="Refresh"><RefreshCw className="w-3.5 h-3.5" /></button>
                 </div>
               </div>
 
               {/* Project selector */}
-              <div className="relative px-2 py-1.5 border-b border-[#3e3e42]/60">
-                <button type="button" className="w-full flex items-center gap-2 px-2 py-1 bg-white/5 rounded text-xs text-gray-300 hover:bg-white/10 transition-colors" onClick={() => setShowProjectSelector(!showProjectSelector)}>
-                  <FolderOpen className="w-3.5 h-3.5 text-blue-400" />
-                  <span className="truncate">{selectedProject ? selectedProject.name : selectedRepo ? (selectedRepo.fullName || selectedRepo.name) : 'Workspace'}</span>
-                  <ChevronDown className={`w-3 h-3 ml-auto transition-transform ${showProjectSelector ? 'rotate-180' : ''}`} />
+              <div className="ed-project-wrap">
+                <button type="button" className="ed-project-btn" onClick={() => setShowProjectSelector(!showProjectSelector)}>
+                  <FolderOpen className="w-3.5 h-3.5" />
+                  <span className="ed-project-label">{selectedProject ? selectedProject.name : selectedRepo ? (selectedRepo.fullName || selectedRepo.name) : 'Workspace'}</span>
+                  <ChevronDown className={`w-3 h-3 transition-transform ${showProjectSelector ? 'rotate-180' : ''}`} style={{ color: 'var(--ws-text-faint)' }} />
                 </button>
                 {showProjectSelector && (
-                  <div className="absolute left-2 right-2 top-full mt-1 bg-[#252526] border border-gray-600 rounded shadow-xl z-50 max-h-64 overflow-y-auto">
-                    <button type="button" className="w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-white/10 flex items-center gap-2" onClick={() => { setSelectedProject(null); setSelectedRepo(null); setShowProjectSelector(false); }}>
-                      <FolderOpen className="w-3.5 h-3.5 text-gray-400" /> Workspace Files
+                  <div className="ed-drop">
+                    <button type="button" className="ed-drop-item" onClick={() => { setSelectedProject(null); setSelectedRepo(null); setShowProjectSelector(false); }}>
+                      <FolderOpen className="w-3.5 h-3.5" /> Workspace Files
                     </button>
-                    {projects.length > 0 && <div className="px-3 pt-2 pb-1 text-[10px] text-gray-500 uppercase font-semibold">Projects</div>}
+                    {projects.length > 0 && <div className="ed-drop-section">Projects</div>}
                     {projects.map(p => (
-                      <button key={p._id || p.id} type="button" className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-white/10 flex items-center gap-2" onClick={() => { setSelectedProject(p); setSelectedRepo(null); setShowProjectSelector(false); }}>
-                        <Folder className="w-3.5 h-3.5 text-blue-400" /> {p.name}
+                      <button key={p._id || p.id} type="button" className="ed-drop-item" onClick={() => { setSelectedProject(p); setSelectedRepo(null); setShowProjectSelector(false); }}>
+                        <Folder className="w-3.5 h-3.5" /> {p.name}
                       </button>
                     ))}
-                    {githubRepos.length > 0 && <div className="px-3 pt-2 pb-1 text-[10px] text-gray-500 uppercase font-semibold">GitHub Repos</div>}
+                    {githubRepos.length > 0 && <div className="ed-drop-section">GitHub Repos</div>}
                     {githubRepos.map(r => (
-                      <button key={r.id || r.fullName} type="button" className="w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-white/10 flex items-center gap-2" onClick={() => { setSelectedRepo(r); setSelectedProject(null); setShowProjectSelector(false); }}>
-                        <GitBranch className="w-3.5 h-3.5 text-gray-400" /> {r.fullName || r.name}
+                      <button key={r.id || r.fullName} type="button" className="ed-drop-item" onClick={() => { setSelectedRepo(r); setSelectedProject(null); setShowProjectSelector(false); }}>
+                        <GitBranch className="w-3.5 h-3.5" /> {r.fullName || r.name}
                       </button>
                     ))}
                   </div>
@@ -900,20 +904,27 @@ async function handleTerminalCommand(cmd, term) {
               </div>
 
               {/* File filter */}
-              <div className="px-2 py-1 border-b border-[#3e3e42]/60">
-                <input type="text" className="w-full px-2 py-1 bg-[#1e1e1e] border border-[#3e3e42] text-xs text-gray-300 rounded outline-none focus:border-blue-500"
+              <div className="ed-filter-wrap">
+                <input type="text" className="ed-filter"
                   placeholder="Filter files..." value={fileFilter} onChange={e => setFileFilter(e.target.value)} />
               </div>
 
               {/* File tree */}
-              <div className="flex-1 overflow-y-auto py-1">
+              <div className="ed-tree">
                 {loading ? (
-                  <div className="flex items-center justify-center py-10"><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-400" /></div>
+                  <div className="dash-empty">
+                    <div className="dash-empty-ico">
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    </div>
+                    <p className="dash-empty-title">Loading files...</p>
+                  </div>
                 ) : files.length === 0 ? (
-                  <div className="text-center py-10 px-3">
-                    <FileCode className="w-8 h-8 text-gray-600 mx-auto mb-2" />
-                    <p className="text-xs text-gray-500 mb-3">No files yet</p>
-                    <button type="button" className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-500" onClick={() => setShowNewModal(true)}>Create File</button>
+                  <div className="ed-empty">
+                    <div className="dash-empty-ico">
+                      <FileCode className="w-5 h-5" />
+                    </div>
+                    <p className="dash-empty-title">No files yet</p>
+                    <button type="button" className="btn-workspace btn-primary" onClick={() => setShowNewModal(true)}>Create File</button>
                   </div>
                 ) : (
                   <FileTreeNode node={tree} depth={-1} selectedId={selectedFile?._id} onSelect={selectFile} expanded={expandedFolders} onToggle={(path) => setExpandedFolders(prev => ({ ...prev, [path]: prev[path] === false ? true : false }))} />
@@ -922,30 +933,31 @@ async function handleTerminalCommand(cmd, term) {
             </div>
 
             {/* Main Content Area */}
-            <div className="flex-1 min-w-0 flex flex-col">
+            <div className="ed-main">
               {status && (
-                <div className={`mb-4 px-4 py-2 rounded-lg text-sm font-medium ${status.type === 'success' ? 'bg-green-500/20 text-green-300 border border-green-500/30' : 'bg-red-500/20 text-red-300 border border-red-500/30'}`}>
+                <div className={`ed-alert ${status.type === 'success' ? 'ed-alert-success' : 'ed-alert-error'}`}>
+                  {status.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
                   {status.msg}
                 </div>
               )}
 
               {activeTab === 'editor' && (
-                <div className="workspace-card flex-1 flex flex-col">
-                  <div className="workspace-card-header">
-                    <div className="flex items-center justify-between">
-                      <h2 className="workspace-card-title">{selectedFile ? selectedFile.name : 'Editor'}</h2>
-                      {selectedFile && <button type="button" className="cta-button px-4 py-2 rounded-lg text-white font-medium flex items-center gap-2" onClick={handleSave} disabled={saving || !dirty}><Save className="w-4 h-4" />{saving ? 'Saving...' : 'Save'}</button>}
-                    </div>
+                <div className="ed-pane">
+                  <div className="ed-pane-head">
+                    <h2 className="ed-pane-title"><FileCode className="w-4 h-4" />{selectedFile ? selectedFile.name : 'Editor'}</h2>
+                    {selectedFile && <button type="button" className="btn-workspace btn-primary" onClick={handleSave} disabled={saving || !dirty}><Save className="w-4 h-4" />{saving ? 'Saving...' : 'Save'}</button>}
                   </div>
-                  <div className="workspace-card-body flex-1 flex flex-col">
+                  <div className="ed-pane-body">
                     {!selectedFile ? (
-                      <div className="flex flex-col items-center justify-center py-20 text-center">
-                        <FileCode className="w-12 h-12 text-gray-600 mb-4" />
-                        <p className="text-gray-400">Select a file to start editing.</p>
+                      <div className="ed-ide-empty">
+                        <div className="dash-empty-ico">
+                          <FileCode className="w-6 h-6" />
+                        </div>
+                        <p className="dash-empty-title">Select a file to start editing</p>
                       </div>
                     ) : (
-                      <div className="border border-gray-700 rounded-lg overflow-hidden flex-1">
-                        <MonacoEditor height="500px" language={monacoLanguage} value={content} onChange={handleEditorChange} onMount={handleEditorMount} theme="vs-dark" options={{ fontSize: 14, minimap: { enabled: false }, scrollBeyondLastLine: false, wordWrap: 'on', tabSize: 2, automaticLayout: true, bracketPairColorization: { enabled: true } }} loading={<div className="flex items-center justify-center h-[500px] text-gray-400">Loading editor...</div>} />
+                      <div className="ed-code-wrap">
+                        <MonacoEditor height="100%" language={monacoLanguage} value={content} onChange={handleEditorChange} onMount={handleEditorMount} theme="vs-dark" options={{ fontSize: 14, minimap: { enabled: false }, scrollBeyondLastLine: false, wordWrap: 'on', tabSize: 2, automaticLayout: true, bracketPairColorization: { enabled: true } }} loading={<div className="flex items-center justify-center h-full text-gray-400">Loading editor...</div>} />
                       </div>
                     )}
                   </div>
@@ -953,22 +965,26 @@ async function handleTerminalCommand(cmd, term) {
               )}
 
               {activeTab === 'terminal' && (
-                <div className="workspace-card flex-1 flex flex-col">
-                  <div className="workspace-card-header"><h2 className="workspace-card-title flex items-center gap-2"><Terminal className="w-4 h-4" /> Terminal</h2></div>
-                  <div className="workspace-card-body p-0">
-                    <div ref={terminalRef} className="bg-navy-dark rounded-b-lg min-h-[400px] p-2 font-mono text-sm" />
+                <div className="ed-pane">
+                  <div className="ed-pane-head">
+                    <h2 className="ed-pane-title"><Terminal className="w-4 h-4" /> Terminal</h2>
+                  </div>
+                  <div className="ed-pane-body">
+                    <div ref={terminalRef} className="flex-1 min-h-[0px] bg-[#060608] rounded-[10px] p-2 font-mono text-sm overflow-auto border border-[rgba(255,255,255,0.05)]" />
                   </div>
                 </div>
               )}
 
               {activeTab === 'preview' && (
-                <div className="workspace-card flex-1">
-                  <div className="workspace-card-header"><h2 className="workspace-card-title flex items-center gap-2"><Eye className="w-4 h-4" /> Preview</h2></div>
-                  <div className="workspace-card-body">
-                    <div className="bg-navy-dark rounded-lg p-4 min-h-[400px] flex items-center justify-center">
-                      <p className="text-gray-500">Live preview will appear here. Select a file and toggle Design-Code Split.</p>
+                <div className="ed-pane">
+                  <div className="ed-pane-head">
+                    <h2 className="ed-pane-title"><Eye className="w-4 h-4" /> Preview</h2>
+                  </div>
+                  <div className="ed-pane-body">
+                    <div className="ed-panel flex-1 min-h-[380px] flex items-center justify-center">
+                      <p className="text-sm" style={{ color: 'var(--ws-text-faint)' }}>Live preview will appear here. Select a file and toggle Design-Code Split.</p>
                     </div>
-                    <div className="mt-4 flex gap-2">
+                    <div style={{ display: 'flex', gap: '0.6rem' }}>
                       <button type="button" onClick={() => setActiveTab('split')} className="btn-workspace btn-secondary"><Split className="w-4 h-4" /> Split View</button>
                       <button type="button" onClick={() => window.open(sandboxUrl || '#', '_blank')} className="btn-workspace btn-secondary"><Maximize2 className="w-4 h-4" /> Pop Out</button>
                     </div>
@@ -977,37 +993,42 @@ async function handleTerminalCommand(cmd, term) {
               )}
 
               {activeTab === 'split' && (
-                <div className="workspace-card flex-1">
-                  <div className="workspace-card-header"><h2 className="workspace-card-title flex items-center gap-2"><Layers className="w-4 h-4" /> Design-Code Split View</h2></div>
-                  <div className="workspace-card-body p-0">
-                    <div className="grid grid-cols-2 gap-0 min-h-[500px]">
-                      <div className="border-r border-gray-700 p-2">
-                        <div className="text-xs text-gray-500 mb-2">Figma Design</div>
+                <div className="ed-pane">
+                  <div className="ed-pane-head">
+                    <h2 className="ed-pane-title"><Layers className="w-4 h-4" /> Design-Code Split View</h2>
+                  </div>
+                  <div className="ed-pane-body" style={{ gap: 0, paddingBottom: 0 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0', minHeight: '0', flex: 1 }}>
+                      <div style={{ borderRight: '1px solid var(--ws-border)', padding: '0.5rem' }}>
+                        <div className="ed-side-title" style={{ margin: '0.2rem 0 0.6rem', color: 'var(--ws-text-faint)' }}>Figma Design</div>
                         {figmaFiles.length === 0 ? (
-                          <div className="bg-navy-dark rounded p-4 h-[460px] flex flex-col items-center justify-center text-center">
-                            <Layers className="w-10 h-10 text-gray-600 mb-3" />
-                            <p className="text-sm text-gray-400 mb-2">No Figma files connected</p>
-                            <a href="/integrations" className="btn-workspace btn-secondary text-xs">Connect Figma</a>
+                          <div className="ed-panel" style={{ height: '100%', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', minHeight: '420px' }}>
+                            <Layers className="w-8 h-8" style={{ color: 'var(--ws-text-faint)' }} />
+                            <p className="text-sm" style={{ color: 'var(--ws-text-faint)' }}>No Figma files connected</p>
+                            <a href="/integrations" className="btn-workspace btn-secondary">Connect Figma</a>
                           </div>
                         ) : (
-                          <div className="bg-navy-dark rounded h-[460px] overflow-y-auto">
-                            <div className="p-2 space-y-1">
+                          <div className="ed-panel" style={{ height: '100%', overflowY: 'auto', minHeight: '420px', padding: '0.5rem' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
                               {figmaFiles.map((f) => (
                                 <button key={f.key || f.id} type="button"
                                   onClick={() => setSelectedFigmaFile(f)}
-                                  className={`w-full text-left px-3 py-2 rounded text-xs transition ${selectedFigmaFile?.key === f.key || selectedFigmaFile?.id === f.id ? 'bg-blue-500/20 text-blue-300' : 'text-gray-300 hover:bg-white/5'}`}>
-                                  <div className="font-medium truncate">{f.name || f.key}</div>
-                                  <div className="text-[10px] text-gray-500">{f.last_modified ? new Date(f.last_modified).toLocaleDateString() : ''}</div>
+                                  className={`ed-drop-item ${selectedFigmaFile?.key === f.key || selectedFigmaFile?.id === f.id ? 'is-active' : ''}`}
+                                  style={selectedFigmaFile?.key === f.key || selectedFigmaFile?.id === f.id ? { background: 'rgba(47,214,230,0.08)', color: 'var(--ws-text)' } : undefined}>
+                                  <div style={{ minWidth: 0 }}>
+                                    <div className="font-medium truncate" style={{ fontSize: '0.78rem' }}>{f.name || f.key}</div>
+                                    <div className="ed-side-title" style={{ color: 'var(--ws-text-faint)' }}>{f.last_modified ? new Date(f.last_modified).toLocaleDateString() : ''}</div>
+                                  </div>
                                 </button>
                               ))}
                             </div>
                           </div>
                         )}
                       </div>
-                      <div className="p-2">
-                        <div className="text-xs text-gray-500 mb-2">Code</div>
-                        <div className="border border-gray-700 rounded overflow-hidden">
-                          <MonacoEditor height="460px" language={monacoLanguage} value={content} onChange={handleEditorChange} theme="vs-dark" options={{ fontSize: 13, minimap: { enabled: false } }} />
+                      <div style={{ padding: '0.5rem' }}>
+                        <div className="ed-side-title" style={{ margin: '0.2rem 0 0.6rem', color: 'var(--ws-text-faint)' }}>Code</div>
+                        <div className="ed-code-wrap">
+                          <MonacoEditor height="100%" language={monacoLanguage} value={content} onChange={handleEditorChange} theme="vs-dark" options={{ fontSize: 13, minimap: { enabled: false }, automaticLayout: true }} />
                         </div>
                       </div>
                     </div>
@@ -1016,54 +1037,57 @@ async function handleTerminalCommand(cmd, term) {
               )}
 
               {activeTab === 'ai' && (
-                <div className="workspace-card flex-1 flex flex-col">
-                  <div className="workspace-card-header"><h2 className="workspace-card-title flex items-center gap-2"><Bot className="w-4 h-4" /> AI Helper</h2></div>
-                  <div className="workspace-card-body flex-1 flex flex-col">
-                    <div className="flex-1 overflow-y-auto space-y-3 mb-4 max-h-[400px]">
-                      {aiMessages.length === 0 ? <p className="text-sm text-gray-500 text-center py-8">Ask AI about your code, get completions, or request refactors.</p> : aiMessages.map((m, i) => (
-                        <div key={i} className={`p-3 rounded-lg ${m.role === 'user' ? 'bg-blue-500/10 ml-8' : 'bg-gray-700/50 mr-8'}`}>
-                          <div className="text-xs text-gray-400 mb-1">{m.role === 'user' ? 'You' : 'AI'}</div>
-                          <div className="text-sm text-gray-200 whitespace-pre-wrap">{m.content}</div>
+                <div className="ed-pane">
+                  <div className="ed-pane-head">
+                    <h2 className="ed-pane-title"><Bot className="w-4 h-4" /> AI Helper</h2>
+                  </div>
+                  <div className="ed-pane-body">
+                    <div className="ed-chat" style={{ flex: 1, maxHeight: 'none' }}>
+                      {aiMessages.length === 0 ? <p className="ed-chat-gap">Ask AI about your code, get completions, or request refactors.</p> : aiMessages.map((m, i) => (
+                        <div key={i} className={`ed-chat-bubble ${m.role === 'user' ? 'is-user' : 'is-ai'}`}>
+                          {m.content}
                         </div>
                       ))}
-                      {aiLoading && <div className="text-sm text-gray-400">Thinking...</div>}
+                      {aiLoading && <div className="ed-chat-gap" style={{ color: '#2fd6e6' }}>Thinking...</div>}
                     </div>
-                    <form onSubmit={handleAiHelperSend} className="flex gap-2">
-                      <input value={aiInput} onChange={(e) => setAiInput(e.target.value)} placeholder="Ask AI to explain, refactor, or generate code..." className="flex-1 px-4 py-2 bg-navy border border-gray-600 rounded-lg text-white text-sm focus:outline-none focus:border-blue-accent" />
-                      <button type="submit" disabled={aiLoading || !aiInput.trim()} className="cta-button px-4 py-2 rounded-lg disabled:opacity-50"><Bot className="w-4 h-4" /></button>
+                    <form onSubmit={handleAiHelperSend} className="ed-composer" style={{ padding: 0, paddingTop: '0.6rem', borderTop: 'none' }}>
+                      <input value={aiInput} onChange={(e) => setAiInput(e.target.value)} placeholder="Ask AI to explain, refactor, or generate code..." />
+                      <button type="submit" disabled={aiLoading || !aiInput.trim()} className="btn-workspace btn-primary" style={{ minHeight: 0, padding: '0.5rem 0.85rem' }}><Bot className="w-4 h-4" /></button>
                     </form>
                   </div>
                 </div>
               )}
 
               {activeTab === 'collab' && (
-                <div className="workspace-card flex-1">
-                  <div className="workspace-card-header"><h2 className="workspace-card-title flex items-center gap-2"><Users className="w-4 h-4" /> Collaboration</h2></div>
-                  <div className="workspace-card-body">
-                    <div className="mb-4 p-3 bg-navy rounded-lg border border-gray-700">
-                      <p className="text-xs text-gray-400 mb-2">Invite others to edit this file in real time.</p>
-                      <div className="flex gap-2">
-                        <input readOnly value={selectedFile ? `${window.location.origin}/editor?file=${selectedFile._id}` : `${window.location.origin}/editor`} className="flex-1 px-3 py-2 bg-navy border border-gray-600 rounded-lg text-xs text-gray-300" onFocus={(e) => e.target.select()} />
-                        <button type="button" className="btn-workspace btn-primary text-xs" onClick={() => { navigator.clipboard?.writeText(selectedFile ? `${window.location.origin}/editor?file=${selectedFile._id}` : `${window.location.origin}/editor`); setStatus({ type: 'success', msg: 'Invite link copied' }); setTimeout(() => setStatus(null), 2000); }}>Copy Link</button>
+                <div className="ed-pane">
+                  <div className="ed-pane-head">
+                    <h2 className="ed-pane-title"><Users className="w-4 h-4" /> Collaboration</h2>
+                  </div>
+                  <div className="ed-pane-body" style={{ overflowY: 'auto' }}>
+                    <div className="ed-panel">
+                      <p className="text-xs mb-2" style={{ color: 'var(--ws-text-muted)' }}>Invite others to edit this file in real time.</p>
+                      <div className="ed-invite-row">
+                        <input readOnly value={selectedFile ? `${window.location.origin}/editor?file=${selectedFile._id}` : `${window.location.origin}/editor`} onFocus={(e) => e.target.select()} />
+                        <button type="button" className="btn-workspace btn-primary" onClick={() => { navigator.clipboard?.writeText(selectedFile ? `${window.location.origin}/editor?file=${selectedFile._id}` : `${window.location.origin}/editor`); setStatus({ type: 'success', msg: 'Invite link copied' }); setTimeout(() => setStatus(null), 2000); }}>Copy Link</button>
                       </div>
                     </div>
-                    <p className="text-sm text-gray-400 mb-2">Active collaborators ({collaborators.length}):</p>
-                    <div className="space-y-2">
-                      {collaborators.length === 0 ? <p className="text-sm text-gray-500">No active collaborators yet</p> : collaborators.map((c, i) => (
-                        <div key={i} className="flex items-center gap-3 p-3 bg-navy rounded-lg border border-gray-700">
-                          <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-sm text-white">{c.name?.[0] || 'U'}</div>
-                          <div>
-                            <div className="text-sm font-medium">{c.name || 'Anonymous'}</div>
-                            <div className="text-xs text-gray-500">{c.email || 'Connected'}</div>
+                    <p className="text-sm mb-2" style={{ color: 'var(--ws-text-muted)' }}>Active collaborators ({collaborators.length}):</p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
+                      {collaborators.length === 0 ? <p className="text-sm" style={{ color: 'var(--ws-text-faint)' }}>No active collaborators yet</p> : collaborators.map((c, i) => (
+                        <div key={i} className="ed-member">
+                          <div className="ed-member-av" style={{ background: 'rgba(47,214,230,0.15)', color: '#2fd6e6' }}>{c.name?.[0] || 'U'}</div>
+                          <div style={{ minWidth: 0 }}>
+                            <div className="text-sm font-medium" style={{ color: 'var(--ws-text)' }}>{c.name || 'Anonymous'}</div>
+                            <div className="text-xs" style={{ color: 'var(--ws-text-faint)' }}>{c.email || 'Connected'}</div>
                           </div>
-                          <span className="ml-auto w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                          <span className="ed-live-dot" style={{ marginLeft: 'auto' }} />
                         </div>
                       ))}
                       {Object.values(remoteCursors).filter((rc) => rc.userName !== (user?.fullName || user?.name)).map((rc, i) => (
-                        <div key={`cursor-${i}`} className="flex items-center gap-3 p-2 bg-navy rounded-lg border border-blue-500/30">
-                          <div className="w-6 h-6 rounded-full bg-purple-500 flex items-center justify-center text-xs text-white">{(rc.userName || 'U')[0]}</div>
-                          <div className="text-xs text-gray-300">{rc.userName} is editing at line {rc.cursor?.line}, col {rc.cursor?.column}</div>
-                          <span className="ml-auto w-2 h-2 bg-purple-400 rounded-full animate-pulse" />
+                        <div key={`cursor-${i}`} className="ed-member" style={{ borderColor: 'rgba(167,139,250,0.3)' }}>
+                          <div className="ed-member-av" style={{ background: 'rgba(167,139,250,0.15)', color: '#a78bfa' }}>{(rc.userName || 'U')[0]}</div>
+                          <div className="text-xs" style={{ color: 'var(--ws-text-muted)' }}>{rc.userName} is editing at line {rc.cursor?.line}, col {rc.cursor?.column}</div>
+                          <span className="ed-live-dot" style={{ marginLeft: 'auto', background: '#a78bfa' }} />
                         </div>
                       ))}
                     </div>
@@ -1072,50 +1096,55 @@ async function handleTerminalCommand(cmd, term) {
               )}
 
               {activeTab === 'git' && (
-                <div className="workspace-card flex-1">
-                  <div className="workspace-card-header"><h2 className="workspace-card-title flex items-center gap-2"><GitBranch className="w-4 h-4" /> Version Control</h2></div>
-                  <div className="workspace-card-body space-y-4">
-                    <div className="bg-navy rounded-lg p-4 border border-gray-700 font-mono text-sm">
-                      <div className="text-gray-400">Branch: {gitStatus?.branch || 'main'}</div>
-                      <div className="text-gray-500">{gitStatus ? `${gitStatus.ahead || 0} ahead, ${gitStatus.behind || 0} behind` : 'No git info'}</div>
-                      {gitStatus?.modified?.length > 0 && <div className="mt-2 text-amber-400">{gitStatus.modified.length} modified files</div>}
+                <div className="ed-pane">
+                  <div className="ed-pane-head">
+                    <h2 className="ed-pane-title"><GitBranch className="w-4 h-4" /> Version Control</h2>
+                  </div>
+                  <div className="ed-pane-body">
+                    <div className="ed-status-strip" style={{ display: 'block' }}>
+                      <div className="branch">Branch: {gitStatus?.branch || 'main'}</div>
+                      <div style={{ color: 'var(--ws-text-faint)' }}>{gitStatus ? `${gitStatus.ahead || 0} ahead, ${gitStatus.behind || 0} behind` : 'No git info'}</div>
+                      {gitStatus?.modified?.length > 0 && <div style={{ color: '#e5b84a' }}>{gitStatus.modified.length} modified files</div>}
                     </div>
-                    <div className="flex gap-2">
+                    <div style={{ display: 'flex', gap: '0.6rem' }}>
                       <button type="button" onClick={() => handleGitAction('pull')} className="btn-workspace btn-secondary flex-1">Pull</button>
                       <button type="button" onClick={() => handleGitAction('commit')} className="btn-workspace btn-secondary flex-1">Commit</button>
-                      <button type="button" onClick={() => handleGitAction('push')} className="cta-button flex-1">Push</button>
+                      <button type="button" onClick={() => handleGitAction('push')} className="btn-workspace btn-primary flex-1">Push</button>
                     </div>
                   </div>
                 </div>
               )}
 
               {activeTab === 'deploy' && (
-                <div className="workspace-card flex-1">
-                  <div className="workspace-card-header"><h2 className="workspace-card-title flex items-center gap-2"><Rocket className="w-4 h-4" /> Deployments</h2></div>
-                  <div className="workspace-card-body">
-                    <div className="flex gap-2 mb-4">
-                      <button type="button" onClick={handleDeploy} className="cta-button px-4 py-2 rounded-lg">Deploy Current Project</button>
+                <div className="ed-pane">
+                  <div className="ed-pane-head">
+                    <h2 className="ed-pane-title"><Rocket className="w-4 h-4" /> Deployments</h2>
+                  </div>
+                  <div className="ed-pane-body" style={{ overflowY: 'auto' }}>
+                    <div style={{ display: 'flex', gap: '0.6rem' }}>
+                      <button type="button" onClick={handleDeploy} className="btn-workspace btn-primary">Deploy Current Project</button>
                       <button type="button" onClick={loadDeployments} className="btn-workspace btn-secondary">Refresh</button>
                     </div>
 
                     {showSubdomainInput && (
-                      <form onSubmit={confirmDeploy} className="mb-4 p-4 bg-navy rounded-lg border border-gray-700">
-                        <label className="block text-sm font-medium mb-1">Choose a subdomain:</label>
-                        <div className="flex items-center gap-2">
+                      <form onSubmit={confirmDeploy} className="ed-panel" style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                        <label className="ws-label" style={{ margin: 0 }}>Choose a subdomain</label>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                           <input
                             type="text"
                             value={deploySubdomain}
                             onChange={(e) => setDeploySubdomain(e.target.value.replace(/[^a-z0-9-]/g, '-').toLowerCase())}
                             placeholder="my-app"
-                            className="form-input w-full font-mono"
+                            className="ws-input"
+                            style={{ fontFamily: 'ui-monospace, Menlo, Consolas, monospace' }}
                             autoFocus
                             required
                             minLength={2}
                           />
-                          <span className="text-sm text-gray-400 whitespace-nowrap">.buildrshq.dev</span>
+                          <span className="text-sm whitespace-nowrap" style={{ color: 'var(--ws-text-faint)' }}>.buildrshq.dev</span>
                         </div>
-                        <div className="flex gap-2 mt-3">
-                          <button type="submit" disabled={deploying || deploySubdomain.length < 2} className="cta-button px-4 py-2 rounded-lg">
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <button type="submit" disabled={deploying || deploySubdomain.length < 2} className="btn-workspace btn-primary">
                             {deploying ? 'Deploying...' : 'Deploy'}
                           </button>
                           <button type="button" onClick={() => setShowSubdomainInput(false)} className="btn-workspace btn-secondary">Cancel</button>
@@ -1123,37 +1152,37 @@ async function handleTerminalCommand(cmd, term) {
                       </form>
                     )}
 
-                    {deployments.length === 0 ? <p className="text-sm text-gray-500">No deployments yet</p> : deployments.map((d, i) => (
-                      <div key={i} className="p-3 bg-navy rounded-lg border border-gray-700 mb-2">
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1">
-                            <div className="text-sm font-medium">
+                    {deployments.length === 0 ? <p className="text-sm" style={{ color: 'var(--ws-text-faint)' }}>No deployments yet</p> : deployments.map((d, i) => (
+                      <div key={i} className="ed-panel" style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div className="text-sm font-medium" style={{ color: 'var(--ws-text)' }}>
                               {d.deployedUrl ? (
-                                <a href={d.deployedUrl} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">{d.deployedUrl}</a>
+                                <a href={d.deployedUrl} target="_blank" rel="noreferrer" style={{ color: '#2fd6e6', textDecoration: 'none' }}>{d.deployedUrl}</a>
                               ) : d.subdomain ? (
-                                <span>{d.subdomain}.buildrshq.dev</span>
+                                <span className="ed-topbar-repo">{d.subdomain}.buildrshq.dev</span>
                               ) : (
                                 <span>{d._id || `Deploy #${i + 1}`}</span>
                               )}
                             </div>
-                            <div className="text-xs text-gray-500">
+                            <div className="text-xs" style={{ color: 'var(--ws-text-faint)' }}>
                               {d.status} {(d.projectId?.name ? `• ${d.projectId.name}` : '')} • {d.createdAt ? new Date(d.createdAt).toLocaleString() : ''}
                             </div>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <span className={`text-xs px-2 py-1 rounded-full ${
-                              d.status === 'success' ? 'bg-green-500/20 text-green-400' :
-                              d.status === 'failed' ? 'bg-red-500/20 text-red-400' :
-                              d.status === 'building' || d.status === 'deploying' ? 'bg-yellow-500/20 text-yellow-400' :
-                              'bg-gray-500/20 text-gray-400'
-                            }`}>{d.status}</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexShrink: 0 }}>
+                            <span className="pill pill-mono" style={
+                              d.status === 'success' ? { background: 'rgba(52,211,153,0.12)', color: '#34d399' } :
+                              d.status === 'failed' ? { background: 'rgba(248,113,113,0.12)', color: '#f87171' } :
+                              d.status === 'building' || d.status === 'deploying' ? { background: 'rgba(229,184,74,0.12)', color: '#e5b84a' } :
+                              { background: 'rgba(255,255,255,0.05)', color: '#9aa1ae' }
+                            }>{d.status}</span>
                             {(d.status === 'success' || d.status === 'failed') && (
-                              <button type="button" onClick={() => stopDeployment(d._id, d.subdomain)} className="text-xs text-red-400 hover:text-red-300">Stop</button>
+                              <button type="button" onClick={() => stopDeployment(d._id, d.subdomain)} className="text-xs" style={{ color: '#f87171' }}>Stop</button>
                             )}
                           </div>
                         </div>
                         {d.status === 'failed' && d.errorMessage && (
-                          <div className="mt-2 text-xs text-red-300/80 bg-red-500/10 border border-red-500/20 rounded p-2">
+                          <div className="ed-alert ed-alert-error" style={{ fontSize: '0.72rem', padding: '0.5rem 0.7rem' }}>
                             Error: {d.errorMessage}
                           </div>
                         )}
@@ -1164,54 +1193,57 @@ async function handleTerminalCommand(cmd, term) {
               )}
 
               {activeTab === 'sandbox' && (
-                <div className="workspace-card flex-1">
-                  <div className="workspace-card-header"><h2 className="workspace-card-title flex items-center gap-2"><Box className="w-4 h-4" /> Sandbox</h2></div>
-                  <div className="workspace-card-body">
-                    <div className="flex gap-2 mb-4">
-                      <button type="button" onClick={handleSandboxStart} className="cta-button px-4 py-2 rounded-lg">Start Sandbox</button>
+                <div className="ed-pane">
+                  <div className="ed-pane-head">
+                    <h2 className="ed-pane-title"><Box className="w-4 h-4" /> Sandbox</h2>
+                  </div>
+                  <div className="ed-pane-body">
+                    <div style={{ display: 'flex', gap: '0.6rem' }}>
+                      <button type="button" onClick={handleSandboxStart} className="btn-workspace btn-primary">Start Sandbox</button>
                       {sandboxUrl && <a href={sandboxUrl} target="_blank" rel="noreferrer" className="btn-workspace btn-secondary">Open in new tab</a>}
                     </div>
-                    {sandboxUrl ? <iframe src={sandboxUrl} className="w-full h-[500px] bg-white rounded-lg border border-gray-700" title="Sandbox" /> : <div className="bg-navy-dark rounded-lg h-[500px] flex items-center justify-center text-gray-500">Sandbox not started</div>}
+                    {sandboxUrl ? <iframe src={sandboxUrl} className="w-full bg-white rounded-[10px] border border-[rgba(255,255,255,0.09)]" style={{ flex: 1, minHeight: '440px' }} title="Sandbox" /> : <div className="ed-panel flex-1 min-h-[440px] flex items-center justify-center" style={{ color: 'var(--ws-text-faint)' }}>Sandbox not started</div>}
                   </div>
                 </div>
               )}
 
               {tier && languages.length > 0 && (
-                <div className="mt-4 flex items-center gap-2 text-xs text-gray-500">
-                  <span>Tier: {tier}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.72rem', fontFamily: 'ui-monospace, Menlo, Consolas, monospace', color: 'var(--ws-text-faint)' }}>
+                  <span>Tier: <span style={{ color: '#2fd6e6' }}>{tier}</span></span>
                   <span>·</span>
                   <span>{languages.filter((l) => l.allowed).length} languages available</span>
+                  <span>·</span>
+                  <span>{dirty ? 'Unsaved changes' : 'All changes saved'}</span>
                 </div>
               )}
             </div>
 
             {/* Right AI Helper Drawer */}
             {showAiHelper && (
-              <div className="w-80 shrink-0">
-                <div className="workspace-card h-full flex flex-col">
-                  <div className="workspace-card-header flex items-center justify-between">
-                    <h3 className="workspace-card-title flex items-center gap-2"><Bot className="w-4 h-4" /> AI Helper</h3>
-                    <button type="button" onClick={() => setShowAiHelper(false)} className="text-gray-400 hover:text-white"><X className="w-4 h-4" /></button>
-                  </div>
-                  <div className="flex-1 overflow-y-auto p-3 space-y-2 max-h-[60vh]">
-                    {aiMessages.length === 0 ? <p className="text-xs text-gray-500 text-center py-4">Ask anything about your code</p> : aiMessages.map((m, i) => (
-                      <div key={i} className={`p-2 rounded-lg text-sm ${m.role === 'user' ? 'bg-blue-500/10' : 'bg-white/5'}`}>{m.content}</div>
-                    ))}
-                  </div>
-                  <form onSubmit={handleAiHelperSend} className="p-3 border-t border-gray-700 flex gap-2">
-                    <input value={aiInput} onChange={(e) => setAiInput(e.target.value)} placeholder="Ask AI..." className="flex-1 px-3 py-2 bg-navy border border-gray-600 rounded-lg text-sm text-white" />
-                    <button type="submit" className="cta-button p-2 rounded-lg"><Bot className="w-4 h-4" /></button>
-                  </form>
+              <div className="ed-drawer">
+                <div className="ed-drawer-head">
+                  <h3 className="ed-drawer-title"><Bot className="w-4 h-4" /> AI Helper</h3>
+                  <button type="button" onClick={() => setShowAiHelper(false)} className="text-gray-400 hover:text-white"><X className="w-4 h-4" /></button>
                 </div>
+                <div className="ed-chat">
+                  {aiMessages.length === 0 ? <p className="ed-chat-gap">Ask anything about your code</p> : aiMessages.map((m, i) => (
+                    <div key={i} className={`ed-chat-bubble ${m.role === 'user' ? 'is-user' : 'is-ai'}`}>{m.content}</div>
+                  ))}
+                  {aiLoading && <div className="ed-chat-gap" style={{ color: '#2fd6e6' }}>Thinking...</div>}
+                </div>
+                <form onSubmit={handleAiHelperSend} className="ed-composer">
+                  <input value={aiInput} onChange={(e) => setAiInput(e.target.value)} placeholder="Ask AI..." />
+                  <button type="submit" className="btn-workspace btn-primary" style={{ minHeight: 0, padding: '0.5rem 0.85rem' }}><Bot className="w-4 h-4" /></button>
+                </form>
               </div>
             )}
           </div>
 
           {/* Bottom Terminal Drawer */}
           {showTerminal && (
-            <div className="border-t border-gray-700 bg-navy-dark">
-              <div className="flex items-center justify-between px-4 py-2 border-b border-gray-700">
-                <span className="text-sm font-medium flex items-center gap-2"><Terminal className="w-4 h-4" /> Terminal</span>
+            <div className="ed-term">
+              <div className="ed-term-head">
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Terminal className="w-4 h-4" /> Terminal</span>
                 <button type="button" onClick={() => setShowTerminal(false)} className="text-gray-400 hover:text-white"><X className="w-4 h-4" /></button>
               </div>
               <div ref={terminalRef} className="h-64 overflow-hidden" />
@@ -1219,24 +1251,26 @@ async function handleTerminalCommand(cmd, term) {
           )}
 
           {/* Status Bar */}
-          <div className="flex items-center h-[22px] bg-blue-600 text-white text-[11px] px-2 flex-shrink-0 select-none">
-            <div className="flex items-center gap-2 mr-auto">
-              <GitBranch className="w-2.5 h-2.5" />
+          <div className="ed-statusbar">
+            <div className="ed-status-left">
+              <GitBranch className="w-3 h-3" />
               <span>{gitStatus?.branch || 'main'}</span>
-              {gitStatus?.modified?.length > 0 && <span className="text-yellow-200 font-medium">{gitStatus.modified.length}</span>}
+              {gitStatus?.modified?.length > 0 && <span className="ed-status-err">{gitStatus.modified.length}</span>}
             </div>
-            <div className="flex items-center gap-3">
+            <div className="ed-status-right">
               {status && (
-                <span className={`flex items-center gap-1 ${status.type === 'success' ? 'text-green-200' : 'text-red-200'}`}>
-                  {status.type === 'success' ? <CheckCircle className="w-2.5 h-2.5" /> : <XCircle className="w-2.5 h-2.5" />}
-                  {status.msg}
+                <span className="ed-status-item">
+                  {status.type === 'success' ? <CheckCircle className="w-3 h-3 ed-status-ok" /> : <XCircle className="w-3 h-3 ed-status-err" />}
+                  <span className={status.type === 'success' ? 'ed-status-ok' : 'ed-status-err'}>{status.msg}</span>
                 </span>
               )}
-              <span>{selectedFile ? (selectedFile.language || detectLanguage(selectedFile.name) || 'plaintext').toUpperCase() : ''}</span>
-              <span>Ln {selectedFile ? 1 : '-'}, Col {selectedFile ? 1 : '-'}</span>
-              <span>UTF-8</span>
-              <span>Spaces: 4</span>
-              <span>{subscription?.tier === 'enterprise' ? 'Enterprise' : subscription?.tier === 'professional' ? 'Pro' : 'Free'}</span>
+              <span className="ed-status-item">{selectedFile ? (selectedFile.language || detectLanguage(selectedFile.name) || 'plaintext').toUpperCase() : ''}</span>
+              <span className="ed-status-item">Ln {selectedFile ? 1 : '-'}, Col {selectedFile ? 1 : '-'}</span>
+              <span className="ed-status-item">UTF-8</span>
+              <span className="ed-status-item">Spaces: 4</span>
+              <span className={`ed-tier-pill ${subscription?.tier === 'enterprise' ? '' : subscription?.tier === 'professional' ? 'is-pro' : 'is-free'}`}>
+                {subscription?.tier === 'enterprise' ? 'Enterprise' : subscription?.tier === 'professional' ? 'Pro' : 'Free'}
+              </span>
             </div>
           </div>
         </main>
@@ -1244,34 +1278,40 @@ async function handleTerminalCommand(cmd, term) {
 
       {showNewModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-navy-light border border-gray-700 rounded-xl w-full max-w-lg shadow-2xl">
-            <div className="p-6 border-b border-gray-700">
-              <h2 className="text-lg font-bold">Create New File</h2>
+          <div className="ws-modal w-full max-w-lg">
+            <div className="flex items-center justify-between p-5 border-b border-[rgba(255,255,255,0.09)]">
+              <div className="flex items-center gap-2.5">
+                <span className="card-ico">
+                  <FilePlus className="w-4 h-4" />
+                </span>
+                <h2 className="ws-modal-title">Create New File</h2>
+              </div>
+              <button type="button" onClick={() => setShowNewModal(false)} className="text-muted hover:text-white"><X className="w-5 h-5" /></button>
             </div>
-            <form onSubmit={handleCreateFile} className="p-6 space-y-4">
+            <form onSubmit={handleCreateFile} className="p-5 space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-1">File Name</label>
-                <input type="text" value={newFileName} onChange={(e) => setNewFileName(e.target.value)} placeholder="e.g. app.js" className="form-input w-full" autoFocus required />
+                <label className="ws-label">File Name</label>
+                <input type="text" value={newFileName} onChange={(e) => setNewFileName(e.target.value)} placeholder="e.g. app.js" className="ws-input" autoFocus required />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Path (folder)</label>
-                <input type="text" value={newFilePath} onChange={(e) => setNewFilePath(e.target.value)} placeholder="/src" className="form-input w-full" />
+                <label className="ws-label">Path (folder)</label>
+                <input type="text" value={newFilePath} onChange={(e) => setNewFilePath(e.target.value)} placeholder="/src" className="ws-input" />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Language</label>
-                <select value={newFileLang} onChange={(e) => setNewFileLang(e.target.value)} className="form-input w-full">
+                <label className="ws-label">Language</label>
+                <select value={newFileLang} onChange={(e) => setNewFileLang(e.target.value)} className="ws-select">
                   {(languages.length > 0 ? languages : [{ name: 'javascript' }, { name: 'python' }, { name: 'typescript' }, { name: 'html' }, { name: 'css' }, { name: 'json' }, { name: 'markdown' }, { name: 'plaintext' }]).map((lang) => (
                     <option key={lang.name} value={lang.name} disabled={lang.allowed === false}>{lang.name}{lang.allowed === false ? ' (unavailable)' : ''}</option>
                   ))}
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Initial Content</label>
-                <textarea value={newFileContent} onChange={(e) => setNewFileContent(e.target.value)} placeholder="// Start writing code here..." className="form-textarea w-full font-mono text-sm" style={{ minHeight: '150px', tabSize: 2 }} />
+                <label className="ws-label">Initial Content</label>
+                <textarea value={newFileContent} onChange={(e) => setNewFileContent(e.target.value)} placeholder="// Start writing code here..." className="ws-textarea w-full font-mono text-sm" style={{ minHeight: '150px', tabSize: 2 }} />
               </div>
-              <div className="flex justify-end gap-3 pt-2">
-                <button type="button" className="btn-workspace btn-secondary px-4 py-2 rounded-lg" onClick={() => setShowNewModal(false)}>Cancel</button>
-                <button type="submit" className="cta-button px-4 py-2 rounded-lg text-white font-medium flex items-center gap-2" disabled={creating || !newFileName.trim()}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', paddingTop: '0.5rem' }}>
+                <button type="button" className="btn-workspace btn-secondary" onClick={() => setShowNewModal(false)}>Cancel</button>
+                <button type="submit" className="btn-workspace btn-primary flex items-center gap-2" disabled={creating || !newFileName.trim()}>
                   <Plus className="w-4 h-4" />
                   {creating ? 'Creating...' : 'Create File'}
                 </button>
@@ -1282,22 +1322,28 @@ async function handleTerminalCommand(cmd, term) {
       )}
       {showNewFolderModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-navy-light border border-gray-700 rounded-xl w-full max-w-lg shadow-2xl">
-            <div className="p-6 border-b border-gray-700">
-              <h2 className="text-lg font-bold flex items-center gap-2"><FolderPlus className="w-5 h-5" />Create New Folder</h2>
+          <div className="ws-modal w-full max-w-lg">
+            <div className="flex items-center justify-between p-5 border-b border-[rgba(255,255,255,0.09)]">
+              <div className="flex items-center gap-2.5">
+                <span className="card-ico">
+                  <FolderPlus className="w-4 h-4" />
+                </span>
+                <h2 className="ws-modal-title">Create New Folder</h2>
+              </div>
+              <button type="button" onClick={() => setShowNewFolderModal(false)} className="text-muted hover:text-white"><X className="w-5 h-5" /></button>
             </div>
-            <form onSubmit={handleCreateFolder} className="p-6 space-y-4">
+            <form onSubmit={handleCreateFolder} className="p-5 space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Folder Name</label>
-                <input type="text" value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)} placeholder="e.g. src" className="form-input w-full" autoFocus required />
+                <label className="ws-label">Folder Name</label>
+                <input type="text" value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)} placeholder="e.g. src" className="ws-input" autoFocus required />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Parent Path</label>
-                <input type="text" value={newFolderPath} onChange={(e) => setNewFolderPath(e.target.value)} placeholder="/" className="form-input w-full" />
+                <label className="ws-label">Parent Path</label>
+                <input type="text" value={newFolderPath} onChange={(e) => setNewFolderPath(e.target.value)} placeholder="/" className="ws-input" />
               </div>
-              <div className="flex justify-end gap-3 pt-2">
-                <button type="button" className="btn-workspace btn-secondary px-4 py-2 rounded-lg" onClick={() => setShowNewFolderModal(false)}>Cancel</button>
-                <button type="submit" className="cta-button px-4 py-2 rounded-lg text-white font-medium flex items-center gap-2" disabled={creating || !newFolderName.trim()}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', paddingTop: '0.5rem' }}>
+                <button type="button" className="btn-workspace btn-secondary" onClick={() => setShowNewFolderModal(false)}>Cancel</button>
+                <button type="submit" className="btn-workspace btn-primary flex items-center gap-2" disabled={creating || !newFolderName.trim()}>
                   <FolderPlus className="w-4 h-4" />
                   {creating ? 'Creating...' : 'Create Folder'}
                 </button>

@@ -20,6 +20,14 @@ const PROVIDERS = [
   { id: 'notion', label: 'Notion', color: '#fff' },
 ];
 
+const PROVIDER_META = {
+  github: { type: 'GitOps', desc: 'Repos, PRs, commit activity' },
+  discord: { type: 'Chat', desc: 'Alerts and summaries' },
+  slack: { type: 'Chat', desc: 'Alerts and summaries' },
+  figma: { type: 'Design', desc: 'Design files and feedback' },
+  notion: { type: 'Docs', desc: 'Standups and meeting notes' },
+};
+
 const TABS = [
   { id: 'profile', label: 'Profile', icon: User },
   { id: 'security', label: 'Security', icon: Shield },
@@ -42,7 +50,17 @@ export default function Settings() {
   const [integrations, setIntegrations] = useState([]);
   const [loadingIntegrations, setLoadingIntegrations] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
+  const [clock, setClock] = useState('');
   const toast = useToastStore();
+
+  useEffect(() => {
+    const tick = () => {
+      setClock(new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }));
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     if (user) {
@@ -68,7 +86,7 @@ export default function Settings() {
 
   const validateField = useCallback((value) => {
     const result = validate(value, ['required', 'fullName', 'noScript']);
-    setFieldErrors(prev => {
+    setFieldErrors((prev) => {
       if (result.valid) { const n = { ...prev }; delete n.fullName; return n; }
       return { ...prev, fullName: result.errors[0] };
     });
@@ -93,13 +111,11 @@ export default function Settings() {
         method: 'PUT',
         body: JSON.stringify({ fullName: name, email: user.email }),
       });
-      if (data.user) setAuth(localStorage.getItem('authToken'), data.user);
-      toast.success('Profile updated successfully');
       if (data.user) {
         const token = localStorage.getItem('authToken');
         setAuth(token, { ...user, ...data.user });
       }
-      alert('Profile updated');
+      toast.success('Profile updated successfully');
     } catch {
       toast.error('Failed to update profile');
     } finally {
@@ -111,7 +127,6 @@ export default function Settings() {
   const uploadPicture = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    // Reset input value to allow re-upload of same file after error
     e.target.value = '';
     if (file.size > 5 * 1024 * 1024) {
       toast.error('File too large — max 5MB');
@@ -129,7 +144,6 @@ export default function Settings() {
         method: 'POST',
         body: form,
       });
-      // Backend returns { success: true, profilePicture: '/uploads/profiles/...' } — see routes/profile.js POST /picture
       if (data.profilePicture) {
         const token = localStorage.getItem('authToken');
         const updated = { ...user, profilePicture: data.profilePicture };
@@ -180,42 +194,44 @@ export default function Settings() {
         <Sidebar user={user} subscription={subscription} />
 
         <main className="workspace-main">
-          <header className="workspace-header">
-            <div className="flex items-center gap-6">
-              <h1 className="text-xl font-bold">Settings</h1>
+          <header className="workspace-header dash-header">
+            <div>
+              <p className="dash-crumb">
+                BuildrsHQ <span className="sep">/</span> Settings
+              </p>
+              <h1 className="dash-title">Settings</h1>
+              <div className="dash-statusline">
+                <span className="status-indicator status-online" />
+                <span>Account &amp; workspace preferences</span>
+                <span className="dash-clock">· {clock || '—:——:——'}</span>
+              </div>
             </div>
           </header>
 
-          <div className="p-6">
-            <div className="bg-navy-light rounded-lg border border-gray-700">
-              {/* Tab Navigation */}
-              <div className="flex border-b border-gray-700">
+          <div className="workspace-content">
+            <div className="set-shell">
+              <nav className="set-tabs">
                 {TABS.map(({ id, label, icon: Icon }) => (
                   <button
                     key={id}
+                    type="button"
                     onClick={() => setActiveTab(id)}
-                    className={`flex items-center gap-2 px-4 py-3 text-sm font-medium capitalize transition-colors ${
-                      activeTab === id
-                        ? 'border-b-2 border-blue-500 text-white'
-                        : 'text-gray-400 hover:text-white'
-                    }`}
+                    className={`set-tab ${activeTab === id ? 'is-active' : ''}`}
                   >
                     <Icon className="w-4 h-4" />
                     {label}
                   </button>
                 ))}
-              </div>
+              </nav>
 
-              {/* Tab Content */}
-              <div className="p-6">
+              <div className="set-body">
                 {activeTab === 'profile' && (
                   <form onSubmit={saveProfile} className="space-y-6 max-w-xl">
-                    {/* Profile Picture */}
                     <div className="flex items-center gap-4">
                       <img
                         src={profilePictureUrl}
                         alt={user?.fullName || 'User'}
-                        className="w-20 h-20 rounded-full object-cover border-2 border-gray-600"
+                        className="set-av"
                         onError={(e) => {
                           if (e.currentTarget.src !== profilePictureUrl) return;
                           const fallback = `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.fullName || user?.name || 'User')}&background=3b82f6&color=fff&size=128`;
@@ -234,90 +250,88 @@ export default function Settings() {
                             disabled={uploading}
                           />
                         </label>
-                        <p className="text-xs text-gray-500 mt-1">JPG, PNG. Max 5MB.</p>
+                        <p className="set-note">JPG, PNG. Max 5MB.</p>
                       </div>
                     </div>
 
-                    {/* Full Name */}
                     <div>
-                      <label className="block text-sm font-medium mb-2">Full Name</label>
+                      <label className="ws-label">Full Name</label>
                       <input
                         value={name}
                         onChange={(e) => setName(e.target.value)}
                         onBlur={() => validateField(name)}
-                        className={`w-full px-4 py-2 bg-navy border rounded-lg text-white focus:outline-none focus:border-blue-accent ${
-                          fieldErrors.fullName ? 'border-red-500' : 'border-gray-600'
-                        }`}
+                        className={`ws-input ${fieldErrors.fullName ? 'field-error' : ''}`}
                         autoComplete="name"
                         maxLength={100}
                       />
-                      {fieldErrors.fullName && <p className="text-xs text-red-400 mt-1">{fieldErrors.fullName}</p>}
+                      {fieldErrors.fullName && <p className="std-field-error">{fieldErrors.fullName}</p>}
                     </div>
 
-                    {/* Email (disabled) */}
                     <div>
-                      <label className="block text-sm font-medium mb-2">Email</label>
+                      <label className="ws-label">Email</label>
                       <input
                         value={user?.email || ''}
                         disabled
-                        className="w-full px-4 py-2 bg-navy border border-gray-600 rounded-lg text-gray-400 cursor-not-allowed"
+                        className="ws-input opacity-60 cursor-not-allowed"
                       />
                     </div>
 
-                    {/* Role (disabled) */}
                     <div>
-                      <label className="block text-sm font-medium mb-2">Role</label>
+                      <label className="ws-label">Role</label>
                       <input
                         value={role}
                         disabled
-                        className="w-full px-4 py-2 bg-navy border border-gray-600 rounded-lg text-gray-400 cursor-not-allowed capitalize"
+                        className="ws-input opacity-60 cursor-not-allowed capitalize"
                       />
                     </div>
 
-                    {/* Save */}
-                    <button
-                      type="submit"
-                      disabled={saving}
-                      className="cta-button px-4 py-2 rounded-lg text-white font-medium inline-flex items-center gap-2 disabled:opacity-50"
-                    >
-                      {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                      {saving ? 'Saving...' : 'Save Changes'}
-                    </button>
+                    <div className="flex items-center justify-between gap-3 pt-1">
+                      <button
+                        type="submit"
+                        disabled={saving}
+                        className="btn-workspace btn-primary"
+                      >
+                        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                        {saving ? 'Saving...' : 'Save Changes'}
+                      </button>
+                      <span className="set-hint">Changes apply across your workspace</span>
+                    </div>
                   </form>
                 )}
 
                 {activeTab === 'security' && (
                   <div className="max-w-xl">
-                    <div className="bg-navy rounded-lg border border-gray-600 p-6 text-center">
-                      <Shield className="w-10 h-10 text-gray-500 mx-auto mb-3" />
-                      <h3 className="text-lg font-semibold mb-2">Security Settings</h3>
-                      <p className="text-gray-400">Password change and 2FA coming soon.</p>
+                    <div className="set-gate">
+                      <div className="set-gate-ico">
+                        <Shield className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h3 className="mem-rule" style={{ marginBottom: '0.15rem' }}>Security Settings</h3>
+                        <p className="set-hint">Password change and 2FA are coming soon.</p>
+                      </div>
                     </div>
                   </div>
                 )}
 
                 {activeTab === 'billing' && (
                   <div className="max-w-xl space-y-6">
-                    <div className="bg-navy rounded-lg border border-gray-600 p-6">
-                      <h3 className="text-lg font-semibold mb-4">Current Plan</h3>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm text-gray-400">Plan</p>
-                          <p className="text-white font-medium capitalize">
-                            {subscription?.tier || 'Free'}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-sm text-gray-400">Status</p>
-                          <p className="text-white font-medium capitalize">
-                            {subscription?.status || 'Active'}
-                          </p>
-                        </div>
+                    <div className="set-plan">
+                      <div>
+                        <p className="set-plan-key">Current Plan</p>
+                        <p className="set-plan-val">{subscription?.tier || 'Free'}</p>
+                      </div>
+                      <div>
+                        <p className="set-plan-key">Status</p>
+                        <p className="set-plan-val">
+                          <span className={`${(!subscription || subscription.status === 'active') ? 'status-indicator status-online' : 'status-indicator'} mr-2`} />
+                          {subscription?.status ? subscription.status : 'Active'}
+                        </p>
                       </div>
                     </div>
                     <button
+                      type="button"
                       onClick={() => router.push('/pricing')}
-                      className="cta-button px-4 py-2 rounded-lg text-white font-medium inline-flex items-center gap-2"
+                      className="btn-workspace btn-primary"
                     >
                       <CreditCard className="w-4 h-4" />
                       Upgrade Plan
@@ -326,9 +340,9 @@ export default function Settings() {
                 )}
 
                 {activeTab === 'integrations' && (
-                  <div className="space-y-4">
+                  <div className="space-y-3 max-w-2xl">
                     {loadingIntegrations && (
-                      <div className="flex items-center gap-2 text-gray-400">
+                      <div className="flex items-center gap-2 set-hint py-2">
                         <Loader2 className="w-4 h-4 animate-spin" />
                         Loading integrations...
                       </div>
@@ -337,43 +351,43 @@ export default function Settings() {
                       PROVIDERS.map(({ id, label, color }) => {
                         const integration = getIntegration(id);
                         const connected = integration?.isActive;
+                        const meta = PROVIDER_META[id] || { type: 'Integration', desc: '' };
                         return (
-                          <div
-                            key={id}
-                            className="flex items-center justify-between bg-navy rounded-lg border border-gray-600 p-4"
-                          >
-                            <div className="flex items-center gap-3">
+                          <div key={id} className="set-int-row">
+                            <div className="set-int-brand">
                               <div
-                                className="w-10 h-10 rounded-lg flex items-center justify-center font-bold text-sm"
-                                style={{ backgroundColor: color + '20', color }}
+                                className="int-ico"
+                                style={{ backgroundColor: color + '18', color }}
                               >
                                 {label.charAt(0)}
                               </div>
-                              <div>
-                                <p className="text-white font-medium">{label}</p>
-                                <p className="text-xs text-gray-500">
+                              <div className="min-w-0">
+                                <p className="set-int-name">{label}</p>
+                                <p className="set-int-sub">
                                   {connected
                                     ? `Connected as ${integration.providerUsername || 'user'}`
-                                    : 'Not connected'}
+                                    : `${meta.type} · ${meta.desc}`}
                                 </p>
                               </div>
                             </div>
-                            <div>
+                            <div className="flex items-center gap-3 flex-shrink-0">
+                              {connected && (
+                                <span className="pill" style={{ background: 'rgba(52,211,153,0.12)', color: '#34d399' }}>
+                                  Connected
+                                </span>
+                              )}
                               {connected ? (
-                                <div className="flex items-center gap-2">
-                                  <span className="text-xs text-green-400 font-medium mr-2">
-                                    Connected
-                                  </span>
-                                  <button
-                                    onClick={() => disconnectProvider(id)}
-                                    className="btn-workspace btn-secondary text-xs inline-flex items-center gap-1"
-                                  >
-                                    <Unplug className="w-3 h-3" />
-                                    Disconnect
-                                  </button>
-                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => disconnectProvider(id)}
+                                  className="btn-workspace btn-secondary text-xs inline-flex items-center gap-1"
+                                >
+                                  <Unplug className="w-3 h-3" />
+                                  Disconnect
+                                </button>
                               ) : (
                                 <button
+                                  type="button"
                                   onClick={() => connectProvider(id)}
                                   className="btn-workspace btn-primary text-xs inline-flex items-center gap-1"
                                 >

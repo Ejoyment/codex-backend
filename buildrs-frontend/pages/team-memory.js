@@ -6,27 +6,27 @@ import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch } from '../lib/api';
 import { NoWorkspaceEmptyState } from '../hooks/useCurrentCompany';
-import { Plus, X, BookOpen, ChevronDown } from 'lucide-react';
+import { Plus, X, BookOpen, ChevronDown, Loader2, BookMarked, Layers, AlertTriangle } from 'lucide-react';
 
 const CATEGORIES = [
-  { value: 'architecture', label: 'Architecture', color: 'bg-blue-500' },
-  { value: 'naming', label: 'Naming', color: 'bg-purple-500' },
-  { value: 'error-handling', label: 'Error Handling', color: 'bg-red-500' },
-  { value: 'state-management', label: 'State Management', color: 'bg-green-500' },
-  { value: 'api-design', label: 'API Design', color: 'bg-orange-500' },
-  { value: 'testing', label: 'Testing', color: 'bg-teal-500' },
-  { value: 'security', label: 'Security', color: 'bg-yellow-500' },
-  { value: 'deployment', label: 'Deployment', color: 'bg-pink-500' },
-  { value: 'custom', label: 'Custom', color: 'bg-gray-500' },
+  { value: 'architecture', label: 'Architecture', color: '#60a5fa' },
+  { value: 'naming', label: 'Naming', color: '#a78bfa' },
+  { value: 'error-handling', label: 'Error Handling', color: '#f87171' },
+  { value: 'state-management', label: 'State Management', color: '#34d399' },
+  { value: 'api-design', label: 'API Design', color: '#e5b84a' },
+  { value: 'testing', label: 'Testing', color: '#2fd6e6' },
+  { value: 'security', label: 'Security', color: '#fbbf24' },
+  { value: 'deployment', label: 'Deployment', color: '#f472b6' },
+  { value: 'custom', label: 'Custom', color: '#9aa1ae' },
 ];
 
 const CATEGORY_MAP = Object.fromEntries(CATEGORIES.map((c) => [c.value, c]));
 
-const PRIORITY_BADGES = {
-  low: 'bg-gray-600 text-gray-200',
-  medium: 'bg-blue-600 text-blue-100',
-  high: 'bg-orange-600 text-orange-100',
-  urgent: 'bg-red-600 text-red-100',
+const PRIORITY_TINTS = {
+  low: { bg: 'rgba(154,161,174,0.1)', text: '#9aa1ae' },
+  medium: { bg: 'rgba(47,214,230,0.12)', text: '#2fd6e6' },
+  high: { bg: 'rgba(229,184,74,0.12)', text: '#e5b84a' },
+  urgent: { bg: 'rgba(248,113,113,0.12)', text: '#f87171' },
 };
 
 export default function TeamMemory() {
@@ -39,6 +39,16 @@ export default function TeamMemory() {
   const [conventions, setConventions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [clock, setClock] = useState('');
+
+  useEffect(() => {
+    const tick = () => {
+      setClock(new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }));
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
 
   const loadCompanies = useCallback(async () => {
     try {
@@ -78,6 +88,9 @@ export default function TeamMemory() {
     return acc;
   }, {});
 
+  const activeCategories = CATEGORIES.filter((cat) => grouped[cat.value]?.length);
+  const urgentCount = conventions.filter((c) => c.priority === 'urgent' || c.priority === 'high').length;
+
   return (
     <AuthGuard>
       <Head>
@@ -85,25 +98,32 @@ export default function TeamMemory() {
         <link rel="icon" href="/buildrs.png" />
       </Head>
 
-      <div className="min-h-screen bg-navy flex">
+      <div className="workspace-container">
         <Sidebar user={user} subscription={subscription} />
 
-        <main className="workspace-main ml-64">
-          <header className="workspace-header">
-            <div className="flex items-center gap-4">
-              <h1 className="text-xl font-bold">Team Memory</h1>
-              <span className="text-sm text-gray-400">Team knowledge base &amp; conventions</span>
+        <main className="workspace-main">
+          <header className="workspace-header dash-header">
+            <div>
+              <p className="dash-crumb">
+                BuildrsHQ <span className="sep">/</span> Team Memory
+              </p>
+              <h1 className="dash-title">Team Memory</h1>
+              <div className="dash-statusline">
+                <span className="status-indicator status-online" />
+                <span>{conventions.length} stored convention{conventions.length === 1 ? '' : 's'}</span>
+                <span className="dash-clock">· {clock || '—:——:——'}</span>
+              </div>
             </div>
             <div className="flex items-center gap-3">
-              {companies.length > 1 && (
-                <div className="relative">
+              {companies.length > 1 && selectedCompany && (
+                <div className="mem-select-wrap">
                   <select
-                    value={selectedCompany?._id || ''}
+                    value={selectedCompany._id}
                     onChange={(e) => {
                       const co = companies.find((c) => c._id === e.target.value);
                       if (co) setSelectedCompany(co);
                     }}
-                    className="appearance-none bg-navy-light border border-gray-700 rounded-lg px-3 py-2 pr-8 text-sm text-gray-200 cursor-pointer"
+                    className="mem-select"
                   >
                     {companies.map((co) => (
                       <option key={co._id} value={co._id}>
@@ -111,71 +131,99 @@ export default function TeamMemory() {
                       </option>
                     ))}
                   </select>
-                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                  <ChevronDown className="w-3.5 h-3.5 mem-select-chev" />
                 </div>
               )}
-              <button
-                type="button"
-                className="cta-button flex items-center gap-2"
-                onClick={() => setShowModal(true)}
-              >
+              <button type="button" className="btn-workspace btn-primary" onClick={() => setShowModal(true)}>
                 <Plus className="w-4 h-4" />
                 Add Convention
               </button>
             </div>
           </header>
 
-          <div className="workspace-content p-6">
+          <div className="workspace-content">
             {!loading && companies.length === 0 ? (
               <NoWorkspaceEmptyState onCreateClick={() => router.push('/teams')} />
-            ) : loading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {[1, 2, 3, 4].map((i) => (
-                  <div key={i} className="workspace-card animate-pulse">
-                    <div className="h-4 bg-gray-700 rounded w-1/3 mb-3" />
-                    <div className="h-3 bg-gray-700 rounded w-3/4 mb-2" />
-                    <div className="h-3 bg-gray-700 rounded w-1/2" />
-                  </div>
-                ))}
-              </div>
-            ) : conventions.length === 0 ? (
-              <div className="workspace-card flex flex-col items-center justify-center py-16 text-center">
-                <BookOpen className="w-12 h-12 text-gray-500 mb-4" />
-                <h3 className="text-lg font-semibold text-gray-300 mb-2">No conventions yet</h3>
-                <p className="text-gray-500 text-sm mb-6 max-w-sm">
-                  Start building your team&apos;s knowledge base by adding coding conventions and
-                  best practices.
-                </p>
-                <button
-                  type="button"
-                  className="cta-button flex items-center gap-2"
-                  onClick={() => setShowModal(true)}
-                >
-                  <Plus className="w-4 h-4" />
-                  Add First Convention
-                </button>
-              </div>
             ) : (
-              <div className="space-y-8">
-                {CATEGORIES.filter((cat) => grouped[cat.value]?.length).map((cat) => (
-                  <section key={cat.value}>
-                    <div className="flex items-center gap-3 mb-4">
-                      <span className={`${cat.color} w-2.5 h-2.5 rounded-full inline-block`} />
-                      <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">
-                        {cat.label}
-                      </h2>
-                      <span className="text-xs text-gray-500">
-                        {grouped[cat.value].length} rule{grouped[cat.value].length !== 1 && 's'}
-                      </span>
+              <>
+                <div className="dash-kpis" style={{ marginBottom: '1.5rem' }}>
+                  <div className="dash-kpi dash-kpi-blue" style={{ cursor: 'default' }}>
+                    <div className="dash-kpi-ico"><BookMarked className="w-4 h-4" /></div>
+                    <div>
+                      <p className="dash-kpi-val">{conventions.length}</p>
+                      <p className="dash-kpi-label">Total rules</p>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {grouped[cat.value].map((conv) => (
-                        <ConventionCard key={conv._id} convention={conv} />
-                      ))}
+                  </div>
+                  <div className="dash-kpi dash-kpi-purple" style={{ cursor: 'default' }}>
+                    <div className="dash-kpi-ico"><Layers className="w-4 h-4" /></div>
+                    <div>
+                      <p className="dash-kpi-val">{activeCategories.length}<span className="dash-kpi-unit">/{CATEGORIES.length}</span></p>
+                      <p className="dash-kpi-label">Categories covered</p>
                     </div>
-                  </section>
-                ))}
-              </div>
+                  </div>
+                  <div className="dash-kpi dash-kpi-green" style={{ cursor: 'default' }}>
+                    <div className="dash-kpi-ico"><BookOpen className="w-4 h-4" /></div>
+                    <div>
+                      <p className="dash-kpi-val">{conventions.filter((c) => c.examples?.length > 0).length}</p>
+                      <p className="dash-kpi-label">With examples</p>
+                    </div>
+                  </div>
+                  <div className="dash-kpi dash-kpi-orange" style={{ cursor: 'default' }}>
+                    <div className="dash-kpi-ico"><AlertTriangle className="w-4 h-4" /></div>
+                    <div>
+                      <p className="dash-kpi-val">{urgentCount}</p>
+                      <p className="dash-kpi-label">High / urgent</p>
+                    </div>
+                  </div>
+                </div>
+
+                {loading ? (
+                  <div className="dash-empty" style={{ paddingTop: '4rem' }}>
+                    <div className="dash-empty-ico">
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    </div>
+                    <p className="dash-empty-title">Loading conventions...</p>
+                  </div>
+                ) : conventions.length === 0 ? (
+                  <div className="workspace-card">
+                    <div className="workspace-card-body flex flex-col items-center justify-center py-16 text-center">
+                      <div className="dash-empty-ico">
+                        <BookOpen className="w-5 h-5" />
+                      </div>
+                      <p className="dash-empty-title" style={{ fontSize: '1.05rem', marginBottom: '0.4rem' }}>
+                        No conventions yet
+                      </p>
+                      <p className="dash-empty-sub" style={{ maxWidth: '26rem', lineHeight: '1.5', marginBottom: '1.5rem' }}>
+                        Start building your team&apos;s knowledge base by adding coding
+                        conventions and best practices.
+                      </p>
+                      <button type="button" className="btn-workspace btn-primary" onClick={() => setShowModal(true)}>
+                        <Plus className="w-4 h-4" />
+                        Add First Convention
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mem-sections">
+                    {activeCategories.map((cat) => (
+                      <section key={cat.value}>
+                        <div className="mem-section-head">
+                          <span className="mem-cat-dot" style={{ background: cat.color }} />
+                          <h2 className="mem-cat-name">{cat.label}</h2>
+                          <span className="mem-cat-count">
+                            {grouped[cat.value].length} rule{grouped[cat.value].length !== 1 && 's'}
+                          </span>
+                        </div>
+                        <div className="mem-grid">
+                          {grouped[cat.value].map((conv) => (
+                            <ConventionCard key={conv._id} convention={conv} />
+                          ))}
+                        </div>
+                      </section>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
           </div>
         </main>
@@ -197,38 +245,37 @@ export default function TeamMemory() {
 
 function ConventionCard({ convention }) {
   const cat = CATEGORY_MAP[convention.category] || CATEGORY_MAP.custom;
-  const priorityClass = PRIORITY_BADGES[convention.priority] || PRIORITY_BADGES.medium;
+  const priorityTint = PRIORITY_TINTS[convention.priority] || PRIORITY_TINTS.medium;
 
   return (
-    <div className="workspace-card">
-      <div className="p-4">
-        <div className="flex items-start justify-between gap-3 mb-2">
-          <h3 className="text-sm font-semibold text-gray-100 leading-snug">
-            {convention.rule}
-          </h3>
-          <span className={`${priorityClass} text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap`}>
-            {convention.priority}
-          </span>
+    <div className="mem-card">
+      <div className="mem-card-top">
+        <h3 className="mem-rule">{convention.rule}</h3>
+        <span className="pill flex-shrink-0" style={{ background: priorityTint.bg, color: priorityTint.text }}>
+          {convention.priority}
+        </span>
+      </div>
+
+      {convention.description && (
+        <p className="mem-desc">{convention.description}</p>
+      )}
+
+      {convention.examples?.length > 0 && (
+        <div className="mem-examples">
+          <span className="mem-examples-label">Examples</span>
+          {convention.examples.slice(0, 3).map((ex, i) => (
+            <code key={i} className="mem-example">{ex}</code>
+          ))}
         </div>
+      )}
 
-        {convention.description && (
-          <p className="text-xs text-gray-400 mb-3 leading-relaxed">{convention.description}</p>
-        )}
-
-        {convention.examples?.length > 0 && (
-          <div className="mt-2">
-            <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wider">Examples</span>
-            <ul className="mt-1 space-y-1">
-              {convention.examples.map((ex, i) => (
-                <li
-                  key={i}
-                  className="text-xs text-gray-400 bg-navy rounded px-2 py-1 font-mono"
-                >
-                  {ex}
-                </li>
-              ))}
-            </ul>
-          </div>
+      <div className="mem-meta">
+        <span className="mem-tag">
+          <span className="mem-cat-dot" style={{ background: cat.color, width: 6, height: 6 }} />
+          {cat.label}
+        </span>
+        {convention.techStack && (
+          <span className="mem-tag">{convention.techStack}</span>
         )}
       </div>
     </div>
@@ -288,24 +335,20 @@ function AddConventionModal({ companyId, onClose, onCreated }) {
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[9999] p-4" onClick={onClose}>
-      <div
-        className="ws-modal p-8 max-w-lg w-full"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex justify-between items-center mb-6">
-          <h3 className="ws-modal-title">Add Convention</h3>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-[#565d6b] hover:text-[#eceef1] text-2xl leading-none"
-          >
+      <div className="ws-modal p-6 max-w-lg w-full" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center gap-2.5">
+            <span className="card-ico">
+              <BookOpen className="w-4 h-4" />
+            </span>
+            <h3 className="ws-modal-title">Add Convention</h3>
+          </div>
+          <button type="button" onClick={onClose} className="text-[#565d6b] hover:text-[#eceef1]">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {error && (
-          <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">{error}</div>
-        )}
+        {error && <div className="std-alert std-alert-error mb-4">{error}</div>}
 
         <form onSubmit={handleSubmit}>
           <div className="grid grid-cols-2 gap-4 mb-4">
@@ -369,7 +412,7 @@ function AddConventionModal({ companyId, onClose, onCreated }) {
               rows={3}
               value={form.examples}
               onChange={(e) => update('examples', e.target.value)}
-              placeholder="const useAuth = () => useStore(...)&#10;export default function MyComponent() {}"
+              placeholder={'const useAuth = () => useStore(...)\nexport default function MyComponent() {}'}
               className="ws-input resize-y font-mono"
             />
           </div>
@@ -386,18 +429,10 @@ function AddConventionModal({ companyId, onClose, onCreated }) {
           </div>
 
           <div className="flex gap-3 justify-end">
-            <button
-              type="button"
-              onClick={onClose}
-              className="btn-workspace btn-secondary"
-            >
+            <button type="button" onClick={onClose} className="btn-workspace btn-secondary">
               Cancel
             </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="cta-button disabled:opacity-60"
-            >
+            <button type="submit" disabled={submitting} className="btn-workspace btn-primary">
               {submitting ? 'Adding...' : 'Add Convention'}
             </button>
           </div>
