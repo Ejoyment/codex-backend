@@ -8,7 +8,7 @@ import { apiFetch } from '../lib/api';
 import { useCurrentCompany, NoWorkspaceEmptyState } from '../hooks/useCurrentCompany';
 import { getTierLimits, normalizeTier } from '../lib/tier';
 import { getAvatarUrl } from '../lib/utils';
-import { MessageSquare, Plus, Send, Hash, X } from 'lucide-react';
+import { MessageSquare, Plus, Send, Hash, X, Building2, Loader2, ArrowUpRight } from 'lucide-react';
 
 export default function Messaging() {
   const user = useAuthStore((s) => s.user);
@@ -28,6 +28,7 @@ export default function Messaging() {
   const [newChannelName, setNewChannelName] = useState('');
   const [newChannelDesc, setNewChannelDesc] = useState('');
   const [newChannelType, setNewChannelType] = useState('group');
+  const [clock, setClock] = useState('');
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
@@ -43,6 +44,15 @@ export default function Messaging() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  useEffect(() => {
+    const tick = () => {
+      setClock(new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }));
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
 
   async function loadChannels() {
     try {
@@ -139,141 +149,190 @@ export default function Messaging() {
         <link rel="icon" href="/buildrs.png" />
       </Head>
 
-      <div className="min-h-screen bg-navy flex">
+      <div className="workspace-container">
         <Sidebar user={user} subscription={subscription} />
 
-        <main className="workspace-main flex-1 ml-64">
-          <header className="workspace-header">
-            <div className="flex items-center gap-3">
-              <h1 className="text-xl font-bold">Messaging</h1>
+        <main className="workspace-main">
+          <header className="workspace-header dash-header">
+            <div>
+              <p className="dash-crumb">
+                BuildrsHQ <span className="sep">/</span> Messaging
+              </p>
+              <h1 className="dash-title">Team Messaging</h1>
+              <div className="dash-statusline">
+                <span className="status-indicator status-online" />
+                <span>{selectedChannel ? `#${selectedChannel.name}` : 'Channels'}</span>
+                <span className="dash-clock">· {clock || '—:——:——'}</span>
+              </div>
             </div>
-            <button type="button" className="cta-button" onClick={() => setShowCreateModal(true)}>
-              <Plus className="w-4 h-4" />
-              <span>New Channel</span>
-            </button>
+            <div className="flex items-center gap-3">
+              <span className="dash-pill hidden md:inline-flex">
+                <Hash className="w-3 h-3" style={{ color: '#2fd6e6' }} />
+                {channels.length} channel{channels.length === 1 ? '' : 's'}
+              </span>
+              <button type="button" className="btn-workspace btn-primary" onClick={() => setShowCreateModal(true)}>
+                <Plus className="w-4 h-4" />
+                <span className="hidden sm:inline">New Channel</span>
+              </button>
+            </div>
           </header>
 
           <div className="workspace-content">
             {companyLoading ? (
-              <div className="flex items-center justify-center py-20 text-gray-400">Loading workspace...</div>
+              <div className="dash-empty" style={{ paddingTop: '4rem' }}>
+                <div className="dash-empty-ico">
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                </div>
+                <p className="dash-empty-title">Loading workspace...</p>
+              </div>
             ) : !hasCompany ? (
               <NoWorkspaceEmptyState onCreateClick={() => router.push('/teams')} />
             ) : !canUseChat ? (
-              <div className="flex flex-col items-center justify-center py-20 text-center">
-                <MessageSquare className="w-12 h-12 text-gray-600 mb-4" />
-                <h3 className="text-lg font-semibold text-white mb-1">Team Chat requires Professional</h3>
-                <p className="text-sm text-gray-400 mb-6 max-w-sm">Upgrade to unlock messaging, channels, and team chat.</p>
-                <button type="button" onClick={() => router.push('/pricing')} className="cta-button px-6 py-3 rounded-lg">Upgrade to Professional</button>
+              <div className="dash-empty" style={{ paddingTop: '4rem' }}>
+                <div className="dash-empty-ico" style={{ background: 'rgba(229,184,74,0.1)', borderColor: 'rgba(229,184,74,0.2)' }}>
+                  <MessageSquare className="w-5 h-5" style={{ color: '#e5b84a' }} />
+                </div>
+                <p className="dash-empty-title" style={{ fontSize: '1.05rem', marginBottom: '0.4rem' }}>
+                  Team Chat requires Professional
+                </p>
+                <p className="dash-empty-sub" style={{ maxWidth: '26rem', lineHeight: '1.5', marginBottom: '1.5rem' }}>
+                  Upgrade to unlock messaging, channels, and team chat for your workspace.
+                </p>
+                <button onClick={() => router.push('/pricing')} className="btn-workspace btn-primary">
+                  Upgrade to Professional
+                  <ArrowUpRight className="w-4 h-4" />
+                </button>
               </div>
             ) : (
-              <div className="bg-navy-light rounded-lg border border-gray-700 h-[calc(100vh-140px)] flex">
-              {/* Channel List */}
-              <div className="w-72 border-r border-gray-700 flex flex-col">
-                <div className="p-4 border-b border-gray-700">
-                  <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Channels</h2>
-                </div>
-                <div className="flex-1 overflow-y-auto p-2 space-y-1">
-                  {loadingChannels && (
-                    <div className="text-center text-gray-500 py-8 text-sm">Loading channels...</div>
-                  )}
-                  {!loadingChannels && channels.length === 0 && (
-                    <div className="text-center text-gray-500 py-8 text-sm">No channels yet</div>
-                  )}
-                  {channels.map((ch) => (
-                    <button
-                      key={ch._id}
-                      type="button"
-                      onClick={() => setSelectedChannel(ch)}
-                      className={`w-full flex items-center gap-3 p-3 rounded-lg text-left transition-colors ${
-                        selectedChannel?._id === ch._id
-                          ? 'bg-blue-600/20 border border-blue-500/30'
-                          : 'hover:bg-white/5 border border-transparent'
-                      }`}
-                    >
-                      <Hash className="w-4 h-4 text-gray-400 shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-gray-200 truncate">{ch.name}</div>
-                        {ch.description && (
-                          <div className="text-xs text-gray-500 truncate">{ch.description}</div>
-                        )}
-                      </div>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-700/50 text-gray-400 shrink-0">
-                        {ch.type || 'group'}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Message Panel */}
-              <div className="flex-1 flex flex-col">
-                {!selectedChannel ? (
-                  <div className="flex-1 flex items-center justify-center text-gray-400">
-                    <div className="text-center">
-                      <MessageSquare className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                      <p>Select a channel to start messaging</p>
-                    </div>
+              <div className="msg-shell">
+                {/* Channel rail */}
+                <aside className="msg-rail">
+                  <div className="msg-rail-head">
+                    <span className="msg-rail-title">
+                      <Hash className="w-4 h-4" style={{ color: '#2fd6e6' }} />
+                      Channels
+                    </span>
+                    <span className="badge-count">{channels.length}</span>
                   </div>
-                ) : (
-                  <>
-                    {/* Channel Header */}
-                    <div className="px-4 py-3 border-b border-gray-700 flex items-center gap-3">
-                      <Hash className="w-5 h-5 text-gray-400" />
-                      <div>
-                        <h3 className="text-sm font-semibold text-gray-200">{selectedChannel.name}</h3>
-                        {selectedChannel.description && (
-                          <p className="text-xs text-gray-500">{selectedChannel.description}</p>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Messages */}
-                    <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
-                      {loadingMessages && (
-                        <div className="text-center text-gray-500 py-8 text-sm">Loading messages...</div>
-                      )}
-                      {!loadingMessages && messages.length === 0 && (
-                        <div className="text-center text-gray-500 py-8 text-sm">No messages yet. Start the conversation!</div>
-                      )}
-                      {messages.map((msg) => (
-                        <div key={msg._id} className="flex gap-3">
-                          <img
-                            src={senderAvatar(msg)}
-                            alt={senderName(msg)}
-                            className="w-8 h-8 rounded-full shrink-0 mt-0.5"
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-baseline gap-2">
-                              <span className="text-sm font-medium text-gray-200">{senderName(msg)}</span>
-                              <span className="text-xs text-gray-500">{formatTime(msg.createdAt)}</span>
-                            </div>
-                            <p className="text-sm text-gray-300 mt-0.5 whitespace-pre-wrap break-words">{msg.content}</p>
-                          </div>
+                  <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
+                    {loadingChannels && (
+                      <div className="dash-empty">
+                        <div className="dash-empty-ico">
+                          <Loader2 className="w-5 h-5 animate-spin" />
                         </div>
-                      ))}
-                      <div ref={messagesEndRef} />
-                    </div>
-
-                    {/* Message Input */}
-                    <form onSubmit={handleSendMessage} className="px-4 py-3 border-t border-gray-700 flex gap-3">
-                      <input
-                        type="text"
-                        value={newMessage}
-                        onChange={(e) => setNewMessage(e.target.value)}
-                        placeholder={`Message #${selectedChannel.name}...`}
-                        className="flex-1 bg-navy border border-gray-700 rounded-lg px-4 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-blue-500"
-                      />
+                        <p className="dash-empty-title">Loading channels...</p>
+                      </div>
+                    )}
+                    {!loadingChannels && channels.length === 0 && (
+                      <div className="dash-empty">
+                        <div className="dash-empty-ico">
+                          <Hash className="w-5 h-5" />
+                        </div>
+                        <p className="dash-empty-title">No channels yet</p>
+                        <p className="dash-empty-sub">Create one to start chatting.</p>
+                      </div>
+                    )}
+                    {channels.map((ch) => (
                       <button
-                        type="submit"
-                        disabled={!newMessage.trim()}
-                        className="cta-button disabled:opacity-40 disabled:cursor-not-allowed"
+                        key={ch._id}
+                        type="button"
+                        onClick={() => setSelectedChannel(ch)}
+                        className={`msg-channel ${selectedChannel?._id === ch._id ? 'is-active' : ''}`}
                       >
-                        <Send className="w-4 h-4" />
+                        <span className="msg-chan-hash">
+                          <Hash className="w-3.5 h-3.5" />
+                        </span>
+                        <span className="msg-chan-main">
+                          <span className="msg-chan-name">{ch.name}</span>
+                          {ch.description && <span className="msg-chan-desc">{ch.description}</span>}
+                        </span>
+                        <span className="msg-chan-type">{ch.type || 'group'}</span>
                       </button>
-                    </form>
-                  </>
-                )}
-              </div>
+                    ))}
+                  </div>
+                </aside>
+
+                {/* Conversation */}
+                <div className="msg-conv">
+                  {!selectedChannel ? (
+                    <div className="ail-empty">
+                      <div className="src-empty-ico">
+                        <MessageSquare className="w-7 h-7" />
+                      </div>
+                      <p className="dash-empty-title" style={{ fontSize: '1rem', marginBottom: '0.35rem' }}>
+                        Team Messaging
+                      </p>
+                      <p className="dash-empty-sub" style={{ maxWidth: '26rem', lineHeight: '1.5' }}>
+                        Select a channel to start messaging.
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Channel header */}
+                      <div className="msg-conv-head">
+                        <span className="msg-chan-hash">
+                          <Hash className="w-4 h-4" />
+                        </span>
+                        <div className="min-w-0">
+                          <p className="msg-conv-title">{selectedChannel.name}</p>
+                          {selectedChannel.description && (
+                            <p className="msg-conv-desc">{selectedChannel.description}</p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Messages */}
+                      <div className="msg-scroll">
+                        {loadingMessages && (
+                          <div className="text-center text-[#565d6b] py-8 text-sm">Loading messages...</div>
+                        )}
+                        {!loadingMessages && messages.length === 0 && (
+                          <div className="dash-empty" style={{ paddingTop: '3rem' }}>
+                            <div className="dash-empty-ico">
+                              <MessageSquare className="w-5 h-5" />
+                            </div>
+                            <p className="dash-empty-title">No messages yet</p>
+                            <p className="dash-empty-sub">Start the conversation!</p>
+                          </div>
+                        )}
+                        {messages.map((msg) => (
+                          <div key={msg._id} className="msg-row">
+                            <img src={senderAvatar(msg)} alt={senderName(msg)} className="msg-avatar" />
+                            <div className="msg-body">
+                              <div className="msg-headline">
+                                <span className="msg-name">{senderName(msg)}</span>
+                                <span className="msg-time">{formatTime(msg.createdAt)}</span>
+                              </div>
+                              <p className="msg-content">{msg.content}</p>
+                            </div>
+                          </div>
+                        ))}
+                        <div ref={messagesEndRef} />
+                      </div>
+
+                      {/* Composer */}
+                      <form onSubmit={handleSendMessage} className="msg-composer">
+                        <div className="msg-field">
+                          <input
+                            type="text"
+                            value={newMessage}
+                            onChange={(e) => setNewMessage(e.target.value)}
+                            placeholder={`Message #${selectedChannel.name}...`}
+                          />
+                          <button
+                            type="submit"
+                            disabled={!newMessage.trim()}
+                            className="btn-workspace btn-primary"
+                            title="Send"
+                            style={{ minHeight: '46px' }}
+                          >
+                            <Send className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </form>
+                    </>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -282,42 +341,52 @@ export default function Messaging() {
 
       {/* Create Channel Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="bg-navy-light border border-gray-700 rounded-xl w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-lg font-bold text-gray-200">Create Channel</h2>
-              <button type="button" onClick={() => setShowCreateModal(false)} className="text-gray-400 hover:text-gray-200">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="ws-modal w-full max-w-md">
+            <div className="flex items-center justify-between p-5 border-b border-[rgba(255,255,255,0.09)]">
+              <div className="flex items-center gap-2.5">
+                <span className="card-ico">
+                  <Hash className="w-4 h-4" />
+                </span>
+                <h2 className="ws-modal-title">Create Channel</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCreateModal(false)}
+                className="text-muted hover:text-white"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <form onSubmit={handleCreateChannel} className="space-y-4">
+
+            <form onSubmit={handleCreateChannel} className="p-5 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-400 mb-1">Name</label>
+                <label className="ws-label">Name</label>
                 <input
                   type="text"
                   value={newChannelName}
                   onChange={(e) => setNewChannelName(e.target.value)}
                   placeholder="e.g. general"
-                  className="w-full bg-navy border border-gray-700 rounded-lg px-4 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                  className="ws-input"
                   autoFocus
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-400 mb-1">Description</label>
+                <label className="ws-label">Description</label>
                 <input
                   type="text"
                   value={newChannelDesc}
                   onChange={(e) => setNewChannelDesc(e.target.value)}
                   placeholder="What's this channel about?"
-                  className="w-full bg-navy border border-gray-700 rounded-lg px-4 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                  className="ws-input"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-400 mb-1">Type</label>
+                <label className="ws-label">Type</label>
                 <select
                   value={newChannelType}
                   onChange={(e) => setNewChannelType(e.target.value)}
-                  className="w-full bg-navy border border-gray-700 rounded-lg px-4 py-2 text-sm text-gray-200 focus:outline-none focus:border-blue-500"
+                  className="ws-select"
                 >
                   <option value="group">Group</option>
                   <option value="direct">Direct</option>
@@ -325,11 +394,19 @@ export default function Messaging() {
                 </select>
               </div>
               <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setShowCreateModal(false)} className="cta-button flex-1 bg-gray-700 hover:bg-gray-600">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(false)}
+                  className="btn-workspace btn-secondary flex-1"
+                >
                   Cancel
                 </button>
-                <button type="submit" disabled={!newChannelName.trim()} className="cta-button flex-1 disabled:opacity-40">
-                  Create
+                <button
+                  type="submit"
+                  disabled={!newChannelName.trim()}
+                  className="btn-workspace btn-primary flex-1"
+                >
+                  Create Channel
                 </button>
               </div>
             </form>
