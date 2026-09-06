@@ -5,13 +5,27 @@ import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch } from '../lib/api';
-import { Video, Plus, Clock, Calendar, Users, X, ChevronRight } from 'lucide-react';
+import {
+  Video,
+  Plus,
+  Clock,
+  Calendar,
+  Users,
+  X,
+  ChevronRight,
+  Building2,
+  Loader2,
+  CalendarRange,
+  UserCog,
+  CheckCircle2,
+  XCircle,
+} from 'lucide-react';
 
-const STATUS_COLORS = {
-  scheduled: 'bg-blue-500/20 text-blue-400',
-  ongoing: 'bg-green-500/20 text-green-400',
-  completed: 'bg-gray-500/20 text-gray-400',
-  cancelled: 'bg-red-500/20 text-red-400',
+const STATUS_TINTS = {
+  scheduled: { bg: 'rgba(47, 214, 230, 0.1)', text: '#2fd6e6', dot: '#2fd6e6' },
+  ongoing: { bg: 'rgba(52, 211, 153, 0.12)', text: '#34d399', dot: '#34d399' },
+  completed: { bg: 'rgba(154, 161, 174, 0.1)', text: '#9aa1ae', dot: '#6b7280' },
+  cancelled: { bg: 'rgba(248, 113, 113, 0.1)', text: '#f87171', dot: '#f87171' },
 };
 
 function formatScheduledAt(iso) {
@@ -23,61 +37,75 @@ function formatScheduledAt(iso) {
   tomorrow.setDate(tomorrow.getDate() + 1);
   const isTomorrow = d.toDateString() === tomorrow.toDateString();
 
+  // Show full date + time so today/tomorrow labels don't mislead on schedule shifts
+  const date = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
 
-  if (isToday) return `Today • ${time}`;
-  if (isTomorrow) return `Tomorrow • ${time}`;
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ` • ${time}`;
+  if (isToday) return `Today · ${time}`;
+  if (isTomorrow) return `Tomorrow · ${time}`;
+  return `${date} · ${time}`;
 }
 
 function MeetingCard({ meeting, onJoin }) {
-  const isUpcoming = meeting.status === 'scheduled' || meeting.status === 'ongoing';
+  const isJoinable = meeting.status === 'scheduled' || meeting.status === 'ongoing';
+  const tint = STATUS_TINTS[meeting.status] || STATUS_TINTS.scheduled;
+  const hostName = typeof meeting.host === 'string'
+    ? meeting.host
+    : meeting.host?.fullName || meeting.host?.email || 'Host';
 
   return (
-    <div className="workspace-card">
-      <div className="p-4">
-        <div className="flex items-start justify-between mb-3">
-          <div className="flex-1 min-w-0">
-            <h3 className="font-medium text-white truncate">{meeting.title}</h3>
-            {meeting.description && (
-              <p className="text-sm text-gray-400 mt-1 line-clamp-2">{meeting.description}</p>
-            )}
+    <div className="mtg-card">
+      <div className="mtg-card-top">
+        <div className="flex-1 min-w-0">
+          <div className="mtg-title-row mb-1">
+            <h3 className="mtg-title">{meeting.title}</h3>
           </div>
-          <span className={`text-xs px-3 py-1 rounded-full whitespace-nowrap ml-3 ${STATUS_COLORS[meeting.status] || STATUS_COLORS.scheduled}`}>
-            {meeting.status || 'scheduled'}
-          </span>
-        </div>
-
-        <div className="flex items-center gap-4 text-sm text-gray-400 mb-3">
-          <div className="flex items-center gap-1.5">
-            <Calendar className="w-3.5 h-3.5" />
-            <span>{formatScheduledAt(meeting.scheduledAt)}</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <Clock className="w-3.5 h-3.5" />
-            <span>{meeting.duration || 30} min</span>
-          </div>
-          {meeting.participants && meeting.participants.length > 0 && (
-            <div className="flex items-center gap-1.5">
-              <Users className="w-3.5 h-3.5" />
-              <span>{meeting.participants.length} participant{meeting.participants.length !== 1 ? 's' : ''}</span>
-            </div>
+          {meeting.description && (
+            <p className="mtg-desc">{meeting.description}</p>
           )}
         </div>
+        <span className="pill" style={{ background: tint.bg, color: tint.text }}>
+          {meeting.status || 'scheduled'}
+        </span>
+      </div>
 
-        {meeting.host && (
-          <p className="text-xs text-gray-500 mb-3">Host: {meeting.host}</p>
+      <div className="mtg-meta">
+        <span className="mtg-meta-item">
+          <Calendar className="w-3.5 h-3.5" />
+          {formatScheduledAt(meeting.scheduledAt)}
+        </span>
+        <span className="mtg-meta-item">
+          <Clock className="w-3.5 h-3.5" />
+          {meeting.duration || 30} min
+        </span>
+        {meeting.participants && meeting.participants.length > 0 && (
+          <span className="mtg-meta-item">
+            <Users className="w-3.5 h-3.5" />
+            {meeting.participants.length} participant{meeting.participants.length !== 1 ? 's' : ''}
+          </span>
         )}
+      </div>
 
-        {isUpcoming && (
-          <button
-            type="button"
-            onClick={() => onJoin(meeting)}
-            className="cta-button px-4 py-2 rounded-lg text-white font-medium text-sm inline-flex items-center gap-2"
-          >
-            <Video className="w-4 h-4" />
+      <p className="mtg-host">Host — {hostName}</p>
+
+      <div className="mtg-good">
+        <div className="mtg-badge-row">
+          {meeting.roomId ? (
+            <span className="pill-mono pill" style={{ background: 'rgba(255,255,255,0.05)', color: '#9aa1ae' }}>
+              room {meeting.roomId}
+            </span>
+          ) : (
+            <span className="tier-badge">no room</span>
+          )}
+        </div>
+        {isJoinable ? (
+          <button type="button" onClick={() => onJoin(meeting)} className="join-btn">
+            <Video className="w-3.5 h-3.5" />
             Join Meeting
-            <ChevronRight className="w-4 h-4" />
+          </button>
+        ) : (
+          <button type="button" className="mtg-joined">
+            {meeting.status === 'cancelled' ? 'Cancelled' : 'Completed'}
           </button>
         )}
       </div>
@@ -127,66 +155,70 @@ function CreateMeetingModal({ onClose, onCreated, companyId }) {
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div
-        className="bg-navy-light rounded-xl border border-gray-700 w-full max-w-md"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between p-4 border-b border-gray-700">
-          <h2 className="text-lg font-semibold text-white">Schedule Meeting</h2>
-          <button type="button" onClick={onClose} className="text-gray-400 hover:text-white">
+      <div className="ws-modal w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-5 border-b border-[rgba(255,255,255,0.09)]">
+          <div className="flex items-center gap-2.5">
+            <span className="card-ico">
+              <Plus className="w-4 h-4" />
+            </span>
+            <h2 className="ws-modal-title">Schedule Meeting</h2>
+          </div>
+          <button type="button" onClick={onClose} className="text-muted hover:text-white">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-4 flex flex-col gap-4">
+        <form onSubmit={handleSubmit} className="p-5 flex flex-col gap-4">
           {error && (
-            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-sm text-red-400">
-              {error}
+            <div className="std-alert std-alert-error">
+              <XCircle className="w-4 h-4 flex-shrink-0" />
+              <p>{error}</p>
             </div>
           )}
 
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Title</label>
+            <label className="ws-label">Title</label>
             <input
               type="text"
               name="title"
               value={form.title}
               onChange={handleChange}
               placeholder="e.g. Sprint Review"
-              className="w-full bg-navy border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+              className="ws-input"
+              autoFocus
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Description</label>
+            <label className="ws-label">Description</label>
             <textarea
               name="description"
               value={form.description}
               onChange={handleChange}
               rows={3}
               placeholder="Meeting agenda..."
-              className="w-full bg-navy border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 resize-none"
+              className="ws-textarea"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Date &amp; Time</label>
+            <label className="ws-label">Date &amp; Time</label>
             <input
               type="datetime-local"
               name="scheduledAt"
               value={form.scheduledAt}
               onChange={handleChange}
-              className="w-full bg-navy border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+              className="ws-input"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Duration (minutes)</label>
+            <label className="ws-label">Duration (minutes)</label>
             <select
               name="duration"
               value={form.duration}
               onChange={handleChange}
-              className="w-full bg-navy border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+              className="ws-select"
             >
               <option value={15}>15 minutes</option>
               <option value={30}>30 minutes</option>
@@ -197,22 +229,20 @@ function CreateMeetingModal({ onClose, onCreated, companyId }) {
           </div>
 
           <div className="flex gap-3 pt-2">
-            <button type="button" onClick={onClose} className="btn-workspace btn-secondary flex-1 py-2 rounded-lg text-sm font-medium">
+            <button type="button" onClick={onClose} className="btn-workspace btn-secondary flex-1">
               Cancel
             </button>
             <button
               type="submit"
               disabled={submitting}
-              className="cta-button flex-1 py-2 rounded-lg text-white font-medium text-sm inline-flex items-center justify-center gap-2 disabled:opacity-50"
+              className="btn-workspace btn-primary flex-1"
             >
               {submitting ? (
-                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
-                <>
-                  <Plus className="w-4 h-4" />
-                  Schedule
-                </>
+                <Plus className="w-4 h-4" />
               )}
+              {submitting ? 'Scheduling...' : 'Schedule'}
             </button>
           </div>
         </form>
@@ -231,6 +261,16 @@ export default function Meetings() {
   const [meetings, setMeetings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [clock, setClock] = useState('');
+
+  useEffect(() => {
+    const tick = () => {
+      setClock(new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }));
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
 
   const fetchCompanies = useCallback(async () => {
     try {
@@ -278,6 +318,18 @@ export default function Meetings() {
     if (selectedCompany) fetchMeetings(selectedCompany._id);
   };
 
+  const liveMeetings = meetings.filter((m) => m.status === 'ongoing').length;
+  const scheduledCount = meetings.filter((m) => m.status === 'scheduled').length;
+  const completedCount = meetings.filter((m) => m.status === 'completed').length;
+  const cancelledCount = meetings.filter((m) => m.status === 'cancelled').length;
+
+  const kpis = [
+    { label: 'Total Meetings', value: meetings.length, sub: 'in this workspace', color: 'blue', Icon: CalendarRange },
+    { label: 'Upcoming', value: scheduledCount, sub: 'scheduled ahead', color: 'green', Icon: Calendar },
+    { label: 'In Progress', value: liveMeetings, sub: 'happening now', color: 'orange', Icon: Video },
+    { label: 'Completed', value: completedCount, sub: 'wrapped up', color: 'purple', Icon: CheckCircle2 },
+  ];
+
   return (
     <AuthGuard>
       <Head>
@@ -289,91 +341,142 @@ export default function Meetings() {
         <Sidebar user={user} subscription={subscription} />
 
         <main className="workspace-main">
-          <header className="workspace-header">
-            <div className="flex items-center gap-6">
-              <h1 className="text-xl font-bold">Meetings</h1>
-              {companies.length > 1 && (
-                <select
-                  value={selectedCompany?._id || ''}
-                  onChange={(e) => {
-                    const company = companies.find((c) => c._id === e.target.value);
-                    setSelectedCompany(company || null);
-                  }}
-                  className="bg-navy border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500"
-                >
-                  {companies.map((c) => (
-                    <option key={c._id} value={c._id}>{c.name}</option>
-                  ))}
-                </select>
-              )}
+          <header className="workspace-header dash-header">
+            <div>
+              <p className="dash-crumb">
+                BuildrsHQ <span className="sep">/</span> Meetings
+              </p>
+              <h1 className="dash-title">Meetings</h1>
+              <div className="dash-statusline">
+                <span className="status-indicator status-online" />
+                <span>{loading ? 'Loading...' : `${meetings.length} meetings`}</span>
+                <span className="dash-clock">· {clock || '—:——:——'}</span>
+              </div>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
+              {companies.length > 1 && (
+                <div className="mtg-scope">
+                  <span className="mtg-scope-ico"><Building2 className="w-4 h-4" /></span>
+                  <select
+                    value={selectedCompany?._id || ''}
+                    onChange={(e) => {
+                      const company = companies.find((c) => c._id === e.target.value);
+                      setSelectedCompany(company || null);
+                    }}
+                  >
+                    {companies.map((c) => (
+                      <option key={c._id} value={c._id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <button
                 type="button"
-                className="cta-button px-4 py-2 rounded-lg text-white font-medium inline-flex items-center gap-2"
+                className="btn-workspace btn-primary"
                 onClick={() => setShowCreateModal(true)}
                 disabled={!selectedCompany}
               >
                 <Plus className="w-4 h-4" />
-                <span>Schedule Meeting</span>
+                <span className="hidden sm:inline">Schedule Meeting</span>
               </button>
             </div>
           </header>
 
           <div className="workspace-content">
-            {!selectedCompany ? (
-              <div className="workspace-card">
-                <div className="p-12 text-center">
-                  <Video className="w-12 h-12 text-gray-500 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-white mb-2">No Company Found</h3>
-                  <p className="text-gray-400 text-sm">
-                    Create or join a company to start scheduling meetings.
-                  </p>
-                </div>
-              </div>
-            ) : loading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {[1, 2, 3].map((n) => (
-                  <div key={n} className="workspace-card animate-pulse">
-                    <div className="p-4">
-                      <div className="h-5 bg-gray-700 rounded w-2/3 mb-3" />
-                      <div className="h-3 bg-gray-700 rounded w-1/2 mb-2" />
-                      <div className="h-3 bg-gray-700 rounded w-1/3 mb-4" />
-                      <div className="h-8 bg-gray-700 rounded w-28" />
+            <div className="mtg-content">
+              {!selectedCompany ? (
+                <div className="workspace-card">
+                  <div className="workspace-card-body">
+                    <div className="dash-empty">
+                      <div className="dash-empty-ico">
+                        <Building2 className="w-5 h-5" />
+                      </div>
+                      <p className="dash-empty-title">No Company Found</p>
+                      <p className="dash-empty-sub">
+                        Create or join a company to start scheduling meetings.
+                      </p>
                     </div>
                   </div>
-                ))}
-              </div>
-            ) : meetings.length === 0 ? (
-              <div className="workspace-card">
-                <div className="p-12 text-center">
-                  <Video className="w-12 h-12 text-gray-500 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-white mb-2">No Meetings Yet</h3>
-                  <p className="text-gray-400 text-sm mb-4">
-                    Schedule your first meeting to get started.
-                  </p>
-                  <button
-                    type="button"
-                    className="cta-button px-4 py-2 rounded-lg text-white font-medium text-sm inline-flex items-center gap-2"
-                    onClick={() => setShowCreateModal(true)}
-                  >
-                    <Plus className="w-4 h-4" />
-                    Schedule Meeting
-                  </button>
                 </div>
-              </div>
-            ) : (
-              <>
-                <div className="flex items-center justify-between mb-4">
-                  <p className="text-sm text-gray-400">{meetings.length} meeting{meetings.length !== 1 ? 's' : ''}</p>
+              ) : loading ? (
+                <div className="workspace-card">
+                  <div className="workspace-card-body">
+                    <div className="dash-empty">
+                      <div className="dash-empty-ico">
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                      </div>
+                      <p className="dash-empty-title">Loading meetings...</p>
+                    </div>
+                  </div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {meetings.map((meeting) => (
-                    <MeetingCard key={meeting._id} meeting={meeting} onJoin={handleJoin} />
-                  ))}
+              ) : meetings.length === 0 ? (
+                <div className="workspace-card">
+                  <div className="workspace-card-body">
+                    <div className="dash-empty">
+                      <div className="dash-empty-ico">
+                        <Calendar className="w-5 h-5" />
+                      </div>
+                      <p className="dash-empty-title">No Meetings Yet</p>
+                      <p className="dash-empty-sub">
+                        Schedule your first meeting to get started.
+                      </p>
+                      <button
+                        type="button"
+                        className="btn-workspace btn-primary mt-4"
+                        onClick={() => setShowCreateModal(true)}
+                      >
+                        <Plus className="w-4 h-4" />
+                        Schedule Meeting
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </>
-            )}
+              ) : (
+                <>
+                  <section className="dash-section">
+                    <div className="dash-section-head">
+                      <div className="dash-eyebrow">
+                        <span className="dot" />
+                        <b>Calendar</b> · {selectedCompany.name}
+                      </div>
+                      <span className="badge-count">{meetings.length} meetings</span>
+                    </div>
+                    <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+                      {kpis.map((kpi) => (
+                        <div key={kpi.label} className={`dash-kpi dash-kpi-${kpi.color} ${kpi.label === 'In Progress' ? 'dash-kpi-link' : ''}`} onClick={kpi.label === 'In Progress' ? () => handleJoin(meetings.find((m) => m.status === 'ongoing')) : undefined}>
+                          <div className="dash-kpi-head">
+                            <span className="dash-kpi-eyebrow">{kpi.label}</span>
+                            <span className="dash-kpi-ico"><kpi.Icon className="w-4 h-4" /></span>
+                          </div>
+                          <div className="dash-kpi-value">{kpi.value}</div>
+                          <div className="dash-kpi-meta-row">
+                            <span className="dash-kpi-meta">{kpi.sub}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+
+                  <section className="dash-section">
+                    <div className="dash-section-head">
+                      <div className="dash-eyebrow">
+                        <span className="dot" />
+                        <b>Schedule</b> · upcoming & past
+                      </div>
+                      <span className="dash-action" onClick={() => setShowCreateModal(true)}>
+                        New meeting
+                        <Plus className="w-3.5 h-3.5" />
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {meetings.map((meeting) => (
+                        <MeetingCard key={meeting._id} meeting={meeting} onJoin={handleJoin} />
+                      ))}
+                    </div>
+                  </section>
+                </>
+              )}
+            </div>
           </div>
         </main>
       </div>
