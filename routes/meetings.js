@@ -227,6 +227,45 @@ router.get('/socket-version', authenticateToken, async (req, res) => {
     });
 });
 
+// ICE server configuration for WebRTC. STUN alone cannot cross symmetric NAT /
+// CGNAT between participants on different networks — TURN must be configured on
+// the server when available. Supports BOTH static credentials (TURN_URL,
+// TURN_USERNAME, TURN_PASSWORD) and TURN REST API credentials (TURN_URL +
+// TURN_SECRET [+ TURN_TTL]) which rotate short-lived tokens per user.
+router.get('/ice-config', authenticateToken, async (req, res) => {
+    const crypto = require('crypto');
+
+    const turnUrl = process.env.TURN_URL || process.env.TURN_SERVER_URL || '';
+    const iceServers = [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+    ];
+
+    if (turnUrl) {
+        if (process.env.TURN_USERNAME && process.env.TURN_PASSWORD) {
+            iceServers.push({
+                urls: turnUrl,
+                username: process.env.TURN_USERNAME,
+                credential: process.env.TURN_PASSWORD,
+            });
+        } else if (process.env.TURN_SECRET) {
+            const ttl = Math.max(60, parseInt(process.env.TURN_TTL) || 3600);
+            const expiry = Math.floor(Date.now() / 1000) + ttl;
+            const username = `${expiry}:${req.userId}`;
+            const credential = crypto
+                .createHmac('sha1', process.env.TURN_SECRET)
+                .update(username)
+                .digest('base64');
+            iceServers.push({ urls: turnUrl, username, credential });
+        } else {
+            console.warn('[meetings] TURN_URL is set but TURN_USERNAME/TURN_PASSWORD or TURN_SECRET is missing — skipping TURN');
+        }
+    }
+
+    res.json({ success: true, iceServers });
+});
+
 // Get single meeting
 router.get('/:id', authenticateToken, async (req, res) => {
     try {
