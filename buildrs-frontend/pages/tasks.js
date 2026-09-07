@@ -17,11 +17,11 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 
-const STATUS_OPTIONS = ['pending', 'in_progress', 'in_review', 'completed'];
-const STATUS_LABELS = { pending: 'Pending', in_progress: 'In Progress', in_review: 'In Review', completed: 'Completed' };
+const STATUS_OPTIONS = ['pending', 'in-progress', 'in_review', 'completed'];
+const STATUS_LABELS = { pending: 'Pending', 'in-progress': 'In Progress', in_review: 'In Review', completed: 'Completed' };
 const STATUS_TINTS = {
   pending: { bg: 'rgba(154, 161, 174, 0.1)', text: '#9aa1ae', dot: '#6b7280' },
-  in_progress: { bg: 'rgba(47, 214, 230, 0.1)', text: '#2fd6e6', dot: '#2fd6e6' },
+  'in-progress': { bg: 'rgba(47, 214, 230, 0.1)', text: '#2fd6e6', dot: '#2fd6e6' },
   in_review: { bg: 'rgba(229, 184, 74, 0.1)', text: '#e5b84a', dot: '#e5b84a' },
   completed: { bg: 'rgba(52, 211, 153, 0.12)', text: '#34d399', dot: '#34d399' },
 };
@@ -37,7 +37,7 @@ const TASK_TYPE_LABELS = { feature: 'Feature', bug: 'Bug', improvement: 'Improve
 const TABS = [
   { key: 'all', label: 'All Tasks' },
   { key: 'pending', label: 'Pending' },
-  { key: 'in_progress', label: 'In Progress' },
+  { key: 'in-progress', label: 'In Progress' },
   { key: 'in_review', label: 'In Review' },
   { key: 'completed', label: 'Completed' },
 ];
@@ -45,7 +45,7 @@ const TABS = [
 const TAB_DOTS = {
   all: '#565d6b',
   pending: '#6b7280',
-  in_progress: '#2fd6e6',
+  'in-progress': '#2fd6e6',
   in_review: '#e5b84a',
   completed: '#34d399',
 };
@@ -140,7 +140,7 @@ export default function Tasks() {
 
   const kpis = [
     { key: 'all', label: 'Total Tasks', value: tasks.length, sub: `${pct(tasks.length)}% of workload`, color: 'blue', Icon: ListTodo },
-    { key: 'in_progress', label: 'In Progress', value: tabCount('in_progress'), sub: `${pct(tabCount('in_progress'))}% of work`, color: 'green', Icon: Activity },
+    { key: 'in-progress', label: 'In Progress', value: tabCount('in-progress'), sub: `${pct(tabCount('in-progress'))}% of work`, color: 'green', Icon: Activity },
     { key: 'in_review', label: 'In Review', value: tabCount('in_review'), sub: `${pct(tabCount('in_review'))}% awaiting feedback`, color: 'orange', Icon: Eye },
     { key: 'completed', label: 'Completed', value: tabCount('completed'), sub: `${pct(tabCount('completed'))}% shipped`, color: 'purple', Icon: CheckCircle2 },
   ];

@@ -50,7 +50,7 @@ function initials(name) {
 
 const TASK_META_STYLE = {
   pending: 'Pending',
-  in_progress: 'In progress',
+  'in-progress': 'In progress',
   in_review: 'In review',
   completed: 'Done',
 };

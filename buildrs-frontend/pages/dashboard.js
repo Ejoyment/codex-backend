@@ -41,7 +41,7 @@ function formatGreeting() {
 
 const TASK_STATUS = [
   { key: 'pending', label: 'Pending', color: '#9aa1ae' },
-  { key: 'in_progress', label: 'In progress', color: '#2fd6e6' },
+  { key: 'in-progress', label: 'In progress', color: '#2fd6e6' },
   { key: 'in_review', label: 'In review', color: '#e5b84a' },
   { key: 'completed', label: 'Completed', color: '#34d399' },
 ];
