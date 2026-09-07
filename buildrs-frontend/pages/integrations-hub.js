@@ -97,8 +97,9 @@ export default function IntegrationsHub() {
       setActionLoading(providerId);
       setError(null);
       const data = await apiFetch(`/api/integrations/${providerId}/auth`);
-      if (data.url) {
-        window.location.href = data.url;
+      const authUrl = data.authUrl || data.url;
+      if (authUrl) {
+        window.location.href = authUrl;
       }
     } catch (err) {
       setError(err.message || `Failed to connect ${providerId}`);

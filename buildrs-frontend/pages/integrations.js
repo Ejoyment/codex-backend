@@ -96,8 +96,9 @@ export default function Integrations() {
     try {
       setConnecting(providerKey);
       const data = await apiFetch(`/api/integrations/${providerKey}/auth`);
-      if (data.url) {
-        window.location.href = data.url;
+      const authUrl = data.authUrl || data.url;
+      if (authUrl) {
+        window.location.href = authUrl;
       }
     } catch (err) {
       console.error(`Failed to initiate ${providerKey} connection:`, err);
