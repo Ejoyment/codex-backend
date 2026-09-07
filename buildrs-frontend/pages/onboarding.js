@@ -74,7 +74,7 @@ export default function Onboarding() {
             <div className="bg-[#0d0d12] rounded-2xl border border-[#ffffff12] p-8 md:p-12">
               <div className="text-center mb-10">
                 <div className="w-20 h-20 border border-[#ffffff12] rounded-2xl flex items-center justify-center mx-auto mb-6">
-                  <img src="/1000222021 1 (1).png" alt="Logo" className="w-12 h-12" />
+                  <img src="/buildrs.png" alt="Logo" className="w-12 h-12" />
                 </div>
                 <h1 className="text-4xl font-bold text-white mb-3">Welcome to BuildrsHQ</h1>
                 <p className="text-[#a8adba] text-lg">Let's personalize your experience in just a few steps</p>
