@@ -235,6 +235,17 @@ router.post('/:token/accept', authenticateToken, async (req, res) => {
             return res.status(404).json({ success: false, message: 'Invitation not found' });
         }
         
+        if (invitation.status === 'accepted') {
+            const alreadyCompany = await Company.findById(invitation.company);
+            if (alreadyCompany && alreadyCompany.members.some(m => m.user.toString() === req.userId)) {
+                return res.json({
+                    success: true,
+                    message: 'You are already a member',
+                    company: alreadyCompany
+                });
+            }
+        }
+
         if (invitation.isExpired()) {
             return res.status(400).json({ success: false, message: 'Invitation expired' });
         }

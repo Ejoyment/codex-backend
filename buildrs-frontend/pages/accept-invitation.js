@@ -39,7 +39,11 @@ export default function AcceptInvitation() {
         }
       } catch (e) {
         setStatus('error');
-        setMessage('Network error. Please try again.');
+        setMessage(
+          e && e.message && e.message !== 'Failed to fetch'
+            ? e.message
+            : 'Network error. Please try again.'
+        );
       }
     };
 
