@@ -7,7 +7,7 @@ import useAuthStore from '../store/authStore';
 import { apiFetch, subscriptionApi, integrationApi } from '../lib/api';
 import { rateLimit, validate, createSubmitGuard } from '../lib/security';
 import { getAvatarUrl } from '../lib/utils';
-import { User, Shield, CreditCard, Plug, Camera, Save, ExternalLink, Unplug, Loader2 } from 'lucide-react';
+import { User, Shield, CreditCard, Plug, Camera, Save, ExternalLink, Unplug, Loader2, Zap } from 'lucide-react';
 import useToastStore from '../store/toastStore';
 
 const submitGuard = createSubmitGuard();
@@ -39,6 +39,95 @@ const TABS = [
   { id: 'billing', label: 'Billing', icon: CreditCard },
   { id: 'integrations', label: 'Integrations', icon: Plug },
 ];
+
+function BillingTab({ subscription, setSubscription, router, toast }) {
+  const [canceling, setCanceling] = useState(false);
+
+  const isTrialing = subscription?.status === 'trialing';
+  const isActive = subscription?.status === 'active';
+  const isFree = !subscription || subscription.tier === 'free' || subscription.tier === 'starter';
+  const trialDaysLeft = subscription?.trialEnd
+    ? Math.max(0, Math.ceil((new Date(subscription.trialEnd) - Date.now()) / (1000 * 60 * 60 * 24)))
+    : null;
+
+  const cancelSubscription = async () => {
+    if (!confirm("Cancel your subscription? You'll lose access at the end of the billing period.")) return;
+    setCanceling(true);
+    try {
+      await apiFetch('/api/subscription/cancel', { method: 'POST' });
+      const data = await subscriptionApi.getCurrent();
+      if (data.subscription) setSubscription(data.subscription);
+      toast.success('Subscription canceled');
+    } catch (err) {
+      toast.error(err.message || 'Failed to cancel subscription');
+    } finally {
+      setCanceling(false);
+    }
+  };
+
+  return (
+    <div className="max-w-xl space-y-6">
+      {isTrialing && trialDaysLeft !== null && (
+        <div className="flex items-center gap-3 p-4 rounded-xl border border-[rgba(229,184,74,0.3)] bg-[rgba(229,184,74,0.05)]">
+          <Zap className="w-5 h-5 text-[#e5b84a] flex-shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-white">
+              Trial · {trialDaysLeft} day{trialDaysLeft !== 1 ? 's' : ''} remaining
+            </p>
+            <p className="text-xs text-[#9aa1ae] mt-0.5">
+              Add a payment method to keep your workspace active after the trial.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => router.push('/checkout')}
+            className="btn-workspace btn-primary text-xs"
+          >
+            <CreditCard className="w-3 h-3" />
+            Add Payment
+          </button>
+        </div>
+      )}
+
+      <div className="set-plan">
+        <div>
+          <p className="set-plan-key">Current Plan</p>
+          <p className="set-plan-val">{subscription?.tier || 'Free'}</p>
+        </div>
+        <div>
+          <p className="set-plan-key">Status</p>
+          <p className="set-plan-val">
+            <span className={`${(!subscription || subscription.status === 'active') ? 'status-indicator status-online' : 'status-indicator'} mr-2`} />
+            {subscription?.status || 'Active'}
+          </p>
+        </div>
+      </div>
+
+      {isFree ? (
+        <button
+          type="button"
+          onClick={() => router.push('/checkout')}
+          className="btn-workspace btn-primary"
+        >
+          <CreditCard className="w-4 h-4" />
+          Upgrade Plan
+        </button>
+      ) : isActive || isTrialing ? (
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={cancelSubscription}
+            disabled={canceling}
+            className="btn-workspace btn-secondary text-[#f87171] border-[rgba(248,113,113,0.3)] hover:bg-[rgba(248,113,113,0.08)]"
+          >
+            {canceling ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+            {canceling ? 'Canceling...' : 'Cancel Subscription'}
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 export default function Settings() {
   const router = useRouter();
@@ -437,29 +526,12 @@ export default function Settings() {
                 )}
 
                 {activeTab === 'billing' && (
-                  <div className="max-w-xl space-y-6">
-                    <div className="set-plan">
-                      <div>
-                        <p className="set-plan-key">Current Plan</p>
-                        <p className="set-plan-val">{subscription?.tier || 'Free'}</p>
-                      </div>
-                      <div>
-                        <p className="set-plan-key">Status</p>
-                        <p className="set-plan-val">
-                          <span className={`${(!subscription || subscription.status === 'active') ? 'status-indicator status-online' : 'status-indicator'} mr-2`} />
-                          {subscription?.status ? subscription.status : 'Active'}
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => router.push('/pricing')}
-                      className="btn-workspace btn-primary"
-                    >
-                      <CreditCard className="w-4 h-4" />
-                      Upgrade Plan
-                    </button>
-                  </div>
+                  <BillingTab
+                    subscription={subscription}
+                    setSubscription={setSubscription}
+                    router={router}
+                    toast={toast}
+                  />
                 )}
 
                 {activeTab === 'integrations' && (

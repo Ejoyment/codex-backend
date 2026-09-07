@@ -11,6 +11,7 @@ const LocalProject = require('../models/LocalProject');
 const CodeFile = require('../models/CodeFile');
 const { authenticateToken } = require('../middleware/auth');
 const depService = require('../utils/deploymentService');
+const { addAuditLog } = require('../utils/auditLogService');
 
 // List deployments for the logged-in user
 router.get('/', authenticateToken, async (req, res) => {
@@ -117,6 +118,16 @@ router.post('/', authenticateToken, async (req, res) => {
 
         const deployId = deployment._id;
 
+        addAuditLog({
+            companyId: workspaceId,
+            actorId: req.userId,
+            event: 'deployment.created',
+            category: 'deployment',
+            target: `${sanitized}.buildrshq.dev`,
+            details: { projectId, deployment: deployId.toString() },
+            req
+        });
+
         // Run deployment asynchronously
         setImmediate(async () => {
             try {
@@ -200,6 +211,24 @@ router.delete('/:id', authenticateToken, async (req, res) => {
         deployment.status = 'stopped';
         deployment.deployedUrl = null;
         await deployment.save();
+
+        let stopCompanyId = null;
+        try {
+            const proj = deployment.projectId
+                ? (await LocalProject.findOne({ _id: deployment.projectId }).lean())
+                    || (await TeamProject.findOne({ _id: deployment.projectId }).lean())
+                : null;
+            stopCompanyId = proj?.workspaceId || proj?.company?.toString() || null;
+        } catch {}
+        addAuditLog({
+            companyId: stopCompanyId,
+            actorId: req.userId,
+            event: 'deployment.stopped',
+            category: 'deployment',
+            target: deployment.subdomain ? `${deployment.subdomain}.buildrshq.dev` : '',
+            details: { deploymentId: id },
+            req
+        });
 
         res.json({ success: true, message: 'Deployment stopped and cleaned up' });
     } catch (error) {

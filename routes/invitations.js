@@ -5,6 +5,7 @@ const Company = require('../models/Company');
 const User = require('../models/User');
 const { authenticateToken } = require('../middleware/auth');
 const { sendInvitationEmail } = require('../utils/emailService');
+const { addAuditLog } = require('../utils/auditLogService');
 
 /**
  * @swagger
@@ -115,6 +116,17 @@ router.post('/', authenticateToken, async (req, res) => {
         } catch (emailError) {
             console.error('Failed to send invitation email:', emailError);
         }
+
+        addAuditLog({
+            companyId,
+            actorId: req.userId,
+            email: invitation.email,
+            event: 'invitation.sent',
+            category: 'team',
+            target: `${email} (${role || 'member'})`,
+            details: { invitationId: invitation._id.toString() },
+            req
+        });
         
         res.json({
             success: true,
@@ -275,6 +287,17 @@ router.post('/:token/accept', authenticateToken, async (req, res) => {
         invitation.acceptedAt = new Date();
         invitation.acceptedBy = req.userId;
         await invitation.save();
+
+        addAuditLog({
+            companyId: company._id,
+            actorId: req.userId,
+            email: user.email,
+            event: 'invitation.accepted',
+            category: 'team',
+            target: `${user.email} added as ${invitation.role}`,
+            details: { invitationId: invitation._id.toString(), role: invitation.role },
+            req
+        });
         
         res.json({
             success: true,

@@ -434,10 +434,43 @@ class AgentOrchestrator {
             }
 
             // 3. ACTION - Execute the chosen tool
+            if (context && context.userId) {
+                try {
+                    const realtimeBus = require('./realtimeBus');
+                    realtimeBus.emitAgentProgress(context.userId, {
+                        type: 'iteration',
+                        iteration,
+                        maxIterations: this.maxIterations,
+                        thought: reasoning.thought,
+                        action: reasoning.action ? {
+                            tool: reasoning.action.tool,
+                            parameters: reasoning.action.parameters
+                        } : null,
+                        status: 'running'
+                    });
+                } catch (e) { /* non-critical */ }
+            }
+
             const actionResult = await this.act(reasoning.action, context);
 
             // 4. FEEDBACK - Integrate result for next iteration
             lastObservation = await this.feedback(observation, actionResult, context, goal);
+
+            if (context && context.userId) {
+                try {
+                    const realtimeBus = require('./realtimeBus');
+                    realtimeBus.emitAgentProgress(context.userId, {
+                        type: 'result',
+                        iteration,
+                        status: actionResult.success ? 'success' : 'error',
+                        result: {
+                            success: actionResult.success,
+                            message: actionResult.message || (actionResult.error ? actionResult.error : 'Step complete'),
+                            summary: actionResult.summary
+                        }
+                    });
+                } catch (e) { /* non-critical */ }
+            }
 
             // Store iteration
             const iterationData = {
@@ -461,6 +494,19 @@ class AgentOrchestrator {
             if (actionResult.success) {
                 await this.storeActionPattern(reasoning, actionResult, context);
             }
+        }
+
+        if (context && context.userId) {
+            try {
+                const realtimeBus = require('./realtimeBus');
+                realtimeBus.emitAgentProgress(context.userId, {
+                    type: 'done',
+                    status: 'done',
+                    success: goalAchieved || iteration < this.maxIterations,
+                    summary: this.generateSummary(session),
+                    iterations: session.iterations.length
+                });
+            } catch (e) { /* non-critical */ }
         }
 
         return {
