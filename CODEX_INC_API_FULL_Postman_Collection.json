@@ -1,0 +1,740 @@
+{
+  "info": {
+    "name": "CODEX INC API - Complete Collection",
+    "description": "Complete Postman collection for CODEX INC API including all integration APIs, development tools, and advanced features",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "📋 Setup & Configuration",
+      "item": [
+        {
+          "name": "1. Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/health",
+              "host": ["{{base_url}}"],
+              "path": ["api", "health"]
+            },
+            "description": "Check if the API server is running"
+          },
+          "response": []
+        },
+        {
+          "name": "2. API Documentation",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api-docs",
+              "host": ["{{base_url}}"],
+              "path": ["api-docs"]
+            },
+            "description": "Access Swagger UI documentation"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🔐 Authentication",
+      "item": [
+        {
+          "name": "1. User Registration",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Demo User\",\n  \"email\": \"demo@example.com\",\n  \"password\": \"Password123!\",\n  \"company\": \"Demo Company\",\n  \"teamSize\": \"1-10\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/signup",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "signup"]
+            },
+            "description": "Create a new user account"
+          },
+          "response": []
+        },
+        {
+          "name": "2. User Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"demo@example.com\",\n  \"password\": \"Password123!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/signin",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "signin"]
+            },
+            "description": "Login and get JWT token"
+          },
+          "response": []
+        },
+        {
+          "name": "3. Get Current User",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/auth/me",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "me"]
+            },
+            "description": "Get current user information (requires authentication)"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🤖 AI Pair Programming",
+      "item": [
+        {
+          "name": "1. Create AI Session",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"repositoryName\": \"demo-repo\",\n  \"repositoryOwner\": \"demo-user\",\n  \"branch\": \"main\",\n  \"sessionName\": \"Demo AI Session\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/ai-pair/session",
+              "host": ["{{base_url}}"],
+              "path": ["api", "ai-pair", "session"]
+            },
+            "description": "Create a new AI pair programming session"
+          },
+          "response": []
+        },
+        {
+          "name": "2. Chat with AI",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sessionId\": \"{{ai_session_id}}\",\n  \"message\": \"Create a simple React component that displays a counter\",\n  \"context\": \"I'm building a counter app\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/ai-pair/chat",
+              "host": ["{{base_url}}"],
+              "path": ["api", "ai-pair", "chat"]
+            },
+            "description": "Chat with AI assistant for code generation"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "📝 Notion API",
+      "item": [
+        {
+          "name": "1. Search Notion",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"project\",\n  \"page_size\": 10\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/notion/search",
+              "host": ["{{base_url}}"],
+              "path": ["api", "notion", "search"]
+            },
+            "description": "Search Notion workspace"
+          },
+          "response": []
+        },
+        {
+          "name": "2. Get Databases",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/notion/databases",
+              "host": ["{{base_url}}"],
+              "path": ["api", "notion", "databases"]
+            },
+            "description": "Get all Notion databases"
+          },
+          "response": []
+        },
+        {
+          "name": "3. Get Database",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/notion/databases/{databaseId}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "notion", "databases", "{databaseId}"]
+            },
+            "description": "Get specific Notion database"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🎨 Figma API",
+      "item": [
+        {
+          "name": "1. Get Current User",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/figma/me",
+              "host": ["{{base_url}}"],
+              "path": ["api", "figma", "me"]
+            },
+            "description": "Get current Figma user information"
+          },
+          "response": []
+        },
+        {
+          "name": "2. Get Files",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/figma/files",
+              "host": ["{{base_url}}"],
+              "path": ["api", "figma", "files"]
+            },
+            "description": "Get user's Figma files"
+          },
+          "response": []
+        },
+        {
+          "name": "3. Get File Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/figma/files/{fileKey}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "figma", "files", "{fileKey}"]
+            },
+            "description": "Get Figma file details"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "💻 LSP (Language Server Protocol)",
+      "item": [
+        {
+          "name": "1. Start LSP Server",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"language\": \"javascript\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/lsp/start",
+              "host": ["{{base_url}}"],
+              "path": ["api", "lsp", "start"]
+            },
+            "description": "Start Language Server Protocol server"
+          },
+          "response": []
+        },
+        {
+          "name": "2. Get Completions",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"documentUri\": \"file:///test.js\",\n  \"position\": { \"line\": 1, \"character\": 5 },\n  \"content\": \"console.log('Hello');\",\n  \"language\": \"javascript\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/lsp/completions",
+              "host": ["{{base_url}}"],
+              "path": ["api", "lsp", "completions"]
+            },
+            "description": "Get code completions"
+          },
+          "response": []
+        },
+        {
+          "name": "3. Get Hover Information",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"documentUri\": \"file:///test.js\",\n  \"position\": { \"line\": 1, \"character\": 5 },\n  \"content\": \"console.log('Hello');\",\n  \"language\": \"javascript\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/lsp/hover",
+              "host": ["{{base_url}}"],
+              "path": ["api", "lsp", "hover"]
+            },
+            "description": "Get hover information for code"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "📁 Virtual File System (VFS)",
+      "item": [
+        {
+          "name": "1. Get File Tree",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/vfs/tree/{workspaceId}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "vfs", "tree", "{workspaceId}"]
+            },
+            "description": "Get workspace file tree"
+          },
+          "response": []
+        },
+        {
+          "name": "2. Read File",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/vfs/file/{fileId}?workspaceId={workspaceId}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "vfs", "file", "{fileId}"]
+            },
+            "description": "Read file content (lazy loaded)"
+          },
+          "response": []
+        },
+        {
+          "name": "3. Search Files",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/vfs/search?query=function&workspaceId={workspaceId}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "vfs", "search"]
+            },
+            "description": "Full-text search in file content"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🖥️ Terminal",
+      "item": [
+        {
+          "name": "1. Get Active Sessions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/terminal/sessions",
+              "host": ["{{base_url}}"],
+              "path": ["api", "terminal", "sessions"]
+            },
+            "description": "Get active terminal sessions"
+          },
+          "response": []
+        },
+        {
+          "name": "2. Get Terminal Stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/terminal/stats",
+              "host": ["{{base_url}}"],
+              "path": ["api", "terminal", "stats"]
+            },
+            "description": "Get terminal statistics"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🔧 Git",
+      "item": [
+        {
+          "name": "1. Initialize Repository",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"workspaceId\": \"{{workspace_id}}\",\n  \"userName\": \"Demo User\",\n  \"userEmail\": \"demo@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/git/init",
+              "host": ["{{base_url}}"],
+              "path": ["api", "git", "init"]
+            },
+            "description": "Initialize Git repository"
+          },
+          "response": []
+        },
+        {
+          "name": "2. Get Repository Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/git/status/{workspaceId}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "git", "status", "{workspaceId}"]
+            },
+            "description": "Get repository status"
+          },
+          "response": []
+        },
+        {
+          "name": "3. Commit Changes",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"workspaceId\": \"{{workspace_id}}\",\n  \"message\": \"Initial commit\",\n  \"files\": [\"*\"]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/git/commit",
+              "host": ["{{base_url}}"],
+              "path": ["api", "git", "commit"]
+            },
+            "description": "Commit changes to repository"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🐛 Debugger",
+      "item": [
+        {
+          "name": "1. Create Debug Session",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"workspaceId\": \"{{workspace_id}}\",\n  \"config\": {\n    \"type\": \"node\",\n    \"request\": \"launch\",\n    \"name\": \"Debug Node.js\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/debug/session/create",
+              "host": ["{{base_url}}"],
+              "path": ["api", "debug", "session", "create"]
+            },
+            "description": "Create debug session"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "👤 Agent Confirmation",
+      "item": [
+        {
+          "name": "1. Get Pending Confirmations",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/agent-confirmation/pending",
+              "host": ["{{base_url}}"],
+              "path": ["api", "agent-confirmation", "pending"]
+            },
+            "description": "Get pending agent confirmations"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🚀 GitHub Advanced",
+      "item": [
+        {
+          "name": "1. Direct Push (Multi-file)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"owner\": \"demo-user\",\n  \"repo\": \"demo-repo\",\n  \"files\": [\n    {\n      \"path\": \"src/index.js\",\n      \"content\": \"console.log('Hello World');\"\n    }\n  ],\n  \"message\": \"Add index.js\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/github-advanced/push",
+              "host": ["{{base_url}}"],
+              "path": ["api", "github-advanced", "push"]
+            },
+            "description": "Direct push to GitHub with multi-file commit"
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://codex-backend-7utu.onrender.com",
+      "type": "string",
+      "description": "Base URL for the API"
+    },
+    {
+      "key": "auth_token",
+      "value": "",
+      "type": "string",
+      "description": "JWT authentication token (obtained from login)"
+    },
+    {
+      "key": "ai_session_id",
+      "value": "",
+      "type": "string",
+      "description": "AI pair programming session ID"
+    },
+    {
+      "key": "workspace_id",
+      "value": "",
+      "type": "string",
+      "description": "Workspace/company ID"
+    },
+    {
+      "key": "databaseId",
+      "value": "",
+      "type": "string",
+      "description": "Notion database ID"
+    },
+    {
+      "key": "fileKey",
+      "value": "",
+      "type": "string",
+      "description": "Figma file key"
+    },
+    {
+      "key": "fileId",
+      "value": "",
+      "type": "string",
+      "description": "VFS file ID"
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "console.log('Starting request to ' + pm.request.url);"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Store authentication token from login response",
+          "if (pm.response.code === 200) {",
+          "    var jsonData = pm.response.json();",
+          "    if (jsonData.token) {",
+          "        pm.collectionVariables.set('auth_token', jsonData.token);",
+          "        console.log('Auth token stored: ' + jsonData.token.substring(0, 20) + '...');",
+          "    }",
+          "    if (jsonData.session && jsonData.session.id) {",
+          "        pm.collectionVariables.set('ai_session_id', jsonData.session.id);",
+          "        console.log('AI session ID stored: ' + jsonData.session.id);",
+          "    }",
+          "    if (jsonData.workspace && jsonData.workspace.id) {",
+          "        pm.collectionVariables.set('workspace_id', jsonData.workspace.id);",
+          "        console.log('Workspace ID stored: ' + jsonData.workspace.id);",
+          "    }",
+          "}"
+        ]
+      }
+    }
+  ],
+  "auth": null
+}

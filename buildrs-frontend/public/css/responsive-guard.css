@@ -1,0 +1,120 @@
+/* ============================================
+   RESPONSIVE GUARD - PROFESSIONAL DESIGN
+   Desktop-Only Protection with Modern UI
+   ============================================ */
+
+/* Mobile/Tablet Block Overlay */
+.mobile-block-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: #ffffff;
+    z-index: 99999;
+    justify-content: center;
+    align-items: center;
+    padding: 24px;
+}
+
+.mobile-block-content {
+    text-align: center;
+    color: #000000;
+    max-width: 480px;
+}
+
+.mobile-block-icon {
+    font-size: 64px;
+    margin-bottom: 24px;
+    opacity: 0.9;
+}
+
+.mobile-block-title {
+    font-size: 24px;
+    font-weight: 700;
+    margin-bottom: 12px;
+    color: #000000;
+    letter-spacing: -0.02em;
+}
+
+.mobile-block-message {
+    font-size: 15px;
+    line-height: 1.6;
+    margin-bottom: 32px;
+    color: #525252;
+}
+
+.mobile-block-button {
+    display: inline-block;
+    padding: 10px 24px;
+    background: #000000;
+    color: #ffffff;
+    border-radius: 6px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 14px;
+    transition: all 0.2s;
+    border: 1px solid #000000;
+}
+
+.mobile-block-button:hover {
+    background: #262626;
+    border-color: #262626;
+}
+
+/* Small Window Block Overlay */
+.small-window-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: #ffffff;
+    z-index: 99998;
+    justify-content: center;
+    align-items: center;
+    padding: 24px;
+}
+
+.small-window-content {
+    text-align: center;
+    color: #000000;
+    max-width: 480px;
+}
+
+.small-window-icon {
+    font-size: 64px;
+    margin-bottom: 24px;
+    opacity: 0.9;
+}
+
+.small-window-title {
+    font-size: 24px;
+    font-weight: 700;
+    margin-bottom: 12px;
+    color: #000000;
+    letter-spacing: -0.02em;
+}
+
+.small-window-message {
+    font-size: 15px;
+    line-height: 1.6;
+    color: #525252;
+}
+
+/* Show overlays when needed */
+.show-mobile-block .mobile-block-overlay {
+    display: flex !important;
+}
+
+.show-small-window .small-window-overlay {
+    display: flex !important;
+}
+
+/* Hide main content when blocked */
+.show-mobile-block > *:not(.mobile-block-overlay),
+.show-small-window > *:not(.small-window-overlay):not(.mobile-block-overlay) {
+    display: none !important;
+}

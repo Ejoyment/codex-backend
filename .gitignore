@@ -1,0 +1,80 @@
+# Dependencies
+node_modules/
+buildrs-frontend/.next/
+
+# Environment variables
+.env
+.env.production
+.env.local
+.env.development
+
+# Uploads
+uploads/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Deployment folders (not needed in repo)
+deployment/
+deployment-package/
+backups/
+UPLOAD_TO_SPACESHIP/
+
+# Zip files
+*.zip
+
+# Test files (not needed in production)
+test-*.js
+test-*.html
+check-*.js
+check-*.html
+check-*.bat
+debug-*.js
+!routes/debug-handoff.js
+debug-*.bat
+diagnose-*.bat
+
+# Batch scripts (local only)
+*.bat
+!start-backend.bat
+
+# Documentation (keep README and API docs)
+*.md
+!README.md
+!API_DOCUMENTATION.md
+!BACKEND_REQUIRED.md
+
+# HTML files (frontend - not needed in backend repo)
+*.html
+!skeleton-loader.html
+
+# CSS files (frontend - not needed in backend repo)
+frontend/css/*.css
+!buildrs-frontend/**/*.css
+
+# Frontend JS (not needed in backend repo)
+js/
+
+# Old/backup files
+*-old.*
+*-backup.*
+*-new.*
+dashboard-*.html
+
+# Coverage reports
+coverage/
+
+# IDE config
+.vscode/
+.idea/
+.env.production
+QUICK_ADD_RESEND_KEY.txt
+
+# Temporary Node 24 bump — do not push to main (see TEMP_NEXT_BUMP.txt)
+TEMP_NEXT_BUMP.txt
+buildrs-frontend/NEXT_BUMP_NOTE.txt
