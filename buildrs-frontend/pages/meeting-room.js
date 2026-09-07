@@ -90,6 +90,11 @@ export default function MeetingRoom() {
   const negotiateTimersRef = useRef({});
   const negotiateRef = useRef(null);
   const restartPeerConnectionRef = useRef(null);
+  const negotiationGenRef = useRef({});
+  const pendingAnswerGenRef = useRef({});
+  const lastNegotiateAtRef = useRef({});
+  const restartScheduledRef = useRef({});
+  const connectWatchdogRef = useRef(null);
   const localStreamRef = useRef(null);
   const screenStreamRef = useRef(null);
   const pcsRef = useRef({});
@@ -187,12 +192,26 @@ export default function MeetingRoom() {
         syncPeers();
         // ICE gave up (e.g. network changed, relay fell over) — restart the peer
         // from a clean state so negotiation + ICE gathering run again.
-        if (state === 'failed' && restartPeerConnectionRef.current) {
-          setTimeout(() => restartPeerConnectionRef.current(peerId), 1500);
+        if (state === 'failed' && restartPeerConnectionRef.current && !restartScheduledRef.current[peerId]) {
+          restartScheduledRef.current[peerId] = setTimeout(() => {
+            delete restartScheduledRef.current[peerId];
+            if (restartPeerConnectionRef.current) restartPeerConnectionRef.current(peerId);
+          }, 1500);
         }
       } else if (state === 'closed') {
         delete peersRef.current[peerId];
         syncPeers();
+      }
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      const ices = pc.iceConnectionState;
+      const peerIdNow = peerId;
+      if (ices === 'failed' && restartPeerConnectionRef.current && !restartScheduledRef.current[peerIdNow]) {
+        restartScheduledRef.current[peerIdNow] = setTimeout(() => {
+          delete restartScheduledRef.current[peerIdNow];
+          if (restartPeerConnectionRef.current) restartPeerConnectionRef.current(peerIdNow);
+        }, 1000);
       }
     };
 
@@ -215,16 +234,26 @@ export default function MeetingRoom() {
 
   // Deterministic negotiation: the joiner who receives the roster offers immediately;
   // anyone who sees a peer join schedules a backup offer in case the first is lost.
+  // Every offer carries a monotonically increasing generation so stale offers and
+  // answers (from a closed/restarted peer connection) can be rejected safely.
   const negotiate = useCallback(async (peerId, userName, profilePicture) => {
     if (!localStreamRef.current) return;
     const pc = createPeerConnection(peerId, userName, profilePicture);
-    if (pc.connectionState === 'connected' || pc.signalingState !== 'stable') return;
+    if (pc.connectionState === 'connected') return;
+    if (pc.signalingState !== 'stable') {
+      // An offer for this peer is already in flight — let it complete, and let the
+      // backup timer / watchdog restart it if it never does.
+      return;
+    }
+    const gen = (negotiationGenRef.current[peerId] || 0) + 1;
+    negotiationGenRef.current[peerId] = gen;
     try {
       const offer = await pc.createOffer();
       if (pc.signalingState !== 'stable') return;
       await pc.setLocalDescription(offer);
+      lastNegotiateAtRef.current[peerId] = Date.now();
       if (socketRef.current && roomIdRef.current) {
-        socketRef.current.emit('offer', { offer: pc.localDescription, to: peerId, roomId: roomIdRef.current, userName: myName });
+        socketRef.current.emit('offer', { offer: pc.localDescription, to: peerId, roomId: roomIdRef.current, userName: myName, gen });
       }
     } catch (err) {
       console.error('Offer error for', peerId, err);
@@ -237,15 +266,21 @@ export default function MeetingRoom() {
   const restartPeerConnection = useCallback((peerId) => {
     const peer = peersRef.current[peerId];
     if (!peer) return;
+    if (restartScheduledRef.current[peerId]) {
+      clearTimeout(restartScheduledRef.current[peerId]);
+      delete restartScheduledRef.current[peerId];
+    }
     if (negotiateTimersRef.current[peerId]) {
       clearTimeout(negotiateTimersRef.current[peerId]);
       delete negotiateTimersRef.current[peerId];
     }
     delete bufferedCandidatesRef.current[peerId];
+    delete pendingAnswerGenRef.current[peerId];
     if (pcsRef.current[peerId]) {
       try { pcsRef.current[peerId].close(); } catch (e) { /* ignore */ }
       delete pcsRef.current[peerId];
     }
+    lastNegotiateAtRef.current[peerId] = Date.now();
     if (negotiateRef.current) negotiateRef.current(peerId, peer.userName, peer.profilePicture);
   }, []);
 
@@ -263,32 +298,56 @@ export default function MeetingRoom() {
     }, 3500);
   }, [restartPeerConnection]);
 
-  const answerOffer = useCallback(async (peerId, offer, userName, profilePicture) => {
+  const answerOffer = useCallback(async (peerId, offer, userName, profilePicture, gen, remoteSocketId) => {
+    const curGen = negotiationGenRef.current[peerId] || 0;
+    if (gen != null && gen < curGen) return; // stale offer from an older round
+
     let pc = pcsRef.current[peerId];
-    if (pc && pc.signalingState !== 'stable') {
-      try { pc.close(); } catch { /* ignore */ }
+    const st = pc ? pc.signalingState : 'new';
+    if (pc && (st === 'have-local-offer' || st === 'have-remote-offer')) {
+      const mySid = mySocketIdRef.current;
+      const winGlare = Boolean(remoteSocketId && mySid && mySid < remoteSocketId);
+      if (st === 'have-remote-offer') {
+        if (gen != null && gen === (pendingAnswerGenRef.current[peerId] || 0)) return; // duplicate
+      } else if (winGlare) {
+        return; // we already hold our own live offer — they will answer ours instead
+      }
+      // We lost the glare (or must re-answer a newer offer) — tear down our in-flight
+      // negotiation and respond to theirs cleanly instead of cross-wiring two offers.
+      if (restartScheduledRef.current[peerId]) {
+        clearTimeout(restartScheduledRef.current[peerId]);
+        delete restartScheduledRef.current[peerId];
+      }
+      try { pc.close(); } catch (e) { /* ignore */ }
       delete pcsRef.current[peerId];
     }
     pc = createPeerConnection(peerId, userName, profilePicture);
+    const answerGen = (gen != null ? gen : curGen);
+    pendingAnswerGenRef.current[peerId] = answerGen;
     try {
       await pc.setRemoteDescription(offer);
       flushIce(peerId, pc);
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
+      lastNegotiateAtRef.current[peerId] = Date.now();
       if (socketRef.current && roomIdRef.current) {
-        socketRef.current.emit('answer', { answer: pc.localDescription, to: peerId, roomId: roomIdRef.current });
+        socketRef.current.emit('answer', { answer: pc.localDescription, to: peerId, roomId: roomIdRef.current, gen: answerGen });
       }
     } catch (err) {
       console.error('Answer error for', peerId, err);
+      delete pendingAnswerGenRef.current[peerId];
     }
   }, [createPeerConnection, flushIce]);
 
-  const acceptAnswer = useCallback(async (peerId, answer) => {
+  const acceptAnswer = useCallback(async (peerId, answer, gen) => {
     const pc = pcsRef.current[peerId];
     if (!pc || pc.signalingState !== 'have-local-offer') return;
+    const curGen = negotiationGenRef.current[peerId] || 0;
+    if (gen != null && gen !== curGen) return; // stale — a newer negotiation is in flight
     try {
       await pc.setRemoteDescription(answer);
       flushIce(peerId, pc);
+      lastNegotiateAtRef.current[peerId] = Date.now();
     } catch (err) {
       console.error('Set remote answer failed for', peerId, err);
     }
@@ -309,7 +368,14 @@ export default function MeetingRoom() {
       clearTimeout(negotiateTimersRef.current[peerId]);
       delete negotiateTimersRef.current[peerId];
     }
+    if (restartScheduledRef.current[peerId]) {
+      clearTimeout(restartScheduledRef.current[peerId]);
+      delete restartScheduledRef.current[peerId];
+    }
     delete bufferedCandidatesRef.current[peerId];
+    delete pendingAnswerGenRef.current[peerId];
+    delete negotiationGenRef.current[peerId];
+    delete lastNegotiateAtRef.current[peerId];
     if (pcsRef.current[peerId]) {
       try { pcsRef.current[peerId].close(); } catch { /* ignore */ }
       delete pcsRef.current[peerId];
@@ -371,14 +437,14 @@ export default function MeetingRoom() {
       if (socketId && socketId !== mySocketIdRef.current) disconnectPeer(socketId);
     });
 
-    socket.on('offer', ({ offer, socketId, userId, userName }) => {
+    socket.on('offer', ({ offer, socketId, userId, userName, gen }) => {
       if (!socketId || socketId === mySocketIdRef.current) return;
-      answerOffer(socketId, offer, userName, null);
+      answerOffer(socketId, offer, userName, null, gen, socketId);
     });
 
-    socket.on('answer', ({ answer, socketId, userId }) => {
+    socket.on('answer', ({ answer, socketId, userId, gen }) => {
       if (!socketId || socketId === mySocketIdRef.current) return;
-      acceptAnswer(socketId, answer);
+      acceptAnswer(socketId, answer, gen);
     });
 
     socket.on('ice-candidate', ({ candidate, socketId, userId }) => {
@@ -434,6 +500,23 @@ export default function MeetingRoom() {
     socket.on('meeting-ended', () => { router.push('/meetings'); });
   }, [myId, myName, negotiate, scheduleNegotiate, disconnectPeer, answerOffer, acceptAnswer, bufferIce, syncPeers, router]);
 
+  const startConnectWatchdog = useCallback(() => {
+    if (connectWatchdogRef.current) return;
+    connectWatchdogRef.current = setInterval(() => {
+      const now = Date.now();
+      Object.keys(pcsRef.current).forEach((peerId) => {
+        const pc = pcsRef.current[peerId];
+        if (!pc || pc.connectionState === 'connected' || pc.connectionState === 'closed' || pc.connectionState === 'disconnected') return;
+        if (restartScheduledRef.current[peerId]) return;
+        const last = lastNegotiateAtRef.current[peerId] || 0;
+        // Stuck in new/connecting/failed past the grace window — force a clean restart.
+        if (now - last > 9000) {
+          if (restartPeerConnectionRef.current) restartPeerConnectionRef.current(peerId);
+        }
+      });
+    }, 4000);
+  }, []);
+
   const fetchIceConfig = useCallback(async () => {
     try {
       const data = await apiFetch('/api/meetings/ice-config');
@@ -462,6 +545,7 @@ export default function MeetingRoom() {
       startTimer();
       fetchIceConfig();
       attachSocket();
+      startConnectWatchdog();
       setSocketStatus('connecting');
     } catch (err) {
       joinedRef.current = false;
@@ -470,7 +554,7 @@ export default function MeetingRoom() {
       return;
     }
     setJoining(false);
-  }, [attachSocket, fetchIceConfig, startTimer]);
+  }, [attachSocket, fetchIceConfig, startConnectWatchdog, startTimer]);
 
   useEffect(() => {
     resolveMeeting();
@@ -488,8 +572,12 @@ export default function MeetingRoom() {
       if (roomIdRef.current) socketRef.current.emit('leave-room', { roomId: roomIdRef.current });
       socketRef.current.disconnect();
     }
+    if (connectWatchdogRef.current) clearInterval(connectWatchdogRef.current);
+    connectWatchdogRef.current = null;
     Object.values(negotiateTimersRef.current).forEach((t) => clearTimeout(t));
     negotiateTimersRef.current = {};
+    Object.values(restartScheduledRef.current).forEach((t) => clearTimeout(t));
+    restartScheduledRef.current = {};
     bufferedCandidatesRef.current = {};
     Object.values(pcsRef.current).forEach((pc) => { try { pc.close(); } catch { /* ignore */ } });
     pcsRef.current = {};
