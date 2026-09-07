@@ -124,21 +124,23 @@ module.exports = (io) => {
         });
         
         // WebRTC signaling - Offer (delivered only to the target socket)
-        socket.on('offer', ({ offer, to, roomId, userName }) => {
+        socket.on('offer', ({ offer, to, roomId, userName, gen }) => {
             socket.to('socket:' + to).emit('offer', {
                 offer,
                 socketId: socket.id,
                 userId: socket.userId,
-                userName: userName || socket.userName || 'User'
+                userName: userName || socket.userName || 'User',
+                gen
             });
         });
         
         // WebRTC signaling - Answer (delivered only to the target socket)
-        socket.on('answer', ({ answer, to, roomId }) => {
+        socket.on('answer', ({ answer, to, roomId, gen }) => {
             socket.to('socket:' + to).emit('answer', {
                 answer,
                 socketId: socket.id,
-                userId: socket.userId
+                userId: socket.userId,
+                gen
             });
         });
         
