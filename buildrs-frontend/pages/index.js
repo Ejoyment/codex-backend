@@ -1,21 +1,6 @@
 import Head from 'next/head';
 import Link from 'next/link';
-import { useState } from 'react';
 import SiteShell from '../components/SiteShell';
-
-const HELP = {
-  help:
-    'available: deploy, status, team, pair, clear',
-  deploy:
-    '✓ building latest commit\n✓ deploying to acme.buildrshq.dev\n✓ live in 6.4s — https://acme.buildrshq.dev',
-  status:
-    '● platform: online   |  latency 42ms\n● index: 1,284 files  |  3 teammates online',
-  team:
-    'acme/core — 4 online\n  · ada … editing src/components/dashboard.tsx\n  · rowan … reviewing PR #128\n  · you in room: standup in 12m',
-  pair:
-    '▸ reading codebase · 1,284 files · 2.1s\n▸ validating refactor for dashboard.tsx\n✓ applied — 3 files changed, 42 lines removed',
-  clear: '',
-};
 
 const STACK = [
   {
@@ -159,35 +144,93 @@ const WHY = [
   },
 ];
 
+// Row = array of [text, tokenClass]. `ghost` rows render the inline-AI shimmer.
+const CODE_ROWS = [
+  [{ text: '// dashboard — live co-editing with presence', cls: 'tok-cm' }],
+  [
+    { text: 'import', cls: 'tok-kw' },
+    { text: ' { PresenceCursors } ', cls: 'tok-tp' },
+    { text: 'from', cls: 'tok-kw' },
+    { text: " '@/lib/yjs'", cls: 'tok-str' },
+  ],
+  [
+    { text: 'import', cls: 'tok-kw' },
+    { text: ' { useTasks } ', cls: 'tok-tp' },
+    { text: 'from', cls: 'tok-kw' },
+    { text: " '@/lib/tasks'", cls: 'tok-str' },
+  ],
+  [],
+  [
+    { text: 'export ', cls: 'tok-kw' },
+    { text: 'function ', cls: 'tok-kw' },
+    { text: 'Dashboard', cls: 'tok-fn' },
+    { text: '() {', cls: 'tok-tp' },
+  ],
+  [
+    { text: '  const ', cls: 'tok-kw' },
+    { text: '{ peers, online } ', cls: 'tok-tp' },
+    { text: '=', cls: 'tok-kw' },
+    { text: ' ', cls: 'tok-tp' },
+    { text: 'usePresence', cls: 'tok-fn' },
+    { text: "('acme/core')", cls: 'tok-str' },
+  ],
+  [
+    { text: '  const ', cls: 'tok-kw' },
+    { text: '{ tasks, sync } ', cls: 'tok-tp' },
+    { text: '=', cls: 'tok-kw' },
+    { text: ' ', cls: 'tok-tp' },
+    { text: 'useTasks', cls: 'tok-fn' },
+    { text: '()', cls: 'tok-str' },
+  ],
+  [],
+  [
+    { text: '  return', cls: 'tok-kw' },
+    { text: ' (', cls: 'tok-tp' },
+  ],
+  [
+    { text: '    <section ', cls: 'tok-tp' },
+    { text: 'className', cls: 'tok-fn' },
+    { text: '="stack">', cls: 'tok-kw' },
+  ],
+  [
+    { text: '      <Editor ', cls: 'tok-tp' },
+    { text: 'peers', cls: 'tok-fn' },
+    { text: '={', cls: 'tok-kw' },
+    { text: 'peers', cls: 'tok-tp' },
+    { text: '} />', cls: 'tok-tp' },
+  ],
+  [
+    { text: '      <TaskRail ', cls: 'tok-tp' },
+    { text: 'tasks', cls: 'tok-fn' },
+    { text: '={', cls: 'tok-kw' },
+    { text: 'tasks', cls: 'tok-tp' },
+    { text: '} />', cls: 'tok-tp' },
+  ],
+  [{ text: '      <AiGhost text="git commit -m \'joined live session\'" />', cls: 'tok-ghost', ghost: true }],
+  [{ text: '    </section>', cls: 'tok-tp' }],
+  [
+    { text: '  )', cls: 'tok-tp' },
+  ],
+  [{ text: '}', cls: 'tok-tp' }],
+  [{ text: '// ada, rowan, kai are editing right now — 3 cursors live', cls: 'tok-cm' }],
+];
+
+const TREE_ROWS = [
+  { indent: 0, text: '⌄ acme-core', cls: 't-dir' },
+  { indent: 1, text: '⌄ src', cls: 't-dir' },
+  { indent: 2, text: '⌄ components', cls: 't-dir' },
+  { indent: 3, text: '◉ dashboard.tsx', cls: 't-file on' },
+  { indent: 3, text: '○ cards.tsx', cls: 't-file' },
+  { indent: 2, text: '⌄ api', cls: 't-dir' },
+  { indent: 3, text: '○ auth.ts', cls: 't-file' },
+  { indent: 2, text: '⌄ lib', cls: 't-dir' },
+  { indent: 3, text: '○ yjs.ts', cls: 't-file' },
+  { indent: 1, text: '○ README.md', cls: 't-file' },
+];
+
+const MINIMAP = [0, 1, 0, 1, 0, 3, 2, 1, 0, 1, 4, 1, 2, 0, 1, 1, 3];
+
 export default function Index() {
-  const [lines, setLines] = useState([
-    { text: 'buildrs@workspace ~ $ buildrs status', cls: 'd' },
-    { text: '● platform: online  ·  1,284 files indexed  ·  3 teammates online', cls: 'ok' },
-    { text: '' },
-    { text: 'type `deploy`, `pair`, `team` or `help`', cls: 'd' },
-  ]);
-  const [input, setInput] = useState('');
-
-  const run = (e) => {
-    e.preventDefault();
-    const cmd = input.trim().toLowerCase();
-    if (cmd === 'clear') {
-      setLines([]);
-      setInput('');
-      return;
-    }
-    const out = HELP[cmd] ?? `command not found: ${cmd}`;
-    setLines((prev) => [
-      ...prev,
-      { text: `buildrs@workspace ~ $ ${cmd}`, cls: 'd' },
-      ...String(out)
-        .split('\n')
-        .map((t) => ({ text: t, cls: 'ok' })),
-      { text: '' },
-    ]);
-    setInput('');
-  };
-
   return (
     <>
       <Head>
@@ -233,31 +276,95 @@ export default function Index() {
               </p>
             </div>
 
-            {/* Terminal */}
-            <div className="mkt-term relative">
+            {/* Editor mock */}
+            <div className="mkt-term relative overflow-hidden">
               <div className="mkt-term-bar">
                 <span className="dot" />
                 <span className="dot" />
                 <span className="dot" />
-                <span className="title mkt-mono">buildrs — acme/core · workspace</span>
+                <span className="title mkt-mono">acme/core — src/components/dashboard.tsx</span>
+                <div className="mkt-live ml-auto">
+                  <span className="dot" />
+                  <span className="mkt-mono text-[11px] uppercase tracking-widest text-[#686e7c]">
+                    yjs · 3 online
+                  </span>
+                </div>
               </div>
-              <div className="mkt-term-body min-h-[300px]">
-                {lines.map((line, i) => (
-                  <div key={i} className="whitespace-pre-wrap">
-                    <span className={line.cls}>{line.text}</span>
-                  </div>
-                ))}
-                <form onSubmit={run} className="flex items-center gap-2">
-                  <span className="p">$</span>
-                  <input
-                    type="text"
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    className="mkt-term-input flex-1"
-                    placeholder="run deploy / pair / team"
-                    aria-label="terminal command"
-                  />
-                </form>
+
+              {/* open tabs */}
+              <div className="mkt-ed-tabs mkt-mono">
+                <span className="mkt-ed-tab active">dashboard.tsx</span>
+                <span className="mkt-ed-tab">cards.tsx</span>
+                <span className="mkt-ed-tab">auth.ts</span>
+                <span className="mkt-ed-tab">›_ terminal</span>
+              </div>
+
+              <div className="mkt-ed-body">
+                {/* file explorer */}
+                <div className="mkt-ed-tree">
+                  {TREE_ROWS.map((r, i) => (
+                    <div key={i} className={r.cls} style={{ paddingLeft: r.indent * 12 }}>
+                      {r.text}
+                    </div>
+                  ))}
+                </div>
+
+                {/* code */}
+                <div className="mkt-ed-code mkt-mono">
+                  {CODE_ROWS.map((row, i) => (
+                    <div key={i} className={`mkt-ed-row${row.length ? '' : ' active'}`}>
+                      <span className="mkt-ed-ln">{i + 1}</span>
+                      <span className="whitespace-pre-wrap">
+                        {row.map((t, j) =>
+                          t.ghost ? (
+                            <span key={j} className="tok-ghost">
+                              ✦ {t.text}
+                            </span>
+                          ) : (
+                            <span key={j} className={t.cls}>
+                              {t.text}
+                            </span>
+                          )
+                        )}
+                      </span>
+                      {i === 5 && (
+                        <span className="mkt-presence">
+                          <span className="bar" style={{ background: '#e5b84a' }} />
+                          <span className="tag">ada</span>
+                        </span>
+                      )}
+                      {i === 11 && (
+                        <span className="mkt-presence">
+                          <span className="bar" style={{ background: '#2fd6e6' }} />
+                          <span className="tag">rowan</span>
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* minimap */}
+                <div className="mkt-ed-minimap" aria-hidden>
+                  {MINIMAP.map((m, i) => (
+                    <i key={i} className={m === 4 ? 'cursor' : m === 0 ? '' : 'hl'} style={{ flex: m ? 1 : 0.6 }} />
+                  ))}
+                </div>
+              </div>
+
+              {/* status bar */}
+              <div className="mkt-ed-status mkt-mono">
+                <span className="ok">● main</span>
+                <span>TSX</span>
+                <span>
+                  Ln {CODE_ROWS.length}, Col 8
+                </span>
+                <span className="mkt-ed-hide-sm">Spaces: 2</span>
+                <span className="mkt-ed-hide-sm">UTF-8</span>
+                <span className="mkt-ed-hide-sm">⌘S saved</span>
+                <span className="mkt-live ml-auto">
+                  <span className="dot" />
+                  3 cursors · AI groq
+                </span>
               </div>
             </div>
           </div>
