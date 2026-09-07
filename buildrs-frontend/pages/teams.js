@@ -636,7 +636,7 @@ function InviteMemberModal({ companies, selectedCompanyId, onClose }) {
     setError(null);
     setSuccess(false);
     try {
-      const res = await apiFetch('/api/invitations/send', {
+      const res = await apiFetch('/api/invitations', {
         method: 'POST',
         body: JSON.stringify({
           email: email.trim(),
