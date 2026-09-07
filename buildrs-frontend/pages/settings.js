@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import Sidebar from '../components/Sidebar';
@@ -11,6 +11,11 @@ import { User, Shield, CreditCard, Plug, Camera, Save, ExternalLink, Unplug, Loa
 import useToastStore from '../store/toastStore';
 
 const submitGuard = createSubmitGuard();
+
+const CROP_VIEW = 280;
+const CROP_MAX_ZOOM = 4;
+const CROP_EXPORT_MIN = 96;
+const CROP_EXPORT_MAX = 512;
 
 const PROVIDERS = [
   { id: 'github', label: 'GitHub', color: '#f0f6fc' },
@@ -51,6 +56,13 @@ export default function Settings() {
   const [loadingIntegrations, setLoadingIntegrations] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
   const [clock, setClock] = useState('');
+  const [crop, setCrop] = useState(null);
+  const [cropZoom, setCropZoom] = useState(1);
+  const [cropPan, setCropPan] = useState({ x: 0, y: 0 });
+  const [cropReady, setCropReady] = useState(false);
+  const cropImgRef = useRef(null);
+  const previewRef = useRef(null);
+  const dragRef = useRef(null);
   const toast = useToastStore();
 
   useEffect(() => {
@@ -124,7 +136,24 @@ export default function Settings() {
     }
   };
 
-  const uploadPicture = async (e) => {
+  const uploadPicture = async (file) => {
+    const form = new FormData();
+    form.append('profilePicture', file);
+    const data = await apiFetch('/api/profile/picture', {
+      method: 'POST',
+      body: form,
+    });
+    if (data.profilePicture) {
+      const token = localStorage.getItem('authToken');
+      const updated = { ...user, profilePicture: data.profilePicture };
+      setAuth(token, updated);
+      toast.success('Profile picture updated');
+    } else {
+      throw new Error(data.message || 'Upload failed');
+    }
+  };
+
+  const onPickPicture = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = '';
@@ -136,22 +165,116 @@ export default function Settings() {
       toast.error('Only image files are allowed');
       return;
     }
+    if (crop?.src) URL.revokeObjectURL(crop.src);
+    setCrop({ src: URL.createObjectURL(file), w: 0, h: 0 });
+    setCropZoom(1);
+    setCropPan({ x: 0, y: 0 });
+    setCropReady(false);
+  };
+
+  const clampPan = (pos, drawW, drawH) => ({
+    x: Math.min(0, Math.max(CROP_VIEW - drawW, pos.x)),
+    y: Math.min(0, Math.max(CROP_VIEW - drawH, pos.y)),
+  });
+
+  const baseScale = (w, h) => Math.max(CROP_VIEW / w, CROP_VIEW / h);
+  const drawSize = (w, h, zoom) => ({ w: w * baseScale(w, h) * zoom, h: h * baseScale(w, h) * zoom });
+
+  const onCropLoad = (e) => {
+    if (!crop) return;
+    const w = e.currentTarget.naturalWidth;
+    const h = e.currentTarget.naturalHeight;
+    const d = drawSize(w, h, 1);
+    setCrop((prev) => (prev ? { ...prev, w, h } : prev));
+    setCropPan(clampPan({ x: (CROP_VIEW - d.w) / 2, y: (CROP_VIEW - d.h) / 2 }, d.w, d.h));
+    setCropReady(true);
+  };
+
+  const onCropPointerDown = (e) => {
+    if (!cropReady) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragRef.current = { id: e.pointerId, sx: e.clientX, sy: e.clientY, start: { ...cropPan } };
+  };
+
+  const onCropPointerMove = (e) => {
+    const d = dragRef.current;
+    if (!d || d.id !== e.pointerId || !crop) return;
+    const dims = drawSize(crop.w, crop.h, cropZoom);
+    setCropPan(clampPan({ x: d.start.x + (e.clientX - d.sx), y: d.start.y + (e.clientY - d.sy) }, dims.w, dims.h));
+  };
+
+  const onCropPointerUp = () => {
+    dragRef.current = null;
+  };
+
+  const applyZoom = (nextZoom) => {
+    if (!crop || crop.w <= 0) return;
+    const zoom = Math.min(CROP_MAX_ZOOM, Math.max(1, nextZoom));
+    const dims = drawSize(crop.w, crop.h, zoom);
+    const prev = drawSize(crop.w, crop.h, cropZoom);
+    const cx = CROP_VIEW / 2 - cropPan.x;
+    const cy = CROP_VIEW / 2 - cropPan.y;
+    const pan = {
+      x: CROP_VIEW / 2 - (cx * dims.w) / prev.w,
+      y: CROP_VIEW / 2 - (cy * dims.h) / prev.h,
+    };
+    setCropZoom(zoom);
+    setCropPan(clampPan(pan, dims.w, dims.h));
+  };
+
+  const onCropWheel = (e) => {
+    e.preventDefault();
+    applyZoom(cropZoom * Math.exp(-e.deltaY * 0.0012));
+  };
+
+  const resetCrop = (e) => {
+    e.stopPropagation();
+    if (!crop || crop.w <= 0) return;
+    const d = drawSize(crop.w, crop.h, 1);
+    setCropZoom(1);
+    setCropPan(clampPan({ x: (CROP_VIEW - d.w) / 2, y: (CROP_VIEW - d.h) / 2 }, d.w, d.h));
+  };
+
+  const closeCrop = () => {
+    if (uploading) return;
+    if (crop?.src) URL.revokeObjectURL(crop.src);
+    setCrop(null);
+    setCropReady(false);
+    setCropZoom(1);
+    setCropPan({ x: 0, y: 0 });
+  };
+
+  useEffect(() => {
+    const canvas = previewRef.current;
+    const img = cropImgRef.current;
+    if (!canvas || !img || !crop || crop.w <= 0 || !cropReady) return;
+    const scale = baseScale(crop.w, crop.h) * cropZoom;
+    const srcSize = CROP_VIEW / scale;
+    const srcX = -cropPan.x / scale;
+    const srcY = -cropPan.y / scale;
+    const size = Math.max(CROP_EXPORT_MIN, Math.min(CROP_EXPORT_MAX, Math.round(srcSize)));
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, size, size);
+    ctx.beginPath();
+    ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.drawImage(img, srcX, srcY, srcSize, srcSize, 0, 0, size, size);
+  }, [crop, cropReady, cropZoom, cropPan]);
+
+  const applyCrop = async () => {
+    const canvas = previewRef.current;
+    const img = cropImgRef.current;
+    if (!canvas || !img || !crop || !cropReady) return;
     setUploading(true);
     try {
-      const form = new FormData();
-      form.append('profilePicture', file);
-      const data = await apiFetch('/api/profile/picture', {
-        method: 'POST',
-        body: form,
+      const blob = await new Promise((resolve, reject) => {
+        canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Failed to process image'))), 'image/png');
       });
-      if (data.profilePicture) {
-        const token = localStorage.getItem('authToken');
-        const updated = { ...user, profilePicture: data.profilePicture };
-        setAuth(token, updated);
-        toast.success('Profile picture updated');
-      } else {
-        toast.error(data.message || 'Upload failed');
-      }
+      const file = new File([blob], 'avatar.png', { type: 'image/png' });
+      await uploadPicture(file);
+      closeCrop();
     } catch (err) {
       toast.error(err.message || 'Failed to upload picture');
     } finally {
@@ -245,7 +368,7 @@ export default function Settings() {
                           <input
                             type="file"
                             accept="image/*"
-                            onChange={uploadPicture}
+                            onChange={onPickPicture}
                             className="hidden"
                             disabled={uploading}
                           />
@@ -406,6 +529,87 @@ export default function Settings() {
           </div>
         </main>
       </div>
+
+      {crop && (
+        <div className="pfp-overlay" role="dialog" aria-modal="true" aria-label="Crop profile photo">
+          <div className="pfp-modal">
+            <div className="pfp-head">
+              <div className="ws-modal-title">Crop your photo</div>
+              <button type="button" className="pfp-close" onClick={closeCrop} aria-label="Cancel crop" tabIndex={-1}>
+                ✕
+              </button>
+            </div>
+
+            <div className="pfp-body">
+              <div
+                className="pfp-crop"
+                onPointerDown={onCropPointerDown}
+                onPointerMove={onCropPointerMove}
+                onPointerUp={onCropPointerUp}
+                onPointerCancel={onCropPointerUp}
+                onWheel={onCropWheel}
+                onDoubleClick={resetCrop}
+              >
+                <img
+                  ref={cropImgRef}
+                  src={crop.src}
+                  alt="Crop preview"
+                  draggable={false}
+                  onLoad={onCropLoad}
+                  style={
+                    crop.w > 0
+                      ? {
+                          width: drawSize(crop.w, crop.h, cropZoom).w,
+                          height: drawSize(crop.w, crop.h, cropZoom).h,
+                          left: cropPan.x,
+                          top: cropPan.y,
+                        }
+                      : undefined
+                  }
+                />
+                <div className="pfp-ring" />
+              </div>
+
+              <div className="pfp-side">
+                <canvas ref={previewRef} className="pfp-preview" />
+                <span className="pfp-side-label">preview</span>
+              </div>
+            </div>
+
+            <div className="pfp-controls">
+              <label htmlFor="pfp-zoom">Zoom</label>
+              <input
+                id="pfp-zoom"
+                type="range"
+                className="pfp-slider"
+                min="1"
+                max={CROP_MAX_ZOOM}
+                step="0.01"
+                value={cropZoom}
+                onChange={(e) => applyZoom(Number(e.target.value))}
+              />
+              <button type="button" onClick={resetCrop} className="btn-workspace btn-secondary text-xs">
+                Reset
+              </button>
+            </div>
+
+            <div className="pfp-actions">
+              <button type="button" onClick={closeCrop} className="btn-workspace btn-secondary" disabled={uploading}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={applyCrop}
+                className="btn-workspace btn-primary inline-flex items-center gap-2"
+                disabled={!cropReady || uploading}
+              >
+                {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
+                {uploading ? 'Uploading...' : 'Apply & upload'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AuthGuard>
   );
 }
