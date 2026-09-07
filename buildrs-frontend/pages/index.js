@@ -248,8 +248,8 @@ export default function Index() {
         <section className="relative overflow-hidden pt-32 pb-16 sm:pt-40">
           <div className="mkt-hero-bg" />
           <div className="mkt-dots" />
-          <div className="relative mx-auto grid max-w-[1200px] items-center gap-14 px-5 sm:px-8 lg:grid-cols-[1.05fr_0.95fr]">
-            <div>
+          <div className="relative mx-auto max-w-[1240px] px-5 sm:px-8">
+            <div className="mx-auto max-w-[680px] text-center">
               <p className="mkt-eyebrow mb-7">
                 <span className="dot">●</span> buildrs · unified dev command center
               </p>
@@ -258,12 +258,12 @@ export default function Index() {
                 <br />
                 One <span className="accent">command center</span>.
               </h1>
-              <p className="mkt-sub mt-7 max-w-[520px]">
+              <p className="mkt-sub mt-7 max-w-[520px] mx-auto">
                 Buildrs collapses the eleven-tool ritual — GitHub, Slack, ChatGPT, Figma,
                 Notion — into a single workspace. AI pair programming, live co-editing, tasks,
                 and standups, side by side with your code.
               </p>
-              <div className="mt-9 flex flex-wrap items-center gap-3">
+              <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
                 <Link href="/signup" className="mkt-btn mkt-btn-primary !px-6 !py-3 !text-[15px]">
                   Start building <span className="mkt-arrow">→</span>
                 </Link>
@@ -277,7 +277,8 @@ export default function Index() {
             </div>
 
             {/* Editor mock */}
-            <div className="mkt-term relative overflow-hidden">
+            <div className="mx-auto mt-16 max-w-[1240px]">
+              <div className="mkt-term relative overflow-hidden">
               <div className="mkt-term-bar">
                 <span className="dot" />
                 <span className="dot" />
@@ -366,6 +367,7 @@ export default function Index() {
                   3 cursors · AI groq
                 </span>
               </div>
+            </div>
             </div>
           </div>
         </section>
