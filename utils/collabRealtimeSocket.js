@@ -36,6 +36,11 @@ module.exports = (io) => {
     ns.on('connection', (socket) => {
         const joinedSessions = new Set();
 
+        // Join per-user room so AI agent progress can be streamed real-time
+        socket.join(`agent:${socket.userId}`);
+        socket.on('agent:join', () => socket.join(`agent:${socket.userId}`));
+        socket.on('agent:leave', () => socket.leave(`agent:${socket.userId}`));
+
         async function upsertSession(sessionId, type, contextRef, companyId) {
             let session;
             if (sessionId) {

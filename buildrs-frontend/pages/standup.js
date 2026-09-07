@@ -15,6 +15,7 @@ import {
   MessageSquare,
   ListTodo,
   History,
+  Sparkles,
 } from 'lucide-react';
 
 function groupStandups(items) {
@@ -59,6 +60,7 @@ export default function Standup() {
   const user = useAuthStore((s) => s.user);
   const subscription = useAuthStore((s) => s.subscription);
 
+  const [generating, setGenerating] = useState(false);
   const [yesterday, setYesterday] = useState('');
   const [today, setToday] = useState('');
   const [blockers, setBlockers] = useState('');
@@ -153,6 +155,46 @@ export default function Standup() {
   );
 
   const groupedStandups = useMemo(() => groupStandups(pastStandups), [pastStandups]);
+
+  async function handleAutoGenerate() {
+    if (!selectedCompany) return;
+    setGenerating(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const res = await apiFetch('/api/standup/generate', {
+        method: 'POST',
+        body: JSON.stringify({ companyId: selectedCompany }),
+      });
+      if (res.success && res.draft) {
+        const draft = res.draft.trim();
+        const parse = (label) => {
+          const i = draft.indexOf(label);
+          if (i === -1) return '';
+          const rest = draft.slice(i + label.length);
+          const nxt = rest.search(/Yesterday:|Today:|Blockers:/);
+          const seg = nxt === -1 ? rest : rest.slice(0, nxt);
+          return seg.replace(/^[\s:*-]*/, '').replace(/[\s*#-]+$/, '').trim();
+        };
+        const y = parse('Yesterday:') || parse('**Yesterday**');
+        const t = parse('Today:') || parse('**Today**');
+        const b = parse('Blockers:') || parse('**Blockers**');
+        setYesterday(y);
+        setToday(t);
+        setBlockers(b);
+        if (!y && !t && !b) {
+          setYesterday(draft);
+        }
+        setSuccess('Draft generated — review and edit before submitting.');
+      } else {
+        setError((res && res.message) || 'Could not auto-generate. Fill in manually.');
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to auto-generate standup');
+    } finally {
+      setGenerating(false);
+    }
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -338,9 +380,21 @@ export default function Standup() {
                       </div>
 
                       <div className="std-submit-bar">
-                        <span className="std-note">
-                          Submit with <span className="std-kbd">⌘</span><span className="std-kbd">↵</span>
-                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <span className="std-note">
+                            <span className="std-kbd">⌘</span><span className="std-kbd">↵</span>&nbsp; to submit
+                          </span>
+                          <button
+                            type="button"
+                            onClick={handleAutoGenerate}
+                            disabled={generating}
+                            className="btn-workspace btn-secondary text-xs inline-flex items-center gap-1"
+                            title="Let AI draft your standup from recent tasks and meetings"
+                          >
+                            <Sparkles className="w-3.5 h-3.5" />
+                            {generating ? 'Generating...' : 'Auto-generate'}
+                          </button>
+                        </div>
                         <button
                           type="submit"
                           disabled={submitting}

@@ -8,6 +8,7 @@ const router = express.Router();
 const gitService = require('../utils/gitService');
 const { authenticateToken } = require('../middleware/auth');
 const permissionMatrix = require('../middleware/permissionMatrix');
+const { addAuditLog } = require('../utils/auditLogService');
 
 /**
  * @swagger
@@ -293,6 +294,15 @@ router.post('/commit', authenticateToken, permissionMatrix.requirePermission('gi
     }
 
     const result = await gitService.commit(workspaceId, message, files);
+    addAuditLog({
+      companyId: workspaceId,
+      actorId: req.userId,
+      event: 'git.commit',
+      category: 'git',
+      target: (message || '').split('\n')[0].slice(0, 80),
+      details: { workspaceId, files: files || [] },
+      req
+    });
     res.json(result);
   } catch (error) {
     console.error('Git commit error:', error);
@@ -621,6 +631,15 @@ router.post('/push', authenticateToken, permissionMatrix.requirePermission('git'
     }
 
     const result = await gitService.push(workspaceId, remote, branch);
+    addAuditLog({
+      companyId: workspaceId,
+      actorId: req.userId,
+      event: 'git.push',
+      category: 'git',
+      target: branch || 'current branch',
+      details: { workspaceId, remote: remote || '' },
+      req
+    });
     res.json(result);
   } catch (error) {
     console.error('Git push error:', error);

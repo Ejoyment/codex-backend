@@ -13,6 +13,9 @@ import {
   Settings,
   LifeBuoy,
   Video,
+  ShieldCheck,
+  Rocket,
+  Server,
 } from 'lucide-react';
 import { getAvatarUrl } from '../lib/utils';
 
@@ -34,6 +37,7 @@ const NAV_SECTIONS = [
       { href: '/source-code', label: 'Source', icon: Database },
       { href: '/ai-pair', label: 'AI Pair', icon: Sparkles },
       { href: '/team-memory', label: 'Team Memory', icon: Database },
+      { href: '/mcp', label: 'MCP Servers', icon: Server },
     ],
   },
   {
@@ -47,6 +51,8 @@ const NAV_SECTIONS = [
     label: 'Manage',
     items: [
       { href: '/settings', label: 'Settings', icon: Settings },
+      { href: '/ci-cd', label: 'CI/CD', icon: Rocket },
+      { href: '/audit', label: 'Audit Log', icon: ShieldCheck },
       { href: '/support', label: 'Support', icon: LifeBuoy },
     ],
   },

@@ -20,6 +20,8 @@ import {
 } from 'lucide-react';
 import { getTierLimits, normalizeTier } from '../lib/tier';
 import { useRouter } from 'next/router';
+import { io } from 'socket.io-client';
+import { useCurrentCompany } from '../hooks/useCurrentCompany';
 
 const LANGUAGES = ['JavaScript', 'TypeScript', 'Python', 'Java', 'Go', 'Rust', 'C++', 'Ruby', 'PHP'];
 
@@ -118,6 +120,10 @@ export default function AiPair() {
   const [creatingSession, setCreatingSession] = useState(false);
   const [remaining, setRemaining] = useState(aiLimit);
   const [clock, setClock] = useState('');
+  const [agentMode, setAgentMode] = useState(false);
+  const [agentSteps, setAgentSteps] = useState([]);
+  const agentSocketRef = useRef(null);
+  const { selectedCompany, hasCompany } = useCurrentCompany();
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
@@ -140,6 +146,29 @@ export default function AiPair() {
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+    if (!token) return;
+    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3000';
+    const sock = io(`${socketUrl}/collab`, { auth: { token }, transports: ['websocket', 'polling'] });
+    agentSocketRef.current = sock;
+    sock.on('connect', () => sock.emit('agent:join'));
+    sock.on('agent:progress', (p) => {
+      if (p && p.type) {
+        setAgentSteps((prev) => [...prev, p]);
+      }
+    });
+    return () => {
+      sock.emit('agent:leave');
+      sock.disconnect();
+      agentSocketRef.current = null;
+    };
+  }, [activeSession]);
+
+  function resetAgentRun() {
+    setAgentSteps([]);
+  }
 
   async function fetchSessions() {
     setLoadingSessions(true);
@@ -196,20 +225,53 @@ export default function AiPair() {
     setInput('');
     setLoading(true);
     setError(null);
+    if (agentMode) resetAgentRun();
 
     try {
       const data = await apiFetch('/api/ai-pair/chat', {
         method: 'POST',
-        body: JSON.stringify({ sessionId: activeSession._id, message: currentInput }),
+        body: JSON.stringify({
+          sessionId: activeSession._id,
+          message: currentInput,
+          useAgentLoop: agentMode,
+          companyId: selectedCompany?._id || undefined,
+          codeContext: {
+            workspace: { id: selectedCompany?._id, name: selectedCompany?.name },
+            language: activeSession.language,
+            files: [],
+          },
+        }),
       });
       if (data.success) {
-        const aiMsg = {
-          role: 'assistant',
-          content: (data.message && data.message.content) || 'No response.',
-          codeChanges: data.actions && data.actions.length ? data.actions : [],
-          timestamp: new Date().toISOString(),
-        };
-        setMessages((prev) => [...prev, aiMsg]);
+        if (data.agentMode && data.result) {
+          const result = data.result;
+          const steps = (result.iterations || []).map((it) => ({
+            step: it.iteration,
+            thought: it.reasoning?.thought || it.thought || '',
+            tool: it.reasoning?.action?.tool || it.action?.tool || '',
+            success: it.result?.success,
+          }));
+          setAgentSteps((prev) => [
+            ...prev,
+            { type: 'done', status: 'done', success: result.success !== false, summary: result.summary },
+          ]);
+          const aiMsg = {
+            role: 'assistant',
+            content: result.summary || (result.success ? 'Task complete.' : 'Agent finished with issues.'),
+            agentSummary: result.summary,
+            agentSteps: steps,
+            timestamp: new Date().toISOString(),
+          };
+          setMessages((prev) => [...prev, aiMsg]);
+        } else {
+          const aiMsg = {
+            role: 'assistant',
+            content: (data.message && data.message.content) || 'No response.',
+            codeChanges: data.actions && data.actions.length ? data.actions : [],
+            timestamp: new Date().toISOString(),
+          };
+          setMessages((prev) => [...prev, aiMsg]);
+        }
         if (typeof data.aiLimit === 'number') {
           setRemaining(data.aiLimit);
         } else {
@@ -412,6 +474,18 @@ export default function AiPair() {
                                   <span className="ail-msg-who">AI</span>
                                 </div>
                                 {renderCodeBlocks(msg.content, `a${i}`)}
+                                {msg.agentSteps && msg.agentSteps.length > 0 && (
+                                  <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                                    {msg.agentSteps.map((s, si) => (
+                                      <div key={si} style={{ fontSize: '0.75rem', color: '#a8adba', display: 'flex', gap: '0.4rem' }}>
+                                        <span className="mkt-mono" style={{ color: s.success === false ? '#f87171' : '#2fd6e6' }}>
+                                          {s.success === false ? '✕' : '✓'}
+                                        </span>
+                                        <span>step {s.step}: {s.tool} — {String(s.thought).slice(0, 80)}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
                                 {msg.codeChanges && msg.codeChanges.length > 0 && (
                                   msg.codeChanges.map((change, ci) => <ChangeBlock key={`${i}-${ci}`} change={change} />)
                                 )}
@@ -420,12 +494,38 @@ export default function AiPair() {
                           )
                         ))}
                         {loading && (
-                          <div className="ail-msg-row">
-                            <div className="ail-thinking ail-typing">
-                              <Loader2 className="w-4 h-4 animate-spin" style={{ color: '#2fd6e6' }} />
-                              <span className="ail-msg-who">Thinking...</span>
-                            </div>
-                          </div>
+                          <>
+                            {agentMode && agentSteps.length > 0 ? (
+                              <div className="ail-msg-row">
+                                <div className="ail-bubble ail-bubble-ai" style={{ width: '100%' }}>
+                                  <div className="ail-msg-head">
+                                    <Bot className="w-3.5 h-3.5" style={{ color: '#2fd6e6' }} />
+                                    <span className="ail-msg-who">Agent working...</span>
+                                  </div>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.5rem' }}>
+                                    {agentSteps.filter((s) => s.type === 'iteration' || s.type === 'result').map((s, idx) => (
+                                      <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.78rem', color: s.status === 'error' ? '#f87171' : '#c8ccd4' }}>
+                                        <Loader2 className="w-3 h-3 animate-spin" style={{ color: '#2fd6e6' }} />
+                                        <span className="mkt-mono">
+                                          step {s.iteration}
+                                          {s.thought ? ` · ${String(s.thought).slice(0, 90)}` : ''}
+                                          {s.action?.tool ? ` · ${s.action.tool}` : ''}
+                                          {s.type === 'result' ? ` → ${s.result?.message || 'done'}` : ''}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="ail-msg-row">
+                                <div className="ail-thinking ail-typing">
+                                  <Loader2 className="w-4 h-4 animate-spin" style={{ color: '#2fd6e6' }} />
+                                  <span className="ail-msg-who">{agentMode ? 'Agent thinking...' : 'Thinking...'}</span>
+                                </div>
+                              </div>
+                            )}
+                          </>
                         )}
                         <div ref={messagesEndRef} />
                       </>
@@ -434,6 +534,21 @@ export default function AiPair() {
 
                   {activeSession && (
                     <form onSubmit={handleSend} className="ail-composer">
+                      <div className="ail-composer-mode" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem', fontSize: '0.78rem' }}>
+                        <button
+                          type="button"
+                          onClick={() => { setAgentMode((m) => !m); resetAgentRun(); }}
+                          className="btn-workspace btn-secondary text-xs inline-flex items-center gap-1.5"
+                          style={{ borderColor: agentMode ? 'rgba(47,214,230,0.5)' : undefined, color: agentMode ? '#2fd6e6' : undefined }}
+                          title="Let the agent autonomously read files, write code, and run steps"
+                        >
+                          <Sparkles className="w-3 h-3" />
+                          {agentMode ? 'Agent Mode: ON' : 'Agent Mode: OFF'}
+                        </button>
+                        {agentMode && (
+                          <span style={{ color: '#a8adba' }}>Autonomous — the agent may create/edit files and run code.</span>
+                        )}
+                      </div>
                       <div className="ail-field">
                         <textarea
                           value={input}

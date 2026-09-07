@@ -3,6 +3,7 @@ const router = express.Router();
 const CodeFile = require('../models/CodeFile');
 const { authenticateToken } = require('../middleware/auth');
 const { getAllowedLanguages, isLanguageAllowed, getAllLanguagesWithStatus } = require('../utils/languageRestrictions');
+const { addAuditLog } = require('../utils/auditLogService');
 const vfs = require('../utils/virtualFileSystem');
 const { emitWorkspaceChange } = require('../utils/realTimeEvents');
 
@@ -185,6 +186,16 @@ router.post('/files', authenticateToken, async (req, res) => {
                 language: codeFile.language,
                 company: codeFile.company
             }
+        });
+
+        addAuditLog({
+            companyId: effectiveCompanyId,
+            actorId: req.userId,
+            event: 'file.created',
+            category: 'code',
+            target: codeFile.name,
+            details: { fileId: codeFile._id.toString(), language: codeFile.language, path: codeFile.path },
+            req
         });
         
         res.json({
@@ -506,6 +517,16 @@ router.put('/files/:id', authenticateToken, async (req, res) => {
         
         await file.save();
         await file.populate('lastModifiedBy', 'fullName email profilePicture');
+
+        addAuditLog({
+            companyId: file.company?.toString(),
+            actorId: req.userId,
+            event: 'file.updated',
+            category: 'code',
+            target: file.name,
+            details: { fileId: file._id.toString(), language: file.language, path: file.path },
+            req
+        });
         
         // Update VFS cache and index
         try {
@@ -571,6 +592,16 @@ router.delete('/files/:id', authenticateToken, async (req, res) => {
             fileId,
             path: filePath,
             company: workspaceId
+        });
+
+        addAuditLog({
+            companyId: workspaceId,
+            actorId: req.userId,
+            event: 'file.deleted',
+            category: 'code',
+            target: file.name,
+            details: { fileId, path: filePath },
+            req
         });
         
         res.json({

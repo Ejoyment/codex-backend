@@ -8,7 +8,7 @@ import {
   Save, ChevronDown, ChevronRight, FileCode, Terminal, Bot, Layers, Rocket, Box,
   Users, GitBranch, Eye, X, FolderOpen, Search, Settings, Folder, Trash2,
   FolderPlus, AlertCircle, CheckCircle, XCircle, RefreshCw, Puzzle, HelpCircle,
-  FilePlus, Play, Loader2, LayoutDashboard,
+  FilePlus, Play, Loader2, LayoutDashboard, GitPullRequestArrow,
 } from 'lucide-react';
 import MonacoEditor from '@monaco-editor/react';
 import { io } from 'socket.io-client';
@@ -168,8 +168,23 @@ export default function Editor() {
   const [remoteCursors, setRemoteCursors] = useState({});
   const [figmaFiles, setFigmaFiles] = useState([]);
   const [selectedFigmaFile, setSelectedFigmaFile] = useState(null);
+  const [codegenOpen, setCodegenOpen] = useState(false);
+  const [codegenLoading, setCodegenLoading] = useState(false);
+  const [codegenError, setCodegenError] = useState(null);
+  const [codegenResult, setCodegenResult] = useState(null);
   const socketRef = useRef(null);
   const [gitStatus, setGitStatus] = useState(null);
+  const [diffOpen, setDiffOpen] = useState(false);
+  const [diffLoading, setDiffLoading] = useState(false);
+  const [diffFile, setDiffFile] = useState(null);
+  const [diffData, setDiffData] = useState(null);
+  const [prOpen, setPrOpen] = useState(false);
+  const [prTitle, setPrTitle] = useState('');
+  const [prBody, setPrBody] = useState('');
+  const [prBase, setPrBase] = useState('main');
+  const [prBusy, setPrBusy] = useState(false);
+  const [prError, setPrError] = useState(null);
+  const [prDone, setPrDone] = useState(null);
   const [deployments, setDeployments] = useState([]);
   const [sandboxUrl, setSandboxUrl] = useState(null);
   const [showSubdomainInput, setShowSubdomainInput] = useState(false);
@@ -433,6 +448,55 @@ export default function Editor() {
       const data = await apiFetch('/api/figma/files').catch(() => null);
       if (data && data.files) setFigmaFiles(data.files);
     } catch {}
+  }
+
+  async function generateFromDesign() {
+    if (!selectedFigmaFile) return;
+    setCodegenOpen(true);
+    setCodegenLoading(true);
+    setCodegenError(null);
+    setCodegenResult(null);
+    try {
+      const data = await apiFetch('/api/design-code/generate', {
+        method: 'POST',
+        body: JSON.stringify({
+          fileKey: selectedFigmaFile.key || selectedFigmaFile.id,
+          nodeId: null,
+          target: 'react',
+          companyId: selectedCompany?._id || undefined,
+          workspaceId,
+        }),
+      });
+      if (data.success) {
+        setCodegenResult(data);
+      } else {
+        setCodegenError(data.message || 'Could not generate code');
+      }
+    } catch (err) {
+      setCodegenError(err.message || 'Could not generate code');
+    } finally {
+      setCodegenLoading(false);
+    }
+  }
+
+  async function saveCodegenFile(f) {
+    try {
+      await apiFetch('/api/code-editor/files', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: f.name,
+          language: f.language || 'javascript',
+          content: f.content,
+          companyId: selectedProject?.workspaceId || workspaceId,
+          projectId: selectedProject?._id || selectedProject?.id || null,
+          path: `/${f.name}`,
+        }),
+      });
+      setStatus({ type: 'success', msg: `Saved ${f.name} to project` });
+      await reloadFiles();
+    } catch (err) {
+      setStatus({ type: 'error', msg: `Failed to save ${f.name}: ${err.message}` });
+    }
   }
 
   async function loadGithubRepoFiles(repo) {
@@ -767,6 +831,59 @@ export default function Editor() {
       setStatus({ type: 'success', msg: `Git ${action} done` });
     } catch (e) {
       setStatus({ type: 'error', msg: `Git ${action} failed: ${e.message}` });
+    }
+  }
+
+  async function loadFileDiff(file) {
+    if (!workspaceId) return;
+    setDiffOpen(true);
+    setDiffLoading(true);
+    setDiffFile(file);
+    setDiffData(null);
+    try {
+      const data = await apiFetch(`/api/git/diff/${workspaceId}?file=${encodeURIComponent(file)}`);
+      setDiffData(data.parsed || []);
+    } catch {
+      setDiffData([]);
+    } finally {
+      setDiffLoading(false);
+    }
+  }
+
+  async function createPR(e) {
+    e.preventDefault();
+    if (!selectedRepo) {
+      setPrError('Select a GitHub repository in the Explorer first.');
+      return;
+    }
+    setPrBusy(true);
+    setPrError(null);
+    setPrDone(null);
+    try {
+      const data = await apiFetch('/api/github-advanced/pull-request', {
+        method: 'POST',
+        body: JSON.stringify({
+          owner: selectedRepo.owner,
+          repo: selectedRepo.name,
+          title: prTitle.trim(),
+          body: prBody.trim(),
+          head: gitStatus?.branch || 'main',
+          base: prBase.trim() || 'main',
+        }),
+      });
+      if (data.pullRequest) {
+        setPrDone(data.message || `Pull request #${data.pullRequest.number} created`);
+        setPrTitle('');
+        setPrBody('');
+        const url = data.pullRequest.html_url || data.pullRequest.url;
+        if (url) window.open(url, '_blank');
+      } else {
+        setPrError(data.message || 'Create PR failed');
+      }
+    } catch (err) {
+      setPrError(err.message || 'Create PR failed');
+    } finally {
+      setPrBusy(false);
     }
   }
 
@@ -1197,16 +1314,36 @@ export default function Editor() {
                       </p>
                     ) : (
                       (gitStatus?.modified || []).map((name, i) => (
-                        <div key={`${name}-${i}`} className="ed-scm-file">
+                        <button
+                          key={`${name}-${i}`}
+                          type="button"
+                          className="ed-scm-file ed-scm-file-btn"
+                          style={{ width: '100%', textAlign: 'left' }}
+                          onClick={() => loadFileDiff(name)}
+                          title="View diff"
+                        >
                           <GitBranch className="w-3.5 h-3.5" />
                           <span>{name}</span>
-                        </div>
+                        </button>
                       ))
                     )}
                     <div style={{ display: 'flex', gap: '0.4rem', paddingTop: '0.4rem' }}>
                       <button type="button" className="btn-workspace btn-secondary" style={{ flex: 1 }} onClick={() => handleGitAction('pull')}>Pull</button>
                       <button type="button" className="btn-workspace btn-secondary" style={{ flex: 1 }} onClick={() => handleGitAction('commit')}>Commit</button>
                       <button type="button" className="btn-workspace btn-primary" style={{ flex: 1 }} onClick={() => handleGitAction('push')}>Push</button>
+                    </div>
+                    <div style={{ paddingTop: '0.4rem' }}>
+                      <button
+                        type="button"
+                        className="btn-workspace btn-secondary"
+                        style={{ width: '100%' }}
+                        onClick={() => { setPrError(null); setPrDone(null); setPrOpen(true); }}
+                        disabled={!selectedRepo}
+                        title={selectedRepo ? 'Open pull request from current branch' : 'Select a GitHub repository in the Explorer first'}
+                      >
+                        <GitPullRequestArrow className="w-3.5 h-3.5 mr-1 inline" />
+                        Create Pull Request
+                      </button>
                     </div>
                   </div>
                 </>
@@ -1523,23 +1660,42 @@ export default function Editor() {
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', minHeight: 0, flex: 1 }}>
                         <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                           <span className="ed-sidebar-title">Figma Design</span>
-                          {figmaFiles.length === 0 ? (
-                            <div className="ed-stat" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.6rem' }}>
-                              <Layers className="w-6 h-6" style={{ color: '#6e6e6e' }} />
-                              <span>No Figma files connected</span>
-                              <a href="/integrations" className="btn-workspace btn-secondary">Connect Figma</a>
-                            </div>
+                          {!selectedFigmaFile ? (
+                            figmaFiles.length === 0 ? (
+                              <div className="ed-stat" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.6rem' }}>
+                                <Layers className="w-6 h-6" style={{ color: '#6e6e6e' }} />
+                                <span>No Figma files connected</span>
+                                <a href="/integrations" className="btn-workspace btn-secondary">Connect Figma</a>
+                              </div>
+                            ) : (
+                              <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                                {figmaFiles.map((f) => (
+                                  <button key={f.key || f.id} type="button" className="ed-drop-item" onClick={() => setSelectedFigmaFile(f)}>
+                                    <Layers className="w-3.5 h-3.5" />
+                                    <span style={{ minWidth: 0 }}>
+                                      <span className="block truncate text-xs">{f.name || f.key}</span>
+                                      <span className="block text-xs" style={{ color: '#6e6e6e' }}>{f.last_modified ? new Date(f.last_modified).toLocaleDateString() : ''}</span>
+                                    </span>
+                                  </button>
+                                ))}
+                              </div>
+                            )
                           ) : (
-                            <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                              {figmaFiles.map((f) => (
-                                <button key={f.key || f.id} type="button" className="ed-drop-item" onClick={() => setSelectedFigmaFile(f)}>
-                                  <Layers className="w-3.5 h-3.5" />
-                                  <span style={{ minWidth: 0 }}>
-                                    <span className="block truncate text-xs">{f.name || f.key}</span>
-                                    <span className="block text-xs" style={{ color: '#6e6e6e' }}>{f.last_modified ? new Date(f.last_modified).toLocaleDateString() : ''}</span>
-                                  </span>
-                                </button>
-                              ))}
+                            <div className="ed-design-pane" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                              <div className="ed-stat" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.4rem' }}>
+                                <button type="button" onClick={() => setSelectedFigmaFile(null)} style={{ color: '#2fd6e6', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.66rem' }}>← All files</button>
+                                <span className="truncate" style={{ color: '#bbbbbb' }}>{selectedFigmaFile.name || selectedFigmaFile.key}</span>
+                              </div>
+                              <div style={{ flex: 1, minHeight: 0, overflow: 'auto', background: '#1e1e1e', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                {selectedFigmaFile.thumbnail_url ? (
+                                  <img src={selectedFigmaFile.thumbnail_url} alt={selectedFigmaFile.name || 'design'} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                                ) : (
+                                  <Layers className="w-8 h-8" style={{ color: '#3c3c3c' }} />
+                                )}
+                              </div>
+                              <button type="button" className="btn-workspace btn-primary" onClick={generateFromDesign}>
+                                <Bot className="w-3.5 h-3.5" /> Generate React code
+                              </button>
                             </div>
                           )}
                         </div>
@@ -1842,6 +1998,173 @@ export default function Editor() {
         confirmText="Delete"
         variant="danger"
       />
+
+      {diffOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="ws-modal w-full max-w-3xl" style={{ display: 'flex', flexDirection: 'column', maxHeight: '82vh' }}>
+            <div className="flex items-center justify-between p-5 border-b border-[rgba(255,255,255,0.09)]">
+              <div className="flex items-center gap-2.5">
+                <span className="card-ico">
+                  <GitBranch className="w-4 h-4" />
+                </span>
+                <h2 className="ws-modal-title">Diff — {diffFile}</h2>
+              </div>
+              <button type="button" onClick={() => setDiffOpen(false)} className="text-muted hover:text-white"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-5" style={{ overflow: 'auto', flex: 1 }}>
+              {diffLoading ? (
+                <div className="flex items-center gap-2 text-sm text-muted">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Loading diff...
+                </div>
+              ) : diffData && diffData.length > 0 ? (
+                diffData.map((file, i) => (
+                  <div key={i} className="mb-4">
+                    <p className="ed-stat" style={{ color: '#9aa1ae', marginBottom: 6 }}>
+                      {file.oldPath !== file.newPath ? `${file.oldPath} → ${file.newPath}` : file.newPath}
+                    </p>
+                    {file.hunks.map((hunk, j) => (
+                      <div key={j} className="ws-code-block">
+                        <p className="ed-stat" style={{ color: '#e5b84a', padding: '0.2rem 0.5rem' }}>
+                          @@ -{hunk.oldStart},{hunk.oldLines} +{hunk.newStart},{hunk.newLines} @@ {hunk.header}
+                        </p>
+                        {hunk.changes.map((chg, k) => (
+                          <div
+                            key={k}
+                            className="ws-diff-line"
+                            style={{
+                              color: chg.type === 'add' ? '#7ee787' : chg.type === 'remove' ? '#ff7b72' : '#c9d1d9',
+                              background: chg.type === 'add' ? 'rgba(46,160,67,0.15)' : chg.type === 'remove' ? 'rgba(248,81,73,0.15)' : 'transparent',
+                              whiteSpace: 'pre-wrap',
+                              fontFamily: 'ui-monospace, Menlo, Consolas, monospace',
+                              fontSize: '0.72rem',
+                              lineHeight: 1.5,
+                              padding: '0.1rem 0.5rem',
+                            }}
+                          >
+                            {chg.type === 'add' ? '+' : chg.type === 'remove' ? '-' : ' '}{chg.content}
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-muted">No diff found for this file.</p>
+              )}
+            </div>
+            <div className="p-4 border-t border-[rgba(255,255,255,0.09)]">
+              <button type="button" className="btn-workspace btn-secondary" onClick={() => setDiffOpen(false)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {prOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="ws-modal w-full max-w-lg">
+            <div className="flex items-center justify-between p-5 border-b border-[rgba(255,255,255,0.09)]">
+              <div className="flex items-center gap-2.5">
+                <span className="card-ico">
+                  <GitPullRequestArrow className="w-4 h-4" />
+                </span>
+                <h2 className="ws-modal-title">Create Pull Request</h2>
+              </div>
+              <button type="button" onClick={() => { setPrOpen(false); setPrError(null); setPrDone(null); }} className="text-muted hover:text-white"><X className="w-5 h-5" /></button>
+            </div>
+            <form onSubmit={createPR} className="p-5 space-y-4">
+              {selectedRepo ? (
+                <p className="text-xs text-muted">
+                  Repo: <b className="text-white">{selectedRepo.fullName || `${selectedRepo.owner}/${selectedRepo.name}`}</b> ·
+                  head: <b className="text-white">{gitStatus?.branch || 'main'}</b>
+                </p>
+              ) : (
+                <p className="text-xs text-[#f87171]">Select a GitHub repository in the Explorer first.</p>
+              )}
+              <div>
+                <label className="ws-label">Title *</label>
+                <input type="text" value={prTitle} onChange={(e) => setPrTitle(e.target.value)} className="ws-input" placeholder="Summary of changes" required disabled={!selectedRepo} />
+              </div>
+              <div>
+                <label className="ws-label">Body</label>
+                <textarea value={prBody} onChange={(e) => setPrBody(e.target.value)} className="ws-input" rows={4} placeholder="Describe the motivation and changes" disabled={!selectedRepo} />
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="flex-1">
+                  <label className="ws-label">Base branch</label>
+                  <input type="text" value={prBase} onChange={(e) => setPrBase(e.target.value)} className="ws-input" placeholder="main" disabled={!selectedRepo} />
+                </div>
+                <div className="flex-1">
+                  <label className="ws-label">Head branch</label>
+                  <input type="text" value={gitStatus?.branch || 'main'} className="ws-input" disabled />
+                </div>
+              </div>
+              {prError && <p className="text-xs text-[#f87171]">{prError}</p>}
+              {prDone && <p className="text-xs text-[#7ee787]">{prDone}</p>}
+              <div className="flex justify-end gap-3">
+                <button type="button" className="btn-workspace btn-secondary" onClick={() => { setPrOpen(false); setPrError(null); setPrDone(null); }}>Cancel</button>
+                <button type="submit" className="btn-workspace btn-primary" disabled={prBusy || !selectedRepo}>
+                  {prBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <GitPullRequestArrow className="w-4 h-4" />}
+                  {prBusy ? 'Creating...' : 'Create Pull Request'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {codegenOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="ws-modal w-full max-w-2xl" style={{ display: 'flex', flexDirection: 'column', maxHeight: '86vh' }}>
+            <div className="flex items-center justify-between p-5 border-b border-[rgba(255,255,255,0.09)]">
+              <div className="flex items-center gap-2.5">
+                <span className="card-ico">
+                  <Layers className="w-4 h-4" />
+                </span>
+                <h2 className="ws-modal-title">Design → Code</h2>
+              </div>
+              <button type="button" onClick={() => setCodegenOpen(false)} className="text-muted hover:text-white"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-5" style={{ overflow: 'auto', flex: 1 }}>
+              {codegenLoading ? (
+                <div className="flex items-center gap-2 text-sm text-muted">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Reading design and generating code...
+                </div>
+              ) : codegenError ? (
+                <p className="text-sm text-[#f87171]">{codegenError}</p>
+              ) : codegenResult ? (
+                <div className="space-y-4">
+                  <p className="text-xs text-muted">
+                    {codegenResult.title} · {codegenResult.target} · {codegenResult.files?.length || 0} file(s) · {codegenResult.tokenCount || 0} tokens found
+                  </p>
+                  {codegenResult.files?.length > 0 ? (
+                    codegenResult.files.map((f, i) => (
+                      <div key={i} className="ws-code-block">
+                        <div className="ed-stat" style={{ padding: '0.3rem 0.6rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+                          <span>{f.name}</span>
+                          <button type="button" className="btn-workspace btn-secondary" style={{ fontSize: '0.66rem', padding: '0.15rem 0.5rem' }} onClick={() => saveCodegenFile(f)}>
+                            Save to project
+                          </button>
+                        </div>
+                        <textarea readOnly value={f.content} style={{ width: '100%', minHeight: 180, background: '#111', color: '#c9d1d9', border: 'none', outline: 'none', fontFamily: 'ui-monospace, Menlo, Consolas, monospace', fontSize: '0.72rem', lineHeight: 1.5, padding: '0.6rem', resize: 'vertical', whiteSpace: 'pre', overflow: 'auto' }} />
+                      </div>
+                    ))
+                  ) : (
+                    <pre className="text-xs" style={{ color: '#c9d1d9', whiteSpace: 'pre-wrap', fontFamily: 'ui-monospace, Menlo, Consolas, monospace' }}>{codegenResult.content}</pre>
+                  )}
+                </div>
+              ) : null}
+            </div>
+            <div className="p-4 border-t border-[rgba(255,255,255,0.09)] flex items-center justify-between gap-3">
+              {codegenResult && !codegenLoading && (
+                <button type="button" className="btn-workspace btn-primary" onClick={generateFromDesign}>
+                  <RefreshCw className="w-4 h-4" /> Regenerate
+                </button>
+              )}
+              <button type="button" className="btn-workspace btn-secondary" onClick={() => setCodegenOpen(false)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
     </AuthGuard>
   );
 }

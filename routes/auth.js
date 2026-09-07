@@ -269,6 +269,18 @@ router.post('/signin', authLimiter, async (req, res) => {
         // Generate token
         const token = generateToken(user._id);
 
+        const { addAuditLog } = require('../utils/auditLogService');
+        addAuditLog({
+            companyId: user.company?.toString(),
+            actorId: user._id,
+            email: user.email,
+            event: 'auth.signin',
+            category: 'auth',
+            target: user.email,
+            details: { method: 'password' },
+            req
+        });
+
         res.json({
             success: true,
             message: 'Sign in successful',

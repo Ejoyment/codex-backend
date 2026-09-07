@@ -16,4 +16,15 @@ function emitSandbox(sandboxKey, event, payload) {
     }
 }
 
-module.exports = { setIO, emitCollab, emitSandbox };
+// Emit real-time progress for a long-running AI agent task
+// to a per-user room on the /collab namespace so the UI can stream
+// iteration steps as they happen.
+function emitAgentProgress(userId, payload) {
+    if (_io) {
+        const fullPayload = { userId, timestamp: new Date().toISOString(), ...payload };
+        _io.of('/collab').to(`agent:${userId}`).emit('agent:progress', fullPayload);
+        _io.of('/collab').to(`agent:${userId}`).emit('agent:status', fullPayload);
+    }
+}
+
+module.exports = { setIO, emitCollab, emitSandbox, emitAgentProgress };
