@@ -12,11 +12,17 @@ import {
 } from 'lucide-react';
 
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3000';
-const ICE_SERVERS = [
+
+// STUN alone cannot connect two participants on different networks (symmetric NAT /
+// CGNAT / corporate firewalls). The real ICE servers are fetched from the backend
+// (/api/meetings/ice-config) before joining, which includes a TURN relay when the
+// server is configured with one. STUN is only the fallback.
+const DEFAULT_ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
   { urls: 'stun:stun2.l.google.com:19302' },
 ];
+let iceServersCache = DEFAULT_ICE_SERVERS;
 
 const getInitials = (name) =>
   String(name || 'U').split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
@@ -82,6 +88,8 @@ export default function MeetingRoom() {
   const mySocketIdRef = useRef(null);
   const bufferedCandidatesRef = useRef({});
   const negotiateTimersRef = useRef({});
+  const negotiateRef = useRef(null);
+  const restartPeerConnectionRef = useRef(null);
   const localStreamRef = useRef(null);
   const screenStreamRef = useRef(null);
   const pcsRef = useRef({});
@@ -145,7 +153,7 @@ export default function MeetingRoom() {
     if (pcsRef.current[peerId] && pcsRef.current[peerId].signalingState !== 'closed') {
       return pcsRef.current[peerId];
     }
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    const pc = new RTCPeerConnection({ iceServers: iceServersCache });
     pcsRef.current[peerId] = pc;
     const peer = ensurePeer(peerId, userName, profilePicture);
 
@@ -177,6 +185,11 @@ export default function MeetingRoom() {
       } else if (state === 'disconnected' || state === 'failed') {
         peer.connected = false;
         syncPeers();
+        // ICE gave up (e.g. network changed, relay fell over) — restart the peer
+        // from a clean state so negotiation + ICE gathering run again.
+        if (state === 'failed' && restartPeerConnectionRef.current) {
+          setTimeout(() => restartPeerConnectionRef.current(peerId), 1500);
+        }
       } else if (state === 'closed') {
         delete peersRef.current[peerId];
         syncPeers();
@@ -218,16 +231,37 @@ export default function MeetingRoom() {
     }
   }, [createPeerConnection, myName]);
 
+  // Restart a peer from a clean state — used when an answer is lost (leaving the
+  // pc stuck in have-local-offer), when glare resolution dropped our offer, or
+  // when ICE fails. Re-offerring through a fresh pc guarantees convergence.
+  const restartPeerConnection = useCallback((peerId) => {
+    const peer = peersRef.current[peerId];
+    if (!peer) return;
+    if (negotiateTimersRef.current[peerId]) {
+      clearTimeout(negotiateTimersRef.current[peerId]);
+      delete negotiateTimersRef.current[peerId];
+    }
+    delete bufferedCandidatesRef.current[peerId];
+    if (pcsRef.current[peerId]) {
+      try { pcsRef.current[peerId].close(); } catch (e) { /* ignore */ }
+      delete pcsRef.current[peerId];
+    }
+    if (negotiateRef.current) negotiateRef.current(peerId, peer.userName, peer.profilePicture);
+  }, []);
+
+  negotiateRef.current = negotiate;
+  restartPeerConnectionRef.current = restartPeerConnection;
+
   const scheduleNegotiate = useCallback((peerId, userName, profilePicture) => {
     if (negotiateTimersRef.current[peerId]) clearTimeout(negotiateTimersRef.current[peerId]);
     negotiateTimersRef.current[peerId] = setTimeout(() => {
       delete negotiateTimersRef.current[peerId];
       const pc = pcsRef.current[peerId];
       if (!pc || pc.connectionState !== 'connected') {
-        negotiate(peerId, userName, profilePicture);
+        restartPeerConnection(peerId);
       }
     }, 3500);
-  }, [negotiate]);
+  }, [restartPeerConnection]);
 
   const answerOffer = useCallback(async (peerId, offer, userName, profilePicture) => {
     let pc = pcsRef.current[peerId];
@@ -400,6 +434,17 @@ export default function MeetingRoom() {
     socket.on('meeting-ended', () => { router.push('/meetings'); });
   }, [myId, myName, negotiate, scheduleNegotiate, disconnectPeer, answerOffer, acceptAnswer, bufferIce, syncPeers, router]);
 
+  const fetchIceConfig = useCallback(async () => {
+    try {
+      const data = await apiFetch('/api/meetings/ice-config');
+      if (data.success && Array.isArray(data.iceServers) && data.iceServers.length) {
+        iceServersCache = data.iceServers;
+      }
+    } catch (err) {
+      console.error('Failed to load ICE config:', err.message);
+    }
+  }, []);
+
   const joinRoom = useCallback(async () => {
     if (!roomIdRef.current || joinedRef.current) return;
     joinedRef.current = true;
@@ -415,6 +460,7 @@ export default function MeetingRoom() {
       setJoined(true);
       setElapsedSeconds(0);
       startTimer();
+      fetchIceConfig();
       attachSocket();
       setSocketStatus('connecting');
     } catch (err) {
@@ -424,7 +470,7 @@ export default function MeetingRoom() {
       return;
     }
     setJoining(false);
-  }, [attachSocket, startTimer]);
+  }, [attachSocket, fetchIceConfig, startTimer]);
 
   useEffect(() => {
     resolveMeeting();
