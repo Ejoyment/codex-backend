@@ -293,7 +293,7 @@ export default function Settings() {
 
   const disconnectProvider = async (provider) => {
     try {
-      await apiFetch(`/api/integrations/${provider}/disconnect`, { method: 'POST' });
+      await apiFetch(`/api/integrations/${provider}/disconnect`, { method: 'DELETE' });
       setIntegrations((prev) => prev.filter((i) => i.provider !== provider));
       toast.success(`${provider} disconnected`);
     } catch (err) {

@@ -110,7 +110,7 @@ export default function IntegrationsHub() {
     try {
       setActionLoading(providerId);
       setError(null);
-      await apiFetch(`/api/integrations/${providerId}`, { method: 'DELETE' });
+      await apiFetch(`/api/integrations/${providerId}/disconnect`, { method: 'DELETE' });
       setIntegrations((prev) => prev.filter((i) => i.provider !== providerId));
     } catch (err) {
       setError(err.message || `Failed to disconnect ${providerId}`);

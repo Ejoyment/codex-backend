@@ -72,7 +72,7 @@ export default function Messaging() {
   async function loadMessages(channelId) {
     try {
       setLoadingMessages(true);
-      const data = await apiFetch(`/api/messaging/channels/${channelId}/messages?limit=50`);
+      const data = await apiFetch(`/api/messaging/messages?channelId=${channelId}&limit=50`);
       setMessages(data.messages || []);
     } catch (err) {
       console.error('Failed to load messages:', err);
@@ -85,9 +85,9 @@ export default function Messaging() {
     e.preventDefault();
     if (!newMessage.trim() || !selectedChannel) return;
     try {
-      const data = await apiFetch(`/api/messaging/channels/${selectedChannel._id}/messages`, {
+      const data = await apiFetch('/api/messaging/messages', {
         method: 'POST',
-        body: JSON.stringify({ content: newMessage.trim() }),
+        body: JSON.stringify({ content: newMessage.trim(), channelId: selectedChannel._id }),
       });
       setMessages((prev) => [...prev, data.message]);
       setNewMessage('');

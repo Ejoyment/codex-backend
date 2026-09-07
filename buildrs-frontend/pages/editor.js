@@ -386,17 +386,8 @@ export default function Editor() {
       }
       return;
     }
-    try {
-      term.writeln(`[running] ${trimmed}`);
-      const data = await apiFetch('/api/terminal/execute', {
-        method: 'POST',
-        body: JSON.stringify({ command: trimmed, fileId: selectedFile?._id }),
-      });
-      const output = data.output || '';
-      output.split('\n').forEach((l) => term.writeln(l));
-    } catch (err) {
-      term.writeln(`Error: ${err.message}`);
-    }
+    term.writeln(`Unknown command: ${trimmed}`);
+    term.writeln('Available commands: ls, pwd, git status, clear, help');
   }
 
   async function loadFiles() {

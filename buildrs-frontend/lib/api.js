@@ -174,11 +174,11 @@ export const billingApi = {
 
 export const integrationApi = {
   list: () => apiFetch('/api/integrations'),
-  github: () => apiFetch('/api/github'),
-  slack: () => apiFetch('/api/slack'),
-  discord: () => apiFetch('/api/discord'),
-  notion: () => apiFetch('/api/notion'),
-  figma: () => apiFetch('/api/figma'),
+  github: () => apiFetch('/api/github/status'),
+  slack: () => apiFetch('/api/slack/status'),
+  discord: () => apiFetch('/api/discord/status'),
+  notion: () => apiFetch('/api/notion/connect'),
+  figma: () => apiFetch('/api/figma/status'),
 };
 
 export const dashboardApi = {
@@ -250,9 +250,12 @@ export const aiPairApi = {
 };
 
 export const messagingApi = {
-  list: () => apiFetch('/api/messaging'),
+  list: (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return apiFetch(`/api/messaging/channels${qs ? `?${qs}` : ''}`);
+  },
   send: (data) =>
-    apiFetch('/api/messaging', {
+    apiFetch('/api/messaging/messages', {
       method: 'POST',
       body: JSON.stringify(data),
     }),

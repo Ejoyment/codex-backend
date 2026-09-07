@@ -31,13 +31,24 @@ export default function AuthGuard({ children }) {
         }
       }
 
+      if (!subscription) {
+        try {
+          const subRes = await subscriptionApi.getCurrent();
+          if (subRes.subscription) {
+            useAuthStore.getState().setSubscription(subRes.subscription);
+          }
+        } catch (err) {
+          // non-fatal — keep existing subscription
+        }
+      }
+
       if (!current?.onboardingCompleted) {
         router.replace('/onboarding');
       }
     };
 
     ensureUserAndRoute();
-  }, [token, router, fetchUser, user]);
+  }, [token, router, fetchUser, user, subscription]);
 
   if (!token) {
     return (

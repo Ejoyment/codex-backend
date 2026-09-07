@@ -198,19 +198,23 @@ export default function AiPair() {
     setError(null);
 
     try {
-      const data = await apiFetch('/api/ai-pair/message', {
+      const data = await apiFetch('/api/ai-pair/chat', {
         method: 'POST',
         body: JSON.stringify({ sessionId: activeSession._id, message: currentInput }),
       });
       if (data.success) {
         const aiMsg = {
           role: 'assistant',
-          content: data.response.message,
-          codeChanges: data.response.codeChanges,
+          content: (data.message && data.message.content) || 'No response.',
+          codeChanges: data.actions && data.actions.length ? data.actions : [],
           timestamp: new Date().toISOString(),
         };
         setMessages((prev) => [...prev, aiMsg]);
-        setRemaining((r) => Math.max(0, r - 1));
+        if (typeof data.aiLimit === 'number') {
+          setRemaining(data.aiLimit);
+        } else {
+          setRemaining((r) => Math.max(0, r - 1));
+        }
       }
     } catch (err) {
       setError(err.message || 'Failed to send message');

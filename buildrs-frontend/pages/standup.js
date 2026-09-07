@@ -101,6 +101,24 @@ export default function Standup() {
 
         const stored = JSON.parse(localStorage.getItem('pastStandups') || '[]');
         setPastStandups(stored);
+
+        if (comps.length > 0) {
+          try {
+            const res = await apiFetch(`/api/standup?companyId=${comps[0]._id}&limit=50`);
+            const serverStandups = res.success ? res.standups : [];
+            const merged = [...serverStandups, ...stored];
+            const seen = new Set();
+            const deduped = merged.filter((s) => {
+              const key = s._id || s.timestamp;
+              if (seen.has(key)) return false;
+              seen.add(key);
+              return true;
+            });
+            setPastStandups(deduped);
+          } catch (err) {
+            console.error('Failed to load server standups:', err);
+          }
+        }
       } catch (err) {
         setError(err.message || 'Failed to load data');
       } finally {
@@ -160,12 +178,28 @@ export default function Standup() {
         author: user?.fullName || user?.name || 'User',
       };
 
-      await apiFetch('/api/standup', {
-        method: 'POST',
-        body: JSON.stringify(standup),
-      }).catch(() => {});
+      let createdStandup = { ...standup };
 
-      const updated = [standup, ...pastStandups];
+      try {
+        const res = await apiFetch('/api/standup', {
+          method: 'POST',
+          body: JSON.stringify({
+            companyId: selectedCompany,
+            channelId: selectedChannel,
+            yesterday: yesterday.trim(),
+            today: today.trim(),
+            blockers: blockers.trim(),
+            relatedTasks: selectedTasks,
+          }),
+        });
+        if (res.success && res.standup) {
+          createdStandup = res.standup;
+        }
+      } catch (err) {
+        console.error('Failed to save standup on server:', err);
+      }
+
+      const updated = [createdStandup, ...pastStandups];
       setPastStandups(updated);
       localStorage.setItem('pastStandups', JSON.stringify(updated));
 
