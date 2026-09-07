@@ -285,7 +285,7 @@ export default function Settings() {
   const connectProvider = async (provider) => {
     try {
       const data = await apiFetch(`/api/integrations/${provider}/auth`);
-      if (data.url) window.location.href = data.url;
+      if (data.authUrl || data.url) window.location.href = data.authUrl || data.url;
     } catch (err) {
       toast.error(err.message || 'Failed to start OAuth flow');
     }
