@@ -26,10 +26,9 @@ export default function AcceptInvitation() {
       }
 
       try {
-        const res = await apiFetch(`/api/invitations/${invitationToken}/accept`, {
+        const data = await apiFetch(`/api/invitations/${invitationToken}/accept`, {
           method: 'POST',
         });
-        const data = await res.json();
         if (data.success) {
           setStatus('success');
           setMessage('Invitation accepted! Redirecting...');
