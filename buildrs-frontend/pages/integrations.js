@@ -117,7 +117,7 @@ export default function Integrations() {
     setConfirmDisconnect(null);
     try {
       setDisconnecting(providerKey);
-      await apiFetch(`/api/integrations/${providerKey}`, { method: 'DELETE' });
+      await apiFetch(`/api/integrations/${providerKey}/disconnect`, { method: 'DELETE' });
       setIntegrations((prev) => prev.filter((i) => i.provider !== providerKey));
       toast.success(`${providerKey} disconnected`);
     } catch (err) {

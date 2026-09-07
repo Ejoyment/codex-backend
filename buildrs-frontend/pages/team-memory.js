@@ -322,9 +322,10 @@ function AddConventionModal({ companyId, onClose, onCreated }) {
         .map((s) => s.trim())
         .filter(Boolean);
 
-      const res = await apiFetch(`/api/ai-context/team-conventions/${companyId}`, {
+      const res = await apiFetch('/api/ai-context/team-conventions', {
         method: 'POST',
         body: JSON.stringify({
+          companyId,
           category: form.category,
           rule,
           description: form.description.trim(),

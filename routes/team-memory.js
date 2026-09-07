@@ -7,7 +7,8 @@ const Company = require('../models/Company');
 
 const ensureCompanyMember = async (req, res, next) => {
     try {
-        const company = await Company.findById(req.params.companyId);
+        const companyId = req.params.companyId || req.body.companyId;
+        const company = await Company.findById(companyId);
         if (!company) {
             return res.status(404).json({ success: false, message: 'Company not found' });
         }
@@ -68,14 +69,14 @@ const ensureCompanyMember = async (req, res, next) => {
  */
 router.post('/team-conventions', authenticateToken, ensureCompanyMember, async (req, res) => {
     try {
-        const { category, rule, description, examples, techStack, priority } = req.body;
+        const { companyId, category, rule, description, examples, techStack, priority } = req.body;
         
-        if (!category || !rule) {
-            return res.status(400).json({ success: false, message: 'category and rule are required' });
+        if (!companyId || !category || !rule) {
+            return res.status(400).json({ success: false, message: 'companyId, category and rule are required' });
         }
         
         const convention = await teamMemoryService.addTeamConvention({
-            companyId: req.params.companyId,
+            companyId,
             category,
             rule,
             description: description || '',
