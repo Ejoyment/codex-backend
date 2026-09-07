@@ -26,7 +26,10 @@ const invitationSchema = new mongoose.Schema({
     token: {
         type: String,
         unique: true,
-        required: true
+        required: true,
+        default: function() {
+            return crypto.randomBytes(32).toString('hex');
+        }
     },
     status: {
         type: String,
@@ -35,7 +38,11 @@ const invitationSchema = new mongoose.Schema({
     },
     expiresAt: {
         type: Date,
-        required: true
+        required: true,
+        default: function() {
+            // Default expiry: 7 days
+            return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        }
     },
     acceptedAt: Date,
     acceptedBy: {
@@ -62,18 +69,6 @@ invitationSchema.index({ email: 1, company: 1 });
 
 invitationSchema.index({ status: 1 });
 invitationSchema.index({ expiresAt: 1 });
-
-// Generate unique token before saving
-invitationSchema.pre('save', function(next) {
-    if (!this.token) {
-        this.token = crypto.randomBytes(32).toString('hex');
-    }
-    if (!this.expiresAt) {
-        // Default expiry: 7 days
-        this.expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-    }
-    next();
-});
 
 // Check if invitation is expired
 invitationSchema.methods.isExpired = function() {
