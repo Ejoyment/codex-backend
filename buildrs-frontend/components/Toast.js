@@ -52,15 +52,6 @@ export function ToastContainer() {
           <Toast key={toast.id} toast={toast} onClose={removeToast} />
         ))}
       </div>
-      <style>{`
-        @keyframes slideIn {
-          from { transform: translateX(100%); opacity: 0; }
-          to { transform: translateX(0); opacity: 1; }
-        }
-        .animate-slideIn {
-          animation: slideIn 0.3s ease-out;
-        }
-      `}</style>
     </div>
   );
 }

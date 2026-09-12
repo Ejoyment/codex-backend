@@ -2,6 +2,14 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useState } from 'react';
 import SiteShell from '../components/SiteShell';
+import {
+  ScrollReveal,
+  StaggerChildren,
+  StaggerItem,
+  ParticleField,
+  MouseGlow,
+  MagneticButton,
+} from '../components/AnimationKit';
 
 const PLANS = [
   {
@@ -98,23 +106,32 @@ export default function Pricing() {
       </Head>
 
       <SiteShell>
+        <MouseGlow />
+        <ParticleField count={15} />
         {/* Hero */}
         <section className="relative overflow-hidden pt-36 pb-14 sm:pt-44">
           <div className="mkt-hero-bg" />
           <div className="relative mx-auto max-w-[1200px] px-5 sm:px-8">
-            <p className="mkt-eyebrow mb-6">
-              <span className="dot">●</span> buildrs · pricing
-            </p>
-            <h1 className="mkt-h1">
-              Priced so teams
-              <br />
-              just <span className="accent">start</span>.
-            </h1>
-            <p className="mkt-sub mt-6 max-w-[520px]">
-              A free workspace that is actually free, a professional tier that scales with your
-              team, and an enterprise tier for the orgs that need it.
-            </p>
+            <ScrollReveal>
+              <p className="mkt-eyebrow mb-6">
+                <span className="dot">●</span> buildrs · pricing
+              </p>
+            </ScrollReveal>
+            <ScrollReveal delay={0.1}>
+              <h1 className="mkt-h1">
+                Priced so teams
+                <br />
+                just <span className="accent">start</span>.
+              </h1>
+            </ScrollReveal>
+            <ScrollReveal delay={0.2}>
+              <p className="mkt-sub mt-6 max-w-[520px]">
+                A free workspace that is actually free, a professional tier that scales with your
+                team, and an enterprise tier for the orgs that need it.
+              </p>
+            </ScrollReveal>
 
+            <ScrollReveal delay={0.3}>
             <div className="mt-9 inline-flex items-center gap-1 rounded-lg border border-[#ffffff12] bg-[#0d0d12] p-1">
               <button
                 type="button"
@@ -135,16 +152,17 @@ export default function Pricing() {
                 yearly <span className="text-[#2fd6e6]">save ~17%</span>
               </button>
             </div>
+            </ScrollReveal>
           </div>
         </section>
 
         {/* Plans */}
         <section className="mx-auto max-w-[1200px] px-5 pb-20 sm:px-8">
-          <div className="grid gap-px overflow-hidden rounded-xl border border-[#ffffff12] bg-[#ffffff12] lg:grid-cols-3">
+          <StaggerChildren className="grid gap-px overflow-hidden rounded-xl border border-[#ffffff12] bg-[#ffffff12] lg:grid-cols-3" stagger={0.12}>
             {PLANS.map((plan) => (
+              <StaggerItem key={plan.name}>
               <div
-                key={plan.name}
-                className={`relative bg-[#0d0d12] p-8 ${plan.featured ? 'lg:-my-4 lg:rounded-lg lg:border lg:border-[#2fd6e680] lg:bg-[#0f0f15]' : ''} ${
+                className={`relative h-full bg-[#0d0d12] p-8 ${plan.featured ? 'lg:-my-4 lg:rounded-lg lg:border lg:border-[#2fd6e680] lg:bg-[#0f0f15]' : ''} ${
                   plan.featured ? 'shadow-[0_0_60px_-20px_rgba(47,214,230,0.35)]' : ''
                 }`}
               >
@@ -200,8 +218,9 @@ export default function Pricing() {
                   ))}
                 </ul>
               </div>
+              </StaggerItem>
             ))}
-          </div>
+          </StaggerChildren>
 
           <p className="mkt-mono mt-6 text-center text-[11px] text-[#525764]">
             all prices in USD · billed via stripe · paystack · flutterwave · enterprise has custom terms
@@ -211,9 +230,12 @@ export default function Pricing() {
         {/* Compare */}
         <section className="border-t border-[#ffffff0d]">
           <div className="mx-auto max-w-[900px] px-5 py-24 sm:px-8">
-            <p className="mkt-eyebrow mb-8">
-              <span className="dot">●</span> compare
-            </p>
+            <ScrollReveal>
+              <p className="mkt-eyebrow mb-8">
+                <span className="dot">●</span> compare
+              </p>
+            </ScrollReveal>
+            <ScrollReveal delay={0.1}>
             <div className="overflow-x-auto">
               <table className="mkt-table mkt-mono min-w-[560px] text-[13px]">
                 <thead>
@@ -238,17 +260,21 @@ export default function Pricing() {
                 </tbody>
               </table>
             </div>
+            </ScrollReveal>
           </div>
         </section>
 
         {/* FAQ */}
         <section className="mx-auto max-w-[820px] px-5 pb-24 sm:px-8">
-          <p className="mkt-eyebrow mb-8">
-            <span className="dot">●</span> faq
-          </p>
-          <div className="divide-y divide-[#ffffff0d] border-y border-[#ffffff0d]">
+          <ScrollReveal>
+            <p className="mkt-eyebrow mb-8">
+              <span className="dot">●</span> faq
+            </p>
+          </ScrollReveal>
+          <StaggerChildren className="divide-y divide-[#ffffff0d] border-y border-[#ffffff0d]" stagger={0.06}>
             {FAQ.map(([q, a], i) => (
-              <details key={q} className="group py-5" open={i === 0}>
+              <StaggerItem key={q}>
+              <details className="group py-5" open={i === 0}>
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-6 text-[15px] font-medium text-white">
                   <span>{q}</span>
                   <span className="mkt-mono text-[#2fd6e6] transition-transform duration-200 group-open:rotate-45">
@@ -257,28 +283,37 @@ export default function Pricing() {
                 </summary>
                 <p className="mt-3 max-w-[620px] text-[14px] leading-relaxed text-[#a8adba]">{a}</p>
               </details>
+              </StaggerItem>
             ))}
-          </div>
+          </StaggerChildren>
         </section>
 
         {/* CTA */}
         <section className="relative overflow-hidden border-t border-[#ffffff0d]">
           <div className="mkt-hero-bg" />
           <div className="relative mx-auto max-w-[1200px] px-5 py-24 text-center sm:px-8">
-            <h2 className="mkt-h2 mx-auto max-w-[600px]">
-              Start free. Upgrade when it matters.
-            </h2>
-            <p className="mkt-sub mx-auto mt-5 max-w-[420px]">
-              The workspace is free forever for solo builds. Teams on a deadline start at $29/mo.
-            </p>
-            <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
-              <Link href="/signup" className="mkt-btn mkt-btn-primary !px-7 !py-3 !text-[15px]">
-                Start building <span className="mkt-arrow">→</span>
-              </Link>
-              <Link href="/features" className="mkt-btn !px-7 !py-3 !text-[15px]">
-                Compare features
-              </Link>
-            </div>
+            <ScrollReveal>
+              <h2 className="mkt-h2 mx-auto max-w-[600px]">
+                Start free. Upgrade when it matters.
+              </h2>
+            </ScrollReveal>
+            <ScrollReveal delay={0.1}>
+              <p className="mkt-sub mx-auto mt-5 max-w-[420px]">
+                The workspace is free forever for solo builds. Teams on a deadline start at $29/mo.
+              </p>
+            </ScrollReveal>
+            <ScrollReveal delay={0.2}>
+              <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
+                <MagneticButton strength={0.15}>
+                  <Link href="/signup" className="mkt-btn mkt-btn-primary !px-7 !py-3 !text-[15px]">
+                    Start building <span className="mkt-arrow">→</span>
+                  </Link>
+                </MagneticButton>
+                <Link href="/features" className="mkt-btn !px-7 !py-3 !text-[15px]">
+                  Compare features
+                </Link>
+              </div>
+            </ScrollReveal>
           </div>
         </section>
       </SiteShell>

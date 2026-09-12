@@ -3,6 +3,14 @@ import Link from 'next/link';
 import { useState } from 'react';
 import useToastStore from '../store/toastStore';
 import SiteShell from '../components/SiteShell';
+import {
+  ScrollReveal,
+  StaggerChildren,
+  StaggerItem,
+  ParticleField,
+  MouseGlow,
+  MagneticButton,
+} from '../components/AnimationKit';
 
 const CHANNELS = [
   {
@@ -43,13 +51,13 @@ export default function Contact() {
     subject: 'General Inquiry',
     message: '',
   });
-  const toast = useToastStore();
+  const toastSuccess = useToastStore((s) => s.success);
 
   const onChange = (e) => setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
 
   const onSubmit = (e) => {
     e.preventDefault();
-    toast.success('Message sent. We will get back to you soon.');
+    toastSuccess('Message sent. We will get back to you soon.');
     setForm({ firstName: '', lastName: '', email: '', company: '', subject: 'General Inquiry', message: '' });
   };
 
@@ -65,28 +73,37 @@ export default function Contact() {
       </Head>
 
       <SiteShell>
+        <MouseGlow />
+        <ParticleField count={15} />
         {/* Hero */}
         <section className="relative overflow-hidden pt-36 pb-16 sm:pt-44">
           <div className="mkt-hero-bg" />
           <div className="relative mx-auto max-w-[1200px] px-5 sm:px-8">
-            <p className="mkt-eyebrow mb-6">
-              <span className="dot">●</span> buildrs · contact
-            </p>
-            <h1 className="mkt-h1">
-              Talk to the <span className="accent">builders</span>.
-            </h1>
-            <p className="mkt-sub mt-6 max-w-[500px]">
-              Real humans, open channels. Pick the one that fits and we will get back to you
-              within a day.
-            </p>
+            <ScrollReveal>
+              <p className="mkt-eyebrow mb-6">
+                <span className="dot">●</span> buildrs · contact
+              </p>
+            </ScrollReveal>
+            <ScrollReveal delay={0.1}>
+              <h1 className="mkt-h1">
+                Talk to the <span className="accent">builders</span>.
+              </h1>
+            </ScrollReveal>
+            <ScrollReveal delay={0.2}>
+              <p className="mkt-sub mt-6 max-w-[500px]">
+                Real humans, open channels. Pick the one that fits and we will get back to you
+                within a day.
+              </p>
+            </ScrollReveal>
           </div>
         </section>
 
         {/* Channels */}
         <section className="mx-auto max-w-[1200px] px-5 sm:px-8">
-          <div className="mkt-grid grid-cols-1 md:grid-cols-3">
+          <StaggerChildren className="mkt-grid grid-cols-1 md:grid-cols-3" stagger={0.1}>
             {CHANNELS.map((c) => (
-              <div key={c.title} className="mkt-cell">
+              <StaggerItem key={c.title}>
+              <div className="mkt-cell h-full">
                 <p className="mkt-mono text-[10.5px] uppercase tracking-widest text-[#525764]">{c.tag}</p>
                 <h3 className="mkt-h3 mt-3">{c.title}</h3>
                 <p className="mt-2 text-[13.5px] leading-relaxed text-[#a8adba]">{c.desc}</p>
@@ -100,12 +117,14 @@ export default function Contact() {
                   </Link>
                 )}
               </div>
+              </StaggerItem>
             ))}
-          </div>
+          </StaggerChildren>
         </section>
 
         {/* Form + side */}
         <section className="mx-auto grid max-w-[1200px] gap-10 px-5 py-20 sm:px-8 lg:grid-cols-[1.2fr_0.8fr]">
+          <ScrollReveal direction="left">
           <div className="mkt-card p-8 sm:p-10">
             <h2 className="mkt-h3">Send us a message</h2>
             <form onSubmit={onSubmit} className="mt-8 space-y-6">
@@ -143,25 +162,31 @@ export default function Contact() {
                 <label className="mkt-label">Message</label>
                 <textarea name="message" rows="5" value={form.message} onChange={onChange} className="mkt-textarea" placeholder="Tell us how we can help..." required />
               </div>
-              <button type="submit" className="mkt-btn mkt-btn-primary w-full justify-center !py-3.5 text-[15px]">
-                Send message <span className="mkt-arrow">→</span>
-              </button>
+              <MagneticButton strength={0.08}>
+                <button type="submit" className="mkt-btn mkt-btn-primary w-full justify-center !py-3.5 text-[15px]">
+                  Send message <span className="mkt-arrow">→</span>
+                </button>
+              </MagneticButton>
             </form>
           </div>
+          </ScrollReveal>
 
+          <ScrollReveal direction="right">
           <div>
             <h2 className="mkt-h3">Other ways to reach us</h2>
-            <div className="mt-6 space-y-px overflow-hidden rounded-xl border border-[#ffffff12] bg-[#ffffff12]">
+            <StaggerChildren className="mt-6 space-y-px overflow-hidden rounded-xl border border-[#ffffff12] bg-[#ffffff12]" stagger={0.08}>
               {OTHER.map(([name, desc, email]) => (
-                <div key={name} className="bg-[#0d0d12] p-6">
+                <StaggerItem key={name}>
+                <div className="bg-[#0d0d12] p-6">
                   <p className="mkt-mono text-[10.5px] uppercase tracking-widest text-[#2fd6e6]">{name}</p>
                   <p className="mt-2 text-[13.5px] text-[#a8adba]">{desc}</p>
                   <a href={`mailto:${email}`} className="mkt-mono mt-2 inline-block text-[12px] text-[#a8adba] hover:text-white">
                     {email}
                   </a>
                 </div>
+                </StaggerItem>
               ))}
-            </div>
+            </StaggerChildren>
 
             <div className="mkt-card mt-6 p-6">
               <h3 className="mkt-h3">Prefer async?</h3>
@@ -173,6 +198,7 @@ export default function Contact() {
               </Link>
             </div>
           </div>
+          </ScrollReveal>
         </section>
       </SiteShell>
     </>
