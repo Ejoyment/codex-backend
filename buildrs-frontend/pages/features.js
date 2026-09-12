@@ -1,6 +1,14 @@
 import Head from 'next/head';
 import Link from 'next/link';
 import SiteShell from '../components/SiteShell';
+import {
+  ScrollReveal,
+  StaggerChildren,
+  StaggerItem,
+  ParticleField,
+  MouseGlow,
+  MagneticButton,
+} from '../components/AnimationKit';
 
 const LAYERS = [
   {
@@ -91,30 +99,39 @@ export default function Features() {
       </Head>
 
       <SiteShell>
+        <MouseGlow />
+        <ParticleField count={15} />
         {/* Hero */}
         <section className="relative overflow-hidden pt-36 pb-20 sm:pt-44">
           <div className="mkt-hero-bg" />
           <div className="relative mx-auto max-w-[1200px] px-5 sm:px-8">
-            <p className="mkt-eyebrow mb-6">
-              <span className="dot">●</span> buildrs · features
-            </p>
-            <h1 className="mkt-h1">
-              Six layers.
-              <br />
-              One <span className="accent">workspace</span>.
-            </h1>
-            <p className="mkt-sub mt-6 max-w-[560px]">
-              Everything your team needs to plan, build, review, and ship is engineered
-              into one surface — so context survives the handoff, and the tab-switching stops.
-            </p>
+            <ScrollReveal>
+              <p className="mkt-eyebrow mb-6">
+                <span className="dot">●</span> buildrs · features
+              </p>
+            </ScrollReveal>
+            <ScrollReveal delay={0.1}>
+              <h1 className="mkt-h1">
+                Six layers.
+                <br />
+                One <span className="accent">workspace</span>.
+              </h1>
+            </ScrollReveal>
+            <ScrollReveal delay={0.2}>
+              <p className="mkt-sub mt-6 max-w-[560px]">
+                Everything your team needs to plan, build, review, and ship is engineered
+                into one surface — so context survives the handoff, and the tab-switching stops.
+              </p>
+            </ScrollReveal>
           </div>
         </section>
 
         {/* Layers */}
         <section className="mx-auto max-w-[1200px] px-5 sm:px-8">
-          <div className="space-y-px overflow-hidden rounded-xl border border-[#ffffff12]">
+          <StaggerChildren className="space-y-px overflow-hidden rounded-xl border border-[#ffffff12]" stagger={0.08}>
             {LAYERS.map((layer) => (
-              <div key={layer.num} className="border-b border-[#ffffff12] bg-[#0a0a0d] last:border-b-0">
+              <StaggerItem key={layer.num}>
+              <div className="border-b border-[#ffffff12] bg-[#0a0a0d] last:border-b-0">
                 <div className="flex flex-col gap-4 p-7 sm:flex-row sm:items-start sm:justify-between sm:gap-8 sm:p-9">
                   <div className="sm:w-[300px] sm:shrink-0">
                     <div className="flex items-center gap-3">
@@ -137,28 +154,37 @@ export default function Features() {
                   </div>
                 </div>
               </div>
+              </StaggerItem>
             ))}
-          </div>
+          </StaggerChildren>
         </section>
 
         {/* CTA */}
         <section className="relative overflow-hidden mt-24 border-t border-[#ffffff0d]">
           <div className="mkt-hero-bg" />
           <div className="relative mx-auto max-w-[1200px] px-5 py-24 text-center sm:px-8">
-            <h2 className="mkt-h2 mx-auto max-w-[600px]">
-              The features are the point. Free to try them all.
-            </h2>
-            <p className="mkt-sub mx-auto mt-5 max-w-[440px]">
-              No credit card, no sales call. Sign up and the whole workspace is live.
-            </p>
-            <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
-              <Link href="/signup" className="mkt-btn mkt-btn-primary !px-7 !py-3 !text-[15px]">
-                Start building <span className="mkt-arrow">→</span>
-              </Link>
-              <Link href="/pricing" className="mkt-btn !px-7 !py-3 !text-[15px]">
-                See pricing
-              </Link>
-            </div>
+            <ScrollReveal>
+              <h2 className="mkt-h2 mx-auto max-w-[600px]">
+                The features are the point. Free to try them all.
+              </h2>
+            </ScrollReveal>
+            <ScrollReveal delay={0.1}>
+              <p className="mkt-sub mx-auto mt-5 max-w-[440px]">
+                No credit card, no sales call. Sign up and the whole workspace is live.
+              </p>
+            </ScrollReveal>
+            <ScrollReveal delay={0.2}>
+              <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
+                <MagneticButton strength={0.15}>
+                  <Link href="/signup" className="mkt-btn mkt-btn-primary !px-7 !py-3 !text-[15px]">
+                    Start building <span className="mkt-arrow">→</span>
+                  </Link>
+                </MagneticButton>
+                <Link href="/pricing" className="mkt-btn !px-7 !py-3 !text-[15px]">
+                  See pricing
+                </Link>
+              </div>
+            </ScrollReveal>
           </div>
         </section>
       </SiteShell>
