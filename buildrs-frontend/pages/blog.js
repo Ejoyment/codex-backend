@@ -2,6 +2,13 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useState } from 'react';
 import SiteShell from '../components/SiteShell';
+import {
+  ScrollReveal,
+  StaggerChildren,
+  StaggerItem,
+  ParticleField,
+  MouseGlow,
+} from '../components/AnimationKit';
 
 const POSTS = [
   {
@@ -66,26 +73,35 @@ export default function Blog() {
       </Head>
 
       <SiteShell>
+        <MouseGlow />
+        <ParticleField count={15} />
         {/* Hero */}
         <section className="relative overflow-hidden pt-36 pb-16 sm:pt-44">
           <div className="mkt-hero-bg" />
           <div className="relative mx-auto max-w-[1200px] px-5 sm:px-8">
-            <p className="mkt-eyebrow mb-6">
-              <span className="dot">●</span> buildrs · journal
-            </p>
-            <h1 className="mkt-h1">
-              Written while
-              <br />
-              <span className="accent">building</span>.
-            </h1>
-            <p className="mkt-sub mt-6 max-w-[520px]">
-              Build logs, engineering notes, and updates from the team shipping Buildrs.
-            </p>
+            <ScrollReveal>
+              <p className="mkt-eyebrow mb-6">
+                <span className="dot">●</span> buildrs · journal
+              </p>
+            </ScrollReveal>
+            <ScrollReveal delay={0.1}>
+              <h1 className="mkt-h1">
+                Written while
+                <br />
+                <span className="accent">building</span>.
+              </h1>
+            </ScrollReveal>
+            <ScrollReveal delay={0.2}>
+              <p className="mkt-sub mt-6 max-w-[520px]">
+                Build logs, engineering notes, and updates from the team shipping Buildrs.
+              </p>
+            </ScrollReveal>
           </div>
         </section>
 
         {/* Featured */}
         <section className="mx-auto max-w-[1200px] px-5 sm:px-8">
+          <ScrollReveal>
           <Link href="#" className="mkt-card group block">
             <div className="grid gap-0 lg:grid-cols-[1.15fr_0.85fr]">
               <div className="p-8 sm:p-10">
@@ -112,13 +128,15 @@ export default function Blog() {
               </div>
             </div>
           </Link>
+          </ScrollReveal>
         </section>
 
         {/* Grid */}
         <section className="mx-auto max-w-[1200px] px-5 py-16 sm:px-8">
-          <div className="grid gap-px overflow-hidden rounded-xl border border-[#ffffff12] bg-[#ffffff12] md:grid-cols-2 lg:grid-cols-3">
+          <StaggerChildren className="grid gap-px overflow-hidden rounded-xl border border-[#ffffff12] bg-[#ffffff12] md:grid-cols-2 lg:grid-cols-3" stagger={0.08}>
             {rest.map((post) => (
-              <Link key={post.title} href="#" className="group bg-[#0d0d12] p-7 transition-colors hover:bg-[#121219]">
+              <StaggerItem key={post.title}>
+              <Link href="#" className="group block h-full bg-[#0d0d12] p-7 transition-colors hover:bg-[#121219]">
                 <div className="flex items-center gap-3">
                   <span className="mkt-pill">{post.tag}</span>
                   <span className="mkt-mono text-[10.5px] uppercase tracking-widest text-[#525764]">
@@ -129,12 +147,14 @@ export default function Blog() {
                 <p className="mt-3 text-[13.5px] leading-relaxed text-[#a8adba]">{post.desc}</p>
                 <span className="mkt-link-arrow mt-5 inline-block text-[13px]">read →</span>
               </Link>
+              </StaggerItem>
             ))}
-          </div>
+          </StaggerChildren>
         </section>
 
         {/* Newsletter */}
         <section className="mx-auto max-w-[1200px] px-5 pb-24 sm:px-8">
+          <ScrollReveal>
           <div className="mkt-card flex flex-col gap-6 p-8 sm:flex-row sm:items-center sm:justify-between sm:p-10">
             <div>
               <h2 className="mkt-h3">Shipping notes, monthly.</h2>
@@ -161,6 +181,7 @@ export default function Blog() {
               </form>
             )}
           </div>
+          </ScrollReveal>
         </section>
       </SiteShell>
     </>

@@ -77,6 +77,14 @@ function buildFileTree(files) {
 }
 
 function FileTreeNode({ node, depth, selectedId, onSelect, expanded, onToggle }) {
+  const sortedChildren = useMemo(() => {
+    if (!node.children) return null;
+    return Object.values(node.children).sort((a, b) => {
+      if ((a.type === 'folder' || a.children) !== (b.type === 'folder' || b.children)) return a.children ? -1 : 1;
+      return (a.name || '').localeCompare(b.name || '');
+    });
+  }, [node.children]);
+
   if (node.type === 'file' && !node.children) {
     const isSelected = node._id === selectedId;
     return (
@@ -105,12 +113,9 @@ function FileTreeNode({ node, depth, selectedId, onSelect, expanded, onToggle })
           <Folder className="w-3.5 h-3.5 ed-folder-ico" />
           <span className="ed-tree-name">{node.name}</span>
         </button>
-        {isOpen && node.children && (
+        {isOpen && sortedChildren && (
           <div>
-            {Object.values(node.children).sort((a, b) => {
-              if ((a.type === 'folder' || a.children) !== (b.type === 'folder' || b.children)) return a.children ? -1 : 1;
-              return (a.name || '').localeCompare(b.name || '');
-            }).map((child) => (
+            {sortedChildren.map((child) => (
               <FileTreeNode key={child.path || child.name || child._id} node={child} depth={depth + 1}
                 selectedId={selectedId} onSelect={onSelect} expanded={expanded} onToggle={onToggle} />
             ))}
@@ -191,7 +196,9 @@ export default function Editor() {
   const [deploySubdomain, setDeploySubdomain] = useState('');
   const [deploying, setDeploying] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const toast = useToastStore();
+  const { success: toastSuccess, error: toastError } = useToastStore(
+    (s) => ({ success: s.success, error: s.error })
+  );
   const [confirmDiscard, setConfirmDiscard] = useState(null);
   const [confirmClose, setConfirmClose] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -221,6 +228,24 @@ export default function Editor() {
   selectedFileRef.current = selectedFile;
 
   const tree = useMemo(() => buildFileTree(files), [files]);
+
+  const monacoOptions = useMemo(() => ({
+    fontSize: 13,
+    minimap: { enabled: true },
+    scrollBeyondLastLine: false,
+    wordWrap: 'on',
+    tabSize: 2,
+    automaticLayout: true,
+    bracketPairColorization: { enabled: true },
+    cursorBlinking: 'smooth',
+    smoothScrolling: true,
+  }), []);
+
+  const monacoPreviewOptions = useMemo(() => ({
+    fontSize: 12,
+    minimap: { enabled: false },
+    automaticLayout: true,
+  }), []);
 
   useEffect(() => {
     loadFiles();
@@ -992,9 +1017,9 @@ export default function Editor() {
         originalContentRef.current = '';
         setDirty(false);
       }
-      toast.success('File deleted');
+      toastSuccess('File deleted');
     } catch (err) {
-      toast.error(err.message || 'Delete failed');
+      toastError(err.message || 'Delete failed');
     }
   };
 
@@ -1589,17 +1614,7 @@ export default function Editor() {
                     onChange={handleEditorChange}
                     onMount={handleEditorMount}
                     theme="vs-dark"
-                    options={{
-                      fontSize: 13,
-                      minimap: { enabled: true },
-                      scrollBeyondLastLine: false,
-                      wordWrap: 'on',
-                      tabSize: 2,
-                      automaticLayout: true,
-                      bracketPairColorization: { enabled: true },
-                      cursorBlinking: 'smooth',
-                      smoothScrolling: true,
-                    }}
+                    options={monacoOptions}
                     loading={<div className="ed-ide-empty">Loading editor...</div>}
                   />
                 </div>
@@ -1704,7 +1719,7 @@ export default function Editor() {
                           <div className="ed-code-wrap">
                             {selectedFile ? (
                               <MonacoEditor height="100%" language={monacoLanguage} value={content} onChange={handleEditorChange} theme="vs-dark"
-                                options={{ fontSize: 12, minimap: { enabled: false }, automaticLayout: true }} />
+                                options={monacoPreviewOptions} />
                             ) : (
                               <div className="ed-ide-empty">Select a file to preview</div>
                             )}

@@ -1,6 +1,14 @@
 import Head from 'next/head';
 import Link from 'next/link';
 import SiteShell from '../components/SiteShell';
+import {
+  ScrollReveal,
+  StaggerChildren,
+  StaggerItem,
+  ParticleField,
+  MouseGlow,
+  MagneticButton,
+} from '../components/AnimationKit';
 
 const VALUES = [
   {
@@ -45,22 +53,30 @@ export default function About() {
       </Head>
 
       <SiteShell>
+        <MouseGlow />
+        <ParticleField count={15} />
         {/* Hero */}
         <section className="relative overflow-hidden pt-36 pb-20 sm:pt-44">
           <div className="mkt-hero-bg" />
           <div className="relative mx-auto max-w-[1200px] px-5 sm:px-8">
-            <p className="mkt-eyebrow mb-6">
-              <span className="dot">●</span> buildrs · about
-            </p>
-            <h1 className="mkt-h1">
-              Built for teams
-              <br />
-              that <span className="accent">ship</span>.
-            </h1>
-            <p className="mkt-sub mt-6 max-w-[560px]">
-              Buildrs is a product of CODEX INC ENTERPRISE. We took the eleven-tool ritual
-              of modern development and rebuilt it as one command center.
-            </p>
+            <ScrollReveal>
+              <p className="mkt-eyebrow mb-6">
+                <span className="dot">●</span> buildrs · about
+              </p>
+            </ScrollReveal>
+            <ScrollReveal delay={0.1}>
+              <h1 className="mkt-h1">
+                Built for teams
+                <br />
+                that <span className="accent">ship</span>.
+              </h1>
+            </ScrollReveal>
+            <ScrollReveal delay={0.2}>
+              <p className="mkt-sub mt-6 max-w-[560px]">
+                Buildrs is a product of CODEX INC ENTERPRISE. We took the eleven-tool ritual
+                of modern development and rebuilt it as one command center.
+              </p>
+            </ScrollReveal>
           </div>
         </section>
 
@@ -68,58 +84,75 @@ export default function About() {
         <section className="border-t border-[#ffffff0d]">
           <div className="mx-auto grid max-w-[1200px] gap-12 px-5 py-20 sm:px-8 lg:grid-cols-[0.8fr_1.2fr]">
             <div>
-              <p className="mkt-eyebrow mb-4">
-                <span className="dot">●</span> why we built this
-              </p>
-              <h2 className="mkt-h2">From tab chaos to one workspace.</h2>
-              <p className="mkt-sub mt-5">
-                Every developer knows the feeling: GitHub open, Slack pinging, ChatGPT on the
-                side, a terminal buried somewhere. Feedback loops break, context evaporates,
-                and the actual building gets the leftovers.
-              </p>
-              <p className="mt-4 text-[14px] leading-relaxed text-[#a8adba]">
-                Buildrs was built so the loop never breaks — an AI pair programmer that has
-                read your repo, co-editing that cannot conflict, and standups that live where
-                the code is.
-              </p>
+              <ScrollReveal>
+                <p className="mkt-eyebrow mb-4">
+                  <span className="dot">●</span> why we built this
+                </p>
+              </ScrollReveal>
+              <ScrollReveal delay={0.1}>
+                <h2 className="mkt-h2">From tab chaos to one workspace.</h2>
+              </ScrollReveal>
+              <ScrollReveal delay={0.2}>
+                <p className="mkt-sub mt-5">
+                  Every developer knows the feeling: GitHub open, Slack pinging, ChatGPT on the
+                  side, a terminal buried somewhere. Feedback loops break, context evaporates,
+                  and the actual building gets the leftovers.
+                </p>
+                <p className="mt-4 text-[14px] leading-relaxed text-[#a8adba]">
+                  Buildrs was built so the loop never breaks — an AI pair programmer that has
+                  read your repo, co-editing that cannot conflict, and standups that live where
+                  the code is.
+                </p>
+              </ScrollReveal>
             </div>
 
-            <div className="grid gap-px overflow-hidden rounded-xl border border-[#ffffff12] bg-[#ffffff12]">
+            <StaggerChildren className="grid gap-px overflow-hidden rounded-xl border border-[#ffffff12] bg-[#ffffff12]" stagger={0.08}>
               {TIMELINE.map(([tag, text], i) => (
-                <div key={tag} className="flex gap-5 bg-[#0d0d12] p-6">
+                <StaggerItem key={tag}>
+                <div className="flex gap-5 bg-[#0d0d12] p-6">
                   <p className="mkt-num text-sm text-[#525764]">{`0${i + 1}`}</p>
                   <div>
                     <p className="mkt-mono text-[10.5px] uppercase tracking-widest text-[#2fd6e6]">{tag}</p>
                     <p className="mt-2 text-[13.5px] leading-relaxed text-[#a8adba]">{text}</p>
                   </div>
                 </div>
+                </StaggerItem>
               ))}
-            </div>
+            </StaggerChildren>
           </div>
         </section>
 
         {/* Values */}
         <section className="border-t border-[#ffffff0d]">
           <div className="mx-auto max-w-[1200px] px-5 py-20 sm:px-8">
-            <p className="mkt-eyebrow mb-4">
-              <span className="dot">●</span> values
-            </p>
-            <h2 className="mkt-h2 mb-12">What we optimize for.</h2>
-            <div className="grid gap-px overflow-hidden rounded-xl border border-[#ffffff12] bg-[#ffffff12] sm:grid-cols-2">
+            <ScrollReveal>
+              <p className="mkt-eyebrow mb-4">
+                <span className="dot">●</span> values
+              </p>
+            </ScrollReveal>
+            <ScrollReveal delay={0.1}>
+              <h2 className="mkt-h2 mb-12">What we optimize for.</h2>
+            </ScrollReveal>
+            <StaggerChildren className="grid gap-px overflow-hidden rounded-xl border border-[#ffffff12] bg-[#ffffff12] sm:grid-cols-2" stagger={0.08}>
               {VALUES.map((v) => (
-                <div key={v.num} className="bg-[#0d0d12] p-7">
+                <StaggerItem key={v.num}>
+                <div className="bg-[#0d0d12] p-7 h-full">
                   <p className="mkt-num text-sm text-[#2fd6e6]">{v.num}</p>
                   <h3 className="mkt-h3 mt-4">{v.title}</h3>
                   <p className="mt-3 text-[13.5px] leading-relaxed text-[#a8adba]">{v.desc}</p>
                 </div>
+                </StaggerItem>
               ))}
-            </div>
+            </StaggerChildren>
 
             {/* Team */}
             <div className="mt-16 grid gap-8 lg:grid-cols-[0.8fr_1.2fr]">
-              <p className="mkt-eyebrow">
-                <span className="dot">●</span> the builder
-              </p>
+              <ScrollReveal>
+                <p className="mkt-eyebrow">
+                  <span className="dot">●</span> the builder
+                </p>
+              </ScrollReveal>
+              <ScrollReveal delay={0.1}>
               <div className="mkt-card max-w-[520px] p-7">
                 <div className="flex items-center gap-5">
                   <div
@@ -141,6 +174,7 @@ export default function About() {
                   big platforms have.
                 </p>
               </div>
+              </ScrollReveal>
             </div>
           </div>
         </section>
@@ -149,18 +183,26 @@ export default function About() {
         <section className="relative overflow-hidden border-t border-[#ffffff0d]">
           <div className="mkt-hero-bg" />
           <div className="relative mx-auto max-w-[1200px] px-5 py-24 text-center sm:px-8">
-            <h2 className="mkt-h2 mx-auto max-w-[560px]">Come see it working.</h2>
-            <p className="mkt-sub mx-auto mt-5 max-w-[420px]">
-              No sales deck required — the workspace is live and free to try.
-            </p>
-            <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
-              <Link href="/signup" className="mkt-btn mkt-btn-primary !px-7 !py-3 !text-[15px]">
-                Start building <span className="mkt-arrow">→</span>
-              </Link>
-              <Link href="/careers" className="mkt-btn !px-7 !py-3 !text-[15px]">
-                Work with us
-              </Link>
-            </div>
+            <ScrollReveal>
+              <h2 className="mkt-h2 mx-auto max-w-[560px]">Come see it working.</h2>
+            </ScrollReveal>
+            <ScrollReveal delay={0.1}>
+              <p className="mkt-sub mx-auto mt-5 max-w-[420px]">
+                No sales deck required — the workspace is live and free to try.
+              </p>
+            </ScrollReveal>
+            <ScrollReveal delay={0.2}>
+              <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
+                <MagneticButton strength={0.15}>
+                  <Link href="/signup" className="mkt-btn mkt-btn-primary !px-7 !py-3 !text-[15px]">
+                    Start building <span className="mkt-arrow">→</span>
+                  </Link>
+                </MagneticButton>
+                <Link href="/careers" className="mkt-btn !px-7 !py-3 !text-[15px]">
+                  Work with us
+                </Link>
+              </div>
+            </ScrollReveal>
           </div>
         </section>
       </SiteShell>

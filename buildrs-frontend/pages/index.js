@@ -1,6 +1,15 @@
 import Head from 'next/head';
 import Link from 'next/link';
 import SiteShell from '../components/SiteShell';
+import {
+  ScrollReveal,
+  StaggerChildren,
+  StaggerItem,
+  ParticleField,
+  MouseGlow,
+  MagneticButton,
+  TiltCard,
+} from '../components/AnimationKit';
 
 const STACK = [
   {
@@ -244,40 +253,53 @@ export default function Index() {
       </Head>
 
       <SiteShell>
+        <MouseGlow />
+        <ParticleField count={20} />
         {/* ── Hero ─────────────────────────────────────────── */}
         <section className="relative overflow-hidden pt-32 pb-16 sm:pt-40">
           <div className="mkt-hero-bg" />
           <div className="mkt-dots" />
           <div className="relative mx-auto max-w-[1240px] px-5 sm:px-8">
             <div className="mx-auto max-w-[680px] text-center">
-              <p className="mkt-eyebrow mb-7">
-                <span className="dot">●</span> buildrs · unified dev command center
-              </p>
-              <h1 className="mkt-h1">
-                Your whole dev stack.
-                <br />
-                One <span className="accent">command center</span>.
-              </h1>
-              <p className="mkt-sub mt-7 max-w-[520px] mx-auto">
-                Buildrs collapses the eleven-tool ritual — GitHub, Slack, ChatGPT, Figma,
-                Notion — into a single workspace. AI pair programming, live co-editing, tasks,
-                and standups, side by side with your code.
-              </p>
-              <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
-                <Link href="/signup" className="mkt-btn mkt-btn-primary !px-6 !py-3 !text-[15px]">
-                  Start building <span className="mkt-arrow">→</span>
-                </Link>
-                <Link href="/demo" className="mkt-btn !px-6 !py-3 !text-[15px]">
-                  Explore the platform <span className="mkt-arrow">↗</span>
-                </Link>
-              </div>
-              <p className="mkt-mono mt-8 text-xs text-[#525764]">
-                free plan · no credit card · ready in under a minute
-              </p>
+              <ScrollReveal>
+                <p className="mkt-eyebrow mb-7">
+                  <span className="dot">●</span> buildrs · unified dev command center
+                </p>
+              </ScrollReveal>
+              <ScrollReveal delay={0.1}>
+                <h1 className="mkt-h1">
+                  Your whole dev stack.
+                  <br />
+                  One <span className="accent">command center</span>.
+                </h1>
+              </ScrollReveal>
+              <ScrollReveal delay={0.2}>
+                <p className="mkt-sub mt-7 max-w-[520px] mx-auto">
+                  Buildrs collapses the eleven-tool ritual — GitHub, Slack, ChatGPT, Figma,
+                  Notion — into a single workspace. AI pair programming, live co-editing, tasks,
+                  and standups, side by side with your code.
+                </p>
+              </ScrollReveal>
+              <ScrollReveal delay={0.3}>
+                <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
+                  <MagneticButton strength={0.15}>
+                    <Link href="/signup" className="mkt-btn mkt-btn-primary !px-6 !py-3 !text-[15px]">
+                      Start building <span className="mkt-arrow">→</span>
+                    </Link>
+                  </MagneticButton>
+                  <Link href="/demo" className="mkt-btn !px-6 !py-3 !text-[15px]">
+                    Explore the platform <span className="mkt-arrow">↗</span>
+                  </Link>
+                </div>
+                <p className="mkt-mono mt-8 text-xs text-[#525764]">
+                  free plan · no credit card · ready in under a minute
+                </p>
+              </ScrollReveal>
             </div>
 
             {/* Editor mock */}
             <div className="mx-auto mt-16 max-w-[1240px]">
+              <TiltCard>
               <div className="mkt-term relative overflow-hidden">
               <div className="mkt-term-bar">
                 <span className="dot" />
@@ -367,46 +389,52 @@ export default function Index() {
                   3 cursors · AI groq
                 </span>
               </div>
-            </div>
+              </div>
+              </TiltCard>
             </div>
           </div>
         </section>
 
         {/* ── Live strip ───────────────────────────────────── */}
         <section className="border-y border-[#ffffff0d]">
-          <div className="mx-auto grid max-w-[1200px] grid-cols-2 gap-px px-5 py-0 sm:px-8 lg:grid-cols-4">
+          <StaggerChildren className="mx-auto grid max-w-[1200px] grid-cols-2 gap-px px-5 py-0 sm:px-8 lg:grid-cols-4" stagger={0.08}>
             {[
               { k: '10+', v: 'tools replaced by one workspace', note: 'github · slack · figma · notion' },
               { k: '3', v: 'payment rails · Stripe · Paystack · Flutterwave', note: 'priced in USD, paid locally' },
               { k: '0', v: 'merge conflicts on live co-edits', note: 'yjs CRDT conflict resolution' },
               { k: '24/7', v: 'AI pair programmer, always on', note: 'groq + google generative ai' },
             ].map((s) => (
-              <div key={s.k} className="px-2 py-8 sm:px-4">
+              <StaggerItem key={s.k}>
+              <div className="px-2 py-8 sm:px-4">
                 <p className="mkt-num text-3xl text-white sm:text-4xl">{s.k}</p>
                 <p className="mt-3 text-[13px] leading-snug text-[#a8adba]">{s.v}</p>
                 <p className="mkt-mono mt-2 text-[10.5px] text-[#525764]">{s.note}</p>
               </div>
+              </StaggerItem>
             ))}
-          </div>
+          </StaggerChildren>
         </section>
 
         {/* ── The stack ────────────────────────────────────── */}
         <section className="mx-auto max-w-[1200px] px-5 py-24 sm:px-8">
-          <div className="mb-10 flex items-end justify-between gap-6">
-            <div>
-              <p className="mkt-eyebrow mb-4">
-                <span className="dot">●</span> buildrs · the stack
+          <ScrollReveal>
+            <div className="mb-10 flex items-end justify-between gap-6">
+              <div>
+                <p className="mkt-eyebrow mb-4">
+                  <span className="dot">●</span> buildrs · the stack
+                </p>
+                <h2 className="mkt-h2">One workspace, every layer.</h2>
+              </div>
+              <p className="mkt-mono hidden text-[11px] uppercase tracking-widest text-[#525764] lg:block">
+                click a layer
               </p>
-              <h2 className="mkt-h2">One workspace, every layer.</h2>
             </div>
-            <p className="mkt-mono hidden text-[11px] uppercase tracking-widest text-[#525764] lg:block">
-              click a layer
-            </p>
-          </div>
+          </ScrollReveal>
 
-          <div className="mkt-grid grid-cols-1 md:grid-cols-2">
+          <StaggerChildren className="mkt-grid grid-cols-1 md:grid-cols-2" stagger={0.06}>
             {STACK.map((s) => (
-              <Link key={s.name} href="/features" className="mkt-cell group block">
+              <StaggerItem key={s.name}>
+              <Link href="/features" className="mkt-cell group block h-full">
                 <div className="flex items-center justify-between gap-3">
                   <h3 className="mkt-h3 flex items-center gap-3">
                     <span className="mkt-mono text-sm text-[#525764]">▸</span>
@@ -422,23 +450,27 @@ export default function Index() {
                   {s.badge}
                 </p>
               </Link>
+              </StaggerItem>
             ))}
-          </div>
+          </StaggerChildren>
         </section>
 
         {/* ── Build ────────────────────────────────────────── */}
         <section className="mx-auto max-w-[1200px] px-5 pb-24 sm:px-8">
-          <div className="mb-10">
-            <p className="mkt-eyebrow mb-4">
-              <span className="dot">●</span> build
-            </p>
-            <h2 className="mkt-h2 max-w-[640px]">
-              Every surface you need to write and ship code.
-            </h2>
-          </div>
-          <div className="grid gap-px overflow-hidden rounded-xl border border-[#ffffff12] bg-[#ffffff12] sm:grid-cols-2">
+          <ScrollReveal>
+            <div className="mb-10">
+              <p className="mkt-eyebrow mb-4">
+                <span className="dot">●</span> build
+              </p>
+              <h2 className="mkt-h2 max-w-[640px]">
+                Every surface you need to write and ship code.
+              </h2>
+            </div>
+          </ScrollReveal>
+          <StaggerChildren className="grid gap-px overflow-hidden rounded-xl border border-[#ffffff12] bg-[#ffffff12] sm:grid-cols-2" stagger={0.08}>
             {BUILD.map((b) => (
-              <div key={b.title} className="group bg-[#0d0d12] p-7 transition-colors hover:bg-[#121219]">
+              <StaggerItem key={b.title}>
+              <div className="group h-full bg-[#0d0d12] p-7 transition-colors hover:bg-[#121219]">
                 <div className="mkt-mono mb-5 flex h-9 w-9 items-center justify-center rounded-md border border-[#ffffff14] text-[13px] text-[#2fd6e6]">
                   {b.icon}
                 </div>
@@ -446,8 +478,9 @@ export default function Index() {
                 <p className="mkt-mono mt-1 text-[10.5px] uppercase tracking-widest text-[#525764]">{b.tag}</p>
                 <p className="mt-3 text-[13.5px] leading-relaxed text-[#a8adba]">{b.desc}</p>
               </div>
+              </StaggerItem>
             ))}
-          </div>
+          </StaggerChildren>
         </section>
 
         {/* ── Collaborate ──────────────────────────────────── */}
@@ -455,14 +488,20 @@ export default function Index() {
           <div className="mx-auto max-w-[1200px] px-5 py-24 sm:px-8">
             <div className="grid gap-12 lg:grid-cols-[0.9fr_1.1fr]">
               <div>
-                <p className="mkt-eyebrow mb-4">
-                  <span className="dot">●</span> collaborate
-                </p>
-                <h2 className="mkt-h2">Built live, from the first commit.</h2>
-                <p className="mkt-sub mt-5 max-w-[420px]">
-                  The workspace is real-time at its core — because shipping is a team sport,
-                  not a relay of file drops.
-                </p>
+                <ScrollReveal>
+                  <p className="mkt-eyebrow mb-4">
+                    <span className="dot">●</span> collaborate
+                  </p>
+                </ScrollReveal>
+                <ScrollReveal delay={0.1}>
+                  <h2 className="mkt-h2">Built live, from the first commit.</h2>
+                </ScrollReveal>
+                <ScrollReveal delay={0.2}>
+                  <p className="mkt-sub mt-5 max-w-[420px]">
+                    The workspace is real-time at its core — because shipping is a team sport,
+                    not a relay of file drops.
+                  </p>
+                </ScrollReveal>
                 <div className="mt-8 rounded-lg border border-[#ffffff12] bg-[#0d0d12] p-5">
                   <div className="mkt-live mb-3">
                     <span className="dot" />
@@ -492,39 +531,45 @@ export default function Index() {
                 </div>
               </div>
 
-              <div className="grid gap-px overflow-hidden rounded-xl border border-[#ffffff12] bg-[#ffffff12] sm:grid-cols-2">
+              <StaggerChildren className="grid gap-px overflow-hidden rounded-xl border border-[#ffffff12] bg-[#ffffff12] sm:grid-cols-2" stagger={0.08}>
                 {COLLAB.map((c) => (
-                  <div key={c.num} className="bg-[#0d0d12] p-7 transition-colors hover:bg-[#121219]">
+                  <StaggerItem key={c.num}>
+                  <div className="bg-[#0d0d12] p-7 h-full transition-colors hover:bg-[#121219]">
                     <p className="mkt-num text-sm text-[#2fd6e6]">{c.num}</p>
                     <h3 className="mkt-h3 mt-4">{c.title}</h3>
                     <p className="mt-3 text-[13.5px] leading-relaxed text-[#a8adba]">{c.desc}</p>
                   </div>
+                  </StaggerItem>
                 ))}
-              </div>
+              </StaggerChildren>
             </div>
           </div>
         </section>
 
         {/* ── Run / production ─────────────────────────────── */}
         <section className="mx-auto max-w-[1200px] px-5 py-24 sm:px-8">
-          <div className="mb-10">
-            <p className="mkt-eyebrow mb-4">
-              <span className="dot">●</span> run
-            </p>
-            <h2 className="mkt-h2 max-w-[680px]">The platform your org actually operates on.</h2>
-            <p className="mkt-sub mt-5 max-w-[560px]">
-              Projects, billing, and security that hold up under real load — never a bolt-on afterthought.
-            </p>
-          </div>
-          <div className="grid gap-px overflow-hidden rounded-xl border border-[#ffffff12] bg-[#ffffff12] md:grid-cols-3">
+          <ScrollReveal>
+            <div className="mb-10">
+              <p className="mkt-eyebrow mb-4">
+                <span className="dot">●</span> run
+              </p>
+              <h2 className="mkt-h2 max-w-[680px]">The platform your org actually operates on.</h2>
+              <p className="mkt-sub mt-5 max-w-[560px]">
+                Projects, billing, and security that hold up under real load — never a bolt-on afterthought.
+              </p>
+            </div>
+          </ScrollReveal>
+          <StaggerChildren className="grid gap-px overflow-hidden rounded-xl border border-[#ffffff12] bg-[#ffffff12] md:grid-cols-3" stagger={0.08}>
             {RUN.map((r) => (
-              <div key={r.title} className="bg-[#0d0d12] p-7 transition-colors hover:bg-[#121219]">
+              <StaggerItem key={r.title}>
+              <div className="bg-[#0d0d12] p-7 h-full transition-colors hover:bg-[#121219]">
                 <p className="mkt-mono text-[10.5px] uppercase tracking-widest text-[#686e7c]">{r.tag}</p>
                 <h3 className="mkt-h3 mt-4">{r.title}</h3>
                 <p className="mt-3 text-[13.5px] leading-relaxed text-[#a8adba]">{r.desc}</p>
               </div>
+              </StaggerItem>
             ))}
-          </div>
+          </StaggerChildren>
 
           <div className="mkt-term mt-8">
             <div className="mkt-term-bar">
@@ -551,41 +596,48 @@ export default function Index() {
         {/* ── Why ──────────────────────────────────────────── */}
         <section className="border-t border-[#ffffff0d]">
           <div className="mx-auto max-w-[1200px] px-5 py-24 sm:px-8">
-            <div className="mb-12">
-              <p className="mkt-eyebrow mb-4">
-                <span className="dot">●</span> why buildrs
-              </p>
-              <h2 className="mkt-h2">Designed for teams that ship.</h2>
-            </div>
-            <div className="grid gap-x-16 gap-y-12 md:grid-cols-2">
+            <ScrollReveal>
+              <div className="mb-12">
+                <p className="mkt-eyebrow mb-4">
+                  <span className="dot">●</span> why buildrs
+                </p>
+                <h2 className="mkt-h2">Designed for teams that ship.</h2>
+              </div>
+            </ScrollReveal>
+            <StaggerChildren className="grid gap-x-16 gap-y-12 md:grid-cols-2" stagger={0.08}>
               {WHY.map((w) => (
-                <div key={w.num} className="flex gap-6 border-t border-[#ffffff12] pt-6">
+                <StaggerItem key={w.num}>
+                <div className="flex gap-6 border-t border-[#ffffff12] pt-6">
                   <p className="mkt-num text-sm text-[#525764]">{w.num}</p>
                   <div>
                     <h3 className="mkt-h3">{w.title}</h3>
                     <p className="mt-2.5 text-[14px] leading-relaxed text-[#a8adba]">{w.desc}</p>
                   </div>
                 </div>
+                </StaggerItem>
               ))}
-            </div>
+            </StaggerChildren>
           </div>
         </section>
 
         {/* ── Community ────────────────────────────────────── */}
         <section className="mx-auto max-w-[1200px] px-5 pb-24 sm:px-8">
-          <div className="mb-10">
-            <p className="mkt-eyebrow mb-4">
-              <span className="dot">●</span> community
-            </p>
-            <h2 className="mkt-h2">Built in the open. Join in.</h2>
-          </div>
-          <div className="mkt-grid grid-cols-1 md:grid-cols-3">
+          <ScrollReveal>
+            <div className="mb-10">
+              <p className="mkt-eyebrow mb-4">
+                <span className="dot">●</span> community
+              </p>
+              <h2 className="mkt-h2">Built in the open. Join in.</h2>
+            </div>
+          </ScrollReveal>
+          <StaggerChildren className="mkt-grid grid-cols-1 md:grid-cols-3" stagger={0.08}>
             {[
               { name: 'X', handle: '@buildrshq', desc: 'Ship logs, launches, and build-in-public threads.' },
               { name: 'GitHub', handle: 'github.com/codex-inc', desc: 'The pieces that are open, licensed to stay that way.' },
               { name: 'Discord', handle: 'buildrshq community', desc: 'Talk to the builders — dev, feedback, and showcase.' },
             ].map((c) => (
-              <div key={c.name} className="mkt-cell">
+              <StaggerItem key={c.name}>
+              <div className="mkt-cell h-full">
                 <div className="flex items-center justify-between">
                   <h3 className="mkt-h3">{c.name}</h3>
                   <span className="mkt-link-arrow">↗</span>
@@ -593,29 +645,40 @@ export default function Index() {
                 <p className="mkt-mono mt-1.5 text-xs text-[#686e7c]">{c.handle}</p>
                 <p className="mt-3 text-[13.5px] leading-relaxed text-[#a8adba]">{c.desc}</p>
               </div>
+              </StaggerItem>
             ))}
-          </div>
+          </StaggerChildren>
         </section>
 
         {/* ── Final CTA ────────────────────────────────────── */}
         <section className="relative overflow-hidden border-t border-[#ffffff0d]">
           <div className="mkt-hero-bg" />
           <div className="relative mx-auto max-w-[1200px] px-5 py-28 text-center sm:px-8">
-            <p className="mkt-eyebrow mb-6">
-              <span className="dot">●</span> get started
-            </p>
-            <h2 className="mkt-h2 mx-auto max-w-[640px]">Pick a layer. Start there.</h2>
-            <p className="mkt-sub mx-auto mt-5 max-w-[440px]">
-              One workspace, no credit card, no migration project. Your first build is minutes away.
-            </p>
-            <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
-              <Link href="/signup" className="mkt-btn mkt-btn-primary !px-7 !py-3 !text-[15px]">
-                Start building <span className="mkt-arrow">→</span>
-              </Link>
-              <Link href="/features" className="mkt-btn !px-7 !py-3 !text-[15px]">
-                See the features
-              </Link>
-            </div>
+            <ScrollReveal>
+              <p className="mkt-eyebrow mb-6">
+                <span className="dot">●</span> get started
+              </p>
+            </ScrollReveal>
+            <ScrollReveal delay={0.1}>
+              <h2 className="mkt-h2 mx-auto max-w-[640px]">Pick a layer. Start there.</h2>
+            </ScrollReveal>
+            <ScrollReveal delay={0.2}>
+              <p className="mkt-sub mx-auto mt-5 max-w-[440px]">
+                One workspace, no credit card, no migration project. Your first build is minutes away.
+              </p>
+            </ScrollReveal>
+            <ScrollReveal delay={0.3}>
+              <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
+                <MagneticButton strength={0.15}>
+                  <Link href="/signup" className="mkt-btn mkt-btn-primary !px-7 !py-3 !text-[15px]">
+                    Start building <span className="mkt-arrow">→</span>
+                  </Link>
+                </MagneticButton>
+                <Link href="/features" className="mkt-btn !px-7 !py-3 !text-[15px]">
+                  See the features
+                </Link>
+              </div>
+            </ScrollReveal>
           </div>
         </section>
       </SiteShell>

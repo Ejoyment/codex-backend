@@ -1,6 +1,14 @@
 import Head from 'next/head';
 import Link from 'next/link';
 import SiteShell from '../components/SiteShell';
+import {
+  ScrollReveal,
+  StaggerChildren,
+  StaggerItem,
+  ParticleField,
+  MouseGlow,
+  MagneticButton,
+} from '../components/AnimationKit';
 
 const JOBS = [
   {
@@ -53,55 +61,68 @@ export default function Careers() {
       </Head>
 
       <SiteShell>
+        <MouseGlow />
+        <ParticleField count={15} />
         {/* Hero */}
         <section className="relative overflow-hidden pt-36 pb-16 sm:pt-44">
           <div className="mkt-hero-bg" />
           <div className="relative mx-auto max-w-[1200px] px-5 sm:px-8">
-            <p className="mkt-eyebrow mb-6">
-              <span className="dot">●</span> buildrs · careers
-            </p>
-            <h1 className="mkt-h1">
-              Work where building
-              <br />
-              is the <span className="accent">point</span>.
-            </h1>
-            <p className="mkt-sub mt-6 max-w-[520px]">
-              Remote-first, async, and worldwide. We are a small team doing a lot of
-              shipp—and we want people who are excited by that.
-            </p>
+            <ScrollReveal>
+              <p className="mkt-eyebrow mb-6">
+                <span className="dot">●</span> buildrs · careers
+              </p>
+            </ScrollReveal>
+            <ScrollReveal delay={0.1}>
+              <h1 className="mkt-h1">
+                Work where building
+                <br />
+                is the <span className="accent">point</span>.
+              </h1>
+            </ScrollReveal>
+            <ScrollReveal delay={0.2}>
+              <p className="mkt-sub mt-6 max-w-[520px]">
+                Remote-first, async, and worldwide. We are a small team doing a lot of
+                shipp—and we want people who are excited by that.
+              </p>
+            </ScrollReveal>
           </div>
         </section>
 
         {/* Perks */}
         <section className="border-t border-[#ffffff0d]">
-          <div className="mx-auto grid max-w-[1200px] gap-px px-5 py-4 sm:px-8 lg:grid-cols-4">
+          <StaggerChildren className="mx-auto grid max-w-[1200px] gap-px px-5 py-4 sm:px-8 lg:grid-cols-4" stagger={0.08}>
             {PERKS.map(([num, title, desc]) => (
-              <div key={num} className="border-b border-[#ffffff0d] py-8 lg:border-b-0 lg:py-4">
+              <StaggerItem key={num}>
+              <div className="border-b border-[#ffffff0d] py-8 lg:border-b-0 lg:py-4">
                 <p className="mkt-num text-sm text-[#2fd6e6]">{num}</p>
                 <h3 className="mkt-h3 mt-3">{title}</h3>
                 <p className="mt-2 text-[13px] leading-relaxed text-[#a8adba]">{desc}</p>
               </div>
+              </StaggerItem>
             ))}
-          </div>
+          </StaggerChildren>
         </section>
 
         {/* Open roles */}
         <section className="mx-auto max-w-[1200px] px-5 py-20 sm:px-8">
-          <div className="mb-10 flex items-end justify-between gap-6">
-            <div>
-              <p className="mkt-eyebrow mb-4">
-                <span className="dot">●</span> open roles
+          <ScrollReveal>
+            <div className="mb-10 flex items-end justify-between gap-6">
+              <div>
+                <p className="mkt-eyebrow mb-4">
+                  <span className="dot">●</span> open roles
+                </p>
+                <h2 className="mkt-h2">We are hiring.</h2>
+              </div>
+              <p className="mkt-mono hidden text-[11px] uppercase tracking-widest text-[#525764] lg:block">
+                {JOBS.length} positions · remote
               </p>
-              <h2 className="mkt-h2">We are hiring.</h2>
             </div>
-            <p className="mkt-mono hidden text-[11px] uppercase tracking-widest text-[#525764] lg:block">
-              {JOBS.length} positions · remote
-            </p>
-          </div>
+          </ScrollReveal>
 
-          <div className="grid gap-px overflow-hidden rounded-xl border border-[#ffffff12] bg-[#ffffff12]">
+          <StaggerChildren className="grid gap-px overflow-hidden rounded-xl border border-[#ffffff12] bg-[#ffffff12]" stagger={0.08}>
             {JOBS.map((job) => (
-              <div key={job.title} className="group flex flex-col gap-5 bg-[#0d0d12] p-7 transition-colors hover:bg-[#121219] md:flex-row md:items-center md:justify-between">
+              <StaggerItem key={job.title}>
+              <div className="group flex flex-col gap-5 bg-[#0d0d12] p-7 transition-colors hover:bg-[#121219] md:flex-row md:items-center md:justify-between">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="mkt-h3">{job.title}</h3>
@@ -112,27 +133,38 @@ export default function Careers() {
                   </p>
                   <p className="mt-3 max-w-[560px] text-[13.5px] leading-relaxed text-[#a8adba]">{job.desc}</p>
                 </div>
-                <Link href="/contact" className="mkt-btn flex-shrink-0">
-                  Apply <span className="mkt-arrow">→</span>
-                </Link>
+                <MagneticButton strength={0.15}>
+                  <Link href="/contact" className="mkt-btn flex-shrink-0">
+                    Apply <span className="mkt-arrow">→</span>
+                  </Link>
+                </MagneticButton>
               </div>
+              </StaggerItem>
             ))}
-          </div>
+          </StaggerChildren>
         </section>
 
         {/* CTA */}
         <section className="relative overflow-hidden border-t border-[#ffffff0d]">
           <div className="mkt-hero-bg" />
           <div className="relative mx-auto max-w-[1200px] px-5 py-24 text-center sm:px-8">
-            <h2 className="mkt-h2 mx-auto max-w-[560px]">Don’t see your role?</h2>
-            <p className="mkt-sub mx-auto mt-5 max-w-[400px]">
-              If you build the thing the role describes, tell us anyway. We are always listening.
-            </p>
-            <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
-              <Link href="/contact" className="mkt-btn mkt-btn-primary !px-7 !py-3 !text-[15px]">
-                Get in touch <span className="mkt-arrow">→</span>
-              </Link>
-            </div>
+            <ScrollReveal>
+              <h2 className="mkt-h2 mx-auto max-w-[560px]">Don’t see your role?</h2>
+            </ScrollReveal>
+            <ScrollReveal delay={0.1}>
+              <p className="mkt-sub mx-auto mt-5 max-w-[400px]">
+                If you build the thing the role describes, tell us anyway. We are always listening.
+              </p>
+            </ScrollReveal>
+            <ScrollReveal delay={0.2}>
+              <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
+                <MagneticButton strength={0.15}>
+                  <Link href="/contact" className="mkt-btn mkt-btn-primary !px-7 !py-3 !text-[15px]">
+                    Get in touch <span className="mkt-arrow">→</span>
+                  </Link>
+                </MagneticButton>
+              </div>
+            </ScrollReveal>
           </div>
         </section>
       </SiteShell>

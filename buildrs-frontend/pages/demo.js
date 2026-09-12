@@ -2,6 +2,14 @@ import Head from 'next/head';
 import { useState } from 'react';
 import useToastStore from '../store/toastStore';
 import SiteShell from '../components/SiteShell';
+import {
+  ScrollReveal,
+  StaggerChildren,
+  StaggerItem,
+  ParticleField,
+  MouseGlow,
+  MagneticButton,
+} from '../components/AnimationKit';
 
 const SELLING_POINTS = [
   ['ai', 'a 30-minute run-through of the workspace, your stack in mind'],
@@ -11,13 +19,13 @@ const SELLING_POINTS = [
 
 export default function Demo() {
   const [form, setForm] = useState({ fullName: '', email: '', company: '', teamSize: '', date: '', message: '' });
-  const toast = useToastStore();
+  const toastSuccess = useToastStore((s) => s.success);
 
   const onChange = (e) => setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
 
   const onSubmit = (e) => {
     e.preventDefault();
-    toast.success('Demo request received. We will reach out shortly.');
+    toastSuccess('Demo request received. We will reach out shortly.');
     setForm({ fullName: '', email: '', company: '', teamSize: '', date: '', message: '' });
   };
 
@@ -33,37 +41,48 @@ export default function Demo() {
       </Head>
 
       <SiteShell>
+        <MouseGlow />
+        <ParticleField count={15} />
         {/* Hero */}
         <section className="relative overflow-hidden pt-36 pb-16 sm:pt-44">
           <div className="mkt-hero-bg" />
           <div className="relative mx-auto max-w-[1200px] px-5 sm:px-8">
-            <p className="mkt-eyebrow mb-6">
-              <span className="dot">●</span> buildrs · demo
-            </p>
-            <h1 className="mkt-h1">
-              See it <span className="accent">live</span>.
-            </h1>
-            <p className="mkt-sub mt-6 max-w-[520px]">
-              A personalized walkthrough of the workspace — 30 minutes, your questions answered
-              with the product on screen.
-            </p>
+            <ScrollReveal>
+              <p className="mkt-eyebrow mb-6">
+                <span className="dot">●</span> buildrs · demo
+              </p>
+            </ScrollReveal>
+            <ScrollReveal delay={0.1}>
+              <h1 className="mkt-h1">
+                See it <span className="accent">live</span>.
+              </h1>
+            </ScrollReveal>
+            <ScrollReveal delay={0.2}>
+              <p className="mkt-sub mt-6 max-w-[520px]">
+                A personalized walkthrough of the workspace — 30 minutes, your questions answered
+                with the product on screen.
+              </p>
+            </ScrollReveal>
           </div>
         </section>
 
         {/* Split */}
         <section className="mx-auto grid max-w-[1200px] gap-10 px-5 pb-20 sm:px-8 lg:grid-cols-[0.9fr_1.1fr]">
+          <ScrollReveal direction="left">
           <div>
             <p className="mkt-eyebrow mb-6">
               <span className="dot">●</span> what you’ll see
             </p>
-            <div className="space-y-px overflow-hidden rounded-xl border border-[#ffffff12] bg-[#ffffff12]">
+            <StaggerChildren className="space-y-px overflow-hidden rounded-xl border border-[#ffffff12] bg-[#ffffff12]" stagger={0.08}>
               {SELLING_POINTS.map(([tag, text]) => (
-                <div key={tag} className="flex gap-5 bg-[#0d0d12] p-6">
+                <StaggerItem key={tag}>
+                <div className="flex gap-5 bg-[#0d0d12] p-6">
                   <span className="mkt-pill flex-shrink-0">{tag}</span>
                   <p className="text-[13.5px] leading-relaxed text-[#a8adba]">{text}</p>
                 </div>
+                </StaggerItem>
               ))}
-            </div>
+            </StaggerChildren>
             <div className="mkt-card mt-6 p-6">
               <div className="mkt-live mb-2">
                 <span className="dot" />
@@ -77,7 +96,9 @@ export default function Demo() {
               </p>
             </div>
           </div>
+          </ScrollReveal>
 
+          <ScrollReveal direction="right">
           <div className="mkt-card p-8 sm:p-10">
             <h2 className="mkt-h3">Request a slot</h2>
             <form onSubmit={onSubmit} className="mt-7 space-y-6">
@@ -117,14 +138,17 @@ export default function Demo() {
                 <label className="mkt-label">Message <span className="normal-case tracking-normal">(optional)</span></label>
                 <textarea name="message" rows="3" value={form.message} onChange={onChange} className="mkt-textarea" placeholder="Anything we should prep for?" />
               </div>
-              <button type="submit" className="mkt-btn mkt-btn-primary w-full justify-center !py-3.5 text-[15px]">
-                Request demo <span className="mkt-arrow">→</span>
-              </button>
+              <MagneticButton strength={0.08}>
+                <button type="submit" className="mkt-btn mkt-btn-primary w-full justify-center !py-3.5 text-[15px]">
+                  Request demo <span className="mkt-arrow">→</span>
+                </button>
+              </MagneticButton>
               <p className="mkt-mono text-center text-[11px] text-[#525764]">
                 replies within one business day · no obligation
               </p>
             </form>
           </div>
+          </ScrollReveal>
         </section>
       </SiteShell>
     </>
