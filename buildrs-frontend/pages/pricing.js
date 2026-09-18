@@ -33,9 +33,9 @@ const PLANS = [
   },
   {
     name: 'Professional',
-    price: 29,
+    price: 9,
     monthlyNote: '/mo',
-    yearly: 290,
+    yearly: 90,
     featured: true,
     blurb: 'For teams that ship on a cadence.',
     cta: 'Get started',
@@ -53,9 +53,9 @@ const PLANS = [
   },
   {
     name: 'Enterprise',
-    price: 999,
+    price: 888,
     monthlyNote: '/mo',
-    yearly: 9990,
+    yearly: 8880,
     blurb: 'For orgs with compliance to meet.',
     cta: 'Contact sales',
     href: '/contact',
