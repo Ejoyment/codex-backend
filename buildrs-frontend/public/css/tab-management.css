@@ -1,0 +1,527 @@
+/**
+ * Tab Management Enhancement
+ * Phase 3: Professional tab features
+ */
+
+/* ============================================
+   1. ENHANCED TAB FEATURES
+   ============================================ */
+
+/* Tab container improvements */
+.tabs-bar {
+    height: 35px;
+    background: var(--vscode-sidebar);
+    border-bottom: 1px solid var(--vscode-border);
+    display: flex;
+    overflow-x: auto;
+    flex-shrink: 0;
+    position: relative;
+}
+
+.tabs-bar::-webkit-scrollbar {
+    height: 0;
+}
+
+/* Enhanced tab styling */
+.tab {
+    height: 35px;
+    padding: 0 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--vscode-bg);
+    border-right: 1px solid var(--vscode-border);
+    color: var(--vscode-text-dim);
+    cursor: pointer;
+    font-size: 13px;
+    min-width: 120px;
+    max-width: 200px;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+    position: relative;
+    user-select: none;
+}
+
+.tab:hover {
+    background: var(--vscode-hover);
+    color: var(--vscode-text);
+}
+
+.tab.active {
+    color: var(--vscode-text);
+    background: var(--vscode-bg);
+    border-bottom: 2px solid var(--vscode-statusbar);
+}
+
+/* Tab icon */
+.tab-icon {
+    font-size: 14px;
+    flex-shrink: 0;
+    transition: transform 0.2s ease;
+}
+
+.tab:hover .tab-icon {
+    transform: scale(1.1);
+}
+
+/* Tab label */
+.tab-label {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Unsaved indicator (dot) */
+.tab.modified .tab-label::after {
+    content: '●';
+    margin-left: 6px;
+    color: var(--vscode-statusbar);
+    font-size: 10px;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+/* Pinned tab indicator */
+.tab.pinned {
+    min-width: 40px;
+    max-width: 40px;
+    padding: 0 8px;
+    justify-content: center;
+}
+
+.tab.pinned .tab-label {
+    display: none;
+}
+
+.tab.pinned .tab-close {
+    display: none !important;
+}
+
+.tab.pinned::before {
+    content: '';
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 6px;
+    height: 6px;
+    background: var(--vscode-statusbar);
+    border-radius: 50%;
+}
+
+/* Close button */
+.tab-close {
+    opacity: 0;
+    transition: all 0.2s ease;
+    margin-left: auto;
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 3px;
+    font-size: 12px;
+}
+
+.tab:hover .tab-close {
+    opacity: 1;
+}
+
+.tab-close:hover {
+    background: var(--vscode-hover);
+    color: var(--vscode-error);
+}
+
+.tab.active .tab-close {
+    opacity: 0.7;
+}
+
+/* Tab drag & drop */
+.tab.dragging {
+    opacity: 0.5;
+    cursor: grabbing;
+}
+
+.tab.drag-over {
+    border-left: 2px solid var(--vscode-statusbar);
+}
+
+/* ============================================
+   2. TAB CONTEXT MENU
+   ============================================ */
+
+.tab-context-menu {
+    position: fixed;
+    background: var(--vscode-sidebar);
+    border: 1px solid var(--vscode-border);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    z-index: 1500;
+    min-width: 220px;
+    border-radius: 4px;
+    overflow: hidden;
+    display: none;
+}
+
+.tab-context-menu.active {
+    display: block;
+    animation: contextMenuFadeIn 0.15s ease;
+}
+
+.tab-context-menu-item {
+    padding: 8px 12px;
+    color: var(--vscode-text);
+    cursor: pointer;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    transition: all 0.15s ease;
+}
+
+.tab-context-menu-item:hover {
+    background: var(--vscode-statusbar);
+    color: white;
+}
+
+.tab-context-menu-item.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.tab-context-menu-item.disabled:hover {
+    background: transparent;
+    color: var(--vscode-text);
+}
+
+.tab-context-menu-item i {
+    margin-right: 8px;
+    width: 16px;
+    text-align: center;
+}
+
+.tab-context-menu-separator {
+    height: 1px;
+    background: var(--vscode-border);
+    margin: 4px 0;
+}
+
+.tab-context-menu-shortcut {
+    color: var(--vscode-text-dim);
+    font-size: 11px;
+    margin-left: 16px;
+}
+
+/* ============================================
+   3. SPLIT EDITOR
+   ============================================ */
+
+.editor-container {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+.editor-group {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+}
+
+.editor-group.split-vertical {
+    border-right: 1px solid var(--vscode-border);
+}
+
+.editor-group.split-horizontal {
+    border-bottom: 1px solid var(--vscode-border);
+}
+
+.editor-group.focused {
+    outline: 1px solid var(--vscode-statusbar);
+    outline-offset: -1px;
+}
+
+/* Split controls */
+.split-controls {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    gap: 4px;
+    z-index: 10;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.editor-group:hover .split-controls {
+    opacity: 1;
+}
+
+.split-btn {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--vscode-sidebar);
+    border: 1px solid var(--vscode-border);
+    border-radius: 3px;
+    cursor: pointer;
+    color: var(--vscode-text);
+    font-size: 12px;
+    transition: all 0.15s ease;
+}
+
+.split-btn:hover {
+    background: var(--vscode-hover);
+    border-color: var(--vscode-statusbar);
+}
+
+/* Split resize handle */
+.split-resize-handle {
+    background: var(--vscode-border);
+    cursor: col-resize;
+    position: relative;
+    z-index: 5;
+}
+
+.split-resize-handle.vertical {
+    width: 4px;
+    cursor: col-resize;
+}
+
+.split-resize-handle.horizontal {
+    height: 4px;
+    cursor: row-resize;
+}
+
+.split-resize-handle:hover {
+    background: var(--vscode-statusbar);
+}
+
+/* ============================================
+   4. TAB GROUPS
+   ============================================ */
+
+.tab-groups-container {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+.tab-group {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+}
+
+.tab-group-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 8px;
+    background: var(--vscode-titlebar);
+    border-bottom: 1px solid var(--vscode-border);
+    font-size: 11px;
+    color: var(--vscode-text-dim);
+}
+
+.tab-group-title {
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.tab-group-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.tab-group-action {
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border-radius: 2px;
+    transition: all 0.15s ease;
+}
+
+.tab-group-action:hover {
+    background: var(--vscode-hover);
+    color: var(--vscode-text);
+}
+
+/* ============================================
+   5. TAB ANIMATIONS
+   ============================================ */
+
+/* Tab open animation */
+@keyframes tabOpen {
+    from {
+        opacity: 0;
+        transform: scaleX(0.8);
+    }
+    to {
+        opacity: 1;
+        transform: scaleX(1);
+    }
+}
+
+.tab.opening {
+    animation: tabOpen 0.2s ease;
+}
+
+/* Tab close animation */
+@keyframes tabClose {
+    from {
+        opacity: 1;
+        transform: scaleX(1);
+        max-width: 200px;
+    }
+    to {
+        opacity: 0;
+        transform: scaleX(0);
+        max-width: 0;
+        padding: 0;
+    }
+}
+
+.tab.closing {
+    animation: tabClose 0.2s ease forwards;
+}
+
+/* Tab switch animation */
+@keyframes tabSwitch {
+    0% { transform: translateY(0); }
+    50% { transform: translateY(-2px); }
+    100% { transform: translateY(0); }
+}
+
+.tab.switching {
+    animation: tabSwitch 0.3s ease;
+}
+
+/* ============================================
+   6. RESPONSIVE ADJUSTMENTS
+   ============================================ */
+
+@media (max-width: 768px) {
+    .tab {
+        min-width: 100px;
+        max-width: 150px;
+    }
+    
+    .tab-close {
+        opacity: 1;
+    }
+    
+    .split-controls {
+        opacity: 1;
+    }
+}
+
+/* ============================================
+   7. ACCESSIBILITY
+   ============================================ */
+
+.tab:focus-visible {
+    outline: 2px solid var(--vscode-statusbar);
+    outline-offset: -2px;
+}
+
+.tab-close:focus-visible {
+    outline: 2px solid var(--vscode-statusbar);
+    outline-offset: 1px;
+}
+
+/* Screen reader only */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+}
+
+/* ============================================
+   8. TAB OVERFLOW INDICATORS
+   ============================================ */
+
+.tabs-bar::before,
+.tabs-bar::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 20px;
+    pointer-events: none;
+    z-index: 2;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.tabs-bar::before {
+    left: 0;
+    background: linear-gradient(to right, var(--vscode-sidebar), transparent);
+}
+
+.tabs-bar::after {
+    right: 0;
+    background: linear-gradient(to left, var(--vscode-sidebar), transparent);
+}
+
+.tabs-bar.scroll-left::before {
+    opacity: 1;
+}
+
+.tabs-bar.scroll-right::after {
+    opacity: 1;
+}
+
+/* ============================================
+   9. TAB BADGES
+   ============================================ */
+
+.tab-badge {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--vscode-error);
+    color: white;
+    font-size: 10px;
+    font-weight: 600;
+    border-radius: 8px;
+    pointer-events: none;
+}
+
+.tab-badge.info {
+    background: var(--vscode-statusbar);
+}
+
+.tab-badge.warning {
+    background: var(--vscode-warning);
+}
+
+.tab-badge.success {
+    background: var(--vscode-success);
+}
