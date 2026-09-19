@@ -94,19 +94,20 @@ export default function Standup() {
           companyApi.getMyCompanies(),
         ]);
 
+        let normalizedCompanies = [];
         if (tasksRes.success) setTasks(tasksRes.tasks || []);
         if (companiesRes.success) {
-          const comps = normalizeCompanies(companiesRes.companies);
-          setCompanies(comps);
-          if (comps.length > 0) setSelectedCompany(comps[0]._id);
+          normalizedCompanies = normalizeCompanies(companiesRes.companies);
+          setCompanies(normalizedCompanies);
+          if (normalizedCompanies.length > 0) setSelectedCompany(normalizedCompanies[0]._id);
         }
 
         const stored = JSON.parse(localStorage.getItem('pastStandups') || '[]');
         setPastStandups(stored);
 
-        if (comps.length > 0) {
+        if (normalizedCompanies.length > 0) {
           try {
-            const res = await apiFetch(`/api/standup?companyId=${comps[0]._id}&limit=50`);
+            const res = await apiFetch(`/api/standup?companyId=${normalizedCompanies[0]._id}&limit=50`);
             const serverStandups = res.success ? res.standups : [];
             const merged = [...serverStandups, ...stored];
             const seen = new Set();
