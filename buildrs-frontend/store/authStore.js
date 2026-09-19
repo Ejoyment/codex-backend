@@ -18,6 +18,15 @@ const useAuthStore = create(
         set({ token, user, error: null });
       },
 
+      updateUser: (userPatch) => {
+        const current = get().user;
+        const nextUser = current ? { ...current, ...userPatch } : userPatch;
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('user', JSON.stringify(nextUser));
+        }
+        set({ user: nextUser });
+      },
+
       setSubscription: (subscription) => {
         if (typeof window !== 'undefined') {
           localStorage.setItem('subscription', JSON.stringify(subscription));

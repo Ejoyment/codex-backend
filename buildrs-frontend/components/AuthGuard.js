@@ -1,5 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
+import { io } from 'socket.io-client';
 import useAuthStore from '../store/authStore';
 import { useAuth } from '../hooks/useAuth';
 import { subscriptionApi } from '../lib/api';
@@ -10,6 +11,7 @@ export default function AuthGuard({ children }) {
   const user = useAuthStore((s) => s.user);
   const subscription = useAuthStore((s) => s.subscription);
   const { fetchUser } = useAuth();
+  const socketRef = useRef(null);
 
   useEffect(() => {
     if (!token) {
@@ -49,6 +51,34 @@ export default function AuthGuard({ children }) {
 
     ensureUserAndRoute();
   }, [token, router, fetchUser, user, subscription]);
+
+  useEffect(() => {
+    if (!token || typeof window === 'undefined') return;
+
+    const socket = io(process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3000', {
+      auth: { token },
+      transports: ['websocket', 'polling'],
+    });
+
+    socketRef.current = socket;
+
+    const handleProfileUpdate = ({ userId, ...profileData }) => {
+      const currentUser = useAuthStore.getState().user;
+      const currentUserId = String(currentUser?._id || currentUser?.id || currentUser?.userId || '');
+      if (!currentUserId || String(userId) !== currentUserId) return;
+
+      const nextUser = { ...currentUser, ...profileData };
+      useAuthStore.getState().updateUser(nextUser);
+    };
+
+    socket.on('profile-updated', handleProfileUpdate);
+
+    return () => {
+      socket.off('profile-updated', handleProfileUpdate);
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [token]);
 
   if (!token) {
     return (

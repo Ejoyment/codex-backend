@@ -6,23 +6,38 @@ export function getApiBaseUrl() {
 export function getAvatarUrl(user, fallbackName) {
   const name = fallbackName || user?.fullName || user?.name || 'User';
   const base = getApiBaseUrl();
-  const profilePicture = user?.profilePicture;
+  const profilePicture = user?.profilePicture || user?.avatar || '';
 
-  if (!profilePicture) {
+  if (!profilePicture || profilePicture === 'null' || profilePicture === 'undefined') {
     return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=3b82f6&color=fff`;
   }
 
-  if (profilePicture.startsWith('http://') || profilePicture.startsWith('https://')) {
-    return profilePicture;
+  if (typeof profilePicture !== 'string') {
+    return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=3b82f6&color=fff`;
   }
 
-  const normalizedPicture = profilePicture.startsWith('uploads/') ? `/${profilePicture}` : profilePicture;
+  const trimmed = profilePicture.trim();
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    return trimmed;
+  }
+
+  let normalizedPicture = trimmed;
+  if (normalizedPicture.startsWith('uploads/')) {
+    normalizedPicture = `/${normalizedPicture}`;
+  }
+  if (!normalizedPicture.startsWith('/')) {
+    normalizedPicture = `/${normalizedPicture}`;
+  }
 
   if (normalizedPicture.startsWith('/uploads/')) {
     return `${base}${normalizedPicture}`;
   }
 
-  return profilePicture;
+  if (normalizedPicture.startsWith('/api/uploads/')) {
+    return `${base}${normalizedPicture.replace(/^\/api/, '')}`;
+  }
+
+  return normalizedPicture.startsWith('/') ? `${base}${normalizedPicture}` : `${base}/${normalizedPicture}`;
 }
 
 export function normalizeUserId(user) {
