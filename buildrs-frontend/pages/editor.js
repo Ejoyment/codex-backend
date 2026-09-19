@@ -236,6 +236,15 @@ export default function Editor() {
 
   const tree = useMemo(() => buildFileTree(files), [files]);
 
+  const getFileKey = useCallback((file) => {
+    if (!file) return null;
+    if (file._id) return String(file._id);
+    if (file.id) return String(file.id);
+    if (file.path) return `github:${file.path}`;
+    if (file.name) return `github:${file.name}`;
+    return `tmp:${Math.random().toString(36).slice(2)}`;
+  }, []);
+
   const monacoOptions = useMemo(() => ({
     fontSize: 13,
     minimap: { enabled: true },
@@ -613,21 +622,43 @@ export default function Editor() {
     }
   }
 
-  const loadFile = useCallback((file) => {
-    const saved = openContentsRef.current[file._id];
-    const val = saved !== undefined ? saved : file.content || '';
-    setSelectedFile(file);
+  const fetchGithubFileContent = useCallback(async (file) => {
+    if (!selectedRepo || !file?.path) return file?.content || '';
+    const owner = selectedRepo.owner?.login || selectedRepo.owner || selectedRepo.ownerName;
+    const repo = selectedRepo.name;
+    const path = String(file.path).replace(/^\/+/, '');
+    const ref = selectedRepo.default_branch ? `?ref=${encodeURIComponent(selectedRepo.default_branch)}` : '';
+    try {
+      const data = await apiFetch(`/api/github/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}${ref}`);
+      const content = data?.file?.content ?? '';
+      if (typeof content === 'string') return content;
+    } catch (err) {
+      console.warn('GitHub repo file content load failed:', err);
+    }
+    return file?.content || '';
+  }, [selectedRepo]);
+
+  const loadFile = useCallback(async (file) => {
+    const fileKey = getFileKey(file);
+    const sourceFile = file && file.path && selectedRepo ? { ...file, _id: fileKey, id: fileKey, source: 'github', owner: selectedRepo.owner?.login || selectedRepo.owner, repo: selectedRepo.name } : file;
+    const saved = openContentsRef.current[fileKey];
+    const contentFromGithub = sourceFile?.source === 'github' && saved === undefined ? await fetchGithubFileContent(sourceFile) : null;
+    const val = saved !== undefined ? saved : (contentFromGithub ?? sourceFile?.content ?? '');
+    setSelectedFile(sourceFile || file);
     setContent(val);
     originalContentRef.current = val;
-    setDirty(!!openDirtyRef.current[file._id]);
+    setDirty(!!openDirtyRef.current[fileKey]);
     setShowProjectSelector(false);
     setStatus(null);
-    apiFetch(`/api/collaboration/file/${file._id}/join`, { method: 'POST' }).catch(() => {});
-  }, []);
+    if (sourceFile?._id) {
+      apiFetch(`/api/collaboration/file/${sourceFile._id}/join`, { method: 'POST' }).catch(() => {});
+    }
+  }, [fetchGithubFileContent, getFileKey, selectedRepo]);
 
   const openFile = useCallback((file) => {
-    setOpenFiles((prev) => (prev.some((f) => f._id === file._id) ? prev : [...prev, file]));
-  }, []);
+    const fileKey = getFileKey(file);
+    setOpenFiles((prev) => (prev.some((f) => getFileKey(f) === fileKey) ? prev : [...prev, { ...file, _id: fileKey, id: fileKey }]));
+  }, [getFileKey]);
 
   function selectFile(file) {
     if (dirty) {
@@ -648,9 +679,10 @@ export default function Editor() {
 
   function closeTab(file, e) {
     if (e) e.stopPropagation();
-    const i = openFiles.findIndex((o) => o._id === file._id);
+    const fileKey = getFileKey(file);
+    const i = openFiles.findIndex((o) => getFileKey(o) === fileKey);
     if (i === -1) return;
-    if (selectedFile?._id === file._id && (dirty || openDirtyRef.current[file._id])) {
+    if (getFileKey(selectedFile) === fileKey && (dirty || openDirtyRef.current[fileKey])) {
       setConfirmClose(file);
       return;
     }
@@ -659,20 +691,22 @@ export default function Editor() {
 
   function doRemoveTab(i) {
     const file = openFiles[i];
+    const fileKey = getFileKey(file);
     const next = [...openFiles];
     next.splice(i, 1);
     setOpenFiles(next);
-    delete openContentsRef.current[file._id];
-    delete openDirtyRef.current[file._id];
-    if (selectedFile?._id === file._id) {
+    delete openContentsRef.current[fileKey];
+    delete openDirtyRef.current[fileKey];
+    if (getFileKey(selectedFile) === fileKey) {
       const neighbour = next[i] || next[i - 1];
       if (neighbour) {
-        const saved = openContentsRef.current[neighbour._id];
+        const neighbourKey = getFileKey(neighbour);
+        const saved = openContentsRef.current[neighbourKey];
         const val = saved !== undefined ? saved : neighbour.content || '';
         setSelectedFile(neighbour);
         setContent(val);
         originalContentRef.current = val;
-        setDirty(!!openDirtyRef.current[neighbour._id]);
+        setDirty(!!openDirtyRef.current[neighbourKey]);
       } else {
         setSelectedFile(null);
         setContent('');
@@ -686,7 +720,8 @@ export default function Editor() {
     const file = confirmClose;
     setConfirmClose(null);
     if (!file) return;
-    const i = openFiles.findIndex((o) => o._id === file._id);
+    const fileKey = getFileKey(file);
+    const i = openFiles.findIndex((o) => getFileKey(o) === fileKey);
     if (i !== -1) doRemoveTab(i);
   };
 
@@ -695,27 +730,54 @@ export default function Editor() {
   const handleEditorChange = useCallback((value) => {
     const val = value ?? '';
     setContent(val);
-    if (selectedFile?._id) {
-      openContentsRef.current[selectedFile._id] = val;
-      openDirtyRef.current[selectedFile._id] = val !== originalContentRef.current;
+    const fileKey = getFileKey(selectedFile);
+    if (fileKey) {
+      openContentsRef.current[fileKey] = val;
+      openDirtyRef.current[fileKey] = val !== originalContentRef.current;
     }
     setDirty(val !== originalContentRef.current);
-  }, [selectedFile?._id]);
+  }, [getFileKey, selectedFile]);
 
   async function handleSave() {
     const file = selectedFile;
     if (!file) return;
     try {
       setSaving(true);
+      const fileKey = getFileKey(file);
+      if (file.source === 'github' && selectedRepo) {
+        const owner = selectedRepo.owner?.login || selectedRepo.owner || selectedRepo.ownerName;
+        const repo = selectedRepo.name;
+        const path = String(file.path || file.name).replace(/^\/+/, '');
+        const data = await apiFetch(`/api/github/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            content,
+            message: `Update ${file.name} from Buildrs HQ editor`,
+            sha: file.sha,
+            branch: selectedRepo.default_branch || 'main',
+          }),
+        });
+        if (data?.success) {
+          if (file.sha !== data?.commit?.sha) file.sha = data?.commit?.sha;
+          originalContentRef.current = content;
+          openContentsRef.current[fileKey] = content;
+          openDirtyRef.current[fileKey] = false;
+          setDirty(false);
+          setStatus({ type: 'success', msg: 'GitHub file saved' });
+          setTimeout(() => setStatus(null), 2000);
+          return;
+        }
+        throw new Error(data?.message || 'GitHub save failed');
+      }
       const data = await apiFetch(`/api/code-editor/files/${file._id}`, {
         method: 'PUT',
         body: JSON.stringify({ content, name: file.name }),
       });
       originalContentRef.current = content;
-      openContentsRef.current[file._id] = content;
-      openDirtyRef.current[file._id] = false;
+      openContentsRef.current[fileKey] = content;
+      openDirtyRef.current[fileKey] = false;
       setDirty(false);
-      setFiles((prev) => prev.map((f) => (f._id === file._id ? { ...f, ...data.file } : f)));
+      setFiles((prev) => prev.map((f) => (getFileKey(f) === fileKey ? { ...f, ...data.file } : f)));
       setStatus({ type: 'success', msg: 'File saved' });
       setTimeout(() => setStatus(null), 2000);
     } catch (err) {
@@ -1613,10 +1675,11 @@ export default function Editor() {
           <div className="ed-main">
             <div className="ed-tabsbar">
               {openFiles.map((f) => {
-                const isActive = selectedFile?._id === f._id;
-                const fDirty = openDirtyRef.current[f._id] || (isActive && dirty);
+                const fileKey = getFileKey(f);
+                const isActive = getFileKey(selectedFile) === fileKey;
+                const fDirty = openDirtyRef.current[fileKey] || (isActive && dirty);
                 return (
-                  <div key={f._id} className={`ed-tabhead ${isActive ? 'is-active' : ''}`} onClick={() => selectFile(f)} role="button">
+                  <div key={fileKey} className={`ed-tabhead ${isActive ? 'is-active' : ''}`} onClick={() => selectFile(f)} role="button">
                     <span className="ed-file-dot" style={{ background: getFileIcon(f.name) }} />
                     <span className="ed-tabname">{f.name}</span>
                     {fDirty ? <span className="ed-tabdirty" /> : null}
@@ -1935,8 +1998,8 @@ export default function Editor() {
         </div>
 
       {showNewModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="ws-modal w-full max-w-lg">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" style={{ zIndex: 9999 }}>
+          <div className="ws-modal w-full max-w-lg" style={{ position: 'relative', zIndex: 1 }}>
             <div className="flex items-center justify-between p-5 border-b border-[rgba(255,255,255,0.09)]">
               <div className="flex items-center gap-2.5">
                 <span className="card-ico">
@@ -1980,8 +2043,8 @@ export default function Editor() {
       )}
 
       {showNewFolderModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="ws-modal w-full max-w-lg">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" style={{ zIndex: 9999 }}>
+          <div className="ws-modal w-full max-w-lg" style={{ position: 'relative', zIndex: 1 }}>
             <div className="flex items-center justify-between p-5 border-b border-[rgba(255,255,255,0.09)]">
               <div className="flex items-center gap-2.5">
                 <span className="card-ico">
