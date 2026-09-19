@@ -388,7 +388,37 @@ export default function Editor() {
   useEffect(() => {
     if (panel !== 'terminal' || !terminalRef.current || terminalRef.current.hasChildNodes()) return;
     import('xterm').then(({ Terminal: XTerm }) => {
-      const term = new XTerm({ theme: { background: '#1e1e1e', foreground: '#d4d4d4' }, fontSize: 13, cursorBlink: true });
+      const term = new XTerm({
+        theme: {
+          background: '#091118',
+          foreground: '#e6f1ff',
+          cursor: '#67e8f9',
+          cursorAccent: '#091118',
+          black: '#0b1017',
+          red: '#f87171',
+          green: '#34d399',
+          yellow: '#fbbf24',
+          blue: '#60a5fa',
+          magenta: '#c084fc',
+          cyan: '#67e8f9',
+          white: '#e2e8f0',
+          brightBlack: '#475569',
+          brightRed: '#fca5a5',
+          brightGreen: '#6ee7b7',
+          brightYellow: '#fcd34d',
+          brightBlue: '#93c5fd',
+          brightMagenta: '#d8b4fe',
+          brightCyan: '#a5f3fc',
+          brightWhite: '#f8fafc',
+        },
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+        fontSize: 12,
+        lineHeight: 1.45,
+        letterSpacing: 0.12,
+        cursorBlink: true,
+        scrollback: 4000,
+        allowTransparency: false,
+      });
       term.open(terminalRef.current);
       term.writeln('\x1b[36mBuildrsHQ Terminal\x1b[0m — type `help` for commands');
       let line = '';
@@ -1770,7 +1800,21 @@ export default function Editor() {
                 </div>
 
                 <div className="ed-panel-body">
-                  {panel === 'terminal' && <div ref={terminalRef} className="ed-term-root" />}
+                  {panel === 'terminal' && (
+                    <div className="ed-term-shell">
+                      <div className="ed-term-toolbar">
+                        <div className="ed-term-meta">
+                          <span className="ed-term-capsule is-live">LIVE</span>
+                          <span className="ed-term-label">Workspace Shell</span>
+                        </div>
+                        <div className="ed-term-actions">
+                          <span className="ed-term-pill">Bash</span>
+                          <span className="ed-term-pill">BuildrsHQ</span>
+                        </div>
+                      </div>
+                      <div ref={terminalRef} className="ed-term-root" />
+                    </div>
+                  )}
 
                   {panel === 'problems' && (
                     <>
