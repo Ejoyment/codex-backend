@@ -45,6 +45,7 @@ export default function CiCd() {
   const [runs, setRuns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [clock, setClock] = useState('');
 
   const [modalOpen, setModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -79,6 +80,15 @@ export default function CiCd() {
       setLoading(false);
     }
   }, [selectedCompany]);
+
+  useEffect(() => {
+    const tick = () => {
+      setClock(new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }));
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -214,6 +224,13 @@ export default function CiCd() {
     return lines.join('\n');
   }
 
+  const kpis = [
+    { key: 'pipelines', label: 'Pipelines', value: pipelines.length, sub: 'configured', color: 'blue', Icon: Rocket },
+    { key: 'runs', label: 'Runs', value: runs.length, sub: 'recent history', color: 'green', Icon: Play },
+    { key: 'success', label: 'Succeeded', value: runs.filter((run) => run.status === 'success').length, sub: 'healthy runs', color: 'purple', Icon: CheckCircle2 },
+    { key: 'stages', label: 'Stages', value: pipelines.reduce((sum, pipeline) => sum + (pipeline.stages?.length || 0), 0), sub: 'across all workflows', color: 'orange', Icon: FileCode2 },
+  ];
+
   return (
     <AuthGuard>
       <Head>
@@ -226,19 +243,23 @@ export default function CiCd() {
 
         <main className="workspace-main">
           <header className="workspace-header dash-header">
-            <div className="flex items-center gap-3">
-              <span className="hb-icon">
-                <Rocket className="w-5 h-5" />
-              </span>
-              <div>
-                <h1 className="workspace-title">CI/CD Pipelines</h1>
-                <p className="text-xs text-muted">
-                  Build, test and deploy your projects with repeatable pipelines
-                </p>
+            <div>
+              <p className="dash-crumb">
+                BuildrsHQ <span className="sep">/</span> Delivery
+              </p>
+              <h1 className="dash-title">CI/CD Pipelines</h1>
+              <div className="dash-statusline">
+                <span className="status-indicator status-online" />
+                <span>{pipelines.length} pipeline{pipelines.length === 1 ? '' : 's'} configured</span>
+                <span className="dash-clock">· {clock || '—:——:——'}</span>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <select className="ws-select" style={{ width: 'auto' }} value={selectedCompany} onChange={(e) => setSelectedCompany(e.target.value)}>
+            <div className="flex items-center gap-3">
+              <span className="dash-pill hidden md:inline-flex">
+                <span className="dot" />
+                {companies.find((c) => c._id === selectedCompany)?.name || 'Select workspace'}
+              </span>
+              <select className="ws-select" style={{ width: 'auto', minWidth: 170 }} value={selectedCompany} onChange={(e) => setSelectedCompany(e.target.value)}>
                 <option value="">Select workspace</option>
                 {companies.map((c) => (
                   <option key={c._id} value={c._id}>{c.name}</option>
@@ -250,109 +271,148 @@ export default function CiCd() {
             </div>
           </header>
 
-          <div className="workspace-body space-y-5">
-            {error && <p className="text-sm text-[#f87171]">{error}</p>}
-            {loading ? (
-              <p className="text-sm text-muted">Loading pipelines...</p>
-            ) : (
-              <>
-                <div>
-                  <h2 className="workspace-card-title mb-2" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span className="card-ico"><Rocket className="w-4 h-4" /></span> Pipelines
-                  </h2>
-                  {pipelines.length === 0 ? (
-                    <div className="workspace-card">
-                      <div className="workspace-card-body text-center py-10">
-                        <Rocket className="w-8 h-8 mx-auto mb-2" style={{ color: '#3c3c3c' }} />
-                        <p className="text-sm text-muted">
-                          No pipelines yet. Create one to define your Continuous Integration workflow.
-                        </p>
-                        {!selectedCompany && <p className="text-xs text-muted mt-1">Select a workspace first.</p>}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="pipeline-grid">
-                      {pipelines.map((p) => (
-                        <div key={p._id} className="workspace-card pipeline-card">
-                          <div className="workspace-card-header">
-                            <div className="flex items-center gap-2.5">
-                              <span className="card-ico"><FileCode2 className="w-4 h-4" /></span>
-                              <div>
-                                <h3 className="text-sm font-semibold text-white">{p.name}</h3>
-                                <p className="text-xs text-muted">{p.stages.length} stages</p>
-                              </div>
-                            </div>
-                            {(p.repo?.owner && p.repo?.repo) && (
-                              <div className="text-xs text-muted flex items-center gap-1">
-                                <Github className="w-3 h-3" />
-                                {p.repo.owner}/{p.repo.repo} · {p.repo.branch || 'main'}
-                              </div>
-                            )}
-                          </div>
-                          <div className="workspace-card-body">
-                            <div className="pipeline-stages">
-                              {p.stages.map((s, i) => (
-                                <div key={i} className="pipeline-stage">
-                                  {s.icon && <span>{s.icon}</span>}
-                                  <span className="pipeline-stage-name">{s.name}</span>
-                                </div>
-                              ))}
-                            </div>
-                            <div className="pipeline-actions">
-                              {p.lastStatus && (
-                                <span className={`status-chip ${statusChip(p.lastStatus).cls} inline-flex items-center gap-1`}>
-                                  {(() => { const C = statusChip(p.lastStatus).icon; return <C className="w-3 h-3" />; })()}
-                                  {statusChip(p.lastStatus).label}
-                                </span>
-                              )}
-                              <button type="button" className="btn-workspace btn-primary" style={{ fontSize: '0.72rem', padding: '0.3rem 0.6rem' }} onClick={() => runPipeline(p)} disabled={runningId === p._id || !p.enabled}>
-                                {runningId === p._id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
-                                Run
-                              </button>
-                              <button type="button" className="btn-workspace btn-secondary" style={{ fontSize: '0.72rem', padding: '0.3rem 0.6rem' }} onClick={() => openEdit(p)}>Edit</button>
-                              <button type="button" className="btn-workspace btn-secondary" style={{ fontSize: '0.72rem', padding: '0.3rem 0.6rem', color: '#f87171' }} onClick={() => deletePipeline(p)}><Trash2 className="w-3.5 h-3.5" /></button>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+          <div className="workspace-content">
+            <div className="dash-content">
+              {error && <p className="text-sm text-[#f87171] mb-4">{error}</p>}
 
-                <div>
-                  <h2 className="workspace-card-title mb-2" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span className="card-ico"><Clock className="w-4 h-4" /></span> Recent Runs
-                  </h2>
-                  <div className="workspace-card">
-                    <div className="workspace-card-body">
-                      {runs.length === 0 ? (
-                        <p className="text-sm text-muted">No runs yet. Trigger a pipeline to see run history here.</p>
-                      ) : (
-                        <div className="space-y-2">
-                          {runs.map((r) => (
-                            <div key={r._id} className="pipeline-run-row">
-                              <div className={`status-chip ${statusChip(r.status).cls}`}>
-                                {statusChip(r.status).label}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-xs text-white font-medium truncate">{r.pipeline?.name || 'Pipeline'}</p>
-                                <p className="text-xs text-muted">
-                                  {r.triggeredBy?.fullName || 'Unknown'} · {r.stageResults?.length || 0} stage(s)
-                                  {r.durationMs ? ` · ${(r.durationMs / 1000).toFixed(1)}s` : ''}
-                                </p>
-                              </div>
-                              <p className="text-xs text-muted">
-                                {r.createdAt ? new Date(r.createdAt).toLocaleString() : ''}
-                              </p>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+              <section className="dash-section">
+                <div className="dash-section-head">
+                  <div className="dash-eyebrow">
+                    <span className="dot" />
+                    <b>Overview</b> · delivery health
                   </div>
                 </div>
-              </>
-            )}
+                <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+                  {kpis.map((kpi) => {
+                    const Icon = kpi.Icon;
+                    return (
+                      <div key={kpi.key} className={`dash-kpi dash-kpi-${kpi.color}`}>
+                        <div className="dash-kpi-head">
+                          <span className="dash-kpi-eyebrow">{kpi.label}</span>
+                          <span className="dash-kpi-ico"><Icon className="w-4 h-4" /></span>
+                        </div>
+                        <div className="dash-kpi-value">{kpi.value}</div>
+                        <div className="dash-kpi-meta-row">
+                          <span className="dash-kpi-meta">{kpi.sub}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+
+              {loading ? (
+                <div className="workspace-card">
+                  <div className="workspace-card-body">
+                    <p className="text-sm text-muted">Loading pipelines...</p>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <section className="dash-section">
+                    <div className="dash-section-head">
+                      <div className="dash-eyebrow">
+                        <span className="dot" />
+                        <b>Pipelines</b> · stage map
+                      </div>
+                    </div>
+                    {pipelines.length === 0 ? (
+                      <div className="workspace-card">
+                        <div className="workspace-card-body text-center py-10">
+                          <Rocket className="w-8 h-8 mx-auto mb-2" style={{ color: '#3c3c3c' }} />
+                          <p className="text-sm text-muted">
+                            No pipelines yet. Create one to define your Continuous Integration workflow.
+                          </p>
+                          {!selectedCompany && <p className="text-xs text-muted mt-1">Select a workspace first.</p>}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="pipeline-grid">
+                        {pipelines.map((p) => (
+                          <div key={p._id} className="workspace-card pipeline-card">
+                            <div className="workspace-card-header">
+                              <div className="flex items-center gap-2.5">
+                                <span className="card-ico"><FileCode2 className="w-4 h-4" /></span>
+                                <div>
+                                  <h3 className="text-sm font-semibold text-white">{p.name}</h3>
+                                  <p className="text-xs text-muted">{p.stages.length} stages</p>
+                                </div>
+                              </div>
+                              {(p.repo?.owner && p.repo?.repo) && (
+                                <div className="text-xs text-muted flex items-center gap-1">
+                                  <Github className="w-3 h-3" />
+                                  {p.repo.owner}/{p.repo.repo} · {p.repo.branch || 'main'}
+                                </div>
+                              )}
+                            </div>
+                            <div className="workspace-card-body">
+                              <div className="pipeline-stages">
+                                {p.stages.map((s, i) => (
+                                  <div key={i} className="pipeline-stage">
+                                    {s.icon && <span>{s.icon}</span>}
+                                    <span className="pipeline-stage-name">{s.name}</span>
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="pipeline-actions">
+                                {p.lastStatus && (
+                                  <span className={`status-chip ${statusChip(p.lastStatus).cls} inline-flex items-center gap-1`}>
+                                    {(() => { const C = statusChip(p.lastStatus).icon; return <C className="w-3 h-3" />; })()}
+                                    {statusChip(p.lastStatus).label}
+                                  </span>
+                                )}
+                                <button type="button" className="btn-workspace btn-primary" style={{ fontSize: '0.72rem', padding: '0.3rem 0.6rem' }} onClick={() => runPipeline(p)} disabled={runningId === p._id || !p.enabled}>
+                                  {runningId === p._id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+                                  Run
+                                </button>
+                                <button type="button" className="btn-workspace btn-secondary" style={{ fontSize: '0.72rem', padding: '0.3rem 0.6rem' }} onClick={() => openEdit(p)}>Edit</button>
+                                <button type="button" className="btn-workspace btn-secondary" style={{ fontSize: '0.72rem', padding: '0.3rem 0.6rem', color: '#f87171' }} onClick={() => deletePipeline(p)}><Trash2 className="w-3.5 h-3.5" /></button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </section>
+
+                  <section className="dash-section">
+                    <div className="dash-section-head">
+                      <div className="dash-eyebrow">
+                        <span className="dot" />
+                        <b>Recent Runs</b> · latest activity
+                      </div>
+                    </div>
+                    <div className="workspace-card">
+                      <div className="workspace-card-body">
+                        {runs.length === 0 ? (
+                          <p className="text-sm text-muted">No runs yet. Trigger a pipeline to see run history here.</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {runs.map((r) => (
+                              <div key={r._id} className="pipeline-run-row">
+                                <div className={`status-chip ${statusChip(r.status).cls}`}>
+                                  {statusChip(r.status).label}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs text-white font-medium truncate">{r.pipeline?.name || 'Pipeline'}</p>
+                                  <p className="text-xs text-muted">
+                                    {r.triggeredBy?.fullName || 'Unknown'} · {r.stageResults?.length || 0} stage(s)
+                                    {r.durationMs ? ` · ${(r.durationMs / 1000).toFixed(1)}s` : ''}
+                                  </p>
+                                </div>
+                                <p className="text-xs text-muted">
+                                  {r.createdAt ? new Date(r.createdAt).toLocaleString() : ''}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </section>
+                </>
+              )}
+            </div>
           </div>
         </main>
       </div>

@@ -72,6 +72,34 @@
   flex: 1;
 }
 
+.workspace-body {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 1.5rem 0 0;
+}
+
+.workspace-title {
+  font-size: 1.375rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ws-text);
+  line-height: 1.15;
+}
+
+.hb-icon,
+.card-ico {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(47, 214, 230, 0.09);
+  border: 1px solid rgba(47, 214, 230, 0.22);
+  color: #2fd6e6;
+  flex-shrink: 0;
+}
+
 /* ---- Sidebar -------------------------------------------------------------*/
 
 .sidebar-logo {
