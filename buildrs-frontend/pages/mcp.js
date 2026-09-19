@@ -28,6 +28,7 @@ export default function McpPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [probingId, setProbingId] = useState(null);
+  const [clock, setClock] = useState('');
 
   const [modalOpen, setModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -57,6 +58,15 @@ export default function McpPage() {
       setLoading(false);
     }
   }, [selectedCompany]);
+
+  useEffect(() => {
+    const tick = () => {
+      setClock(new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }));
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -180,6 +190,13 @@ export default function McpPage() {
     return { label: 'Not probed', cls: 'status-chip-pend', icon: Server };
   }
 
+  const kpis = [
+    { key: 'servers', label: 'Servers', value: servers.length, sub: 'configured', color: 'blue', Icon: Server },
+    { key: 'connected', label: 'Connected', value: servers.filter((server) => server.lastStatus === 'connected').length, sub: 'healthy links', color: 'green', Icon: CheckCircle2 },
+    { key: 'tools', label: 'Tools', value: servers.reduce((sum, server) => sum + (server.tools?.length || 0), 0), sub: 'available tools', color: 'purple', Icon: PlugZap },
+    { key: 'enabled', label: 'Enabled', value: servers.filter((server) => server.enabled !== false).length, sub: 'active integrations', color: 'orange', Icon: Server },
+  ];
+
   return (
     <AuthGuard>
       <Head>
@@ -192,19 +209,23 @@ export default function McpPage() {
 
         <main className="workspace-main">
           <header className="workspace-header dash-header">
-            <div className="flex items-center gap-3">
-              <span className="hb-icon">
-                <Server className="w-5 h-5" />
-              </span>
-              <div>
-                <h1 className="workspace-title">MCP Servers</h1>
-                <p className="text-xs text-muted">
-                  Connect Model Context Protocol servers so the AI agent can use their tools
-                </p>
+            <div>
+              <p className="dash-crumb">
+                BuildrsHQ <span className="sep">/</span> Integrations
+              </p>
+              <h1 className="dash-title">MCP Servers</h1>
+              <div className="dash-statusline">
+                <span className="status-indicator status-online" />
+                <span>{servers.length} server{servers.length === 1 ? '' : 's'} connected</span>
+                <span className="dash-clock">· {clock || '—:——:——'}</span>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <select className="ws-select" style={{ width: 'auto' }} value={selectedCompany} onChange={(e) => setSelectedCompany(e.target.value)}>
+            <div className="flex items-center gap-3">
+              <span className="dash-pill hidden md:inline-flex">
+                <span className="dot" />
+                {companies.find((c) => c._id === selectedCompany)?.name || 'Select workspace'}
+              </span>
+              <select className="ws-select" style={{ width: 'auto', minWidth: 170 }} value={selectedCompany} onChange={(e) => setSelectedCompany(e.target.value)}>
                 <option value="">Select workspace</option>
                 {companies.map((c) => (
                   <option key={c._id} value={c._id}>{c.name}</option>
@@ -216,66 +237,107 @@ export default function McpPage() {
             </div>
           </header>
 
-          <div className="workspace-body space-y-5">
-            {error && <p className="text-sm text-[#f87171]">{error}</p>}
-            {loading ? (
-              <p className="text-sm text-muted">Loading MCP servers...</p>
-            ) : servers.length === 0 ? (
-              <div className="workspace-card">
-                <div className="workspace-card-body text-center py-10">
-                  <Server className="w-8 h-8 mx-auto mb-2" style={{ color: '#3c3c3c' }} />
-                  <p className="text-sm text-muted">
-                    No MCP servers configured. Add one to export its tools to the AI coding agent.
-                  </p>
-                  {!selectedCompany && <p className="text-xs text-muted mt-1">Select a workspace first.</p>}
+          <div className="workspace-content">
+            <div className="dash-content">
+              {error && <p className="text-sm text-[#f87171] mb-4">{error}</p>}
+
+              <section className="dash-section">
+                <div className="dash-section-head">
+                  <div className="dash-eyebrow">
+                    <span className="dot" />
+                    <b>Overview</b> · integration health
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <div className="pipeline-grid">
-                {servers.map((s) => {
-                  const meta = statusMeta(s);
-                  const Icon = meta.icon;
-                  return (
-                    <div key={s._id} className="workspace-card">
-                      <div className="workspace-card-header">
-                        <div className="flex items-center gap-2.5">
-                          <span className="card-ico"><Server className="w-4 h-4" /></span>
-                          <div>
-                            <h3 className="text-sm font-semibold text-white">{s.name}</h3>
-                            <p className="text-xs text-muted">{s.transport}{s.serverUrl ? ' · ' + s.serverUrl : ''}</p>
+                <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+                  {kpis.map((kpi) => {
+                    const Icon = kpi.Icon;
+                    return (
+                      <div key={kpi.key} className={`dash-kpi dash-kpi-${kpi.color}`}>
+                        <div className="dash-kpi-head">
+                          <span className="dash-kpi-eyebrow">{kpi.label}</span>
+                          <span className="dash-kpi-ico"><Icon className="w-4 h-4" /></span>
+                        </div>
+                        <div className="dash-kpi-value">{kpi.value}</div>
+                        <div className="dash-kpi-meta-row">
+                          <span className="dash-kpi-meta">{kpi.sub}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+
+              {loading ? (
+                <div className="workspace-card">
+                  <div className="workspace-card-body">
+                    <p className="text-sm text-muted">Loading MCP servers...</p>
+                  </div>
+                </div>
+              ) : servers.length === 0 ? (
+                <div className="workspace-card">
+                  <div className="workspace-card-body text-center py-10">
+                    <Server className="w-8 h-8 mx-auto mb-2" style={{ color: '#3c3c3c' }} />
+                    <p className="text-sm text-muted">
+                      No MCP servers configured. Add one to export its tools to the AI coding agent.
+                    </p>
+                    {!selectedCompany && <p className="text-xs text-muted mt-1">Select a workspace first.</p>}
+                  </div>
+                </div>
+              ) : (
+                <section className="dash-section">
+                  <div className="dash-section-head">
+                    <div className="dash-eyebrow">
+                      <span className="dot" />
+                      <b>Servers</b> · connected tools
+                    </div>
+                  </div>
+                  <div className="pipeline-grid">
+                    {servers.map((s) => {
+                      const meta = statusMeta(s);
+                      const Icon = meta.icon;
+                      return (
+                        <div key={s._id} className="workspace-card">
+                          <div className="workspace-card-header">
+                            <div className="flex items-center gap-2.5">
+                              <span className="card-ico"><Server className="w-4 h-4" /></span>
+                              <div>
+                                <h3 className="text-sm font-semibold text-white">{s.name}</h3>
+                                <p className="text-xs text-muted">{s.transport}{s.serverUrl ? ' · ' + s.serverUrl : ''}</p>
+                              </div>
+                            </div>
+                            <span className={`status-chip ${meta.cls} inline-flex items-center gap-1`}>
+                              <Icon className="w-3 h-3" /> {meta.label}
+                            </span>
+                          </div>
+                          <div className="workspace-card-body">
+                            <p className="text-xs text-muted mb-1">
+                              {s.tools?.length ? `${s.tools.length} tool(s) discovered` : 'No tools discovered yet'}
+                            </p>
+                            <div className="pipeline-stages">
+                              {(s.tools || []).slice(0, 6).map((t, i) => (
+                                <span key={i} className="pipeline-stage"><PlugZap className="w-3 h-3" /> {t.name}</span>
+                              ))}
+                              {(s.tools || []).length > 6 && (
+                                <span className="pipeline-stage">+{(s.tools || []).length - 6} more</span>
+                              )}
+                            </div>
+                            {s.lastError && <p className="text-xs text-[#f87171] mt-1">{s.lastError}</p>}
+                            <div className="pipeline-actions">
+                              <button type="button" className="btn-workspace btn-primary" style={{ fontSize: '0.72rem', padding: '0.3rem 0.6rem' }} onClick={() => probe(s)} disabled={probingId === s._id}>
+                                {probingId === s._id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PlugZap className="w-3.5 h-3.5" />}
+                                Probe
+                              </button>
+                              <button type="button" className="btn-workspace btn-secondary" style={{ fontSize: '0.72rem', padding: '0.3rem 0.6rem' }} onClick={() => openEdit(s)}><Pencil className="w-3.5 h-3.5" /> Edit</button>
+                              <button type="button" className="btn-workspace btn-secondary" style={{ fontSize: '0.72rem', padding: '0.3rem 0.6rem', color: '#f87171' }} onClick={() => remove(s)}><Trash2 className="w-3.5 h-3.5" /></button>
+                            </div>
                           </div>
                         </div>
-                        <span className={`status-chip ${meta.cls} inline-flex items-center gap-1`}>
-                          <Icon className="w-3 h-3" /> {meta.label}
-                        </span>
-                      </div>
-                      <div className="workspace-card-body">
-                        <p className="text-xs text-muted mb-1">
-                          {s.tools?.length ? `${s.tools.length} tool(s) discovered` : 'No tools discovered yet'}
-                        </p>
-                        <div className="pipeline-stages">
-                          {(s.tools || []).slice(0, 6).map((t, i) => (
-                            <span key={i} className="pipeline-stage"><PlugZap className="w-3 h-3" /> {t.name}</span>
-                          ))}
-                          {(s.tools || []).length > 6 && (
-                            <span className="pipeline-stage">+{(s.tools || []).length - 6} more</span>
-                          )}
-                        </div>
-                        {s.lastError && <p className="text-xs text-[#f87171] mt-1">{s.lastError}</p>}
-                        <div className="pipeline-actions">
-                          <button type="button" className="btn-workspace btn-primary" style={{ fontSize: '0.72rem', padding: '0.3rem 0.6rem' }} onClick={() => probe(s)} disabled={probingId === s._id}>
-                            {probingId === s._id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PlugZap className="w-3.5 h-3.5" />}
-                            Probe
-                          </button>
-                          <button type="button" className="btn-workspace btn-secondary" style={{ fontSize: '0.72rem', padding: '0.3rem 0.6rem' }} onClick={() => openEdit(s)}><Pencil className="w-3.5 h-3.5" /> Edit</button>
-                          <button type="button" className="btn-workspace btn-secondary" style={{ fontSize: '0.72rem', padding: '0.3rem 0.6rem', color: '#f87171' }} onClick={() => remove(s)}><Trash2 className="w-3.5 h-3.5" /></button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
+            </div>
           </div>
         </main>
       </div>
