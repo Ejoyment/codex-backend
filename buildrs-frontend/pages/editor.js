@@ -136,6 +136,13 @@ const FEATURE_MODULES = [
   { id: 'collab', name: 'Live Share', sub: 'Real-time cursors & presence', icon: Users },
 ];
 
+const SMART_PROMPTS = [
+  { label: 'Explain this file', hint: 'Summarize logic and risk areas', icon: FileCode },
+  { label: 'Refactor safely', hint: 'Improve maintainability without breaking behavior', icon: Layers },
+  { label: 'Ship this build', hint: 'Review deployment readiness and potential issues', icon: Rocket },
+  { label: 'Fix the bug', hint: 'Diagnose and patch the current issue', icon: Bot },
+];
+
 export default function Editor() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
@@ -1118,6 +1125,12 @@ export default function Editor() {
   const modifiedCount = gitStatus?.modified?.length || 0;
   const blockCount = languages.filter((l) => l.allowed === false).length;
   const filePathSegs = selectedFile ? String(selectedFile.path || selectedFile.name || '').split('/').filter(Boolean) : [];
+  const commandStats = [
+    { label: 'Files', value: files.length, tone: 'cyan', icon: FileCode },
+    { label: 'Deploys', value: deployments.length, tone: 'green', icon: Rocket },
+    { label: 'Collaborators', value: collaborators.length, tone: 'purple', icon: Users },
+    { label: 'Git Changes', value: modifiedCount, tone: 'amber', icon: GitBranch },
+  ];
 
   return (
     <AuthGuard>
@@ -1127,6 +1140,39 @@ export default function Editor() {
       </Head>
 
       <div className="ed-page">
+        <div className="ed-product-shell">
+          <div className="ed-command-header">
+            <div className="ed-command-copy">
+              <div className="ed-command-kicker">Buildrs HQ Workspace</div>
+              <h1>{selectedProject ? selectedProject.name : selectedRepo ? (selectedRepo.fullName || selectedRepo.name) : (workspaceId ? 'Workspace Console' : 'No workspace')}</h1>
+              <p>Product engineering operations, live collaboration, AI assistance, and deployment workflows in one command center.</p>
+            </div>
+            <div className="ed-command-actions">
+              <div className="ed-product-pills">
+                <span>AI</span>
+                <span>Git</span>
+                <span>Deploy</span>
+                <span>Live</span>
+              </div>
+              <button type="button" className="btn-workspace btn-primary" onClick={() => setShowNewModal(true)}>
+                <FilePlus className="w-4 h-4" /> New File
+              </button>
+            </div>
+          </div>
+
+          <div className="ed-command-stats">
+            {commandStats.map(({ label, value, tone, icon: Icon }) => (
+              <div key={label} className={`ed-stat-card is-${tone}`}>
+                <div className="ed-stat-icon"><Icon className="w-4 h-4" /></div>
+                <div>
+                  <div className="ed-stat-label">{label}</div>
+                  <div className="ed-stat-value">{value}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
         {/* ---- Menu bar ---- */}
         <div className="ed-menubar">
           <div className="ed-window-dots">
@@ -1477,6 +1523,25 @@ export default function Editor() {
                     <div className="ed-sidebar-actions"></div>
                   </div>
                   <div className="ed-sidebar-body is-ai">
+                    {aiMessages.length === 0 && (
+                      <div className="ed-ai-intel">
+                        <div className="ed-ai-intel-header">
+                          <Bot className="w-4 h-4" />
+                          <span>Product intelligence</span>
+                        </div>
+                        <div className="ed-ai-suggestions">
+                          {SMART_PROMPTS.map(({ label, hint, icon: Icon }) => (
+                            <button key={label} type="button" className="ed-ai-prompt" onClick={() => setAiInput(`${label} ${selectedFile ? `for ${selectedFile.name}` : ''}`)}>
+                              <Icon className="w-3.5 h-3.5" />
+                              <div>
+                                <strong>{label}</strong>
+                                <small>{hint}</small>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     <div className="ed-chat">
                       {aiMessages.length === 0 ? (
                         <div className="ed-empty">
@@ -1669,68 +1734,104 @@ export default function Editor() {
                   )}
 
                   {panel === 'preview' && (
-                    sandboxUrl ? (
-                      <iframe src={sandboxUrl} className="w-full flex-1" style={{ background: '#ffffff', border: 'none', borderRadius: '6px', minHeight: 0 }} title="Live preview" />
-                    ) : (
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', minHeight: 0, flex: 1 }}>
-                        <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                          <span className="ed-sidebar-title">Figma Design</span>
-                          {!selectedFigmaFile ? (
-                            figmaFiles.length === 0 ? (
-                              <div className="ed-stat" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.6rem' }}>
-                                <Layers className="w-6 h-6" style={{ color: '#6e6e6e' }} />
-                                <span>No Figma files connected</span>
-                                <a href="/integrations" className="btn-workspace btn-secondary">Connect Figma</a>
-                              </div>
-                            ) : (
-                              <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                                {figmaFiles.map((f) => (
-                                  <button key={f.key || f.id} type="button" className="ed-drop-item" onClick={() => setSelectedFigmaFile(f)}>
-                                    <Layers className="w-3.5 h-3.5" />
-                                    <span style={{ minWidth: 0 }}>
-                                      <span className="block truncate text-xs">{f.name || f.key}</span>
-                                      <span className="block text-xs" style={{ color: '#6e6e6e' }}>{f.last_modified ? new Date(f.last_modified).toLocaleDateString() : ''}</span>
-                                    </span>
-                                  </button>
-                                ))}
-                              </div>
-                            )
-                          ) : (
-                            <div className="ed-design-pane" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                              <div className="ed-stat" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.4rem' }}>
-                                <button type="button" onClick={() => setSelectedFigmaFile(null)} style={{ color: '#2fd6e6', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.66rem' }}>← All files</button>
-                                <span className="truncate" style={{ color: '#bbbbbb' }}>{selectedFigmaFile.name || selectedFigmaFile.key}</span>
-                              </div>
-                              <div style={{ flex: 1, minHeight: 0, overflow: 'auto', background: '#1e1e1e', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                {selectedFigmaFile.thumbnail_url ? (
-                                  <img src={selectedFigmaFile.thumbnail_url} alt={selectedFigmaFile.name || 'design'} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
-                                ) : (
-                                  <Layers className="w-8 h-8" style={{ color: '#3c3c3c' }} />
-                                )}
-                              </div>
-                              <button type="button" className="btn-workspace btn-primary" onClick={generateFromDesign}>
-                                <Bot className="w-3.5 h-3.5" /> Generate React code
-                              </button>
-                            </div>
-                          )}
+                    <>
+                      <div className="ed-intel-grid">
+                        <div className="ed-intel-card">
+                          <span className="ed-intel-label">Preview</span>
+                          <strong>{sandboxUrl ? 'Live' : 'Idle'}</strong>
+                          <small>{sandboxUrl ? 'Sandbox is running' : 'No sandbox started yet'}</small>
                         </div>
-                        <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                          <span className="ed-sidebar-title">Code</span>
-                          <div className="ed-code-wrap">
-                            {selectedFile ? (
-                              <MonacoEditor height="100%" language={monacoLanguage} value={content} onChange={handleEditorChange} theme="vs-dark"
-                                options={monacoPreviewOptions} />
-                            ) : (
-                              <div className="ed-ide-empty">Select a file to preview</div>
-                            )}
-                          </div>
+                        <div className="ed-intel-card">
+                          <span className="ed-intel-label">Design</span>
+                          <strong>{selectedFigmaFile ? 'Connected' : 'Not linked'}</strong>
+                          <small>{selectedFigmaFile ? selectedFigmaFile.name || 'Selected design' : 'Connect a Figma file to generate code'}</small>
+                        </div>
+                        <div className="ed-intel-card">
+                          <span className="ed-intel-label">Active file</span>
+                          <strong>{selectedFile ? selectedFile.name : 'No file'}</strong>
+                          <small>{selectedFile ? `${selectedFile.language || detectLanguage(selectedFile.name)} source` : 'Open a file to preview it'}</small>
                         </div>
                       </div>
-                    )
+                      {sandboxUrl ? (
+                        <iframe src={sandboxUrl} className="w-full flex-1" style={{ background: '#ffffff', border: 'none', borderRadius: '6px', minHeight: 0 }} title="Live preview" />
+                      ) : (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', minHeight: 0, flex: 1 }}>
+                          <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                            <span className="ed-sidebar-title">Figma Design</span>
+                            {!selectedFigmaFile ? (
+                              figmaFiles.length === 0 ? (
+                                <div className="ed-stat" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.6rem' }}>
+                                  <Layers className="w-6 h-6" style={{ color: '#6e6e6e' }} />
+                                  <span>No Figma files connected</span>
+                                  <a href="/integrations" className="btn-workspace btn-secondary">Connect Figma</a>
+                                </div>
+                              ) : (
+                                <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                                  {figmaFiles.map((f) => (
+                                    <button key={f.key || f.id} type="button" className="ed-drop-item" onClick={() => setSelectedFigmaFile(f)}>
+                                      <Layers className="w-3.5 h-3.5" />
+                                      <span style={{ minWidth: 0 }}>
+                                        <span className="block truncate text-xs">{f.name || f.key}</span>
+                                        <span className="block text-xs" style={{ color: '#6e6e6e' }}>{f.last_modified ? new Date(f.last_modified).toLocaleDateString() : ''}</span>
+                                      </span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )
+                            ) : (
+                              <div className="ed-design-pane" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                <div className="ed-stat" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.4rem' }}>
+                                  <button type="button" onClick={() => setSelectedFigmaFile(null)} style={{ color: '#2fd6e6', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.66rem' }}>← All files</button>
+                                  <span className="truncate" style={{ color: '#bbbbbb' }}>{selectedFigmaFile.name || selectedFigmaFile.key}</span>
+                                </div>
+                                <div style={{ flex: 1, minHeight: 0, overflow: 'auto', background: '#1e1e1e', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                  {selectedFigmaFile.thumbnail_url ? (
+                                    <img src={selectedFigmaFile.thumbnail_url} alt={selectedFigmaFile.name || 'design'} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                                  ) : (
+                                    <Layers className="w-8 h-8" style={{ color: '#3c3c3c' }} />
+                                  )}
+                                </div>
+                                <button type="button" className="btn-workspace btn-primary" onClick={generateFromDesign}>
+                                  <Bot className="w-3.5 h-3.5" /> Generate React code
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                          <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                            <span className="ed-sidebar-title">Code</span>
+                            <div className="ed-code-wrap">
+                              {selectedFile ? (
+                                <MonacoEditor height="100%" language={monacoLanguage} value={content} onChange={handleEditorChange} theme="vs-dark"
+                                  options={monacoPreviewOptions} />
+                              ) : (
+                                <div className="ed-ide-empty">Select a file to preview</div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
 
                   {panel === 'deploy' && (
                     <>
+                      <div className="ed-intel-grid">
+                        <div className="ed-intel-card">
+                          <span className="ed-intel-label">Deploys</span>
+                          <strong>{deployments.length}</strong>
+                          <small>Current deployment records</small>
+                        </div>
+                        <div className="ed-intel-card">
+                          <span className="ed-intel-label">Environment</span>
+                          <strong>{subscription?.tier === 'enterprise' ? 'Enterprise' : subscription?.tier === 'professional' ? 'Pro' : 'Free'}</strong>
+                          <small>{blockCount ? `${blockCount} language(s) locked` : 'Full toolchain enabled'}</small>
+                        </div>
+                        <div className="ed-intel-card">
+                          <span className="ed-intel-label">Workspace</span>
+                          <strong>{selectedProject ? selectedProject.name : 'Default'}</strong>
+                          <small>{workspaceId ? 'Linked and ready to ship' : 'Add a workspace to deploy'}</small>
+                        </div>
+                      </div>
                       <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
                         <button type="button" className="btn-workspace btn-primary" onClick={handleDeploy}>
                           <Rocket className="w-4 h-4" /> New Deployment
