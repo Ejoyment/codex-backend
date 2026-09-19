@@ -190,7 +190,7 @@ export default function AuditLogs() {
                           <div key={log._id || i} className="audit-row">
                             <div className="audit-avatar">
                               {log.actor?.profilePicture ? (
-                                <img src={log.actor.profilePicture} alt="" className="rounded-full w-8 h-8 object-cover" />
+                                <img src={getAvatarUrl(log.actor, log.actor?.fullName || log.email || 'U')} alt="" className="rounded-full w-8 h-8 object-cover" />
                               ) : (
                                 <span className="audit-avatar-initials">{initials(log.actor?.fullName || log.email)}</span>
                               )}
