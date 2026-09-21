@@ -9,46 +9,48 @@ const Company = require('../models/Company');
 
 class PermissionMatrix {
   constructor() {
-    // Define permission scopes by tier
+    // Define permission scopes by tier.
+    // Starter/trial users are treated as paid IDE users for core development flows,
+    // while freebie remains read-only for a few product features.
     this.scopes = {
       // File operations
-      'file:read': ['freebie', 'professional', 'enterprise'],
-      'file:write': ['professional', 'enterprise'],
-      'file:delete': ['enterprise'],
-      'file:create': ['professional', 'enterprise'],
-      
+      'file:read': ['freebie', 'starter', 'professional', 'enterprise'],
+      'file:write': ['starter', 'professional', 'enterprise'],
+      'file:delete': ['starter', 'professional', 'enterprise'],
+      'file:create': ['starter', 'professional', 'enterprise'],
+
       // Terminal access
-      'terminal:access': ['professional', 'enterprise'],
-      'terminal:create': ['professional', 'enterprise'],
-      'terminal:execute': ['professional', 'enterprise'],
-      
+      'terminal:access': ['starter', 'professional', 'enterprise'],
+      'terminal:create': ['starter', 'professional', 'enterprise'],
+      'terminal:execute': ['starter', 'professional', 'enterprise'],
+
       // Git operations
-      'git:read': ['professional', 'enterprise'],
-      'git:commit': ['professional', 'enterprise'],
-      'git:push': ['enterprise'],
-      'git:pull': ['enterprise'],
-      'git:branch': ['enterprise'],
-      
+      'git:read': ['starter', 'professional', 'enterprise'],
+      'git:commit': ['starter', 'professional', 'enterprise'],
+      'git:push': ['starter', 'professional', 'enterprise'],
+      'git:pull': ['starter', 'professional', 'enterprise'],
+      'git:branch': ['starter', 'professional', 'enterprise'],
+
       // Collaboration
-      'collab:join': ['professional', 'enterprise'],
-      'collab:edit': ['professional', 'enterprise'],
-      
+      'collab:join': ['starter', 'professional', 'enterprise'],
+      'collab:edit': ['starter', 'professional', 'enterprise'],
+
       // LSP features
-      'lsp:completions': ['freebie', 'professional', 'enterprise'],
-      'lsp:hover': ['freebie', 'professional', 'enterprise'],
-      'lsp:definition': ['professional', 'enterprise'],
-      'lsp:references': ['enterprise'],
-      
+      'lsp:completions': ['freebie', 'starter', 'professional', 'enterprise'],
+      'lsp:hover': ['freebie', 'starter', 'professional', 'enterprise'],
+      'lsp:definition': ['starter', 'professional', 'enterprise'],
+      'lsp:references': ['starter', 'professional', 'enterprise'],
+
       // VFS operations
-      'vfs:read': ['freebie', 'professional', 'enterprise'],
-      'vfs:write': ['professional', 'enterprise'],
-      'vfs:search': ['professional', 'enterprise'],
-      'vfs:index': ['enterprise'],
-      
+      'vfs:read': ['freebie', 'starter', 'professional', 'enterprise'],
+      'vfs:write': ['starter', 'professional', 'enterprise'],
+      'vfs:search': ['starter', 'professional', 'enterprise'],
+      'vfs:index': ['starter', 'professional', 'enterprise'],
+
       // Agent operations
-      'agent:basic': ['professional', 'enterprise'],
-      'agent:autonomous': ['enterprise'],
-      'agent:deploy': ['enterprise']
+      'agent:basic': ['starter', 'professional', 'enterprise'],
+      'agent:autonomous': ['starter', 'professional', 'enterprise'],
+      'agent:deploy': ['starter', 'professional', 'enterprise']
     };
 
     // Resource limits by tier
@@ -77,6 +79,38 @@ class PermissionMatrix {
     };
   }
 
+  normalizeTier(tier) {
+    const normalized = String(tier || 'freebie').trim().toLowerCase();
+    const aliases = {
+      free: 'freebie',
+      basic: 'freebie',
+      starter: 'starter',
+      trial: 'starter',
+      pro: 'professional',
+      professional: 'professional',
+      enterprise: 'enterprise',
+      business: 'enterprise',
+      team: 'enterprise',
+    };
+    return aliases[normalized] || normalized || 'freebie';
+  }
+
+  isTierAllowed(tier, allowedTiers) {
+    const normalizedTier = this.normalizeTier(tier);
+    const normalizedAllowed = (allowedTiers || []).map((value) => this.normalizeTier(value));
+
+    if (normalizedAllowed.includes(normalizedTier)) {
+      return true;
+    }
+
+    // Starter/trial users get the same IDE access as professional for tooling flows.
+    if (normalizedTier === 'starter' && normalizedAllowed.includes('professional')) {
+      return true;
+    }
+
+    return false;
+  }
+
   /**
    * Check if user has permission for action on resource
    */
@@ -84,12 +118,12 @@ class PermissionMatrix {
     try {
       // Get user with subscription
       const user = await User.findById(userId).populate('subscription');
-      
+
       if (!user) {
         throw new Error('User not found');
       }
 
-      const tier = user.subscription?.tier || 'freebie';
+      const tier = this.normalizeTier(user.subscription?.tier || 'freebie');
       const scope = `${resource}:${action}`;
       const allowedTiers = this.scopes[scope];
 
@@ -105,7 +139,7 @@ class PermissionMatrix {
       }
 
       // Check tier permission
-      if (!allowedTiers.includes(tier)) {
+      if (!this.isTierAllowed(tier, allowedTiers)) {
         return {
           allowed: false,
           reason: `Permission denied: ${scope} requires ${allowedTiers.join(' or ')} tier`,
