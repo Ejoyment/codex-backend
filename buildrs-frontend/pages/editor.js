@@ -58,6 +58,24 @@ function LANG_COLORS() {
   };
 }
 
+function getLanguageGlyph(name) {
+  const lang = detectLanguage(name);
+  const color = LANG_COLORS()[lang] || '#6e7681';
+  const labelMap = {
+    javascript: 'JS', typescript: 'TS', python: 'PY', java: 'JA', go: 'GO', rust: 'RS',
+    cpp: 'C++', c: 'C', ruby: 'RB', php: 'PHP', html: 'HTML', css: 'CSS', json: 'JSON',
+    yaml: 'YML', markdown: 'MD', shell: 'SH', sql: 'SQL', text: 'TXT',
+  };
+  const label = labelMap[lang] || 'FILE';
+
+  return (
+    <svg className="ed-file-glyph" viewBox="0 0 24 24" aria-hidden="true" role="img">
+      <rect x="2" y="2" width="20" height="20" rx="5" fill={color} />
+      <text x="12" y="15.5" textAnchor="middle" fontSize={lang === 'cpp' || lang === 'javascript' || lang === 'typescript' ? '6.3' : '7.5'} fontWeight="700" fill="#0b1020" fontFamily="ui-sans-serif, system-ui, sans-serif">{label}</text>
+    </svg>
+  );
+}
+
 function buildFileTree(files) {
   const root = { name: 'root', type: 'folder', children: {} };
   files.forEach((f) => {
@@ -94,7 +112,7 @@ function FileTreeNode({ node, depth, selectedId, onSelect, expanded, onToggle })
         style={{ paddingLeft: `${6 + depth * 14}px` }}
         onClick={() => onSelect(node)}
       >
-        <span className="ed-file-dot" style={{ background: getFileIcon(node.name) }} />
+        {getLanguageGlyph(node.name)}
         <span className="ed-tree-name is-file">{node.name}</span>
       </button>
     );
@@ -1433,7 +1451,7 @@ export default function Editor() {
                         <div className="ed-stat">{files.filter((f) => f.name.toLowerCase().includes(searchQuery.trim().toLowerCase())).length} matching file(s)</div>
                         {files.filter((f) => f.name.toLowerCase().includes(searchQuery.trim().toLowerCase())).slice(0, 30).map((f) => (
                           <button key={f._id} type="button" className="ed-search-result" onClick={() => selectFile(f)}>
-                            <span className="ed-file-dot" style={{ background: getFileIcon(f.name) }} />
+                            {getLanguageGlyph(f.name)}
                             <span><em>{f.name}</em> <span style={{ color: '#6e6e6e' }}>{f.path && f.path !== '/' ? `— ${f.path}` : ''}</span></span>
                           </button>
                         ))}
@@ -1683,17 +1701,24 @@ export default function Editor() {
                     {languages.length === 0 ? (
                       <p className="text-xs" style={{ color: '#6e6e6e', padding: '0.2rem 0.55rem' }}>No language catalog yet</p>
                     ) : (
-                      languages.map((l) => (
-                        <div key={l.name} className="ed-ext-item" style={{ padding: '0.4rem 0.55rem' }}>
-                          <span className="ed-file-dot" style={{ background: LANG_COLORS()[l.name] || '#8c8c8c', width: 8, height: 8 }} />
-                          <div>
-                            <div className="ed-ext-name" style={{ fontSize: '0.74rem' }}>{l.name}</div>
+                      languages.map((l) => {
+                        const glyphColor = LANG_COLORS()[l.name] || '#8c8c8c';
+                        const glyphText = (l.name || '').slice(0, 2).toUpperCase() || 'FILE';
+                        return (
+                          <div key={l.name} className="ed-ext-item" style={{ padding: '0.4rem 0.55rem' }}>
+                            <svg className="ed-file-glyph ed-file-glyph-sm" viewBox="0 0 24 24" aria-hidden="true">
+                              <rect x="2" y="2" width="20" height="20" rx="5" fill={glyphColor} />
+                              <text x="12" y="15.5" textAnchor="middle" fontSize="7" fontWeight="700" fill="#0b1020" fontFamily="ui-sans-serif, system-ui, sans-serif">{glyphText}</text>
+                            </svg>
+                            <div>
+                              <div className="ed-ext-name" style={{ fontSize: '0.74rem' }}>{l.name}</div>
+                            </div>
+                            <span className={`pill pill-mono ${l.allowed === false ? 'is-free' : ''}`} style={{ marginLeft: 'auto', ...(l.allowed === false ? { background: 'rgba(248,113,113,0.12)', color: '#f87171' } : { background: 'rgba(52,211,153,0.12)', color: '#7bd197' }) }}>
+                              {l.allowed === false ? 'locked' : 'active'}
+                            </span>
                           </div>
-                          <span className={`pill pill-mono ${l.allowed === false ? 'is-free' : ''}`} style={{ marginLeft: 'auto', ...(l.allowed === false ? { background: 'rgba(248,113,113,0.12)', color: '#f87171' } : { background: 'rgba(52,211,153,0.12)', color: '#7bd197' }) }}>
-                            {l.allowed === false ? 'locked' : 'active'}
-                          </span>
-                        </div>
-                      ))
+                        );
+                      })
                     )}
                   </div>
                 </>
@@ -1710,7 +1735,7 @@ export default function Editor() {
                 const fDirty = openDirtyRef.current[fileKey] || (isActive && dirty);
                 return (
                   <div key={fileKey} className={`ed-tabhead ${isActive ? 'is-active' : ''}`} onClick={() => selectFile(f)} role="button">
-                    <span className="ed-file-dot" style={{ background: getFileIcon(f.name) }} />
+                    {getLanguageGlyph(f.name)}
                     <span className="ed-tabname">{f.name}</span>
                     {fDirty ? <span className="ed-tabdirty" /> : null}
                     <button type="button" className="ed-tabclose" onClick={(e) => closeTab(f, e)} title="Close (⌘W)">

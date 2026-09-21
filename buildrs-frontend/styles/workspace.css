@@ -5118,6 +5118,19 @@
 .ed-folder-ico { color: #6e6e6e; flex-shrink: 0; }
 .ed-tree-row.is-open .ed-folder-ico { color: #e0af68; }
 .ed-file-dot { width: 7px; height: 7px; border-radius: 2px; flex-shrink: 0; }
+.ed-file-glyph {
+  width: 12px;
+  height: 12px;
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0;
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);
+}
+.ed-file-glyph-sm {
+  width: 11px;
+  height: 11px;
+}
 .ed-tree-name {
   white-space: nowrap;
   overflow: hidden;
