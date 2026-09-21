@@ -46,10 +46,10 @@ router.get('/', authenticateToken, async (req, res) => {
 // Create a new deployment (spins up a real Docker container)
 router.post('/', authenticateToken, async (req, res) => {
     try {
-        const { projectId, subdomain, companyId } = req.body;
+        const { projectId, subdomain, companyId, source, repo, files: directFiles } = req.body;
 
-        if (!projectId || !subdomain) {
-            return res.status(400).json({ error: 'projectId and subdomain are required' });
+        if (!subdomain) {
+            return res.status(400).json({ error: 'subdomain is required' });
         }
 
         // Fail fast with a clear message if the deployment backend isn't configured
@@ -64,44 +64,59 @@ router.post('/', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: 'Subdomain must be at least 2 characters (a-z, 0-9, hyphens)' });
         }
 
-        // Verify the user owns the project — accept either a local project or a team project
-        const validId = typeof projectId === 'string' && /^[0-9a-fA-F]{24}$/.test(projectId);
-        if (!validId) {
-            return res.status(400).json({ error: 'Invalid projectId' });
+        let files = Array.isArray(directFiles) && directFiles.length ? directFiles : [];
+        let project = null;
+        let workspaceId = companyId || null;
+
+        if (projectId) {
+            const validId = typeof projectId === 'string' && /^[0-9a-fA-F]{24}$/.test(projectId);
+            if (!validId) {
+                return res.status(400).json({ error: 'Invalid projectId' });
+            }
+
+            const localProject = await LocalProject.findOne({ _id: projectId, userId: req.userId }).lean();
+            const teamProject = !localProject
+                ? await TeamProject.findOne({ _id: projectId, owner: req.userId }).lean()
+                : null;
+
+            if (!localProject && !teamProject) {
+                return res.status(404).json({ error: 'Project not found or not owned by you' });
+            }
+
+            project = localProject || teamProject;
+            workspaceId = project.workspaceId || companyId || project.company?.toString() || workspaceId;
+            files = files.length ? files : await CodeFile.find({ project: projectId }).lean();
+            if (files.length === 0 && workspaceId) {
+                files = await CodeFile.find({ company: workspaceId }).lean();
+            }
         }
 
-        const localProject = await LocalProject.findOne({ _id: projectId, userId: req.userId }).lean();
-        const teamProject = !localProject
-            ? await TeamProject.findOne({ _id: projectId, owner: req.userId }).lean()
-            : null;
-
-        if (!localProject && !teamProject) {
-            return res.status(404).json({ error: 'Project not found or not owned by you' });
+        if (files.length === 0 && !projectId && !Array.isArray(directFiles)) {
+            return res.status(400).json({ error: 'No files available to deploy. Select a project, repo, or file in the explorer first.' });
         }
 
-        const project = localProject || teamProject;
-
-        // Determine which workspace/company the files are stored under
-        const workspaceId = project.workspaceId || companyId || project.company?.toString();
-
-        // Collect files for the project — prefer project-scoped files, fall back to workspace-scoped files
-        let files = await CodeFile.find({ project: projectId }).lean();
-        if (files.length === 0 && workspaceId) {
-            files = await CodeFile.find({ company: workspaceId }).lean();
-        }
-        if (files.length === 0) {
+        if (files.length === 0 && Array.isArray(directFiles) && directFiles.length === 0) {
             return res.status(400).json({ error: 'Project has no files to deploy. Create a file in the editor first.' });
         }
 
-        // Reuse an existing deployment for this subdomain (re-deploy) instead of
-        // failing on the unique index — but never touch another user's deployment.
+        const normalizedFiles = files.map(f => ({
+            name: f.name,
+            path: f.path || '/',
+            content: typeof f.content === 'string' ? f.content : (f.content || ''),
+            language: f.language || 'plaintext',
+        }));
+
+        if (!normalizedFiles.length) {
+            return res.status(400).json({ error: 'Project has no deployable files.' });
+        }
+
         let deployment = await Deployment.findOne({ subdomain: sanitized });
         if (deployment && deployment.userId.toString() !== req.userId.toString()) {
             return res.status(409).json({ error: 'Subdomain already taken by another user.' });
         }
         if (deployment) {
             deployment.userId = req.userId;
-            deployment.projectId = projectId;
+            deployment.projectId = projectId || null;
             deployment.status = 'building';
             deployment.errorMessage = null;
             deployment.deployedUrl = null;
@@ -110,7 +125,7 @@ router.post('/', authenticateToken, async (req, res) => {
         } else {
             deployment = await Deployment.create({
                 userId: req.userId,
-                projectId,
+                projectId: projectId || null,
                 subdomain: sanitized,
                 status: 'building'
             });
@@ -119,33 +134,25 @@ router.post('/', authenticateToken, async (req, res) => {
         const deployId = deployment._id;
 
         addAuditLog({
-            companyId: workspaceId,
+            companyId: workspaceId || null,
             actorId: req.userId,
             event: 'deployment.created',
             category: 'deployment',
             target: `${sanitized}.buildrshq.dev`,
-            details: { projectId, deployment: deployId.toString() },
+            details: { projectId: projectId || null, deployment: deployId.toString(), source: source || 'local' },
             req
         });
 
-        // Run deployment asynchronously
         setImmediate(async () => {
             try {
-                const fileData = files.map(f => ({
-                    name: f.name,
-                    path: f.path || '/',
-                    content: f.content || '',
-                }));
-
                 let containerId = null;
                 let url = `https://${sanitized}.buildrshq.dev`;
 
                 try {
-                    const result = await depService.deployProject(sanitized, fileData);
+                    const result = await depService.deployProject(sanitized, normalizedFiles);
                     containerId = result.containerId;
                     url = result.url || url;
                 } catch (depErr) {
-                    // Deployment infra may not be reachable — mark as failed but keep the record
                     console.error(`[deploy] ${sanitized} failed:`, depErr.message);
                     await Deployment.findByIdAndUpdate(deployId, {
                         status: 'failed',

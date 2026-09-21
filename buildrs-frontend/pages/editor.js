@@ -304,6 +304,12 @@ export default function Editor() {
   const [githubRepos, setGithubRepos] = useState([]);
   const [selectedRepo, setSelectedRepo] = useState(null);
   const [showProjectSelector, setShowProjectSelector] = useState(false);
+  const [repoCreateOpen, setRepoCreateOpen] = useState(false);
+  const [repoCreateName, setRepoCreateName] = useState('');
+  const [repoCreateDescription, setRepoCreateDescription] = useState('');
+  const [repoCreatePrivate, setRepoCreatePrivate] = useState(false);
+  const [repoCreateBusy, setRepoCreateBusy] = useState(false);
+  const [repoCreateError, setRepoCreateError] = useState(null);
   const [expandedFolders, setExpandedFolders] = useState({});
   const [fileFilter, setFileFilter] = useState('');
 
@@ -351,11 +357,16 @@ export default function Editor() {
   }, []);
 
   useEffect(() => {
+    if (selectedRepo && !workspaceId) {
+      setGitStatus({ success: true, branch: selectedRepo.default_branch || 'main', ahead: 0, behind: 0, modified: [] });
+      return;
+    }
+
     if (workspaceId) {
       loadGitStatus();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceId]);
+  }, [workspaceId, selectedRepo]);
 
   useEffect(() => {
     if (selectedProject) {
@@ -588,6 +599,84 @@ export default function Editor() {
       const data = await apiFetch('/api/github/repos?per_page=20');
       setGithubRepos(data.repositories || []);
     } catch {}
+  }
+
+  async function handleCreateGithubRepo(e) {
+    e?.preventDefault();
+    if (!repoCreateName.trim()) {
+      setRepoCreateError('Repository name is required.');
+      return;
+    }
+
+    setRepoCreateBusy(true);
+    setRepoCreateError(null);
+
+    try {
+      const data = await apiFetch('/api/github/repos', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: repoCreateName.trim(),
+          description: repoCreateDescription.trim(),
+          private: repoCreatePrivate,
+          autoInit: true,
+        }),
+      });
+
+      if (!data.success) {
+        throw new Error(data.message || 'GitHub repo creation failed');
+      }
+
+      const repoMeta = data.repository || {};
+      const githubOwner = repoMeta.owner || repoMeta.ownerName || user?.githubUsername || user?.github?.login || user?.login || 'github';
+      const repoName = repoMeta.name || repoCreateName.trim();
+      const createdRepo = {
+        id: repoMeta.id || repoName,
+        name: repoName,
+        fullName: repoMeta.fullName || repoMeta.full_name || `${githubOwner}/${repoName}`,
+        owner: githubOwner,
+        ownerName: githubOwner,
+        default_branch: repoMeta.defaultBranch || repoMeta.default_branch || 'main',
+        defaultBranch: repoMeta.defaultBranch || repoMeta.default_branch || 'main',
+        private: repoMeta.private ?? repoCreatePrivate,
+        url: repoMeta.url || repoMeta.html_url || `https://github.com/${githubOwner}/${repoName}`,
+        cloneUrl: repoMeta.cloneUrl || repoMeta.clone_url || `https://github.com/${githubOwner}/${repoName}.git`,
+        description: repoMeta.description || repoCreateDescription.trim(),
+      };
+
+      if (workspaceId) {
+        await apiFetch('/api/git/init', {
+          method: 'POST',
+          body: JSON.stringify({
+            workspaceId,
+            userName: user?.fullName || 'Buildrs User',
+            userEmail: user?.email || 'user@buildrs.dev',
+          }),
+        }).catch(() => null);
+
+        await apiFetch('/api/git/remote', {
+          method: 'POST',
+          body: JSON.stringify({
+            workspaceId,
+            name: 'origin',
+            url: createdRepo.cloneUrl,
+          }),
+        }).catch(() => null);
+      }
+
+      setGithubRepos((prev) => [createdRepo, ...prev.filter((repo) => (repo.fullName || `${repo.owner}/${repo.name}`) !== (createdRepo.fullName || `${createdRepo.owner}/${createdRepo.name}`))]);
+      setSelectedRepo(createdRepo);
+      setSelectedProject(null);
+      setShowProjectSelector(false);
+      setRepoCreateOpen(false);
+      setRepoCreateName('');
+      setRepoCreateDescription('');
+      setRepoCreatePrivate(false);
+      setStatus({ type: 'success', msg: `GitHub repo ${createdRepo.fullName || createdRepo.name} is ready` });
+    } catch (err) {
+      setRepoCreateError(err.message || 'Could not create GitHub repository.');
+    } finally {
+      setRepoCreateBusy(false);
+    }
   }
 
   async function loadFigmaFiles() {
@@ -1014,9 +1103,78 @@ export default function Editor() {
     }
   }
 
+  const gatherDeploymentFiles = useCallback(() => {
+    const sourceFiles = selectedProject
+      ? files
+      : selectedRepo
+        ? (files.length ? files : (selectedFile ? [selectedFile] : []))
+        : (selectedFile ? [selectedFile] : []);
+
+    if (!sourceFiles.length) return [];
+
+    return sourceFiles.map((file) => {
+      const pageValue = openContentsRef.current[getFileKey(file)] ?? file.content ?? '';
+      const contentValue = typeof pageValue === 'string' ? pageValue : '';
+      const pathValue = (file.path || '/').replace(/\\/g, '/').replace(/\/+$|^\/+$/, '/');
+      return {
+        name: file.name,
+        path: pathValue === '/' ? '/' : pathValue,
+        content: contentValue,
+        language: file.language || 'plaintext',
+      };
+    });
+  }, [files, getFileKey, selectedFile, selectedProject, selectedRepo]);
+
   async function handleGitAction(action) {
+    if (selectedRepo && !workspaceId) {
+      try {
+        if (action === 'status') {
+          setGitStatus({ success: true, branch: selectedRepo.default_branch || 'main', ahead: 0, behind: 0, modified: [] });
+          setStatus({ type: 'success', msg: `GitHub repo ${selectedRepo.fullName || selectedRepo.name} selected` });
+          return;
+        }
+
+        if (action === 'pull') {
+          await loadGithubRepoFiles(selectedRepo);
+          setStatus({ type: 'success', msg: 'GitHub repo refreshed' });
+          return;
+        }
+
+        if (action === 'push') {
+          const filesToPush = gatherDeploymentFiles().filter((file) => !!file.name && !!file.content);
+          if (!filesToPush.length) {
+            setStatus({ type: 'error', msg: 'No file changes to push to the selected repository.' });
+            return;
+          }
+
+          const repoOwner = selectedRepo.owner?.login || selectedRepo.owner || selectedRepo.ownerName;
+          const repoName = selectedRepo.name;
+          const data = await apiFetch('/api/github-advanced/push', {
+            method: 'POST',
+            body: JSON.stringify({
+              owner: repoOwner,
+              repo: repoName,
+              branch: selectedRepo.default_branch || 'main',
+              files: filesToPush.map((file) => ({ path: file.path === '/' ? file.name : `${file.path.replace(/^\/+|\/+$/g, '')}/${file.name}`, content: file.content })),
+              message: `Update ${filesToPush[0].name} from Buildrs HQ`,
+            }),
+          });
+
+          if (!data.success) {
+            throw new Error(data.message || 'GitHub push failed');
+          }
+
+          setStatus({ type: 'success', msg: `Pushed ${filesToPush.length} file(s) to ${repoOwner}/${repoName}` });
+          return;
+        }
+      } catch (e) {
+        setStatus({ type: 'error', msg: `Git ${action} failed: ${e.message}` });
+        return;
+      }
+    }
+
     if (!workspaceId) {
-      setStatus({ type: 'error', msg: 'Join a workspace to use version control.' });
+      setStatus({ type: 'error', msg: 'Join a workspace or select a GitHub repo to use version control.' });
       return;
     }
     try {
@@ -1090,9 +1248,17 @@ export default function Editor() {
   function handleDeploy() {
     setPanel('deploy');
     setShowSubdomainInput(true);
-    setDeploySubdomain(selectedFile?.name?.replace(/\.[^.]+$/, '').toLowerCase().replace(/[^a-z0-9-]/g, '-') || '');
-    if (!selectedFile) {
-      setStatus({ type: 'error', msg: 'Select a file first (deploys its project).' });
+
+    const deployName =
+      selectedProject?.name ||
+      selectedRepo?.name ||
+      selectedFile?.name ||
+      'project';
+
+    setDeploySubdomain(deployName.replace(/\.[^.]+$/, '').toLowerCase().replace(/[^a-z0-9-]/g, '-'));
+
+    if (!selectedProject && !selectedRepo && !selectedFile && !files.length) {
+      setStatus({ type: 'error', msg: 'Select a project, repo, or file in the Explorer before deploying.' });
     }
   }
 
@@ -1103,21 +1269,34 @@ export default function Editor() {
       setStatus({ type: 'error', msg: 'Subdomain must be at least 2 characters.' });
       return;
     }
-    const projectId = selectedProject?._id || selectedProject?.id || selectedFile?.project;
-    if (!projectId) {
-      setStatus({ type: 'error', msg: 'Select a project in the Explorer before deploying.' });
+
+    const projectId = selectedProject?._id || selectedProject?.id || null;
+    const deploymentFiles = gatherDeploymentFiles();
+    if (!projectId && !selectedRepo && !selectedFile && !deploymentFiles.length) {
+      setStatus({ type: 'error', msg: 'Select a project, repo, or file in the Explorer before deploying.' });
       return;
     }
+
     try {
       setDeploying(true);
       setStatus({ type: 'success', msg: 'Deploying...' });
+      const payload = {
+        projectId,
+        subdomain,
+        companyId: selectedProject?.workspaceId || workspaceId,
+        source: selectedRepo ? 'github' : selectedProject ? 'project' : 'local',
+        repo: selectedRepo ? {
+          owner: selectedRepo.owner?.login || selectedRepo.owner || selectedRepo.ownerName,
+          name: selectedRepo.name,
+          defaultBranch: selectedRepo.default_branch || 'main',
+          fullName: selectedRepo.fullName || selectedRepo.name,
+        } : null,
+        files: deploymentFiles,
+      };
+
       const data = await apiFetch('/api/deployments', {
         method: 'POST',
-        body: JSON.stringify({
-          projectId,
-          subdomain,
-          companyId: selectedProject?.workspaceId || workspaceId,
-        }),
+        body: JSON.stringify(payload),
       });
       if (data.deployment) {
         setDeployments((prev) => [data.deployment, ...prev]);
@@ -1148,15 +1327,26 @@ export default function Editor() {
   }
 
   async function handleSandboxStart() {
-    if (!selectedFile) {
+    const previewTarget = selectedFile || files[0] || null;
+    if (!previewTarget) {
       setStatus({ type: 'error', msg: 'Select a file to preview first.' });
       return;
     }
+
     try {
       setStatus({ type: 'success', msg: 'Starting sandbox...' });
+      const payload = {
+        fileId: previewTarget._id || previewTarget.id || null,
+        name: previewTarget.name,
+        path: previewTarget.path || '/',
+        language: previewTarget.language || 'javascript',
+        content: openContentsRef.current[getFileKey(previewTarget)] ?? previewTarget.content ?? content ?? '',
+        source: selectedRepo ? 'github' : selectedProject ? 'project' : 'local',
+      };
+
       const data = await apiFetch('/api/sandbox/start', {
         method: 'POST',
-        body: JSON.stringify({ fileId: selectedFile._id }),
+        body: JSON.stringify(payload),
       });
       if (data.sandboxUrl) {
         setSandboxUrl(data.sandboxUrl);
@@ -1446,6 +1636,11 @@ export default function Editor() {
                           <button type="button" className="ed-drop-item" onClick={() => { setSelectedProject(null); setSelectedRepo(null); setShowProjectSelector(false); }}>
                             <FolderOpen className="w-3.5 h-3.5" /> Workspace Files
                           </button>
+                          {(workspaceId || selectedProject) && (
+                            <button type="button" className="ed-drop-item" onClick={() => { setShowProjectSelector(false); setRepoCreateOpen(true); }}>
+                              <GitBranch className="w-3.5 h-3.5" /> Create GitHub Repo
+                            </button>
+                          )}
                           {projects.length > 0 && <div className="ed-drop-section">Projects</div>}
                           {projects.map((p) => (
                             <button key={p._id || p.id} type="button" className="ed-drop-item" onClick={() => { setSelectedProject(p); setSelectedRepo(null); setShowProjectSelector(false); }}>
@@ -1565,6 +1760,13 @@ export default function Editor() {
                           <span>{name}</span>
                         </button>
                       ))
+                    )}
+                    {!selectedRepo && workspaceId && (
+                      <div style={{ paddingBottom: '0.5rem' }}>
+                        <button type="button" className="btn-workspace btn-secondary" style={{ width: '100%' }} onClick={() => setRepoCreateOpen(true)}>
+                          <GitBranch className="w-3.5 h-3.5 mr-1 inline" /> Create GitHub Repo
+                        </button>
+                      </div>
                     )}
                     <div style={{ display: 'flex', gap: '0.4rem', paddingTop: '0.4rem' }}>
                       <button type="button" className="btn-workspace btn-secondary" style={{ flex: 1 }} onClick={() => handleGitAction('pull')}>Pull</button>
@@ -2195,6 +2397,44 @@ export default function Editor() {
                 <button type="submit" className="btn-workspace btn-primary flex items-center gap-2" disabled={creating || !newFolderName.trim()}>
                   <FolderPlus className="w-4 h-4" />
                   {creating ? 'Creating...' : 'Create Folder'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {repoCreateOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" style={{ zIndex: 9999 }}>
+          <div className="ws-modal w-full max-w-lg" style={{ position: 'relative', zIndex: 1 }}>
+            <div className="flex items-center justify-between p-5 border-b border-[rgba(255,255,255,0.09)]">
+              <div className="flex items-center gap-2.5">
+                <span className="card-ico">
+                  <GitBranch className="w-4 h-4" />
+                </span>
+                <h2 className="ws-modal-title">Create GitHub Repository</h2>
+              </div>
+              <button type="button" onClick={() => { setRepoCreateOpen(false); setRepoCreateError(null); }} className="text-muted hover:text-white"><X className="w-5 h-5" /></button>
+            </div>
+            <form onSubmit={handleCreateGithubRepo} className="p-5 space-y-4">
+              <div>
+                <label className="ws-label">Repository Name</label>
+                <input type="text" value={repoCreateName} onChange={(e) => setRepoCreateName(e.target.value)} placeholder="my-project" className="ws-input" autoFocus required />
+              </div>
+              <div>
+                <label className="ws-label">Description</label>
+                <textarea value={repoCreateDescription} onChange={(e) => setRepoCreateDescription(e.target.value)} placeholder="Project summary and purpose" className="ws-textarea w-full font-mono text-sm" rows={3} />
+              </div>
+              <label className="flex items-center gap-2 text-sm" style={{ color: '#d4d4d4' }}>
+                <input type="checkbox" checked={repoCreatePrivate} onChange={(e) => setRepoCreatePrivate(e.target.checked)} />
+                Make this repository private
+              </label>
+              {repoCreateError && <p className="text-xs text-[#f87171]">{repoCreateError}</p>}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', paddingTop: '0.5rem' }}>
+                <button type="button" className="btn-workspace btn-secondary" onClick={() => { setRepoCreateOpen(false); setRepoCreateError(null); }}>Cancel</button>
+                <button type="submit" className="btn-workspace btn-primary flex items-center gap-2" disabled={repoCreateBusy || !repoCreateName.trim()}>
+                  <GitBranch className="w-4 h-4" />
+                  {repoCreateBusy ? 'Creating...' : 'Create Repo'}
                 </button>
               </div>
             </form>
