@@ -61,17 +61,75 @@ function LANG_COLORS() {
 function getLanguageGlyph(name) {
   const lang = detectLanguage(name);
   const color = LANG_COLORS()[lang] || '#6e7681';
-  const labelMap = {
-    javascript: 'JS', typescript: 'TS', python: 'PY', java: 'JA', go: 'GO', rust: 'RS',
-    cpp: 'C++', c: 'C', ruby: 'RB', php: 'PHP', html: 'HTML', css: 'CSS', json: 'JSON',
-    yaml: 'YML', markdown: 'MD', shell: 'SH', sql: 'SQL', text: 'TXT',
+  const iconProps = {
+    stroke: '#0b1020',
+    strokeWidth: 1.6,
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+    fill: 'none'
   };
-  const label = labelMap[lang] || 'FILE';
 
   return (
     <svg className="ed-file-glyph" viewBox="0 0 24 24" aria-hidden="true" role="img">
       <rect x="2" y="2" width="20" height="20" rx="5" fill={color} />
-      <text x="12" y="15.5" textAnchor="middle" fontSize={lang === 'cpp' || lang === 'javascript' || lang === 'typescript' ? '6.3' : '7.5'} fontWeight="700" fill="#0b1020" fontFamily="ui-sans-serif, system-ui, sans-serif">{label}</text>
+      {lang === 'javascript' || lang === 'typescript' ? (
+        <>
+          <path d="M8.4 7.8L5.7 12l2.7 4.2M15.6 7.8L18.3 12l-2.7 4.2M13.2 6.2l-2.4 11.6" {...iconProps} />
+        </>
+      ) : lang === 'python' ? (
+        <>
+          <path d="M9.3 7.2h5.4a2 2 0 0 1 2 2v4.6a2 2 0 0 1-2 2H9.3a2 2 0 0 1-2-2V9.2a2 2 0 0 1 2-2Z" {...iconProps} />
+          <path d="M9.3 7.2V5.6M14.7 16.8v1.6M9.3 12h5.4" {...iconProps} />
+        </>
+      ) : lang === 'html' ? (
+        <>
+          <path d="M7.8 7.6 5.5 12l2.3 4.4M16.2 7.6 18.5 12l-2.3 4.4M13.4 6.5l-2.8 11" {...iconProps} />
+        </>
+      ) : lang === 'css' ? (
+        <>
+          <path d="M8 7.8h8l-1.1 8.7-3.9 1.9-3.8-1.9L8 7.8Z" {...iconProps} />
+          <path d="M9.2 10.5h5.6M9.2 13h3.8" {...iconProps} />
+        </>
+      ) : lang === 'json' ? (
+        <>
+          <path d="M9.2 7.4c-2 0-3.5 1.5-3.5 3.4s1.5 3.4 3.5 3.4M14.8 7.4c2 0 3.5 1.5 3.5 3.4s-1.5 3.4-3.5 3.4" {...iconProps} />
+          <path d="M10.4 8.3h3.2M10.4 15.7h3.2" {...iconProps} />
+        </>
+      ) : lang === 'markdown' ? (
+        <>
+          <path d="M6.5 15.5V8.5h2.2l2.1 2.7 2.2-2.7h2.2v7M8.8 12.6h2.5" {...iconProps} />
+        </>
+      ) : lang === 'shell' ? (
+        <>
+          <path d="M6.5 8.5 9 12l-2.5 3.5M12.5 15.5h5.1" {...iconProps} />
+        </>
+      ) : lang === 'java' ? (
+        <>
+          <path d="M7 7.5h10a2 2 0 0 1 2 2v5.4a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V9.5a2 2 0 0 1 2-2Z" {...iconProps} />
+          <path d="M9 7.5V6.1M15 7.5V6.1M9 16.9v1.4M15 16.9v1.4" {...iconProps} />
+        </>
+      ) : lang === 'go' ? (
+        <>
+          <path d="M8.5 8.5h7a2 2 0 0 1 2 2v2.5a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2v-2.5a2 2 0 0 1 2-2Z" {...iconProps} />
+          <path d="M9.3 12h5.4" {...iconProps} />
+          <path d="M12 8.5v7" {...iconProps} />
+        </>
+      ) : lang === 'rust' ? (
+        <>
+          <path d="M9.2 7.5h5.4a2 2 0 0 1 2 2v2.1a2 2 0 0 1-2 2H9.2a2 2 0 0 1-2-2V9.5a2 2 0 0 1 2-2Z" {...iconProps} />
+          <path d="M12 7.5V5.8M12 16.8v1.7M8.5 12h7" {...iconProps} />
+        </>
+      ) : lang === 'yaml' || lang === 'sql' ? (
+        <>
+          <path d="M7.3 8.5h9.4M7.3 12h9.4M7.3 15.5h6.5" {...iconProps} />
+          <path d="M7.2 7.2h.01" stroke="transparent" />
+        </>
+      ) : (
+        <>
+          <path d="M8 7.5h8v9H8z" {...iconProps} />
+          <path d="M10 10.5h4M10 13.5h4" {...iconProps} />
+        </>
+      )}
     </svg>
   );
 }
