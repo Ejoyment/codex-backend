@@ -58,6 +58,82 @@ function LANG_COLORS() {
   };
 }
 
+function getLanguageGlyph(name) {
+  const lang = detectLanguage(name);
+  const color = LANG_COLORS()[lang] || '#6e7681';
+  const iconProps = {
+    stroke: '#0b1020',
+    strokeWidth: 1.6,
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+    fill: 'none'
+  };
+
+  return (
+    <svg className="ed-file-glyph" viewBox="0 0 24 24" aria-hidden="true" role="img">
+      <rect x="2" y="2" width="20" height="20" rx="5" fill={color} />
+      {lang === 'javascript' || lang === 'typescript' ? (
+        <>
+          <path d="M8.4 7.8L5.7 12l2.7 4.2M15.6 7.8L18.3 12l-2.7 4.2M13.2 6.2l-2.4 11.6" {...iconProps} />
+        </>
+      ) : lang === 'python' ? (
+        <>
+          <path d="M9.3 7.2h5.4a2 2 0 0 1 2 2v4.6a2 2 0 0 1-2 2H9.3a2 2 0 0 1-2-2V9.2a2 2 0 0 1 2-2Z" {...iconProps} />
+          <path d="M9.3 7.2V5.6M14.7 16.8v1.6M9.3 12h5.4" {...iconProps} />
+        </>
+      ) : lang === 'html' ? (
+        <>
+          <path d="M7.8 7.6 5.5 12l2.3 4.4M16.2 7.6 18.5 12l-2.3 4.4M13.4 6.5l-2.8 11" {...iconProps} />
+        </>
+      ) : lang === 'css' ? (
+        <>
+          <path d="M8 7.8h8l-1.1 8.7-3.9 1.9-3.8-1.9L8 7.8Z" {...iconProps} />
+          <path d="M9.2 10.5h5.6M9.2 13h3.8" {...iconProps} />
+        </>
+      ) : lang === 'json' ? (
+        <>
+          <path d="M9.2 7.4c-2 0-3.5 1.5-3.5 3.4s1.5 3.4 3.5 3.4M14.8 7.4c2 0 3.5 1.5 3.5 3.4s-1.5 3.4-3.5 3.4" {...iconProps} />
+          <path d="M10.4 8.3h3.2M10.4 15.7h3.2" {...iconProps} />
+        </>
+      ) : lang === 'markdown' ? (
+        <>
+          <path d="M6.5 15.5V8.5h2.2l2.1 2.7 2.2-2.7h2.2v7M8.8 12.6h2.5" {...iconProps} />
+        </>
+      ) : lang === 'shell' ? (
+        <>
+          <path d="M6.5 8.5 9 12l-2.5 3.5M12.5 15.5h5.1" {...iconProps} />
+        </>
+      ) : lang === 'java' ? (
+        <>
+          <path d="M7 7.5h10a2 2 0 0 1 2 2v5.4a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V9.5a2 2 0 0 1 2-2Z" {...iconProps} />
+          <path d="M9 7.5V6.1M15 7.5V6.1M9 16.9v1.4M15 16.9v1.4" {...iconProps} />
+        </>
+      ) : lang === 'go' ? (
+        <>
+          <path d="M8.5 8.5h7a2 2 0 0 1 2 2v2.5a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2v-2.5a2 2 0 0 1 2-2Z" {...iconProps} />
+          <path d="M9.3 12h5.4" {...iconProps} />
+          <path d="M12 8.5v7" {...iconProps} />
+        </>
+      ) : lang === 'rust' ? (
+        <>
+          <path d="M9.2 7.5h5.4a2 2 0 0 1 2 2v2.1a2 2 0 0 1-2 2H9.2a2 2 0 0 1-2-2V9.5a2 2 0 0 1 2-2Z" {...iconProps} />
+          <path d="M12 7.5V5.8M12 16.8v1.7M8.5 12h7" {...iconProps} />
+        </>
+      ) : lang === 'yaml' || lang === 'sql' ? (
+        <>
+          <path d="M7.3 8.5h9.4M7.3 12h9.4M7.3 15.5h6.5" {...iconProps} />
+          <path d="M7.2 7.2h.01" stroke="transparent" />
+        </>
+      ) : (
+        <>
+          <path d="M8 7.5h8v9H8z" {...iconProps} />
+          <path d="M10 10.5h4M10 13.5h4" {...iconProps} />
+        </>
+      )}
+    </svg>
+  );
+}
+
 function buildFileTree(files) {
   const root = { name: 'root', type: 'folder', children: {} };
   files.forEach((f) => {
@@ -94,7 +170,7 @@ function FileTreeNode({ node, depth, selectedId, onSelect, expanded, onToggle })
         style={{ paddingLeft: `${6 + depth * 14}px` }}
         onClick={() => onSelect(node)}
       >
-        <span className="ed-file-dot" style={{ background: getFileIcon(node.name) }} />
+        {getLanguageGlyph(node.name)}
         <span className="ed-tree-name is-file">{node.name}</span>
       </button>
     );
@@ -134,6 +210,13 @@ const FEATURE_MODULES = [
   { id: 'ai', name: 'AI Pair Assistant', sub: 'Context-aware help on your code', icon: Bot },
   { id: 'figma', name: 'Figma Sync', sub: 'Design → code split preview', icon: Layers },
   { id: 'collab', name: 'Live Share', sub: 'Real-time cursors & presence', icon: Users },
+];
+
+const SMART_PROMPTS = [
+  { label: 'Explain this file', hint: 'Summarize logic and risk areas', icon: FileCode },
+  { label: 'Refactor safely', hint: 'Improve maintainability without breaking behavior', icon: Layers },
+  { label: 'Ship this build', hint: 'Review deployment readiness and potential issues', icon: Rocket },
+  { label: 'Fix the bug', hint: 'Diagnose and patch the current issue', icon: Bot },
 ];
 
 export default function Editor() {
@@ -221,6 +304,12 @@ export default function Editor() {
   const [githubRepos, setGithubRepos] = useState([]);
   const [selectedRepo, setSelectedRepo] = useState(null);
   const [showProjectSelector, setShowProjectSelector] = useState(false);
+  const [repoCreateOpen, setRepoCreateOpen] = useState(false);
+  const [repoCreateName, setRepoCreateName] = useState('');
+  const [repoCreateDescription, setRepoCreateDescription] = useState('');
+  const [repoCreatePrivate, setRepoCreatePrivate] = useState(false);
+  const [repoCreateBusy, setRepoCreateBusy] = useState(false);
+  const [repoCreateError, setRepoCreateError] = useState(null);
   const [expandedFolders, setExpandedFolders] = useState({});
   const [fileFilter, setFileFilter] = useState('');
 
@@ -228,6 +317,15 @@ export default function Editor() {
   selectedFileRef.current = selectedFile;
 
   const tree = useMemo(() => buildFileTree(files), [files]);
+
+  const getFileKey = useCallback((file) => {
+    if (!file) return null;
+    if (file._id) return String(file._id);
+    if (file.id) return String(file.id);
+    if (file.path) return `github:${file.path}`;
+    if (file.name) return `github:${file.name}`;
+    return `tmp:${Math.random().toString(36).slice(2)}`;
+  }, []);
 
   const monacoOptions = useMemo(() => ({
     fontSize: 13,
@@ -259,11 +357,16 @@ export default function Editor() {
   }, []);
 
   useEffect(() => {
+    if (selectedRepo && !workspaceId) {
+      setGitStatus({ success: true, branch: selectedRepo.default_branch || 'main', ahead: 0, behind: 0, modified: [] });
+      return;
+    }
+
     if (workspaceId) {
       loadGitStatus();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceId]);
+  }, [workspaceId, selectedRepo]);
 
   useEffect(() => {
     if (selectedProject) {
@@ -372,7 +475,37 @@ export default function Editor() {
   useEffect(() => {
     if (panel !== 'terminal' || !terminalRef.current || terminalRef.current.hasChildNodes()) return;
     import('xterm').then(({ Terminal: XTerm }) => {
-      const term = new XTerm({ theme: { background: '#1e1e1e', foreground: '#d4d4d4' }, fontSize: 13, cursorBlink: true });
+      const term = new XTerm({
+        theme: {
+          background: '#091118',
+          foreground: '#e6f1ff',
+          cursor: '#67e8f9',
+          cursorAccent: '#091118',
+          black: '#0b1017',
+          red: '#f87171',
+          green: '#34d399',
+          yellow: '#fbbf24',
+          blue: '#60a5fa',
+          magenta: '#c084fc',
+          cyan: '#67e8f9',
+          white: '#e2e8f0',
+          brightBlack: '#475569',
+          brightRed: '#fca5a5',
+          brightGreen: '#6ee7b7',
+          brightYellow: '#fcd34d',
+          brightBlue: '#93c5fd',
+          brightMagenta: '#d8b4fe',
+          brightCyan: '#a5f3fc',
+          brightWhite: '#f8fafc',
+        },
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+        fontSize: 12,
+        lineHeight: 1.45,
+        letterSpacing: 0.12,
+        cursorBlink: true,
+        scrollback: 4000,
+        allowTransparency: false,
+      });
       term.open(terminalRef.current);
       term.writeln('\x1b[36mBuildrsHQ Terminal\x1b[0m — type `help` for commands');
       let line = '';
@@ -466,6 +599,84 @@ export default function Editor() {
       const data = await apiFetch('/api/github/repos?per_page=20');
       setGithubRepos(data.repositories || []);
     } catch {}
+  }
+
+  async function handleCreateGithubRepo(e) {
+    e?.preventDefault();
+    if (!repoCreateName.trim()) {
+      setRepoCreateError('Repository name is required.');
+      return;
+    }
+
+    setRepoCreateBusy(true);
+    setRepoCreateError(null);
+
+    try {
+      const data = await apiFetch('/api/github/repos', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: repoCreateName.trim(),
+          description: repoCreateDescription.trim(),
+          private: repoCreatePrivate,
+          autoInit: true,
+        }),
+      });
+
+      if (!data.success) {
+        throw new Error(data.message || 'GitHub repo creation failed');
+      }
+
+      const repoMeta = data.repository || {};
+      const githubOwner = repoMeta.owner || repoMeta.ownerName || user?.githubUsername || user?.github?.login || user?.login || 'github';
+      const repoName = repoMeta.name || repoCreateName.trim();
+      const createdRepo = {
+        id: repoMeta.id || repoName,
+        name: repoName,
+        fullName: repoMeta.fullName || repoMeta.full_name || `${githubOwner}/${repoName}`,
+        owner: githubOwner,
+        ownerName: githubOwner,
+        default_branch: repoMeta.defaultBranch || repoMeta.default_branch || 'main',
+        defaultBranch: repoMeta.defaultBranch || repoMeta.default_branch || 'main',
+        private: repoMeta.private ?? repoCreatePrivate,
+        url: repoMeta.url || repoMeta.html_url || `https://github.com/${githubOwner}/${repoName}`,
+        cloneUrl: repoMeta.cloneUrl || repoMeta.clone_url || `https://github.com/${githubOwner}/${repoName}.git`,
+        description: repoMeta.description || repoCreateDescription.trim(),
+      };
+
+      if (workspaceId) {
+        await apiFetch('/api/git/init', {
+          method: 'POST',
+          body: JSON.stringify({
+            workspaceId,
+            userName: user?.fullName || 'Buildrs User',
+            userEmail: user?.email || 'user@buildrs.dev',
+          }),
+        }).catch(() => null);
+
+        await apiFetch('/api/git/remote', {
+          method: 'POST',
+          body: JSON.stringify({
+            workspaceId,
+            name: 'origin',
+            url: createdRepo.cloneUrl,
+          }),
+        }).catch(() => null);
+      }
+
+      setGithubRepos((prev) => [createdRepo, ...prev.filter((repo) => (repo.fullName || `${repo.owner}/${repo.name}`) !== (createdRepo.fullName || `${createdRepo.owner}/${createdRepo.name}`))]);
+      setSelectedRepo(createdRepo);
+      setSelectedProject(null);
+      setShowProjectSelector(false);
+      setRepoCreateOpen(false);
+      setRepoCreateName('');
+      setRepoCreateDescription('');
+      setRepoCreatePrivate(false);
+      setStatus({ type: 'success', msg: `GitHub repo ${createdRepo.fullName || createdRepo.name} is ready` });
+    } catch (err) {
+      setRepoCreateError(err.message || 'Could not create GitHub repository.');
+    } finally {
+      setRepoCreateBusy(false);
+    }
   }
 
   async function loadFigmaFiles() {
@@ -606,21 +817,43 @@ export default function Editor() {
     }
   }
 
-  const loadFile = useCallback((file) => {
-    const saved = openContentsRef.current[file._id];
-    const val = saved !== undefined ? saved : file.content || '';
-    setSelectedFile(file);
+  const fetchGithubFileContent = useCallback(async (file) => {
+    if (!selectedRepo || !file?.path) return file?.content || '';
+    const owner = selectedRepo.owner?.login || selectedRepo.owner || selectedRepo.ownerName;
+    const repo = selectedRepo.name;
+    const path = String(file.path).replace(/^\/+/, '');
+    const ref = selectedRepo.default_branch ? `?ref=${encodeURIComponent(selectedRepo.default_branch)}` : '';
+    try {
+      const data = await apiFetch(`/api/github/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}${ref}`);
+      const content = data?.file?.content ?? '';
+      if (typeof content === 'string') return content;
+    } catch (err) {
+      console.warn('GitHub repo file content load failed:', err);
+    }
+    return file?.content || '';
+  }, [selectedRepo]);
+
+  const loadFile = useCallback(async (file) => {
+    const fileKey = getFileKey(file);
+    const sourceFile = file && file.path && selectedRepo ? { ...file, _id: fileKey, id: fileKey, source: 'github', owner: selectedRepo.owner?.login || selectedRepo.owner, repo: selectedRepo.name } : file;
+    const saved = openContentsRef.current[fileKey];
+    const contentFromGithub = sourceFile?.source === 'github' && saved === undefined ? await fetchGithubFileContent(sourceFile) : null;
+    const val = saved !== undefined ? saved : (contentFromGithub ?? sourceFile?.content ?? '');
+    setSelectedFile(sourceFile || file);
     setContent(val);
     originalContentRef.current = val;
-    setDirty(!!openDirtyRef.current[file._id]);
+    setDirty(!!openDirtyRef.current[fileKey]);
     setShowProjectSelector(false);
     setStatus(null);
-    apiFetch(`/api/collaboration/file/${file._id}/join`, { method: 'POST' }).catch(() => {});
-  }, []);
+    if (sourceFile?._id) {
+      apiFetch(`/api/collaboration/file/${sourceFile._id}/join`, { method: 'POST' }).catch(() => {});
+    }
+  }, [fetchGithubFileContent, getFileKey, selectedRepo]);
 
   const openFile = useCallback((file) => {
-    setOpenFiles((prev) => (prev.some((f) => f._id === file._id) ? prev : [...prev, file]));
-  }, []);
+    const fileKey = getFileKey(file);
+    setOpenFiles((prev) => (prev.some((f) => getFileKey(f) === fileKey) ? prev : [...prev, { ...file, _id: fileKey, id: fileKey }]));
+  }, [getFileKey]);
 
   function selectFile(file) {
     if (dirty) {
@@ -641,9 +874,10 @@ export default function Editor() {
 
   function closeTab(file, e) {
     if (e) e.stopPropagation();
-    const i = openFiles.findIndex((o) => o._id === file._id);
+    const fileKey = getFileKey(file);
+    const i = openFiles.findIndex((o) => getFileKey(o) === fileKey);
     if (i === -1) return;
-    if (selectedFile?._id === file._id && (dirty || openDirtyRef.current[file._id])) {
+    if (getFileKey(selectedFile) === fileKey && (dirty || openDirtyRef.current[fileKey])) {
       setConfirmClose(file);
       return;
     }
@@ -652,20 +886,22 @@ export default function Editor() {
 
   function doRemoveTab(i) {
     const file = openFiles[i];
+    const fileKey = getFileKey(file);
     const next = [...openFiles];
     next.splice(i, 1);
     setOpenFiles(next);
-    delete openContentsRef.current[file._id];
-    delete openDirtyRef.current[file._id];
-    if (selectedFile?._id === file._id) {
+    delete openContentsRef.current[fileKey];
+    delete openDirtyRef.current[fileKey];
+    if (getFileKey(selectedFile) === fileKey) {
       const neighbour = next[i] || next[i - 1];
       if (neighbour) {
-        const saved = openContentsRef.current[neighbour._id];
+        const neighbourKey = getFileKey(neighbour);
+        const saved = openContentsRef.current[neighbourKey];
         const val = saved !== undefined ? saved : neighbour.content || '';
         setSelectedFile(neighbour);
         setContent(val);
         originalContentRef.current = val;
-        setDirty(!!openDirtyRef.current[neighbour._id]);
+        setDirty(!!openDirtyRef.current[neighbourKey]);
       } else {
         setSelectedFile(null);
         setContent('');
@@ -679,7 +915,8 @@ export default function Editor() {
     const file = confirmClose;
     setConfirmClose(null);
     if (!file) return;
-    const i = openFiles.findIndex((o) => o._id === file._id);
+    const fileKey = getFileKey(file);
+    const i = openFiles.findIndex((o) => getFileKey(o) === fileKey);
     if (i !== -1) doRemoveTab(i);
   };
 
@@ -688,27 +925,54 @@ export default function Editor() {
   const handleEditorChange = useCallback((value) => {
     const val = value ?? '';
     setContent(val);
-    if (selectedFile?._id) {
-      openContentsRef.current[selectedFile._id] = val;
-      openDirtyRef.current[selectedFile._id] = val !== originalContentRef.current;
+    const fileKey = getFileKey(selectedFile);
+    if (fileKey) {
+      openContentsRef.current[fileKey] = val;
+      openDirtyRef.current[fileKey] = val !== originalContentRef.current;
     }
     setDirty(val !== originalContentRef.current);
-  }, [selectedFile?._id]);
+  }, [getFileKey, selectedFile]);
 
   async function handleSave() {
     const file = selectedFile;
     if (!file) return;
     try {
       setSaving(true);
+      const fileKey = getFileKey(file);
+      if (file.source === 'github' && selectedRepo) {
+        const owner = selectedRepo.owner?.login || selectedRepo.owner || selectedRepo.ownerName;
+        const repo = selectedRepo.name;
+        const path = String(file.path || file.name).replace(/^\/+/, '');
+        const data = await apiFetch(`/api/github/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            content,
+            message: `Update ${file.name} from Buildrs HQ editor`,
+            sha: file.sha,
+            branch: selectedRepo.default_branch || 'main',
+          }),
+        });
+        if (data?.success) {
+          if (file.sha !== data?.commit?.sha) file.sha = data?.commit?.sha;
+          originalContentRef.current = content;
+          openContentsRef.current[fileKey] = content;
+          openDirtyRef.current[fileKey] = false;
+          setDirty(false);
+          setStatus({ type: 'success', msg: 'GitHub file saved' });
+          setTimeout(() => setStatus(null), 2000);
+          return;
+        }
+        throw new Error(data?.message || 'GitHub save failed');
+      }
       const data = await apiFetch(`/api/code-editor/files/${file._id}`, {
         method: 'PUT',
         body: JSON.stringify({ content, name: file.name }),
       });
       originalContentRef.current = content;
-      openContentsRef.current[file._id] = content;
-      openDirtyRef.current[file._id] = false;
+      openContentsRef.current[fileKey] = content;
+      openDirtyRef.current[fileKey] = false;
       setDirty(false);
-      setFiles((prev) => prev.map((f) => (f._id === file._id ? { ...f, ...data.file } : f)));
+      setFiles((prev) => prev.map((f) => (getFileKey(f) === fileKey ? { ...f, ...data.file } : f)));
       setStatus({ type: 'success', msg: 'File saved' });
       setTimeout(() => setStatus(null), 2000);
     } catch (err) {
@@ -839,9 +1103,78 @@ export default function Editor() {
     }
   }
 
+  const gatherDeploymentFiles = useCallback(() => {
+    const sourceFiles = selectedProject
+      ? files
+      : selectedRepo
+        ? (files.length ? files : (selectedFile ? [selectedFile] : []))
+        : (selectedFile ? [selectedFile] : []);
+
+    if (!sourceFiles.length) return [];
+
+    return sourceFiles.map((file) => {
+      const pageValue = openContentsRef.current[getFileKey(file)] ?? file.content ?? '';
+      const contentValue = typeof pageValue === 'string' ? pageValue : '';
+      const pathValue = (file.path || '/').replace(/\\/g, '/').replace(/\/+$|^\/+$/, '/');
+      return {
+        name: file.name,
+        path: pathValue === '/' ? '/' : pathValue,
+        content: contentValue,
+        language: file.language || 'plaintext',
+      };
+    });
+  }, [files, getFileKey, selectedFile, selectedProject, selectedRepo]);
+
   async function handleGitAction(action) {
+    if (selectedRepo && !workspaceId) {
+      try {
+        if (action === 'status') {
+          setGitStatus({ success: true, branch: selectedRepo.default_branch || 'main', ahead: 0, behind: 0, modified: [] });
+          setStatus({ type: 'success', msg: `GitHub repo ${selectedRepo.fullName || selectedRepo.name} selected` });
+          return;
+        }
+
+        if (action === 'pull') {
+          await loadGithubRepoFiles(selectedRepo);
+          setStatus({ type: 'success', msg: 'GitHub repo refreshed' });
+          return;
+        }
+
+        if (action === 'push') {
+          const filesToPush = gatherDeploymentFiles().filter((file) => !!file.name && !!file.content);
+          if (!filesToPush.length) {
+            setStatus({ type: 'error', msg: 'No file changes to push to the selected repository.' });
+            return;
+          }
+
+          const repoOwner = selectedRepo.owner?.login || selectedRepo.owner || selectedRepo.ownerName;
+          const repoName = selectedRepo.name;
+          const data = await apiFetch('/api/github-advanced/push', {
+            method: 'POST',
+            body: JSON.stringify({
+              owner: repoOwner,
+              repo: repoName,
+              branch: selectedRepo.default_branch || 'main',
+              files: filesToPush.map((file) => ({ path: file.path === '/' ? file.name : `${file.path.replace(/^\/+|\/+$/g, '')}/${file.name}`, content: file.content })),
+              message: `Update ${filesToPush[0].name} from Buildrs HQ`,
+            }),
+          });
+
+          if (!data.success) {
+            throw new Error(data.message || 'GitHub push failed');
+          }
+
+          setStatus({ type: 'success', msg: `Pushed ${filesToPush.length} file(s) to ${repoOwner}/${repoName}` });
+          return;
+        }
+      } catch (e) {
+        setStatus({ type: 'error', msg: `Git ${action} failed: ${e.message}` });
+        return;
+      }
+    }
+
     if (!workspaceId) {
-      setStatus({ type: 'error', msg: 'Join a workspace to use version control.' });
+      setStatus({ type: 'error', msg: 'Join a workspace or select a GitHub repo to use version control.' });
       return;
     }
     try {
@@ -915,9 +1248,17 @@ export default function Editor() {
   function handleDeploy() {
     setPanel('deploy');
     setShowSubdomainInput(true);
-    setDeploySubdomain(selectedFile?.name?.replace(/\.[^.]+$/, '').toLowerCase().replace(/[^a-z0-9-]/g, '-') || '');
-    if (!selectedFile) {
-      setStatus({ type: 'error', msg: 'Select a file first (deploys its project).' });
+
+    const deployName =
+      selectedProject?.name ||
+      selectedRepo?.name ||
+      selectedFile?.name ||
+      'project';
+
+    setDeploySubdomain(deployName.replace(/\.[^.]+$/, '').toLowerCase().replace(/[^a-z0-9-]/g, '-'));
+
+    if (!selectedProject && !selectedRepo && !selectedFile && !files.length) {
+      setStatus({ type: 'error', msg: 'Select a project, repo, or file in the Explorer before deploying.' });
     }
   }
 
@@ -928,21 +1269,34 @@ export default function Editor() {
       setStatus({ type: 'error', msg: 'Subdomain must be at least 2 characters.' });
       return;
     }
-    const projectId = selectedProject?._id || selectedProject?.id || selectedFile?.project;
-    if (!projectId) {
-      setStatus({ type: 'error', msg: 'Select a project in the Explorer before deploying.' });
+
+    const projectId = selectedProject?._id || selectedProject?.id || null;
+    const deploymentFiles = gatherDeploymentFiles();
+    if (!projectId && !selectedRepo && !selectedFile && !deploymentFiles.length) {
+      setStatus({ type: 'error', msg: 'Select a project, repo, or file in the Explorer before deploying.' });
       return;
     }
+
     try {
       setDeploying(true);
       setStatus({ type: 'success', msg: 'Deploying...' });
+      const payload = {
+        projectId,
+        subdomain,
+        companyId: selectedProject?.workspaceId || workspaceId,
+        source: selectedRepo ? 'github' : selectedProject ? 'project' : 'local',
+        repo: selectedRepo ? {
+          owner: selectedRepo.owner?.login || selectedRepo.owner || selectedRepo.ownerName,
+          name: selectedRepo.name,
+          defaultBranch: selectedRepo.default_branch || 'main',
+          fullName: selectedRepo.fullName || selectedRepo.name,
+        } : null,
+        files: deploymentFiles,
+      };
+
       const data = await apiFetch('/api/deployments', {
         method: 'POST',
-        body: JSON.stringify({
-          projectId,
-          subdomain,
-          companyId: selectedProject?.workspaceId || workspaceId,
-        }),
+        body: JSON.stringify(payload),
       });
       if (data.deployment) {
         setDeployments((prev) => [data.deployment, ...prev]);
@@ -973,15 +1327,26 @@ export default function Editor() {
   }
 
   async function handleSandboxStart() {
-    if (!selectedFile) {
+    const previewTarget = selectedFile || files[0] || null;
+    if (!previewTarget) {
       setStatus({ type: 'error', msg: 'Select a file to preview first.' });
       return;
     }
+
     try {
       setStatus({ type: 'success', msg: 'Starting sandbox...' });
+      const payload = {
+        fileId: previewTarget._id || previewTarget.id || null,
+        name: previewTarget.name,
+        path: previewTarget.path || '/',
+        language: previewTarget.language || 'javascript',
+        content: openContentsRef.current[getFileKey(previewTarget)] ?? previewTarget.content ?? content ?? '',
+        source: selectedRepo ? 'github' : selectedProject ? 'project' : 'local',
+      };
+
       const data = await apiFetch('/api/sandbox/start', {
         method: 'POST',
-        body: JSON.stringify({ fileId: selectedFile._id }),
+        body: JSON.stringify(payload),
       });
       if (data.sandboxUrl) {
         setSandboxUrl(data.sandboxUrl);
@@ -1118,6 +1483,12 @@ export default function Editor() {
   const modifiedCount = gitStatus?.modified?.length || 0;
   const blockCount = languages.filter((l) => l.allowed === false).length;
   const filePathSegs = selectedFile ? String(selectedFile.path || selectedFile.name || '').split('/').filter(Boolean) : [];
+  const commandStats = [
+    { label: 'Files', value: files.length, tone: 'cyan', icon: FileCode },
+    { label: 'Deploys', value: deployments.length, tone: 'green', icon: Rocket },
+    { label: 'Collaborators', value: collaborators.length, tone: 'purple', icon: Users },
+    { label: 'Git Changes', value: modifiedCount, tone: 'amber', icon: GitBranch },
+  ];
 
   return (
     <AuthGuard>
@@ -1127,6 +1498,39 @@ export default function Editor() {
       </Head>
 
       <div className="ed-page">
+        <div className="ed-product-shell">
+          <div className="ed-command-header">
+            <div className="ed-command-copy">
+              <div className="ed-command-kicker">Buildrs HQ Workspace</div>
+              <h1>{selectedProject ? selectedProject.name : selectedRepo ? (selectedRepo.fullName || selectedRepo.name) : (workspaceId ? 'Workspace Console' : 'No workspace')}</h1>
+              <p>Product engineering operations, live collaboration, AI assistance, and deployment workflows in one command center.</p>
+            </div>
+            <div className="ed-command-actions">
+              <div className="ed-product-pills">
+                <span>AI</span>
+                <span>Git</span>
+                <span>Deploy</span>
+                <span>Live</span>
+              </div>
+              <button type="button" className="btn-workspace btn-primary" onClick={() => setShowNewModal(true)}>
+                <FilePlus className="w-4 h-4" /> New File
+              </button>
+            </div>
+          </div>
+
+          <div className="ed-command-stats">
+            {commandStats.map(({ label, value, tone, icon: Icon }) => (
+              <div key={label} className={`ed-stat-card is-${tone}`}>
+                <div className="ed-stat-icon"><Icon className="w-4 h-4" /></div>
+                <div>
+                  <div className="ed-stat-label">{label}</div>
+                  <div className="ed-stat-value">{value}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
         {/* ---- Menu bar ---- */}
         <div className="ed-menubar">
           <div className="ed-window-dots">
@@ -1232,6 +1636,11 @@ export default function Editor() {
                           <button type="button" className="ed-drop-item" onClick={() => { setSelectedProject(null); setSelectedRepo(null); setShowProjectSelector(false); }}>
                             <FolderOpen className="w-3.5 h-3.5" /> Workspace Files
                           </button>
+                          {(workspaceId || selectedProject) && (
+                            <button type="button" className="ed-drop-item" onClick={() => { setShowProjectSelector(false); setRepoCreateOpen(true); }}>
+                              <GitBranch className="w-3.5 h-3.5" /> Create GitHub Repo
+                            </button>
+                          )}
                           {projects.length > 0 && <div className="ed-drop-section">Projects</div>}
                           {projects.map((p) => (
                             <button key={p._id || p.id} type="button" className="ed-drop-item" onClick={() => { setSelectedProject(p); setSelectedRepo(null); setShowProjectSelector(false); }}>
@@ -1295,7 +1704,7 @@ export default function Editor() {
                         <div className="ed-stat">{files.filter((f) => f.name.toLowerCase().includes(searchQuery.trim().toLowerCase())).length} matching file(s)</div>
                         {files.filter((f) => f.name.toLowerCase().includes(searchQuery.trim().toLowerCase())).slice(0, 30).map((f) => (
                           <button key={f._id} type="button" className="ed-search-result" onClick={() => selectFile(f)}>
-                            <span className="ed-file-dot" style={{ background: getFileIcon(f.name) }} />
+                            {getLanguageGlyph(f.name)}
                             <span><em>{f.name}</em> <span style={{ color: '#6e6e6e' }}>{f.path && f.path !== '/' ? `— ${f.path}` : ''}</span></span>
                           </button>
                         ))}
@@ -1351,6 +1760,13 @@ export default function Editor() {
                           <span>{name}</span>
                         </button>
                       ))
+                    )}
+                    {!selectedRepo && workspaceId && (
+                      <div style={{ paddingBottom: '0.5rem' }}>
+                        <button type="button" className="btn-workspace btn-secondary" style={{ width: '100%' }} onClick={() => setRepoCreateOpen(true)}>
+                          <GitBranch className="w-3.5 h-3.5 mr-1 inline" /> Create GitHub Repo
+                        </button>
+                      </div>
                     )}
                     <div style={{ display: 'flex', gap: '0.4rem', paddingTop: '0.4rem' }}>
                       <button type="button" className="btn-workspace btn-secondary" style={{ flex: 1 }} onClick={() => handleGitAction('pull')}>Pull</button>
@@ -1477,6 +1893,25 @@ export default function Editor() {
                     <div className="ed-sidebar-actions"></div>
                   </div>
                   <div className="ed-sidebar-body is-ai">
+                    {aiMessages.length === 0 && (
+                      <div className="ed-ai-intel">
+                        <div className="ed-ai-intel-header">
+                          <Bot className="w-4 h-4" />
+                          <span>Product intelligence</span>
+                        </div>
+                        <div className="ed-ai-suggestions">
+                          {SMART_PROMPTS.map(({ label, hint, icon: Icon }) => (
+                            <button key={label} type="button" className="ed-ai-prompt" onClick={() => setAiInput(`${label} ${selectedFile ? `for ${selectedFile.name}` : ''}`)}>
+                              <Icon className="w-3.5 h-3.5" />
+                              <div>
+                                <strong>{label}</strong>
+                                <small>{hint}</small>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     <div className="ed-chat">
                       {aiMessages.length === 0 ? (
                         <div className="ed-empty">
@@ -1526,17 +1961,24 @@ export default function Editor() {
                     {languages.length === 0 ? (
                       <p className="text-xs" style={{ color: '#6e6e6e', padding: '0.2rem 0.55rem' }}>No language catalog yet</p>
                     ) : (
-                      languages.map((l) => (
-                        <div key={l.name} className="ed-ext-item" style={{ padding: '0.4rem 0.55rem' }}>
-                          <span className="ed-file-dot" style={{ background: LANG_COLORS()[l.name] || '#8c8c8c', width: 8, height: 8 }} />
-                          <div>
-                            <div className="ed-ext-name" style={{ fontSize: '0.74rem' }}>{l.name}</div>
+                      languages.map((l) => {
+                        const glyphColor = LANG_COLORS()[l.name] || '#8c8c8c';
+                        const glyphText = (l.name || '').slice(0, 2).toUpperCase() || 'FILE';
+                        return (
+                          <div key={l.name} className="ed-ext-item" style={{ padding: '0.4rem 0.55rem' }}>
+                            <svg className="ed-file-glyph ed-file-glyph-sm" viewBox="0 0 24 24" aria-hidden="true">
+                              <rect x="2" y="2" width="20" height="20" rx="5" fill={glyphColor} />
+                              <text x="12" y="15.5" textAnchor="middle" fontSize="7" fontWeight="700" fill="#0b1020" fontFamily="ui-sans-serif, system-ui, sans-serif">{glyphText}</text>
+                            </svg>
+                            <div>
+                              <div className="ed-ext-name" style={{ fontSize: '0.74rem' }}>{l.name}</div>
+                            </div>
+                            <span className={`pill pill-mono ${l.allowed === false ? 'is-free' : ''}`} style={{ marginLeft: 'auto', ...(l.allowed === false ? { background: 'rgba(248,113,113,0.12)', color: '#f87171' } : { background: 'rgba(52,211,153,0.12)', color: '#7bd197' }) }}>
+                              {l.allowed === false ? 'locked' : 'active'}
+                            </span>
                           </div>
-                          <span className={`pill pill-mono ${l.allowed === false ? 'is-free' : ''}`} style={{ marginLeft: 'auto', ...(l.allowed === false ? { background: 'rgba(248,113,113,0.12)', color: '#f87171' } : { background: 'rgba(52,211,153,0.12)', color: '#7bd197' }) }}>
-                            {l.allowed === false ? 'locked' : 'active'}
-                          </span>
-                        </div>
-                      ))
+                        );
+                      })
                     )}
                   </div>
                 </>
@@ -1548,11 +1990,12 @@ export default function Editor() {
           <div className="ed-main">
             <div className="ed-tabsbar">
               {openFiles.map((f) => {
-                const isActive = selectedFile?._id === f._id;
-                const fDirty = openDirtyRef.current[f._id] || (isActive && dirty);
+                const fileKey = getFileKey(f);
+                const isActive = getFileKey(selectedFile) === fileKey;
+                const fDirty = openDirtyRef.current[fileKey] || (isActive && dirty);
                 return (
-                  <div key={f._id} className={`ed-tabhead ${isActive ? 'is-active' : ''}`} onClick={() => selectFile(f)} role="button">
-                    <span className="ed-file-dot" style={{ background: getFileIcon(f.name) }} />
+                  <div key={fileKey} className={`ed-tabhead ${isActive ? 'is-active' : ''}`} onClick={() => selectFile(f)} role="button">
+                    {getLanguageGlyph(f.name)}
                     <span className="ed-tabname">{f.name}</span>
                     {fDirty ? <span className="ed-tabdirty" /> : null}
                     <button type="button" className="ed-tabclose" onClick={(e) => closeTab(f, e)} title="Close (⌘W)">
@@ -1642,7 +2085,21 @@ export default function Editor() {
                 </div>
 
                 <div className="ed-panel-body">
-                  {panel === 'terminal' && <div ref={terminalRef} className="ed-term-root" />}
+                  {panel === 'terminal' && (
+                    <div className="ed-term-shell">
+                      <div className="ed-term-toolbar">
+                        <div className="ed-term-meta">
+                          <span className="ed-term-capsule is-live">LIVE</span>
+                          <span className="ed-term-label">Workspace Shell</span>
+                        </div>
+                        <div className="ed-term-actions">
+                          <span className="ed-term-pill">Bash</span>
+                          <span className="ed-term-pill">BuildrsHQ</span>
+                        </div>
+                      </div>
+                      <div ref={terminalRef} className="ed-term-root" />
+                    </div>
+                  )}
 
                   {panel === 'problems' && (
                     <>
@@ -1669,68 +2126,104 @@ export default function Editor() {
                   )}
 
                   {panel === 'preview' && (
-                    sandboxUrl ? (
-                      <iframe src={sandboxUrl} className="w-full flex-1" style={{ background: '#ffffff', border: 'none', borderRadius: '6px', minHeight: 0 }} title="Live preview" />
-                    ) : (
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', minHeight: 0, flex: 1 }}>
-                        <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                          <span className="ed-sidebar-title">Figma Design</span>
-                          {!selectedFigmaFile ? (
-                            figmaFiles.length === 0 ? (
-                              <div className="ed-stat" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.6rem' }}>
-                                <Layers className="w-6 h-6" style={{ color: '#6e6e6e' }} />
-                                <span>No Figma files connected</span>
-                                <a href="/integrations" className="btn-workspace btn-secondary">Connect Figma</a>
-                              </div>
-                            ) : (
-                              <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                                {figmaFiles.map((f) => (
-                                  <button key={f.key || f.id} type="button" className="ed-drop-item" onClick={() => setSelectedFigmaFile(f)}>
-                                    <Layers className="w-3.5 h-3.5" />
-                                    <span style={{ minWidth: 0 }}>
-                                      <span className="block truncate text-xs">{f.name || f.key}</span>
-                                      <span className="block text-xs" style={{ color: '#6e6e6e' }}>{f.last_modified ? new Date(f.last_modified).toLocaleDateString() : ''}</span>
-                                    </span>
-                                  </button>
-                                ))}
-                              </div>
-                            )
-                          ) : (
-                            <div className="ed-design-pane" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                              <div className="ed-stat" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.4rem' }}>
-                                <button type="button" onClick={() => setSelectedFigmaFile(null)} style={{ color: '#2fd6e6', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.66rem' }}>← All files</button>
-                                <span className="truncate" style={{ color: '#bbbbbb' }}>{selectedFigmaFile.name || selectedFigmaFile.key}</span>
-                              </div>
-                              <div style={{ flex: 1, minHeight: 0, overflow: 'auto', background: '#1e1e1e', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                {selectedFigmaFile.thumbnail_url ? (
-                                  <img src={selectedFigmaFile.thumbnail_url} alt={selectedFigmaFile.name || 'design'} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
-                                ) : (
-                                  <Layers className="w-8 h-8" style={{ color: '#3c3c3c' }} />
-                                )}
-                              </div>
-                              <button type="button" className="btn-workspace btn-primary" onClick={generateFromDesign}>
-                                <Bot className="w-3.5 h-3.5" /> Generate React code
-                              </button>
-                            </div>
-                          )}
+                    <>
+                      <div className="ed-intel-grid">
+                        <div className="ed-intel-card">
+                          <span className="ed-intel-label">Preview</span>
+                          <strong>{sandboxUrl ? 'Live' : 'Idle'}</strong>
+                          <small>{sandboxUrl ? 'Sandbox is running' : 'No sandbox started yet'}</small>
                         </div>
-                        <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                          <span className="ed-sidebar-title">Code</span>
-                          <div className="ed-code-wrap">
-                            {selectedFile ? (
-                              <MonacoEditor height="100%" language={monacoLanguage} value={content} onChange={handleEditorChange} theme="vs-dark"
-                                options={monacoPreviewOptions} />
-                            ) : (
-                              <div className="ed-ide-empty">Select a file to preview</div>
-                            )}
-                          </div>
+                        <div className="ed-intel-card">
+                          <span className="ed-intel-label">Design</span>
+                          <strong>{selectedFigmaFile ? 'Connected' : 'Not linked'}</strong>
+                          <small>{selectedFigmaFile ? selectedFigmaFile.name || 'Selected design' : 'Connect a Figma file to generate code'}</small>
+                        </div>
+                        <div className="ed-intel-card">
+                          <span className="ed-intel-label">Active file</span>
+                          <strong>{selectedFile ? selectedFile.name : 'No file'}</strong>
+                          <small>{selectedFile ? `${selectedFile.language || detectLanguage(selectedFile.name)} source` : 'Open a file to preview it'}</small>
                         </div>
                       </div>
-                    )
+                      {sandboxUrl ? (
+                        <iframe src={sandboxUrl} className="w-full flex-1" style={{ background: '#ffffff', border: 'none', borderRadius: '6px', minHeight: 0 }} title="Live preview" />
+                      ) : (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', minHeight: 0, flex: 1 }}>
+                          <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                            <span className="ed-sidebar-title">Figma Design</span>
+                            {!selectedFigmaFile ? (
+                              figmaFiles.length === 0 ? (
+                                <div className="ed-stat" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.6rem' }}>
+                                  <Layers className="w-6 h-6" style={{ color: '#6e6e6e' }} />
+                                  <span>No Figma files connected</span>
+                                  <a href="/integrations" className="btn-workspace btn-secondary">Connect Figma</a>
+                                </div>
+                              ) : (
+                                <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                                  {figmaFiles.map((f) => (
+                                    <button key={f.key || f.id} type="button" className="ed-drop-item" onClick={() => setSelectedFigmaFile(f)}>
+                                      <Layers className="w-3.5 h-3.5" />
+                                      <span style={{ minWidth: 0 }}>
+                                        <span className="block truncate text-xs">{f.name || f.key}</span>
+                                        <span className="block text-xs" style={{ color: '#6e6e6e' }}>{f.last_modified ? new Date(f.last_modified).toLocaleDateString() : ''}</span>
+                                      </span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )
+                            ) : (
+                              <div className="ed-design-pane" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                <div className="ed-stat" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.4rem' }}>
+                                  <button type="button" onClick={() => setSelectedFigmaFile(null)} style={{ color: '#2fd6e6', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.66rem' }}>← All files</button>
+                                  <span className="truncate" style={{ color: '#bbbbbb' }}>{selectedFigmaFile.name || selectedFigmaFile.key}</span>
+                                </div>
+                                <div style={{ flex: 1, minHeight: 0, overflow: 'auto', background: '#1e1e1e', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                  {selectedFigmaFile.thumbnail_url ? (
+                                    <img src={selectedFigmaFile.thumbnail_url} alt={selectedFigmaFile.name || 'design'} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                                  ) : (
+                                    <Layers className="w-8 h-8" style={{ color: '#3c3c3c' }} />
+                                  )}
+                                </div>
+                                <button type="button" className="btn-workspace btn-primary" onClick={generateFromDesign}>
+                                  <Bot className="w-3.5 h-3.5" /> Generate React code
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                          <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                            <span className="ed-sidebar-title">Code</span>
+                            <div className="ed-code-wrap">
+                              {selectedFile ? (
+                                <MonacoEditor height="100%" language={monacoLanguage} value={content} onChange={handleEditorChange} theme="vs-dark"
+                                  options={monacoPreviewOptions} />
+                              ) : (
+                                <div className="ed-ide-empty">Select a file to preview</div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
 
                   {panel === 'deploy' && (
                     <>
+                      <div className="ed-intel-grid">
+                        <div className="ed-intel-card">
+                          <span className="ed-intel-label">Deploys</span>
+                          <strong>{deployments.length}</strong>
+                          <small>Current deployment records</small>
+                        </div>
+                        <div className="ed-intel-card">
+                          <span className="ed-intel-label">Environment</span>
+                          <strong>{subscription?.tier === 'enterprise' ? 'Enterprise' : subscription?.tier === 'professional' ? 'Pro' : 'Free'}</strong>
+                          <small>{blockCount ? `${blockCount} language(s) locked` : 'Full toolchain enabled'}</small>
+                        </div>
+                        <div className="ed-intel-card">
+                          <span className="ed-intel-label">Workspace</span>
+                          <strong>{selectedProject ? selectedProject.name : 'Default'}</strong>
+                          <small>{workspaceId ? 'Linked and ready to ship' : 'Add a workspace to deploy'}</small>
+                        </div>
+                      </div>
                       <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
                         <button type="button" className="btn-workspace btn-primary" onClick={handleDeploy}>
                           <Rocket className="w-4 h-4" /> New Deployment
@@ -1834,8 +2327,8 @@ export default function Editor() {
         </div>
 
       {showNewModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="ws-modal w-full max-w-lg">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" style={{ zIndex: 9999 }}>
+          <div className="ws-modal w-full max-w-lg" style={{ position: 'relative', zIndex: 1 }}>
             <div className="flex items-center justify-between p-5 border-b border-[rgba(255,255,255,0.09)]">
               <div className="flex items-center gap-2.5">
                 <span className="card-ico">
@@ -1879,8 +2372,8 @@ export default function Editor() {
       )}
 
       {showNewFolderModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="ws-modal w-full max-w-lg">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" style={{ zIndex: 9999 }}>
+          <div className="ws-modal w-full max-w-lg" style={{ position: 'relative', zIndex: 1 }}>
             <div className="flex items-center justify-between p-5 border-b border-[rgba(255,255,255,0.09)]">
               <div className="flex items-center gap-2.5">
                 <span className="card-ico">
@@ -1904,6 +2397,44 @@ export default function Editor() {
                 <button type="submit" className="btn-workspace btn-primary flex items-center gap-2" disabled={creating || !newFolderName.trim()}>
                   <FolderPlus className="w-4 h-4" />
                   {creating ? 'Creating...' : 'Create Folder'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {repoCreateOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" style={{ zIndex: 9999 }}>
+          <div className="ws-modal w-full max-w-lg" style={{ position: 'relative', zIndex: 1 }}>
+            <div className="flex items-center justify-between p-5 border-b border-[rgba(255,255,255,0.09)]">
+              <div className="flex items-center gap-2.5">
+                <span className="card-ico">
+                  <GitBranch className="w-4 h-4" />
+                </span>
+                <h2 className="ws-modal-title">Create GitHub Repository</h2>
+              </div>
+              <button type="button" onClick={() => { setRepoCreateOpen(false); setRepoCreateError(null); }} className="text-muted hover:text-white"><X className="w-5 h-5" /></button>
+            </div>
+            <form onSubmit={handleCreateGithubRepo} className="p-5 space-y-4">
+              <div>
+                <label className="ws-label">Repository Name</label>
+                <input type="text" value={repoCreateName} onChange={(e) => setRepoCreateName(e.target.value)} placeholder="my-project" className="ws-input" autoFocus required />
+              </div>
+              <div>
+                <label className="ws-label">Description</label>
+                <textarea value={repoCreateDescription} onChange={(e) => setRepoCreateDescription(e.target.value)} placeholder="Project summary and purpose" className="ws-textarea w-full font-mono text-sm" rows={3} />
+              </div>
+              <label className="flex items-center gap-2 text-sm" style={{ color: '#d4d4d4' }}>
+                <input type="checkbox" checked={repoCreatePrivate} onChange={(e) => setRepoCreatePrivate(e.target.checked)} />
+                Make this repository private
+              </label>
+              {repoCreateError && <p className="text-xs text-[#f87171]">{repoCreateError}</p>}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', paddingTop: '0.5rem' }}>
+                <button type="button" className="btn-workspace btn-secondary" onClick={() => { setRepoCreateOpen(false); setRepoCreateError(null); }}>Cancel</button>
+                <button type="submit" className="btn-workspace btn-primary flex items-center gap-2" disabled={repoCreateBusy || !repoCreateName.trim()}>
+                  <GitBranch className="w-4 h-4" />
+                  {repoCreateBusy ? 'Creating...' : 'Create Repo'}
                 </button>
               </div>
             </form>

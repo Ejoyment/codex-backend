@@ -5,15 +5,15 @@ const nextConfig = {
     return [
       {
         source: '/api/:path*',
-        destination: `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/:path*`,
+        destination: `${process.env.NEXT_PUBLIC_API_URL || 'https://codex-backend-7utu.onrender.com'}/api/:path*`,
       },
       {
         source: '/api-docs/:path*',
-        destination: `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api-docs/:path*`,
+        destination: `${process.env.NEXT_PUBLIC_API_URL || 'https://codex-backend-7utu.onrender.com'}/api-docs/:path*`,
       },
       {
         source: '/uploads/:path*',
-        destination: `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/uploads/:path*`,
+        destination: `${process.env.NEXT_PUBLIC_API_URL || 'https://codex-backend-7utu.onrender.com'}/uploads/:path*`,
       },
     ];
   },

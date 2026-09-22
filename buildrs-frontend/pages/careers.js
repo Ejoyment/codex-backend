@@ -19,6 +19,13 @@ const JOBS = [
     desc: 'Build the core of the workspace — React, Node.js, and the AI pair surfaces.',
   },
   {
+    title: 'Lead UI/UX Designer',
+    dept: 'design',
+    location: 'remote · worldwide',
+    type: 'full-time',
+    desc: 'Design high-fidelity and stunning UI for the unified dashboard command center',
+  },
+  {
     title: 'AI/ML Research Engineer',
     dept: 'ai research',
     location: 'remote · worldwide',
