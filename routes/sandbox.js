@@ -52,39 +52,32 @@ const { authenticateToken } = require('../middleware/auth');
 // Start a sandbox for live preview
 router.post('/start', authenticateToken, async (req, res) => {
     try {
-        const { fileId } = req.body;
+        const { fileId, file, name, path: filePath, language, content } = req.body;
+        const payloadFile = file || (fileId ? (await CodeFile.findById(fileId).lean()) : null);
 
-        if (!fileId) {
-            return res.status(400).json({ error: 'fileId is required' });
+        if (!payloadFile && !name) {
+            return res.status(400).json({ error: 'fileId or file content is required' });
         }
 
-        // Verify file exists
-        const file = await CodeFile.findById(fileId);
-        if (!file) {
-            return res.status(404).json({ error: 'File not found' });
-        }
+        const resolvedName = payloadFile?.name || name || 'preview.html';
+        const resolvedPath = (payloadFile?.path || filePath || '/').replace(/\\/g, '/');
+        const resolvedLanguage = payloadFile?.language || language || (resolvedName.endsWith('.html') ? 'html' : 'javascript');
+        const resolvedContent = typeof content === 'string' ? content : (payloadFile?.content || '');
 
-        // Generate a sandbox key and build a preview HTML page
         const sandboxKey = 'sb_' + crypto.randomBytes(8).toString('hex');
-
-        // Determine sandbox URL - in production, this would provision a real container
-        // For now, we create a self-contained HTML preview from the file content
         const sandboxDir = path.join(os.tmpdir(), 'codex-sandboxes', sandboxKey);
         await fs.mkdir(sandboxDir, { recursive: true });
 
         let previewHtml = '';
-
-        if (file.language === 'html' || file.name.endsWith('.html') || file.name.endsWith('.htm')) {
-            // Serve the HTML file directly
-            previewHtml = file.content || '<html><body><p>No content</p></body></html>';
+        if (resolvedLanguage === 'html' || resolvedName.endsWith('.html') || resolvedName.endsWith('.htm')) {
+            previewHtml = resolvedContent || '<html><body><p>No content</p></body></html>';
         } else {
-            // Wrap code in a syntax-highlighted preview page
             previewHtml = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Sandbox Preview - ${file.name}</title>
+<title>Sandbox Preview - ${resolvedName}</title>
 <style>
   body { font-family: 'Courier New', monospace; background: #1e1e1e; color: #d4d4d4; padding: 2rem; margin: 0; }
   pre { white-space: pre-wrap; word-wrap: break-word; tab-size: 2; }
@@ -95,27 +88,27 @@ router.post('/start', authenticateToken, async (req, res) => {
 </head>
 <body>
 <div class="header">
-  <span class="file-name">${file.name}</span>
-  <span class="language">.${file.language}</span>
+  <span class="file-name">${resolvedName}</span>
+  <span class="language">.${resolvedLanguage}</span>
 </div>
-<pre><code>${file.content ? file.content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '(empty file)'}</code></pre>
+<pre><code>${resolvedContent ? resolvedContent.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '(empty file)'}</code></pre>
 </body>
 </html>`;
         }
 
         await fs.writeFile(path.join(sandboxDir, 'index.html'), previewHtml, 'utf8');
 
-        // In a real implementation, we would start a local HTTP server for the sandbox directory
-        // For now, return a preview URL pointing to the sandbox viewer
         const baseUrl = process.env.SANDBOX_PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
 
         res.json({
             sandboxUrl: `${baseUrl}/api/sandbox/preview/${sandboxKey}`,
-            sandboxKey
+            sandboxKey,
+            source: resolvedPath,
+            fileName: resolvedName,
         });
     } catch (error) {
         console.error('Sandbox start error:', error);
-        res.status(500).json({ error: 'Failed to start sandbox' });
+        res.status(500).json({ error: error.message || 'Failed to start sandbox' });
     }
 });
 

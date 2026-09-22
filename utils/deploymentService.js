@@ -165,10 +165,11 @@ async function deployProject(subdomain, files) {
     throw new Error('Subdomain must be at least 2 characters');
   }
 
-  // Always deploy inside a writable directory on the VPS
   const deployBase = await findWritableBase();
   const deploymentDir = `${deployBase}/${sanitizedSubdomain}`;
   const containerName = `deploy-${sanitizedSubdomain}`;
+  const nextContainerName = `${containerName}-next-${Date.now()}`;
+  const imageTag = `${containerName}:${Date.now()}`;
 
   const { runtime, dockerfile, exposePort } = detectRuntime(files);
   console.log(`[deploy] Runtime: ${runtime}, port: ${exposePort}, dir: ${deploymentDir}`);
@@ -186,39 +187,48 @@ async function deployProject(subdomain, files) {
     await writeRemoteFile(`${deploymentDir}/Dockerfile`, dockerfile);
   }
 
-  try { await sshExec(`docker rm -f ${containerName} 2>/dev/null || true`); } catch (_) {}
-
-  await sshExec(`docker build -t ${containerName} ${deploymentDir}`).catch(err => {
+  await sshExec(`docker build -t ${imageTag} ${deploymentDir}`).catch(err => {
     throw new Error(`Docker build failed: ${err.message}`);
   });
 
-  // Write the docker run command to a script file (base64 transfer) so the
-  // Traefik `Host()` backticks are never interpreted by an intermediate shell.
+  const existingContainer = (await sshExec(`docker ps -q --filter "name=^/${containerName}$" 2>/dev/null || true`).catch(() => '')).trim();
+
   const runScript = `#!/bin/bash
-docker rm -f ${containerName} 2>/dev/null || true
-docker run -d \\
-  --name ${containerName} \\
-  --restart unless-stopped \\
-  --cap-drop ALL \\
-  --security-opt no-new-privileges \\
-  --memory 512m \\
-  --cpus 1 \\
-  --pids-limit 100 \\
-  --label 'traefik.enable=true' \\
-  --label 'traefik.http.routers.${sanitizedSubdomain}.rule=Host(\`${sanitizedSubdomain}.${DOMAIN}\`) || Host(\`www.${sanitizedSubdomain}.${DOMAIN}\`)' \\
-  --label 'traefik.http.routers.${sanitizedSubdomain}.entrypoints=websecure' \\
-  --label 'traefik.http.routers.${sanitizedSubdomain}.tls.certresolver=letsencrypt' \\
-  --label 'traefik.http.services.${sanitizedSubdomain}.loadbalancer.server.port=${exposePort}' \\
-  ${containerName}
+  docker rm -f ${nextContainerName} 2>/dev/null || true
+  docker run -d \\
+    --name ${nextContainerName} \\
+    --restart unless-stopped \\
+    --cap-drop ALL \\
+    --security-opt no-new-privileges \\
+    --memory 512m \\
+    --cpus 1 \\
+    --pids-limit 100 \\
+    --label 'traefik.enable=true' \\
+    --label 'traefik.http.routers.${sanitizedSubdomain}.rule=Host(\`${sanitizedSubdomain}.${DOMAIN}\`) || Host(\`www.${sanitizedSubdomain}.${DOMAIN}\`)' \\
+    --label 'traefik.http.routers.${sanitizedSubdomain}.entrypoints=websecure' \\
+    --label 'traefik.http.routers.${sanitizedSubdomain}.tls.certresolver=letsencrypt' \\
+    --label 'traefik.http.services.${sanitizedSubdomain}.loadbalancer.server.port=${exposePort}' \\
+    ${imageTag}
 `;
 
   await writeRemoteFile(`${deploymentDir}/run.sh`, runScript);
-  const containerId = (await sshExec(`bash ${deploymentDir}/run.sh`)).trim();
-  console.log(`[deploy] ${containerName} started (${containerId})`);
+  const nextContainerId = (await sshExec(`bash ${deploymentDir}/run.sh`)).trim();
+
+  if (existingContainer) {
+    await sshExec(`docker rm -f ${containerName} 2>/dev/null || true`);
+  }
+
+  await sshExec(`docker rename ${nextContainerName} ${containerName}`).catch(async (renameErr) => {
+    console.warn('[deploy] rename to active container failed, leaving standby container:', renameErr.message);
+    await sshExec(`docker rm -f ${nextContainerName} 2>/dev/null || true`);
+    throw renameErr;
+  });
+
+  console.log(`[deploy] ${containerName} started (${nextContainerId}) using blue-green swap`);
 
   try { await sshExec(`docker image prune -f 2>/dev/null || true`); } catch (_) {}
 
-  return { containerId, url: `https://${sanitizedSubdomain}.${DOMAIN}` };
+  return { containerId: nextContainerId, url: `https://${sanitizedSubdomain}.${DOMAIN}` };
 }
 
 async function stopDeployment(subdomain) {

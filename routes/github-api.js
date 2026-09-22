@@ -216,9 +216,22 @@ router.post('/repos', authenticateToken, async (req, res) => {
             success: true,
             message: 'Repository created successfully',
             repository: {
+                id: repo.id,
                 name: repo.name,
+                fullName: repo.full_name,
+                full_name: repo.full_name,
+                owner: repo.owner?.login || repo.owner,
+                ownerName: repo.owner?.login || repo.owner,
+                description: repo.description,
+                private: repo.private,
                 url: repo.html_url,
-                cloneUrl: repo.clone_url
+                html_url: repo.html_url,
+                cloneUrl: repo.clone_url,
+                clone_url: repo.clone_url,
+                defaultBranch: repo.default_branch,
+                default_branch: repo.default_branch,
+                createdAt: repo.created_at,
+                updatedAt: repo.updated_at
             }
         });
     } catch (error) {

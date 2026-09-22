@@ -9,7 +9,7 @@ const deploymentSchema = new mongoose.Schema({
     projectId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'TeamProject',
-        required: true
+        default: null
     },
     subdomain: {
         type: String,

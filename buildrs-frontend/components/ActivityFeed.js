@@ -31,7 +31,7 @@ function groupByDate(items) {
     const day = new Date(date.getFullYear(), date.getMonth(), date.getDate());
     if (day.getTime() === today.getTime()) buckets.Today.push(item);
     else if (day.getTime() === yesterday.getTime()) buckets.Yesterday.push(item);
-    else if (date >= weekAgo) buckets.ThisWeek.push(item);
+    else if (date >= weekAgo) buckets['This Week'].push(item);
     else buckets.Older.push(item);
   }
 

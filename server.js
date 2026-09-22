@@ -493,6 +493,7 @@ io.use((socket, next) => {
 // Collaboration namespace
 io.on('connection', (socket) => {
     console.log(`User connected: ${socket.userId}`);
+    socket.join(`user:${socket.userId}`);
     
     // Join file collaboration
     socket.on('collab:join', async ({ fileId, user, role }) => {

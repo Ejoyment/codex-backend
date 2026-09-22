@@ -94,19 +94,27 @@ export default function Standup() {
           companyApi.getMyCompanies(),
         ]);
 
-        if (tasksRes.success) setTasks(tasksRes.tasks || []);
+        let normalizedCompanies = [];
+        if (tasksRes.success) {
+          const normalizedTasks = (tasksRes.tasks || []).map((task) => ({
+            ...task,
+            id: task.id || task._id,
+            _id: task._id || task.id,
+          }));
+          setTasks(normalizedTasks);
+        }
         if (companiesRes.success) {
-          const comps = normalizeCompanies(companiesRes.companies);
-          setCompanies(comps);
-          if (comps.length > 0) setSelectedCompany(comps[0]._id);
+          normalizedCompanies = normalizeCompanies(companiesRes.companies);
+          setCompanies(normalizedCompanies);
+          if (normalizedCompanies.length > 0) setSelectedCompany(normalizedCompanies[0]._id);
         }
 
         const stored = JSON.parse(localStorage.getItem('pastStandups') || '[]');
         setPastStandups(stored);
 
-        if (comps.length > 0) {
+        if (normalizedCompanies.length > 0) {
           try {
-            const res = await apiFetch(`/api/standup?companyId=${comps[0]._id}&limit=50`);
+            const res = await apiFetch(`/api/standup?companyId=${normalizedCompanies[0]._id}&limit=50`);
             const serverStandups = res.success ? res.standups : [];
             const merged = [...serverStandups, ...stored];
             const seen = new Set();
@@ -144,8 +152,9 @@ export default function Standup() {
   }, [selectedCompany]);
 
   function toggleTask(taskId) {
+    const normalizedId = taskId || '';
     setSelectedTasks((prev) =>
-      prev.includes(taskId) ? prev.filter((id) => id !== taskId) : [...prev, taskId]
+      prev.includes(normalizedId) ? prev.filter((id) => id !== normalizedId) : [...prev, normalizedId]
     );
   }
 
@@ -432,12 +441,13 @@ export default function Standup() {
                         ) : (
                           <div className="std-task-list">
                             {tasks.map((task) => {
-                              const checked = selectedTasks.includes(task._id);
+                              const taskId = task.id || task._id;
+                              const checked = selectedTasks.includes(taskId);
                               return (
                                 <div
-                                  key={task._id}
+                                  key={taskId}
                                   className={`std-task-row ${checked ? 'is-checked' : ''}`}
-                                  onClick={() => toggleTask(task._id)}
+                                  onClick={() => toggleTask(taskId)}
                                 >
                                   <span className="std-check">
                                     <Check className="w-3 h-3" />
@@ -624,7 +634,7 @@ export default function Standup() {
                                   <div className="std-section">
                                     <div className="flex flex-wrap gap-1.5">
                                       {s.relatedTasks.map((taskId) => {
-                                        const task = tasks.find((t) => t._id === taskId);
+                                        const task = tasks.find((t) => (t.id || t._id) === taskId);
                                         return (
                                           <span key={taskId} className="std-chip">
                                             {task?.title || 'Task'}
