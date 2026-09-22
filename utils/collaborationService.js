@@ -1,12 +1,20 @@
 /**
  * Real-Time Collaboration Service using Yjs CRDT
- * Enables conflict-free multi-user editing
+ * Enables conflict-free multi-user editing with agent-vs-human conflict resolution
  */
 
 const Y = require('yjs');
 const { encoding, decoding } = require('lib0');
 const syncProtocol = require('y-protocols/sync');
 const awarenessProtocol = require('y-protocols/awareness');
+const unifiedStateGraph = require('./unifiedStateGraph');
+
+// Conflict resolution policies
+const CONFLICT_POLICIES = {
+    HUMAN_PRIORITY: 'human_edits_always_win',
+    AGENT_COOLDOWN: 5000, // Agent blocked for 5s after human edit
+    STATUS_APPROVAL: true, // Agent cannot change task status directly
+};
 
 class CollaborationService {
     constructor() {
@@ -71,13 +79,18 @@ class CollaborationService {
     }
     
     /**
-     * Add a client to a document
+     * Add a client to a document.
+     * role: 'human' | 'agent' — used for conflict resolution policies.
      */
-    addClient(fileId, socket) {
+    addClient(fileId, socket, role = 'human') {
         if (!this.clients.has(fileId)) {
             this.clients.set(fileId, new Set());
         }
         
+        // Track client role for conflict resolution
+        if (!this.clientRoles) this.clientRoles = new Map();
+        this.clientRoles.set(socket.id, { role, fileId, joinedAt: Date.now() });
+
         this.clients.get(fileId).add(socket);
         
         const ydoc = this.getDocument(fileId);
@@ -88,8 +101,11 @@ class CollaborationService {
         
         // Send awareness states
         this.sendAwarenessStates(socket, awareness);
-        
-        console.log(`Client connected to file: ${fileId}, total: ${this.clients.get(fileId).size}`);
+
+        // Register in unified state graph
+        unifiedStateGraph.registerNode('file', fileId, { role });
+
+        console.log(`Client [${role}] connected to file: ${fileId}, total: ${this.clients.get(fileId).size}`);
     }
     
     /**
@@ -99,6 +115,9 @@ class CollaborationService {
         const clients = this.clients.get(fileId);
         if (clients) {
             clients.delete(socket);
+
+            // Clean up role tracking
+            if (this.clientRoles) this.clientRoles.delete(socket.id);
             
             if (clients.size === 0) {
                 // Clear existing cleanup timeout if any
@@ -126,7 +145,8 @@ class CollaborationService {
     }
     
     /**
-     * Handle sync message from client
+     * Handle sync message from client.
+     * Applies conflict resolution policies for agent edits.
      */
     handleSyncMessage(fileId, socket, message) {
         try {
@@ -137,6 +157,10 @@ class CollaborationService {
             const decoder = decoding.createDecoder(message);
             const messageType = decoding.readVarUint(decoder);
             
+            // Get client role for conflict resolution
+            const clientInfo = this.clientRoles?.get(socket.id);
+            const role = clientInfo?.role || 'human';
+
             switch (messageType) {
                 case syncProtocol.messageYjsSyncStep1:
                     syncProtocol.readSyncStep1(decoder, encoder, ydoc);
@@ -148,8 +172,20 @@ class CollaborationService {
                     break;
                     
                 case syncProtocol.messageYjsUpdate:
+                    // Conflict check for agent edits
+                    if (role === 'agent') {
+                        const conflictCheck = this._checkFileConflict(fileId, socket);
+                        if (conflictCheck.blocked) {
+                            console.log(`Agent edit blocked on ${fileId}: ${conflictCheck.reason}`);
+                            return; // Drop the update
+                        }
+                    }
                     syncProtocol.readUpdate(decoder, ydoc);
                     this.broadcastUpdate(fileId, socket, message);
+
+                    // Track last edit time for conflict resolution
+                    if (!this._lastEditTimes) this._lastEditTimes = new Map();
+                    this._lastEditTimes.set(fileId, { role, timestamp: Date.now() });
                     break;
             }
         } catch (error) {
@@ -306,6 +342,37 @@ class CollaborationService {
             clearInterval(this._persistenceWorker);
             this._persistenceWorker = null;
         }
+    }
+
+    /**
+     * Check if an agent edit should be blocked based on conflict resolution policies.
+     * Returns { blocked, reason } for agent edits that conflict with recent human edits.
+     */
+    _checkFileConflict(fileId, socket) {
+        if (!this._lastEditTimes) return { blocked: false };
+
+        const lastEdit = this._lastEditTimes.get(fileId);
+        if (!lastEdit) return { blocked: false };
+
+        const timeSinceHumanEdit = Date.now() - lastEdit.timestamp;
+
+        // Policy: Agent blocked if human edited within cooldown period
+        if (lastEdit.role === 'human' && timeSinceHumanEdit < CONFLICT_POLICIES.AGENT_COOLDOWN) {
+            return {
+                blocked: true,
+                reason: `Human edited ${timeSinceHumanEdit}ms ago — agent cooldown active`,
+                policy: 'AGENT_COOLDOWN'
+            };
+        }
+
+        return { blocked: false };
+    }
+
+    /**
+     * Get conflict resolution policies (for debugging/status).
+     */
+    getConflictPolicies() {
+        return { ...CONFLICT_POLICIES };
     }
 
     /**

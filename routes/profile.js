@@ -36,8 +36,8 @@ const upload = multer({
         if (isExtAllowed && isMimeAllowed) {
             return cb(null, true);
         }
-        // Fallback: allow if either ext or mime is image-related
-        if (isExtAllowed || isMimeAllowed) {
+        // Require BOTH extension AND mime to pass — prevents .exe with image/png MIME
+        if (isExtAllowed && isMimeAllowed) {
             return cb(null, true);
         }
         cb(new Error('Only image files are allowed (jpg, png, gif, webp)'));

@@ -4,30 +4,7 @@ const jwt = require('jsonwebtoken');
 const Integration = require('../models/Integration');
 const IntegrationData = require('../models/IntegrationData');
 const Subscription = require('../models/Subscription');
-
-// Middleware to verify JWT token
-const verifyToken = (req, res, next) => {
-    const token = req.headers.authorization?.split(' ')[1];
-    
-    if (!token) {
-        return res.status(401).json({
-            success: false,
-            message: 'Authentication required'
-        });
-    }
-
-    try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const userId = decoded.userId || decoded.id || decoded._id;
-        req.userId = userId;
-        req.user = { ...decoded, id: userId, userId };
-        next();
-    } catch (error) {
-        return res.status(401).json({
-            success: false,
-            message: 'Invalid or expired token'
-        });
-    }
+const { authenticateToken } = require('../middleware/auth');
 };
 
 /**
@@ -63,7 +40,7 @@ const verifyToken = (req, res, next) => {
  *         description: Unauthorized
  */
 // Get dashboard data
-router.get('/data', verifyToken, async (req, res) => {
+router.get('/data', authenticateToken, async (req, res) => {
     try {
         // Get user's subscription
         const subscription = await Subscription.findOne({ userId: req.userId });
@@ -263,7 +240,7 @@ router.get('/data', verifyToken, async (req, res) => {
  *         description: Unauthorized
  */
 // Get specific integration data
-router.get('/data/:platform', verifyToken, async (req, res) => {
+router.get('/data/:platform', authenticateToken, async (req, res) => {
     try {
         const { platform } = req.params;
         const axios = require('axios');
@@ -400,7 +377,7 @@ router.get('/data/:platform', verifyToken, async (req, res) => {
  *         description: Integration not connected
  */
 // Sync integration data (mock for now)
-router.post('/sync/:platform', verifyToken, async (req, res) => {
+router.post('/sync/:platform', authenticateToken, async (req, res) => {
     try {
         const { platform } = req.params;
         

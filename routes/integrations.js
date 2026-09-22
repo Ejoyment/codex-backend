@@ -3,29 +3,7 @@ const router = express.Router();
 const jwt = require('jsonwebtoken');
 const Integration = require('../models/Integration');
 const axios = require('axios');
-
-// Middleware to verify JWT token
-const verifyToken = (req, res, next) => {
-    const token = req.headers.authorization?.split(' ')[1];
-    
-    if (!token) {
-        return res.status(401).json({
-            success: false,
-            message: 'Authentication required'
-        });
-    }
-
-    try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        req.userId = decoded.userId || decoded.id || decoded._id;
-        next();
-    } catch (error) {
-        return res.status(401).json({
-            success: false,
-            message: 'Invalid or expired token'
-        });
-    }
-};
+const { authenticateToken } = require('../middleware/auth');
 
 /**
  * @swagger
@@ -54,7 +32,7 @@ const verifyToken = (req, res, next) => {
  *         description: Unauthorized
  */
 // Get all integrations for user
-router.get('/', verifyToken, async (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
     try {
         const integrations = await Integration.find({ userId: req.userId });
         
@@ -104,7 +82,7 @@ router.get('/', verifyToken, async (req, res) => {
  *                   type: string
  */
 // GitHub OAuth
-router.get('/github/auth', verifyToken, (req, res) => {
+router.get('/github/auth', authenticateToken, (req, res) => {
     const redirectUri = `${process.env.BACKEND_URL}/api/integrations/github/callback`;
     const scope = 'repo,user,read:org';
     const state = req.userId; // Pass userId as state
@@ -205,7 +183,7 @@ router.get('/github/callback', async (req, res) => {
  *                   type: string
  */
 // Slack OAuth
-router.get('/slack/auth', verifyToken, (req, res) => {
+router.get('/slack/auth', authenticateToken, (req, res) => {
     const redirectUri = `${process.env.BACKEND_URL}/api/integrations/slack/callback`;
     const scope = 'channels:read,chat:write,users:read';
     const state = req.userId;
@@ -302,7 +280,7 @@ router.get('/slack/callback', async (req, res) => {
  *                   type: string
  */
 // Discord OAuth
-router.get('/discord/auth', verifyToken, (req, res) => {
+router.get('/discord/auth', authenticateToken, (req, res) => {
     const redirectUri = `${process.env.BACKEND_URL}/api/integrations/discord/callback`;
     const scope = 'identify email guilds';
     const state = req.userId;
@@ -417,7 +395,7 @@ router.get('/discord/callback', async (req, res) => {
  *                   type: string
  */
 // Notion OAuth
-router.get('/notion/auth', verifyToken, (req, res) => {
+router.get('/notion/auth', authenticateToken, (req, res) => {
     const redirectUri = `${process.env.BACKEND_URL}/api/integrations/notion/callback`;
     const state = req.userId;
     
@@ -514,7 +492,7 @@ router.get('/notion/callback', async (req, res) => {
  *                   type: string
  */
 // Figma OAuth
-router.get('/figma/auth', verifyToken, (req, res) => {
+router.get('/figma/auth', authenticateToken, (req, res) => {
     const redirectUri = `${process.env.BACKEND_URL}/api/integrations/figma/callback`;
     const scope = 'file_read';
     const state = req.userId;
@@ -622,7 +600,7 @@ router.get('/figma/callback', async (req, res) => {
  *         description: Unauthorized
  */
 // VS Code - Generate access token
-router.post('/vscode/connect', verifyToken, async (req, res) => {
+router.post('/vscode/connect', authenticateToken, async (req, res) => {
     try {
         const { accessToken } = req.body;
 
@@ -682,7 +660,7 @@ router.post('/vscode/connect', verifyToken, async (req, res) => {
  *         description: Unauthorized
  */
 // Disconnect integration
-router.delete('/:provider/disconnect', verifyToken, async (req, res) => {
+router.delete('/:provider/disconnect', authenticateToken, async (req, res) => {
     try {
         const { provider } = req.params;
 

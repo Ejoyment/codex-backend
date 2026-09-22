@@ -48,7 +48,14 @@ class PermissionMatrix {
       // Agent operations
       'agent:basic': ['professional', 'enterprise'],
       'agent:autonomous': ['enterprise'],
-      'agent:deploy': ['enterprise']
+      'agent:deploy': ['enterprise'],
+
+      // Company operations
+      'company:create': ['professional', 'enterprise'],
+      'company:read': ['freebie', 'professional', 'enterprise'],
+      'company:update': ['professional', 'enterprise'],
+      'company:delete': ['enterprise'],
+      'company:invite': ['professional', 'enterprise']
     };
 
     // Resource limits by tier

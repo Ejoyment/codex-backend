@@ -199,6 +199,11 @@ docker rm -f ${containerName} 2>/dev/null || true
 docker run -d \\
   --name ${containerName} \\
   --restart unless-stopped \\
+  --cap-drop ALL \\
+  --security-opt no-new-privileges \\
+  --memory 512m \\
+  --cpus 1 \\
+  --pids-limit 100 \\
   --label 'traefik.enable=true' \\
   --label 'traefik.http.routers.${sanitizedSubdomain}.rule=Host(\`${sanitizedSubdomain}.${DOMAIN}\`) || Host(\`www.${sanitizedSubdomain}.${DOMAIN}\`)' \\
   --label 'traefik.http.routers.${sanitizedSubdomain}.entrypoints=websecure' \\

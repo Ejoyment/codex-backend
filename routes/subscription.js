@@ -4,29 +4,7 @@ const jwt = require('jsonwebtoken');
 const Subscription = require('../models/Subscription');
 const User = require('../models/User');
 const { createCheckoutSession, createPortalSession, verifyWebhookSignature, stripe } = require('../config/stripe');
-
-// Middleware to verify JWT token
-const verifyToken = (req, res, next) => {
-    const token = req.headers.authorization?.split(' ')[1];
-    
-    if (!token) {
-        return res.status(401).json({
-            success: false,
-            message: 'Authentication required'
-        });
-    }
-
-    try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        req.userId = decoded.userId || decoded.id || decoded._id;
-        next();
-    } catch (error) {
-        return res.status(401).json({
-            success: false,
-            message: 'Invalid or expired token'
-        });
-    }
-};
+const { authenticateToken } = require('../middleware/auth');
 
 /**
  * @swagger
@@ -53,7 +31,7 @@ const verifyToken = (req, res, next) => {
  *         description: Unauthorized
  */
 // Get current subscription
-router.get('/current', verifyToken, async (req, res) => {
+router.get('/current', authenticateToken, async (req, res) => {
     try {
         let subscription = await Subscription.findOne({ userId: req.userId });
         
@@ -145,7 +123,7 @@ router.get('/current', verifyToken, async (req, res) => {
  *         description: Unauthorized
  */
 // Create Stripe checkout session
-router.post('/create-checkout', verifyToken, async (req, res) => {
+router.post('/create-checkout', authenticateToken, async (req, res) => {
     try {
         const { tier, interval } = req.body;
 
@@ -241,7 +219,7 @@ router.post('/create-checkout', verifyToken, async (req, res) => {
  *         description: Unauthorized
  */
 // Upgrade subscription (manual or after payment)
-router.post('/upgrade', verifyToken, async (req, res) => {
+router.post('/upgrade', authenticateToken, async (req, res) => {
     try {
         const { tier, paymentProvider, paymentId, customerId, metadata } = req.body;
 
@@ -313,7 +291,7 @@ router.post('/upgrade', verifyToken, async (req, res) => {
  *         description: No subscription found
  */
 // Cancel subscription
-router.post('/cancel', verifyToken, async (req, res) => {
+router.post('/cancel', authenticateToken, async (req, res) => {
     try {
         const subscription = await Subscription.findOne({ userId: req.userId });
         
@@ -509,7 +487,7 @@ async function handlePaymentFailed(invoice) {
  *         description: No Stripe customer found
  */
 // Create customer portal session
-router.post('/portal', verifyToken, async (req, res) => {
+router.post('/portal', authenticateToken, async (req, res) => {
     try {
         const subscription = await Subscription.findOne({ userId: req.userId });
         
