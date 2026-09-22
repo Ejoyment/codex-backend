@@ -3,19 +3,8 @@ const router = express.Router();
 const axios = require('axios');
 const Integration = require('../models/Integration');
 const jwt = require('jsonwebtoken');
-
-// Middleware
-const verifyToken = (req, res, next) => {
-    const token = req.headers.authorization?.split(' ')[1];
-    if (!token) return res.status(401).json({ success: false, message: 'Authentication required' });
-    try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        req.userId = decoded.userId || decoded.id || decoded._id;
-        next();
-    } catch (error) {
-        return res.status(401).json({ success: false, message: 'Invalid token' });
-    }
-};
+const { createStateToken, verifyStateToken } = require('../utils/oauthState');
+const { authenticateToken } = require('../middleware/auth');
 
 async function getFigmaIntegration(userId) {
     const integration = await Integration.findOne({ userId, provider: 'figma', isActive: true });
@@ -108,7 +97,7 @@ async function figmaAPI(accessToken, endpoint, method = 'GET', data = null) {
  *         description: Internal server error
  */
 // Get current user
-router.get('/me', verifyToken, async (req, res) => {
+router.get('/me', authenticateToken, async (req, res) => {
     try {
         const integration = await getFigmaIntegration(req.userId);
         const user = await figmaAPI(integration.accessToken, '/me');
@@ -119,7 +108,7 @@ router.get('/me', verifyToken, async (req, res) => {
 });
 
 // Get user's files
-router.get('/files', verifyToken, async (req, res) => {
+router.get('/files', authenticateToken, async (req, res) => {
     try {
         const integration = await getFigmaIntegration(req.userId);
         
@@ -148,7 +137,7 @@ router.get('/files', verifyToken, async (req, res) => {
 });
 
 // Get file
-router.get('/files/:fileKey', verifyToken, async (req, res) => {
+router.get('/files/:fileKey', authenticateToken, async (req, res) => {
     try {
         const integration = await getFigmaIntegration(req.userId);
         const { fileKey } = req.params;
@@ -162,7 +151,7 @@ router.get('/files/:fileKey', verifyToken, async (req, res) => {
 });
 
 // Get file nodes
-router.get('/files/:fileKey/nodes', verifyToken, async (req, res) => {
+router.get('/files/:fileKey/nodes', authenticateToken, async (req, res) => {
     try {
         const integration = await getFigmaIntegration(req.userId);
         const { fileKey } = req.params;
@@ -176,7 +165,7 @@ router.get('/files/:fileKey/nodes', verifyToken, async (req, res) => {
 });
 
 // Get file images
-router.get('/images/:fileKey', verifyToken, async (req, res) => {
+router.get('/images/:fileKey', authenticateToken, async (req, res) => {
     try {
         const integration = await getFigmaIntegration(req.userId);
         const { fileKey } = req.params;
@@ -190,7 +179,7 @@ router.get('/images/:fileKey', verifyToken, async (req, res) => {
 });
 
 // Get file versions
-router.get('/files/:fileKey/versions', verifyToken, async (req, res) => {
+router.get('/files/:fileKey/versions', authenticateToken, async (req, res) => {
     try {
         const integration = await getFigmaIntegration(req.userId);
         const { fileKey } = req.params;
@@ -203,7 +192,7 @@ router.get('/files/:fileKey/versions', verifyToken, async (req, res) => {
 });
 
 // Get file comments
-router.get('/files/:fileKey/comments', verifyToken, async (req, res) => {
+router.get('/files/:fileKey/comments', authenticateToken, async (req, res) => {
     try {
         const integration = await getFigmaIntegration(req.userId);
         const { fileKey } = req.params;
@@ -216,7 +205,7 @@ router.get('/files/:fileKey/comments', verifyToken, async (req, res) => {
 });
 
 // Post comment
-router.post('/files/:fileKey/comments', verifyToken, async (req, res) => {
+router.post('/files/:fileKey/comments', authenticateToken, async (req, res) => {
     try {
         const integration = await getFigmaIntegration(req.userId);
         const { fileKey } = req.params;
@@ -230,7 +219,7 @@ router.post('/files/:fileKey/comments', verifyToken, async (req, res) => {
 });
 
 // Get team projects
-router.get('/teams/:teamId/projects', verifyToken, async (req, res) => {
+router.get('/teams/:teamId/projects', authenticateToken, async (req, res) => {
     try {
         const integration = await getFigmaIntegration(req.userId);
         const { teamId } = req.params;
@@ -243,7 +232,7 @@ router.get('/teams/:teamId/projects', verifyToken, async (req, res) => {
 });
 
 // Get project files
-router.get('/projects/:projectId/files', verifyToken, async (req, res) => {
+router.get('/projects/:projectId/files', authenticateToken, async (req, res) => {
     try {
         const integration = await getFigmaIntegration(req.userId);
         const { projectId } = req.params;
@@ -256,7 +245,7 @@ router.get('/projects/:projectId/files', verifyToken, async (req, res) => {
 });
 
 // Get component
-router.get('/components/:key', verifyToken, async (req, res) => {
+router.get('/components/:key', authenticateToken, async (req, res) => {
     try {
         const integration = await getFigmaIntegration(req.userId);
         const { key } = req.params;
@@ -269,7 +258,7 @@ router.get('/components/:key', verifyToken, async (req, res) => {
 });
 
 // Get component sets
-router.get('/component_sets/:key', verifyToken, async (req, res) => {
+router.get('/component_sets/:key', authenticateToken, async (req, res) => {
     try {
         const integration = await getFigmaIntegration(req.userId);
         const { key } = req.params;
@@ -282,7 +271,7 @@ router.get('/component_sets/:key', verifyToken, async (req, res) => {
 });
 
 // Get styles
-router.get('/styles/:key', verifyToken, async (req, res) => {
+router.get('/styles/:key', authenticateToken, async (req, res) => {
     try {
         const integration = await getFigmaIntegration(req.userId);
         const { key } = req.params;
@@ -317,7 +306,7 @@ const pkceStore = new Map();
  *       401:
  *         description: Unauthorized
  */
-router.get('/connect', verifyToken, (req, res) => {
+router.get('/connect', authenticateToken, (req, res) => {
     // Figma requires PKCE: generate a code_verifier and its SHA-256 code_challenge
     const codeVerifier = crypto.randomBytes(32).toString('base64url');
     const codeChallenge = crypto
@@ -332,7 +321,7 @@ router.get('/connect', verifyToken, (req, res) => {
         client_id: process.env.FIGMA_CLIENT_ID,
         redirect_uri: process.env.FIGMA_CALLBACK_URL,
         scope: 'files:read',
-        state: req.userId, // pass userId through so callback knows who's connecting
+        state: createStateToken(req.userId), // signed state token prevents session fixation
         response_type: 'code',
         code_challenge: codeChallenge,
         code_challenge_method: 'S256'
@@ -374,10 +363,18 @@ router.get('/connect', verifyToken, (req, res) => {
  */
 router.get('/callback', async (req, res) => {
     try {
-        const { code, state: userId } = req.query;
+        const { code, state } = req.query;
 
-        if (!code || !userId) {
+        if (!code || !state) {
             return res.status(400).json({ success: false, message: 'Missing code or state' });
+        }
+
+        // Verify signed state token instead of trusting raw userId
+        let userId;
+        try {
+            userId = verifyStateToken(state);
+        } catch (e) {
+            return res.status(400).json({ success: false, message: 'Invalid or expired state token' });
         }
 
         const codeVerifier = pkceStore.get(userId);
@@ -456,7 +453,7 @@ router.get('/callback', async (req, res) => {
  *       401:
  *         description: Unauthorized
  */
-router.get('/status', verifyToken, async (req, res) => {
+router.get('/status', authenticateToken, async (req, res) => {
     try {
         const integration = await Integration.findOne({
             userId: req.userId,
@@ -489,7 +486,7 @@ router.get('/status', verifyToken, async (req, res) => {
  *       401:
  *         description: Unauthorized
  */
-router.delete('/disconnect', verifyToken, async (req, res) => {
+router.delete('/disconnect', authenticateToken, async (req, res) => {
     try {
         await Integration.findOneAndUpdate(
             { userId: req.userId, provider: 'figma' },

@@ -7,9 +7,12 @@
 const os = require('os');
 const path = require('path');
 const fs = require('fs').promises;
+const mongoose = require('mongoose');
 const CodeFile = require('../models/CodeFile');
+const TerminalLog = require('../models/TerminalLog');
 const vfs = require('./virtualFileSystem');
 const { emitWorkspaceChange } = require('./realTimeEvents');
+const unifiedStateGraph = require('./unifiedStateGraph');
 
 class TerminalService {
   constructor() {
@@ -27,6 +30,37 @@ class TerminalService {
     } catch (error) {
       console.log('⚠ node-pty not available, using simulated terminal');
       this.usePty = false;
+    }
+  }
+
+  /**
+   * Persist a terminal log entry to Mongo with a stable reference ID.
+   * Returns the refId for cross-platform referencing.
+   */
+  async _persistEntry(sessionId, type, data) {
+    const terminal = this.terminals.get(sessionId);
+    if (!terminal || !terminal.logId) return null;
+
+    const entry = { type, data, refId: new mongoose.Types.ObjectId() };
+    try {
+      await TerminalLog.updateOne(
+        { _id: terminal.logId },
+        {
+          $push: { entries: entry },
+          $inc: { commandCount: type === 'input' ? 1 : 0 }
+        }
+      );
+      // Register in unified state graph for cross-platform linking
+      unifiedStateGraph.registerTerminalOutput(sessionId, {
+        refId: entry.refId,
+        type,
+        data,
+        timestamp: new Date()
+      });
+      return entry.refId;
+    } catch (err) {
+      console.warn('Terminal log persist failed:', err.message);
+      return null;
     }
   }
 
@@ -269,12 +303,28 @@ class TerminalService {
       console.log(`✓ PTY terminal created: ${sessionId}`);
     } else {
       // Simulated terminal (fallback) - virtual VFS-backed cwd
+      // Create a persistent log document for this session
+      let logId = null;
+      try {
+        const logDoc = await TerminalLog.create({
+          sessionId,
+          workspaceId,
+          userId,
+          entries: [],
+          status: 'active'
+        });
+        logId = logDoc._id;
+      } catch (err) {
+        console.warn('Failed to create terminal log:', err.message);
+      }
+
       this.terminals.set(sessionId, {
         type: 'simulated',
         workspacePath,
         userId,
         workspaceId,
         history: [],
+        logId,
         cwd: '/',
         createdAt: Date.now()
       });
@@ -327,6 +377,7 @@ class TerminalService {
     if (!command) return;
 
     terminal.history.push({ type: 'input', data: command });
+    this._persistEntry(sessionId, 'input', command);
 
     try {
       const [cmd, ...args] = command.split(' ');
@@ -525,6 +576,7 @@ class TerminalService {
       }
 
       terminal.history.push({ type: 'output', data: output });
+      this._persistEntry(sessionId, 'output', output);
 
       // Emit output event (will be handled by Socket.IO)
       if (terminal.onData) {
@@ -533,6 +585,7 @@ class TerminalService {
     } catch (error) {
       const errorOutput = `Error: ${error.message}\n`;
       terminal.history.push({ type: 'output', data: errorOutput });
+      this._persistEntry(sessionId, 'error', errorOutput);
       if (terminal.onData) {
         terminal.onData(errorOutput);
       }
@@ -665,15 +718,59 @@ class TerminalService {
   }
 
   /**
-   * Get terminal history (simulated only)
+   * Get terminal history (simulated only).
+   * Returns in-memory history for active sessions, falls back to Mongo.
    */
-  getHistory(sessionId) {
+  async getHistory(sessionId) {
     const terminal = this.terminals.get(sessionId);
     if (!terminal || terminal.type !== 'simulated') {
       return [];
     }
 
-    return terminal.history;
+    // Return in-memory if available
+    if (terminal.history && terminal.history.length > 0) {
+      return terminal.history;
+    }
+
+    // Fall back to Mongo for sessions that were restored
+    if (terminal.logId) {
+      try {
+        const log = await TerminalLog.findById(terminal.logId).lean();
+        return log?.entries || [];
+      } catch (_) {}
+    }
+
+    return [];
+  }
+
+  /**
+   * Retrieve a specific terminal log entry by its stable reference ID.
+   * Enables cross-platform referencing (e.g., agent referencing a specific output).
+   */
+  async getEntryByRefId(refId) {
+    try {
+      const log = await TerminalLog.findOne(
+        { 'entries.refId': refId },
+        { 'entries.$': 1 }
+      ).lean();
+      return log?.entries?.[0] || null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /**
+   * Get all logs for a workspace (for debugging/audit).
+   */
+  async getLogsByWorkspace(workspaceId, limit = 50) {
+    try {
+      return await TerminalLog.find({ workspaceId })
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .lean();
+    } catch (_) {
+      return [];
+    }
   }
 
   /**
@@ -687,6 +784,16 @@ class TerminalService {
 
     if (terminal.type === 'pty') {
       terminal.process.kill();
+    }
+
+    // Mark log as ended
+    if (terminal.logId) {
+      try {
+        await TerminalLog.updateOne(
+          { _id: terminal.logId },
+          { status: 'ended' }
+        );
+      } catch (_) {}
     }
 
     // Clean up watcher

@@ -3,19 +3,8 @@ const router = express.Router();
 const axios = require('axios');
 const Integration = require('../models/Integration');
 const jwt = require('jsonwebtoken');
-
-// Middleware
-const verifyToken = (req, res, next) => {
-    const token = req.headers.authorization?.split(' ')[1];
-    if (!token) return res.status(401).json({ success: false, message: 'Authentication required' });
-    try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        req.userId = decoded.userId || decoded.id || decoded._id;
-        next();
-    } catch (error) {
-        return res.status(401).json({ success: false, message: 'Invalid token' });
-    }
-};
+const { createStateToken, verifyStateToken } = require('../utils/oauthState');
+const { authenticateToken } = require('../middleware/auth');
 
 async function getNotionIntegration(userId) {
     const integration = await Integration.findOne({ userId, provider: 'notion', isActive: true });
@@ -91,7 +80,7 @@ async function notionAPI(accessToken, endpoint, method = 'GET', data = null) {
  *         description: Internal server error
  */
 // Search
-router.post('/search', verifyToken, async (req, res) => {
+router.post('/search', authenticateToken, async (req, res) => {
     try {
         const integration = await getNotionIntegration(req.userId);
         const { query, filter, sort, page_size = 100 } = req.body;
@@ -103,7 +92,7 @@ router.post('/search', verifyToken, async (req, res) => {
 });
 
 // Get databases
-router.get('/databases', verifyToken, async (req, res) => {
+router.get('/databases', authenticateToken, async (req, res) => {
     try {
         const integration = await getNotionIntegration(req.userId);
         const results = await notionAPI(integration.accessToken, '/search', 'POST', {
@@ -117,7 +106,7 @@ router.get('/databases', verifyToken, async (req, res) => {
 });
 
 // Get database
-router.get('/databases/:databaseId', verifyToken, async (req, res) => {
+router.get('/databases/:databaseId', authenticateToken, async (req, res) => {
     try {
         const integration = await getNotionIntegration(req.userId);
         const database = await notionAPI(integration.accessToken, `/databases/${req.params.databaseId}`);
@@ -128,7 +117,7 @@ router.get('/databases/:databaseId', verifyToken, async (req, res) => {
 });
 
 // Query database
-router.post('/databases/:databaseId/query', verifyToken, async (req, res) => {
+router.post('/databases/:databaseId/query', authenticateToken, async (req, res) => {
     try {
         const integration = await getNotionIntegration(req.userId);
         const { filter, sorts, page_size = 100 } = req.body;
@@ -140,7 +129,7 @@ router.post('/databases/:databaseId/query', verifyToken, async (req, res) => {
 });
 
 // Get page
-router.get('/pages/:pageId', verifyToken, async (req, res) => {
+router.get('/pages/:pageId', authenticateToken, async (req, res) => {
     try {
         const integration = await getNotionIntegration(req.userId);
         const page = await notionAPI(integration.accessToken, `/pages/${req.params.pageId}`);
@@ -151,7 +140,7 @@ router.get('/pages/:pageId', verifyToken, async (req, res) => {
 });
 
 // Create page
-router.post('/pages', verifyToken, async (req, res) => {
+router.post('/pages', authenticateToken, async (req, res) => {
     try {
         const integration = await getNotionIntegration(req.userId);
         const { parent, properties, children } = req.body;
@@ -163,7 +152,7 @@ router.post('/pages', verifyToken, async (req, res) => {
 });
 
 // Update page
-router.patch('/pages/:pageId', verifyToken, async (req, res) => {
+router.patch('/pages/:pageId', authenticateToken, async (req, res) => {
     try {
         const integration = await getNotionIntegration(req.userId);
         const { properties } = req.body;
@@ -175,7 +164,7 @@ router.patch('/pages/:pageId', verifyToken, async (req, res) => {
 });
 
 // Get block children
-router.get('/blocks/:blockId/children', verifyToken, async (req, res) => {
+router.get('/blocks/:blockId/children', authenticateToken, async (req, res) => {
     try {
         const integration = await getNotionIntegration(req.userId);
         const { page_size = 100 } = req.query;
@@ -187,7 +176,7 @@ router.get('/blocks/:blockId/children', verifyToken, async (req, res) => {
 });
 
 // Append block children
-router.patch('/blocks/:blockId/children', verifyToken, async (req, res) => {
+router.patch('/blocks/:blockId/children', authenticateToken, async (req, res) => {
     try {
         const integration = await getNotionIntegration(req.userId);
         const { children } = req.body;
@@ -199,7 +188,7 @@ router.patch('/blocks/:blockId/children', verifyToken, async (req, res) => {
 });
 
 // Get user
-router.get('/users/:userId', verifyToken, async (req, res) => {
+router.get('/users/:userId', authenticateToken, async (req, res) => {
     try {
         const integration = await getNotionIntegration(req.userId);
         const user = await notionAPI(integration.accessToken, `/users/${req.params.userId}`);
@@ -210,7 +199,7 @@ router.get('/users/:userId', verifyToken, async (req, res) => {
 });
 
 // List all users
-router.get('/users', verifyToken, async (req, res) => {
+router.get('/users', authenticateToken, async (req, res) => {
     try {
         const integration = await getNotionIntegration(req.userId);
         const { page_size = 100 } = req.query;
@@ -238,13 +227,13 @@ router.get('/users', verifyToken, async (req, res) => {
  *       401:
  *         description: Unauthorized
  */
-router.get('/connect', verifyToken, (req, res) => {
+router.get('/connect', authenticateToken, (req, res) => {
     const params = new URLSearchParams({
         client_id: process.env.NOTION_CLIENT_ID,
         redirect_uri: process.env.NOTION_CALLBACK_URL,
         response_type: 'code',
         owner: 'user',
-        state: req.userId // pass userId through so callback knows who's connecting
+        state: createStateToken(req.userId) // signed state token prevents session fixation
     });
 
     const authUrl = `https://api.notion.com/v1/oauth/authorize?${params.toString()}`;
@@ -283,10 +272,18 @@ router.get('/connect', verifyToken, (req, res) => {
  */
 router.get('/callback', async (req, res) => {
     try {
-        const { code, state: userId } = req.query;
+        const { code, state } = req.query;
 
-        if (!code || !userId) {
+        if (!code || !state) {
             return res.status(400).json({ success: false, message: 'Missing code or state' });
+        }
+
+        // Verify signed state token instead of trusting raw userId
+        let userId;
+        try {
+            userId = verifyStateToken(state);
+        } catch (e) {
+            return res.status(400).json({ success: false, message: 'Invalid or expired state token' });
         }
 
         // Notion requires Basic Auth (client_id:client_secret base64-encoded) for token exchange
@@ -353,7 +350,7 @@ router.get('/callback', async (req, res) => {
  *       401:
  *         description: Unauthorized
  */
-router.get('/status', verifyToken, async (req, res) => {
+router.get('/status', authenticateToken, async (req, res) => {
     try {
         const integration = await Integration.findOne({
             userId: req.userId,
@@ -386,7 +383,7 @@ router.get('/status', verifyToken, async (req, res) => {
  *       401:
  *         description: Unauthorized
  */
-router.delete('/disconnect', verifyToken, async (req, res) => {
+router.delete('/disconnect', authenticateToken, async (req, res) => {
     try {
         await Integration.findOneAndUpdate(
             { userId: req.userId, provider: 'notion' },

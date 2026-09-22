@@ -36,7 +36,7 @@ const BillingScheduler = require('../utils/billingScheduler');
 router.post('/setup-payment', authenticateToken, async (req, res) => {
     try {
         const { paymentMethodId } = req.body;
-        const userId = req.user.userId;
+        const userId = req.userId;
 
         const user = await User.findById(userId);
         if (!user) {
@@ -146,7 +146,7 @@ router.post('/setup-payment', authenticateToken, async (req, res) => {
  */
 router.get('/status', authenticateToken, async (req, res) => {
     try {
-        const userId = req.user.userId;
+        const userId = req.userId;
         const subscription = await Subscription.findOne({ userId });
 
         if (!subscription) {
@@ -223,7 +223,7 @@ router.get('/status', authenticateToken, async (req, res) => {
  */
 router.post('/cancel', authenticateToken, async (req, res) => {
     try {
-        const userId = req.user.userId;
+        const userId = req.userId;
         const subscription = await Subscription.findOne({ userId });
 
         if (!subscription) {
@@ -272,7 +272,7 @@ router.post('/cancel', authenticateToken, async (req, res) => {
  */
 router.get('/setup-intent', authenticateToken, async (req, res) => {
     try {
-        const userId = req.user.userId;
+        const userId = req.userId;
         const user = await User.findById(userId);
 
         if (!user) {

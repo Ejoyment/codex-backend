@@ -1,36 +1,15 @@
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
-const aiService = require('../utils/aiService'); // Changed from geminiService
+const aiService = require('../utils/aiService');
 const githubService = require('../utils/githubService');
 const AIPairSession = require('../models/AIPairSession');
 const ChatMessage = require('../models/ChatMessage');
 const CodeChange = require('../models/CodeChange');
 const Subscription = require('../models/Subscription');
 const { createDiffPatch } = require('diff');
-
-// Middleware to verify JWT token
-const verifyToken = (req, res, next) => {
-    const token = req.headers.authorization?.split(' ')[1];
-    
-    if (!token) {
-        return res.status(401).json({
-            success: false,
-            message: 'Authentication required'
-        });
-    }
-
-    try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        req.userId = decoded.userId || decoded.id || decoded._id;
-        next();
-    } catch (error) {
-        return res.status(401).json({
-            success: false,
-            message: 'Invalid or expired token'
-        });
-    }
-};
+const permissionMatrix = require('../middleware/permissionMatrix');
+const { authenticateToken } = require('../middleware/auth');
 
 // Middleware to check AI usage limits
 const checkAILimits = async (req, res, next) => {
@@ -99,7 +78,7 @@ const checkAILimits = async (req, res, next) => {
  *         description: Unauthorized
  */
 // List user's GitHub repositories
-router.get('/repos', verifyToken, async (req, res) => {
+router.get('/repos', authenticateToken, async (req, res) => {
     try {
         const repos = await githubService.listRepositories(req.userId);
         
@@ -143,7 +122,7 @@ router.get('/repos', verifyToken, async (req, res) => {
  *         description: Unauthorized
  */
 // Get repository details
-router.get('/repo/:owner/:repo', verifyToken, async (req, res) => {
+router.get('/repo/:owner/:repo', authenticateToken, async (req, res) => {
     try {
         const { owner, repo } = req.params;
         
@@ -200,7 +179,7 @@ router.get('/repo/:owner/:repo', verifyToken, async (req, res) => {
  *         description: Unauthorized
  */
 // List files in repository
-router.get('/files/:owner/:repo', verifyToken, async (req, res) => {
+router.get('/files/:owner/:repo', authenticateToken, async (req, res) => {
     try {
         const { owner, repo } = req.params;
         const { path = '', branch } = req.query;
@@ -257,7 +236,7 @@ router.get('/files/:owner/:repo', verifyToken, async (req, res) => {
  *         description: Unauthorized
  */
 // Get file content
-router.get('/file/:owner/:repo/*', verifyToken, async (req, res) => {
+router.get('/file/:owner/:repo/*', authenticateToken, async (req, res) => {
     try {
         const { owner, repo } = req.params;
         const path = req.params[0]; // Everything after /file/:owner/:repo/
@@ -323,7 +302,7 @@ router.get('/file/:owner/:repo/*', verifyToken, async (req, res) => {
  *                   $ref: '#/components/schemas/AIPairSession'
  */
 // Create new AI pair session
-router.post('/session', verifyToken, async (req, res) => {
+router.post('/session', authenticateToken, async (req, res) => {
     try {
         const { repositoryId, repositoryName, repositoryOwner, branch, sessionName } = req.body;
         
@@ -388,7 +367,7 @@ router.post('/session', verifyToken, async (req, res) => {
  *         description: Unauthorized
  */
 // Get user's sessions
-router.get('/sessions', verifyToken, async (req, res) => {
+router.get('/sessions', authenticateToken, async (req, res) => {
     try {
         const { status, limit = 20 } = req.query;
         
@@ -438,7 +417,7 @@ router.get('/sessions', verifyToken, async (req, res) => {
  *         description: Session not found
  */
 // Get session details
-router.get('/session/:sessionId', verifyToken, async (req, res) => {
+router.get('/session/:sessionId', authenticateToken, async (req, res) => {
     try {
         const { sessionId } = req.params;
         
@@ -530,7 +509,7 @@ router.get('/session/:sessionId', verifyToken, async (req, res) => {
  *                   type: object
  */
 // Chat with AI (Enhanced with ReAct Agent Loop)
-router.post('/chat', verifyToken, checkAILimits, async (req, res) => {
+router.post('/chat', authenticateToken, checkAILimits, async (req, res) => {
     try {
         const { sessionId, message, codeContext, enableActions = false, useAgentLoop = false, companyId } = req.body;
         
@@ -557,6 +536,16 @@ router.post('/chat', verifyToken, checkAILimits, async (req, res) => {
 
         // If agent loop is requested, use orchestrator
         if (useAgentLoop) {
+            // Enforce agent permission scope — freebie tier cannot use agent loop
+            const agentPerm = await permissionMatrix.checkPermission(req.userId, 'basic', 'agent');
+            if (!agentPerm.allowed) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Agent loop requires professional or enterprise tier',
+                    reason: agentPerm.reason
+                });
+            }
+
             const agentOrchestrator = require('../utils/agentOrchestrator');
             
             const context = {
@@ -851,7 +840,7 @@ function guessFilePath(filename, language) {
  *         description: Session not found
  */
 // Apply code change
-router.post('/apply-change', verifyToken, async (req, res) => {
+router.post('/apply-change', authenticateToken, permissionMatrix.requirePermission('file', 'write'), async (req, res) => {
     try {
         const { sessionId, filePath, newContent, operation = 'edit' } = req.body;
         
@@ -956,7 +945,7 @@ router.post('/apply-change', verifyToken, async (req, res) => {
  *         description: Session not found
  */
 // Commit changes to GitHub
-router.post('/commit', verifyToken, async (req, res) => {
+router.post('/commit', authenticateToken, permissionMatrix.requirePermission('git', 'commit'), async (req, res) => {
     try {
         const { sessionId, changeIds, commitMessage } = req.body;
         
@@ -1111,7 +1100,7 @@ router.post('/commit', verifyToken, async (req, res) => {
  *         description: Session not found
  */
 // Update session status
-router.patch('/session/:sessionId', verifyToken, async (req, res) => {
+router.patch('/session/:sessionId', authenticateToken, async (req, res) => {
     try {
         const { sessionId } = req.params;
         const { status } = req.body;
@@ -1182,7 +1171,7 @@ router.patch('/session/:sessionId', verifyToken, async (req, res) => {
  *         description: Unauthorized
  */
 // Store code pattern in vector memory
-router.post('/memory/store', verifyToken, async (req, res) => {
+router.post('/memory/store', authenticateToken, async (req, res) => {
     try {
         const { content, metadata, workspaceId } = req.body;
         
@@ -1247,7 +1236,7 @@ router.post('/memory/store', verifyToken, async (req, res) => {
  *         description: Unauthorized
  */
 // Retrieve similar patterns from vector memory
-router.get('/memory/retrieve', verifyToken, async (req, res) => {
+router.get('/memory/retrieve', authenticateToken, async (req, res) => {
     try {
         const { query, k = 5, workspaceId } = req.query;
         
@@ -1302,7 +1291,7 @@ router.get('/memory/retrieve', verifyToken, async (req, res) => {
  *         description: Unauthorized
  */
 // Clear memories for user/workspace
-router.delete('/memory/clear', verifyToken, async (req, res) => {
+router.delete('/memory/clear', authenticateToken, async (req, res) => {
     try {
         const { workspaceId } = req.query;
         
@@ -1347,7 +1336,7 @@ router.delete('/memory/clear', verifyToken, async (req, res) => {
  *         description: Unauthorized
  */
 // Get memory statistics
-router.get('/memory/stats', verifyToken, async (req, res) => {
+router.get('/memory/stats', authenticateToken, async (req, res) => {
     try {
         const { workspaceId } = req.query;
         
@@ -1425,7 +1414,7 @@ router.get('/memory/stats', verifyToken, async (req, res) => {
  *         description: Unauthorized
  */
 // Execute code in sandbox
-router.post('/execute', verifyToken, async (req, res) => {
+router.post('/execute', authenticateToken, permissionMatrix.requirePermission('agent', 'basic'), async (req, res) => {
     try {
         const { code, language = 'javascript', timeout } = req.body;
         
@@ -1479,7 +1468,7 @@ router.post('/execute', verifyToken, async (req, res) => {
  *         description: Unauthorized
  */
 // Get sandbox statistics
-router.get('/sandbox/stats', verifyToken, async (req, res) => {
+router.get('/sandbox/stats', authenticateToken, permissionMatrix.requirePermission('agent', 'basic'), async (req, res) => {
     try {
         const sandboxExecutor = require('../utils/sandboxExecutor');
         const stats = sandboxExecutor.getStats();
@@ -1538,7 +1527,7 @@ router.get('/sandbox/stats', verifyToken, async (req, res) => {
  *                 aiLimit:
  *                   type: object
  */
-router.post('/review', verifyToken, checkAILimits, async (req, res) => {
+router.post('/review', authenticateToken, checkAILimits, permissionMatrix.requirePermission('agent', 'basic'), async (req, res) => {
     try {
         const { code, language, context = {} } = req.body;
 
@@ -1616,7 +1605,7 @@ router.post('/review', verifyToken, checkAILimits, async (req, res) => {
  *                 aiLimit:
  *                   type: object
  */
-router.post('/debug', verifyToken, checkAILimits, async (req, res) => {
+router.post('/debug', authenticateToken, checkAILimits, permissionMatrix.requirePermission('agent', 'basic'), async (req, res) => {
     try {
         const { code, language, error, context = {} } = req.body;
 

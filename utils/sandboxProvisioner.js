@@ -32,6 +32,26 @@ function generateKey() {
     return 'sb_' + crypto.randomBytes(10).toString('hex');
 }
 
+// Validate repository URLs — block dangerous protocols that execute arbitrary commands
+const SAFE_REPO_PROTOCOLS = ['https:', 'http:', 'git:', 'ssh:'];
+function validateRepoUrl(url) {
+    if (!url || typeof url !== 'string') return false;
+    // Block shell metacharacters
+    if (/[;&|`$(){}!<>]/.test(url)) return false;
+    // Block ext:: protocol (arbitrary command execution)
+    if (url.startsWith('ext::')) return false;
+    // Block file:// protocol (local filesystem access)
+    if (url.startsWith('file://')) return false;
+    // Allow SCP-style (git@github.com:user/repo.git) or proper URLs
+    if (/^git@[\w.-]+:/.test(url)) return true;
+    try {
+        const parsed = new URL(url);
+        return SAFE_REPO_PROTOCOLS.includes(parsed.protocol);
+    } catch {
+        return false;
+    }
+}
+
 function getFreePort() {
     const port = PORT_POOL.find(p => !usedPorts.has(p));
     if (!port) throw new Error('No free sandbox ports available');
@@ -81,7 +101,7 @@ function startPreviewServer(sandbox, workdir) {
 
     return new Promise((resolve, reject) => {
         server.on('error', reject);
-        server.listen(port, () => {
+        server.listen(port, '127.0.0.1', () => {
             activeServers.set(sandbox.sandboxKey, server);
             resolve(port);
         });
@@ -132,24 +152,54 @@ function renderPreviewPage(sandbox, workdir) {
 
 async function writeSnapshot(sandbox, workdir) {
     fs.mkdirSync(workdir, { recursive: true });
+
+    // Validate that a path stays within the workdir (prevents ../ traversal and symlink escapes)
+    const safePath = (filePath) => {
+        const joined = path.resolve(workdir, filePath.replace(/^\/+/, ''));
+        if (!joined.startsWith(workdir)) {
+            throw new Error(`Path traversal blocked: ${filePath}`);
+        }
+        // Resolve symlinks and re-check — prevents symlink-based escapes
+        let realPath;
+        try {
+            realPath = fs.realpathSync(joined);
+        } catch (_) {
+            // Path doesn't exist yet, use resolved path
+            realPath = joined;
+        }
+        if (!realPath.startsWith(workdir)) {
+            throw new Error(`Symlink escape blocked: ${filePath}`);
+        }
+        return realPath;
+    };
+
     const files = Array.isArray(sandbox.files) ? sandbox.files : [];
     if (files.length === 0 && sandbox._codeSnapshot) {
         const cs = sandbox._codeSnapshot;
         if (cs.filePath && cs.content != null) {
-            const fp = path.join(workdir, cs.filePath.replace(/^\/+/, ''));
+            const fp = safePath(cs.filePath);
             fs.mkdirSync(path.dirname(fp), { recursive: true });
             fs.writeFileSync(fp, cs.content);
         }
     }
     files.forEach(f => {
         if (!f.path) return;
-        const fp = path.join(workdir, f.path.replace(/^\/+/, ''));
+        const fp = safePath(f.path);
         fs.mkdirSync(path.dirname(fp), { recursive: true });
         fs.writeFileSync(fp, f.content || '');
     });
-    // Persist env vars for the running sandbox.
+
+    // Persist env vars — redact ALL values except safe non-sensitive keys
+    // Never write secrets to disk (DATABASE_URL, JWT_SECRET, STRIPE_SECRET_KEY, etc.)
+    const safeEnvKeys = /^(NODE_ENV|PORT|APP_ENV|LOG_LEVEL|TZ|LANG)$/i;
     const envContent = Object.entries(sandbox.envVars || {})
-        .map(([k, v]) => `${k}=${typeof v === 'string' ? v : JSON.stringify(v)}`).join('\n');
+        .map(([k, v]) => {
+            if (safeEnvKeys.test(k)) {
+                return `${k}=${typeof v === 'string' ? v : JSON.stringify(v)}`;
+            }
+            // Redact all other values — prevents secret leakage to disk
+            return `${k}=***REDACTED***`;
+        }).join('\n');
     fs.writeFileSync(path.join(workdir, '.env.sandbox'), envContent);
 
     fs.writeFileSync(path.join(workdir, 'SANDBOX.md'), [
@@ -158,7 +208,7 @@ async function writeSnapshot(sandbox, workdir) {
         `Branch: ${sandbox.branch}`,
         `Commit: ${sandbox.commitSha || 'n/a'}`,
         '',
-        'Environment variables are captured in .env.sandbox (values redacted for secrets).'
+        'Environment variables are captured in .env.sandbox (secrets are redacted).'
     ].join('\n'));
 }
 
@@ -201,6 +251,14 @@ async function provisionPipeline(sandbox, workdir) {
         await writeSnapshot(sandbox, workdir);
 
         if (sandbox.repository) {
+            // Validate repository URL before cloning — prevents RCE via ext:: or shell metacharacters
+            if (!validateRepoUrl(sandbox.repository)) {
+                sandbox.status = 'failed';
+                sandbox.error = 'Invalid or dangerous repository URL';
+                sandbox.logs = (sandbox.logs || '') + '\n[security] Repository URL rejected: blocked protocol or shell metacharacters';
+                await sandbox.save();
+                return sandbox;
+            }
             sandbox.status = 'cloning';
             await sandbox.save();
             emit(sandbox.sandboxKey, 'sandbox:status', { sandboxKey: sandbox.sandboxKey, status: 'cloning' });
@@ -282,6 +340,11 @@ async function stopSandbox(sandboxKey) {
     if (server) {
         server.close();
         activeServers.delete(sandboxKey);
+    }
+    // Clean up filesystem to prevent disk fill and secret leakage
+    const sandbox = await EphemeralSandbox.findOne({ sandboxKey }).catch(() => null);
+    if (sandbox && sandbox.workdir) {
+        try { require('fs').rmSync(sandbox.workdir, { recursive: true, force: true }); } catch (_) {}
     }
     await EphemeralSandbox.updateOne({ sandboxKey }, { status: 'expired', expiresAt: new Date() }).catch(() => {});
 }
