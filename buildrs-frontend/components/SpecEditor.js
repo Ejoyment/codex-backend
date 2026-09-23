@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { FileCode, GitBranch, Eye, Settings, AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
-import MonacoEditor from '@monaco-editor/react';
+import { FileCode as FileCodeIcon, GitBranch, Eye, AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
+import dynamic from 'next/dynamic';
+const MonacoEditor = dynamic(() => import('@monaco-editor/react'), { ssr: false, loading: () => <div>Loading editor...</div> });
 import { apiFetch } from '../lib/api';
 
 export default function SpecEditor({ specId, workspaceId, onDriftDetected }) {
@@ -126,7 +127,7 @@ export default function SpecEditor({ specId, workspaceId, onDriftDetected }) {
     <div className="flex flex-col h-full bg-[#1e1e2e] rounded-lg border border-[#2e2e3e] overflow-hidden">
       <div className="flex items-center justify-between px-4 py-2 border-b border-[#2e2e3e] bg-[#14141e]">
         <div className="flex items-center gap-2">
-          <FileCode className="w-4 h-4 text-purple-400" />
+          <FileCodeIcon className="w-4 h-4 text-purple-400" />
           <span className="text-sm font-semibold text-[#e2e2ea]">
             {spec?.title || 'Spec Editor'}
           </span>

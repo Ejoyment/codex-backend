@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { X, Terminal, CodeDiff, CheckCircle, Loader2, AlertTriangle } from 'lucide-react';
-import { io } from 'socket.io-client';
+import { X, Terminal, CheckCircle, Loader2, AlertTriangle } from 'lucide-react';
 import { useXterm } from '../hooks/useXterm';
+
+let io;
+if (typeof window !== 'undefined') {
+  io = require('socket.io-client').io;
+}
 
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3000';
 
@@ -18,7 +22,7 @@ export default function LiveExecutionDrawer({ taskId, isOpen, onClose, execution
   const { terminal, write, writeln, clear, resize } = useXterm('terminal-container');
 
   useEffect(() => {
-    if (!isOpen || !executionId) return;
+    if (!isOpen || !executionId || typeof window === 'undefined' || !io) return;
 
     const socket = io(SOCKET_URL, {
       auth: { token: localStorage.getItem('authToken') },
@@ -27,8 +31,6 @@ export default function LiveExecutionDrawer({ taskId, isOpen, onClose, execution
 
     socket.on('connect', () => {
       socket.emit('agent:delegate', { executionId, taskId });
-      socket.join(`task:${taskId}`);
-      socket.join(`task:${taskId}:logs`);
     });
 
     socket.on('agent:execution-complete', (data) => {
