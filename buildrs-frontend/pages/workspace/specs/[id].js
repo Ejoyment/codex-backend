@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
+import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import Sidebar from '../../../components/Sidebar';
 import AuthGuard from '../../../components/AuthGuard';
 import useAuthStore from '../../../store/authStore';
 import { apiFetch } from '../../../lib/api';
-import SpecEditor from '../../../components/SpecEditor';
-import LiveExecutionDrawer from '../../../components/LiveExecutionDrawer';
-import { FileCode, Terminal, GitBranch, AlertTriangle, CheckCircle, Loader2 } from 'lucide-react';
+import { FileCode as FileCodeIcon, Terminal, GitBranch, AlertTriangle, CheckCircle, Loader2 } from 'lucide-react';
+
+const SpecEditor = dynamic(() => import('../../../components/SpecEditor'), { ssr: false });
+const LiveExecutionDrawer = dynamic(() => import('../../../components/LiveExecutionDrawer'), { ssr: false });
 
 export default function SpecWorkspace() {
   const router = useRouter();
@@ -81,7 +83,7 @@ export default function SpecWorkspace() {
         <div className="flex-1 p-6 bg-[#0f0f1a] overflow-auto">
           <div className="mb-6">
             <div className="flex items-center gap-3 mb-2">
-              <FileCode className="w-6 h-6 text-purple-400" />
+              <FileCodeIcon className="w-6 h-6 text-purple-400" />
               <h1 className="text-2xl font-bold text-[#e2e2ea]">{spec?.title}</h1>
               <span className="text-xs bg-purple-600/20 text-purple-400 px-2 py-0.5 rounded">
                 {spec?.specId}
