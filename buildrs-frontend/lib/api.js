@@ -307,3 +307,48 @@ export const projectApi = {
 export const collaborationApi = {
   getCompanyProjects: (companyId) => apiFetch(`/api/collaboration/${companyId}/projects`),
 };
+
+export const agentApi = {
+  delegate: (data) =>
+    apiFetch('/api/v1/agent/delegate', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  status: (taskId) => apiFetch(`/api/v1/agent/status/${taskId}`),
+  approve: (executionId, taskId) =>
+    apiFetch('/api/v1/agent/approve', {
+      method: 'POST',
+      body: JSON.stringify({ executionId, taskId }),
+    }),
+  reject: (executionId, taskId) =>
+    apiFetch('/api/v1/agent/reject', {
+      method: 'POST',
+      body: JSON.stringify({ executionId, taskId }),
+    }),
+  tweak: (executionId, taskId, feedback) =>
+    apiFetch('/api/v1/agent/tweak', {
+      method: 'POST',
+      body: JSON.stringify({ executionId, taskId, feedback }),
+    }),
+  cancel: (executionId) =>
+    apiFetch('/api/v1/agent/cancel', {
+      method: 'POST',
+      body: JSON.stringify({ executionId }),
+    }),
+  verifySpec: (specId, taskId) =>
+    apiFetch('/api/v1/specs/verify', {
+      method: 'POST',
+      body: JSON.stringify({ specId, taskId }),
+    }),
+  createSpec: (data) =>
+    apiFetch('/api/v1/specs', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  getSpec: (specId) => apiFetch(`/api/v1/specs/${specId}`),
+  driftReport: (workspaceId) =>
+    apiFetch('/api/v1/specs/drift-report', {
+      method: 'POST',
+      body: JSON.stringify({ workspaceId }),
+    }),
+};

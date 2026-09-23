@@ -205,6 +205,87 @@ const options = {
             message: { type: 'string' }
           }
         },
+        Spec: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            workspaceId: { type: 'string' },
+            title: { type: 'string' },
+            specId: { type: 'string' },
+            content: { type: 'string' },
+            targetModules: { type: 'array', items: { type: 'string' } },
+            targetFiles: { type: 'array', items: { type: 'string' } },
+            assertions: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  rule: { type: 'string' },
+                  target: { type: 'string' }
+                }
+              }
+            },
+            createdAt: { type: 'string', format: 'date-time' },
+            updatedAt: { type: 'string', format: 'date-time' }
+          }
+        },
+        AgentExecution: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            userId: { type: 'string' },
+            sessionId: { type: 'string' },
+            taskTitle: { type: 'string' },
+            summary: { type: 'string' },
+            status: { type: 'string', enum: ['idle', 'running', 'awaiting_approval', 'completed', 'failed'] },
+            approvalRequired: { type: 'boolean' },
+            agentBranch: { type: 'string' },
+            specRef: { type: 'string' },
+            logs: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  timestamp: { type: 'string', format: 'date-time' },
+                  message: { type: 'string' }
+                }
+              }
+            },
+            diffSummary: {
+              type: 'object',
+              properties: {
+                filesChanged: { type: 'number' },
+                insertions: { type: 'number' },
+                deletions: { type: 'number' }
+              }
+            },
+            metadata: { type: 'object' },
+            createdAt: { type: 'string', format: 'date-time' },
+            updatedAt: { type: 'string', format: 'date-time' }
+          }
+        },
+        SpecVerification: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            passed: { type: 'boolean' },
+            specId: { type: 'string' },
+            checkedAssertions: { type: 'number' },
+            passedAssertions: { type: 'number' },
+            failedAssertions: { type: 'number' },
+            results: { type: 'array', items: { type: 'object' } },
+            summary: { type: 'string' }
+          }
+        },
+        DriftReport: {
+          type: 'object',
+          properties: {
+            workspaceId: { type: 'string' },
+            totalWarnings: { type: 'number' },
+            reports: { type: 'array', items: { type: 'object' } },
+            timestamp: { type: 'string', format: 'date-time' }
+          }
+        },
         DesignToken: {
           type: 'object',
           properties: {
@@ -318,6 +399,9 @@ const options = {
       { name: 'Debugger', description: 'Debug session management with breakpoints and stepping' },
       { name: 'Agent Confirmation', description: 'Human-in-the-loop confirmation for AI agent actions' },
       { name: 'Health', description: 'Server health and status endpoints' },
+      { name: 'Agent Execution', description: 'Task-to-agent delegation, HITL approval, execution streaming' },
+      { name: 'Spec-Driven Development', description: 'Executable .spec.md contracts, AST drift, spec verification' },
+      { name: 'BYOM', description: 'Bring-Your-Own-Model infrastructure for cloud and local LLMs' },
       { name: 'AI Context Engine', description: 'Cross-tool AI context: Figma design tokens, team memory, support ticket-to-code bridge' }
     ]
   },

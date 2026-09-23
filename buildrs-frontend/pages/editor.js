@@ -252,6 +252,18 @@ export default function Editor() {
   const [aiInput, setAiInput] = useState('');
   const [aiMessages, setAiMessages] = useState([]);
   const [aiLoading, setAiLoading] = useState(false);
+  const [pendingConfirmations, setPendingConfirmations] = useState([]);
+  const [agentExecution, setAgentExecution] = useState(null);
+  const [taskCards, setTaskCards] = useState([
+    { id: 'task-1', title: 'Ship bug fix', owner: 'AI pair', status: 'ready', priority: 'high', summary: 'Patch the current issue and validate the result.' },
+    { id: 'task-2', title: 'Refactor module', owner: 'Design system', status: 'review', priority: 'medium', summary: 'Improve maintainability while keeping the public behavior unchanged.' },
+    { id: 'task-3', title: 'Prepare deploy', owner: 'Ops', status: 'waiting', priority: 'high', summary: 'Check release readiness and final deployment checks before shipping.' },
+    { id: 'task-4', title: 'Spec contract', owner: 'Product', status: 'draft', priority: 'medium', summary: 'Create the implementation contract before large agent actions.' },
+  ]);
+  const [selectedTaskId, setSelectedTaskId] = useState('task-1');
+  const [specMode, setSpecMode] = useState(false);
+  const [byomOpen, setByomOpen] = useState(false);
+  const [customModel, setCustomModel] = useState('GPT-4.1');
   const [collaborators, setCollaborators] = useState([]);
   const [remoteCursors, setRemoteCursors] = useState({});
   const [figmaFiles, setFigmaFiles] = useState([]);
@@ -405,10 +417,57 @@ export default function Editor() {
       setRemoteCursors((prev) => ({ ...prev, [userId]: { userName, cursor, ts: Date.now() } }));
     });
 
+    socket.on('agent:confirmation_required', (request) => {
+      if (!request?.id) return;
+      setPendingConfirmations((prev) => {
+        const exists = prev.some((item) => item.id === request.id);
+        return exists ? prev : [request, ...prev];
+      });
+      setStatus({ type: 'warning', msg: `Approval required: ${request.tool || 'agent action'}` });
+      setTimeout(() => setStatus(null), 2500);
+    });
+
     return () => {
       socket.disconnect();
       socketRef.current = null;
     };
+  }, []);
+
+  const loadPendingConfirmations = useCallback(async () => {
+    try {
+      const data = await apiFetch('/api/agent-confirmation/pending');
+      if (data?.success) {
+        setPendingConfirmations(data.confirmations || []);
+      }
+    } catch (error) {
+      console.warn('Failed to fetch pending confirmations:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadPendingConfirmations();
+  }, [loadPendingConfirmations]);
+
+  const respondToConfirmation = useCallback(async (confirmationId, approved, reason = '') => {
+    try {
+      const data = await apiFetch('/api/agent-confirmation/respond', {
+        method: 'POST',
+        body: JSON.stringify({ confirmationId, approved, reason }),
+      });
+
+      if (!data?.success) {
+        throw new Error(data?.error || 'Could not respond to the approval request');
+      }
+
+      setPendingConfirmations((prev) => prev.filter((item) => item.id !== confirmationId));
+      setStatus({
+        type: approved ? 'success' : 'warning',
+        msg: approved ? 'Agent action approved.' : 'Agent action rejected.'
+      });
+      setTimeout(() => setStatus(null), 2500);
+    } catch (error) {
+      setStatus({ type: 'error', msg: error.message || 'Approval request failed' });
+    }
   }, []);
 
   useEffect(() => {
@@ -779,14 +838,144 @@ export default function Editor() {
 
   async function ensureAiSession() {
     if (aiSessionRef.current) return aiSessionRef.current;
+    const sessionMeta = {
+      sessionName: `Editor session ${new Date().toLocaleString()}`,
+      repositoryId: selectedRepo?._id || selectedProject?._id || 'local-workspace',
+      repositoryName: selectedRepo?.name || selectedProject?.name || 'workspace',
+      repositoryOwner: selectedRepo?.owner?.login || selectedRepo?.owner || selectedProject?.owner || user?.username || 'local',
+      branch: selectedRepo?.default_branch || selectedProject?.defaultBranch || 'main',
+    };
+
     const data = await apiFetch('/api/ai-pair/session', {
       method: 'POST',
-      body: JSON.stringify({ sessionName: `Editor session ${new Date().toLocaleString()}` }),
+      body: JSON.stringify(sessionMeta),
     });
     if (!data.success) throw new Error(data.message || 'Could not start an AI session');
     aiSessionRef.current = data.session;
     return data.session;
   }
+
+  const startAgentExecution = useCallback((taskLabel) => {
+    const goal = taskLabel || (selectedFile ? `Fix ${selectedFile.name}` : 'Review workspace');
+    const title = selectedFile ? `Fix ${selectedFile.name}` : 'Review workspace';
+    const steps = [
+      'Scanning relevant files and context...',
+      'Drafting the minimal patch...',
+      'Running validation checks...',
+      'Preparing final review for approval...'
+    ];
+
+    const initialExecution = {
+      id: `agent-${Date.now()}`,
+      title,
+      goal,
+      status: 'running',
+      logs: ['Starting agent execution...'],
+      diffSummary: { filesChanged: 1, insertions: 0, deletions: 0 },
+      stepIndex: 0,
+      completed: false,
+      approvalRequired: false,
+      outcome: null,
+    };
+
+    setAgentExecution(initialExecution);
+
+    let tick = 0;
+    const timer = setInterval(() => {
+      tick += 1;
+      setAgentExecution((prev) => {
+        if (!prev) return prev;
+
+        const nextStepIndex = Math.min((prev.stepIndex || 0) + 1, steps.length - 1);
+        const nextLogs = [...prev.logs, steps[Math.min(prev.stepIndex || 0, steps.length - 1)]];
+        const nextStatus = tick >= steps.length ? 'awaiting_approval' : 'running';
+
+        return {
+          ...prev,
+          status: nextStatus,
+          logs: nextLogs,
+          stepIndex: nextStepIndex,
+          approvalRequired: nextStatus === 'awaiting_approval',
+          diffSummary: {
+            filesChanged: 1,
+            insertions: 6 + tick * 4,
+            deletions: 1 + tick,
+          },
+          completed: nextStatus === 'awaiting_approval',
+        };
+      });
+
+      if (tick >= steps.length) {
+        clearInterval(timer);
+      }
+    }, 1200);
+  }, [selectedFile]);
+
+  const settleAgentExecution = useCallback((approved) => {
+    setAgentExecution((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        status: approved ? 'completed' : 'rejected',
+        completed: true,
+        approvalRequired: false,
+        outcome: approved ? 'approved' : 'rejected',
+        logs: [
+          ...prev.logs,
+          approved ? 'Approved and merged into the working branch.' : 'Rejected and rolled back the agent patch.'
+        ],
+      };
+    });
+  }, []);
+
+  const hydrateAgentExecutionFromResult = useCallback((taskTitle, result) => {
+    if (!result) return;
+
+    const summary = result.summary || {};
+    const iterationCount = Array.isArray(result.iterations) ? result.iterations.length : 0;
+    const finalStatus = result.success ? 'awaiting_approval' : 'rejected';
+
+    setAgentExecution({
+      id: `agent-${Date.now()}`,
+      title: taskTitle || 'Workspace task',
+      goal: taskTitle || 'Workspace task',
+      status: finalStatus,
+      logs: [
+        'Agent loop started on the selected workspace...',
+        ...(Array.isArray(result.iterations) ? result.iterations.map((iteration) => iteration?.reasoning?.thought || iteration?.result?.message || 'Agent iteration complete.') : []),
+        summary?.message || summary?.summary || 'Agent completed a workspace pass.'
+      ].filter(Boolean).slice(-6),
+      diffSummary: {
+        filesChanged: Array.isArray(summary?.filesChanged) ? summary.filesChanged.length : (summary?.filesChanged || 1),
+        insertions: summary?.insertions || 0,
+        deletions: summary?.deletions || 0,
+      },
+      stepIndex: Math.max(0, iterationCount - 1),
+      completed: false,
+      approvalRequired: result.success,
+      outcome: result.success ? 'awaiting_approval' : 'failed',
+    });
+  }, []);
+
+  const selectedTask = useMemo(
+    () => taskCards.find((task) => task.id === selectedTaskId) || taskCards[0] || null,
+    [taskCards, selectedTaskId]
+  );
+
+  const runSelectedTask = useCallback(() => {
+    const taskLabel = selectedTask ? selectedTask.title : (selectedFile ? `Fix ${selectedFile.name}` : 'Review workspace');
+    startAgentExecution(taskLabel);
+  }, [selectedTask, selectedFile, startAgentExecution]);
+
+  const handleTaskSelect = useCallback((taskId) => {
+    setSelectedTaskId(taskId);
+    const task = taskCards.find((entry) => entry.id === taskId);
+    if (task) {
+      setAiInput(task.summary);
+      setStatus({ type: 'success', msg: `Task selected: ${task.title}` });
+      setTimeout(() => setStatus(null), 1800);
+    }
+  }, [taskCards]);
 
   async function handleAiHelperSend(e) {
     e.preventDefault();
@@ -799,17 +988,38 @@ export default function Editor() {
     try {
       const session = await ensureAiSession();
       const companyId = selectedCompany?._id;
+      const shouldUseAgentLoop = /fix|refactor|review|debug|ship|patch|build|deploy/i.test(input);
       const data = await apiFetch('/api/ai-pair/chat', {
         method: 'POST',
         body: JSON.stringify({
           sessionId: session._id,
           message: input,
           companyId,
-          codeContext: selectedFile ? { currentFile: { name: selectedFile.name, content: content.slice(0, 2000) } } : undefined,
+          enableActions: shouldUseAgentLoop,
+          useAgentLoop: shouldUseAgentLoop,
+          codeContext: {
+            workspace: {
+              id: workspaceId || selectedProject?._id || selectedRepo?._id || 'local-workspace',
+              name: selectedProject?.name || selectedRepo?.name || 'workspace',
+            },
+            files: files.slice(0, 25).map((file) => ({ id: file._id || file.id, name: file.name, path: file.path, language: file.language })),
+            currentFile: selectedFile ? { name: selectedFile.name, path: selectedFile.path, content: content.slice(0, 2000) } : undefined,
+            repository: selectedRepo ? {
+              id: selectedRepo._id || selectedRepo.id,
+              name: selectedRepo.name,
+              owner: selectedRepo.owner?.login || selectedRepo.owner || 'local',
+              defaultBranch: selectedRepo.default_branch || 'main',
+            } : undefined,
+          },
         }),
       });
-      const reply = data.message?.content || data.message || 'No response';
+      const reply = data.message?.content || data.message || data.result?.summary?.message || 'No response';
       setAiMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
+      if (shouldUseAgentLoop && data.result) {
+        hydrateAgentExecutionFromResult(input.trim(), data.result);
+      } else if (shouldUseAgentLoop) {
+        startAgentExecution(input.trim());
+      }
     } catch (err) {
       setAiMessages((prev) => [...prev, { role: 'assistant', content: `Error: ${err.message}` }]);
     } finally {
@@ -1893,6 +2103,135 @@ export default function Editor() {
                     <div className="ed-sidebar-actions"></div>
                   </div>
                   <div className="ed-sidebar-body is-ai">
+                    {pendingConfirmations.length > 0 && (
+                      <div className="ed-ai-intel" style={{ marginBottom: '0.75rem', borderColor: 'rgba(245,158,11,0.5)' }}>
+                        <div className="ed-ai-intel-header">
+                          <AlertCircle className="w-4 h-4" style={{ color: '#fbbf24' }} />
+                          <span>Pending approvals</span>
+                        </div>
+                        <div className="ed-ai-suggestions" style={{ gap: '0.5rem' }}>
+                          {pendingConfirmations.slice(0, 3).map((confirmation) => (
+                            <div key={confirmation.id} className="ed-ai-prompt" style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: '0.5rem' }}>
+                              <div>
+                                <strong>{confirmation.tool || 'Agent action'}</strong>
+                                <small>{confirmation.preview?.action || 'A risky action needs your approval.'}</small>
+                              </div>
+                              <div style={{ display: 'flex', gap: '0.4rem' }}>
+                                <button type="button" className="btn-workspace btn-primary" style={{ flex: 1, minHeight: 0, padding: '0.38rem 0.6rem' }} onClick={() => respondToConfirmation(confirmation.id, true)}>
+                                  Approve
+                                </button>
+                                <button type="button" className="btn-workspace btn-secondary" style={{ flex: 1, minHeight: 0, padding: '0.38rem 0.6rem' }} onClick={() => respondToConfirmation(confirmation.id, false, 'Rejected from IDE approval panel')}>
+                                  Reject
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="ed-ai-intel" style={{ marginBottom: '0.75rem', borderColor: 'rgba(59,130,246,0.35)' }}>
+                      <div className="ed-ai-intel-header">
+                        <Bot className="w-4 h-4" style={{ color: '#60a5fa' }} />
+                        <span>Phase 2 task board</span>
+                      </div>
+                      <div style={{ display: 'grid', gap: '0.45rem', marginTop: '0.5rem' }}>
+                        {taskCards.map((task) => (
+                          <button
+                            key={task.id}
+                            type="button"
+                            className="ed-ai-prompt"
+                            onClick={() => handleTaskSelect(task.id)}
+                            style={{
+                              borderColor: selectedTaskId === task.id ? 'rgba(96,165,250,0.9)' : 'rgba(255,255,255,0.05)',
+                              background: selectedTaskId === task.id ? 'rgba(96,165,250,0.08)' : 'rgba(255,255,255,0.02)',
+                              textAlign: 'left',
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                              <strong>{task.title}</strong>
+                              <span className="pill pill-mono" style={{ background: task.priority === 'high' ? 'rgba(248,113,113,0.12)' : task.priority === 'medium' ? 'rgba(234,179,8,0.12)' : 'rgba(52,211,153,0.12)', color: task.priority === 'high' ? '#fca5a5' : task.priority === 'medium' ? '#facc15' : '#7bd197' }}>
+                                {task.priority}
+                              </span>
+                            </div>
+                            <small>{task.summary}</small>
+                          </button>
+                        ))}
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.45rem', marginTop: '0.6rem' }}>
+                        <button type="button" className="btn-workspace btn-primary" style={{ flex: 1 }} onClick={runSelectedTask}>
+                          Run selected task
+                        </button>
+                        <button type="button" className="btn-workspace btn-secondary" style={{ flex: 1 }} onClick={() => setSpecMode((prev) => !prev)}>
+                          {specMode ? 'Spec on' : 'Spec mode'}
+                        </button>
+                      </div>
+                      {specMode && (
+                        <div style={{ marginTop: '0.6rem', border: '1px solid rgba(96,165,250,0.25)', borderRadius: 8, background: 'rgba(96,165,250,0.05)', padding: '0.6rem' }}>
+                          <div style={{ color: '#d4d4d4', fontWeight: 600, marginBottom: '0.35rem' }}>Implementation contract</div>
+                          <div style={{ color: '#8c8c8c', fontSize: '0.68rem', lineHeight: 1.5 }}>
+                            Scope: {selectedTask?.title || 'current task'}{selectedFile ? ` • file: ${selectedFile.name}` : ''}<br />
+                            Safety: require approval for destructive actions, validate changes, and keep the public contract stable.
+                          </div>
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.6rem', gap: '0.5rem' }}>
+                        <button type="button" className="btn-workspace btn-secondary" style={{ flex: 1 }} onClick={() => setByomOpen((prev) => !prev)}>
+                          BYOM model
+                        </button>
+                        <span style={{ color: '#8c8c8c', fontSize: '0.68rem' }}>{customModel}</span>
+                      </div>
+                      {byomOpen && (
+                        <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.4rem' }}>
+                          <input
+                            value={customModel}
+                            onChange={(e) => setCustomModel(e.target.value)}
+                            className="ws-input"
+                            style={{ flex: 1 }}
+                            placeholder="model name"
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {agentExecution && (
+                      <div className="ed-ai-intel" style={{ marginBottom: '0.75rem', borderColor: 'rgba(47,214,230,0.5)' }}>
+                        <div className="ed-ai-intel-header">
+                          <Bot className="w-4 h-4" style={{ color: '#2fd6e6' }} />
+                          <span>{agentExecution.title}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', marginTop: '0.35rem', color: '#d4d4d4', fontSize: '0.7rem' }}>
+                          <span style={{ textTransform: 'capitalize' }}>{agentExecution.status}</span>
+                          <span style={{ color: '#7bd197' }}>{agentExecution.diffSummary?.filesChanged || 0} files</span>
+                        </div>
+                        <div style={{ marginTop: '0.3rem', color: '#8c8c8c', fontSize: '0.64rem', lineHeight: 1.5 }}>
+                          {agentExecution.goal || agentExecution.title}
+                        </div>
+                        <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.75rem', fontSize: '0.68rem', color: '#a0a0a0' }}>
+                          <span>+{agentExecution.diffSummary?.insertions || 0}</span>
+                          <span>-{agentExecution.diffSummary?.deletions || 0}</span>
+                        </div>
+                        <div style={{ marginTop: '0.6rem', display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.68rem', color: '#cfd4dc' }}>
+                          {agentExecution.logs.slice(-4).map((log, idx) => (
+                            <div key={`${log}-${idx}`} style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.04)', borderRadius: 4, padding: '0.35rem 0.45rem' }}>
+                              {log}
+                            </div>
+                          ))}
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.65rem' }}>
+                          <button type="button" className="btn-workspace btn-primary" style={{ flex: 1, minHeight: 0, padding: '0.38rem 0.6rem' }} onClick={() => settleAgentExecution(true)} disabled={agentExecution.status === 'completed' || agentExecution.status === 'rejected'}>
+                            {agentExecution.status === 'awaiting_approval' ? 'Approve' : 'Apply'}
+                          </button>
+                          <button type="button" className="btn-workspace btn-secondary" style={{ flex: 1, minHeight: 0, padding: '0.38rem 0.6rem' }} onClick={() => settleAgentExecution(false)} disabled={agentExecution.status === 'completed' || agentExecution.status === 'rejected'}>
+                            Tweak
+                          </button>
+                          <button type="button" className="btn-workspace btn-secondary" style={{ flex: 1, minHeight: 0, padding: '0.38rem 0.6rem', color: '#fca5a5' }} onClick={() => settleAgentExecution(false)} disabled={agentExecution.status === 'completed' || agentExecution.status === 'rejected'}>
+                            Reject
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     {aiMessages.length === 0 && (
                       <div className="ed-ai-intel">
                         <div className="ed-ai-intel-header">
@@ -1910,6 +2249,9 @@ export default function Editor() {
                             </button>
                           ))}
                         </div>
+                        <button type="button" className="btn-workspace btn-primary" style={{ marginTop: '0.6rem' }} onClick={runSelectedTask}>
+                          Run agent task
+                        </button>
                       </div>
                     )}
                     <div className="ed-chat">

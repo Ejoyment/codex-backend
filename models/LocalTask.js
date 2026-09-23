@@ -31,6 +31,27 @@ const localTaskSchema = new mongoose.Schema({
         enum: ['pending', 'in-progress', 'in_review', 'completed', 'archived'],
         default: 'pending'
     },
+    agentExecution: {
+        status: {
+            type: String,
+            enum: ['idle', 'running', 'awaiting_approval', 'completed', 'failed'],
+            default: 'idle'
+        },
+        agentBranch: String,
+        specRef: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Spec'
+        },
+        logs: [{
+            timestamp: Date,
+            message: String
+        }],
+        diffSummary: {
+            filesChanged: Number,
+            insertions: Number,
+            deletions: Number
+        }
+    },
     priority: {
         type: String,
         enum: ['low', 'medium', 'high', 'urgent'],

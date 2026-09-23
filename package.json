@@ -8,7 +8,8 @@
     "dev": "nodemon server.js",
     "test": "jest --coverage --forceExit --detectOpenHandles",
     "test:watch": "jest --watch --forceExit --detectOpenHandles",
-    "test:ci": "jest --coverage --ci --forceExit --detectOpenHandles"
+    "test:ci": "jest --coverage --ci --forceExit --detectOpenHandles",
+    "test:spec": "jest --testPathPattern='spec' --forceExit --detectOpenHandles"
   },
   "keywords": [
     "authentication",
@@ -20,6 +21,7 @@
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
     "@octokit/rest": "^21.0.2",
+    "acorn": "^8.18.0",
     "axios": "^1.13.2",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
