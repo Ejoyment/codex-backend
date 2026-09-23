@@ -7,6 +7,7 @@ buildrs-frontend/.next/
 .env.production
 .env.local
 .env.development
+*.pdf
 
 # Uploads
 uploads/
