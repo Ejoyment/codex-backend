@@ -5,26 +5,8 @@ const User = require('../models/User');
 const TeamActivity = require('../models/TeamActivity');
 const Subscription = require('../models/Subscription');
 const { checkMemberLimit, checkProjectLimit, requireTeamFeature, getCompanyLimits } = require('../middleware/teamRestrictions');
-
-// Middleware to check authentication
-const authenticateToken = (req, res, next) => {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
-    
-    if (!token) {
-        return res.status(401).json({ success: false, message: 'No token provided' });
-    }
-    
-    const jwt = require('jsonwebtoken');
-    jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
-        if (err) {
-            return res.status(403).json({ success: false, message: 'Invalid token' });
-        }
-        // Normalize user ID across token payload shapes ({ id }, { userId }, { _id })
-        req.userId = decoded.userId || decoded.id || decoded._id;
-        next();
-    });
-};
+const permissionMatrix = require('../middleware/permissionMatrix');
+const { authenticateToken } = require('../middleware/auth');
 
 /**
  * @swagger
@@ -51,7 +33,7 @@ const authenticateToken = (req, res, next) => {
  *         description: Company created successfully
  */
 // Create company
-router.post('/create', authenticateToken, async (req, res) => {
+router.post('/create', authenticateToken, permissionMatrix.requirePermission('company', 'create'), async (req, res) => {
     try {
         const { name, description } = req.body;
         
@@ -300,7 +282,7 @@ router.get('/my-companies', authenticateToken, async (req, res) => {
  *         description: Company not found
  */
 // Get company details
-router.get('/:companyId', authenticateToken, async (req, res) => {
+router.get('/:companyId', authenticateToken, permissionMatrix.requirePermission('company', 'read'), async (req, res) => {
     try {
         const company = await Company.findById(req.params.companyId)
             .populate('owner', 'fullName email profilePicture')
@@ -389,7 +371,7 @@ router.get('/:companyId', authenticateToken, async (req, res) => {
  *         description: Company not found
  */
 // Get company members
-router.get('/:companyId/members', authenticateToken, async (req, res) => {
+router.get('/:companyId/members', authenticateToken, permissionMatrix.requirePermission('company', 'read'), async (req, res) => {
     try {
         const company = await Company.findById(req.params.companyId)
             .populate('members.user', 'fullName email profilePicture role');
@@ -470,7 +452,7 @@ router.get('/:companyId/members', authenticateToken, async (req, res) => {
  *         description: User not found with this email
  */
 // Invite member
-router.post('/:companyId/invite', authenticateToken, checkMemberLimit, async (req, res) => {
+router.post('/:companyId/invite', authenticateToken, permissionMatrix.requirePermission('company', 'invite'), checkMemberLimit, async (req, res) => {
     try {
         const { email, role = 'member' } = req.body;
         
@@ -578,7 +560,7 @@ router.post('/:companyId/invite', authenticateToken, checkMemberLimit, async (re
  *         description: Company not found
  */
 // Remove member
-router.delete('/:companyId/members/:userId', authenticateToken, async (req, res) => {
+router.delete('/:companyId/members/:userId', authenticateToken, permissionMatrix.requirePermission('company', 'update'), async (req, res) => {
     try {
         const company = await Company.findById(req.params.companyId);
         if (!company) {
@@ -631,7 +613,7 @@ router.delete('/:companyId/members/:userId', authenticateToken, async (req, res)
 });
 
 // Update company
-router.put('/:companyId', authenticateToken, async (req, res) => {
+router.put('/:companyId', authenticateToken, permissionMatrix.requirePermission('company', 'update'), async (req, res) => {
     try {
         const { name, description, logo } = req.body;
         
@@ -824,7 +806,7 @@ router.post('/:companyId/logo', authenticateToken, async (req, res) => {
  *         description: Member not found
  */
 // Update member role
-router.put('/:companyId/members/:userId/role', authenticateToken, async (req, res) => {
+router.put('/:companyId/members/:userId/role', authenticateToken, permissionMatrix.requirePermission('company', 'update'), async (req, res) => {
     try {
         const { role } = req.body;
         
@@ -910,7 +892,7 @@ router.put('/:companyId/members/:userId/role', authenticateToken, async (req, re
  *         description: Company not found
  */
 // Update company settings
-router.put('/:companyId/settings', authenticateToken, async (req, res) => {
+router.put('/:companyId/settings', authenticateToken, permissionMatrix.requirePermission('company', 'update'), async (req, res) => {
     try {
         const { allowMemberInvites, requireApproval, defaultRole } = req.body;
         

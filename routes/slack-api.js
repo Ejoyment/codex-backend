@@ -3,19 +3,8 @@ const router = express.Router();
 const axios = require('axios');
 const Integration = require('../models/Integration');
 const jwt = require('jsonwebtoken');
-
-// Middleware
-const verifyToken = (req, res, next) => {
-    const token = req.headers.authorization?.split(' ')[1];
-    if (!token) return res.status(401).json({ success: false, message: 'Authentication required' });
-    try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        req.userId = decoded.userId || decoded.id || decoded._id;
-        next();
-    } catch (error) {
-        return res.status(401).json({ success: false, message: 'Invalid token' });
-    }
-};
+const { createStateToken, verifyStateToken } = require('../utils/oauthState');
+const { authenticateToken } = require('../middleware/auth');
 
 async function getSlackIntegration(userId) {
     const integration = await Integration.findOne({ userId, provider: 'slack', isActive: true });
@@ -76,7 +65,7 @@ async function slackAPI(accessToken, method, params = {}) {
  *         description: Internal server error
  */
 // Get workspace info
-router.get('/team/info', verifyToken, async (req, res) => {
+router.get('/team/info', authenticateToken, async (req, res) => {
     try {
         const integration = await getSlackIntegration(req.userId);
         const team = await slackAPI(integration.accessToken, 'team.info');
@@ -87,7 +76,7 @@ router.get('/team/info', verifyToken, async (req, res) => {
 });
 
 // Get channels
-router.get('/conversations/list', verifyToken, async (req, res) => {
+router.get('/conversations/list', authenticateToken, async (req, res) => {
     try {
         const integration = await getSlackIntegration(req.userId);
         const { types = 'public_channel,private_channel', limit = 100 } = req.query;
@@ -99,7 +88,7 @@ router.get('/conversations/list', verifyToken, async (req, res) => {
 });
 
 // Get channel history
-router.get('/conversations/history/:channelId', verifyToken, async (req, res) => {
+router.get('/conversations/history/:channelId', authenticateToken, async (req, res) => {
     try {
         const integration = await getSlackIntegration(req.userId);
         const { channelId } = req.params;
@@ -112,7 +101,7 @@ router.get('/conversations/history/:channelId', verifyToken, async (req, res) =>
 });
 
 // Send message
-router.post('/chat/postMessage', verifyToken, async (req, res) => {
+router.post('/chat/postMessage', authenticateToken, async (req, res) => {
     try {
         const integration = await getSlackIntegration(req.userId);
         const { channel, text, blocks } = req.body;
@@ -124,7 +113,7 @@ router.post('/chat/postMessage', verifyToken, async (req, res) => {
 });
 
 // Get users
-router.get('/users/list', verifyToken, async (req, res) => {
+router.get('/users/list', authenticateToken, async (req, res) => {
     try {
         const integration = await getSlackIntegration(req.userId);
         const { limit = 100 } = req.query;
@@ -136,7 +125,7 @@ router.get('/users/list', verifyToken, async (req, res) => {
 });
 
 // Get user info
-router.get('/users/info/:userId', verifyToken, async (req, res) => {
+router.get('/users/info/:userId', authenticateToken, async (req, res) => {
     try {
         const integration = await getSlackIntegration(req.userId);
         const user = await slackAPI(integration.accessToken, 'users.info', { user: req.params.userId });
@@ -147,7 +136,7 @@ router.get('/users/info/:userId', verifyToken, async (req, res) => {
 });
 
 // Create channel
-router.post('/conversations/create', verifyToken, async (req, res) => {
+router.post('/conversations/create', authenticateToken, async (req, res) => {
     try {
         const integration = await getSlackIntegration(req.userId);
         const { name, is_private = false } = req.body;
@@ -159,7 +148,7 @@ router.post('/conversations/create', verifyToken, async (req, res) => {
 });
 
 // Upload file
-router.post('/files/upload', verifyToken, async (req, res) => {
+router.post('/files/upload', authenticateToken, async (req, res) => {
     try {
         const integration = await getSlackIntegration(req.userId);
         const { channels, content, filename, title } = req.body;
@@ -187,12 +176,12 @@ router.post('/files/upload', verifyToken, async (req, res) => {
  *       401:
  *         description: Unauthorized
  */
-router.get('/connect', verifyToken, (req, res) => {
+router.get('/connect', authenticateToken, (req, res) => {
     const params = new URLSearchParams({
         client_id: process.env.SLACK_CLIENT_ID,
         redirect_uri: process.env.SLACK_CALLBACK_URL,
         scope: 'channels:read,channels:history,chat:write,users:read,groups:read,groups:history,files:write',
-        state: req.userId // pass userId through so callback knows who's connecting
+        state: createStateToken(req.userId) // signed state token prevents session fixation
     });
 
     const authUrl = `https://slack.com/oauth/v2/authorize?${params.toString()}`;
@@ -231,10 +220,18 @@ router.get('/connect', verifyToken, (req, res) => {
  */
 router.get('/callback', async (req, res) => {
     try {
-        const { code, state: userId } = req.query;
+        const { code, state } = req.query;
 
-        if (!code || !userId) {
+        if (!code || !state) {
             return res.status(400).json({ success: false, message: 'Missing code or state' });
+        }
+
+        // Verify signed state token instead of trusting raw userId
+        let userId;
+        try {
+            userId = verifyStateToken(state);
+        } catch (e) {
+            return res.status(400).json({ success: false, message: 'Invalid or expired state token' });
         }
 
         // Exchange code for access token
@@ -296,7 +293,7 @@ router.get('/callback', async (req, res) => {
  *       401:
  *         description: Unauthorized
  */
-router.get('/status', verifyToken, async (req, res) => {
+router.get('/status', authenticateToken, async (req, res) => {
     try {
         const integration = await Integration.findOne({
             userId: req.userId,
@@ -329,7 +326,7 @@ router.get('/status', verifyToken, async (req, res) => {
  *       401:
  *         description: Unauthorized
  */
-router.delete('/disconnect', verifyToken, async (req, res) => {
+router.delete('/disconnect', authenticateToken, async (req, res) => {
     try {
         await Integration.findOneAndUpdate(
             { userId: req.userId, provider: 'slack' },

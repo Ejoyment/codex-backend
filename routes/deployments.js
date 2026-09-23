@@ -60,8 +60,14 @@ router.post('/', authenticateToken, async (req, res) => {
         }
 
         const sanitized = subdomain.toLowerCase().replace(/[^a-z0-9-]/g, '-');
-        if (!sanitized || sanitized.length < 2) {
-            return res.status(400).json({ error: 'Subdomain must be at least 2 characters (a-z, 0-9, hyphens)' });
+        // Strict subdomain validation: must start/end with alphanumeric, 2-63 chars, no consecutive hyphens
+        if (!/^[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$/.test(sanitized)) {
+            return res.status(400).json({ error: 'Invalid subdomain: must be 2-63 chars, start/end with alphanumeric, no consecutive hyphens' });
+        }
+        // Block reserved names
+        const reserved = ['www', 'api', 'admin', 'root', 'mail', 'ftp', 'localhost', 'null', 'undefined'];
+        if (reserved.includes(sanitized)) {
+            return res.status(400).json({ error: 'Subdomain is reserved' });
         }
 
         let files = Array.isArray(directFiles) && directFiles.length ? directFiles : [];

@@ -3,21 +3,7 @@ const router = express.Router();
 const axios = require('axios');
 const Integration = require('../models/Integration');
 const jwt = require('jsonwebtoken');
-
-// Middleware to verify JWT token
-const verifyToken = (req, res, next) => {
-    const token = req.headers.authorization?.split(' ')[1];
-    if (!token) {
-        return res.status(401).json({ success: false, message: 'Authentication required' });
-    }
-    try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        req.userId = decoded.userId || decoded.id || decoded._id;
-        next();
-    } catch (error) {
-        return res.status(401).json({ success: false, message: 'Invalid token' });
-    }
-};
+const { authenticateToken } = require('../middleware/auth');
 
 // Helper to get GitHub integration
 async function getGitHubIntegration(userId) {
@@ -92,7 +78,7 @@ async function githubAPI(accessToken, endpoint, method = 'GET', data = null) {
  *       401:
  *         description: Unauthorized
  */
-router.get('/repos', verifyToken, async (req, res) => {
+router.get('/repos', authenticateToken, async (req, res) => {
     try {
         const integration = await getGitHubIntegration(req.userId);
         const { sort = 'updated', per_page = 30, page = 1, type = 'all' } = req.query;
@@ -152,7 +138,7 @@ router.get('/repos', verifyToken, async (req, res) => {
  *       401:
  *         description: Unauthorized
  */
-router.get('/repos/:owner/:repo', verifyToken, async (req, res) => {
+router.get('/repos/:owner/:repo', authenticateToken, async (req, res) => {
     try {
         const integration = await getGitHubIntegration(req.userId);
         const { owner, repo } = req.params;
@@ -214,7 +200,7 @@ router.get('/repos/:owner/:repo', verifyToken, async (req, res) => {
  *       401:
  *         description: Unauthorized
  */
-router.post('/repos', verifyToken, async (req, res) => {
+router.post('/repos', authenticateToken, async (req, res) => {
     try {
         const integration = await getGitHubIntegration(req.userId);
         const { name, description, private: isPrivate = false, autoInit = true } = req.body;
@@ -281,7 +267,7 @@ router.post('/repos', verifyToken, async (req, res) => {
  *       401:
  *         description: Unauthorized
  */
-router.get('/repos/:owner/:repo/branches', verifyToken, async (req, res) => {
+router.get('/repos/:owner/:repo/branches', authenticateToken, async (req, res) => {
     try {
         const integration = await getGitHubIntegration(req.userId);
         const { owner, repo } = req.params;
@@ -342,7 +328,7 @@ router.get('/repos/:owner/:repo/branches', verifyToken, async (req, res) => {
  *       401:
  *         description: Unauthorized
  */
-router.post('/repos/:owner/:repo/branches', verifyToken, async (req, res) => {
+router.post('/repos/:owner/:repo/branches', authenticateToken, async (req, res) => {
     try {
         const integration = await getGitHubIntegration(req.userId);
         const { owner, repo } = req.params;
@@ -409,7 +395,7 @@ router.post('/repos/:owner/:repo/branches', verifyToken, async (req, res) => {
  *       401:
  *         description: Unauthorized
  */
-router.get('/repos/:owner/:repo/contents/*', verifyToken, async (req, res) => {
+router.get('/repos/:owner/:repo/contents/*', authenticateToken, async (req, res) => {
     try {
         const integration = await getGitHubIntegration(req.userId);
         const { owner, repo } = req.params;
@@ -501,7 +487,7 @@ router.get('/repos/:owner/:repo/contents/*', verifyToken, async (req, res) => {
  *       401:
  *         description: Unauthorized
  */
-router.put('/repos/:owner/:repo/contents/*', verifyToken, async (req, res) => {
+router.put('/repos/:owner/:repo/contents/*', authenticateToken, async (req, res) => {
     try {
         const integration = await getGitHubIntegration(req.userId);
         const { owner, repo } = req.params;
@@ -575,7 +561,7 @@ router.put('/repos/:owner/:repo/contents/*', verifyToken, async (req, res) => {
  *       401:
  *         description: Unauthorized
  */
-router.post('/repos/:owner/:repo/contents/*', verifyToken, async (req, res) => {
+router.post('/repos/:owner/:repo/contents/*', authenticateToken, async (req, res) => {
     try {
         const integration = await getGitHubIntegration(req.userId);
         const { owner, repo } = req.params;
@@ -646,7 +632,7 @@ router.post('/repos/:owner/:repo/contents/*', verifyToken, async (req, res) => {
  *       401:
  *         description: Unauthorized
  */
-router.get('/repos/:owner/:repo/commits', verifyToken, async (req, res) => {
+router.get('/repos/:owner/:repo/commits', authenticateToken, async (req, res) => {
     try {
         const integration = await getGitHubIntegration(req.userId);
         const { owner, repo } = req.params;
@@ -718,7 +704,7 @@ router.get('/repos/:owner/:repo/commits', verifyToken, async (req, res) => {
  *       401:
  *         description: Unauthorized
  */
-router.get('/repos/:owner/:repo/issues', verifyToken, async (req, res) => {
+router.get('/repos/:owner/:repo/issues', authenticateToken, async (req, res) => {
     try {
         const integration = await getGitHubIntegration(req.userId);
         const { owner, repo } = req.params;
@@ -792,7 +778,7 @@ router.get('/repos/:owner/:repo/issues', verifyToken, async (req, res) => {
  *       401:
  *         description: Unauthorized
  */
-router.post('/repos/:owner/:repo/issues', verifyToken, async (req, res) => {
+router.post('/repos/:owner/:repo/issues', authenticateToken, async (req, res) => {
     try {
         const integration = await getGitHubIntegration(req.userId);
         const { owner, repo } = req.params;
@@ -862,7 +848,7 @@ router.post('/repos/:owner/:repo/issues', verifyToken, async (req, res) => {
  *       401:
  *         description: Unauthorized
  */
-router.get('/repos/:owner/:repo/pulls', verifyToken, async (req, res) => {
+router.get('/repos/:owner/:repo/pulls', authenticateToken, async (req, res) => {
     try {
         const integration = await getGitHubIntegration(req.userId);
         const { owner, repo } = req.params;
@@ -934,7 +920,7 @@ router.get('/repos/:owner/:repo/pulls', verifyToken, async (req, res) => {
  *       401:
  *         description: Unauthorized
  */
-router.post('/repos/:owner/:repo/pulls', verifyToken, async (req, res) => {
+router.post('/repos/:owner/:repo/pulls', authenticateToken, async (req, res) => {
     try {
         const integration = await getGitHubIntegration(req.userId);
         const { owner, repo } = req.params;
@@ -978,7 +964,7 @@ router.post('/repos/:owner/:repo/pulls', verifyToken, async (req, res) => {
  *       401:
  *         description: Unauthorized
  */
-router.get('/user', verifyToken, async (req, res) => {
+router.get('/user', authenticateToken, async (req, res) => {
     try {
         const integration = await getGitHubIntegration(req.userId);
         const user = await githubAPI(integration.accessToken, '/user');
@@ -1021,7 +1007,7 @@ router.get('/user', verifyToken, async (req, res) => {
  *       401:
  *         description: Unauthorized
  */
-router.get('/connect', verifyToken, (req, res) => {
+router.get('/connect', authenticateToken, (req, res) => {
     const params = new URLSearchParams({
         client_id: process.env.GITHUB_CLIENT_ID,
         redirect_uri: process.env.GITHUB_REDIRECT_URI,
@@ -1131,7 +1117,7 @@ router.get('/callback', async (req, res) => {
  *       401:
  *         description: Unauthorized
  */
-router.get('/status', verifyToken, async (req, res) => {
+router.get('/status', authenticateToken, async (req, res) => {
     try {
         const integration = await Integration.findOne({
             userId: req.userId,
@@ -1164,7 +1150,7 @@ router.get('/status', verifyToken, async (req, res) => {
  *       401:
  *         description: Unauthorized
  */
-router.delete('/disconnect', verifyToken, async (req, res) => {
+router.delete('/disconnect', authenticateToken, async (req, res) => {
     try {
         await Integration.findOneAndUpdate(
             { userId: req.userId, provider: 'github' },
@@ -1215,7 +1201,7 @@ router.delete('/disconnect', verifyToken, async (req, res) => {
  *       401:
  *         description: Unauthorized
  */
-router.get('/repos/:owner/:repo/git/tree', verifyToken, async (req, res) => {
+router.get('/repos/:owner/:repo/git/tree', authenticateToken, async (req, res) => {
     try {
         const integration = await getGitHubIntegration(req.userId);
         const { owner, repo } = req.params;

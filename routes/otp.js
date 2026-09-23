@@ -12,9 +12,37 @@ const otpLimiter = rateLimit({
     message: { success: false, message: 'Too many OTP requests, please try again later.' }
 });
 
-// Generate 4-digit OTP
+// Account-level lockout: email -> { attempts, lockedUntil }
+const lockoutMap = new Map();
+const MAX_FAILED_ATTEMPTS = 5;
+const LOCKOUT_DURATION_MS = 30 * 60 * 1000; // 30 minutes
+
+function isLockedOut(email) {
+    const record = lockoutMap.get(email);
+    if (!record) return false;
+    if (Date.now() > record.lockedUntil) {
+        lockoutMap.delete(email);
+        return false;
+    }
+    return true;
+}
+
+function recordFailedAttempt(email) {
+    const record = lockoutMap.get(email) || { attempts: 0, lockedUntil: 0 };
+    record.attempts += 1;
+    if (record.attempts >= MAX_FAILED_ATTEMPTS) {
+        record.lockedUntil = Date.now() + LOCKOUT_DURATION_MS;
+    }
+    lockoutMap.set(email, record);
+}
+
+function clearLockout(email) {
+    lockoutMap.delete(email);
+}
+
+// Generate 6-digit OTP (1,000,000 possibilities — resists brute-force)
 const generateOTP = () => {
-    return Math.floor(1000 + Math.random() * 9000).toString();
+    return Math.floor(100000 + Math.random() * 900000).toString();
 };
 
 /**
@@ -142,6 +170,14 @@ router.post('/verify', async (req, res) => {
             });
         }
 
+        // Check account-level lockout
+        if (isLockedOut(email.toLowerCase())) {
+            return res.status(429).json({ 
+                success: false, 
+                message: 'Account locked due to too many failed attempts. Try again in 30 minutes.' 
+            });
+        }
+
         // Find the most recent OTP for this email
         const otpRecord = await OTP.findOne({ 
             email: email.toLowerCase(),
@@ -168,13 +204,17 @@ router.post('/verify', async (req, res) => {
         if (otpRecord.otp !== otp) {
             otpRecord.attempts += 1;
             await otpRecord.save();
+            recordFailedAttempt(email.toLowerCase());
             
             return res.status(400).json({ 
                 success: false, 
                 message: 'Invalid OTP',
-                attemptsLeft: 3 - otpRecord.attempts
+                attemptsLeft: Math.max(0, 3 - otpRecord.attempts)
             });
         }
+
+        // Clear lockout on successful verification
+        clearLockout(email.toLowerCase());
 
         // Mark OTP as verified
         otpRecord.verified = true;

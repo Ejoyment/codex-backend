@@ -1,189 +1,81 @@
 /**
  * Sandbox Executor
- * 
+ *
  * Provides safe code execution environment for the AI agent.
- * Supports multiple backends:
- * - VM2 (Node.js sandbox) - Default
- * - Docker (Isolated containers) - Production
- * - WebAssembly (Browser-based) - Future
+ * Uses Docker containers exclusively (via sandboxSecurity.js) for
+ * real OS-level isolation. VM2 and other in-process sandboxes have
+ * been removed due to known escape vulnerabilities.
+ *
+ * Supported languages: JavaScript, Python, Java, Go, Rust, Ruby, PHP.
  */
+
+const sandboxSecurity = require('./sandboxSecurity');
 
 class SandboxExecutor {
     constructor() {
-        this.backend = process.env.SANDBOX_BACKEND || 'vm2'; // vm2, docker, wasm
-        this.timeout = parseInt(process.env.SANDBOX_TIMEOUT) || 5000; // 5 seconds
-        this.memoryLimit = parseInt(process.env.SANDBOX_MEMORY_LIMIT) || 128; // 128MB
+        this.timeout = parseInt(process.env.SANDBOX_TIMEOUT) || 5000;
+        this.memoryLimit = parseInt(process.env.SANDBOX_MEMORY_LIMIT) || 128; // MB, used as fallback
+        this.available = false;
         this.initialize();
     }
 
-    initialize() {
-        switch (this.backend) {
-            case 'docker':
-                this.initializeDocker();
-                break;
-            case 'wasm':
-                this.initializeWasm();
-                break;
-            default:
-                this.initializeVM2();
-        }
-        
-        console.log(`✓ Sandbox Executor initialized with ${this.backend} backend`);
-    }
-
-    /**
-     * VM2 Sandbox (Node.js)
-     * Lightweight, quick setup, limited to JavaScript
-     */
-    initializeVM2() {
-        try {
-            const { VM } = require('vm2');
-            this.VM = VM;
-            this.backend = 'vm2';
-        } catch (error) {
-            console.warn('⚠️ VM2 not installed, code execution disabled');
-            console.warn('Install with: npm install vm2');
-            this.backend = 'none';
+    async initialize() {
+        this.available = await sandboxSecurity.isDockerAvailable();
+        if (this.available) {
+            console.log('✓ Sandbox Executor initialized with Docker backend');
+        } else {
+            console.warn('⚠ Docker not available — code execution is disabled');
         }
     }
 
     /**
-     * Docker Sandbox (Production)
-     * Isolated containers, resource limits, multi-language support
-     */
-    initializeDocker() {
-        try {
-            const Docker = require('dockerode');
-            this.docker = new Docker();
-            this.backend = 'docker';
-        } catch (error) {
-            console.warn('⚠️ Docker not available, falling back to VM2');
-            this.initializeVM2();
-        }
-    }
-
-    /**
-     * WebAssembly Sandbox (Future)
-     * Browser-based, no server resources
-     */
-    initializeWasm() {
-        console.warn('⚠️ WASM sandbox not yet implemented, falling back to VM2');
-        this.initializeVM2();
-    }
-
-    /**
-     * Execute code safely
+     * Execute code safely in an isolated Docker container.
      */
     async execute(code, language = 'javascript', options = {}) {
+        if (!this.available) {
+            return {
+                success: false,
+                error: 'Docker not available — code execution is disabled'
+            };
+        }
+
         const executionOptions = {
             timeout: options.timeout || this.timeout,
             memoryLimit: options.memoryLimit || this.memoryLimit,
             ...options
         };
 
-        switch (this.backend) {
-            case 'docker':
-                return await this.executeInDocker(code, language, executionOptions);
-            case 'vm2':
-                return await this.executeInVM2(code, language, executionOptions);
-            default:
-                return {
-                    success: false,
-                    error: 'No sandbox backend available'
-                };
-        }
+        return await this.executeInDocker(code, language, executionOptions);
     }
 
     /**
-     * Execute in VM2 sandbox
-     */
-    async executeInVM2(code, language, options) {
-        if (language !== 'javascript' && language !== 'js') {
-            return {
-                success: false,
-                error: `VM2 only supports JavaScript, got: ${language}`
-            };
-        }
-
-        try {
-            const vm = new this.VM({
-                timeout: options.timeout,
-                sandbox: {
-                    console: {
-                        log: (...args) => {
-                            this.capturedOutput.push(args.join(' '));
-                        },
-                        error: (...args) => {
-                            this.capturedErrors.push(args.join(' '));
-                        }
-                    }
-                }
-            });
-
-            this.capturedOutput = [];
-            this.capturedErrors = [];
-
-            const result = vm.run(code);
-
-            return {
-                success: true,
-                output: this.capturedOutput.join('\n'),
-                errors: this.capturedErrors.join('\n'),
-                result: result !== undefined ? String(result) : undefined,
-                executionTime: 0 // VM2 doesn't provide timing
-            };
-        } catch (error) {
-            return {
-                success: false,
-                error: error.message,
-                stack: error.stack
-            };
-        }
-    }
-
-    /**
-     * Execute in Docker container
+     * Execute in Docker container via sandboxSecurity.js.
+     * Containers are always cleaned up (finally block).
      */
     async executeInDocker(code, language, options) {
-        try {
-            // Select appropriate Docker image
-            const image = this.getDockerImage(language);
-            
-            // Create container
-            const container = await this.docker.createContainer({
-                Image: image,
-                Cmd: this.getDockerCommand(language, code),
-                HostConfig: {
-                    Memory: options.memoryLimit * 1024 * 1024, // Convert MB to bytes
-                    NetworkMode: 'none', // No network access
-                    ReadonlyRootfs: true // Read-only filesystem
-                },
-                AttachStdout: true,
-                AttachStderr: true
-            });
+        const userId = options.userId || 'system';
+        const workspaceId = options.workspaceId || 'default';
 
-            // Start container
+        try {
+            const container = await sandboxSecurity.createIsolatedContainer(userId, workspaceId);
+
+            // Use exec form (no shell) to prevent shell injection.
+            // Pass code directly to the language interpreter.
+            const execCmd = this.getDockerExecCmd(language, code);
+            await container.update({ Cmd: execCmd });
             await container.start();
 
-            // Wait for execution with timeout
             const startTime = Date.now();
             const result = await Promise.race([
                 container.wait(),
-                new Promise((_, reject) => 
+                new Promise((_, reject) =>
                     setTimeout(() => reject(new Error('Execution timeout')), options.timeout)
                 )
             ]);
 
             const executionTime = Date.now() - startTime;
 
-            // Get output
-            const logs = await container.logs({
-                stdout: true,
-                stderr: true
-            });
-
-            // Cleanup
-            await container.remove();
+            const logs = await container.logs({ stdout: true, stderr: true });
 
             return {
                 success: result.StatusCode === 0,
@@ -196,11 +88,41 @@ class SandboxExecutor {
                 success: false,
                 error: error.message
             };
+        } finally {
+            // Always clean up — prevents container leaks on timeout or error
+            try {
+                await sandboxSecurity.cleanupContainer(userId);
+            } catch (_) {}
         }
     }
 
     /**
-     * Get Docker image for language
+     * Get exec-form command (no shell) to prevent injection.
+     * Returns array like ['node', '-e', code] instead of shell string.
+     * For Go/Rust: writes code to /tmp file first to avoid shell interpolation.
+     */
+    getDockerExecCmd(language, code) {
+        // Safe code writing: use base64 encoding to avoid all shell interpretation
+        const b64 = Buffer.from(code).toString('base64');
+
+        const commands = {
+            javascript: ['node', '-e', code],
+            js: ['node', '-e', code],
+            python: ['python', '-c', code],
+            java: ['java', '-'],
+            // Go: decode base64 to file, then run — no shell interpolation of user code
+            go: ['sh', '-c', `echo ${b64} | base64 -d > /tmp/main.go && go run /tmp/main.go`],
+            // Rust: decode base64 to file, then compile and run — no shell interpolation
+            rust: ['sh', '-c', `echo ${b64} | base64 -d > /tmp/main.rs && rustc -o /tmp/out /tmp/main.rs && /tmp/out`],
+            ruby: ['ruby', '-e', code],
+            php: ['php', '-r', code]
+        };
+
+        return commands[language.toLowerCase()] || ['node', '-e', code];
+    }
+
+    /**
+     * Get Docker image for language.
      */
     getDockerImage(language) {
         const images = {
@@ -218,17 +140,16 @@ class SandboxExecutor {
     }
 
     /**
-     * Get Docker command for language
+     * Get Docker command for language.
      */
     getDockerCommand(language, code) {
-        // Write code to temp file and execute
         const commands = {
             javascript: ['node', '-e', code],
             js: ['node', '-e', code],
             python: ['python', '-c', code],
-            java: ['java', '-'], // Requires compilation
+            java: ['java', '-'],
             go: ['go', 'run', '-'],
-            rust: ['rustc', '-'], // Requires compilation
+            rust: ['rustc', '-'],
             ruby: ['ruby', '-e', code],
             php: ['php', '-r', code]
         };
@@ -237,28 +158,23 @@ class SandboxExecutor {
     }
 
     /**
-     * Execute tests
+     * Execute tests in an isolated container.
      */
     async executeTests(testCode, language = 'javascript', framework = 'jest') {
-        // Prepare test environment
         const testEnvironment = this.prepareTestEnvironment(framework);
-        
-        // Combine test code with environment
         const fullCode = `${testEnvironment}\n${testCode}`;
-        
-        // Execute
+
         return await this.execute(fullCode, language, {
             timeout: 30000 // Tests get more time
         });
     }
 
     /**
-     * Prepare test environment
+     * Prepare test environment (mock test framework functions).
      */
     prepareTestEnvironment(framework) {
         const environments = {
             jest: `
-                // Mock Jest functions
                 const describe = (name, fn) => { console.log('Suite:', name); fn(); };
                 const it = (name, fn) => { console.log('Test:', name); fn(); };
                 const test = it;
@@ -277,7 +193,6 @@ class SandboxExecutor {
                 });
             `,
             mocha: `
-                // Mock Mocha functions
                 const describe = (name, fn) => { console.log('Suite:', name); fn(); };
                 const it = (name, fn) => { console.log('Test:', name); fn(); };
             `
@@ -287,18 +202,21 @@ class SandboxExecutor {
     }
 
     /**
-     * Validate code before execution
+     * Validate code before execution.
+     *
+     * NOTE: This is a defense-in-depth pre-filter for accidental misuse,
+     * NOT a security control. Real isolation comes from Docker containers.
+     * Regex blocklists are trivially bypassable.
      */
     validateCode(code, language) {
-        // Check for dangerous patterns
         const dangerousPatterns = [
-            /require\s*\(\s*['"]fs['"]\s*\)/,  // File system access
-            /require\s*\(\s*['"]child_process['"]\s*\)/, // Process execution
-            /require\s*\(\s*['"]net['"]\s*\)/, // Network access
-            /eval\s*\(/,                        // Eval
-            /Function\s*\(/,                    // Function constructor
-            /process\.exit/,                    // Process exit
-            /process\.env/                      // Environment variables
+            /require\s*\(\s*['"]fs['"]\s*\)/,
+            /require\s*\(\s*['"]child_process['"]\s*\)/,
+            /require\s*\(\s*['"]net['"]\s*\)/,
+            /eval\s*\(/,
+            /Function\s*\(/,
+            /process\.exit/,
+            /process\.env/
         ];
 
         for (const pattern of dangerousPatterns) {
@@ -314,14 +232,14 @@ class SandboxExecutor {
     }
 
     /**
-     * Get sandbox statistics
+     * Get sandbox statistics.
      */
     getStats() {
         return {
-            backend: this.backend,
+            backend: this.available ? 'docker' : 'none',
             timeout: this.timeout,
             memoryLimit: this.memoryLimit,
-            available: this.backend !== 'none'
+            available: this.available
         };
     }
 }

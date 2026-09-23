@@ -7,6 +7,12 @@ const swaggerUi = require('swagger-ui-express');
 const swaggerSpecs = require('./config/swagger');
 require('dotenv').config();
 
+// Fail fast if JWT_SECRET is missing or weak — prevents token forgery
+if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
+    console.error('FATAL: JWT_SECRET must be set and at least 32 characters. Exiting.');
+    process.exit(1);
+}
+
 const authRoutes = require('./routes/auth');
 const otpRoutes = require('./routes/otp');
 const subscriptionRoutes = require('./routes/subscription');
@@ -26,6 +32,16 @@ const notificationsRoutes = require('./routes/notifications');
 const app = express();
 const http = require('http');
 const socketIO = require('socket.io');
+const rateLimit = require('express-rate-limit');
+
+// Global rate limiter: 200 requests per minute per IP (prevents abuse, allows normal usage)
+const globalLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 200,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { success: false, message: 'Too many requests, please try again later.' }
+});
 
 // Import trial enforcement middleware
 const { checkTrialStatus, enforceProjectLimit, enforceAIAccess } = require('./middleware/trial');
@@ -157,7 +173,7 @@ app.use('/app', express.static('frontend', {
 
 // Session configuration
 app.use(session({
-    secret: process.env.JWT_SECRET || 'your-secret-key',
+    secret: process.env.JWT_SECRET,
     resave: false,
     saveUninitialized: false,
     cookie: {
@@ -222,6 +238,9 @@ const debugHandoffRoutes = require('./routes/debug-handoff');
 const collabRealtimeRoutes = require('./routes/collab-realtime');
 const designSyncRoutes = require('./routes/design-sync');
 const deploymentRoutes = require('./routes/deployments');
+
+// Apply global rate limiter to all API routes
+app.use('/api', globalLimiter);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/otp', otpRoutes);
@@ -477,18 +496,20 @@ io.on('connection', (socket) => {
     socket.join(`user:${socket.userId}`);
     
     // Join file collaboration
-    socket.on('collab:join', async ({ fileId, user }) => {
+    socket.on('collab:join', async ({ fileId, user, role }) => {
         try {
             socket.join(`file:${fileId}`);
-            collaborationService.addClient(fileId, socket);
+            // Pass role for conflict resolution (default: 'human')
+            collaborationService.addClient(fileId, socket, role || 'human');
             
             // Notify others
             socket.to(`file:${fileId}`).emit('collab:user-joined', {
                 userId: socket.userId,
-                user
+                user,
+                role: role || 'human'
             });
             
-            console.log(`User ${socket.userId} joined file: ${fileId}`);
+            console.log(`User ${socket.userId} [${role || 'human'}] joined file: ${fileId}`);
         } catch (error) {
             console.error('Join error:', error);
             socket.emit('collab:error', { message: error.message });
@@ -664,13 +685,13 @@ terminalNamespace.on('connection', (socket) => {
     });
     
     // Get terminal history (simulated only)
-    socket.on('terminal:history', ({ sessionId }) => {
+    socket.on('terminal:history', async ({ sessionId }) => {
         try {
             if (sessionId !== currentSession) {
                 throw new Error('Invalid session');
             }
             
-            const history = terminalService.getHistory(sessionId);
+            const history = await terminalService.getHistory(sessionId);
             socket.emit('terminal:history', { history });
         } catch (error) {
             console.error('Terminal history error:', error);
