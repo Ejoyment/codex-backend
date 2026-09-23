@@ -5,7 +5,6 @@ const Integration = require('../models/Integration');
 const IntegrationData = require('../models/IntegrationData');
 const Subscription = require('../models/Subscription');
 const { authenticateToken } = require('../middleware/auth');
-};
 
 /**
  * @swagger
