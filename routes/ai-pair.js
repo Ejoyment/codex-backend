@@ -6,6 +6,7 @@ const githubService = require('../utils/githubService');
 const AIPairSession = require('../models/AIPairSession');
 const ChatMessage = require('../models/ChatMessage');
 const CodeChange = require('../models/CodeChange');
+const AgentExecution = require('../models/AgentExecution');
 const Subscription = require('../models/Subscription');
 const { createDiffPatch } = require('diff');
 const permissionMatrix = require('../middleware/permissionMatrix');
@@ -393,6 +394,84 @@ router.get('/sessions', authenticateToken, async (req, res) => {
     }
 });
 
+router.get('/executions', authenticateToken, async (req, res) => {
+    try {
+        const { sessionId, status, limit = 25 } = req.query;
+        const query = { userId: req.userId };
+
+        if (sessionId) {
+            query.sessionId = sessionId;
+        }
+        if (status) {
+            query.status = status;
+        }
+
+        const executions = await AgentExecution.find(query)
+            .sort({ createdAt: -1 })
+            .limit(parseInt(limit, 10));
+
+        res.json({ success: true, executions });
+    } catch (error) {
+        console.error('Get executions error:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+router.post('/executions', authenticateToken, async (req, res) => {
+    try {
+        const { sessionId, taskTitle, summary = '', status = 'pending', approvalRequired = false } = req.body;
+
+        if (!sessionId) {
+            return res.status(400).json({ success: false, message: 'sessionId is required' });
+        }
+
+        const session = await AIPairSession.findOne({ _id: sessionId, userId: req.userId });
+        if (!session) {
+            return res.status(404).json({ success: false, message: 'Session not found' });
+        }
+
+        const execution = await AgentExecution.create({
+            userId: req.userId,
+            sessionId,
+            taskTitle: taskTitle || 'Workspace task',
+            summary,
+            status,
+            approvalRequired,
+            metadata: {}
+        });
+
+        res.status(201).json({ success: true, execution });
+    } catch (error) {
+        console.error('Create execution error:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+router.patch('/executions/:executionId', authenticateToken, async (req, res) => {
+    try {
+        const { executionId } = req.params;
+        const update = req.body || {};
+
+        const execution = await AgentExecution.findOne({ _id: executionId, userId: req.userId });
+        if (!execution) {
+            return res.status(404).json({ success: false, message: 'Execution not found' });
+        }
+
+        Object.keys(update).forEach((key) => {
+            if (key === '_id' || key === 'userId' || key === 'sessionId' || key === 'createdAt') return;
+            execution[key] = update[key];
+        });
+
+        execution.updatedAt = new Date();
+        await execution.save();
+
+        res.json({ success: true, execution });
+    } catch (error) {
+        console.error('Update execution error:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 /**
  * @swagger
  * /api/ai-pair/session/{sessionId}:
@@ -547,7 +626,20 @@ router.post('/chat', authenticateToken, checkAILimits, async (req, res) => {
             }
 
             const agentOrchestrator = require('../utils/agentOrchestrator');
-            
+            const executionTaskTitle = message || 'Workspace task';
+            const execution = await AgentExecution.create({
+                userId: req.userId,
+                sessionId,
+                taskTitle: executionTaskTitle,
+                status: 'running',
+                approvalRequired: true,
+                metadata: {
+                    startedFrom: 'ai-pair/chat',
+                    workspaceId: codeContext?.workspace?.id,
+                    currentFile: codeContext?.currentFile?.path || null
+                }
+            });
+
             const context = {
                 userId: req.userId,
                 workspaceId: codeContext.workspace?.id,
@@ -556,13 +648,39 @@ router.post('/chat', authenticateToken, checkAILimits, async (req, res) => {
                 currentFile: codeContext.currentFile
             };
 
-            const result = await agentOrchestrator.executeAgenticLoop(
-                message, // The goal
-                context,
-                sessionId
-            );
+            let result;
+            try {
+                result = await agentOrchestrator.executeAgenticLoop(
+                    message,
+                    context,
+                    sessionId
+                );
+            } catch (error) {
+                await AgentExecution.findByIdAndUpdate(execution._id, {
+                    status: 'failed',
+                    summary: error.message,
+                    approvalRequired: false,
+                    updatedAt: new Date()
+                });
+                throw error;
+            }
 
-            // Save agent summary
+            const executionStatus = result?.success ? 'awaiting_approval' : 'failed';
+            await AgentExecution.findByIdAndUpdate(execution._id, {
+                status: executionStatus,
+                summary: result?.summary?.finalThought || result?.summary?.goal || 'Agent run complete',
+                approvalRequired: Boolean(result?.success),
+                iterations: Array.isArray(result?.iterations) ? result.iterations.length : 0,
+                metadata: {
+                    ...(execution.metadata && Object.fromEntries ? Object.fromEntries(execution.metadata) : {}),
+                    finalStatus: executionStatus,
+                    goal: message,
+                    iterationCount: Array.isArray(result?.iterations) ? result.iterations.length : 0,
+                    summary: result?.summary || {}
+                },
+                updatedAt: new Date()
+            });
+
             await ChatMessage.create({
                 sessionId,
                 userId: req.userId,
@@ -574,7 +692,6 @@ router.post('/chat', authenticateToken, checkAILimits, async (req, res) => {
                 }
             });
 
-            // Update session
             session.totalMessages += 2;
             session.lastActivityAt = new Date();
             await session.save();
@@ -582,6 +699,7 @@ router.post('/chat', authenticateToken, checkAILimits, async (req, res) => {
             return res.json({
                 success: true,
                 agentMode: true,
+                executionId: execution._id,
                 result,
                 aiLimit: req.aiLimit
             });

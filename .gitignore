@@ -8,6 +8,7 @@ buildrs-frontend/.next/
 .env.local
 .env.development
 *.pdf
+*.test.js
 
 # Uploads
 uploads/

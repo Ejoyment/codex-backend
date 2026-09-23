@@ -104,6 +104,16 @@ async function startServer(port = process.env.PORT || 3000) {
     const collabRealtimeSocket = require('./utils/collabRealtimeSocket');
     collabRealtimeSocket(socket);
 
+    // Agent Socket.IO namespace for real-time agent execution streaming
+    const AgentSocketHandler = require('./utils/agentSocket');
+    const agentSocketHandler = new AgentSocketHandler(socket);
+
+    // Container Worker Service for sandboxed agent execution
+    const containerWorker = require('./utils/containerWorker');
+    if (containerWorker.isAvailable()) {
+      console.log('✓ Container Worker Service: Active');
+    }
+
     // Real-time event broadcaster for REST routes (profile updates, etc.)
     const realTimeEvents = require('./utils/realTimeEvents');
     realTimeEvents.setIO(socket);
@@ -238,6 +248,8 @@ const debugHandoffRoutes = require('./routes/debug-handoff');
 const collabRealtimeRoutes = require('./routes/collab-realtime');
 const designSyncRoutes = require('./routes/design-sync');
 const deploymentRoutes = require('./routes/deployments');
+const agentV1Routes = require('./routes/agent-v1');
+const specRoutes = require('./routes/specs');
 
 // Apply global rate limiter to all API routes
 app.use('/api', globalLimiter);
@@ -286,6 +298,8 @@ app.use('/api/git', gitRoutes);
 app.use('/api/debug', debugRoutes);
 app.use('/api/deployments', deploymentRoutes);
 app.use('/api/agent-confirmation', agentConfirmationRoutes);
+app.use('/api/v1/agent', agentV1Routes);
+app.use('/api/v1/specs', specRoutes);
 // Project routes (enforcement of project limits handled in route handlers)
 app.use('/api/projects', projectRoutes);
 app.use('/api/ai-context', figmaContextRoutes, teamMemoryRoutes, ticketBridgeRoutes);
@@ -746,6 +760,31 @@ terminalNamespace.on('connection', (socket) => {
 });
 
 console.log('✓ Socket.IO terminal server initialized');
+
+// Agent namespace for real-time agent execution streaming
+const agentNamespace = io.of('/agent');
+
+agentNamespace.use((socket, next) => {
+    const token = socket.handshake.auth.token;
+    if (!token) {
+        return next(new Error('Authentication error'));
+    }
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        socket.userId = decoded.userId || decoded.id || decoded._id;
+        socket.user = decoded;
+        next();
+    } catch (error) {
+        next(new Error('Authentication error'));
+    }
+});
+
+agentNamespace.on('connection', (socket) => {
+    console.log(`Agent namespace connected: ${socket.userId}`);
+    socket.join(`agent:${socket.userId}`);
+});
+
+console.log('✓ Socket.IO agent server initialized');
 
 // ============================================================
 // CRITICAL FIX: Start the HTTP server so it binds to a port.

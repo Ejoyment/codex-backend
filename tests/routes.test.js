@@ -29,7 +29,7 @@ describe('All Routes - module loading', () => {
     'collaboration', 'github-api', 'github-advanced',
     'discord-api', 'slack-api', 'notion-api', 'figma-api',
     'lsp', 'vfs', 'terminal', 'git', 'debug',
-    'agent-confirmation', 'flutterwave-billing'
+    'agent-confirmation', 'flutterwave-billing', 'agent-v1', 'specs'
   ];
 
   routes.forEach(routeName => {

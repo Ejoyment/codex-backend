@@ -13,6 +13,7 @@ require('dotenv').config({ path: path.resolve(__dirname, '../.env.example') });
 describe('Model Schemas', () => {
   const models = [
     'AIPairSession',
+    'AgentExecution',
     'BillingSchedule',
     'Channel',
     'ChatMessage',
@@ -28,6 +29,7 @@ describe('Model Schemas', () => {
     'Message',
     'Notification',
     'OTP',
+    'SpecModel',
     'Subscription',
     'SupportAgent',
     'SupportTicket',
