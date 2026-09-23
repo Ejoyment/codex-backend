@@ -3,6 +3,22 @@ const router = express.Router();
 const Message = require('../models/Message');
 const Channel = require('../models/Channel');
 const { authenticateToken } = require('../middleware/auth');
+const Company = require('../models/Company');
+
+// Verify user is a member of the company before operating
+async function requireCompanyMember(req, res, next) {
+    const companyId = req.body.companyId || req.query.companyId;
+    if (!companyId) return next();
+    try {
+        const company = await Company.findById(companyId).select('members');
+        if (!company) return res.status(404).json({ error: 'Company not found' });
+        const isMember = company.members.some(m => m.user?.toString() === req.userId);
+        if (!isMember) return res.status(403).json({ error: 'Access denied: not a company member' });
+        next();
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to verify company access' });
+    }
+}
 
 /**
  * @swagger
@@ -38,7 +54,7 @@ const { authenticateToken } = require('../middleware/auth');
  *         description: Channel created successfully
  */
 // Create channel
-router.post('/channels', authenticateToken, async (req, res) => {
+router.post('/channels', authenticateToken, requireCompanyMember, async (req, res) => {
     try {
         const { name, description, companyId, type, members } = req.body;
         
@@ -86,7 +102,7 @@ router.post('/channels', authenticateToken, async (req, res) => {
  *         description: List of channels
  */
 // Get all channels for company
-router.get('/channels', authenticateToken, async (req, res) => {
+router.get('/channels', authenticateToken, requireCompanyMember, async (req, res) => {
     try {
         const { companyId } = req.query;
         
@@ -236,7 +252,7 @@ router.get('/channels/:id', authenticateToken, async (req, res) => {
  *         description: Unauthorized
  */
 // Send message
-router.post('/messages', authenticateToken, async (req, res) => {
+router.post('/messages', authenticateToken, requireCompanyMember, async (req, res) => {
     try {
         const { content, channelId, recipientId, companyId, type, attachments, mentions } = req.body;
         

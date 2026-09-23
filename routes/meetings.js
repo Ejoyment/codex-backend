@@ -3,6 +3,22 @@ const router = express.Router();
 const MeetingRoom = require('../models/MeetingRoom');
 const { authenticateToken } = require('../middleware/auth');
 const crypto = require('crypto');
+const Company = require('../models/Company');
+
+// Verify user is a member of the company before operating
+async function requireCompanyMember(req, res, next) {
+    const companyId = req.body.companyId || req.query.companyId;
+    if (!companyId) return next();
+    try {
+        const company = await Company.findById(companyId).select('members');
+        if (!company) return res.status(404).json({ error: 'Company not found' });
+        const isMember = company.members.some(m => m.user?.toString() === req.userId);
+        if (!isMember) return res.status(403).json({ error: 'Access denied: not a company member' });
+        next();
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to verify company access' });
+    }
+}
 
 /**
  * @swagger
@@ -42,7 +58,7 @@ const crypto = require('crypto');
  *         description: Meeting created successfully
  */
 // Create meeting
-router.post('/', authenticateToken, async (req, res) => {
+router.post('/', authenticateToken, requireCompanyMember, async (req, res) => {
     try {
         const { title, description, companyId, scheduledAt, duration, participants, settings } = req.body;
         
@@ -107,7 +123,7 @@ router.post('/', authenticateToken, async (req, res) => {
  *         description: Unauthorized
  */
 // Get all meetings for company
-router.get('/', authenticateToken, async (req, res) => {
+router.get('/', authenticateToken, requireCompanyMember, async (req, res) => {
     try {
         const { companyId, status, upcoming } = req.query;
         

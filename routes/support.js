@@ -3,6 +3,14 @@ const router = express.Router();
 const SupportTicket = require('../models/SupportTicket');
 const SupportAgent = require('../models/SupportAgent');
 const jwt = require('jsonwebtoken');
+const rateLimit = require('express-rate-limit');
+
+// Rate limiting for support agent login (same as main auth)
+const supportLoginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 5,
+    message: { success: false, message: 'Too many login attempts, please try again later.' }
+});
 
 // Middleware to verify support agent token
 const verifySupportAgent = async (req, res, next) => {
@@ -51,7 +59,7 @@ const verifySupportAgent = async (req, res, next) => {
  *         description: Invalid credentials
  */
 // Support Agent Login
-router.post('/agent/login', async (req, res) => {
+router.post('/agent/login', supportLoginLimiter, async (req, res) => {
     try {
         const { email, password } = req.body;
 
@@ -174,29 +182,22 @@ const verifyUser = async (req, res, next) => {
     }
 };
 
-// Get tickets for authenticated user (supports ?userId= filter for frontend)
+// Get tickets for authenticated user
 router.get('/tickets', async (req, res) => {
     try {
         const token = req.headers.authorization?.split(' ')[1];
+        if (!token) {
+            return res.status(401).json({ success: false, message: 'Authentication required' });
+        }
         let filter = {};
-        if (token) {
-            try {
-                const decoded = jwt.verify(token, process.env.JWT_SECRET);
-                const userId = decoded.id || decoded.userId;
-                if (userId) {
-                    // If userId query param provided, filter by it; otherwise filter by authenticated user
-                    const requestedUserId = req.query.userId || userId;
-                    // Only allow users to see their own tickets unless they're querying their own
-                    filter.userId = requestedUserId;
-                }
-            } catch (e) {
-                // Invalid token, fall back to query param if provided
-                if (req.query.userId) {
-                    filter.userId = req.query.userId;
-                }
+        try {
+            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+            const userId = decoded.id || decoded.userId;
+            if (userId) {
+                filter.userId = userId;
             }
-        } else if (req.query.userId) {
-            filter.userId = req.query.userId;
+        } catch (e) {
+            return res.status(401).json({ success: false, message: 'Invalid token' });
         }
         const tickets = await SupportTicket.find(filter).sort({ updatedAt: -1 }).limit(100);
         res.json({ success: true, tickets });
@@ -600,8 +601,12 @@ router.get('/agents/online', async (req, res) => {
  *       400:
  *         description: Invalid input or email already exists
  */
-// Agent Self-Registration
-router.post('/agent/register', async (req, res) => {
+// Agent Self-Registration — requires admin authorization to prevent privilege escalation
+router.post('/agent/register', verifySupportAgent, async (req, res) => {
+    // Only admin agents can register new agents
+    if (req.agent.role !== 'admin') {
+        return res.status(403).json({ success: false, error: 'Only admin agents can register new agents' });
+    }
     try {
         const { name, password } = req.body;
 
@@ -686,7 +691,11 @@ router.post('/agent/register', async (req, res) => {
  *         description: Demo agent created or already exists
  */
 // Setup Demo Agent (One-time setup endpoint)
-router.post('/setup/demo-agent', async (req, res) => {
+router.post('/setup/demo-agent', verifySupportAgent, async (req, res) => {
+    // Only admin agents can set up demo agents
+    if (req.agent.role !== 'admin') {
+        return res.status(403).json({ success: false, error: 'Only admin agents can set up demo agents' });
+    }
     try {
         const demoEmail = process.env.DEMO_AGENT_EMAIL || 'agent@buildershq.com';
         const demoPassword = process.env.DEMO_AGENT_PASSWORD;

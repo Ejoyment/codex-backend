@@ -3,21 +3,8 @@ const router = express.Router();
 const axios = require('axios');
 const Integration = require('../models/Integration');
 const jwt = require('jsonwebtoken');
-
-// Middleware to verify JWT token
-const verifyToken = (req, res, next) => {
-    const token = req.headers.authorization?.split(' ')[1];
-    if (!token) {
-        return res.status(401).json({ success: false, message: 'Authentication required' });
-    }
-    try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        req.userId = decoded.userId || decoded.id || decoded._id;
-        next();
-    } catch (error) {
-        return res.status(401).json({ success: false, message: 'Invalid token' });
-    }
-};
+const { createStateToken, verifyStateToken } = require('../utils/oauthState');
+const { authenticateToken } = require('../middleware/auth');
 
 // Helper to get Discord integration
 async function getDiscordIntegration(userId) {
@@ -140,7 +127,7 @@ async function discordAPI(accessToken, endpoint, method = 'GET', data = null) {
  *         description: Internal server error
  */
 // Get current user
-router.get('/user', verifyToken, async (req, res) => {
+router.get('/user', authenticateToken, async (req, res) => {
     try {
         const integration = await getDiscordIntegration(req.userId);
         const user = await discordAPI(integration.accessToken, '/users/@me');
@@ -209,7 +196,7 @@ router.get('/user', verifyToken, async (req, res) => {
  *         description: Internal server error
  */
 // Get user's guilds
-router.get('/guilds', verifyToken, async (req, res) => {
+router.get('/guilds', authenticateToken, async (req, res) => {
     try {
         const integration = await getDiscordIntegration(req.userId);
         const guilds = await discordAPI(integration.accessToken, '/users/@me/guilds');
@@ -277,7 +264,7 @@ router.get('/guilds', verifyToken, async (req, res) => {
  *         description: Internal server error
  */
 // Get guild details (requires bot token - for future implementation)
-router.get('/guilds/:guildId', verifyToken, async (req, res) => {
+router.get('/guilds/:guildId', authenticateToken, async (req, res) => {
     try {
         // Note: This requires bot token with proper permissions
         // For now, return basic info from user's guilds
@@ -353,7 +340,7 @@ router.get('/guilds/:guildId', verifyToken, async (req, res) => {
  *         description: Internal server error
  */
 // Get guild channels (requires bot - mock for now)
-router.get('/guilds/:guildId/channels', verifyToken, async (req, res) => {
+router.get('/guilds/:guildId/channels', authenticateToken, async (req, res) => {
     try {
         await getDiscordIntegration(req.userId);
         
@@ -378,7 +365,7 @@ router.get('/guilds/:guildId/channels', verifyToken, async (req, res) => {
 // ===== MESSAGES =====
 
 // Get channel messages (requires bot - mock for now)
-router.get('/channels/:channelId/messages', verifyToken, async (req, res) => {
+router.get('/channels/:channelId/messages', authenticateToken, async (req, res) => {
     try {
         await getDiscordIntegration(req.userId);
         const { limit = 50 } = req.query;
@@ -418,7 +405,7 @@ router.get('/channels/:channelId/messages', verifyToken, async (req, res) => {
 });
 
 // Send message (requires bot - mock for now)
-router.post('/channels/:channelId/messages', verifyToken, async (req, res) => {
+router.post('/channels/:channelId/messages', authenticateToken, async (req, res) => {
     try {
         await getDiscordIntegration(req.userId);
         const { content, embeds } = req.body;
@@ -441,7 +428,7 @@ router.post('/channels/:channelId/messages', verifyToken, async (req, res) => {
 // ===== WEBHOOKS =====
 
 // Create webhook
-router.post('/channels/:channelId/webhooks', verifyToken, async (req, res) => {
+router.post('/channels/:channelId/webhooks', authenticateToken, async (req, res) => {
     try {
         await getDiscordIntegration(req.userId);
         const { name, avatar } = req.body;
@@ -465,7 +452,7 @@ router.post('/channels/:channelId/webhooks', verifyToken, async (req, res) => {
 // ===== CONNECTIONS =====
 
 // Get user connections
-router.get('/connections', verifyToken, async (req, res) => {
+router.get('/connections', authenticateToken, async (req, res) => {
     try {
         const integration = await getDiscordIntegration(req.userId);
         const connections = await discordAPI(integration.accessToken, '/users/@me/connections');
@@ -488,7 +475,7 @@ router.get('/connections', verifyToken, async (req, res) => {
 // ===== BOT SETUP GUIDE =====
 
 // Get bot setup instructions
-router.get('/bot-setup', verifyToken, async (req, res) => {
+router.get('/bot-setup', authenticateToken, async (req, res) => {
     res.json({
         success: true,
         message: 'Discord Bot Setup Guide',
@@ -562,13 +549,13 @@ router.get('/bot-setup', verifyToken, async (req, res) => {
  *       401:
  *         description: Unauthorized
  */
-router.get('/connect', verifyToken, (req, res) => {
+router.get('/connect', authenticateToken, (req, res) => {
     const params = new URLSearchParams({
         client_id: process.env.DISCORD_CLIENT_ID,
         redirect_uri: process.env.DISCORD_REDIRECT_URI,
         response_type: 'code',
         scope: 'identify email guilds connections',
-        state: req.userId // pass userId through so callback knows who's connecting
+        state: createStateToken(req.userId) // signed state token prevents session fixation
     });
 
     const authUrl = `https://discord.com/api/oauth2/authorize?${params.toString()}`;
@@ -607,10 +594,18 @@ router.get('/connect', verifyToken, (req, res) => {
  */
 router.get('/callback', async (req, res) => {
     try {
-        const { code, state: userId } = req.query;
+        const { code, state } = req.query;
 
-        if (!code || !userId) {
+        if (!code || !state) {
             return res.status(400).json({ success: false, message: 'Missing code or state' });
+        }
+
+        // Verify signed state token instead of trusting raw userId
+        let userId;
+        try {
+            userId = verifyStateToken(state);
+        } catch (e) {
+            return res.status(400).json({ success: false, message: 'Invalid or expired state token' });
         }
 
         // Exchange code for access token
@@ -676,7 +671,7 @@ router.get('/callback', async (req, res) => {
  *       401:
  *         description: Unauthorized
  */
-router.get('/status', verifyToken, async (req, res) => {
+router.get('/status', authenticateToken, async (req, res) => {
     try {
         const integration = await Integration.findOne({
             userId: req.userId,
@@ -709,7 +704,7 @@ router.get('/status', verifyToken, async (req, res) => {
  *       401:
  *         description: Unauthorized
  */
-router.delete('/disconnect', verifyToken, async (req, res) => {
+router.delete('/disconnect', authenticateToken, async (req, res) => {
     try {
         await Integration.findOneAndUpdate(
             { userId: req.userId, provider: 'discord' },

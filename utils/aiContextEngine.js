@@ -3,6 +3,7 @@ const teamMemoryService = require('./teamMemoryService');
 const ticketCodeBridge = require('./ticketCodeBridge');
 const aiService = require('./aiService');
 const IntegrationData = require('../models/IntegrationData');
+const vectorMemory = require('./vectorMemory');
 
 async function buildCrossToolContext(userId, companyId, options = {}) {
     const context = {
@@ -34,7 +35,7 @@ async function buildCrossToolContext(userId, companyId, options = {}) {
             const techStack = options.techStack || null;
             const conventionsPrompt = await teamMemoryService.getConventionsPrompt(companyId, techStack);
             context.teamConventions = {
-                prompt,
+                prompt: conventionsPrompt,
                 raw: await teamMemoryService.getTeamConventions(companyId, null, techStack)
             };
             if (context.teamConventions.raw.length > 0) {
@@ -107,10 +108,29 @@ async function buildCrossToolContext(userId, companyId, options = {}) {
         console.error('Context engine: Code context failed:', error.message);
     }
     
+    // Vector memory: retrieve similar code/patterns based on user message
+    try {
+        if (options.includeVectorMemory !== false && options.userMessage) {
+            const memories = await vectorMemory.retrieve(
+                options.userMessage,
+                5,
+                userId,
+                companyId
+            );
+            if (memories && memories.length > 0) {
+                context.vectorMemory = memories;
+                context.sources.push('vector_memory');
+            }
+        }
+    } catch (error) {
+        console.error('Context engine: Vector memory retrieval failed:', error.message);
+    }
+    
     return context;
 }
 
 async function buildAIPromptWithContext(userId, companyId, userMessage, options = {}) {
+    options.userMessage = userMessage;
     const context = await buildCrossToolContext(userId, companyId, options);
     
     let systemPrompt = 'You are BuildrsHQ AI, a unified development assistant with access to the user\'s entire software ecosystem.';
@@ -135,6 +155,14 @@ async function buildAIPromptWithContext(userId, companyId, userMessage, options 
     
     if (context.codeContext?.projects && context.codeContext.projects.length > 0) {
         contextParts.push(`\n[ACTIVE PROJECTS]\n${context.codeContext.projects.map(p => `- ${p.name} (${p.status})`).join('\n')}`);
+    }
+    
+    if (context.vectorMemory && context.vectorMemory.length > 0) {
+        const memParts = context.vectorMemory.map(m => {
+            const meta = m.metadata || {};
+            return `- [${meta.fileName || 'unknown'}] (${meta.language || '?'}): ${(m.content || '').slice(0, 200)}`;
+        });
+        contextParts.push(`\n[RELEVANT CODE FROM CODEBASE]\n${memParts.join('\n')}`);
     }
     
     const messages = [

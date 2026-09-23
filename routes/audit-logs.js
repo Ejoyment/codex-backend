@@ -50,7 +50,7 @@ router.get('/company/:companyId', authenticateToken, ensureCompanyMember, async 
     }
 });
 
-router.get('/categories', authenticateToken, async (req, res) => {
+router.get('/categories', authenticateToken, ensureCompanyMember, async (req, res) => {
     try {
         const companyId = req.query.companyId;
         if (!companyId) return res.json({ success: true, categories: [] });

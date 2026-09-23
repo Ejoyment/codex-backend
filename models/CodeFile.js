@@ -98,4 +98,38 @@ codeFileSchema.pre('save', function(next) {
     next();
 });
 
+// Auto-index file content into vector memory on save (debounced)
+const _indexTimers = new Map();
+codeFileSchema.post('save', function(doc) {
+    if (!doc.content || doc.content.length < 10) return;
+
+    // Debounce: cancel previous timer for this file
+    if (_indexTimers.has(doc._id.toString())) {
+        clearTimeout(_indexTimers.get(doc._id.toString()));
+    }
+
+    _indexTimers.set(doc._id.toString(), setTimeout(async () => {
+        _indexTimers.delete(doc._id.toString());
+        try {
+            const vectorMemory = require('../utils/vectorMemory');
+            await vectorMemory.store(
+                doc.content,
+                {
+                    fileId: doc._id.toString(),
+                    fileName: doc.name,
+                    language: doc.language,
+                    path: doc.path,
+                    companyId: doc.company?.toString(),
+                    type: 'codebase_file'
+                },
+                doc.createdBy?.toString(),
+                doc.company?.toString()
+            );
+        } catch (err) {
+            // Non-critical — log but don't block the save
+            console.warn('Auto-index failed for', doc.name, err.message);
+        }
+    }, 5000)); // 5-second debounce
+});
+
 module.exports = mongoose.model('CodeFile', codeFileSchema);

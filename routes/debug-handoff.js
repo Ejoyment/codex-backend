@@ -474,7 +474,7 @@ router.post('/handoff/from-chat', authenticateToken, async (req, res) => {
  *       200:
  *         description: Sandbox status
  */
-router.get('/sandbox/:sandboxKey', async (req, res) => {
+router.get('/sandbox/:sandboxKey', authenticateToken, async (req, res) => {
     try {
         const sandbox = await EphemeralSandbox.findOne({ sandboxKey: req.params.sandboxKey });
         if (!sandbox) return res.status(404).json({ success: false, message: 'Sandbox not found' });
