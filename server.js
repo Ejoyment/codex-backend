@@ -57,6 +57,9 @@ async function startServer(port = process.env.PORT || 3000) {
     const meetingSocket = require('./utils/meetingSocket');
     meetingSocket(socket);
 
+    const debugRoomSocket = require('./utils/debugRoomSocket');
+    debugRoomSocket(socket);
+
     return new Promise((resolve, reject) => {
         srv.listen(port, () => {
             console.log(`\n🚀 CODEX INC Server running on port ${port}`);
@@ -144,6 +147,7 @@ const vfsRoutes = require('./routes/vfs');
 const terminalRoutes = require('./routes/terminal');
 const gitRoutes = require('./routes/git');
 const debugRoutes = require('./routes/debug');
+const debugRoomsRoutes = require('./routes/debug-rooms');
 const agentConfirmationRoutes = require('./routes/agent-confirmation');
 const flutterwaveBillingRoutes = require('./routes/flutterwave-billing');
 
@@ -178,6 +182,7 @@ app.use('/api/vfs', vfsRoutes);
 app.use('/api/terminal', terminalRoutes);
 app.use('/api/git', gitRoutes);
 app.use('/api/debug', debugRoutes);
+app.use('/api/debug-rooms', debugRoomsRoutes);
 app.use('/api/agent-confirmation', agentConfirmationRoutes);
 
 // Swagger API Documentation
@@ -228,7 +233,8 @@ app.get('/', (req, res) => {
             support: '/api/support',
             meetings: '/api/meetings',
             messaging: '/api/messaging',
-            collaboration: '/api/collaboration'
+            collaboration: '/api/collaboration',
+            debugRooms: '/api/debug-rooms'
         },
         quickStart: {
             apiDocs: 'GET /api-docs',
