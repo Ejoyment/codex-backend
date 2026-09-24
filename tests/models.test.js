@@ -20,6 +20,7 @@ describe('Model Schemas', () => {
     'CodeChange',
     'CodeFile',
     'Company',
+    'DebugRoom',
     'FileUpload',
     'Integration',
     'IntegrationData',

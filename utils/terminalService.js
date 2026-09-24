@@ -578,17 +578,20 @@ class TerminalService {
       terminal.history.push({ type: 'output', data: output });
       this._persistEntry(sessionId, 'output', output);
 
-      // Emit output event (will be handled by Socket.IO)
-      if (terminal.onData) {
-        terminal.onData(output);
-      }
+      // Emit output event to every registered listener (Socket.IO handlers,
+      // plus any Debug Room mirror listeners).
+      (terminal.onDataListeners || []).forEach((cb) => cb(output));
     } catch (error) {
       const errorOutput = `Error: ${error.message}\n`;
       terminal.history.push({ type: 'output', data: errorOutput });
+<<<<<<< HEAD
       this._persistEntry(sessionId, 'error', errorOutput);
       if (terminal.onData) {
         terminal.onData(errorOutput);
       }
+=======
+      (terminal.onDataListeners || []).forEach((cb) => cb(errorOutput));
+>>>>>>> 50461a3 (Phase 3 | Backend)
     }
   }
 
@@ -688,7 +691,15 @@ class TerminalService {
   }
 
   /**
-   * Register data handler for terminal
+   * Register a data handler for terminal output.
+   *
+   * Supports multiple listeners on the same session — this is what lets a
+   * Debug Room guest mirror a host's terminal without a second PTY. node-pty's
+   * onData already supports multiple registrations natively; the simulated
+   * fallback previously only supported one (overwriting on each call), which
+   * silently broke mirroring, so it now fans out to a listener array too.
+   *
+   * Returns an unsubscribe function.
    */
   onData(sessionId, callback) {
     const terminal = this.terminals.get(sessionId);
@@ -697,10 +708,19 @@ class TerminalService {
     }
 
     if (terminal.type === 'pty') {
-      terminal.process.onData(callback);
-    } else {
-      terminal.onData = callback;
+      const disposable = terminal.process.onData(callback);
+      return () => {
+        if (disposable && typeof disposable.dispose === 'function') disposable.dispose();
+      };
     }
+
+    if (!terminal.onDataListeners) {
+      terminal.onDataListeners = [];
+    }
+    terminal.onDataListeners.push(callback);
+    return () => {
+      terminal.onDataListeners = terminal.onDataListeners.filter((cb) => cb !== callback);
+    };
   }
 
   /**

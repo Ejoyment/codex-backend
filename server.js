@@ -93,6 +93,7 @@ async function startServer(port = process.env.PORT || 3000) {
     const meetingSocket = require('./utils/meetingSocket');
     meetingSocket(socket);
 
+<<<<<<< HEAD
     // Messaging Socket.IO namespace for real-time team chat
     const messagingSocket = require('./utils/messagingSocket');
     messagingSocket(socket);
@@ -121,6 +122,10 @@ async function startServer(port = process.env.PORT || 3000) {
     // Ephemeral sandbox provisioner (Instant Bug Handoff)
     const sandboxProvisioner = require('./utils/sandboxProvisioner');
     sandboxProvisioner.init(socket);
+=======
+    const debugRoomSocket = require('./utils/debugRoomSocket');
+    debugRoomSocket(socket);
+>>>>>>> 50461a3 (Phase 3 | Backend)
 
     return new Promise((resolve, reject) => {
         srv.listen(port, () => {
@@ -237,6 +242,7 @@ const vfsRoutes = require('./routes/vfs');
 const terminalRoutes = require('./routes/terminal');
 const gitRoutes = require('./routes/git');
 const debugRoutes = require('./routes/debug');
+const debugRoomsRoutes = require('./routes/debug-rooms');
 const agentConfirmationRoutes = require('./routes/agent-confirmation');
 const flutterwaveBillingRoutes = require('./routes/flutterwave-billing');
 const projectRoutes = require('./routes/projects');
@@ -296,7 +302,11 @@ app.use('/api/vfs', vfsRoutes);
 app.use('/api/terminal', terminalRoutes);
 app.use('/api/git', gitRoutes);
 app.use('/api/debug', debugRoutes);
+<<<<<<< HEAD
 app.use('/api/deployments', deploymentRoutes);
+=======
+app.use('/api/debug-rooms', debugRoomsRoutes);
+>>>>>>> 50461a3 (Phase 3 | Backend)
 app.use('/api/agent-confirmation', agentConfirmationRoutes);
 app.use('/api/v1/agent', agentV1Routes);
 app.use('/api/v1/specs', specRoutes);
@@ -352,7 +362,8 @@ app.get('/', (req, res) => {
             support: '/api/support',
             meetings: '/api/meetings',
             messaging: '/api/messaging',
-            collaboration: '/api/collaboration'
+            collaboration: '/api/collaboration',
+            debugRooms: '/api/debug-rooms'
         },
         quickStart: {
             apiDocs: 'GET /api-docs',
