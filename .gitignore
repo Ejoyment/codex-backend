@@ -33,7 +33,7 @@ test-*.html
 check-*.js
 check-*.html
 check-*.bat
-debug-*.js
+debug-*.log
 debug-*.bat
 diagnose-*.bat
 

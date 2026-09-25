@@ -15,7 +15,7 @@ module.exports = (io) => {
         
         try {
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
-            socket.userId = decoded.userId;
+            socket.userId = decoded.userId || decoded.id;
             socket.user = decoded;
             next();
         } catch (error) {
@@ -31,7 +31,8 @@ module.exports = (io) => {
         socket.on('join-room', async ({ roomId, userId }) => {
             try {
                 socket.join(roomId);
-                socket.roomId = roomId;
+                socket.debugRoomId = roomId;
+                await DebugRoom.updateOne({ _id: roomId }, { $set: { lastActivityAt: new Date() } });
                 
                 // Update meeting status
                 const meeting = await MeetingRoom.findOne({ roomId });

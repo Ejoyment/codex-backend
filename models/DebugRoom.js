@@ -72,6 +72,14 @@ const debugRoomSchema = new mongoose.Schema({
         default: 'pending',
         required: true
     },
+    // Bumped on meaningful room activity (join, control change). Used by
+    // debugRoomService's idle sweep to close rooms early even when they
+    // haven't hit the hard TTL yet — the plan calls for "TTL plus an idle
+    // timeout" and these are deliberately two separate mechanisms.
+    lastActivityAt: {
+        type: Date,
+        default: Date.now
+    },
     // TTL field — Mongo hard-deletes the document once this passes.
     expiresAt: {
         type: Date,
