@@ -39,7 +39,8 @@ module.exports = (io) => {
         socket.on('join-room', async ({ roomId, userId }) => {
             try {
                 socket.join(roomId);
-                socket.roomId = roomId;
+                socket.debugRoomId = roomId;
+                await DebugRoom.updateOne({ _id: roomId }, { $set: { lastActivityAt: new Date() } });
                 
                 // Fetch real user profile from DB so name/picture are accurate
                 let userName = 'User';

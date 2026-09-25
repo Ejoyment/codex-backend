@@ -18,7 +18,10 @@ const teamActivitySchema = new mongoose.Schema({
             'project_created', 'project_updated',
             'member_joined', 'member_left',
             'meeting_scheduled', 'meeting_completed',
-            'file_uploaded', 'comment_added'
+            'file_uploaded', 'comment_added',
+            'debug_room_requested', 'debug_room_approved', 'debug_room_denied',
+            'debug_room_control_granted', 'debug_room_control_revoked',
+            'debug_room_variable_shared', 'debug_room_closed'
         ],
         required: true
     },
@@ -30,6 +33,7 @@ const teamActivitySchema = new mongoose.Schema({
         taskId: mongoose.Schema.Types.ObjectId,
         projectId: mongoose.Schema.Types.ObjectId,
         meetingId: mongoose.Schema.Types.ObjectId,
+        debugRoomId: mongoose.Schema.Types.ObjectId,
         targetUser: mongoose.Schema.Types.ObjectId,
         oldValue: String,
         newValue: String

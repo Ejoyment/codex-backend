@@ -83,6 +83,7 @@ function init(io) {
 
                 socket.join(roomId);
                 socket.debugRoomId = roomId;
+                await DebugRoom.updateOne({ _id: roomId }, { $set: { lastActivityAt: new Date() } });
 
                 if (room.terminalSessionId) {
                     startMirror(debugRoomNamespace, roomId, room.terminalSessionId);
