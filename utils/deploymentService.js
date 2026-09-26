@@ -334,6 +334,8 @@ docker run -d \\
     console.log(`[deploy] Container nginx files: ${containerFiles}`);
     const indexCheck = await sshExec(`docker exec ${containerName} cat /usr/share/nginx/html/index.html 2>/dev/null | head -1 || echo 'NO_INDEX'`).catch(() => 'NO_INDEX');
     console.log(`[deploy] index.html content check: ${indexCheck}`);
+    const curlCheck = await sshExec(`docker exec ${containerName} curl -s -o /dev/null -w '%{http_code}' http://localhost/ 2>/dev/null || echo 'CURL_FAILED'`).catch(() => 'CURL_FAILED');
+    console.log(`[deploy] HTTP status check: ${curlCheck}`);
   } catch (checkErr) {
     console.warn('[deploy] File check issue:', checkErr.message);
   }
