@@ -189,13 +189,16 @@ router.get('/tickets', async (req, res) => {
         if (!token) {
             return res.status(401).json({ success: false, message: 'Authentication required' });
         }
-        let filter = {};
+        let filter;
         try {
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
             const userId = decoded.id || decoded.userId;
-            if (userId) {
-                filter.userId = userId;
+            // Never fall through to an empty filter: a valid token without a
+            // user claim (e.g. an agent token) must not list other users' tickets.
+            if (!userId || typeof userId !== 'string') {
+                return res.status(401).json({ success: false, message: 'Invalid token' });
             }
+            filter = { userId };
         } catch (e) {
             return res.status(401).json({ success: false, message: 'Invalid token' });
         }
@@ -207,56 +210,73 @@ router.get('/tickets', async (req, res) => {
     }
 });
 
-// Add message to ticket (user or agent) — detects sender from token if provided
+// Add message to ticket (user or agent) — sender is derived ONLY from a
+// verified token. Body `sender` is ignored to prevent impersonation.
 router.post('/tickets/:ticketId/messages', async (req, res) => {
     try {
-        const { content, message, sender } = req.body;
+        const { content, message, guestEmail } = req.body;
         const text = content || message;
-        if (!text || !text.trim()) {
+        if (!text || typeof text !== 'string' || !text.trim()) {
             return res.status(400).json({ error: 'Message content is required' });
         }
-        // Detect sender: try agent token first, then user token, fallback to body sender or 'user'
-        let senderType = sender || 'user';
+        // Authenticate: agent token first, then user token. No anonymous posts.
+        let senderType = null;
         let senderName = 'User';
+        let requesterUserId = null;
+        let isAgent = false;
         const authHeader = req.headers.authorization;
-        if (authHeader) {
-            const token = authHeader.split(' ')[1];
-            try {
-                const decoded = jwt.verify(token, process.env.JWT_SECRET);
-                if (decoded.agentId) {
-                    senderType = 'agent';
-                    try {
-                        const agent = await SupportAgent.findById(decoded.agentId);
-                        if (agent) senderName = agent.name;
-                    } catch {}
-                } else if (decoded.id || decoded.userId) {
-                    senderType = 'user';
-                    try {
-                        const User = require('../models/User');
-                        const user = await User.findById(decoded.id || decoded.userId);
-                        if (user) senderName = user.fullName || 'User';
-                    } catch {}
-                }
-            } catch (e) {
-                // Invalid token, keep default
-            }
+        if (!authHeader) {
+            return res.status(401).json({ error: 'Authentication required' });
         }
-        const ticket = await SupportTicket.findOne({ ticketId: req.params.ticketId });
-        if (!ticket) {
-            // Also try by _id
-            const byId = await SupportTicket.findById(req.params.ticketId);
-            if (!byId) {
-                return res.status(404).json({ error: 'Ticket not found' });
+        try {
+            const token = authHeader.split(' ')[1];
+            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+            if (decoded.agentId) {
+                const agent = await SupportAgent.findById(decoded.agentId);
+                if (!agent) {
+                    return res.status(401).json({ error: 'Invalid token' });
+                }
+                isAgent = true;
+                senderType = 'agent';
+                senderName = agent.name || 'Support Agent';
+            } else if (decoded.id || decoded.userId) {
+                requesterUserId = String(decoded.id || decoded.userId);
+                senderType = 'user';
+                try {
+                    const User = require('../models/User');
+                    const user = await User.findById(requesterUserId);
+                    if (user) senderName = user.fullName || 'User';
+                } catch {}
+            } else {
+                return res.status(401).json({ error: 'Invalid token' });
             }
-            byId.messages.push({
-                sender: senderType,
-                senderName,
-                message: text.trim(),
-                timestamp: new Date()
-            });
-            await byId.save();
-            const lastMessage = byId.messages[byId.messages.length - 1];
-            return res.json({ success: true, message: lastMessage });
+        } catch (e) {
+            return res.status(401).json({ error: 'Invalid token' });
+        }
+        const mongoose = require('mongoose');
+        let ticket = await SupportTicket.findOne({ ticketId: req.params.ticketId });
+        if (!ticket && mongoose.Types.ObjectId.isValid(req.params.ticketId)) {
+            // Also try by _id (guarded: invalid ObjectIds no longer throw 500s)
+            ticket = await SupportTicket.findById(req.params.ticketId);
+        }
+        if (!ticket) {
+            return res.status(404).json({ error: 'Ticket not found' });
+        }
+        // Ownership: agents may reply to any ticket; users only to their own.
+        // Guest tickets (no userId) require the matching guestEmail.
+        if (!isAgent) {
+            if (ticket.userId) {
+                if (String(ticket.userId) !== String(requesterUserId)) {
+                    return res.status(403).json({ error: 'Access denied' });
+                }
+            } else {
+                const ticketEmail = (ticket.guestEmail || '').toLowerCase();
+                const providedEmail = typeof guestEmail === 'string' ? guestEmail.toLowerCase() : '';
+                if (!ticketEmail || !providedEmail || ticketEmail !== providedEmail) {
+                    return res.status(403).json({ error: 'Access denied' });
+                }
+                senderName = ticket.guestName || senderName;
+            }
         }
         ticket.messages.push({
             sender: senderType,
@@ -329,12 +349,38 @@ router.post('/tickets', async (req, res) => {
  *       404:
  *         description: Ticket not found
  */
-// Get Ticket by ID (Public)
+// Get Ticket by ID.
+// User-owned tickets require the owner (or an agent). Guest tickets
+// (no userId) remain readable via the unguessable ticketId capability URL
+// so guests can follow up without an account.
 router.get('/tickets/:ticketId', async (req, res) => {
     try {
         const ticket = await SupportTicket.findOne({ ticketId: req.params.ticketId });
         if (!ticket) {
             return res.status(404).json({ error: 'Ticket not found' });
+        }
+        if (ticket.userId) {
+            const authHeader = req.headers.authorization;
+            if (!authHeader) {
+                return res.status(401).json({ error: 'Authentication required' });
+            }
+            try {
+                const token = authHeader.split(' ')[1];
+                const decoded = jwt.verify(token, process.env.JWT_SECRET);
+                const requesterUserId = decoded.id || decoded.userId;
+                const isAgent = !!decoded.agentId;
+                if (!isAgent && (!requesterUserId || String(requesterUserId) !== String(ticket.userId))) {
+                    return res.status(403).json({ error: 'Access denied' });
+                }
+                if (isAgent) {
+                    const agent = await SupportAgent.findById(decoded.agentId);
+                    if (!agent) {
+                        return res.status(401).json({ error: 'Invalid token' });
+                    }
+                }
+            } catch (e) {
+                return res.status(401).json({ error: 'Invalid token' });
+            }
         }
         res.json(ticket);
     } catch (error) {

@@ -126,9 +126,18 @@ router.get('/stats', authenticateToken, (req, res) => {
 router.delete('/:sessionId', authenticateToken, permissionMatrix.requirePermission('terminal', 'access'), async (req, res) => {
   try {
     const { sessionId } = req.params;
-    await terminalService.destroy(sessionId);
+    // Session token issued by terminal:create (socket 'terminal:created' payload).
+    // The route layer never mints tokens, so the client must supply it per request.
+    const token = req.body?.token || req.query.token || req.headers['x-session-token'];
+    if (!token) {
+      return res.status(403).json({ error: 'Session token required' });
+    }
+    await terminalService.destroy(sessionId, token);
     res.json({ success: true, message: 'Terminal session destroyed' });
   } catch (error) {
+    if (error.message === 'Access denied') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
     console.error('Destroy terminal error:', error);
     res.status(500).json({ error: 'Failed to destroy terminal session' });
   }

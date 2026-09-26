@@ -32,6 +32,8 @@ function generateKey() {
     return 'sb_' + crypto.randomBytes(10).toString('hex');
 }
 
+function escapeHtml(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
 // Validate repository URLs — block dangerous protocols that execute arbitrary commands
 const SAFE_REPO_PROTOCOLS = ['https:', 'http:', 'git:', 'ssh:'];
 function validateRepoUrl(url) {
@@ -81,18 +83,22 @@ function startPreviewServer(sandbox, workdir) {
         if (url.pathname === '/files') {
             const rel = url.searchParams.get('path') || '';
             const filePath = path.join(workdir, rel);
-            if (!filePath.startsWith(workdir) || !fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
+            if (!filePath.startsWith(workdir + path.sep) || !fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
                 res.writeHead(404); res.end('Not found'); return;
             }
+            try {
+                const realPath = fs.realpathSync(filePath);
+                if (!realPath.startsWith(workdir + path.sep)) { res.writeHead(404); res.end('Not found'); return; }
+            } catch (_) { res.writeHead(404); res.end('Not found'); return; }
             const ext = path.extname(filePath).toLowerCase();
             if (ext === '.html' || ext === '.htm') {
                 // Serve HTML live so the UI preview actually renders.
-                res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+                res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': "default-src 'none'; sandbox", 'X-Content-Type-Options': 'nosniff' });
                 fs.createReadStream(filePath).pipe(res);
                 return;
             }
             const content = fs.readFileSync(filePath, 'utf8');
-            res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+            res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Content-Security-Policy': "default-src 'none'; sandbox", 'X-Content-Type-Options': 'nosniff' });
             res.end(content);
             return;
         }
@@ -126,7 +132,7 @@ function renderPreviewPage(sandbox, workdir) {
         const view = isHtml
             ? `<a href="/files?path=${encodeURIComponent(f)}" target="_blank">Live preview</a> | <a href="/files?path=${encodeURIComponent(f)}">Source</a>`
             : `<a href="/files?path=${encodeURIComponent(f)}" target="_blank">Source</a>`;
-        return `<tr><td style="padding:4px 8px;border-bottom:1px solid #333;">${f}</td><td style="padding:4px 8px;border-bottom:1px solid #333;">${view}</td></tr>`;
+        return `<tr><td style="padding:4px 8px;border-bottom:1px solid #333;">${escapeHtml(f)}</td><td style="padding:4px 8px;border-bottom:1px solid #333;">${view}</td></tr>`;
     }).join('');
 
     return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Sandbox ${sandbox.sandboxKey}</title>
@@ -134,14 +140,14 @@ function renderPreviewPage(sandbox, workdir) {
 <body>
 <h1>🧪 Ephemeral Bug-Handoff Sandbox</h1>
 <div class="card">
-  <div><strong>Repository:</strong> <code>${sandbox.repository || 'local snapshot'}</code></div>
-  <div><strong>Branch:</strong> <code>${sandbox.branch}</code></div>
-  <div><strong>Commit:</strong> <code>${sandbox.commitSha || 'n/a'}</code></div>
-  <div><strong>Status:</strong> <code>${sandbox.status}</code></div>
+  <div><strong>Repository:</strong> <code>${escapeHtml(sandbox.repository || 'local snapshot')}</code></div>
+  <div><strong>Branch:</strong> <code>${escapeHtml(sandbox.branch)}</code></div>
+  <div><strong>Commit:</strong> <code>${escapeHtml(sandbox.commitSha || 'n/a')}</code></div>
+  <div><strong>Status:</strong> <code>${escapeHtml(sandbox.status)}</code></div>
 </div>
 <div class="card">
   <div style="font-weight:600;margin-bottom:8px;">Environment variables (${envKeys.length})</div>
-  ${envKeys.length ? envKeys.map(k => `<div><code>${k}</code></div>`).join('') : '<div style="color:#94a3b8;">None captured</div>'}
+  ${envKeys.length ? envKeys.map(k => `<div><code>${escapeHtml(k)}</code></div>`).join('') : '<div style="color:#94a3b8;">None captured</div>'}
 </div>
 <div class="card">
   <div style="font-weight:600;margin-bottom:8px;">Files</div>
@@ -156,7 +162,7 @@ async function writeSnapshot(sandbox, workdir) {
     // Validate that a path stays within the workdir (prevents ../ traversal and symlink escapes)
     const safePath = (filePath) => {
         const joined = path.resolve(workdir, filePath.replace(/^\/+/, ''));
-        if (!joined.startsWith(workdir)) {
+        if (!joined.startsWith(workdir + path.sep)) {
             throw new Error(`Path traversal blocked: ${filePath}`);
         }
         // Resolve symlinks and re-check — prevents symlink-based escapes
@@ -167,7 +173,7 @@ async function writeSnapshot(sandbox, workdir) {
             // Path doesn't exist yet, use resolved path
             realPath = joined;
         }
-        if (!realPath.startsWith(workdir)) {
+        if (!realPath.startsWith(workdir + path.sep)) {
             throw new Error(`Symlink escape blocked: ${filePath}`);
         }
         return realPath;

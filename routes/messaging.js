@@ -104,7 +104,7 @@ router.post('/channels', authenticateToken, requireCompanyMember, async (req, re
 // Get all channels for company
 router.get('/channels', authenticateToken, requireCompanyMember, async (req, res) => {
     try {
-        const { companyId } = req.query;
+        const companyId = req.query.companyId != null ? String(req.query.companyId) : req.query.companyId;
         
         // Public channels are visible to ALL company members;
         // private/direct channels are visible only to their members
@@ -151,7 +151,7 @@ router.get('/channels', authenticateToken, requireCompanyMember, async (req, res
  *         description: Channel not found
  */
 // Get single channel
-router.get('/channels/:id', authenticateToken, async (req, res) => {
+router.get('/channels/:id', authenticateToken, requireCompanyMember, async (req, res) => {
     try {
         const channel = await Channel.findById(req.params.id)
             .populate('members.user', 'fullName email profilePicture')
@@ -160,6 +160,22 @@ router.get('/channels/:id', authenticateToken, async (req, res) => {
         
         if (!channel) {
             return res.status(404).json({ success: false, message: 'Channel not found' });
+        }
+
+        const isChannelMember = (channel.members || []).some(m => String(m.user?._id || m.user) === String(req.userId));
+        if (!isChannelMember) {
+            const companyId = channel.company ? String(channel.company) : (req.query.companyId != null ? String(req.query.companyId) : null);
+            if (companyId) {
+                try {
+                    const company = await Company.findById(companyId).select('members owner');
+                    const isCompanyMember = company && ((company.members || []).some(m => String(m.user) === String(req.userId)) || (company.owner != null && String(company.owner) === String(req.userId)));
+                    if (!isCompanyMember) return res.status(403).json({ success: false, message: 'Access denied: not a channel member' });
+                } catch (err) {
+                    return res.status(403).json({ success: false, message: 'Access denied: not a channel member' });
+                }
+            } else {
+                return res.status(403).json({ success: false, message: 'Access denied: not a channel member' });
+            }
         }
         
         res.json({
@@ -255,6 +271,20 @@ router.get('/channels/:id', authenticateToken, async (req, res) => {
 router.post('/messages', authenticateToken, requireCompanyMember, async (req, res) => {
     try {
         const { content, channelId, recipientId, companyId, type, attachments, mentions } = req.body;
+
+        if (channelId) {
+            const channel = await Channel.findById(String(channelId)).select('company members');
+            if (!channel) {
+                return res.status(404).json({ success: false, message: 'Channel not found' });
+            }
+            if (companyId != null && channel.company != null && String(channel.company) !== String(companyId)) {
+                return res.status(403).json({ success: false, message: 'Channel does not belong to this company' });
+            }
+            const isMember = (channel.members || []).some(m => String(m.user) === String(req.userId));
+            if (!isMember) {
+                return res.status(403).json({ success: false, message: 'Access denied: not a channel member' });
+            }
+        }
         
         const message = await Message.create({
             content,
@@ -287,9 +317,25 @@ router.post('/messages', authenticateToken, requireCompanyMember, async (req, re
 });
 
 // Get messages for channel
-router.get('/messages', authenticateToken, async (req, res) => {
+router.get('/messages', authenticateToken, requireCompanyMember, async (req, res) => {
     try {
-        const { channelId, limit = 50, before } = req.query;
+        const channelId = req.query.channelId != null ? String(req.query.channelId) : req.query.channelId;
+        const { limit = 50, before, companyId: rawCompanyId } = req.query;
+        const queryCompanyId = rawCompanyId != null ? String(rawCompanyId) : rawCompanyId;
+
+        if (channelId) {
+            const channel = await Channel.findById(channelId).select('company members');
+            if (!channel) {
+                return res.status(404).json({ success: false, message: 'Channel not found' });
+            }
+            const isMember = (channel.members || []).some(m => String(m.user) === String(req.userId));
+            if (!isMember) {
+                return res.status(403).json({ success: false, message: 'Access denied: not a channel member' });
+            }
+            if (queryCompanyId != null && channel.company != null && String(channel.company) !== String(queryCompanyId)) {
+                return res.status(403).json({ success: false, message: 'Channel does not belong to this company' });
+            }
+        }
         
         const query = {
             channel: channelId,
@@ -466,6 +512,17 @@ router.post('/messages/:id/reactions', authenticateToken, async (req, res) => {
         if (!message) {
             return res.status(404).json({ success: false, message: 'Message not found' });
         }
+
+        if (message.channel) {
+            const channel = await Channel.findById(String(message.channel)).select('members');
+            if (!channel) {
+                return res.status(404).json({ success: false, message: 'Channel not found' });
+            }
+            const isMember = (channel.members || []).some(m => String(m.user) === String(req.userId));
+            if (!isMember) {
+                return res.status(403).json({ success: false, message: 'Access denied: not a channel member' });
+            }
+        }
         
         // Check if already reacted
         const existing = message.reactions.find(r => 
@@ -522,6 +579,17 @@ router.post('/messages/:id/read', authenticateToken, async (req, res) => {
         if (!message) {
             return res.status(404).json({ success: false, message: 'Message not found' });
         }
+
+        if (message.channel) {
+            const channel = await Channel.findById(String(message.channel)).select('members');
+            if (!channel) {
+                return res.status(404).json({ success: false, message: 'Channel not found' });
+            }
+            const isMember = (channel.members || []).some(m => String(m.user) === String(req.userId));
+            if (!isMember) {
+                return res.status(403).json({ success: false, message: 'Access denied: not a channel member' });
+            }
+        }
         
         const existing = message.readBy.find(r => r.user.toString() === req.userId);
         
@@ -573,18 +641,27 @@ router.post('/messages/:id/read', authenticateToken, async (req, res) => {
 // Add member to channel
 router.post('/channels/:id/members', authenticateToken, async (req, res) => {
     try {
-        const { userId } = req.body;
+        const { userId, role } = req.body;
         
         const channel = await Channel.findById(req.params.id);
         
         if (!channel) {
             return res.status(404).json({ success: false, message: 'Channel not found' });
         }
+
+        const requester = (channel.members || []).find(m => String(m.user) === String(req.userId));
+        if (!requester) {
+            return res.status(403).json({ success: false, message: 'Access denied: not a channel member' });
+        }
+        const roleToGrant = role || 'member';
+        if (roleToGrant !== 'member' && requester.role !== 'admin') {
+            return res.status(403).json({ success: false, message: 'Access denied: only channel admins can grant admin role' });
+        }
         
         const existing = channel.members.find(m => m.user.toString() === userId);
         
         if (!existing) {
-            channel.members.push({ user: userId, role: 'member' });
+            channel.members.push({ user: userId, role: roleToGrant });
             await channel.save();
         }
         

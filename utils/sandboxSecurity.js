@@ -32,6 +32,7 @@ class SandboxSecurity {
    * - CPU, memory, and PID limits
    */
   async createIsolatedContainer(userId, workspaceId) {
+    if (!/^[a-zA-Z0-9_-]{1,64}$/.test(String(userId)) || !/^[a-zA-Z0-9_-]{1,64}$/.test(String(workspaceId))) throw new Error('Invalid userId/workspaceId');
     try {
       // Check if container already exists and is running
       if (this.containers.has(userId)) {
@@ -69,6 +70,9 @@ class SandboxSecurity {
 
           // Network isolation
           NetworkMode: 'none',
+
+          // Never run privileged
+          Privileged: false,
 
           // Filesystem security
           ReadonlyRootfs: false, // Allow writes to /workspace
@@ -108,13 +112,27 @@ class SandboxSecurity {
     try {
       container = await this.createIsolatedContainer(userId, workspaceId);
 
-      // Update the container command
-      await container.update({ Cmd: ['/bin/sh', '-c', cmd] });
       await container.start();
 
+      // NOTE: callers must pass cmd as a pre-built string; never interpolate
+      // raw user code here — callers already use exec-form/base64 per utils/sandboxExecutor.js.
+      const exec = await container.exec({ Cmd: ['/bin/sh', '-c', cmd], AttachStdout: true, AttachStderr: true });
+      const execStream = await exec.start({});
+
+      let output = '';
+      execStream.on('data', (chunk) => { output += chunk.toString(); });
+
       const startTime = Date.now();
+      const execPromise = (async () => {
+        await new Promise((resolve, reject) => {
+          execStream.on('end', resolve);
+          execStream.on('error', reject);
+        });
+        const info = await exec.inspect();
+        return { StatusCode: info.ExitCode };
+      })();
       const result = await Promise.race([
-        container.wait(),
+        execPromise,
         new Promise((_, reject) =>
           setTimeout(() => reject(new Error('Execution timeout')), timeout)
         )
@@ -122,11 +140,9 @@ class SandboxSecurity {
 
       const executionTime = Date.now() - startTime;
 
-      const logs = await container.logs({ stdout: true, stderr: true });
-
       return {
         success: result.StatusCode === 0,
-        output: logs.toString(),
+        output,
         exitCode: result.StatusCode,
         executionTime
       };

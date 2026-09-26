@@ -455,6 +455,14 @@ router.get('/:companyId/members', authenticateToken, permissionMatrix.requirePer
 router.post('/:companyId/invite', authenticateToken, permissionMatrix.requirePermission('company', 'invite'), checkMemberLimit, async (req, res) => {
     try {
         const { email, role = 'member' } = req.body;
+
+        const ALLOWED_INVITE_ROLES = ['member', 'admin'];
+        if (!ALLOWED_INVITE_ROLES.includes(role)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid role. Allowed roles: member, admin'
+            });
+        }
         
         const company = await Company.findById(req.params.companyId);
         if (!company) {
@@ -472,6 +480,14 @@ router.post('/:companyId/invite', authenticateToken, permissionMatrix.requirePer
                 message: 'You do not have permission to invite members'
             });
         }
+
+        // Only owner/admin can invite as admin (prevent privilege escalation)
+        if (role === 'admin' && !['owner', 'admin'].includes(userMember.role)) {
+            return res.status(403).json({
+                success: false,
+                message: 'Only owner or admin can invite an admin'
+            });
+        }
         
         // Check member limit
         if (company.members.length >= company.subscription.memberLimit) {
@@ -482,6 +498,12 @@ router.post('/:companyId/invite', authenticateToken, permissionMatrix.requirePer
         }
         
         // Find user by email
+        if (typeof email !== 'string' || !email.includes('@')) {
+            return res.status(400).json({
+                success: false,
+                message: 'Valid email is required'
+            });
+        }
         const invitedUser = await User.findOne({ email });
         if (!invitedUser) {
             return res.status(404).json({

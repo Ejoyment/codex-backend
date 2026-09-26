@@ -116,6 +116,25 @@ router.post('/', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: 'Project has no deployable files.' });
         }
 
+        if (normalizedFiles.length > 200) {
+            return res.status(400).json({ error: 'Too many files: maximum 200 files per deployment.' });
+        }
+        for (const f of normalizedFiles) {
+            if (!f.name || typeof f.name !== 'string') {
+                return res.status(400).json({ error: 'Invalid file path' });
+            }
+            const contentStr = typeof f.content === 'string' ? f.content : String(f.content || '');
+            if (Buffer.byteLength(contentStr, 'utf8') > 1024 * 1024) {
+                return res.status(400).json({ error: `File too large: ${f.name} exceeds 1MB.` });
+            }
+            const relCheck = f.path ? `${f.path}/${f.name}` : f.name;
+            for (const segment of relCheck.split('/').filter(s => s.length > 0)) {
+                if (segment === '..' || !/^[a-zA-Z0-9._-]+$/.test(segment)) {
+                    return res.status(400).json({ error: 'Invalid file path' });
+                }
+            }
+        }
+
         let deployment = await Deployment.findOne({ subdomain: sanitized });
         if (deployment && deployment.userId.toString() !== req.userId.toString()) {
             return res.status(409).json({ error: 'Subdomain already taken by another user.' });

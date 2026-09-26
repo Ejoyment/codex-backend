@@ -111,7 +111,7 @@ router.post('/init', authenticateToken, requireWorkspaceAccess, async (req, res)
  *       500:
  *         description: Internal server error
  */
-router.get('/status/:workspaceId', authenticateToken, permissionMatrix.requirePermission('git', 'read'), async (req, res) => {
+router.get('/status/:workspaceId', authenticateToken, requireWorkspaceAccess, permissionMatrix.requirePermission('git', 'read'), async (req, res) => {
   try {
     const { workspaceId } = req.params;
     const result = await gitService.status(workspaceId);
@@ -149,7 +149,7 @@ router.get('/status/:workspaceId', authenticateToken, permissionMatrix.requirePe
  *       500:
  *         description: Internal server error
  */
-router.get('/diff/:workspaceId', authenticateToken, async (req, res) => {
+router.get('/diff/:workspaceId', authenticateToken, requireWorkspaceAccess, permissionMatrix.requirePermission('git', 'read'), async (req, res) => {
   try {
     const { workspaceId } = req.params;
     const { file } = req.query;
@@ -248,7 +248,7 @@ router.post('/add', authenticateToken, requireWorkspaceAccess, async (req, res) 
  *       500:
  *         description: Internal server error
  */
-router.post('/reset', authenticateToken, async (req, res) => {
+router.post('/reset', authenticateToken, requireWorkspaceAccess, async (req, res) => {
   try {
     const { workspaceId, files } = req.body;
 
@@ -357,7 +357,7 @@ router.post('/commit', authenticateToken, requireWorkspaceAccess, permissionMatr
  *       500:
  *         description: Internal server error
  */
-router.get('/log/:workspaceId', authenticateToken, async (req, res) => {
+router.get('/log/:workspaceId', authenticateToken, requireWorkspaceAccess, permissionMatrix.requirePermission('git', 'read'), async (req, res) => {
   try {
     const { workspaceId } = req.params;
     const { limit, file } = req.query;
@@ -396,7 +396,7 @@ router.get('/log/:workspaceId', authenticateToken, async (req, res) => {
  *       500:
  *         description: Internal server error
  */
-router.get('/branches/:workspaceId', authenticateToken, async (req, res) => {
+router.get('/branches/:workspaceId', authenticateToken, requireWorkspaceAccess, permissionMatrix.requirePermission('git', 'read'), async (req, res) => {
   try {
     const { workspaceId } = req.params;
     const result = await gitService.branches(workspaceId);
@@ -440,7 +440,7 @@ router.get('/branches/:workspaceId', authenticateToken, async (req, res) => {
  *       500:
  *         description: Internal server error
  */
-router.post('/branch', authenticateToken, permissionMatrix.requirePermission('git', 'branch'), async (req, res) => {
+router.post('/branch', authenticateToken, requireWorkspaceAccess, permissionMatrix.requirePermission('git', 'branch'), async (req, res) => {
   try {
     const { workspaceId, branchName } = req.body;
 
@@ -489,7 +489,7 @@ router.post('/branch', authenticateToken, permissionMatrix.requirePermission('gi
  *       500:
  *         description: Internal server error
  */
-router.post('/checkout', authenticateToken, async (req, res) => {
+router.post('/checkout', authenticateToken, requireWorkspaceAccess, async (req, res) => {
   try {
     const { workspaceId, branchName } = req.body;
 
@@ -538,7 +538,7 @@ router.post('/checkout', authenticateToken, async (req, res) => {
  *       500:
  *         description: Internal server error
  */
-router.post('/merge', authenticateToken, async (req, res) => {
+router.post('/merge', authenticateToken, requireWorkspaceAccess, async (req, res) => {
   try {
     const { workspaceId, branchName } = req.body;
 
@@ -588,7 +588,7 @@ router.post('/merge', authenticateToken, async (req, res) => {
  *       500:
  *         description: Internal server error
  */
-router.post('/pull', authenticateToken, permissionMatrix.requirePermission('git', 'pull'), async (req, res) => {
+router.post('/pull', authenticateToken, requireWorkspaceAccess, permissionMatrix.requirePermission('git', 'pull'), async (req, res) => {
   try {
     const { workspaceId, remote, branch } = req.body;
 
@@ -638,7 +638,7 @@ router.post('/pull', authenticateToken, permissionMatrix.requirePermission('git'
  *       500:
  *         description: Internal server error
  */
-router.post('/push', authenticateToken, permissionMatrix.requirePermission('git', 'push'), async (req, res) => {
+router.post('/push', authenticateToken, requireWorkspaceAccess, permissionMatrix.requirePermission('git', 'push'), async (req, res) => {
   try {
     const { workspaceId, remote, branch } = req.body;
 
@@ -699,7 +699,7 @@ router.post('/push', authenticateToken, permissionMatrix.requirePermission('git'
  *       500:
  *         description: Internal server error
  */
-router.post('/remote', authenticateToken, async (req, res) => {
+router.post('/remote', authenticateToken, requireWorkspaceAccess, permissionMatrix.requirePermission('git', 'push'), async (req, res) => {
   try {
     const { workspaceId, name, url } = req.body;
 
@@ -738,7 +738,7 @@ router.post('/remote', authenticateToken, async (req, res) => {
  *       500:
  *         description: Internal server error
  */
-router.get('/remotes/:workspaceId', authenticateToken, async (req, res) => {
+router.get('/remotes/:workspaceId', authenticateToken, requireWorkspaceAccess, permissionMatrix.requirePermission('git', 'read'), async (req, res) => {
   try {
     const { workspaceId } = req.params;
     const result = await gitService.remotes(workspaceId);
@@ -835,7 +835,7 @@ router.post('/clone', authenticateToken, requireWorkspaceAccess, async (req, res
  *       500:
  *         description: Internal server error
  */
-router.get('/show/:workspaceId', authenticateToken, async (req, res) => {
+router.get('/show/:workspaceId', authenticateToken, requireWorkspaceAccess, permissionMatrix.requirePermission('git', 'read'), async (req, res) => {
   try {
     const { workspaceId } = req.params;
     const { commit, file } = req.query;
@@ -884,7 +884,7 @@ router.get('/show/:workspaceId', authenticateToken, async (req, res) => {
  *       500:
  *         description: Internal server error
  */
-router.post('/stash', authenticateToken, async (req, res) => {
+router.post('/stash', authenticateToken, requireWorkspaceAccess, async (req, res) => {
   try {
     const { workspaceId, message } = req.body;
 
@@ -930,7 +930,7 @@ router.post('/stash', authenticateToken, async (req, res) => {
  *       500:
  *         description: Internal server error
  */
-router.post('/stash/pop', authenticateToken, async (req, res) => {
+router.post('/stash/pop', authenticateToken, requireWorkspaceAccess, async (req, res) => {
   try {
     const { workspaceId } = req.body;
 

@@ -534,14 +534,41 @@ io.use((socket, next) => {
     }
 });
 
+// Authorization helper for collab socket handlers: verifies the user belongs
+// to the workspace (Company) that owns the file. Denies by default.
+async function checkFileAccess(fileId, userId) {
+    try {
+        if (!fileId || !userId) return false;
+        const CodeFile = require('./models/CodeFile');
+        const Company = require('./models/Company');
+        const file = await CodeFile.findById(fileId).select('company').lean();
+        if (!file) return false;
+        const companyId = file.company || file.companyId;
+        if (!companyId) return true; // personal file without workspace scoping
+        const company = await Company.findById(companyId).select('members owner').lean();
+        if (!company) return false;
+        const uid = String(userId);
+        const members = company.members || [];
+        return members.some(m => String(m.user || m.userId) === uid) || String(company.owner) === uid;
+    } catch (error) {
+        console.error('checkFileAccess error:', error.message);
+        return false;
+    }
+}
+
 // Collaboration namespace
 io.on('connection', (socket) => {
     console.log(`User connected: ${socket.userId}`);
     socket.join(`user:${socket.userId}`);
     
     // Join file collaboration
-    socket.on('collab:join', async ({ fileId, user, role }) => {
+    socket.on('collab:join', async ({ fileId, user }) => {
         try {
+            const ok = await checkFileAccess(fileId, socket.userId);
+            if (!ok) return socket.emit('collab:error', { message: 'Access denied' });
+            // IGNORE client-supplied role for privilege purposes: server-side agent
+            // flows must call collaborationService.addClient directly.
+            const role = 'human';
             socket.join(`file:${fileId}`);
             // Pass role for conflict resolution (default: 'human')
             collaborationService.addClient(fileId, socket, role || 'human');
@@ -561,8 +588,10 @@ io.on('connection', (socket) => {
     });
     
     // Handle sync messages
-    socket.on('collab:sync', ({ fileId, message }) => {
+    socket.on('collab:sync', async ({ fileId, message }) => {
         try {
+            const ok = await checkFileAccess(fileId, socket.userId);
+            if (!ok) return socket.emit('collab:error', { message: 'Access denied' });
             collaborationService.handleSyncMessage(fileId, socket, message);
         } catch (error) {
             console.error('Sync error:', error);
@@ -571,8 +600,10 @@ io.on('connection', (socket) => {
     });
     
     // Handle awareness messages (cursor position, selection)
-    socket.on('collab:awareness', ({ fileId, message }) => {
+    socket.on('collab:awareness', async ({ fileId, message }) => {
         try {
+            const ok = await checkFileAccess(fileId, socket.userId);
+            if (!ok) return socket.emit('collab:error', { message: 'Access denied' });
             collaborationService.handleAwarenessMessage(fileId, socket, message);
         } catch (error) {
             console.error('Awareness error:', error);
@@ -598,8 +629,10 @@ io.on('connection', (socket) => {
     });
 
     // Lightweight cursor presence (plain JSON, no Yjs required)
-    socket.on('collab:cursor', ({ fileId, userId, userName, cursor }) => {
+    socket.on('collab:cursor', async ({ fileId, userId, userName, cursor }) => {
         try {
+            const ok = await checkFileAccess(fileId, socket.userId);
+            if (!ok) return socket.emit('collab:error', { message: 'Access denied' });
             socket.to(`file:${fileId}`).emit('collab:cursor-update', {
                 userId: userId || socket.userId,
                 userName: userName || 'Anonymous',
@@ -634,10 +667,21 @@ io.on('connection', (socket) => {
     });
     
     // Join workspace room for real-time file/folder updates
-    socket.on('workspace:join', ({ workspaceId }) => {
-        if (workspaceId) {
+    socket.on('workspace:join', async ({ workspaceId }) => {
+        try {
+            if (!workspaceId) return;
+            const Company = require('./models/Company');
+            const company = await Company.findById(workspaceId).select('members owner').lean();
+            if (!company) return socket.emit('collab:error', { message: 'Access denied' });
+            const uid = String(socket.userId);
+            const members = company.members || [];
+            const allowed = members.some(m => String(m.user || m.userId) === uid) || String(company.owner) === uid;
+            if (!allowed) return socket.emit('collab:error', { message: 'Access denied' });
             socket.join(`workspace:${workspaceId}`);
             console.log(`User ${socket.userId} joined workspace: ${workspaceId}`);
+        } catch (error) {
+            console.error('Workspace join error:', error.message);
+            socket.emit('collab:error', { message: 'Access denied' });
         }
     });
     
@@ -675,7 +719,8 @@ terminalNamespace.use((socket, next) => {
 terminalNamespace.on('connection', (socket) => {
     console.log(`Terminal connected: ${socket.userId}`);
     let currentSession = null;
-    
+    let currentToken = null;
+
     // Create terminal session
     socket.on('terminal:create', async ({ workspaceId, options }) => {
         try {
@@ -684,14 +729,17 @@ terminalNamespace.on('connection', (socket) => {
                 workspaceId,
                 options
             );
-            
+
             currentSession = result.sessionId;
-            
+            // Server-side session secret: forwarded on every service call so
+            // predicted/cross-socket sessionIds alone grant nothing.
+            currentToken = result.token;
+
             // Register data handler
             terminalService.onData(currentSession, (data) => {
                 socket.emit('terminal:data', { data });
-            });
-            
+            }, currentToken);
+
             socket.emit('terminal:created', result);
             console.log(`Terminal created: ${currentSession}`);
         } catch (error) {
@@ -706,8 +754,8 @@ terminalNamespace.on('connection', (socket) => {
             if (sessionId !== currentSession) {
                 throw new Error('Invalid session');
             }
-            
-            terminalService.write(sessionId, data);
+
+            terminalService.write(sessionId, data, currentToken);
         } catch (error) {
             console.error('Terminal input error:', error);
             socket.emit('terminal:error', { message: error.message });
@@ -720,8 +768,8 @@ terminalNamespace.on('connection', (socket) => {
             if (sessionId !== currentSession) {
                 throw new Error('Invalid session');
             }
-            
-            terminalService.resize(sessionId, cols, rows);
+
+            terminalService.resize(sessionId, cols, rows, currentToken);
         } catch (error) {
             console.error('Terminal resize error:', error);
             socket.emit('terminal:error', { message: error.message });
@@ -734,8 +782,8 @@ terminalNamespace.on('connection', (socket) => {
             if (sessionId !== currentSession) {
                 throw new Error('Invalid session');
             }
-            
-            const history = await terminalService.getHistory(sessionId);
+
+            const history = await terminalService.getHistory(sessionId, currentToken);
             socket.emit('terminal:history', { history });
         } catch (error) {
             console.error('Terminal history error:', error);
@@ -749,9 +797,10 @@ terminalNamespace.on('connection', (socket) => {
             if (sessionId !== currentSession) {
                 throw new Error('Invalid session');
             }
-            
-            await terminalService.destroy(sessionId);
+
+            await terminalService.destroy(sessionId, currentToken);
             currentSession = null;
+            currentToken = null;
             socket.emit('terminal:destroyed', { sessionId });
             console.log(`Terminal destroyed: ${sessionId}`);
         } catch (error) {
@@ -780,7 +829,7 @@ terminalNamespace.on('connection', (socket) => {
         
         if (currentSession) {
             try {
-                await terminalService.destroy(currentSession);
+                await terminalService.destroy(currentSession, currentToken);
                 console.log(`Auto-destroyed terminal: ${currentSession}`);
             } catch (error) {
                 console.error('Auto-destroy error:', error);
