@@ -149,13 +149,20 @@ router.post('/', authenticateToken, async (req, res) => {
             req
         });
 
+        const DEPLOY_TIMEOUT = parseInt(process.env.DEPLOY_TIMEOUT_MS) || 180000;
+
         setImmediate(async () => {
             try {
                 let containerId = null;
                 let url = `https://${sanitized}.buildrshq.dev`;
 
+                const deployPromise = depService.deployProject(sanitized, normalizedFiles);
+                const timeoutPromise = new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('Deployment timed out')), DEPLOY_TIMEOUT)
+                );
+
                 try {
-                    const result = await depService.deployProject(sanitized, normalizedFiles);
+                    const result = await Promise.race([deployPromise, timeoutPromise]);
                     containerId = result.containerId;
                     url = result.url || url;
                 } catch (depErr) {

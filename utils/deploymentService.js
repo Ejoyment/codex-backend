@@ -1,13 +1,15 @@
-const { execSync } = require('child_process');
+const { exec, execSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const zlib = require('zlib');
 
 const SSH_HOST = process.env.DEPLOY_SSH_HOST;
 const SSH_PORT = parseInt(process.env.DEPLOY_SSH_PORT || '22');
 const SSH_USER = process.env.DEPLOY_SSH_USER || 'deployer';
 const DOMAIN = process.env.DEPLOY_DOMAIN || 'buildrshq.dev';
 const DEPLOY_SUBDIR = (process.env.DEPLOY_ROOT || 'deployments').replace(/^\/+/, '').replace(/^~\/?/, '');
+const DEPLOY_TIMEOUT_MS = parseInt(process.env.DEPLOY_TIMEOUT_MS) || 180000;
 
 function getRawKey() {
   if (process.env.DEPLOY_SSH_KEY) return process.env.DEPLOY_SSH_KEY;
@@ -78,24 +80,26 @@ function sshExec(command) {
     try {
       if (!SSH_HOST) return reject(new Error('DEPLOY_SSH_HOST env not set'));
       const key = getKeyFile();
-      const out = execSync(
-        `ssh -i "${key}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=20 -p ${SSH_PORT} ${SSH_USER}@${SSH_HOST} ${JSON.stringify(command)}`,
-        { timeout: 300000, maxBuffer: 20 * 1024 * 1024, encoding: 'utf8' }
-      );
-      resolve(out.trim());
+      const sshCmd = `ssh -i "${key}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=20 -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -p ${SSH_PORT} ${SSH_USER}@${SSH_HOST} ${JSON.stringify(command)}`;
+      const proc = exec(sshCmd, { timeout: DEPLOY_TIMEOUT_MS, maxBuffer: 20 * 1024 * 1024, encoding: 'utf8' });
+
+      let stdout = '';
+      let stderr = '';
+      proc.stdout.on('data', d => { stdout += d; });
+      proc.stderr.on('data', d => { stderr += d; });
+
+      proc.on('close', (code) => {
+        if (code !== 0) return reject(new Error(stderr || `Process exited with code ${code}`));
+        resolve(stdout.trim());
+      });
+      proc.on('error', err => {
+        if (err.killed) return reject(new Error('SSH command killed: timeout exceeded'));
+        reject(new Error((err.stderr || err.stdout || err.message || '').toString().trim()));
+      });
     } catch (err) {
       reject(new Error((err.stderr || err.stdout || err.message || '').toString().trim()));
     }
   });
-}
-
-async function writeRemoteFile(remotePath, content) {
-  const base64 = Buffer.from(content || '').toString('base64');
-  const parentDir = remotePath.includes('/')
-    ? remotePath.slice(0, remotePath.lastIndexOf('/'))
-    : '.';
-  await sshExec(`mkdir -p '${parentDir}'`);
-  await sshExec(`printf '%s' '${base64}' | base64 -d > '${remotePath}'`);
 }
 
 function detectRuntime(files) {
@@ -144,6 +148,26 @@ EXPOSE 80
   return { runtime: 'static', dockerfile, exposePort: 80 };
 }
 
+function createTarballSync(files) {
+  const tarPath = path.join(os.tmpdir(), `deploy-${Date.now()}.tar.gz`);
+  const tmpDir = path.join(os.tmpdir(), `deploy-src-${Date.now()}`);
+  fs.mkdirSync(tmpDir, { recursive: true });
+  for (const file of files) {
+    const relPath = file.path ? path.join(file.path.replace(/^\//, ''), file.name) : file.name;
+    const fullPath = path.join(tmpDir, relPath);
+    fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+    fs.writeFileSync(fullPath, file.content || '');
+  }
+  try {
+    execSync(`tar -czf '${tarPath}' -C '${tmpDir}' .`);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  } catch (_) {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    throw new Error('Failed to create tarball');
+  }
+  return tarPath;
+}
+
 async function deployProject(subdomain, files) {
   const sanitizedSubdomain = subdomain.toLowerCase().replace(/[^a-z0-9-]/g, '-');
   if (!sanitizedSubdomain || sanitizedSubdomain.length < 2) {
@@ -161,15 +185,26 @@ async function deployProject(subdomain, files) {
 
   await sshExec(`mkdir -p ${deploymentDir}`);
 
-  for (const file of files) {
-    const relPath = file.path
-      ? path.join(file.path.replace(/^\//, ''), file.name)
-      : file.name;
-    await writeRemoteFile(`${deploymentDir}/${relPath}`, file.content || '');
-  }
-
   if (dockerfile) {
     await writeRemoteFile(`${deploymentDir}/Dockerfile`, dockerfile);
+  }
+
+  const fileEntries = files.map(f => ({
+    name: f.name,
+    path: f.path ? path.join(f.path.replace(/^\//, ''), f.name) : f.name,
+    content: typeof f.content === 'string' ? f.content : (f.content || '')
+  }));
+
+  try {
+    const tarPath = createTarballSync(fileEntries);
+    const tarB64 = Buffer.from(fs.readFileSync(tarPath)).toString('base64');
+    await sshExec(`mkdir -p '${deploymentDir}' && printf '%s' '${tarB64}' | base64 -d | tar -xzf - -C '${deploymentDir}'`);
+    fs.unlinkSync(tarPath);
+  } catch (tarErr) {
+    for (const file of fileEntries) {
+      const relPath = file.path ? path.join(file.path.replace(/^\//, ''), file.name) : file.name;
+      await writeRemoteFile(`${deploymentDir}/${relPath}`, file.content || '');
+    }
   }
 
   await sshExec(`docker build --force-rm -t ${imageTag} ${deploymentDir}`).catch(err => {
@@ -227,6 +262,15 @@ docker run -d \\
   return { containerId: nextContainerId, url: `https://${sanitizedSubdomain}.${DOMAIN}` };
 }
 
+async function writeRemoteFile(remotePath, content) {
+  const base64 = Buffer.from(content || '').toString('base64');
+  const parentDir = remotePath.includes('/')
+    ? remotePath.slice(0, remotePath.lastIndexOf('/'))
+    : '.';
+  await sshExec(`mkdir -p '${parentDir}'`);
+  await sshExec(`printf '%s' '${base64}' | base64 -d > '${remotePath}'`);
+}
+
 async function stopDeployment(subdomain) {
   const sanitized = subdomain.toLowerCase().replace(/[^a-z0-9-]/g, '-');
   const containerName = `deploy-${sanitized}`;
@@ -246,4 +290,4 @@ async function isSubdomainTaken(subdomain) {
   } catch (_) { return false; }
 }
 
-module.exports = { sshExec, writeRemoteFile, detectRuntime, deployProject, stopDeployment, isSubdomainTaken };
+module.exports = { sshExec, writeRemoteFile, detectRuntime, deployProject, stopDeployment, isSubdomainTaken, createTarballSync };
