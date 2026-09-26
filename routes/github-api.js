@@ -4,6 +4,7 @@ const axios = require('axios');
 const Integration = require('../models/Integration');
 const jwt = require('jsonwebtoken');
 const { authenticateToken } = require('../middleware/auth');
+const { createStateToken, verifyStateToken } = require('../utils/oauthState');
 
 // Helper to get GitHub integration
 async function getGitHubIntegration(userId) {
@@ -1012,7 +1013,7 @@ router.get('/connect', authenticateToken, (req, res) => {
         client_id: process.env.GITHUB_CLIENT_ID,
         redirect_uri: process.env.GITHUB_REDIRECT_URI,
         scope: 'repo,user',
-        state: req.userId // pass userId through so callback knows who's connecting
+        state: createStateToken(req.userId) // signed JWT: callback verifies instead of trusting raw userId
     });
 
     const authUrl = `https://github.com/login/oauth/authorize?${params.toString()}`;
@@ -1051,10 +1052,22 @@ router.get('/connect', authenticateToken, (req, res) => {
  */
 router.get('/callback', async (req, res) => {
     try {
-        const { code, state: userId } = req.query;
+        const { code, state } = req.query;
 
-        if (!code || !userId) {
+        if (!code || !state) {
             return res.status(400).json({ success: false, message: 'Missing code or state' });
+        }
+
+        // Verify the signed state token — never trust a raw userId from the
+        // query string (prevents session fixation / account takeover).
+        let userId;
+        try {
+            userId = verifyStateToken(state);
+        } catch (e) {
+            return res.status(400).json({ success: false, message: 'Invalid state' });
+        }
+        if (!userId) {
+            return res.status(400).json({ success: false, message: 'Invalid state' });
         }
 
         // Exchange code for access token

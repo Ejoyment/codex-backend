@@ -9,6 +9,8 @@ const User = require('../models/User');
 const Subscription = require('../models/Subscription');
 const rateLimit = require('express-rate-limit');
 const emailService = require('../utils/emailServiceResend');
+const { authenticateToken } = require('../middleware/auth');
+const { isLockedOut, recordFailure, clearLockout } = require('../models/AuthLockout');
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -59,7 +61,7 @@ const oauthLimiter = rateLimit({
 
 // Generate JWT token
 const generateToken = (userId) => {
-    return jwt.sign({ id: userId }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    return jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: '24h' });
 };
 
 /**
@@ -235,6 +237,15 @@ router.post('/signin', authLimiter, async (req, res) => {
             });
         }
 
+        // Per-account lockout (persisted): reject before password comparison
+        if (await isLockedOut(email.toLowerCase())) {
+            return res.status(429).json({
+                success: false,
+                message: 'Account locked due to too many failed attempts. Try again in 30 minutes.',
+                requiresVerification: false
+            });
+        }
+
         // Check if user signed up with social auth
         if (!user.password) {
             return res.status(400).json({ 
@@ -246,6 +257,7 @@ router.post('/signin', authLimiter, async (req, res) => {
         // Verify password
         const isMatch = await user.comparePassword(password);
         if (!isMatch) {
+            await recordFailure(email.toLowerCase());
             return res.status(401).json({ 
                 success: false, 
                 message: 'Invalid email or password' 
@@ -261,6 +273,9 @@ router.post('/signin', authLimiter, async (req, res) => {
                 email: user.email
             });
         }
+
+        // Clear per-account lockout on successful signin
+        await clearLockout(email.toLowerCase());
 
         // Update last login
         user.lastLogin = new Date();
@@ -351,7 +366,7 @@ router.get('/google/callback',
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'lax',
-            maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+            maxAge: 24 * 60 * 60 * 1000 // 24 hours (matches JWT lifetime)
         });
 
         // Redirect with token in fragment (not query) — fragment is not sent to server in referrers
@@ -521,19 +536,9 @@ router.get('/me', async (req, res) => {
  *         description: Unauthorized
  */
 // Upload profile photo
-router.post('/upload-photo', upload.single('profilePhoto'), async (req, res) => {
+router.post('/upload-photo', authenticateToken, upload.single('profilePhoto'), async (req, res) => {
     try {
-        const token = req.headers.authorization?.split(' ')[1];
-        
-        if (!token) {
-            return res.status(401).json({ 
-                success: false, 
-                message: 'No token provided' 
-            });
-        }
-
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const user = await User.findById(decoded.id);
+        const user = await User.findById(req.userId);
 
         if (!user) {
             return res.status(404).json({ 
@@ -621,7 +626,7 @@ router.put('/update-profile', async (req, res) => {
         }
 
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const user = await User.findById(decoded.id);
+        const user = await User.findById(decoded.userId || decoded.id);
 
         if (!user) {
             return res.status(404).json({ 
@@ -695,7 +700,7 @@ router.put('/update-profile', async (req, res) => {
  *         description: Current password incorrect
  */
 // Change password
-router.post('/change-password', async (req, res) => {
+router.post('/change-password', authLimiter, async (req, res) => {
     try {
         const token = req.headers.authorization?.split(' ')[1];
         
@@ -707,7 +712,7 @@ router.post('/change-password', async (req, res) => {
         }
 
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const user = await User.findById(decoded.id);
+        const user = await User.findById(decoded.userId || decoded.id);
 
         if (!user) {
             return res.status(404).json({ 
@@ -730,6 +735,13 @@ router.post('/change-password', async (req, res) => {
             return res.status(400).json({ 
                 success: false, 
                 message: 'Please provide current and new password' 
+            });
+        }
+
+        if (typeof newPassword !== 'string' || newPassword.length < 8) {
+            return res.status(400).json({
+                success: false,
+                message: 'New password must be at least 8 characters long'
             });
         }
 
@@ -791,7 +803,7 @@ router.delete('/delete-account', async (req, res) => {
         }
 
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const user = await User.findById(decoded.id);
+        const user = await User.findById(decoded.userId || decoded.id);
 
         if (!user) {
             return res.status(404).json({ 

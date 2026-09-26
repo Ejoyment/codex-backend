@@ -102,6 +102,7 @@ function sshExec(command) {
   });
 }
 
+
 function detectRuntime(files) {
   const names = files.map(f => f.name.toLowerCase());
   const paths = files.map(f => ((f.path || '') + '/' + f.name).toLowerCase());
@@ -203,6 +204,7 @@ function createTarballSync(files) {
   fs.mkdirSync(tmpDir, { recursive: true });
   for (const file of files) {
     const relPath = file.path ? path.join(file.path.replace(/^\//, ''), file.name) : file.name;
+    assertSafeRelPath(relPath);
     const fullPath = path.join(tmpDir, relPath);
     fs.mkdirSync(path.dirname(fullPath), { recursive: true });
     fs.writeFileSync(fullPath, file.content || '');
@@ -234,6 +236,7 @@ async function deployProject(subdomain, files) {
 
   await sshExec(`mkdir -p ${deploymentDir}`);
 
+
   if (dockerfile) {
     await writeRemoteFile(`${deploymentDir}/Dockerfile`, dockerfile);
     await writeRemoteFile(`${deploymentDir}/.dockerignore`, 'node_modules\nnpm-debug.log\n.git\n.env\n.env.*\n__pycache__\n*.pyc\n*.pyo\n*.log\ncoverage\n.nyc_output\ndist\nbuild\n.venv\nvenv\n');
@@ -244,6 +247,11 @@ async function deployProject(subdomain, files) {
     path: f.path ? path.join(f.path.replace(/^\//, ''), f.name) : f.name,
     content: typeof f.content === 'string' ? f.content : (f.content || '')
   }));
+  // Validate before tarball + fallback: blocks local tmpDir escape,
+  // Tar Slip on the VPS, and remote-path breakout.
+  for (const file of fileEntries) {
+    assertSafeRelPath(file.path);
+  }
 
   try {
     const tarPath = createTarballSync(fileEntries);
@@ -314,12 +322,24 @@ docker run -d \\
 }
 
 async function writeRemoteFile(remotePath, content) {
+  // Block quote-breakout (remote RCE) and traversal: remotePath is built
+  // from server-side deploymentDir + validated relPath, but validate anyway.
+  if (remotePath.includes('..') || remotePath.includes("'") || remotePath.includes('\n')) throw new Error('Invalid remote path');
   const base64 = Buffer.from(content || '').toString('base64');
   const parentDir = remotePath.includes('/')
     ? remotePath.slice(0, remotePath.lastIndexOf('/'))
     : '.';
   await sshExec(`mkdir -p '${parentDir}'`);
   await sshExec(`printf '%s' '${base64}' | base64 -d > '${remotePath}'`);
+}
+
+// Shared validation: every file path segment must be a plain filename.
+// Protects local tmpDir writes, tarball entries (Tar Slip on the VPS),
+// and the per-file fallback loop.
+function assertSafeRelPath(relPath) {
+  for (const segment of String(relPath).split('/')) {
+    if (segment === '..' || !/^[a-zA-Z0-9._-]+$/.test(segment)) throw new Error('Invalid file path');
+  }
 }
 
 async function stopDeployment(subdomain) {
