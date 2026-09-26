@@ -289,11 +289,6 @@ docker run -d \\
   --label 'traefik.http.routers.${sanitizedSubdomain}.rule=Host(\`${sanitizedSubdomain}.${DOMAIN}\`) || Host(\`www.${sanitizedSubdomain}.${DOMAIN}\`)' \\
   --label 'traefik.http.routers.${sanitizedSubdomain}.entrypoints=web' \\
   --label 'traefik.http.services.${sanitizedSubdomain}.loadbalancer.server.port=${exposePort}' \\
-  --label 'traefik.http.routers.${sanitizedSubdomain}-secure.rule=Host(\`${sanitizedSubdomain}.${DOMAIN}\`) || Host(\`www.${sanitizedSubdomain}.${DOMAIN}\`)' \\
-  --label 'traefik.http.routers.${sanitizedSubdomain}-secure.entrypoints=websecure' \\
-  --label 'traefik.http.routers.${sanitizedSubdomain}-secure.tls.certresolver=letsencrypt' \\
-  --label 'traefik.http.routers.${sanitizedSubdomain}-secure.tls=true' \\
-  --label 'traefik.http.services.${sanitizedSubdomain}-secure.loadbalancer.server.port=${exposePort}' \\
   ${imageTag}
 `;
 
