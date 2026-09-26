@@ -45,7 +45,7 @@ const globalLimiter = rateLimit({
 
 // Import trial enforcement middleware
 const { checkTrialStatus, enforceProjectLimit, enforceAIAccess } = require('./middleware/trial');
-const { enforceCreditPool, enforceCloudComputeLimit, enforceDeploymentLimit, enforceDebugRoomAccess, enforceDebugRoomLimit } = require('./middleware/tierEnforcement');
+const { enforceCreditPool, enforceCloudComputeLimit, enforceDeploymentLimit, enforceDebugRoomAccess, enforceDebugRoomLimit, enforceSpecEngineLevel } = require('./middleware/tierEnforcement');
 const CreditPoolService = require('./utils/creditPoolService');
 const paymentRouter = require('./utils/paymentRouter');
 const { enforceSecurityHeaders } = require('./utils/securityHeaders');
@@ -328,7 +328,7 @@ app.use('/api/v1/agent', enforceCreditPool(), enforceCloudComputeLimit(), agentV
 app.use('/api/v1/specs', enforceSpecEngineLevel('full_sdd'), specRoutes);
 // Phase 3 — Ephemeral Debug Rooms + Multi-rail billing (entitlement-gated)
 app.use('/api/v1/rooms', enforceDebugRoomAccess(), enforceDebugRoomLimit(), roomsRoutes);
-app.use('/api/v1/billing', paymentRouter);
+app.use('/api/v1/billing', billingV1Routes);
 app.use('/api/projects', enforceDeploymentLimit(), projectRoutes);
 app.use('/api/ai-context', figmaContextRoutes, teamMemoryRoutes, ticketBridgeRoutes);
 
@@ -339,7 +339,9 @@ app.use(enforceSecurityHeaders());
 const TTL_SWEETER_INTERVAL = parseInt(process.env.DEBUG_ROOM_TTL_CLEANUP_INTERVAL) || 3600000;
 setInterval(async () => {
     try {
-        const DebugRoom = require('./models/DebugRoom');
+        let DebugRoom;
+        try { DebugRoom = require('./models/DebugRoom'); } catch { DebugRoom = null; }
+        if (!DebugRoom) return;
         const expiredRooms = await DebugRoom.deleteMany({
             expiresAt: { $lte: new Date() },
             status: { $in: ['active', 'pending'] }
