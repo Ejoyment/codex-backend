@@ -272,10 +272,11 @@ async function deployProject(subdomain, files) {
     }
   }
 
-  await sshExec(`docker build --force-rm --no-cache -t ${imageTag} '${deploymentDir}'`).catch(err => {
-    const logs = sshExec(`docker logs ${nextContainerName} 2>&1 || true`).catch(() => '');
-    throw new Error(`Docker build failed: ${err.message}`);
-  });
+await sshExec(`docker build --force-rm --no-cache -t ${imageTag} '${deploymentDir}'`).catch(async err => {
+    const logs = await sshExec(`docker logs ${nextContainerName} 2>&1 || true`).catch(() => '');
+    const dirList = await sshExec(`ls -la ${deploymentDir}`).catch(() => 'DIR_MISSING');
+    throw new Error(`Docker build failed: ${err.message}. Dir contents: ${dirList}`);
+});
 
   const existingContainer = (await sshExec(`docker ps -q --filter "name=${containerName}" 2>/dev/null || true`).catch(() => '')).trim();
 
@@ -325,10 +326,10 @@ docker run -d \\
   }
 
   try {
-    const dirCheck = await sshExec(`ls ${deploymentDir}/index.html 2>/dev/null && echo EXISTS || echo MISSING`).catch(() => 'MISSING');
-    console.log(`[deploy] index.html check: ${dirCheck}`);
     const containerFiles = await sshExec(`docker exec ${containerName} ls /usr/share/nginx/html/ 2>/dev/null || echo 'N/A'`).catch(() => 'N/A');
-    console.log(`[deploy] Container files: ${containerFiles}`);
+    console.log(`[deploy] Container nginx files: ${containerFiles}`);
+    const indexCheck = await sshExec(`docker exec ${containerName} cat /usr/share/nginx/html/index.html 2>/dev/null | head -1 || echo 'NO_INDEX'`).catch(() => 'NO_INDEX');
+    console.log(`[deploy] index.html content check: ${indexCheck}`);
   } catch (checkErr) {
     console.warn('[deploy] File check issue:', checkErr.message);
   }
