@@ -336,6 +336,8 @@ docker run -d \\
     console.log(`[deploy] index.html content check: ${indexCheck}`);
     const curlCheck = await sshExec(`docker exec ${containerName} curl -s -o /dev/null -w '%{http_code}' http://localhost/ 2>/dev/null || echo 'CURL_FAILED'`).catch(() => 'CURL_FAILED');
     console.log(`[deploy] HTTP status check: ${curlCheck}`);
+    const labelsCheck = await sshExec(`docker inspect ${containerName} --format '{{json .Config.Labels}}' 2>/dev/null || echo 'LABELS_FAILED'`).catch(() => 'LABELS_FAILED');
+    console.log(`[deploy] Container labels: ${labelsCheck}`);
   } catch (checkErr) {
     console.warn('[deploy] File check issue:', checkErr.message);
   }
