@@ -9,7 +9,7 @@
  * Supported languages: JavaScript, Python, Java, Go, Rust, Ruby, PHP.
  */
 
-const { exec: childExec } = require('child_process');
+const { exec: childExec, spawn: childSpawn } = require('child_process');
 const sandboxSecurity = require('./sandboxSecurity');
 
 class SandboxExecutor {
@@ -33,16 +33,15 @@ class SandboxExecutor {
         return new Promise((resolve) => {
             const timeout = options.timeout || this.timeout;
             const startTime = Date.now();
-            const execStr = this.getDockerExecCmd(language, code).join(' ');
-            const proc = childExec(execStr, { timeout, maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
+            const cmd = this.getDockerExecCmd(language, code);
+            const proc = childSpawn(cmd[0], cmd.slice(1), { timeout, maxBuffer: 1024 * 1024 });
+            let stdout = '';
+            let stderr = '';
+            proc.stdout.on('data', d => { stdout += d.toString(); });
+            proc.stderr.on('data', d => { stderr += d.toString(); });
+            proc.on('close', (code) => {
                 const executionTime = Date.now() - startTime;
-                if (error && error.killed) {
-                    return resolve({ success: false, output: stderr || 'Execution timed out', exitCode: 124, executionTime });
-                }
-                if (error) {
-                    return resolve({ success: false, output: stderr || error.message, exitCode: 1, executionTime });
-                }
-                resolve({ success: true, output: stdout + stderr, exitCode: 0, executionTime });
+                resolve({ success: code === 0, output: stdout + stderr, exitCode: code, executionTime });
             });
             proc.on('error', (err) => {
                 const executionTime = Date.now() - startTime;
