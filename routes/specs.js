@@ -1,16 +1,28 @@
 const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../middleware/auth');
+const { enforceSpecEngineLevel } = require('../middleware/tierEnforcement');
 const SpecModel = require('../models/SpecModel');
 const sddVerificationService = require('../utils/sddVerificationService');
 const { execSync } = require('child_process');
 
-router.post('/', authenticateToken, async (req, res) => {
+router.post('/', authenticateToken, enforceSpecEngineLevel('full_sdd'), async (req, res) => {
   try {
     const { workspaceId, title, content, targetFiles, targetModules, assertions, specId } = req.body;
 
     if (!workspaceId || !title || !content) {
       return res.status(400).json({ success: false, message: 'workspaceId, title, and content are required' });
+    }
+
+    const { tier } = req.subscription;
+    if (tier === 'developer') {
+      return res.status(403).json({
+        success: false,
+        message: 'Full spec editing requires Pro tier or higher. Developer tier: read-only.',
+        requiresUpgrade: true,
+        currentTier: 'developer',
+        currentLevel: 'read_only'
+      });
     }
 
     const spec = await SpecModel.findOneAndUpdate(
@@ -45,7 +57,7 @@ router.get('/workspace/:workspaceId', authenticateToken, async (req, res) => {
   }
 });
 
-router.post('/verify', authenticateToken, async (req, res) => {
+router.post('/verify', authenticateToken, enforceSpecEngineLevel('full_sdd'), async (req, res) => {
   try {
     const { specId, workspaceId, taskId } = req.body;
     const spec = specId ? await SpecModel.findById(specId) : await SpecModel.findOne({ workspaceId, title: req.body.title });

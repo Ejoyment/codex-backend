@@ -2,8 +2,10 @@ const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const Subscription = require('../models/Subscription');
+const Entitlement = require('../models/Entitlement');
 const User = require('../models/User');
 const { createCheckoutSession, createPortalSession, verifyWebhookSignature, stripe } = require('../config/stripe');
+const paymentRouter = require('../utils/paymentRouter');
 const { authenticateToken } = require('../middleware/auth');
 
 /**
@@ -177,6 +179,112 @@ router.post('/create-checkout', authenticateToken, async (req, res) => {
             success: false,
             message: 'Error creating checkout session'
         });
+    }
+});
+
+/**
+ * @swagger
+ * /api/subscription/tier-checkout:
+ *   post:
+ *     summary: Create checkout session with multi-rail payment
+ *     tags:
+ *       - Subscription & Billing
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [tier]
+ *             properties:
+ *               tier:
+ *                 type: string
+ *                 enum: [developer, pro, pro_plus, team_standard, team_premium, enterprise]
+ *               interval:
+ *                 type: string
+ *                 enum: [monthly, yearly]
+ *               country:
+ *                 type: string
+ *                 example: NG
+ *               currency:
+ *                 type: string
+ *                 example: NGN
+ *               teamSize:
+ *                 type: number
+ *                 example: 5
+ *     responses:
+ *       200:
+ *         description: Checkout session created with selected payment rail
+ *       400:
+ *         description: Invalid tier
+ *       401:
+ *         description: Unauthorized
+ */
+// Multi-rail tier checkout
+router.post('/tier-checkout', authenticateToken, async (req, res) => {
+    try {
+        const { tier, interval = 'monthly', country, currency, teamSize = 1 } = req.body;
+        const validTiers = ['developer', 'pro', 'pro_plus', 'team_standard', 'team_premium', 'enterprise'];
+        if (!validTiers.includes(tier)) {
+            return res.status(400).json({ success: false, message: 'Invalid tier' });
+        }
+        const result = await paymentRouter.createCheckout(req.userId, tier, interval, country || 'US', currency || 'USD');
+        res.json(result);
+    } catch (error) {
+        console.error('Tier checkout error:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+/**
+ * @swagger
+ * /api/subscription/entitlement:
+ *   get:
+ *     summary: Get user's current entitlement and credit usage
+ *     tags:
+ *       - Subscription & Billing
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Entitlement details
+ *       401:
+ *         description: Unauthorized
+ */
+// Get entitlement with credit usage
+router.get('/entitlement', authenticateToken, async (req, res) => {
+    try {
+        const entitlement = await Entitlement.findOne({ userId: req.userId });
+        const subscription = await Subscription.findOne({ userId: req.userId });
+        if (!subscription) {
+            return res.status(404).json({ success: false, message: 'No subscription found' });
+        }
+        const creditPool = await subscription.getRemainingCredits();
+        const compute = await subscription.getRemainingCompute();
+        res.json({
+            success: true,
+            tier: subscription.tier,
+            entitlement: entitlement ? {
+                plan: entitlement.plan,
+                provider: entitlement.provider,
+                status: entitlement.status,
+                currentPeriodEnd: entitlement.currentPeriodEnd,
+                creditsRemaining: entitlement.creditsRemaining,
+                lastEventId: entitlement.lastEventId
+            } : null,
+            creditPool,
+            compute,
+            maxConcurrentJobs: subscription.getMaxConcurrentAgentJobs(),
+            maxDebugRooms: subscription.getMaxDebugHostRooms(),
+            maxDeployments: subscription.getMaxActiveDeployments(),
+            specEngineLevel: subscription.getSpecEngineLevel(),
+            webrtcEnabled: subscription.isWebRTCEnabled()
+        });
+    } catch (error) {
+        console.error('Entitlement error:', error);
+        res.status(500).json({ success: false, message: 'Error fetching entitlement' });
     }
 });
 
