@@ -324,6 +324,15 @@ docker run -d \\
     console.warn('[deploy] Health check issue:', healthErr.message);
   }
 
+  try {
+    const dirCheck = await sshExec(`ls ${deploymentDir}/index.html 2>/dev/null && echo EXISTS || echo MISSING`).catch(() => 'MISSING');
+    console.log(`[deploy] index.html check: ${dirCheck}`);
+    const containerFiles = await sshExec(`docker exec ${containerName} ls /usr/share/nginx/html/ 2>/dev/null || echo 'N/A'`).catch(() => 'N/A');
+    console.log(`[deploy] Container files: ${containerFiles}`);
+  } catch (checkErr) {
+    console.warn('[deploy] File check issue:', checkErr.message);
+  }
+
   return { containerId: nextContainerId, url: `https://${sanitizedSubdomain}.${DOMAIN}` };
 }
 
