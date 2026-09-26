@@ -1,23 +1,15 @@
-/**
- * Deployment Service
- * Manages Docker containers on the Hetzner VPS via SSH for user deployments.
- *
- * Uses the system `ssh` binary via child_process so OpenSSH Ed25519 / RSA keys
- * in `-----BEGIN OPENSSH PRIVATE KEY-----` format work natively (the `ssh2`
- * npm library cannot parse those keys).
- */
-
-const { execSync } = require('child_process');
+const { exec, execSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const zlib = require('zlib');
 
 const SSH_HOST = process.env.DEPLOY_SSH_HOST;
 const SSH_PORT = parseInt(process.env.DEPLOY_SSH_PORT || '22');
 const SSH_USER = process.env.DEPLOY_SSH_USER || 'deployer';
 const DOMAIN = process.env.DEPLOY_DOMAIN || 'buildrshq.dev';
-// Relative to the SSH user's home directory — always writable.
 const DEPLOY_SUBDIR = (process.env.DEPLOY_ROOT || 'deployments').replace(/^\/+/, '').replace(/^~\/?/, '');
+const DEPLOY_TIMEOUT_MS = parseInt(process.env.DEPLOY_TIMEOUT_MS) || 180000;
 
 function getRawKey() {
   if (process.env.DEPLOY_SSH_KEY) return process.env.DEPLOY_SSH_KEY;
@@ -31,7 +23,6 @@ function getRawKey() {
 let keyFile = null;
 let homeDirCache = null;
 
-// Resolve the remote user's home directory once.
 async function getHomeDir() {
   if (homeDirCache) return homeDirCache;
   try {
@@ -43,7 +34,6 @@ async function getHomeDir() {
   return homeDirCache;
 }
 
-// Find a writable deployment base by trying multiple locations.
 async function findWritableBase() {
   const homeDir = await getHomeDir();
   const candidates = [
@@ -56,9 +46,7 @@ async function findWritableBase() {
     try {
       await sshExec(`mkdir -p ${dir} && touch ${dir}/.writetest && rm -f ${dir}/.writetest`);
       return dir;
-    } catch (_) {
-      // try next
-    }
+    } catch (_) {}
   }
   throw new Error(
     'No writable deployment directory found on the VPS. ' +
@@ -92,41 +80,44 @@ function sshExec(command) {
     try {
       if (!SSH_HOST) return reject(new Error('DEPLOY_SSH_HOST env not set'));
       const key = getKeyFile();
-      const out = execSync(
-        `ssh -i "${key}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=20 -p ${SSH_PORT} ${SSH_USER}@${SSH_HOST} ${JSON.stringify(command)}`,
-        { timeout: 300000, maxBuffer: 20 * 1024 * 1024, encoding: 'utf8' }
-      );
-      resolve(out.trim());
+      const sshCmd = `ssh -i "${key}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=20 -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -p ${SSH_PORT} ${SSH_USER}@${SSH_HOST} ${JSON.stringify(command)}`;
+      const proc = exec(sshCmd, { timeout: DEPLOY_TIMEOUT_MS, maxBuffer: 20 * 1024 * 1024, encoding: 'utf8' });
+
+      let stdout = '';
+      let stderr = '';
+      proc.stdout.on('data', d => { stdout += d; });
+      proc.stderr.on('data', d => { stderr += d; });
+
+      proc.on('close', (code) => {
+        if (code !== 0) return reject(new Error(stderr || `Process exited with code ${code}`));
+        resolve(stdout.trim());
+      });
+      proc.on('error', err => {
+        if (err.killed) return reject(new Error('SSH command killed: timeout exceeded'));
+        reject(new Error((err.stderr || err.stdout || err.message || '').toString().trim()));
+      });
     } catch (err) {
       reject(new Error((err.stderr || err.stdout || err.message || '').toString().trim()));
     }
   });
 }
 
-async function writeRemoteFile(remotePath, content) {
-  if (remotePath.includes('..') || remotePath.includes("'") || remotePath.includes('\\n') || remotePath.includes('\n')) throw new Error('Invalid remote path');
-  const base64 = Buffer.from(content || '').toString('base64');
-  // Compute the parent directory client-side to avoid nested shell quotes
-  const parentDir = remotePath.includes('/')
-    ? remotePath.slice(0, remotePath.lastIndexOf('/'))
-    : '.';
-  await sshExec(`mkdir -p '${parentDir}'`);
-  await sshExec(`echo '${base64}' | base64 -d > '${remotePath}'`);
-}
 
 function detectRuntime(files) {
   const names = files.map(f => f.name.toLowerCase());
   const paths = files.map(f => ((f.path || '') + '/' + f.name).toLowerCase());
+  const content = files.map(f => (f.content || '').toLowerCase());
 
-  if (names.includes('dockerfile')) {
-    return { runtime: 'docker', dockerfile: null, exposePort: 80 };
+  if (names.includes('dockerfile') || files.some(f => f.name.toLowerCase() === 'dockerfile')) {
+    const userDockerfile = files.find(f => f.name.toLowerCase() === 'dockerfile');
+    return { runtime: 'docker', dockerfile: userDockerfile?.content || null, exposePort: 80 };
   }
 
   if (paths.some(p => p.endsWith('package.json'))) {
     const hasBuild = files.some(f =>
       f.name === 'package.json' && f.content && f.content.includes('"build"')
     );
-    const entry = ['server.js', 'app.js', 'index.js'].find(e => names.includes(e)) || 'index.js';
+    const entry = ['server.js', 'app.js', 'index.js', 'main.js'].find(e => names.includes(e)) || 'index.js';
     const dockerfile = `FROM node:18-alpine
 WORKDIR /app
 COPY package*.json ./
@@ -153,11 +144,79 @@ CMD ["python", "app.py"]
     return { runtime: 'python', dockerfile, exposePort: 8000 };
   }
 
-  const dockerfile = `FROM nginx:alpine
+  if (paths.some(p => p.endsWith('go.mod')) || paths.some(p => p.endsWith('.go'))) {
+    const dockerfile = `FROM golang:1.21-alpine
+WORKDIR /app
+COPY go.mod ./
+COPY . .
+RUN go build -o main .
+EXPOSE 8080
+CMD ["./main"]
+`;
+    return { runtime: 'go', dockerfile, exposePort: 8080 };
+  }
+
+  if (paths.some(p => p.endsWith('Gemfile'))) {
+    const dockerfile = `FROM ruby:3.2-alpine
+WORKDIR /app
+COPY Gemfile* ./
+RUN bundle install
+COPY . .
+EXPOSE 3000
+CMD ["bundle", "exec", "rails", "server", "-b", "0.0.0.0"]
+`;
+    return { runtime: 'ruby', dockerfile, exposePort: 3000 };
+  }
+
+  const hasHtml = names.some(n => n.endsWith('.html'));
+  const hasPhp = names.some(n => n.endsWith('.php'));
+  const hasNginxConfig = names.some(n => n === 'nginx.conf' || n === 'nginx.conf');
+
+  if (hasNginxConfig) {
+    const nginxConf = files.find(f => f.name === 'nginx.conf');
+    const dockerfile = `FROM nginx:alpine
+COPY nginx.conf /etc/nginx/nginx.conf
 COPY . /usr/share/nginx/html
 EXPOSE 80
 `;
+    return { runtime: 'static', dockerfile, exposePort: 80 };
+  }
+
+  if (hasPhp) {
+    const dockerfile = `FROM php:8.2-apache
+COPY . /var/www/html
+EXPOSE 80
+`;
+    return { runtime: 'php', dockerfile, exposePort: 80 };
+  }
+
+  const dockerfile = `FROM nginx:alpine
+COPY . /usr/share/nginx/html
+RUN echo 'server { listen 80; root /usr/share/nginx/html; index index.html index.htm; location / { try_files $uri $uri/ /index.html; } }' > /etc/nginx/conf.d/default.conf
+EXPOSE 80
+`;
   return { runtime: 'static', dockerfile, exposePort: 80 };
+}
+
+function createTarballSync(files) {
+  const tarPath = path.join(os.tmpdir(), `deploy-${Date.now()}.tar.gz`);
+  const tmpDir = path.join(os.tmpdir(), `deploy-src-${Date.now()}`);
+  fs.mkdirSync(tmpDir, { recursive: true });
+  for (const file of files) {
+    const relPath = file.path ? path.join(file.path.replace(/^\//, ''), file.name) : file.name;
+    assertSafeRelPath(relPath);
+    const fullPath = path.join(tmpDir, relPath);
+    fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+    fs.writeFileSync(fullPath, file.content || '');
+  }
+  try {
+    execSync(`tar -czf '${tarPath}' -C '${tmpDir}' .`);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  } catch (_) {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    throw new Error('Failed to create tarball');
+  }
+  return tarPath;
 }
 
 async function deployProject(subdomain, files) {
@@ -177,42 +236,58 @@ async function deployProject(subdomain, files) {
 
   await sshExec(`mkdir -p ${deploymentDir}`);
 
-  for (const file of files) {
-    const relPath = file.path
-      ? path.join(file.path.replace(/^\//, ''), file.name)
-      : file.name;
-    for (const segment of relPath.split('/')) {
-      if (segment === '..' || !/^[a-zA-Z0-9._-]+$/.test(segment)) throw new Error('Invalid file path');
-    }
-    await writeRemoteFile(`${deploymentDir}/${relPath}`, file.content || '');
-  }
 
   if (dockerfile) {
     await writeRemoteFile(`${deploymentDir}/Dockerfile`, dockerfile);
+    await writeRemoteFile(`${deploymentDir}/.dockerignore`, 'node_modules\nnpm-debug.log\n.git\n.env\n.env.*\n__pycache__\n*.pyc\n*.pyo\n*.log\ncoverage\n.nyc_output\ndist\nbuild\n.venv\nvenv\n');
   }
 
-  await sshExec(`docker build -t ${imageTag} ${deploymentDir}`).catch(err => {
+  const fileEntries = files.map(f => ({
+    name: f.name,
+    path: f.path ? path.join(f.path.replace(/^\//, ''), f.name) : f.name,
+    content: typeof f.content === 'string' ? f.content : (f.content || '')
+  }));
+  // Validate before tarball + fallback: blocks local tmpDir escape,
+  // Tar Slip on the VPS, and remote-path breakout.
+  for (const file of fileEntries) {
+    assertSafeRelPath(file.path);
+  }
+
+  try {
+    const tarPath = createTarballSync(fileEntries);
+    const tarB64 = Buffer.from(fs.readFileSync(tarPath)).toString('base64');
+    await sshExec(`mkdir -p '${deploymentDir}' && printf '%s' '${tarB64}' | base64 -d | tar -xzf - -C '${deploymentDir}'`);
+    fs.unlinkSync(tarPath);
+  } catch (tarErr) {
+    for (const file of fileEntries) {
+      const relPath = file.path ? path.join(file.path.replace(/^\//, ''), file.name) : file.name;
+      await writeRemoteFile(`${deploymentDir}/${relPath}`, file.content || '');
+    }
+  }
+
+  await sshExec(`docker build --force-rm --no-cache -t ${imageTag} '${deploymentDir}'`).catch(err => {
+    const logs = sshExec(`docker logs ${nextContainerName} 2>&1 || true`).catch(() => '');
     throw new Error(`Docker build failed: ${err.message}`);
   });
 
-  const existingContainer = (await sshExec(`docker ps -q --filter "name=^/${containerName}$" 2>/dev/null || true`).catch(() => '')).trim();
+  const existingContainer = (await sshExec(`docker ps -q --filter "name=${containerName}" 2>/dev/null || true`).catch(() => '')).trim();
 
   const runScript = `#!/bin/bash
-  docker rm -f ${nextContainerName} 2>/dev/null || true
-  docker run -d \\
-    --name ${nextContainerName} \\
-    --restart unless-stopped \\
-    --cap-drop ALL \\
-    --security-opt no-new-privileges \\
-    --memory 512m \\
-    --cpus 1 \\
-    --pids-limit 100 \\
-    --label 'traefik.enable=true' \\
-    --label 'traefik.http.routers.${sanitizedSubdomain}.rule=Host(\`${sanitizedSubdomain}.${DOMAIN}\`) || Host(\`www.${sanitizedSubdomain}.${DOMAIN}\`)' \\
-    --label 'traefik.http.routers.${sanitizedSubdomain}.entrypoints=websecure' \\
-    --label 'traefik.http.routers.${sanitizedSubdomain}.tls.certresolver=letsencrypt' \\
-    --label 'traefik.http.services.${sanitizedSubdomain}.loadbalancer.server.port=${exposePort}' \\
-    ${imageTag}
+docker rm -f ${nextContainerName} 2>/dev/null || true
+docker run -d \\
+  --name ${nextContainerName} \\
+  --restart unless-stopped \\
+  --cap-drop ALL \\
+  --security-opt no-new-privileges \\
+  --memory 512m \\
+  --cpus 1 \\
+  --pids-limit 100 \\
+  --label 'traefik.enable=true' \\
+  --label 'traefik.http.routers.${sanitizedSubdomain}.rule=Host(\`${sanitizedSubdomain}.${DOMAIN}\`) || Host(\`www.${sanitizedSubdomain}.${DOMAIN}\`)' \\
+  --label 'traefik.http.routers.${sanitizedSubdomain}.entrypoints=websecure' \\
+  --label 'traefik.http.routers.${sanitizedSubdomain}.tls.certresolver=letsencrypt' \\
+  --label 'traefik.http.services.${sanitizedSubdomain}.loadbalancer.server.port=${exposePort}' \\
+  ${imageTag}
 `;
 
   await writeRemoteFile(`${deploymentDir}/run.sh`, runScript);
@@ -232,7 +307,39 @@ async function deployProject(subdomain, files) {
 
   try { await sshExec(`docker image prune -f 2>/dev/null || true`); } catch (_) {}
 
+  try {
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    const health = await sshExec(`docker inspect --format='{{.State.Running}}' ${containerName} 2>/dev/null || echo 'false'`);
+    if (health !== 'true') {
+      throw new Error('Container is not running after deployment');
+    }
+    console.log(`[deploy] ${containerName} health check passed`);
+  } catch (healthErr) {
+    console.warn('[deploy] Health check issue:', healthErr.message);
+  }
+
   return { containerId: nextContainerId, url: `https://${sanitizedSubdomain}.${DOMAIN}` };
+}
+
+async function writeRemoteFile(remotePath, content) {
+  // Block quote-breakout (remote RCE) and traversal: remotePath is built
+  // from server-side deploymentDir + validated relPath, but validate anyway.
+  if (remotePath.includes('..') || remotePath.includes("'") || remotePath.includes('\n')) throw new Error('Invalid remote path');
+  const base64 = Buffer.from(content || '').toString('base64');
+  const parentDir = remotePath.includes('/')
+    ? remotePath.slice(0, remotePath.lastIndexOf('/'))
+    : '.';
+  await sshExec(`mkdir -p '${parentDir}'`);
+  await sshExec(`printf '%s' '${base64}' | base64 -d > '${remotePath}'`);
+}
+
+// Shared validation: every file path segment must be a plain filename.
+// Protects local tmpDir writes, tarball entries (Tar Slip on the VPS),
+// and the per-file fallback loop.
+function assertSafeRelPath(relPath) {
+  for (const segment of String(relPath).split('/')) {
+    if (segment === '..' || !/^[a-zA-Z0-9._-]+$/.test(segment)) throw new Error('Invalid file path');
+  }
 }
 
 async function stopDeployment(subdomain) {
@@ -254,4 +361,4 @@ async function isSubdomainTaken(subdomain) {
   } catch (_) { return false; }
 }
 
-module.exports = { sshExec, writeRemoteFile, detectRuntime, deployProject, stopDeployment, isSubdomainTaken };
+module.exports = { sshExec, writeRemoteFile, detectRuntime, deployProject, stopDeployment, isSubdomainTaken, createTarballSync };
