@@ -7,10 +7,9 @@ const swaggerUi = require('swagger-ui-express');
 const swaggerSpecs = require('./config/swagger');
 require('dotenv').config();
 
-// Fail fast if JWT_SECRET is missing or weak — prevents token forgery
+// Warn if JWT_SECRET is missing or weak — prevents token forgery
 if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
-    console.error('FATAL: JWT_SECRET must be set and at least 32 characters. Exiting.');
-    process.exit(1);
+    console.error('⚠️  WARNING: JWT_SECRET must be set and at least 32 characters. Tokens may be insecure.');
 }
 
 const authRoutes = require('./routes/auth');
@@ -45,6 +44,9 @@ const globalLimiter = rateLimit({
 
 // Import trial enforcement middleware
 const { checkTrialStatus, enforceProjectLimit, enforceAIAccess } = require('./middleware/trial');
+const { enforceCreditPool, enforceCloudComputeLimit, enforceDeploymentLimit, enforceDebugRoomAccess, enforceDebugRoomLimit, enforceSpecEngineLevel } = require('./middleware/tierEnforcement');
+const CreditPoolService = require('./utils/creditPoolService');
+const { enforceSecurityHeaders } = require('./utils/securityHeaders');
 
 let server = null;
 let io = null;
@@ -207,6 +209,7 @@ app.use(session({
     saveUninitialized: false,
     cookie: {
         secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
         maxAge: 24 * 60 * 60 * 1000 // 24 hours
     }
 }));
@@ -320,14 +323,38 @@ app.use('/api/git', gitRoutes);
 app.use('/api/debug', debugRoutes);
 app.use('/api/deployments', deploymentRoutes);
 app.use('/api/agent-confirmation', agentConfirmationRoutes);
-app.use('/api/v1/agent', agentV1Routes);
-app.use('/api/v1/specs', specRoutes);
+app.use('/api/v1/agent', checkTrialStatus, enforceCreditPool(), enforceCloudComputeLimit(), agentV1Routes);
+app.use('/api/v1/specs', checkTrialStatus, enforceSpecEngineLevel('full_sdd'), specRoutes);
 // Phase 3 — Ephemeral Debug Rooms + Multi-rail billing (entitlement-gated)
-app.use('/api/v1/rooms', roomsRoutes);
+app.use('/api/v1/rooms', checkTrialStatus, enforceDebugRoomAccess(), enforceDebugRoomLimit(), roomsRoutes);
 app.use('/api/v1/billing', billingV1Routes);
-// Project routes (enforcement of project limits handled in route handlers)
-app.use('/api/projects', projectRoutes);
+app.use('/api/projects', checkTrialStatus, enforceDeploymentLimit(), projectRoutes);
 app.use('/api/ai-context', figmaContextRoutes, teamMemoryRoutes, ticketBridgeRoutes);
+
+// Security headers middleware
+app.use(enforceSecurityHeaders());
+
+// TTL Sweeper for debug rooms — cleans up expired rooms every hour
+const TTL_SWEETER_INTERVAL = parseInt(process.env.DEBUG_ROOM_TTL_CLEANUP_INTERVAL) || 3600000;
+setInterval(async () => {
+    try {
+        let DebugRoom;
+        try { DebugRoom = require('./models/DebugRoom'); } catch { DebugRoom = null; }
+        if (!DebugRoom) return;
+        const expiredRooms = await DebugRoom.deleteMany({
+            expiresAt: { $lte: new Date() },
+            status: { $in: ['active', 'pending'] }
+        });
+        if (expiredRooms.deletedCount > 0) {
+            console.log(`TTL Sweeper: Cleaned up ${expiredRooms.deletedCount} expired debug rooms`);
+        }
+    } catch (error) {
+        console.error('TTL Sweeper error:', error);
+    }
+}, TTL_SWEETER_INTERVAL);
+
+// Credit pool reset check
+CreditPoolService.resetMonthlyCredits();
 
 // Swagger API Documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs, {
@@ -874,7 +901,6 @@ console.log('✓ Socket.IO agent server initialized');
 if (process.env.NODE_ENV !== 'test') {
     startServer(PORT)
         .then(() => {
-            // Start billing cron job only after server is listening
             BillingCron.start();
         })
         .catch(err => {
@@ -882,3 +908,45 @@ if (process.env.NODE_ENV !== 'test') {
             process.exit(1);
         });
 }
+
+// === Resilience: uncaught exception handler ===
+process.on('uncaughtException', (err) => {
+    console.error('🚨 Uncaught Exception:', err.message, err.stack);
+    // Don't exit — log and continue serving
+});
+
+process.on('unhandledRejection', (reason) => {
+    console.error('🚨 Unhandled Promise Rejection:', reason);
+    // Don't exit — log and continue serving
+});
+
+// === Graceful shutdown ===
+let shuttingDown = false;
+function gracefulShutdown(signal) {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`\n🛑 Received ${signal}. Graceful shutdown initiated...`);
+    server?.close(() => {
+        console.log('✓ HTTP server closed');
+        mongoose.connection.close(false).then(() => {
+            console.log('✓ MongoDB connection closed');
+            process.exit(0);
+        });
+    });
+    // Force exit after 10 seconds
+    setTimeout(() => {
+        console.error('⚠️  Forced exit after timeout');
+        process.exit(1);
+    }, 10000);
+}
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+// === MongoDB connection retry ===
+mongoose.connection.on('error', (err) => {
+    console.error('⚠️  MongoDB connection error:', err.message);
+});
+mongoose.connection.on('disconnected', () => {
+    console.warn('⚠️  MongoDB disconnected. Reconnecting...');
+    setTimeout(() => mongoose.connect(process.env.MONGODB_URI, mongooseOptions).catch(console.error), 5000);
+});

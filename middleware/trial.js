@@ -1,4 +1,5 @@
 const Subscription = require('../models/Subscription');
+const Entitlement = require('../server/models/EntitlementModel');
 const jwt = require('jsonwebtoken');
 const emailService = require('../utils/emailServiceResend');
 const User = require('../models/User');
@@ -13,14 +14,28 @@ async function getOrCreateSubscription(userId) {
     if (!subscription) {
         subscription = new Subscription({
             userId,
-            tier: 'starter',
-            status: 'trial',
-            trialStartedAt: new Date(),
-            trialEndsAt: new Date(Date.now() + (14 * 24 * 60 * 60 * 1000)),
-            pricing: { amount: 0, currency: 'USD', interval: 'trial' }
+            tier: 'developer',
+            status: 'active',
+            creditPool: { monthlyLimit: 0, usedThisMonth: 0, resetAt: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1) },
+            cloudComputeHours: { monthlyLimit: 0, usedThisMonth: 0 },
+            maxConcurrentAgentJobs: 0,
+            taskTimeoutMinutes: 5,
+            maxDebugHostRooms: 0,
+            maxDebugParticipants: 0,
+            maxActiveDeployments: 1,
+            specEngineLevel: 'read_only',
+            webrtcVoiceEnabled: false,
+            dataRetentionDays: 7
         });
-        await subscription.save();
-        console.log(`Auto-created starter trial subscription for user ${userId}`);
+        try {
+            await subscription.save();
+        } catch (saveErr) {
+            if (saveErr.code === 11000) {
+                subscription = await Subscription.findOne({ userId });
+            } else {
+                throw saveErr;
+            }
+        }
     }
     return subscription;
 }

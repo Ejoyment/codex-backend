@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../middleware/auth');
+const { enforceConcurrentJobs, enforceTaskTimeout, enforceCreditPool, enforceCloudComputeLimit } = require('../middleware/tierEnforcement');
+const CreditPoolService = require('../utils/creditPoolService');
 const AgentExecution = require('../models/AgentExecution');
 const LocalTask = require('../models/LocalTask');
 const SpecModel = require('../models/SpecModel');
@@ -34,12 +36,17 @@ function spawnAgentWorker(executionId, taskId, workspaceId, specId, provider, lo
   });
 }
 
-router.post('/delegate', authenticateToken, async (req, res) => {
+router.post('/delegate', authenticateToken, enforceConcurrentJobs(), enforceTaskTimeout(), enforceCreditPool(), enforceCloudComputeLimit(), async (req, res) => {
   try {
     const { taskId, taskTitle, sessionId, workspaceId, summary = '', specId, provider = 'gemini', localPrivacyMode = false } = req.body;
 
     if (!taskId && !taskTitle) {
       return res.status(400).json({ success: false, message: 'taskId or taskTitle is required' });
+    }
+
+    const { tier } = req.subscription;
+    if (tier === 'developer') {
+      return res.status(403).json({ success: false, message: 'Agent delegation requires Pro tier or higher. Use local BYOM.', requiresUpgrade: true });
     }
 
     let task = null;

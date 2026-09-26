@@ -11,142 +11,219 @@ import {
   MagneticButton,
 } from '../components/AnimationKit';
 
+const TIER_BADGE = {
+  developer: 'Free',
+  pro: 'Popular',
+  pro_plus: 'Power',
+  team_standard: 'Team',
+  team_premium: 'Enterprise',
+  enterprise: 'Custom',
+};
+
+const TIER_BADGE_COLORS = {
+  developer: 'bg-[#525764]',
+  pro: 'bg-[#2fd6e6] text-[#08080b]',
+  pro_plus: 'bg-[#a78bfa]',
+  team_standard: 'bg-[#34d399]',
+  team_premium: 'bg-[#e5b84a] text-[#08080b]',
+  enterprise: 'bg-[#f87171]',
+};
+
 const PLANS = [
   {
     name: 'Developer',
+    tierKey: 'developer',
     price: 0,
-    monthlyNote: '–',
-    yearly: '–',
-    blurb: 'A real workspace for solo builds.',
-    cta: 'Start for free',
+    monthlyNote: '/mo',
+    yearly: 0,
+    blurb: 'For open-source contributors, students, and evaluation.',
+    cta: 'Start free',
     href: '/signup',
+    badge: TIER_BADGE.developer,
+    badgeColor: TIER_BADGE_COLORS.developer,
     features: [
+      ['Local models via Ollama / LM Studio', true],
+      ['In-browser WebContainers', true],
+      ['BYOM — bring your own API keys', true],
+      ['1 active preview deployment', true],
       ['1 workspace', true],
-      ['10 projects', true],
-      ['Basic AI assistance', true],
-      ['Sandbox terminal', true],
-      ['1 deployments', false],
-      ['Real-time co-editing', false],
-      ['Advanced AI memory', false],
-      ['SSO & audit logs', false],
+      ['Read-only spec viewing', true],
+      ['Debug Rooms', 'Viewer Only'],
+      ['AI credit pool', '$0 — cloud disabled'],
+      ['WebRTC co-debugging', 'Disabled'],
     ],
   },
   {
     name: 'Pro',
+    tierKey: 'pro',
     price: 20,
+    yearlyPrice: 16,
     monthlyNote: '/mo',
     yearly: 192,
     featured: true,
-    blurb: 'For teams that ship on a cadence.',
+    blurb: 'For solo developers coding daily.',
     cta: 'Get started',
     href: '/signup',
+    badge: TIER_BADGE.pro,
+    badgeColor: TIER_BADGE_COLORS.pro,
     features: [
-      ['Everything in Starter', true],
-      ['Unlimited projects', true],
-      ['Advanced AI pair · codebase memory', true],
-      ['Real-time co-editing · presence', true],
-      ['Tasks · standups · meetings', true],
-      ['GitHub · Slack · Figma integrations', true],
-      ['Priority support', true],
-      ['SSO & audit logs', false],
+      ['Everything in Developer', true],
+      ['$20/month AI credit pool', true],
+      ['Unlimited auto-mode usage', true],
+      ['10 hrs/month cloud compute', true],
+      ['1 concurrent agent job', true],
+      ['15-minute task timeout', true],
+      ['Full SDD engine (.spec.md)', true],
+      ['1 active debug room (2 peers)', true],
+      ['WebRTC voice co-debugging', true],
+      ['3 active deployments', true],
+      ['Local Privacy Mode', true],
+      ['24-hour priority support', true],
     ],
   },
   {
     name: 'Pro+',
+    tierKey: 'pro_plus',
     price: 60,
+    yearlyPrice: 48,
     monthlyNote: '/mo',
     yearly: 576,
-    blurb: 'For orgs with compliance to meet.',
-    cta: 'Contact sales',
-    href: '/contact',
+    blurb: 'For power users running continuous agents.',
+    cta: 'Get started',
+    href: '/signup',
+    badge: TIER_BADGE.pro_plus,
+    badgeColor: TIER_BADGE_COLORS.pro_plus,
     features: [
-      ['Everything in Professional', true],
-      ['SSO authentication', true],
-      ['Audit logs', true],
-      ['Dedicated account manager', true],
-      ['1-hour support SLA', true],
-      ['Custom contracts', true],
-      ['SOC 2-ready infrastructure', true],
+      ['Everything in Pro', true],
+      ['$70/month AI credit pool', true],
+      ['50 hrs/month cloud compute', true],
+      ['3 parallel agent jobs', true],
+      ['30-minute task timeout', true],
+      ['Real-time AST drift detection', true],
+      ['3 active debug rooms (4 peers)', true],
+      ['30-day data retention', true],
+      ['10 active deployments', true],
+      ['Monaco gutter markers', true],
     ],
   },
   {
     name: 'Team Standard',
+    tierKey: 'team_standard',
     price: 40,
-    monthlyNote: '/seat',
+    yearlyPrice: 32,
+    monthlyNote: '/seat/mo',
     yearly: 384,
-    blurb: 'For orgs with compliance to meet.',
+    blurb: 'For small-to-mid engineering teams.',
     cta: 'Contact sales',
     href: '/contact',
+    badge: TIER_BADGE.team_standard,
+    badgeColor: TIER_BADGE_COLORS.team_standard,
     features: [
-      ['Everything in Professional', true],
-      ['SSO authentication', true],
-      ['Audit logs', true],
-      ['Dedicated account manager', true],
-      ['1-hour support SLA', true],
-      ['Custom contracts', true],
-      ['SOC 2-ready infrastructure', true],
+      ['Everything in Pro+', true],
+      ['$40/seat/month pooled credits', true],
+      ['25 hrs/seat/month cloud compute', true],
+      ['2 active jobs per seat', true],
+      ['Unlimited debug rooms (4 peers)', true],
+      ['20 active deployments', true],
+      ['Shared Organization Spec Library', true],
+      ['Role-Based Access Control (RBAC)', true],
+      ['Centralized billing (Paystack, Flutterwave, Stripe)', true],
+      ['Seat management & spending controls', true],
+      ['Org-wide Privacy Mode', true],
     ],
   },
   {
     name: 'Team Premium',
+    tierKey: 'team_premium',
     price: 120,
-    monthlyNote: '/seat',
+    yearlyPrice: 96,
+    monthlyNote: '/seat/mo',
     yearly: 1152,
-    blurb: 'For orgs with compliance to meet.',
+    blurb: 'For high-throughput engineering orgs.',
     cta: 'Contact sales',
     href: '/contact',
+    badge: TIER_BADGE.team_premium,
+    badgeColor: TIER_BADGE_COLORS.team_premium,
     features: [
-      ['Everything in Professional', true],
-      ['SSO authentication', true],
-      ['Audit logs', true],
-      ['Dedicated account manager', true],
-      ['1-hour support SLA', true],
-      ['Custom contracts', true],
-      ['SOC 2-ready infrastructure', true],
+      ['Everything in Team Standard', true],
+      ['$200/seat/month pooled credits', true],
+      ['120 hrs/seat/month cloud compute', true],
+      ['5 parallel agent jobs per seat', true],
+      ['60-minute task timeout', true],
+      ['Priority queue dispatch', true],
+      ['Unlimited debug rooms (8 peers)', true],
+      ['Cross-repo spec engine', true],
+      ['Persistent session recording', true],
+      ['Automated variable redaction', true],
     ],
   },
   {
     name: 'Enterprise',
-    price: 'Custom Quote',
+    tierKey: 'enterprise',
+    price: 'Custom',
     monthlyNote: '–',
     yearly: '–',
-    blurb: 'For orgs with compliance to meet.',
+    blurb: 'For large regulated enterprises.',
     cta: 'Contact sales',
     href: '/contact',
+    badge: TIER_BADGE.enterprise,
+    badgeColor: TIER_BADGE_COLORS.enterprise,
     features: [
-      ['Everything in Professional', true],
-      ['SSO authentication', true],
-      ['Audit logs', true],
+      ['Everything in Team Premium', true],
+      ['Custom pooled credits & volume discounts', true],
+      ['Air-gapped gVisor / Firecracker clusters', true],
+      ['Dedicated queue — no timeout', true],
+      ['Custom model routing (Azure, AWS Bedrock)', true],
+      ['SAML / OIDC Single Sign-On', true],
+      ['SCIM automated provisioning', true],
+      ['Centralized audit logging', true],
+      ['99.9% uptime SLA', true],
       ['Dedicated account manager', true],
-      ['1-hour support SLA', true],
-      ['Custom contracts', true],
-      ['SOC 2-ready infrastructure', true],
+      ['Custom BAA / security agreements', true],
+      ['On-premise Pinecone / Weaviate', true],
     ],
   },
 ];
 
 const COMPARE = [
-  ['Included Model Credit Pool', '$0 (BYOM Only)', '$20/month', '$70/month','$40/seat', '$200/seat', 'Custom pooled'],
-  ['In-Browser WebContainers', 'Unlimited', 'Unlimited', 'Unlimited','Unlimited','Unlimited','Unlimited'],
-  ['Cloud MicroVM Compute Hours', 'Disabled', '10 hrs/month', '50 hrs/month', '25 hrs/seat/mo', '120 hrs/seat/mo', 'Custom Cluster'],
-  ['Local Models(Ollama/LM Studio)', '–', '✓', '✓'],
-  ['Tasks & standups', '–', '✓', '✓'],
-  ['Integrations', '–', 'GitHub · Slack · Figma', '+ custom'],
-  ['Support response', 'Community', '24h', '1h SLA'],
-  ['SSO', '–', '–', '✓'],
-  ['Audit logs', '–', '–', '✓'],
+  ['Monthly AI Credit Pool', '$0 (BYOM Only)', '$20/month', '$70/month', '$40/seat', '$200/seat', 'Custom'],
+  ['Cloud MicroVM Compute', 'Disabled', '10 hrs/mo', '50 hrs/mo', '25 hrs/seat', '120 hrs/seat', 'Custom'],
+  ['Concurrent Agent Jobs', 'Local Only', '1 active', '3 parallel', '2/seat', '5/seat', 'Dedicated Queue'],
+  ['Task Timeout', '5 minutes', '15 minutes', '30 minutes', '30 minutes', '60 minutes', 'No Limit'],
+  ['Debug Rooms', 'Viewer Only', '1 room (2 peers)', '3 rooms (4 peers)', 'Unlimited (4)', 'Unlimited (8)', 'Custom'],
+  ['Spec Engine', 'Read-Only', 'Full SDD', 'Real-Time Drift', 'Team Library', 'Cross-Repo', 'Custom'],
+  ['Active Deployments', '1 (sleeps 15m)', '3', '10', '20', 'Unlimited', 'Dedicated Edge'],
+  ['WebRTC Voice', 'Disabled', 'Included', 'Included', 'Included', 'Included', 'Included'],
+  ['SSO / Audit Logs', '–', '–', '–', '–', '–', 'SAML + SCIM'],
+  ['Local Models (BYOM)', 'Unlimited', 'Unlimited', 'Unlimited', 'Unlimited', 'Unlimited', 'Unlimited'],
+  ['In-Browser WebContainers', 'Unlimited', 'Unlimited', 'Unlimited', 'Unlimited', 'Unlimited', 'Unlimited'],
 ];
 
 const FAQ = [
-  ['Do I need a credit card to start?', 'No. The Starter workspace is free forever, with no card on file. You only add one when you upgrade.'],
-  ['What does “real-time co-editing” actually mean?', 'Multiple developers edit the same file simultaneously with live cursors, powered by Yjs CRDT. No locks, no merge conflicts for concurrent edits.'],
-  ['Which payment methods work?', 'Buildrs bills through Stripe, Paystack, and Flutterwave, so teams in Africa, Asia, and beyond pay in a local way.'],
-  ['How is my workspace migrated?', 'Repository connection is one click from GitHub, and a built-in importer moves projects and docs over. Most teams are set up in under an hour.'],
-  ['Can I downgrade or cancel anytime?', 'Yes, from Billing in your settings. Paid plans auto-downgrade to Starter at the end of the current period.'],
+  ['What happens when I run out of AI credits?', 'Paid accounts automatically drop back to Unlimited Auto Mode or local BYOM. You can enable Pay-As-You-Go overages at exact API cost, or upgrade to a higher tier.'],
+  ['How does team pooled credit work?', 'On Team plans, seat credits pool into a single organization balance. If one engineer burns through their allocation, others can still use the shared pool.'],
+  ['Which payment methods work?', 'Buildrs bills through Stripe, Paystack, and Flutterwave. Teams in African markets (NGN, GHS, KES, ZAR) are routed to Paystack or Flutterwave automatically.'],
+  ['Can I switch tiers anytime?', 'Yes. Upgrade or downgrade from Billing in your settings. Changes take effect at the start of your next billing cycle.'],
+  ['Do I need a credit card for the Developer tier?', 'No. The Developer workspace is free forever with no card on file. You only add one when upgrading.'],
+  ['What is Local Privacy Mode?', 'When enabled, all AI prompts and embeddings are processed locally via Ollama or LM Studio. No data leaves your machine, ever.'],
 ];
 
 export default function Pricing() {
   const [yearly, setYearly] = useState(true);
+
+  const getPrice = (plan) => {
+    if (plan.price === 'Custom') return 'Custom';
+    if (yearly && plan.yearlyPrice) {
+      return `$${Math.round(plan.yearlyPrice)}`;
+    }
+    return plan.price === 0 ? '$0' : `$${plan.price}`;
+  };
+
+  const getMonthlyNote = (plan) => {
+    if (plan.price === 'Custom') return '–';
+    if (plan.tierKey === 'team_standard' || plan.tierKey === 'team_premium') return '/seat/mo';
+    return '/mo';
+  };
 
   return (
     <>
@@ -154,7 +231,7 @@ export default function Pricing() {
         <title>Pricing — BuildrsHQ</title>
         <meta
           name="description"
-          content="Free Starter workspace. Professional for shipping teams. Enterprise with SSO, audit logs, and SOC 2-ready infrastructure. Paid the way your team pays."
+          content="6 tiers from free Developer to Enterprise. AI credit pools, cloud compute, concurrent agent jobs, debug rooms, and spec engine — all priced for your workflow."
         />
         <link rel="icon" href="/buildrs.png" />
       </Head>
@@ -173,39 +250,39 @@ export default function Pricing() {
             </ScrollReveal>
             <ScrollReveal delay={0.1}>
               <h1 className="mkt-h1">
-                Priced so teams
+                Six tiers, one
                 <br />
-                just <span className="accent">start</span>.
+                <span className="accent">workspace.</span>
               </h1>
             </ScrollReveal>
             <ScrollReveal delay={0.2}>
               <p className="mkt-sub mt-6 max-w-[520px]">
-                A free workspace that is actually free, a professional tier that scales with your
-                team, and an enterprise tier for the orgs that need it.
+                From free solo builds to enterprise-grade AI orchestration. Pick the
+                tier that matches your workflow, scale when you need to.
               </p>
             </ScrollReveal>
 
             <ScrollReveal delay={0.3}>
-            <div className="mt-9 inline-flex items-center gap-1 rounded-lg border border-[#ffffff12] bg-[#0d0d12] p-1">
-              <button
-                type="button"
-                onClick={() => setYearly(false)}
-                className={`mkt-mono rounded-md px-4 py-2 text-xs tracking-wide transition ${
-                  !yearly ? 'bg-[#1b1b22] text-white' : 'text-[#686e7c] hover:text-white'
-                }`}
-              >
-                monthly
-              </button>
-              <button
-                type="button"
-                onClick={() => setYearly(true)}
-                className={`mkt-mono flex items-center gap-2 rounded-md px-4 py-2 text-xs tracking-wide transition ${
-                  yearly ? 'bg-[#1b1b22] text-white' : 'text-[#686e7c] hover:text-white'
-                }`}
-              >
-                yearly <span className="text-[#2fd6e6]">save ~17%</span>
-              </button>
-            </div>
+              <div className="mt-9 inline-flex items-center gap-1 rounded-lg border border-[#ffffff12] bg-[#0d0d12] p-1">
+                <button
+                  type="button"
+                  onClick={() => setYearly(false)}
+                  className={`mkt-mono rounded-md px-4 py-2 text-xs tracking-wide transition ${
+                    !yearly ? 'bg-[#1b1b22] text-white' : 'text-[#686e7c] hover:text-white'
+                  }`}
+                >
+                  monthly
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setYearly(true)}
+                  className={`mkt-mono flex items-center gap-2 rounded-md px-4 py-2 text-xs tracking-wide transition ${
+                    yearly ? 'bg-[#1b1b22] text-white' : 'text-[#686e7c] hover:text-white'
+                  }`}
+                >
+                  yearly <span className="text-[#2fd6e6]">save ~20%</span>
+                </button>
+              </div>
             </ScrollReveal>
           </div>
         </section>
@@ -221,7 +298,14 @@ export default function Pricing() {
                 }`}
               >
                 {plan.featured && (
-                  <span className="mkt-pill live absolute right-6 top-6">popular</span>
+                  <span className={`mkt-pill live absolute right-6 top-6 ${plan.badgeColor}`}>
+                    {plan.badge}
+                  </span>
+                )}
+                {!plan.featured && (
+                  <span className={`mkt-pill absolute right-6 top-6 ${plan.badgeColor}`}>
+                    {plan.badge}
+                  </span>
                 )}
                 <p className="mkt-mono text-[11px] uppercase tracking-widest text-[#686e7c]">
                   {plan.name}
@@ -230,19 +314,20 @@ export default function Pricing() {
 
                 <div className="mt-7 flex items-end gap-2">
                   <span className="text-[44px] font-semibold leading-none tracking-tight text-white">
-                    {yearly && plan.yearly !== '–' && plan.price > 0
-                      ? `$${Math.round(plan.yearly / 12)}`
-                      : plan.price === 0
-                        ? '$0'
-                        : `$${plan.price}`}
+                    {getPrice(plan)}
                   </span>
                   <span className="mkt-mono pb-1 text-xs text-[#686e7c]">
-                    {plan.price === 0 ? 'free forever' : plan.monthlyNote}
+                    {getMonthlyNote(plan)}
                   </span>
                 </div>
-                {yearly && plan.yearly !== '–' && plan.price > 0 && (
+                {yearly && plan.yearlyPrice && plan.price !== 'Custom' && (
                   <p className="mkt-mono mt-1.5 text-[11px] text-[#525764]">
-                    or ${plan.yearly}/yr billed annually
+                    or ${plan.yearlyPrice}/yr billed annually
+                  </p>
+                )}
+                {plan.price === 'Custom' && (
+                  <p className="mkt-mono mt-1.5 text-[11px] text-[#525764]">
+                    Contact sales for a custom quote
                   </p>
                 )}
 
@@ -262,12 +347,12 @@ export default function Pricing() {
                     <li key={label} className="flex items-start gap-3 text-[13px]">
                       <span
                         className={`mkt-mono mt-0.5 flex h-4 w-4 items-center justify-center text-[10px] ${
-                          on ? 'text-[#2fd6e6]' : 'text-[#3a3d46]'
+                          typeof on === 'boolean' ? (on ? 'text-[#2fd6e6]' : 'text-[#3a3d46]') : 'text-[#525764]'
                         }`}
                       >
-                        {on ? '✓' : '·'}
+                        {typeof on === 'boolean' ? (on ? '✓' : '·') : on}
                       </span>
-                      <span className={on ? 'text-[#a8adba]' : 'text-[#525764]'}>{label}</span>
+                      <span className={typeof on === 'boolean' ? (on ? 'text-[#a8adba]' : 'text-[#525764]') : 'text-[#a8adba]'}>{label}</span>
                     </li>
                   ))}
                 </ul>
@@ -281,22 +366,25 @@ export default function Pricing() {
           </p>
         </section>
 
-        {/* Compare */}
+        {/* Feature Comparison */}
         <section className="border-t border-[#ffffff0d]">
-          <div className="mx-auto max-w-[900px] px-5 py-24 sm:px-8">
+          <div className="mx-auto max-w-[1100px] px-5 py-24 sm:px-8">
             <ScrollReveal>
               <p className="mkt-eyebrow mb-8">
-                <span className="dot">●</span> compare
+                <span className="dot">●</span> feature comparison
               </p>
             </ScrollReveal>
             <ScrollReveal delay={0.1}>
             <div className="overflow-x-auto">
-              <table className="mkt-table mkt-mono min-w-[560px] text-[13px]">
+              <table className="mkt-table mkt-mono min-w-[640px] text-[13px]">
                 <thead>
                   <tr>
-                    <th>What</th>
-                    <th>Starter</th>
-                    <th>Professional</th>
+                    <th>Feature</th>
+                    <th>Developer</th>
+                    <th>Pro</th>
+                    <th>Pro+</th>
+                    <th>Team Standard</th>
+                    <th>Team Premium</th>
                     <th>Enterprise</th>
                   </tr>
                 </thead>
@@ -305,16 +393,54 @@ export default function Pricing() {
                     <tr key={row[0]}>
                       <td className="!text-[#eceef1]">{row[0]}</td>
                       <td>{row[1]}</td>
-                      <td className={row[2].startsWith('✓') || row[2].startsWith('Advanced') ? '!text-[#2fd6e6]' : ''}>
-                        {row[2]}
-                      </td>
-                      <td className={row[3].startsWith('✓') ? '!text-[#2fd6e6]' : ''}>{row[3]}</td>
+                      <td className={row[2] !== 'Disabled' && row[2] !== 'Local Only' && row[2] !== '–' ? '!text-[#2fd6e6]' : ''}>{row[2]}</td>
+                      <td className={row[3] !== '–' && row[3] !== 'Disabled' ? '!text-[#a78bfa]' : ''}>{row[3]}</td>
+                      <td className={row[4] !== '–' && row[4] !== 'Disabled' ? '!text-[#34d399]' : ''}>{row[4]}</td>
+                      <td className={row[5] !== '–' && row[5] !== 'Disabled' ? '!text-[#e5b84a]' : ''}>{row[5]}</td>
+                      <td className="!text-[#f87171]">{row[6]}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
             </ScrollReveal>
+          </div>
+        </section>
+
+        {/* Credit Pool Mechanics */}
+        <section className="border-t border-[#ffffff0d]">
+          <div className="mx-auto max-w-[800px] px-5 py-24 sm:px-8">
+            <ScrollReveal>
+              <p className="mkt-eyebrow mb-8">
+                <span className="dot">●</span> how credits work
+              </p>
+            </ScrollReveal>
+            <StaggerChildren className="space-y-4" stagger={0.1}>
+              <StaggerItem>
+              <div className="bg-[#0d0d12] border border-[#ffffff0d] rounded-xl p-6">
+                <h3 className="text-[15px] font-semibold text-white mb-2">Auto Mode is free on all paid plans</h3>
+                <p className="text-[14px] text-[#9aa1ae]">Fast, cost-effective models route automatically. No credits burned. Only frontier models like Claude 3.5 Sonnet or GPT-4o draw from your monthly pool at published API rates.</p>
+              </div>
+              </StaggerItem>
+              <StaggerItem>
+              <div className="bg-[#0d0d12] border border-[#ffffff0d] rounded-xl p-6">
+                <h3 className="text-[15px] font-semibold text-white mb-2">What happens when credits run out</h3>
+                <p className="text-[14px] text-[#9aa1ae]">Paid accounts automatically drop back to Unlimited Auto Mode or local BYOM. You can enable Pay-As-You-Go overages at exact model API cost with zero markup, or upgrade to a higher tier.</p>
+              </div>
+              </StaggerItem>
+              <StaggerItem>
+              <div className="bg-[#0d0d12] border border-[#ffffff0d] rounded-xl p-6">
+                <h3 className="text-[15px] font-semibold text-white mb-2">Team credits are pooled</h3>
+                <p className="text-[14px] text-[#9aa1ae]">On Team plans, seat credits combine into a single organization balance. If one engineer burns through their allocation, others can still use the shared pool.</p>
+              </div>
+              </StaggerItem>
+              <StaggerItem>
+              <div className="bg-[#0d0d12] border border-[#ffffff0d] rounded-xl p-6">
+                <h3 className="text-[15px] font-semibold text-white mb-2">Credits reset monthly</h3>
+                <p className="text-[14px] text-[#9aa1ae]">Unused credits do not roll over. Your pool resets at the beginning of each billing cycle. Cloud compute hours follow the same monthly reset pattern.</p>
+              </div>
+              </StaggerItem>
+            </StaggerChildren>
           </div>
         </section>
 
@@ -353,7 +479,8 @@ export default function Pricing() {
             </ScrollReveal>
             <ScrollReveal delay={0.1}>
               <p className="mkt-sub mx-auto mt-5 max-w-[420px]">
-                The workspace is free forever for solo builds. Teams on a deadline start at $29/mo.
+                The Developer tier is free forever. Teams start at $20/mo with AI credits
+                and cloud compute included.
               </p>
             </ScrollReveal>
             <ScrollReveal delay={0.2}>
