@@ -170,6 +170,16 @@ router.post('/', authenticateToken, async (req, res) => {
 
         const DEPLOY_TIMEOUT = parseInt(process.env.DEPLOY_TIMEOUT_MS) || 180000;
 
+        // Send immediate response so client isn't blocked by docker build time
+        res.status(201).json({
+            success: true,
+            deployment: {
+                ...deployment.toObject(),
+                deployedUrl: null,
+                httpUrl: null
+            }
+        });
+
         setImmediate(async () => {
             try {
                 let containerId = null;
@@ -201,27 +211,18 @@ router.post('/', authenticateToken, async (req, res) => {
                     status: 'success'
                 });
                 console.log(`[deploy] ${sanitized}.buildrshq.dev is live`);
-
-                res.status(201).json({
-                    success: true,
-                    deployment: {
-                        ...deployment.toObject(),
-                        deployedUrl: url,
-                        httpUrl
-                    }
-                });
             } catch (err) {
                 console.error(`[deploy] ${sanitized} failed:`, err.message);
                 await Deployment.findByIdAndUpdate(deployId, {
                     status: 'failed',
                     errorMessage: err.message
                 });
-                res.status(500).json({ error: 'Failed to start deployment: ' + err.message });
             }
         });
         return;
     } catch (error) {
         console.error('Create deployment error:', error);
+        if (res.headersSent) return;
         const msg = error.code === 11000
             ? 'A deployment with this subdomain already exists.'
             : error.message || 'Failed to start deployment';
