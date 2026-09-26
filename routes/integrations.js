@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const Integration = require('../models/Integration');
 const axios = require('axios');
 const { authenticateToken } = require('../middleware/auth');
+const { createStateToken, verifyStateToken } = require('../utils/oauthState');
 
 /**
  * @swagger
@@ -85,7 +86,7 @@ router.get('/', authenticateToken, async (req, res) => {
 router.get('/github/auth', authenticateToken, (req, res) => {
     const redirectUri = `${process.env.BACKEND_URL}/api/integrations/github/callback`;
     const scope = 'repo,user,read:org';
-    const state = req.userId; // Pass userId as state
+    const state = createStateToken(req.userId); // Pass userId as state
     
     const githubAuthUrl = `https://github.com/login/oauth/authorize?client_id=${process.env.GITHUB_CLIENT_ID}&redirect_uri=${redirectUri}&scope=${scope}&state=${state}`;
     
@@ -118,7 +119,15 @@ router.get('/github/auth', authenticateToken, (req, res) => {
  */
 router.get('/github/callback', async (req, res) => {
     const { code, state } = req.query;
-    const userId = state;
+    let userId;
+    try {
+        userId = verifyStateToken(state);
+    } catch (e) {
+        return res.status(400).json({ success: false, message: 'Invalid state' });
+    }
+    if (!userId) {
+        return res.status(400).json({ success: false, message: 'Invalid state' });
+    }
 
     try {
         // Exchange code for access token
@@ -186,7 +195,7 @@ router.get('/github/callback', async (req, res) => {
 router.get('/slack/auth', authenticateToken, (req, res) => {
     const redirectUri = `${process.env.BACKEND_URL}/api/integrations/slack/callback`;
     const scope = 'channels:read,chat:write,users:read';
-    const state = req.userId;
+    const state = createStateToken(req.userId);
     
     const slackAuthUrl = `https://slack.com/oauth/v2/authorize?client_id=${process.env.SLACK_CLIENT_ID}&redirect_uri=${redirectUri}&scope=${scope}&state=${state}`;
     
@@ -219,7 +228,15 @@ router.get('/slack/auth', authenticateToken, (req, res) => {
  */
 router.get('/slack/callback', async (req, res) => {
     const { code, state } = req.query;
-    const userId = state;
+    let userId;
+    try {
+        userId = verifyStateToken(state);
+    } catch (e) {
+        return res.status(400).json({ success: false, message: 'Invalid state' });
+    }
+    if (!userId) {
+        return res.status(400).json({ success: false, message: 'Invalid state' });
+    }
 
     try {
         const tokenResponse = await axios.post('https://slack.com/api/oauth.v2.access', null, {
@@ -283,7 +300,7 @@ router.get('/slack/callback', async (req, res) => {
 router.get('/discord/auth', authenticateToken, (req, res) => {
     const redirectUri = `${process.env.BACKEND_URL}/api/integrations/discord/callback`;
     const scope = 'identify email guilds';
-    const state = req.userId;
+    const state = createStateToken(req.userId);
     
     const discordAuthUrl = `https://discord.com/api/oauth2/authorize?client_id=${process.env.DISCORD_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scope)}&state=${state}`;
     
@@ -316,7 +333,15 @@ router.get('/discord/auth', authenticateToken, (req, res) => {
  */
 router.get('/discord/callback', async (req, res) => {
     const { code, state } = req.query;
-    const userId = state;
+    let userId;
+    try {
+        userId = verifyStateToken(state);
+    } catch (e) {
+        return res.status(400).json({ success: false, message: 'Invalid state' });
+    }
+    if (!userId) {
+        return res.status(400).json({ success: false, message: 'Invalid state' });
+    }
 
     try {
         // Exchange code for access token
@@ -397,7 +422,7 @@ router.get('/discord/callback', async (req, res) => {
 // Notion OAuth
 router.get('/notion/auth', authenticateToken, (req, res) => {
     const redirectUri = `${process.env.BACKEND_URL}/api/integrations/notion/callback`;
-    const state = req.userId;
+    const state = createStateToken(req.userId);
     
     const notionAuthUrl = `https://api.notion.com/v1/oauth/authorize?client_id=${process.env.NOTION_CLIENT_ID}&redirect_uri=${redirectUri}&response_type=code&owner=user&state=${state}`;
     
@@ -430,7 +455,15 @@ router.get('/notion/auth', authenticateToken, (req, res) => {
  */
 router.get('/notion/callback', async (req, res) => {
     const { code, state } = req.query;
-    const userId = state;
+    let userId;
+    try {
+        userId = verifyStateToken(state);
+    } catch (e) {
+        return res.status(400).json({ success: false, message: 'Invalid state' });
+    }
+    if (!userId) {
+        return res.status(400).json({ success: false, message: 'Invalid state' });
+    }
 
     try {
         const auth = Buffer.from(`${process.env.NOTION_CLIENT_ID}:${process.env.NOTION_CLIENT_SECRET}`).toString('base64');
@@ -495,7 +528,7 @@ router.get('/notion/callback', async (req, res) => {
 router.get('/figma/auth', authenticateToken, (req, res) => {
     const redirectUri = `${process.env.BACKEND_URL}/api/integrations/figma/callback`;
     const scope = 'file_read';
-    const state = req.userId;
+    const state = createStateToken(req.userId);
     
     const figmaAuthUrl = `https://www.figma.com/oauth?client_id=${process.env.FIGMA_CLIENT_ID}&redirect_uri=${redirectUri}&scope=${scope}&state=${state}&response_type=code`;
     
@@ -528,7 +561,15 @@ router.get('/figma/auth', authenticateToken, (req, res) => {
  */
 router.get('/figma/callback', async (req, res) => {
     const { code, state } = req.query;
-    const userId = state;
+    let userId;
+    try {
+        userId = verifyStateToken(state);
+    } catch (e) {
+        return res.status(400).json({ success: false, message: 'Invalid state' });
+    }
+    if (!userId) {
+        return res.status(400).json({ success: false, message: 'Invalid state' });
+    }
 
     try {
         const tokenResponse = await axios.post('https://www.figma.com/api/oauth/token', {
