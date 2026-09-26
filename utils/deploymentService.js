@@ -104,6 +104,7 @@ function sshExec(command) {
 }
 
 async function writeRemoteFile(remotePath, content) {
+  if (remotePath.includes('..') || remotePath.includes("'") || remotePath.includes('\\n') || remotePath.includes('\n')) throw new Error('Invalid remote path');
   const base64 = Buffer.from(content || '').toString('base64');
   // Compute the parent directory client-side to avoid nested shell quotes
   const parentDir = remotePath.includes('/')
@@ -180,6 +181,9 @@ async function deployProject(subdomain, files) {
     const relPath = file.path
       ? path.join(file.path.replace(/^\//, ''), file.name)
       : file.name;
+    for (const segment of relPath.split('/')) {
+      if (segment === '..' || !/^[a-zA-Z0-9._-]+$/.test(segment)) throw new Error('Invalid file path');
+    }
     await writeRemoteFile(`${deploymentDir}/${relPath}`, file.content || '');
   }
 

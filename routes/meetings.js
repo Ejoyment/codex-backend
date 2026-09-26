@@ -125,7 +125,9 @@ router.post('/', authenticateToken, requireCompanyMember, async (req, res) => {
 // Get all meetings for company
 router.get('/', authenticateToken, requireCompanyMember, async (req, res) => {
     try {
-        const { companyId, status, upcoming } = req.query;
+        const companyId = req.query.companyId != null ? String(req.query.companyId) : req.query.companyId;
+        const status = req.query.status != null ? String(req.query.status) : req.query.status;
+        const { upcoming } = req.query;
         
         const query = { company: companyId };
         
@@ -292,6 +294,25 @@ router.get('/:id', authenticateToken, async (req, res) => {
         if (!meeting) {
             return res.status(404).json({ success: false, message: 'Meeting not found' });
         }
+
+        const isHost = String(meeting.host?._id || meeting.host) === String(req.userId);
+        const isParticipant = (meeting.participants || []).some(p => String(p.user?._id || p.user) === String(req.userId));
+        if (!isHost && !isParticipant) {
+            let isCompanyMember = false;
+            try {
+                if (meeting.company) {
+                    const company = await Company.findById(String(meeting.company)).select('members owner');
+                    if (company) {
+                        isCompanyMember = ((company.members || []).some(m => String(m.user) === String(req.userId)) || (company.owner != null && String(company.owner) === String(req.userId)));
+                    }
+                }
+            } catch (err) {
+                isCompanyMember = false;
+            }
+            if (!isCompanyMember) {
+                return res.status(403).json({ success: false, message: 'Access denied' });
+            }
+        }
         
         res.json({
             success: true,
@@ -333,6 +354,25 @@ router.get('/room/:roomId', authenticateToken, async (req, res) => {
         if (!meeting) {
             return res.status(404).json({ success: false, message: 'Meeting not found' });
         }
+
+        const isHost = String(meeting.host?._id || meeting.host) === String(req.userId);
+        const isParticipant = (meeting.participants || []).some(p => String(p.user?._id || p.user) === String(req.userId));
+        if (!isHost && !isParticipant) {
+            let isCompanyMember = false;
+            try {
+                if (meeting.company) {
+                    const company = await Company.findById(String(meeting.company)).select('members owner');
+                    if (company) {
+                        isCompanyMember = ((company.members || []).some(m => String(m.user) === String(req.userId)) || (company.owner != null && String(company.owner) === String(req.userId)));
+                    }
+                }
+            } catch (err) {
+                isCompanyMember = false;
+            }
+            if (!isCompanyMember) {
+                return res.status(403).json({ success: false, message: 'Access denied' });
+            }
+        }
         
         res.json({
             success: true,
@@ -354,7 +394,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
             return res.status(404).json({ success: false, message: 'Meeting not found' });
         }
         
-        if (meeting.host.toString() !== req.userId) {
+        if (String(meeting.host) !== req.userId) {
             return res.status(403).json({ success: false, message: 'Only host can update meeting' });
         }
         
@@ -405,12 +445,29 @@ router.post('/:id/join', authenticateToken, async (req, res) => {
             return res.status(404).json({ success: false, message: 'Meeting not found' });
         }
         
-        const participant = meeting.participants.find(p => p.user && p.user.toString() === req.userId);
-        
+        const participant = meeting.participants.find(p => p.user && String(p.user) === String(req.userId));
+        const isHost = String(meeting.host) === String(req.userId);
+
         if (participant) {
             participant.status = 'joined';
             participant.joinedAt = new Date();
-        } else if (req.userId) {
+        } else if (isHost) {
+            // host rejoining needs no participant entry
+        } else {
+            let isCompanyMember = false;
+            try {
+                if (meeting.company) {
+                    const company = await Company.findById(String(meeting.company)).select('members owner');
+                    if (company) {
+                        isCompanyMember = ((company.members || []).some(m => String(m.user) === String(req.userId)) || (company.owner != null && String(company.owner) === String(req.userId)));
+                    }
+                }
+            } catch (err) {
+                isCompanyMember = false;
+            }
+            if (!isCompanyMember) {
+                return res.status(403).json({ success: false, message: 'Access denied: not invited to this meeting' });
+            }
             meeting.participants.push({
                 user: req.userId,
                 status: 'joined',
@@ -515,7 +572,7 @@ router.post('/:id/end', authenticateToken, async (req, res) => {
             return res.status(404).json({ success: false, message: 'Meeting not found' });
         }
         
-        if (meeting.host.toString() !== req.userId) {
+        if (String(meeting.host) !== req.userId) {
             return res.status(403).json({ success: false, message: 'Only host can end meeting' });
         }
         
@@ -565,7 +622,7 @@ router.post('/:id/record/start', authenticateToken, async (req, res) => {
             return res.status(404).json({ success: false, message: 'Meeting not found' });
         }
         
-        if (meeting.host.toString() !== req.userId) {
+        if (String(meeting.host) !== req.userId) {
             return res.status(403).json({ success: false, message: 'Only host can start recording' });
         }
         
@@ -628,7 +685,7 @@ router.post('/:id/record/stop', authenticateToken, async (req, res) => {
             return res.status(404).json({ success: false, message: 'Meeting not found' });
         }
         
-        if (meeting.host.toString() !== req.userId) {
+        if (String(meeting.host) !== req.userId) {
             return res.status(403).json({ success: false, message: 'Only host can stop recording' });
         }
         
@@ -657,7 +714,7 @@ router.delete('/:id', authenticateToken, async (req, res) => {
             return res.status(404).json({ success: false, message: 'Meeting not found' });
         }
         
-        if (meeting.host.toString() !== req.userId) {
+        if (String(meeting.host) !== req.userId) {
             return res.status(403).json({ success: false, message: 'Only host can delete meeting' });
         }
         

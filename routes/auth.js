@@ -9,6 +9,7 @@ const User = require('../models/User');
 const Subscription = require('../models/Subscription');
 const rateLimit = require('express-rate-limit');
 const emailService = require('../utils/emailServiceResend');
+const { authenticateToken } = require('../middleware/auth');
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -521,19 +522,9 @@ router.get('/me', async (req, res) => {
  *         description: Unauthorized
  */
 // Upload profile photo
-router.post('/upload-photo', upload.single('profilePhoto'), async (req, res) => {
+router.post('/upload-photo', authenticateToken, upload.single('profilePhoto'), async (req, res) => {
     try {
-        const token = req.headers.authorization?.split(' ')[1];
-        
-        if (!token) {
-            return res.status(401).json({ 
-                success: false, 
-                message: 'No token provided' 
-            });
-        }
-
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const user = await User.findById(decoded.id);
+        const user = await User.findById(req.userId);
 
         if (!user) {
             return res.status(404).json({ 

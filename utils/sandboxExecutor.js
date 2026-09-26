@@ -55,6 +55,7 @@ class SandboxExecutor {
     async executeInDocker(code, language, options) {
         const userId = options.userId || 'system';
         const workspaceId = options.workspaceId || 'default';
+        if (!/^[a-zA-Z0-9_-]{1,64}$/.test(String(userId)) || !/^[a-zA-Z0-9_-]{1,64}$/.test(String(workspaceId))) throw new Error('Invalid userId/workspaceId');
 
         try {
             const container = await sandboxSecurity.createIsolatedContainer(userId, workspaceId);

@@ -14,6 +14,16 @@ const vfs = require('./virtualFileSystem');
 const { emitWorkspaceChange } = require('./realTimeEvents');
 const unifiedStateGraph = require('./unifiedStateGraph');
 
+/**
+ * Resolve an untrusted VFS-style path inside a workspace directory.
+ * Throws if the normalized path escapes the workspace (path traversal).
+ */
+function resolveInWorkspace(workspacePath, vfsPath) {
+  const p = path.normalize(path.join(workspacePath, String(vfsPath || '').replace(/^\/+/, '')));
+  if (p !== workspacePath && !p.startsWith(workspacePath + path.sep)) throw new Error('Path escapes workspace');
+  return p;
+}
+
 class TerminalService {
   constructor() {
     this.terminals = new Map(); // sessionId -> terminal instance
@@ -71,6 +81,17 @@ class TerminalService {
     try {
       const terminal = this.terminals.get(sessionId);
       if (!terminal) return;
+
+      // Containment: never sync paths outside the session workspace
+      resolveInWorkspace(terminal.workspacePath, path.relative(terminal.workspacePath, filePath));
+
+      // Never read symlinked host files into the DB
+      try {
+        const linkStats = await fs.lstat(filePath);
+        if (linkStats.isSymbolicLink()) return;
+      } catch (_) {
+        // Fall through to existing read handling below
+      }
       
       const relativePath = path.relative(terminal.workspacePath, filePath);
       const fileName = path.basename(filePath);
@@ -190,7 +211,8 @@ class TerminalService {
         const fullPath = path.join(terminal.workspacePath, filename);
         
         try {
-          const stats = await fs.stat(fullPath);
+          const stats = await fs.lstat(fullPath);
+          if (stats.isSymbolicLink()) return;
           
           if (eventType === 'rename' || eventType === 'change') {
             if (stats.isFile()) {
@@ -265,7 +287,10 @@ class TerminalService {
   async createTerminal(userId, workspaceId, options = {}) {
     const { assertValidWorkspaceId } = require('./sanitize');
     assertValidWorkspaceId(workspaceId);
+    if (!/^[a-zA-Z0-9_-]{1,64}$/.test(String(userId))) throw new Error('Invalid userId');
+    if (!/^[a-zA-Z0-9_-]{1,64}$/.test(String(workspaceId))) throw new Error('Invalid workspaceId format');
 
+    const sessionToken = require('crypto').randomBytes(32).toString('hex');
     const sessionId = `${userId}_${workspaceId}_${Date.now()}`;
     
     // Create workspace directory
@@ -282,13 +307,16 @@ class TerminalService {
         cols: options.cols || 80,
         rows: options.rows || 24,
         cwd: workspacePath,
-        env: {
-          ...process.env,
-          TERM: 'xterm-256color',
-          COLORTERM: 'truecolor',
-          WORKSPACE_ID: workspaceId,
-          USER_ID: userId
-        }
+        env: (() => {
+          const safeEnv = {};
+          for (const k of ['PATH', 'HOME', 'LANG', 'LC_ALL', 'TZ', 'USER', 'SHELL', 'TMPDIR']) {
+            if (process.env[k] !== undefined) safeEnv[k] = process.env[k];
+          }
+          safeEnv.TERM = 'xterm-256color';
+          safeEnv.WORKSPACE_ID = workspaceId;
+          safeEnv.USER_ID = userId;
+          return safeEnv;
+        })()
       });
 
       this.terminals.set(sessionId, {
@@ -297,6 +325,7 @@ class TerminalService {
         workspacePath,
         userId,
         workspaceId,
+        token: sessionToken,
         createdAt: Date.now()
       });
 
@@ -323,6 +352,7 @@ class TerminalService {
         workspacePath,
         userId,
         workspaceId,
+        token: sessionToken,
         history: [],
         logId,
         cwd: '/',
@@ -344,16 +374,32 @@ class TerminalService {
 
     return {
       sessionId,
+      token: sessionToken,
       workspacePath,
       type: this.usePty ? 'pty' : 'simulated'
     };
   }
 
   /**
+   * Verify that the caller holds the session token issued at creation.
+   * Returns the terminal record, null when the session does not exist
+   * (callers preserve their existing not-found behavior), and throws
+   * Error('Access denied') on token mismatch.
+   */
+  _checkAccess(sessionId, token) {
+    const terminal = this.terminals.get(sessionId);
+    if (!terminal) return null;
+    if (terminal.token && token !== terminal.token) {
+      throw new Error('Access denied');
+    }
+    return terminal;
+  }
+
+  /**
    * Write data to terminal
    */
-  write(sessionId, data) {
-    const terminal = this.terminals.get(sessionId);
+  write(sessionId, data, token) {
+    const terminal = this._checkAccess(sessionId, token);
     if (!terminal) {
       throw new Error('Terminal session not found');
     }
@@ -418,6 +464,7 @@ class TerminalService {
             } else {
               const newPath = terminal.cwd === '/' ? `/${target}` : `${terminal.cwd}/${target}`;
               try {
+                resolveInWorkspace(terminal.workspacePath, newPath);
                 const tree = await vfs.getTree(terminal.workspaceId);
                 const node = this.getVfsNode(tree, newPath);
                 if (node && node.type === 'directory') {
@@ -437,6 +484,7 @@ class TerminalService {
           if (args.length > 0) {
             const folderPath = terminal.cwd === '/' ? `/${args[0]}` : `${terminal.cwd}/${args[0]}`;
             try {
+              resolveInWorkspace(terminal.workspacePath, folderPath);
               const file = await vfs.createFile({
                 name: '.gitkeep',
                 language: 'text',
@@ -465,6 +513,7 @@ class TerminalService {
             const fileName = path.basename(args[0]);
             const filePath = terminal.cwd === '/' ? `/${fileName}` : `${terminal.cwd}/${fileName}`;
             try {
+              resolveInWorkspace(terminal.workspacePath, filePath);
               const file = await vfs.createFile({
                 name: fileName,
                 language: 'text',
@@ -498,6 +547,7 @@ class TerminalService {
             const targetName = path.basename(args[0]);
             const targetPath = terminal.cwd === '/' ? `/${targetName}` : `${terminal.cwd}/${targetName}`;
             try {
+              resolveInWorkspace(terminal.workspacePath, targetPath);
               let index = vfs.indexes.get(terminal.workspaceId);
               if (!index) {
                 await vfs.buildIndex(terminal.workspaceId);
@@ -534,6 +584,7 @@ class TerminalService {
           if (args.length > 0) {
             const targetPath = terminal.cwd === '/' ? `/${args[0]}` : `${terminal.cwd}/${args[0]}`;
             try {
+              resolveInWorkspace(terminal.workspacePath, targetPath);
               const file = await vfs.readFileByPath(targetPath, terminal.workspaceId);
               output = (file.content || '') + '\n';
             } catch (error) {
@@ -624,8 +675,7 @@ class TerminalService {
         const file = await CodeFile.findById(metadata.id).select('content').lean();
         if (!file) continue;
 
-        const relativePath = vfsPath.replace(/^\//, '');
-        const fsPath = path.join(terminal.workspacePath, relativePath);
+        const fsPath = resolveInWorkspace(terminal.workspacePath, vfsPath);
         const dir = path.dirname(fsPath);
         await fs.mkdir(dir, { recursive: true });
         await fs.writeFile(fsPath, file.content || '');
@@ -645,8 +695,7 @@ class TerminalService {
       switch (event) {
         case 'file:created': {
           const vfsPath = data.file.path;
-          const relativePath = vfsPath.replace(/^\//, '');
-          const fsPath = path.join(terminal.workspacePath, relativePath);
+          const fsPath = resolveInWorkspace(terminal.workspacePath, vfsPath);
           const dir = path.dirname(fsPath);
           await fs.mkdir(dir, { recursive: true });
 
@@ -658,8 +707,7 @@ class TerminalService {
         }
         case 'file:updated': {
           const vfsPath = data.file.path;
-          const relativePath = vfsPath.replace(/^\//, '');
-          const fsPath = path.join(terminal.workspacePath, relativePath);
+          const fsPath = resolveInWorkspace(terminal.workspacePath, vfsPath);
           const file = await CodeFile.findById(data.file._id).select('content').lean();
           if (file) {
             await fs.writeFile(fsPath, file.content || '');
@@ -668,8 +716,7 @@ class TerminalService {
         }
         case 'file:deleted': {
           const vfsPath = data.path;
-          const relativePath = vfsPath.replace(/^\//, '');
-          const fsPath = path.join(terminal.workspacePath, relativePath);
+          const fsPath = resolveInWorkspace(terminal.workspacePath, vfsPath);
           try {
             await fs.unlink(fsPath);
           } catch (e) {
@@ -690,8 +737,8 @@ class TerminalService {
   /**
    * Register data handler for terminal
    */
-  onData(sessionId, callback) {
-    const terminal = this.terminals.get(sessionId);
+  onData(sessionId, callback, token) {
+    const terminal = this._checkAccess(sessionId, token);
     if (!terminal) {
       throw new Error('Terminal session not found');
     }
@@ -706,8 +753,8 @@ class TerminalService {
   /**
    * Resize terminal
    */
-  resize(sessionId, cols, rows) {
-    const terminal = this.terminals.get(sessionId);
+  resize(sessionId, cols, rows, token) {
+    const terminal = this._checkAccess(sessionId, token);
     if (!terminal) {
       throw new Error('Terminal session not found');
     }
@@ -721,8 +768,8 @@ class TerminalService {
    * Get terminal history (simulated only).
    * Returns in-memory history for active sessions, falls back to Mongo.
    */
-  async getHistory(sessionId) {
-    const terminal = this.terminals.get(sessionId);
+  async getHistory(sessionId, token) {
+    const terminal = this._checkAccess(sessionId, token);
     if (!terminal || terminal.type !== 'simulated') {
       return [];
     }
@@ -776,8 +823,8 @@ class TerminalService {
   /**
    * Destroy terminal session
    */
-  async destroy(sessionId) {
-    const terminal = this.terminals.get(sessionId);
+  async destroy(sessionId, token) {
+    const terminal = this._checkAccess(sessionId, token);
     if (!terminal) {
       return;
     }
@@ -847,7 +894,7 @@ class TerminalService {
     for (const [sessionId, terminal] of this.terminals) {
       if (now - terminal.createdAt > oneHour) {
         console.log(`Cleaning up old terminal session: ${sessionId}`);
-        await this.destroy(sessionId);
+        await this.destroy(sessionId, terminal.token);
       }
     }
   }
