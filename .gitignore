@@ -44,6 +44,7 @@ diagnose-*.bat
 # Batch scripts (local only)
 *.bat
 !start-backend.bat
+.next
 
 # Documentation (keep README and API docs)
 *.md
