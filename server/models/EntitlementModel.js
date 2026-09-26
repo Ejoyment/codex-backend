@@ -1,46 +1,64 @@
 const mongoose = require('mongoose');
 
-// Phase 3 — Entitlement: single source of truth for plan/status.
-// Updated ONLY via verified, idempotent webhooks (dedupe by event ID).
-// The app must read entitlements only — never query provider state directly
-// for access decisions.
-
 const entitlementSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
+    teamId: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', default: null },
     plan: {
       type: String,
-      enum: ['starter', 'freebie', 'professional', 'enterprise'],
-      default: 'starter',
+      enum: ['developer', 'pro', 'pro_plus', 'team_standard', 'team_premium', 'enterprise'],
+      default: 'developer',
     },
     status: {
       type: String,
-      enum: ['trial', 'active', 'past_due', 'cancelled', 'expired'],
-      default: 'trial',
+      enum: ['active', 'trial', 'past_due', 'cancelled', 'expired'],
+      default: 'active',
     },
     provider: {
       type: String,
-      enum: ['stripe', 'paystack', 'flutterwave', 'manual', null],
-      default: null,
+      enum: ['stripe', 'paystack', 'flutterwave', 'manual'],
+      default: 'stripe',
     },
-    providerCustomerId: { type: String, default: null },
-    providerSubscriptionId: { type: String, default: null },
+    providerRef: String,
     currency: { type: String, default: 'USD' },
+    country: { type: String, default: '' },
     currentPeriodEnd: { type: Date, default: null },
-    cancelAtPeriodEnd: { type: Boolean, default: false },
-    // Idempotency: every applied webhook event ID is recorded.
+    lastEventId: { type: String, default: null },
+    creditsRemaining: { type: Number, default: 0 },
+    computeHoursRemaining: { type: Number, default: 0 },
+    seatCount: { type: Number, default: 1 },
+    allowOverage: { type: Boolean, default: false },
+    overageRatePerToken: { type: Number, default: 0 },
+    teamPooledCredits: { type: Number, default: 0 },
+    teamMemberCreditsUsed: [{
+      userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      creditsUsed: { type: Number, default: 0 },
+      computeUsed: { type: Number, default: 0 },
+    }],
+    failedPayments: { type: Number, default: 0 },
+    gracePeriodEndsAt: { type: Date, default: null },
     appliedEventIds: { type: [String], default: [] },
+    tierPricing: {
+      monthlyCreditLimit: { type: Number, default: 0 },
+      cloudComputeHours: { type: Number, default: 0 },
+      maxConcurrentJobs: { type: Number, default: 0 },
+      taskTimeoutMinutes: { type: Number, default: 5 },
+      maxDebugHostRooms: { type: Number, default: 0 },
+      maxDebugParticipants: { type: Number, default: 0 },
+      maxDeployments: { type: Number, default: 1 },
+      specEngineLevel: { type: String, enum: ['read_only', 'full_sdd', 'realtime_drift', 'team_library', 'cross_repo', 'custom'], default: 'read_only' },
+      webrtcEnabled: { type: Boolean, default: false },
+    },
   },
   { timestamps: true }
 );
 
 entitlementSchema.index({ status: 1 });
+entitlementSchema.index({ teamId: 1 });
+entitlementSchema.index({ userId: 1, status: 1 });
 
-// Access decisions read ONLY this record.
 entitlementSchema.methods.isActive = function () {
-  if (this.status === 'active') return true;
-  if (this.status === 'trial') return true;
-  return false;
+  return this.status === 'active' || this.status === 'trial';
 };
 
 module.exports = mongoose.model('Entitlement', entitlementSchema);

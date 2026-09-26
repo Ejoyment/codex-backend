@@ -15,7 +15,7 @@
  */
 
 const Subscription = require('../models/Subscription');
-const Entitlement = require('../models/Entitlement');
+const Entitlement = require('../server/models/EntitlementModel');
 
 // Provider adapters
 const paystackAdapter = require('./paystackAdapter');

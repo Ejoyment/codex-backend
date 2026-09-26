@@ -10,8 +10,24 @@
 const Subscription = require('../models/Subscription');
 const AgentExecution = require('../models/AgentExecution');
 const jwt = require('jsonwebtoken');
-const DebugRoom = require('../models/DebugRoom');
-const Deployment = require('../models/Deployment');
+
+// Lazy require — DebugRoom and Deployment may not exist on all deploys
+let DebugRoom = null;
+let Deployment = null;
+
+function getDebugRoom() {
+    if (!DebugRoom) {
+        try { DebugRoom = require('../models/DebugRoom'); } catch { DebugRoom = null; }
+    }
+    return DebugRoom;
+}
+
+function getDeployment() {
+    if (!Deployment) {
+        try { Deployment = require('../models/Deployment'); } catch { Deployment = null; }
+    }
+    return Deployment;
+}
 
 function jwtVerify(token) {
     return jwt.verify(token, process.env.JWT_SECRET);
@@ -112,7 +128,9 @@ function enforceDebugRoomLimit() {
         const subscription = req.subscription;
         const maxHostRooms = subscription.getMaxDebugHostRooms();
         if (maxHostRooms === 0) return next();
-        const activeRooms = await DebugRoom.countDocuments({
+        const Model = getDebugRoom();
+        if (!Model) return next();
+        const activeRooms = await Model.countDocuments({
             hostId: req.userId,
             status: 'active'
         });
@@ -133,7 +151,9 @@ function enforceDeploymentLimit() {
     return async (req, res, next) => {
         const subscription = req.subscription;
         const maxDeployments = subscription.getMaxActiveDeployments();
-        const activeDeployments = await Deployment.countDocuments({
+        const Model = getDeployment();
+        if (!Model) return next();
+        const activeDeployments = await Model.countDocuments({
             userId: req.userId,
             status: 'active'
         });

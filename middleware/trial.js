@@ -1,5 +1,5 @@
 const Subscription = require('../models/Subscription');
-const Entitlement = require('../models/Entitlement');
+const Entitlement = require('../server/models/EntitlementModel');
 const jwt = require('jsonwebtoken');
 const emailService = require('../utils/emailServiceResend');
 const User = require('../models/User');
