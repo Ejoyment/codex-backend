@@ -82,8 +82,9 @@ function sshExec(command, input = null) {
       const key = getKeyFile();
       const sshCmd = `ssh -i "${key}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=20 -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -p ${SSH_PORT} ${SSH_USER}@${SSH_HOST} ${JSON.stringify(command)}`;
       const opts = { timeout: DEPLOY_TIMEOUT_MS, maxBuffer: 20 * 1024 * 1024, encoding: 'utf8' };
-      if (input) opts.input = input;
       const proc = exec(sshCmd, opts);
+
+      if (input) proc.stdin.end(input);
 
       let stdout = '';
       let stderr = '';
