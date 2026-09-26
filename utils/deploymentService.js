@@ -279,6 +279,9 @@ await sshExec(`docker build --force-rm --no-cache -t ${imageTag} '${deploymentDi
     throw new Error(`Docker build failed: ${err.message}. Dir contents: ${dirList}`);
 });
 
+  const imageFiles = await sshExec(`docker run --rm --entrypoint ls ${imageTag} /usr/share/nginx/html/ 2>/dev/null || echo 'NO_FILES'`).catch(() => 'NO_FILES');
+  console.log(`[deploy] Image files: ${imageFiles}`);
+
   const existingContainer = (await sshExec(`docker ps -q --filter "name=${containerName}" 2>/dev/null || true`).catch(() => '')).trim();
 
   const runScript = `#!/bin/bash
