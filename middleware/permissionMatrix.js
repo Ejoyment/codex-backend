@@ -102,7 +102,7 @@ class PermissionMatrix {
     return aliases[normalized] || normalized || 'freebie';
   }
 
-  isTierAllowed(tier, allowedTiers) {
+  isTierAllowed(tier, allowedTiers, scope) {
     const normalizedTier = this.normalizeTier(tier);
     const normalizedAllowed = (allowedTiers || []).map((value) => this.normalizeTier(value));
 
@@ -110,9 +110,14 @@ class PermissionMatrix {
       return true;
     }
 
-    // Starter/trial users get the same IDE access as professional for tooling flows.
-    if (normalizedTier === 'starter' && normalizedAllowed.includes('professional')) {
-      return true;
+    // Starter/trial users get the same IDE access as professional for tooling flows only.
+    // Fail closed: no scope (undefined/null) means no fallback.
+    // Company/admin scopes (company:, etc.) never fall back.
+    if (normalizedTier === 'starter' && normalizedAllowed.includes('professional') && typeof scope === 'string') {
+      const toolingPrefixes = ['file:', 'terminal:', 'git:', 'collab:', 'lsp:', 'vfs:', 'agent:', 'debug:', 'mcp:', 'pipeline:'];
+      if (toolingPrefixes.some((prefix) => scope.startsWith(prefix))) {
+        return true;
+      }
     }
 
     return false;
@@ -146,7 +151,7 @@ class PermissionMatrix {
       }
 
       // Check tier permission
-      if (!this.isTierAllowed(tier, allowedTiers)) {
+      if (!this.isTierAllowed(tier, allowedTiers, scope)) {
         return {
           allowed: false,
           reason: `Permission denied: ${scope} requires ${allowedTiers.join(' or ')} tier`,
@@ -197,7 +202,9 @@ class PermissionMatrix {
           }
           
           // Check if file belongs to user's workspace
-          if (!file.companyId.equals(user.currentCompany)) {
+          const fc = file.companyId ? String(file.companyId) : null;
+          const uc = user.currentCompany ? String(user.currentCompany) : null;
+          if (!fc || !uc || fc !== uc) {
             return {
               allowed: false,
               reason: 'Access denied: File not in your workspace'
@@ -211,10 +218,15 @@ class PermissionMatrix {
             return { allowed: false, reason: 'Workspace not found' };
           }
           
-          // Check if user is member
-          const isMember = company.members.some(m => 
-            m.userId.equals(user._id)
-          );
+          // Check if user is member (Company schema uses members[].user; handle legacy members[].userId defensively)
+          const isMember = company.members.some(m => {
+            try {
+              const id = m?.user || m?.userId;
+              return id && String(id) === String(user._id);
+            } catch (e) {
+              return false;
+            }
+          });
           
           if (!isMember) {
             return {
@@ -246,7 +258,7 @@ class PermissionMatrix {
   async checkLimit(userId, limitType) {
     try {
       const user = await User.findById(userId).populate('subscription');
-      const tier = user.subscription?.tier || 'freebie';
+      const tier = this.normalizeTier(user.subscription?.tier || 'freebie');
       const limits = this.limits[tier];
 
       if (!limits) {
@@ -310,13 +322,13 @@ class PermissionMatrix {
   async getUserPermissions(userId) {
     try {
       const user = await User.findById(userId).populate('subscription');
-      const tier = user.subscription?.tier || 'freebie';
+      const tier = this.normalizeTier(user.subscription?.tier || 'freebie');
 
       const permissions = {};
       
       // Check all scopes
       for (const [scope, allowedTiers] of Object.entries(this.scopes)) {
-        permissions[scope] = allowedTiers.includes(tier);
+        permissions[scope] = this.isTierAllowed(tier, allowedTiers, scope);
       }
 
       return {
@@ -336,7 +348,7 @@ class PermissionMatrix {
   requirePermission(resource, action) {
     return async (req, res, next) => {
       try {
-        const userId = req.user?._id || req.user?.userId;
+        const userId = req.userId || req.user?._id || req.user?.userId;
         
         if (!userId) {
           return res.status(401).json({
@@ -344,7 +356,7 @@ class PermissionMatrix {
           });
         }
 
-        const resourceId = req.params.id || req.body.resourceId || null;
+        const resourceId = req.params.id || req.params.companyId || req.params.workspaceId || req.params.fileId || req.params.channelId || req.body.resourceId || req.body.companyId || req.body.workspaceId || null;
         
         const result = await this.checkPermission(
           userId,
@@ -380,7 +392,7 @@ class PermissionMatrix {
   requireLimit(limitType) {
     return async (req, res, next) => {
       try {
-        const userId = req.user?._id || req.user?.userId;
+        const userId = req.userId || req.user?._id || req.user?.userId;
         
         if (!userId) {
           return res.status(401).json({

@@ -1,9 +1,11 @@
 const express = require('express');
+const crypto = require('crypto');
 const router = express.Router();
 const OTP = require('../models/OTP');
 const User = require('../models/User');
 const { sendOTPEmail, sendWelcomeEmail } = require('../utils/emailServiceResend');
 const rateLimit = require('express-rate-limit');
+const { isLockedOut: isLockedOutStore, recordFailure, clearLockout: clearLockoutStore } = require('../models/AuthLockout');
 
 // Rate limiting for OTP requests
 const otpLimiter = rateLimit({
@@ -12,38 +14,41 @@ const otpLimiter = rateLimit({
     message: { success: false, message: 'Too many OTP requests, please try again later.' }
 });
 
-// Account-level lockout: email -> { attempts, lockedUntil }
-const lockoutMap = new Map();
-const MAX_FAILED_ATTEMPTS = 5;
-const LOCKOUT_DURATION_MS = 30 * 60 * 1000; // 30 minutes
-
-function isLockedOut(email) {
-    const record = lockoutMap.get(email);
-    if (!record) return false;
-    if (Date.now() > record.lockedUntil) {
-        lockoutMap.delete(email);
-        return false;
-    }
-    return true;
+// Account-level lockout (persisted via AuthLockout model): email -> { failures, lockedUntil }
+async function isLockedOut(email) {
+    return isLockedOutStore(email);
 }
 
-function recordFailedAttempt(email) {
-    const record = lockoutMap.get(email) || { attempts: 0, lockedUntil: 0 };
-    record.attempts += 1;
-    if (record.attempts >= MAX_FAILED_ATTEMPTS) {
-        record.lockedUntil = Date.now() + LOCKOUT_DURATION_MS;
-    }
-    lockoutMap.set(email, record);
+async function recordFailedAttempt(email) {
+    await recordFailure(email);
 }
 
-function clearLockout(email) {
-    lockoutMap.delete(email);
+async function clearLockout(email) {
+    await clearLockoutStore(email);
 }
 
 // Generate 6-digit OTP (1,000,000 possibilities — resists brute-force)
 const generateOTP = () => {
-    return Math.floor(100000 + Math.random() * 900000).toString();
+    return crypto.randomInt(100000, 1000000).toString();
 };
+
+// Store/compare only the sha256 hex of the OTP code
+function hashOTP(code) {
+    return crypto.createHash('sha256').update(String(code)).digest('hex');
+}
+
+// Constant-time comparison of hex digests (pads to equal length buffers)
+function hashesEqual(a, b) {
+    const bufA = Buffer.from(String(a));
+    const bufB = Buffer.from(String(b));
+    const len = Math.max(bufA.length, bufB.length);
+    const paddedA = Buffer.alloc(len);
+    const paddedB = Buffer.alloc(len);
+    bufA.copy(paddedA);
+    bufB.copy(paddedB);
+    const sameLength = bufA.length === bufB.length;
+    return crypto.timingSafeEqual(paddedA, paddedB) && sameLength;
+}
 
 /**
  * @swagger
@@ -82,6 +87,13 @@ router.post('/send', otpLimiter, async (req, res) => {
             });
         }
 
+        if (typeof email !== 'string') {
+            return res.status(400).json({
+                success: false,
+                message: 'Email is required'
+            });
+        }
+
         // Check if user exists
         const user = await User.findOne({ email: email.toLowerCase() });
         if (!user) {
@@ -105,10 +117,10 @@ router.post('/send', otpLimiter, async (req, res) => {
         // Generate new OTP
         const otpCode = generateOTP();
 
-        // Save OTP to database
+        // Save OTP to database (sha256 hash only — never the plaintext code)
         await OTP.create({
             email: email.toLowerCase(),
-            otp: otpCode
+            otp: hashOTP(otpCode)
         });
 
         // Send OTP email
@@ -170,8 +182,15 @@ router.post('/verify', async (req, res) => {
             });
         }
 
+        if (typeof email !== 'string') {
+            return res.status(400).json({
+                success: false,
+                message: 'Email and OTP are required'
+            });
+        }
+
         // Check account-level lockout
-        if (isLockedOut(email.toLowerCase())) {
+        if (await isLockedOut(email.toLowerCase())) {
             return res.status(429).json({ 
                 success: false, 
                 message: 'Account locked due to too many failed attempts. Try again in 30 minutes.' 
@@ -191,6 +210,15 @@ router.post('/verify', async (req, res) => {
             });
         }
 
+        // Explicit expiry guard (independent of the TTL index)
+        if (Date.now() - new Date(otpRecord.createdAt).getTime() > 10 * 60 * 1000) {
+            await OTP.deleteOne({ _id: otpRecord._id });
+            return res.status(400).json({
+                success: false,
+                message: 'OTP expired or not found. Please request a new one.'
+            });
+        }
+
         // Check attempts
         if (otpRecord.attempts >= 3) {
             await OTP.deleteOne({ _id: otpRecord._id });
@@ -200,11 +228,11 @@ router.post('/verify', async (req, res) => {
             });
         }
 
-        // Verify OTP
-        if (otpRecord.otp !== otp) {
+        // Verify OTP (constant-time comparison of sha256 hashes)
+        if (!hashesEqual(otpRecord.otp, hashOTP(otp))) {
             otpRecord.attempts += 1;
             await otpRecord.save();
-            recordFailedAttempt(email.toLowerCase());
+            await recordFailedAttempt(email.toLowerCase());
             
             return res.status(400).json({ 
                 success: false, 
@@ -214,7 +242,7 @@ router.post('/verify', async (req, res) => {
         }
 
         // Clear lockout on successful verification
-        clearLockout(email.toLowerCase());
+        await clearLockout(email.toLowerCase());
 
         // Mark OTP as verified
         otpRecord.verified = true;
@@ -233,12 +261,12 @@ router.post('/verify', async (req, res) => {
         // Clean up - delete the OTP
         await OTP.deleteOne({ _id: otpRecord._id });
 
-        // Generate JWT token for automatic login
+        // Generate JWT token for automatic login (24h, same as auth.js)
         const jwt = require('jsonwebtoken');
         const token = jwt.sign(
             { userId: user._id, email: user.email },
             process.env.JWT_SECRET,
-            { expiresIn: '7d' }
+            { expiresIn: '24h' }
         );
 
         res.json({
@@ -301,6 +329,13 @@ router.post('/resend', otpLimiter, async (req, res) => {
             });
         }
 
+        if (typeof email !== 'string') {
+            return res.status(400).json({
+                success: false,
+                message: 'Email is required'
+            });
+        }
+
         // Check if user exists
         const user = await User.findOne({ email: email.toLowerCase() });
         if (!user) {
@@ -324,10 +359,10 @@ router.post('/resend', otpLimiter, async (req, res) => {
         // Generate new OTP
         const otpCode = generateOTP();
 
-        // Save OTP
+        // Save OTP (sha256 hash only — never the plaintext code)
         await OTP.create({
             email: email.toLowerCase(),
-            otp: otpCode
+            otp: hashOTP(otpCode)
         });
 
         // Send OTP email
