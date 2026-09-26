@@ -1,0 +1,421 @@
+{
+  "repo": "codex-backend",
+  "target_path": "/Users/mac/codex-backend",
+  "mode": "full",
+  "is_git": true,
+  "ground_truth": {
+    "git": {
+      "commit_count": 90,
+      "unique_contributors": 3,
+      "branch_count": 1,
+      "meaningful_commit_count": 84,
+      "last_update": "2026-06-12",
+      "first_commit": "2026-01-26",
+      "active_span_months": 4.5,
+      "history_integrity": {
+        "appears_intact": true,
+        "has_merge_commits": false,
+        "force_push_risk": false,
+        "single_bulk_commit": false,
+        "notes": []
+      },
+      "all_contributors": [
+        {
+          "name": "Your Name",
+          "email": "you@example.com",
+          "commits": 75
+        },
+        {
+          "name": "Ejoymene",
+          "email": "mac@macdeMacBook-Pro.local",
+          "commits": 14
+        },
+        {
+          "name": "Ejoyment",
+          "email": "dejoymene@gmail.com",
+          "commits": 1
+        }
+      ],
+      "all_contributors_count": 3,
+      "source": "git"
+    },
+    "loc": {
+      "value": 25734,
+      "breakdown": {
+        "code": 25734,
+        "comment": 7787,
+        "blank": 4232,
+        "nFiles": 108
+      },
+      "source": "cloc"
+    },
+    "languages": {
+      "total_count": 6,
+      "core_count": 3,
+      "core_list": [
+        "JavaScript",
+        "Python",
+        "HTML"
+      ],
+      "list": [
+        "JavaScript",
+        "Python",
+        "HTML",
+        "PowerShell",
+        "Bourne Shell",
+        "DOS Batch"
+      ],
+      "breakdown": {
+        "JavaScript": {
+          "loc": 20208,
+          "files": 101,
+          "pct": 78.53
+        },
+        "Python": {
+          "loc": 2980,
+          "files": 1,
+          "pct": 11.58
+        },
+        "HTML": {
+          "loc": 2291,
+          "files": 2,
+          "pct": 8.9
+        },
+        "PowerShell": {
+          "loc": 115,
+          "files": 1,
+          "pct": 0.45
+        },
+        "Bourne Shell": {
+          "loc": 96,
+          "files": 2,
+          "pct": 0.37
+        },
+        "DOS Batch": {
+          "loc": 44,
+          "files": 1,
+          "pct": 0.17
+        }
+      },
+      "source": "cloc"
+    }
+  },
+  "tool_metrics": {
+    "tokens": {
+      "llm": 275453,
+      "lexical": 235446
+    },
+    "duplication": {
+      "token_weighted": 0.0,
+      "duplicate_tokens": 0,
+      "exact_duplicate_files": 0,
+      "similar_clusters": []
+    },
+    "compliance": {
+      "is_open_source": false,
+      "license_file": null,
+      "license_type": null,
+      "has_readme": true
+    },
+    "code_age": {
+      "available": true,
+      "sampled_files": 108,
+      "pct_untouched_1yr": 0.0,
+      "pct_untouched_2yr": 0.0,
+      "age_distribution": {
+        "<6m": 108,
+        "6m-1yr": 0,
+        "1yr-2yr": 0,
+        ">2yr": 0
+      },
+      "median_age_months": 3.9
+    },
+    "secrets": {
+      "files_scanned": 107,
+      "findings_count": 0,
+      "findings": [],
+      "clean": true,
+      "risk_level": "low"
+    }
+  },
+  "heuristics": {
+    "signals": {
+      "hasSource": true,
+      "hasTests": true,
+      "hasConfig": false,
+      "hasCI": false
+    },
+    "structure": {
+      "dirs": 11,
+      "files": 111,
+      "extensions": {
+        ".sh": 2,
+        ".js": 101,
+        ".ps1": 1,
+        ".html": 2,
+        ".unknown": 2,
+        ".bat": 1,
+        ".cfg": 1,
+        ".py": 1
+      },
+      "test_file_count": 2
+    },
+    "ai_detection": {
+      "repo_score": 0.0851,
+      "confidence": "high",
+      "signals": {
+        "uniformity": 0.561,
+        "duplication": 0.0,
+        "similarity": 0.0,
+        "cluster_density": 0.0,
+        "naming": 0.0094,
+        "smoothness": 0.3814
+      },
+      "per_file_scores": {
+        "/Users/mac/codex-backend/check-swagger.sh": 0.1956,
+        "/Users/mac/codex-backend/add-swagger-template.js": 0.6,
+        "/Users/mac/codex-backend/charge-existing-cards.js": 0.6,
+        "/Users/mac/codex-backend/update-all-headers.ps1": 0.6,
+        "/Users/mac/codex-backend/verify-agent-created.js": 0.195,
+        "/Users/mac/codex-backend/upgrade-to-premium.js": 0.4896,
+        "/Users/mac/codex-backend/server.js": 0.6,
+        "/Users/mac/codex-backend/create-support-agent.js": 0.2448,
+        "/Users/mac/codex-backend/test-flutterwave-fix.js": 0.402,
+        "/Users/mac/codex-backend/check-specific-apis.sh": 0.3408,
+        "/Users/mac/codex-backend/add-paystack-auth-codes.js": 0.6,
+        "/Users/mac/codex-backend/find-paystack-users.js": 0.6,
+        "/Users/mac/codex-backend/start-backend.bat": 0.177,
+        "/Users/mac/codex-backend/verify-swagger-docs.js": 0.3402,
+        "/Users/mac/codex-backend/middleware/auth.js": 0.1056,
+        "/Users/mac/codex-backend/middleware/teamRestrictions.js": 0.6,
+        "/Users/mac/codex-backend/middleware/subscription.js": 0.6,
+        "/Users/mac/codex-backend/middleware/permissionMatrix.js": 0.6,
+        "/Users/mac/codex-backend/config/paystack.js": 0.5172,
+        "/Users/mac/codex-backend/config/flutterwave.js": 0.1824,
+        "/Users/mac/codex-backend/config/swagger.js": 0.6,
+        "/Users/mac/codex-backend/config/passport.js": 0.6,
+        "/Users/mac/codex-backend/config/stripe.js": 0.3894,
+        "/Users/mac/codex-backend/js/editor-new.js": 0.6,
+        "/Users/mac/codex-backend/utils/billingScheduler.js": 0.6,
+        "/Users/mac/codex-backend/utils/meetingSocket.js": 0.6,
+        "/Users/mac/codex-backend/utils/emailServiceResend.js": 0.6,
+        "/Users/mac/codex-backend/utils/geminiService.js": 0.6,
+        "/Users/mac/codex-backend/utils/agentOrchestrator.js": 0.6,
+        "/Users/mac/codex-backend/utils/aiService.js": 0.6,
+        "/Users/mac/codex-backend/utils/vectorMemory.js": 0.6,
+        "/Users/mac/codex-backend/utils/githubService.js": 0.6,
+        "/Users/mac/codex-backend/utils/debugAdapter.js": 0.6,
+        "/Users/mac/codex-backend/utils/selfHealingSystem.js": 0.09,
+        "/Users/mac/codex-backend/utils/hitlGates.js": 0.6,
+        "/Users/mac/codex-backend/utils/emailService.js": 0.6,
+        "/Users/mac/codex-backend/utils/virtualFileSystem.js": 0.6,
+        "/Users/mac/codex-backend/utils/sandboxSecurity.js": 0.3078,
+        "/Users/mac/codex-backend/utils/terminalService.js": 0.6,
+        "/Users/mac/codex-backend/utils/errorHandler.js": 0.6,
+        "/Users/mac/codex-backend/utils/supportSocket.js": 0.6,
+        "/Users/mac/codex-backend/utils/languageRestrictions.js": 0.5334,
+        "/Users/mac/codex-backend/utils/collaborationService.js": 0.6,
+        "/Users/mac/codex-backend/utils/billingCron.js": 0.1722,
+        "/Users/mac/codex-backend/utils/codeSearchService.js": 0.6,
+        "/Users/mac/codex-backend/utils/sandboxExecutor.js": 0.6,
+        "/Users/mac/codex-backend/utils/notificationService.js": 0.6,
+        "/Users/mac/codex-backend/utils/lspManager.js": 0.6,
+        "/Users/mac/codex-backend/utils/flutterwaveScheduler.js": 0.6,
+        "/Users/mac/codex-backend/utils/paystackScheduler.js": 0.6,
+        "/Users/mac/codex-backend/utils/gitService.js": 0.6,
+        "/Users/mac/codex-backend/models/Channel.js": 0.1992,
+        "/Users/mac/codex-backend/models/OTP.js": 0.102,
+        "/Users/mac/codex-backend/models/Notification.js": 0.3864,
+        "/Users/mac/codex-backend/models/AIPairSession.js": 0.2238,
+        "/Users/mac/codex-backend/models/IntegrationData.js": 0.1626,
+        "/Users/mac/codex-backend/models/MeetingRoom.js": 0.3162,
+        "/Users/mac/codex-backend/models/FileUpload.js": 0.2514,
+        "/Users/mac/codex-backend/models/BillingSchedule.js": 0.177,
+        "/Users/mac/codex-backend/models/Message.js": 0.2718,
+        "/Users/mac/codex-backend/models/TeamProject.js": 0.2178,
+        "/Users/mac/codex-backend/models/CodeFile.js": 0.3264,
+        "/Users/mac/codex-backend/models/User.js": 0.4128,
+        "/Users/mac/codex-backend/models/TeamChat.js": 0.2064,
+        "/Users/mac/codex-backend/models/Subscription.js": 0.6,
+        "/Users/mac/codex-backend/models/SupportTicket.js": 0.273,
+        "/Users/mac/codex-backend/models/Company.js": 0.3192,
+        "/Users/mac/codex-backend/models/Invitation.js": 0.3132,
+        "/Users/mac/codex-backend/models/SupportAgent.js": 0.2136,
+        "/Users/mac/codex-backend/models/TeamTask.js": 0.261,
+        "/Users/mac/codex-backend/models/Integration.js": 0.1764,
+        "/Users/mac/codex-backend/models/CodeChange.js": 0.186,
+        "/Users/mac/codex-backend/models/ChatMessage.js": 0.1578,
+        "/Users/mac/codex-backend/models/Meeting.js": 0.3408,
+        "/Users/mac/codex-backend/models/TeamActivity.js": 0.1794,
+        "/Users/mac/codex-backend/repo_analysis_tool/Repo_analysis_tool.py": 0.6,
+        "/Users/mac/codex-backend/routes/profile.js": 0.6,
+        "/Users/mac/codex-backend/routes/otp.js": 0.6,
+        "/Users/mac/codex-backend/routes/slack-api.js": 0.6,
+        "/Users/mac/codex-backend/routes/meetings.js": 0.6,
+        "/Users/mac/codex-backend/routes/flutterwave-billing.js": 0.6,
+        "/Users/mac/codex-backend/routes/trial-billing.js": 0.6,
+        "/Users/mac/codex-backend/routes/git.js": 0.6,
+        "/Users/mac/codex-backend/routes/agent-confirmation.js": 0.4074,
+        "/Users/mac/codex-backend/routes/auth.js": 0.6,
+        "/Users/mac/codex-backend/routes/terminal.js": 0.4062,
+        "/Users/mac/codex-backend/routes/subscription.js": 0.6,
+        "/Users/mac/codex-backend/routes/company.js": 0.6,
+        "/Users/mac/codex-backend/routes/support.js": 0.6,
+        "/Users/mac/codex-backend/routes/ai-pair.js": 0.6,
+        "/Users/mac/codex-backend/routes/github-api.js": 0.6,
+        "/Users/mac/codex-backend/routes/figma-api.js": 0.6,
+        "/Users/mac/codex-backend/routes/messaging.js": 0.6,
+        "/Users/mac/codex-backend/routes/github-advanced.js": 0.6,
+        "/Users/mac/codex-backend/routes/integrations.js": 0.6,
+        "/Users/mac/codex-backend/routes/vfs.js": 0.6,
+        "/Users/mac/codex-backend/routes/discord-api.js": 0.6,
+        "/Users/mac/codex-backend/routes/paystack-billing.js": 0.6,
+        "/Users/mac/codex-backend/routes/lsp.js": 0.6,
+        "/Users/mac/codex-backend/routes/dashboard.js": 0.6,
+        "/Users/mac/codex-backend/routes/invitations.js": 0.6,
+        "/Users/mac/codex-backend/routes/notifications.js": 0.6,
+        "/Users/mac/codex-backend/routes/code-editor.js": 0.6,
+        "/Users/mac/codex-backend/routes/collaboration.js": 0.5904,
+        "/Users/mac/codex-backend/routes/notion-api.js": 0.6,
+        "/Users/mac/codex-backend/routes/debug.js": 0.6
+      }
+    },
+    "frameworks": {
+      "package.json": [
+        "express"
+      ],
+      "code_imports": [
+        "Express"
+      ]
+    },
+    "runtime": [
+      "Node.js"
+    ],
+    "infrastructure": {
+      "databases": [
+        "MongoDB",
+        "MySQL",
+        "PostgreSQL",
+        "Redis"
+      ],
+      "deployment": [
+        "Docker",
+        "GitHub Actions"
+      ],
+      "apis": [
+        "Stripe"
+      ]
+    },
+    "byte_breakdown": {
+      "Bourne Shell": 3621,
+      "Markdown": 149488,
+      "JSON": 63038,
+      "JavaScript": 415352,
+      "PowerShell": 7107,
+      "Express (JavaScript)": 245690,
+      "HTML": 124746,
+      "DOS Batch": 1183,
+      "Next.js (JavaScript)": 247076,
+      "React (JavaScript)": 36160,
+      "Vue (JavaScript)": 3559,
+      "Python": 146671
+    },
+    "docs": {
+      "description": "Enterprise Development Platform - Backend API",
+      "has_setup": true,
+      "doc_quality": "High",
+      "env_vars": "Mapped (.env file present)"
+    },
+    "testing": {
+      "coverage": "N/A",
+      "case_count": 1
+    },
+    "complexity": "Moderate",
+    "repo_rating": {
+      "rating": 5.67,
+      "label": "Fair",
+      "component_scores": {
+        "commits": 0.56,
+        "dev_span_months": 0.375,
+        "contributors": 0.6667,
+        "loc": 0.7304,
+        "has_tests": 1.0,
+        "has_ci": 0.0,
+        "test_file_count": 0.05,
+        "source_file_ratio": 1.0
+      },
+      "meets_minimum": true
+    }
+  },
+  "performance": {
+    "stage0_seconds": 0.17,
+    "stage0_5_seconds": 0.01,
+    "stage2_seconds": 0.21,
+    "stage4_seconds": 3.11,
+    "stage5_seconds": 0.08,
+    "total_seconds": 13.16
+  },
+  "github_prs": {
+    "total_pr_count": 0,
+    "open_pr_count": 0,
+    "closed_pr_count": 0,
+    "merged_pr_count": 0,
+    "github_pr_analysis_available": false
+  },
+  "full_report_snapshot": {
+    "repo_name": "codex-backend",
+    "is_git": true,
+    "license_type": null,
+    "first_commit_date": "2026-01-26",
+    "last_commit_date": "2026-06-12",
+    "loc_code": 25734,
+    "loc_comment": 7787,
+    "loc_blank": 4232,
+    "loc_files": 108,
+    "lang_count": 3,
+    "languages": "JavaScript | Python | HTML",
+    "languages_frontend": "HTML | JavaScript",
+    "languages_backend": "Python",
+    "commits": 90,
+    "contributors": 3,
+    "all_contributors_count": 3,
+    "all_contributors": "Your Name, Ejoymene, Ejoyment",
+    "branch_count": 1,
+    "meaningful_commit_count": 84,
+    "development_span_months": 4.5,
+    "commits_per_month": "20.0 commits/mo",
+    "git_history_intact": true,
+    "tokens_llm": 275453,
+    "lexical_token": 235446,
+    "duplication_weighted_percent": "0.0%",
+    "code_complexity": "Moderate",
+    "ai_detection_percent": "8.5%",
+    "frameworks": "package.json: express | code_imports: Express",
+    "framework_frontend": "",
+    "framework_backend": "Express",
+    "databases_used": "MongoDB | MySQL | PostgreSQL | Redis",
+    "third_party_apis": "Stripe",
+    "setup_guidelines": "Present",
+    "security_findings": "Clean",
+    "documentation_quality": "High",
+    "repo_rating_score": 5.67,
+    "repo_rating_label": "Fair",
+    "languages_percentage_bytes(>5%)": "JavaScript (77.7%) | Python (12.0%) | HTML (10.2%)",
+    "frameworks_percentage_bytes(>5%)": "Next.js (46.4%) | Express (46.1%) | React (6.8%)",
+    "total_time_seconds": 13.16,
+    "total_pr_count": 0,
+    "open_pr_count": 0,
+    "closed_pr_count": 0,
+    "merged_pr_count": 0,
+    "github_pr_analysis_available": false,
+    "deployment_env": "Docker|GitHub Actions",
+    "environment_variables": "Mapped (.env file present)",
+    "stars": "N/A",
+    "forks": "N/A",
+    "watchers": "N/A",
+    "open_issues": "N/A",
+    "creation_date": "N/A",
+    "loc_verified": 25734,
+    "tokenizer_method": "N/A"
+  }
+}

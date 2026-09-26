@@ -1,0 +1,3005 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Code Editor - BuildrsHQ</title>
+    <link rel="icon" href="buildrs.png">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" data-name="vs/editor/editor.main" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/editor/editor.main.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/xterm@5.3.0/css/xterm.css" />
+    <link rel="stylesheet" href="fonts/fonts.css">
+    <link rel="stylesheet" href="css/workspace.css">
+    <link rel="stylesheet" href="css/professional-ui.css">
+    <link rel="stylesheet" href="css/visual-polish.css">
+    <link rel="stylesheet" href="css/editor-premium.css">
+    <link rel="stylesheet" href="css/tab-management.css">
+    <link rel="stylesheet" href="css/responsive-guard.css">
+    <script src="js/responsive-guard.js"></script>
+    <style>
+        /* ============ EDITOR-SPECIFIC LAYOUT OVERRIDES ============ */
+        :root {
+            --activity-bar-w: 48px;
+            --editor-sidebar-w: 280px;
+            --tabs-h: 35px;
+            --breadcrumb-h: 28px;
+            --panel-h: 250px;
+            --panel-header-h: 35px;
+            --editor-sidebar-bg: var(--bg-secondary, #252526);
+            --editor-border: var(--border-color, #3e3e42);
+        }
+        #editorBody { display: flex; flex: 1; overflow: hidden; }
+
+        /* ACTIVITY BAR */
+        #activityBar {
+            width: var(--activity-bar-w);
+            background: var(--titlebar-bg, #323233);
+            border-right: 1px solid var(--editor-border);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+        .activity-item {
+            width: 48px; height: 48px; display: flex; align-items: center; justify-content: center;
+            color: var(--text-secondary, #858585); cursor: pointer; position: relative; font-size: 20px;
+            transition: all var(--transition-fast, 150ms);
+        }
+        .activity-item:hover { color: var(--text-primary, #cccccc); }
+        .activity-item.active { color: var(--text-primary, #cccccc); }
+        .activity-item.active::before {
+            content: ''; position: absolute; left: 0; top: 6px; bottom: 6px; width: 2px;
+            background: var(--accent-blue, #007acc); border-radius: 0 2px 2px 0;
+        }
+        .activity-spacer { flex: 1; }
+
+        /* EDITOR SIDEBAR */
+        #editorSidebar {
+            width: var(--editor-sidebar-w);
+            background: var(--editor-sidebar-bg);
+            border-right: 1px solid var(--editor-border);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            flex-shrink: 0;
+            transition: width 0.2s;
+        }
+        #editorSidebar.collapsed { width: 0; border-right: none; }
+        .sidebar-panel { display: none; flex-direction: column; height: 100%; }
+        .sidebar-panel.active { display: flex; }
+        .sidebar-header {
+            padding: 10px 16px; font-size: 11px; text-transform: uppercase; font-weight: 600;
+            letter-spacing: 0.5px; color: var(--text-primary, #cccccc); display: flex; justify-content: space-between;
+            align-items: center; flex-shrink: 0;
+        }
+        .sidebar-header .actions { display: flex; gap: 6px; align-items: center; }
+        .sidebar-header .actions i { cursor: pointer; color: var(--text-secondary, #858585); font-size: 14px; padding: 2px; display: inline-flex; align-items: center; justify-content: center; }
+        .sidebar-header .actions i:hover { color: var(--text-primary, #cccccc); }
+        .sidebar-body { flex: 1; overflow-y: auto; overflow-x: hidden; }
+
+        /* FILE TREE */
+        .file-item {
+            padding: 4px 8px 4px 16px; cursor: pointer; font-size: 13px; color: var(--text-primary, #cccccc);
+            display: flex; align-items: center; gap: 6px; white-space: nowrap; transition: background 0.1s;
+        }
+        .file-item:hover { background: var(--bg-hover, #2a2d2e); }
+        .file-item.selected { background: var(--bg-active, #37373d); }
+        .file-item .icon { width: 16px; text-align: center; flex-shrink: 0; font-size: 14px; }
+        .file-item .name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+        .file-item .actions { display: none; gap: 4px; flex-shrink: 0; }
+        .file-item:hover .actions { display: flex; }
+        .file-item .actions i { font-size: 11px; color: var(--text-secondary, #858585); padding: 2px; }
+        .file-item .actions i:hover { color: var(--text-primary, #cccccc); }
+        .file-item.folder { padding-left: 8px; }
+        .file-item .chevron { width: 16px; text-align: center; font-size: 10px; transition: transform 0.15s; flex-shrink: 0; }
+        .file-item .chevron.open { transform: rotate(90deg); }
+        .file-children { display: none; }
+        .file-children.open { display: block; }
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Code Editor - Codex</title>
+    <link rel="icon" href="buildrs.png">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" data-name="vs/editor/editor.main" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/editor/editor.main.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/xterm@5.3.0/css/xterm.css" />
+    <style>
+        :root {
+            --bg: #1e1e1e;
+            --sidebar-bg: #252526;
+            --titlebar-bg: #323233;
+            --statusbar-bg: #007acc;
+            --border: #3e3e42;
+            --text: #cccccc;
+            --text-dim: #858585;
+            --hover: #2a2d2e;
+            --active: #37373d;
+            --accent: #007acc;
+            --success: #16825d;
+            --error: #f48771;
+            --warning: #cca700;
+            --activity-bar-w: 48px;
+            --sidebar-w: 280px;
+            --titlebar-h: 35px;
+            --statusbar-h: 22px;
+            --tabs-h: 35px;
+            --breadcrumb-h: 28px;
+            --panel-h: 250px;
+            --panel-header-h: 35px;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            user-select: none;
+        }
+        ::-webkit-scrollbar { width: 10px; height: 10px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #424242; border-radius: 5px; }
+        ::-webkit-scrollbar-thumb:hover { background: #4e4e4e; }
+        ::-webkit-scrollbar-corner { background: transparent; }
+
+        /* TITLEBAR */
+        #titlebar {
+            height: var(--titlebar-h);
+            background: var(--titlebar-bg);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            padding: 0 8px;
+            flex-shrink: 0;
+            -webkit-app-region: drag;
+        }
+        #titlebar .brand { display: flex; align-items: center; gap: 8px; -webkit-app-region: no-drag; }
+        #titlebar .brand img { width: 18px; height: 18px; }
+        #titlebar .brand span { font-size: 12px; font-weight: 600; color: var(--text); }
+        #titlebar .title { flex: 1; text-align: center; font-size: 12px; color: var(--text-dim); }
+        #titlebar .actions { display: flex; gap: 2px; -webkit-app-region: no-drag; }
+        #titlebar .actions button {
+            width: 36px; height: 28px; border: none; background: transparent; color: var(--text-dim);
+            cursor: pointer; border-radius: 4px; font-size: 14px; display: flex; align-items: center; justify-content: center;
+        }
+        #titlebar .actions button:hover { background: var(--hover); color: var(--text); }
+
+        /* MAIN LAYOUT */
+        #main { display: flex; flex: 1; overflow: hidden; }
+
+        /* ACTIVITY BAR */
+        #activityBar {
+            width: var(--activity-bar-w);
+            background: var(--titlebar-bg);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+        .activity-item {
+            width: 48px; height: 48px; display: flex; align-items: center; justify-content: center;
+            color: var(--text-dim); cursor: pointer; position: relative; font-size: 20px;
+            transition: color 0.15s;
+        }
+        .activity-item:hover { color: var(--text); }
+        .activity-item.active { color: var(--text); }
+        .activity-item.active::before {
+            content: ''; position: absolute; left: 0; top: 6px; bottom: 6px; width: 2px;
+            background: var(--accent); border-radius: 0 2px 2px 0;
+        }
+        .activity-spacer { flex: 1; }
+
+        /* SIDEBAR */
+        #sidebar {
+            width: var(--sidebar-w);
+            background: var(--sidebar-bg);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            flex-shrink: 0;
+            transition: width 0.2s;
+        }
+        #sidebar.collapsed { width: 0; border-right: none; }
+        .sidebar-panel { display: none; flex-direction: column; height: 100%; }
+        .sidebar-panel.active { display: flex; }
+        .sidebar-header {
+            padding: 10px 16px; font-size: 11px; text-transform: uppercase; font-weight: 600;
+            letter-spacing: 0.5px; color: var(--text); display: flex; justify-content: space-between;
+            align-items: center; flex-shrink: 0;
+        }
+        .sidebar-header .actions { display: flex; gap: 6px; align-items: center; }
+        .sidebar-header .actions i { cursor: pointer; color: var(--text-dim); font-size: 14px; padding: 2px; display: inline-flex; align-items: center; justify-content: center; }
+        .sidebar-header .actions i:hover { color: var(--text); }
+        .sidebar-body { flex: 1; overflow-y: auto; overflow-x: hidden; }
+
+        /* FILE TREE */
+        .file-item {
+            padding: 4px 8px 4px 16px; cursor: pointer; font-size: 13px; color: var(--text);
+            display: flex; align-items: center; gap: 6px; white-space: nowrap; transition: background 0.1s;
+        }
+        .file-item:hover { background: var(--hover); }
+        .file-item.selected { background: var(--active); }
+        .file-item .icon { width: 16px; text-align: center; flex-shrink: 0; font-size: 14px; }
+        .file-item .name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+        .file-item .actions { display: none; gap: 4px; flex-shrink: 0; }
+        .file-item:hover .actions { display: flex; }
+        .file-item .actions i { font-size: 11px; color: var(--text-dim); padding: 2px; }
+        .file-item .actions i:hover { color: var(--text); }
+        .file-item.folder { padding-left: 8px; }
+        .file-item .chevron { width: 16px; text-align: center; font-size: 10px; transition: transform 0.15s; flex-shrink: 0; }
+        .file-item .chevron.open { transform: rotate(90deg); }
+        .file-children { display: none; }
+        .file-children.open { display: block; }
+
+        /* SEARCH */
+        .search-box { padding: 8px; flex-shrink: 0; }
+        .search-box input {
+            width: 100%; padding: 6px 8px; background: var(--bg); border: 1px solid var(--border);
+            color: var(--text); font-size: 13px; border-radius: 2px; outline: none; margin-bottom: 6px;
+        }
+        .search-box input:focus { border-color: var(--accent); }
+        .search-box button {
+            width: 100%; padding: 6px; background: var(--accent); color: #fff; border: none;
+            border-radius: 2px; cursor: pointer; font-size: 12px; margin-top: 4px;
+        }
+        .search-box button:hover { background: #005a9e; }
+        .search-result {
+            padding: 6px 12px; cursor: pointer; font-size: 12px; color: var(--text);
+            border-bottom: 1px solid var(--border); transition: background 0.1s;
+        }
+        .search-result:hover { background: var(--hover); }
+        .search-result .file { color: var(--accent); font-weight: 600; margin-bottom: 2px; }
+        .search-result .match { color: var(--text-dim); font-family: 'Consolas', monospace; }
+        .search-result .match strong { color: var(--warning); background: rgba(204,167,0,0.2); }
+
+        /* GIT */
+        .git-section { margin-bottom: 4px; }
+        .git-section-header {
+            padding: 6px 12px; font-size: 11px; font-weight: 600; text-transform: uppercase;
+            letter-spacing: 0.5px; color: var(--text); display: flex; justify-content: space-between;
+            align-items: center; background: var(--hover);
+        }
+        .git-file {
+            padding: 4px 8px 4px 24px; cursor: pointer; font-size: 13px; color: var(--text);
+            display: flex; align-items: center; gap: 8px; position: relative;
+        }
+        .git-file:hover { background: var(--hover); }
+        .git-file::before {
+            content: ''; position: absolute; left: 8px; width: 8px; height: 8px; border-radius: 50%;
+        }
+        .git-file.modified::before { background: #e5e510; }
+        .git-file.added::before { background: #0dbc79; }
+        .git-file.deleted::before { background: #f48771; }
+        .git-file .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .git-file .git-actions { display: none; gap: 4px; }
+        .git-file:hover .git-actions { display: flex; }
+        .git-file .git-actions i { font-size: 11px; color: var(--text-dim); cursor: pointer; padding: 2px; }
+        .git-file .git-actions i:hover { color: var(--text); }
+        .git-commit-box { padding: 8px; border-bottom: 1px solid var(--border); }
+        .git-commit-box textarea {
+            width: 100%; min-height: 50px; padding: 6px; background: var(--bg); border: 1px solid var(--border);
+            color: var(--text); font-size: 12px; font-family: inherit; resize: vertical; border-radius: 2px;
+        }
+        .git-commit-box textarea:focus { outline: none; border-color: var(--accent); }
+        .git-commit-actions { display: flex; gap: 6px; margin-top: 6px; }
+        .git-commit-actions button {
+            flex: 1; padding: 5px; border: none; border-radius: 2px; cursor: pointer; font-size: 11px;
+        }
+        .git-commit-actions .btn-commit { background: var(--accent); color: #fff; }
+        .git-commit-actions .btn-commit:hover { background: #005a9e; }
+        .git-commit-actions .btn-push { background: var(--hover); color: var(--text); }
+        .git-commit-actions .btn-push:hover { background: var(--active); }
+
+        /* AI CHAT */
+        .ai-chat { display: flex; flex-direction: column; height: 100%; }
+        .ai-messages { flex: 1; overflow-y: auto; padding: 8px; }
+        .ai-msg { margin-bottom: 10px; animation: fadeIn 0.2s; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+        .ai-msg.user .bubble { background: var(--accent); color: #fff; margin-left: 20px; border-radius: 8px 8px 0 8px; }
+        .ai-msg.assistant .bubble { background: var(--hover); color: var(--text); margin-right: 20px; border-radius: 8px 8px 8px 0; border-left: 3px solid var(--success); }
+        .ai-msg.system .bubble { background: var(--bg); color: var(--text-dim); text-align: center; font-size: 11px; }
+        .ai-msg .bubble { padding: 8px 12px; font-size: 12px; line-height: 1.5; word-break: break-word; }
+        .ai-msg .bubble pre { background: #000; color: #0f0; padding: 8px; border-radius: 4px; overflow-x: auto; margin: 6px 0; font-size: 11px; }
+        .ai-msg .bubble code { background: rgba(255,255,255,0.1); padding: 1px 4px; border-radius: 2px; font-size: 11px; }
+        .ai-input-area { padding: 8px; border-top: 1px solid var(--border); flex-shrink: 0; }
+        .ai-input-area textarea {
+            width: 100%; padding: 8px; background: var(--bg); border: 1px solid var(--border);
+            color: var(--text); font-size: 12px; border-radius: 4px; resize: vertical; min-height: 50px;
+            font-family: inherit;
+        }
+        .ai-input-area textarea:focus { outline: none; border-color: var(--accent); }
+        .ai-input-row { display: flex; gap: 6px; margin-top: 6px; }
+        .ai-input-row button {
+            flex: 1; padding: 6px; border: none; border-radius: 3px; cursor: pointer; font-size: 11px;
+            background: var(--hover); color: var(--text);
+        }
+        .ai-input-row button:hover { background: var(--active); }
+        .ai-input-row button.primary { background: var(--accent); color: #fff; }
+        .ai-input-row button.primary:hover { background: #005a9e; }
+        .ai-typing { display: none; padding: 6px 12px; font-size: 11px; color: var(--text-dim); }
+        .ai-typing i { margin-right: 6px; }
+
+        /* EDITOR AREA */
+        #editorArea { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+
+        /* BREADCRUMBS */
+        #breadcrumbs {
+            height: var(--breadcrumb-h); background: var(--sidebar-bg); border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; padding: 0 12px; font-size: 12px; color: var(--text-dim);
+            overflow-x: auto; white-space: nowrap; flex-shrink: 0;
+        }
+        #breadcrumbs span { cursor: pointer; padding: 2px 4px; border-radius: 2px; }
+        #breadcrumbs span:hover { background: var(--hover); color: var(--text); }
+        #breadcrumbs .sep { margin: 0 2px; font-size: 9px; cursor: default; }
+
+        /* TABS */
+        #tabsBar {
+            height: var(--tabs-h); background: var(--sidebar-bg); border-bottom: 1px solid var(--border);
+            display: flex; overflow-x: auto; flex-shrink: 0;
+        }
+        #tabsBar::-webkit-scrollbar { height: 0; }
+        .tab {
+            height: 35px; padding: 0 12px; display: flex; align-items: center; gap: 8px;
+            background: var(--bg); border-right: 1px solid var(--border); color: var(--text-dim);
+            cursor: pointer; font-size: 13px; min-width: 100px; max-width: 200px; flex-shrink: 0;
+            transition: background 0.1s;
+        }
+        .tab:hover { background: var(--hover); color: var(--text); }
+        .tab.active { color: var(--text); background: var(--bg); border-top: 2px solid var(--accent); }
+        .tab.modified .tab-label::after { content: ' ●'; color: var(--text); }
+        .tab .tab-close { opacity: 0; margin-left: auto; flex-shrink: 0; font-size: 12px; padding: 2px; border-radius: 2px; }
+        .tab:hover .tab-close { opacity: 1; }
+        .tab .tab-close:hover { background: var(--active); }
+
+        /* EDITOR */
+        #editorContainer { flex: 1; overflow: hidden; }
+
+        /* PANEL */
+        #panel {
+            height: var(--panel-h); background: var(--sidebar-bg); border-top: 1px solid var(--border);
+            display: flex; flex-direction: column; flex-shrink: 0; transition: height 0.2s;
+        }
+        #panel.collapsed { height: var(--panel-header-h); }
+        #panelHeader {
+            height: var(--panel-header-h); background: var(--titlebar-bg); display: flex;
+            border-bottom: 1px solid var(--border); flex-shrink: 0;
+        }
+        .panel-tab {
+            padding: 0 14px; display: flex; align-items: center; color: var(--text-dim);
+            cursor: pointer; font-size: 12px; gap: 6px; text-transform: uppercase; letter-spacing: 0.5px;
+            transition: color 0.15s; border-bottom: 2px solid transparent;
+        }
+        .panel-tab:hover { color: var(--text); }
+        .panel-tab.active { color: var(--text); border-bottom-color: var(--accent); }
+        .panel-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; padding-right: 12px; }
+        .panel-actions i { cursor: pointer; color: var(--text-dim); font-size: 14px; }
+        .panel-actions i:hover { color: var(--text); }
+        #panelBody { flex: 1; overflow: hidden; }
+        .panel-content { display: none; height: 100%; }
+        .panel-content.active { display: flex; }
+        #terminalContainer {
+            width: 100%; height: 100%;
+            padding: 4px 8px;
+            background: #1e1e1e;
+        }
+        #terminalContainer .xterm {
+            height: 100%;
+            padding: 0;
+        }
+        #terminalContainer .xterm-viewport {
+            scrollbar-width: thin;
+            scrollbar-color: #424242 transparent;
+        }
+        #terminalContainer .xterm-viewport::-webkit-scrollbar { width: 8px; }
+        #terminalContainer .xterm-viewport::-webkit-scrollbar-track { background: transparent; }
+        #terminalContainer .xterm-viewport::-webkit-scrollbar-thumb { background: #424242; border-radius: 4px; }
+        #terminalContainer .xterm-viewport::-webkit-scrollbar-thumb:hover { background: #555; }
+        #outputContent, #problemsContent { padding: 8px; font-family: 'Consolas', monospace; font-size: 13px; color: var(--text); overflow-y: auto; width: 100%; }
+
+        /* STATUSBAR */
+        #statusbar {
+            height: var(--statusbar-h); background: var(--accent); color: #fff; display: flex;
+            align-items: center; padding: 0 8px; font-size: 12px; gap: 12px; flex-shrink: 0;
+        }
+        .status-item { display: flex; align-items: center; gap: 4px; cursor: pointer; padding: 0 4px; white-space: nowrap; }
+        .status-item:hover { background: rgba(255,255,255,0.12); }
+        .status-right { margin-left: auto; display: flex; gap: 12px; }
+
+        /* MODALS */
+        .modal-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: none;
+            align-items: center; justify-content: center; z-index: 5000;
+        }
+        .modal-overlay.show { display: flex; }
+        .modal-box {
+            background: var(--sidebar-bg); border: 1px solid var(--border); border-radius: 6px;
+            padding: 20px; min-width: 400px; max-width: 600px; box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+        }
+        .modal-box h3 { font-size: 15px; margin-bottom: 16px; color: var(--text); }
+        .modal-box label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 4px; }
+        .modal-box input, .modal-box select {
+            width: 100%; padding: 8px; background: var(--bg); border: 1px solid var(--border);
+            color: var(--text); font-size: 13px; border-radius: 3px; margin-bottom: 12px;
+        }
+        .modal-box input:focus, .modal-box select:focus { outline: none; border-color: var(--accent); }
+        .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+        .btn {
+            padding: 7px 16px; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;
+            transition: background 0.15s;
+        }
+        .btn-primary { background: var(--accent); color: #fff; }
+        .btn-primary:hover { background: #005a9e; }
+        .btn-secondary { background: var(--hover); color: var(--text); }
+        .btn-secondary:hover { background: var(--active); }
+        .btn-danger { background: var(--error); color: #fff; }
+        .btn-danger:hover { background: #d0655b; }
+
+        /* COMMAND PALETTE */
+        #cmdPalette {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: none;
+            align-items: flex-start; justify-content: center; padding-top: 80px; z-index: 6000;
+        }
+        #cmdPalette.show { display: flex; }
+        #cmdPaletteBox {
+            background: var(--sidebar-bg); border: 1px solid var(--border); border-radius: 6px;
+            width: 600px; max-width: 95vw; box-shadow: 0 12px 40px rgba(0,0,0,0.5); overflow: hidden;
+        }
+        #cmdPaletteBox input {
+            width: 100%; padding: 12px 16px; background: var(--bg); border: none; border-bottom: 1px solid var(--border);
+            color: var(--text); font-size: 14px; outline: none;
+        }
+        #cmdPaletteResults { max-height: 400px; overflow-y: auto; }
+        .cmd-item {
+            padding: 8px 16px; cursor: pointer; display: flex; align-items: center; gap: 12px;
+            font-size: 13px; color: var(--text); transition: background 0.1s;
+        }
+        .cmd-item:hover, .cmd-item.selected { background: var(--accent); color: #fff; }
+        .cmd-item i { width: 18px; text-align: center; color: var(--text-dim); }
+        .cmd-item:hover i, .cmd-item.selected i { color: #fff; }
+        .cmd-item .shortcut { margin-left: auto; font-size: 11px; color: var(--text-dim); }
+        .cmd-item:hover .shortcut, .cmd-item.selected .shortcut { color: rgba(255,255,255,0.7); }
+
+        /* NOTIFICATIONS */
+        #notifications {
+            position: fixed; bottom: 30px; right: 16px; z-index: 7000; display: flex;
+            flex-direction: column-reverse; gap: 8px; max-width: 400px;
+        }
+        .notification {
+            background: var(--sidebar-bg); border: 1px solid var(--border); border-radius: 4px;
+            padding: 10px 14px; box-shadow: 0 4px 16px rgba(0,0,0,0.4); animation: slideInRight 0.25s;
+            display: flex; gap: 10px; align-items: flex-start; min-width: 300px;
+        }
+        @keyframes slideInRight { from { transform: translateX(120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        .notification.removing { animation: slideOutRight 0.2s forwards; }
+        @keyframes slideOutRight { to { transform: translateX(120%); opacity: 0; } }
+        .notification .notif-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+        .notification .notif-body { flex: 1; }
+        .notification .notif-title { font-size: 12px; font-weight: 600; color: var(--text); }
+        .notification .notif-msg { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+        .notification .notif-close { cursor: pointer; color: var(--text-dim); font-size: 12px; flex-shrink: 0; }
+        .notification .notif-close:hover { color: var(--text); }
+
+        /* CONTEXT MENU */
+        #ctxMenu {
+            position: fixed; background: #3c3c3c; border: 1px solid var(--border); border-radius: 4px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5); z-index: 8000; min-width: 200px; display: none;
+        }
+        #ctxMenu.show { display: block; }
+        .ctx-item {
+            padding: 6px 14px; cursor: pointer; font-size: 13px; color: var(--text);
+            display: flex; align-items: center; justify-content: space-between; transition: background 0.1s;
+        }
+        .ctx-item:hover { background: var(--accent); }
+        .ctx-sep { height: 1px; background: var(--border); margin: 4px 0; }
+        .ctx-shortcut { color: var(--text-dim); font-size: 11px; margin-left: 20px; }
+
+        /* LOADING */
+        .spinner {
+            width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--accent);
+            border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .empty-state { text-align: center; padding: 30px 16px; color: var(--text-dim); font-size: 12px; }
+        .empty-state i { font-size: 40px; opacity: 0.3; display: block; margin-bottom: 12px; }
+        .empty-state .title { font-weight: 600; color: var(--text); margin-bottom: 6px; font-size: 13px; }
+    </style>
+</head>
+<body>
+    <!-- TITLEBAR -->
+    <div id="titlebar">
+        <div class="brand">
+            <img src="buildrs.png" alt="Codex">
+            <span>Codex</span>
+        </div>
+        <div class="title" id="titlebarTitle">Code Editor</div>
+        <div class="actions">
+            <button onclick="window.location.href='dashboard.html'" title="Dashboard"><i class="fas fa-home"></i></button>
+        </div>
+    </div>
+
+    <!-- MAIN -->
+    <div id="main">
+        <!-- ACTIVITY BAR -->
+        <div id="activityBar">
+            <div class="activity-item active" data-panel="explorer" onclick="switchSidebar('explorer')" title="Explorer (Ctrl+Shift+E)"><i class="far fa-folder"></i></div>
+            <div class="activity-item" data-panel="search" onclick="switchSidebar('search')" title="Search (Ctrl+Shift+F)"><i class="fas fa-search"></i></div>
+            <div class="activity-item" data-panel="git" onclick="switchSidebar('git')" title="Source Control (Ctrl+Shift+G)"><i class="fas fa-code-branch"></i></div>
+            <div class="activity-item" data-panel="ai" onclick="switchSidebar('ai')" title="AI Assistant (Ctrl+Shift+A)"><i class="fas fa-robot"></i></div>
+            <div class="activity-item" data-panel="design" onclick="switchSidebar('design')" title="Design-Code Split (Ctrl+Shift+D)"><i class="fas fa-columns"></i></div>
+            <div class="activity-item" data-panel="collab" onclick="switchSidebar('collab')" title="Collaboration (Ctrl+Shift+L)"><i class="fas fa-users"></i></div>
+            <div class="activity-item" data-panel="deploy" onclick="switchSidebar('deploy')" title="Deploy & Payments (Ctrl+Shift+Y)"><i class="fas fa-rocket"></i></div>
+            <div class="activity-spacer"></div>
+            <div class="activity-item" onclick="openSettings()" title="Settings"><i class="fas fa-cog"></i></div>
+        </div>
+
+        <!-- SIDEBAR -->
+        <div id="sidebar">
+            <!-- EXPLORER -->
+            <div class="sidebar-panel active" id="panel-explorer">
+                <div class="sidebar-header">
+                    <span>EXPLORER</span>
+                    <div class="actions">
+                        <i class="fas fa-file-plus" onclick="showNewFileModal()" title="New File"></i>
+                        <i class="fas fa-folder-plus" onclick="showNewFolderModal()" title="New Folder"></i>
+                        <i class="fas fa-sync-alt" onclick="refreshFileTree()" title="Refresh"></i>
+                    </div>
+                </div>
+                <div class="search-box">
+                    <input type="text" placeholder="Filter files..." id="fileFilter" oninput="filterFileTree()">
+                </div>
+                <div class="sidebar-body" id="fileTree">
+                    <div class="empty-state"><div class="spinner"></div><div style="margin-top:12px;">Loading files...</div></div>
+                </div>
+            </div>
+
+            <!-- SEARCH -->
+            <div class="sidebar-panel" id="panel-search">
+                <div class="sidebar-header"><span>SEARCH</span></div>
+                <div class="search-box">
+                    <input type="text" placeholder="Search" id="searchInput" onkeydown="if(event.key==='Enter')performSearch()">
+                    <input type="text" placeholder="Replace" id="replaceInput">
+                    <button onclick="performSearch()"><i class="fas fa-search"></i> Search</button>
+                    <button onclick="replaceAll()" style="background:var(--hover);color:var(--text);"><i class="fas fa-exchange-alt"></i> Replace All</button>
+                </div>
+                <div class="sidebar-body" id="searchResults"><div class="empty-state">Enter a search term</div></div>
+            </div>
+
+            <!-- GIT -->
+            <div class="sidebar-panel" id="panel-git">
+                <div class="sidebar-header">
+                    <span>SOURCE CONTROL</span>
+                    <div class="actions"><i class="fas fa-sync-alt" onclick="refreshGitStatus()" title="Refresh"></i></div>
+                </div>
+                <div class="git-commit-box">
+                    <textarea id="gitCommitMsg" placeholder="Message (Ctrl+Enter to commit)"></textarea>
+                    <div class="git-commit-actions">
+                        <button class="btn-commit" onclick="gitCommit()"><i class="fas fa-check"></i> Commit</button>
+                        <button class="btn-push" onclick="gitCommitAndPush()"><i class="fas fa-upload"></i> Commit & Push</button>
+                    </div>
+                </div>
+                <div class="sidebar-body" id="gitStatus">
+                    <div class="empty-state"><i class="fas fa-code-branch"></i><div class="title">Loading Git status...</div></div>
+                </div>
+            </div>
+
+            <!-- AI -->
+            <div class="sidebar-panel" id="panel-ai">
+                <div class="sidebar-header">
+                    <span>AI ASSISTANT</span>
+                    <button id="agentToggle" onclick="toggleAgentMode()" style="font-size:10px;padding:3px 8px;background:var(--bg);border:1px solid var(--border);color:var(--text);cursor:pointer;border-radius:3px;">Agent: OFF</button>
+                </div>
+                <div class="ai-chat">
+                    <div class="ai-messages" id="aiMessages">
+                        <div class="empty-state">
+                            <i class="fas fa-robot"></i>
+                            <div class="title">AI Coding Assistant</div>
+                            <div>Ask me to create files, fix bugs, explain code, or refactor.</div>
+                        </div>
+                    </div>
+                    <div class="ai-typing" id="aiTyping"><i class="fas fa-circle-notch fa-spin"></i> AI is thinking...</div>
+                    <div class="ai-input-area">
+                        <textarea id="aiInput" placeholder="Ask AI anything..." rows="3"></textarea>
+                        <div class="ai-input-row">
+                            <button onclick="aiQuickAction('explain')"><i class="fas fa-lightbulb"></i> Explain</button>
+                            <button onclick="aiQuickAction('fix')"><i class="fas fa-bug"></i> Fix Bugs</button>
+                            <button onclick="aiQuickAction('optimize')"><i class="fas fa-rocket"></i> Optimize</button>
+                            <button class="primary" onclick="sendAIMessage()"><i class="fas fa-paper-plane"></i> Send</button>
+                        </div>
+                        <div style="font-size:10px;color:var(--text-dim);margin-top:4px;text-align:right;" id="aiUsage">AI: 0/10 today</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- DESIGN-CODE SPLIT -->
+            <div class="sidebar-panel" id="panel-design">
+                <div class="sidebar-header"><span>DESIGN-CODE SPLIT</span></div>
+                <div class="sidebar-body" style="padding:12px;">
+                    <div class="empty-state" style="padding:16px;">
+                        <i class="fas fa-columns"></i>
+                        <div class="title">Live Design-Code Split View</div>
+                        <div style="line-height:1.6;margin-bottom:12px;">View Figma designs side-by-side with live code. Changes to UI code update the preview in real time.</div>
+                    </div>
+                    <div style="margin-bottom:12px;">
+                        <label style="font-size:11px;color:var(--text-dim);display:block;margin-bottom:4px;">Figma File URL</label>
+                        <input type="text" id="figmaUrl" placeholder="https://figma.com/file/..." style="width:100%;padding:6px 8px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:12px;border-radius:3px;">
+                    </div>
+                    <div style="margin-bottom:12px;">
+                        <label style="font-size:11px;color:var(--text-dim);display:block;margin-bottom:4px;">Target Framework</label>
+                        <select id="designTarget" style="width:100%;padding:6px 8px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:12px;border-radius:3px;">
+                            <option value="react">React</option>
+                            <option value="flutter">Flutter</option>
+                            <option value="vue">Vue</option>
+                            <option value="html">HTML/CSS</option>
+                        </select>
+                    </div>
+                    <div style="margin-bottom:12px;">
+                        <label style="font-size:11px;color:var(--text-dim);display:block;margin-bottom:4px;">Connected Figma Projects</label>
+                        <div id="figmaProjectList" style="background:var(--bg);border:1px solid var(--border);border-radius:4px;min-height:60px;max-height:150px;overflow-y:auto;padding:4px;">
+                            <div style="text-align:center;padding:16px;color:var(--text-dim);font-size:11px;">Loading connected projects...</div>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" onclick="openDesignSplit()" style="width:100%;margin-bottom:8px;"><i class="fas fa-columns"></i> Open Split View</button>
+                    <button class="btn btn-secondary" onclick="figmaToCode()" style="width:100%;"><i class="fas fa-magic"></i> Figma → Code (AI)</button>
+                    <div id="designPreview" style="margin-top:12px;background:var(--bg);border:1px solid var(--border);border-radius:4px;min-height:200px;display:flex;align-items:center;justify-content:center;color:var(--text-dim);font-size:12px;">
+                        <div style="text-align:center;"><i class="fas fa-image" style="font-size:32px;opacity:0.3;display:block;margin-bottom:8px;"></i>Design preview loads here</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- COLLABORATION -->
+            <div class="sidebar-panel" id="panel-collab">
+                <div class="sidebar-header"><span>COLLABORATION</span></div>
+                <div class="sidebar-body" style="padding:12px;">
+                    <div class="empty-state" style="padding:16px;">
+                        <i class="fas fa-users"></i>
+                        <div class="title">Real-Time Collaboration</div>
+                        <div style="line-height:1.6;">Pair program with video, shared cursors, and live sandboxes.</div>
+                    </div>
+                    <button class="btn btn-primary" onclick="startVideoCall()" style="width:100%;margin-bottom:8px;"><i class="fas fa-video"></i> Start Video Call</button>
+                    <button class="btn btn-secondary" onclick="createBugHandoff()" style="width:100%;margin-bottom:8px;"><i class="fas fa-bug"></i> Instant Bug Handoff</button>
+                    <button class="btn btn-secondary" onclick="shareSandbox()" style="width:100%;margin-bottom:8px;"><i class="fas fa-share-alt"></i> Share Live Sandbox</button>
+                    <div style="margin-top:12px;padding:8px;background:var(--bg);border-radius:4px;border:1px solid var(--border);">
+                        <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;">ACTIVE SESSION</div>
+                        <div id="collabStatus" style="font-size:12px;color:var(--text-dim);">No active session</div>
+                        <div id="collabParticipants" style="display:flex;gap:4px;margin-top:6px;"></div>
+                    </div>
+                    <!-- Embedded video container -->
+                    <div id="videoContainer" style="display:none;margin-top:12px;background:#000;border-radius:4px;overflow:hidden;position:relative;aspect-ratio:16/9;">
+                        <iframe id="videoFrame" style="width:100%;height:100%;border:0;" allow="camera;microphone"></iframe>
+                    </div>
+                </div>
+            </div>
+
+            <!-- DEPLOY & PAYMENTS -->
+            <div class="sidebar-panel" id="panel-deploy">
+                <div class="sidebar-header"><span>DEPLOY & PAYMENTS</span></div>
+                <div class="sidebar-body" style="padding:12px;">
+                    <div class="empty-state" style="padding:12px;">
+                        <i class="fas fa-rocket"></i>
+                        <div class="title">One-Click Micro-SaaS</div>
+                        <div style="line-height:1.6;margin-bottom:8px;">Deploy with integrated payments for Stripe, Paystack & Flutterwave.</div>
+                    </div>
+                    <div style="margin-bottom:10px;">
+                        <label style="font-size:11px;color:var(--text-dim);display:block;margin-bottom:4px;">Payment Provider</label>
+                        <select id="paymentProvider" style="width:100%;padding:6px 8px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:12px;border-radius:3px;">
+                            <option value="stripe">Stripe</option>
+                            <option value="paystack">Paystack</option>
+                            <option value="flutterwave">Flutterwave</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-primary" onclick="setupPayments()" style="width:100%;margin-bottom:6px;"><i class="fas fa-credit-card"></i> Generate Payment Endpoints</button>
+                    <button class="btn btn-secondary" onclick="deployMicroSaaS()" style="width:100%;margin-bottom:6px;"><i class="fas fa-cloud-upload-alt"></i> Deploy Micro-SaaS</button>
+                    <button class="btn btn-secondary" onclick="openClientPortal()" style="width:100%;margin-bottom:6px;"><i class="fas fa-user-check"></i> Client Approval Portal</button>
+                    <div style="margin-top:10px;padding:8px;background:var(--bg);border-radius:4px;border:1px solid var(--border);">
+                        <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">DEPLOYMENT STATUS</div>
+                        <div id="deployStatus" style="font-size:12px;color:var(--text-dim);">No active deployment</div>
+                    </div>
+                    <div style="margin-top:10px;">
+                        <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px;">PR REVIEW GATEKEEPER</div>
+                        <button class="btn btn-secondary" onclick="runPRReview()" style="width:100%;margin-bottom:4px;"><i class="fas fa-shield-alt"></i> Audit Current Code</button>
+                        <div id="prReviewResult" style="font-size:11px;color:var(--text-dim);margin-top:4px;max-height:150px;overflow-y:auto;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- EDITOR AREA -->
+        <div id="editorArea">
+            <div id="breadcrumbs"><span><i class="fas fa-home"></i></span></div>
+            <div id="tabsBar"></div>
+            <div id="editorContainer"></div>
+            <div id="panel">
+                <div id="panelHeader">
+                    <div class="panel-tab active" data-panel="terminal" onclick="switchPanel('terminal')"><i class="fas fa-terminal"></i> Terminal</div>
+                    <div class="panel-tab" data-panel="output" onclick="switchPanel('output')"><i class="fas fa-list"></i> Output</div>
+                    <div class="panel-tab" data-panel="problems" onclick="switchPanel('problems')"><i class="fas fa-exclamation-triangle"></i> Problems <span id="problemCount" style="font-size:10px;margin-left:4px;">0</span></div>
+                    <div class="panel-actions">
+                        <i class="fas fa-plus" onclick="newTerminal()" title="New Terminal"></i>
+                        <i class="fas fa-chevron-down" id="panelToggleIcon" onclick="togglePanel()" title="Toggle Panel"></i>
+                    </div>
+                </div>
+                <div id="panelBody">
+                    <div class="panel-content active" id="content-terminal"><div id="terminalContainer"></div></div>
+                    <div class="panel-content" id="content-output"><div id="outputContent">$ Ready</div></div>
+                    <div class="panel-content" id="content-problems"><div id="problemsContent">No problems detected</div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- STATUSBAR -->
+    <div id="statusbar">
+        <div class="status-item" id="statusGitBranch"><i class="fas fa-code-branch"></i> <span>main</span></div>
+        <div class="status-item" id="statusErrors"><i class="fas fa-times-circle"></i> <span>0</span></div>
+        <div class="status-item" id="statusWarnings"><i class="fas fa-exclamation-triangle"></i> <span>0</span></div>
+        <div class="status-item" onclick="toggleAutoSave()"><i class="fas fa-save"></i> <span id="autoSaveLabel">Auto Save: On</span></div>
+        <div class="status-right">
+            <div class="status-item" id="statusLanguage">JavaScript</div>
+            <div class="status-item">UTF-8</div>
+            <div class="status-item">LF</div>
+            <div class="status-item">Ln <span id="statusLn">1</span>, Col <span id="statusCol">1</span></div>
+            <div class="status-item">Spaces: 4</div>
+            <div class="status-item" id="statusSubscription"><i class="fas fa-crown"></i> <span>Loading...</span></div>
+        </div>
+    </div>
+
+    <!-- MODALS -->
+    <div class="modal-overlay" id="newFileModal">
+        <div class="modal-box">
+            <h3><i class="fas fa-file-plus"></i> New File</h3>
+            <label>File Name</label>
+            <input type="text" id="newFileName" placeholder="example.js">
+            <label>Language</label>
+            <select id="newFileLang">
+                <option value="javascript">JavaScript</option>
+                <option value="typescript">TypeScript</option>
+                <option value="python">Python</option>
+                <option value="html">HTML</option>
+                <option value="css">CSS</option>
+                <option value="json">JSON</option>
+                <option value="markdown">Markdown</option>
+                <option value="java">Java</option>
+                <option value="go">Go</option>
+            </select>
+            <label>Path</label>
+            <input type="text" id="newFilePath" placeholder="/" value="/">
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeModal('newFileModal')">Cancel</button>
+                <button class="btn btn-primary" onclick="createNewFile()">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="newFolderModal">
+        <div class="modal-box">
+            <h3><i class="fas fa-folder-plus"></i> New Folder</h3>
+            <label>Folder Name</label>
+            <input type="text" id="newFolderName" placeholder="my-folder">
+            <label>Path</label>
+            <input type="text" id="newFolderPath" placeholder="/" value="/">
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeModal('newFolderModal')">Cancel</button>
+                <button class="btn btn-primary" onclick="createNewFolder()">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="settingsModal">
+        <div class="modal-box">
+            <h3><i class="fas fa-cog"></i> Settings</h3>
+            <label>Editor Font Size</label>
+            <input type="number" id="settingFontSize" value="14" min="10" max="30">
+            <label>Tab Size</label>
+            <input type="number" id="settingTabSize" value="4" min="1" max="8">
+            <label>Theme</label>
+            <select id="settingTheme">
+                <option value="vs-dark">Dark (VS Code)</option>
+                <option value="vs">Light</option>
+                <option value="hc-black">High Contrast</option>
+            </select>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeModal('settingsModal')">Cancel</button>
+                <button class="btn btn-primary" onclick="saveSettings()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- COMMAND PALETTE -->
+    <div id="cmdPalette" onclick="if(event.target===this)closeCmdPalette()">
+        <div id="cmdPaletteBox">
+            <input type="text" id="cmdPaletteInput" placeholder="Type a command..." oninput="filterCommands()" onkeydown="handleCmdKey(event)">
+            <div id="cmdPaletteResults"></div>
+        </div>
+    </div>
+
+    <!-- CONTEXT MENU -->
+    <div id="ctxMenu"></div>
+
+    <!-- NOTIFICATIONS -->
+    <div id="notifications"></div>
+
+    <!-- SCRIPTS - xterm.js MUST load before Monaco to avoid AMD define conflict -->
+    <script src="https://unpkg.com/xterm@5.3.0/lib/xterm.js"></script>
+    <script src="https://unpkg.com/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+    <script src="https://unpkg.com/xterm-addon-web-links@0.9.0/lib/xterm-addon-web-links.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
+
+    <script>
+    // ============================================================
+    // CODEX EDITOR - Complete VS Code-like Implementation
+    // ============================================================
+    const API_BASE = 'https://codex-backend-7utu.onrender.com/api';
+    const TOKEN = localStorage.getItem('authToken');
+    if (!TOKEN) { window.location.href = 'sign_in.html'; }
+
+    // ============ STATE ============
+    let monacoEditor = null;
+    let currentFile = null;
+    let openTabs = [];
+    let activeTabId = null;
+    let fileTreeData = [];
+    let currentWorkspace = null;
+    let autoSave = true;
+    let autoSaveTimer = null;
+    let currentSidebar = 'explorer';
+    let panelOpen = true;
+    let aiSessionId = null;
+    let aiUsage = { used: 0, limit: 10 };
+    let agentMode = false;
+    let currentTier = 'freebie';
+    let terminalInstance = null;
+    let terminalSocket = null;
+    let terminalFitAddon = null;
+    let terminalSessionId = null;
+    let gitClient = null;
+    let ctxTarget = null;
+
+    // ============ INIT ============
+    require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' } });
+    require(['vs/editor/editor.main'], function() {
+        monacoEditor = monaco.editor.create(document.getElementById('editorContainer'), {
+            value: '',
+            language: 'javascript',
+            theme: 'vs-dark',
+            fontSize: 14,
+            minimap: { enabled: true, scale: 1, showSlider: 'mouseover' },
+            scrollBeyondLastLine: false,
+            automaticLayout: true,
+            lineNumbers: 'on',
+            renderWhitespace: 'selection',
+            folding: true,
+            glyphMargin: true,
+            tabSize: 4,
+            insertSpaces: true,
+            wordWrap: 'off',
+            smoothScrolling: true,
+            cursorBlinking: 'blink',
+            cursorSmoothCaretAnimation: 'on',
+            bracketPairColorization: { enabled: true },
+            guides: { indentation: true, bracketPairs: true },
+        });
+
+        monacoEditor.onDidChangeCursorPosition(e => {
+            document.getElementById('statusLn').textContent = e.position.lineNumber;
+            document.getElementById('statusCol').textContent = e.position.column;
+        });
+
+        monacoEditor.onDidChangeModelContent(() => {
+            if (currentFile && autoSave) {
+                markTabModified(activeTabId, true);
+                clearTimeout(autoSaveTimer);
+                autoSaveTimer = setTimeout(saveCurrentFile, 1500);
+            }
+            updateProblems();
+        });
+
+        monacoEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, saveCurrentFile);
+        monacoEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyP, openCmdPalette);
+        monacoEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyP, openQuickOpen);
+
+        initAll();
+    });
+
+    async function initAll() {
+        await loadSubscription();
+        await loadWorkspace();
+        setupKeyboardShortcuts();
+        setupAIInput();
+        initTerminalWhenReady();
+        setupRealtimeSync();
+    }
+
+    // ============ REAL-TIME SYNC ============
+    function setupRealtimeSync() {
+        if (!currentWorkspace || !currentWorkspace._id) return;
+        
+        try {
+            const socket = io(API_BASE.replace('/api', ''), {
+                transports: ['websocket', 'polling']
+            });
+            
+            socket.on('connect', () => {
+                console.log('✓ Socket.IO connected for real-time sync');
+                socket.emit('workspace:join', { workspaceId: currentWorkspace._id });
+            });
+            
+            socket.on('workspace:change', (payload) => {
+                if (payload && payload.workspaceId === currentWorkspace._id) {
+                    console.log('Workspace change received:', payload.event, payload.data);
+                    
+                    // Auto-refresh file tree for any workspace change
+                    if (['file:created', 'file:updated', 'file:deleted', 'folder:created', 'folder:changed'].includes(payload.event)) {
+                        loadWorkspaceFiles();
+                    }
+                }
+            });
+            
+            socket.on('disconnect', () => {
+                console.log('Socket.IO disconnected');
+            });
+            
+            socket.on('connect_error', (err) => {
+                console.warn('Socket.IO connection error:', err.message);
+            });
+        } catch (e) {
+            console.warn('Socket.IO real-time sync not available:', e.message);
+        }
+    }
+
+    // ============ SUBSCRIPTION ============
+    // Uses getCurrentUser for reliability (same as teams.html), with fallback to /subscription/current
+    async function loadSubscription() {
+        try {
+            // Use getCurrentUser which reliably returns subscription data via /api/auth/me
+            const result = await api.getCurrentUser(TOKEN);
+            
+            if (result.success && result.user) {
+                const user = result.user;
+                currentTier = user.subscription?.tier || 'freebie';
+                const names = { freebie: 'Free', starter: 'Free', professional: 'Pro', enterprise: 'Enterprise' };
+                const colors = { freebie: '#94a3b8', starter: '#94a3b8', professional: '#3b82f6', enterprise: '#8b5cf6' };
+                document.getElementById('statusSubscription').innerHTML =
+                    `<i class="fas fa-crown" style="color:${colors[currentTier] || colors.freebie}"></i> <span>${names[currentTier] || 'Free'}</span>`;
+                const limits = { freebie: 10, starter: 10, professional: 100, enterprise: 9999 };
+                aiUsage.limit = limits[currentTier] || 10;
+                document.getElementById('aiUsage').textContent =
+                    `AI: ${aiUsage.used}/${aiUsage.limit >= 9999 ? '∞' : aiUsage.limit} today`;
+            } else {
+                // Fallback: try the subscription endpoint directly
+                await loadSubscriptionFallback();
+            }
+        } catch (e) {
+            console.error('Subscription load error:', e);
+            // Fallback: try the subscription endpoint directly
+            await loadSubscriptionFallback();
+        }
+    }
+
+    // Fallback subscription loader using /subscription/current endpoint
+    async function loadSubscriptionFallback() {
+        try {
+            const res = await fetch(`${API_BASE}/subscription/current`, {
+                headers: { 'Authorization': `Bearer ${TOKEN}` }
+            });
+            const data = await res.json();
+            if (data.success && data.subscription) {
+                currentTier = data.subscription.tier || 'freebie';
+                const names = { freebie: 'Free', starter: 'Free', professional: 'Pro', enterprise: 'Enterprise' };
+                const colors = { freebie: '#94a3b8', starter: '#94a3b8', professional: '#3b82f6', enterprise: '#8b5cf6' };
+                document.getElementById('statusSubscription').innerHTML =
+                    `<i class="fas fa-crown" style="color:${colors[currentTier] || colors.freebie}"></i> <span>${names[currentTier] || 'Free'}</span>`;
+                const limits = { freebie: 10, starter: 10, professional: 100, enterprise: 9999 };
+                aiUsage.limit = limits[currentTier] || 10;
+                document.getElementById('aiUsage').textContent =
+                    `AI: ${aiUsage.used}/${aiUsage.limit >= 9999 ? '∞' : aiUsage.limit} today`;
+            } else {
+                document.getElementById('statusSubscription').innerHTML = '<i class="fas fa-crown"></i> <span>Free</span>';
+            }
+        } catch (e) {
+            console.error('Subscription fallback error:', e);
+            document.getElementById('statusSubscription').innerHTML = '<i class="fas fa-crown"></i> <span>Free</span>';
+        }
+    }
+
+    // ============ WORKSPACE ============
+    async function loadWorkspace() {
+        try {
+            const res = await fetch(`${API_BASE}/company/my-companies`, {
+                headers: { 'Authorization': `Bearer ${TOKEN}` }
+            });
+            const data = await res.json();
+            if (data.success && data.companies && data.companies.length > 0) {
+                currentWorkspace = data.companies[0];
+                if (!currentWorkspace._id && currentWorkspace.id) currentWorkspace._id = currentWorkspace.id;
+                document.getElementById('titlebarTitle').textContent =
+                    `${currentWorkspace.name || 'Workspace'} - Code Editor`;
+                localStorage.setItem('currentWorkspaceId', currentWorkspace._id);
+                await loadWorkspaceFiles();
+            } else {
+                enablePersonalWorkspace();
+            }
+        } catch (e) {
+            console.error('Workspace load error:', e);
+            enablePersonalWorkspace();
+        }
+    }
+
+    function enablePersonalWorkspace() {
+        currentWorkspace = {
+            _id: 'personal-' + Date.now(),
+            name: 'Personal Workspace',
+            isPersonal: true
+        };
+        document.getElementById('titlebarTitle').textContent = 'Personal Workspace - Code Editor';
+        localStorage.setItem('currentWorkspaceId', currentWorkspace._id);
+        loadPersonalFiles();
+    }
+
+    async function loadWorkspaceFiles() {
+        if (currentWorkspace.isPersonal) { loadPersonalFiles(); return; }
+        try {
+            const res = await fetch(`${API_BASE}/code-editor/files?companyId=${currentWorkspace._id}`, {
+                headers: { 'Authorization': `Bearer ${TOKEN}` }
+            });
+            const data = await res.json();
+            if (data.success) {
+                fileTreeData = data.files || [];
+                renderFileTree();
+            }
+        } catch (e) {
+            console.error('Load files error:', e);
+            showNotification('Error', 'Failed to load files', 'error');
+        }
+    }
+
+    function loadPersonalFiles() {
+        fileTreeData = JSON.parse(localStorage.getItem('personalFiles') || '[]');
+        renderFileTree();
+    }
+
+    function savePersonalFiles() {
+        localStorage.setItem('personalFiles', JSON.stringify(fileTreeData));
+    }
+
+    // ============ FILE TREE ============
+    function renderFileTree(filter = '') {
+        const container = document.getElementById('fileTree');
+        if (!fileTreeData.length) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <i class="fas fa-folder-open"></i>
+                    <div class="title">No files yet</div>
+                    <div>Create a new file to get started</div>
+                    <button class="btn btn-primary" onclick="showNewFileModal()" style="margin-top:12px;">New File</button>
+                </div>`;
+            return;
+        }
+        const filtered = filter ? fileTreeData.filter(f => f.name.toLowerCase().includes(filter.toLowerCase())) : fileTreeData;
+        const byPath = {};
+        filtered.forEach(f => {
+            const p = f.path || '/';
+            if (!byPath[p]) byPath[p] = [];
+            byPath[p].push(f);
+        });
+
+        let html = '';
+        Object.keys(byPath).sort().forEach(path => {
+            if (path !== '/') {
+                html += `<div style="padding:4px 8px;font-size:11px;color:var(--text-dim);font-weight:600;margin-top:6px;">
+                    <i class="fas fa-folder-open" style="margin-right:4px;"></i>${path}</div>`;
+            }
+            byPath[path].forEach(f => {
+                const icon = getFileIcon(f.name);
+                html += `
+                <div class="file-item" data-id="${f._id}" data-path="${f.path || '/'}" data-name="${f.name}"
+                     onclick="openFileById('${f._id}')"
+                     oncontextmenu="showCtxMenu(event, 'file', '${f._id}', '${f.name}')">
+                    <i class="icon ${icon}" style="color:${getLangColor(f.language)}"></i>
+                    <span class="name">${f.name}</span>
+                    <span class="actions">
+                        <i class="fas fa-edit" onclick="event.stopPropagation();renameFilePrompt('${f._id}','${f.name}')" title="Rename"></i>
+                        <i class="fas fa-trash" onclick="event.stopPropagation();deleteFileById('${f._id}','${f.name}')" title="Delete"></i>
+                    </span>
+                </div>`;
+            });
+        });
+        container.innerHTML = html;
+    }
+
+    function filterFileTree() {
+        renderFileTree(document.getElementById('fileFilter').value);
+    }
+
+    function getFileIcon(name) {
+        const ext = (name || '').split('.').pop().toLowerCase();
+        const map = {
+            js: 'fab fa-js-square', jsx: 'fab fa-react', ts: 'fas fa-code', tsx: 'fab fa-react',
+            html: 'fab fa-html5', css: 'fab fa-css3-alt', scss: 'fab fa-sass',
+            json: 'fas fa-brackets-curly', md: 'fas fa-file-alt', py: 'fab fa-python',
+            java: 'fab fa-java', go: 'fas fa-code', rs: 'fas fa-code', php: 'fab fa-php',
+            rb: 'fas fa-gem', sh: 'fas fa-terminal', yml: 'fas fa-file-code', yaml: 'fas fa-file-code',
+            xml: 'fas fa-code', sql: 'fas fa-database', dockerfile: 'fab fa-docker',
+            png: 'fas fa-file-image', jpg: 'fas fa-file-image', svg: 'fas fa-file-image',
+            pdf: 'fas fa-file-pdf', zip: 'fas fa-file-archive',
+        };
+        return map[ext] || 'fas fa-file-code';
+    }
+
+    function getLangColor(lang) {
+        const colors = {
+            javascript: '#f7df1e', typescript: '#3178c6', python: '#3776ab',
+            html: '#e34c26', css: '#1572b6', json: '#f0c040', markdown: '#083fa1',
+            java: '#b07219', go: '#00add8', rust: '#dea584', php: '#4f5d95',
+        };
+        return colors[lang] || '#ccc';
+    }
+
+    async function refreshFileTree() {
+        showNotification('Refreshing', 'Reloading files...', 'info');
+        await loadWorkspaceFiles();
+    }
+
+    // ============ FILE OPERATIONS ============
+    async function openFileById(fileId) {
+        const file = fileTreeData.find(f => f._id === fileId);
+        if (!file) return;
+        if (currentWorkspace.isPersonal) {
+            currentFile = file;
+            monacoEditor.setValue(file.content || '');
+            monaco.editor.setModelLanguage(monacoEditor.getModel(), file.language || 'javascript');
+            document.getElementById('statusLanguage').textContent = file.language || 'JavaScript';
+            addOrSwitchTab(file);
+            updateBreadcrumbs(file.path, file.name);
+            return;
+        }
+        try {
+            const res = await fetch(`${API_BASE}/code-editor/files/${fileId}`, {
+                headers: { 'Authorization': `Bearer ${TOKEN}` }
+            });
+            const data = await res.json();
+            if (data.success) {
+                currentFile = data.file;
+                monacoEditor.setValue(data.file.content || '');
+                monaco.editor.setModelLanguage(monacoEditor.getModel(), data.file.language || 'javascript');
+                document.getElementById('statusLanguage').textContent = data.file.language || 'JavaScript';
+                addOrSwitchTab(data.file);
+                updateBreadcrumbs(data.file.path, data.file.name);
+            }
+        } catch (e) {
+            console.error('Open file error:', e);
+            showNotification('Error', 'Failed to open file', 'error');
+        }
+    }
+
+    async function saveCurrentFile() {
+        if (!currentFile) return;
+        const content = monacoEditor.getValue();
+        if (currentWorkspace.isPersonal) {
+            const idx = fileTreeData.findIndex(f => f._id === currentFile._id);
+            if (idx !== -1) { fileTreeData[idx].content = content; savePersonalFiles(); }
+            markTabModified(activeTabId, false);
+            showNotification('Saved', currentFile.name, 'success');
+            return;
+        }
+        try {
+            const res = await fetch(`${API_BASE}/code-editor/files/${currentFile._id}`, {
+                method: 'PUT',
+                headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content })
+            });
+            const data = await res.json();
+            if (data.success) {
+                currentFile = data.file;
+                markTabModified(activeTabId, false);
+                showNotification('Saved', currentFile.name, 'success');
+            }
+        } catch (e) {
+            console.error('Save error:', e);
+            showNotification('Error', 'Failed to save', 'error');
+        }
+    }
+
+    async function createNewFile() {
+        const name = document.getElementById('newFileName').value.trim();
+        const lang = document.getElementById('newFileLang').value;
+        const path = document.getElementById('newFilePath').value.trim() || '/';
+        if (!name) { showNotification('Error', 'Enter a file name', 'error'); return; }
+
+        if (currentWorkspace.isPersonal) {
+            const file = { _id: 'local-' + Date.now(), name, language: lang, path, content: '', createdAt: new Date() };
+            fileTreeData.push(file);
+            savePersonalFiles();
+            renderFileTree();
+            openFileById(file._id);
+            closeModal('newFileModal');
+            showNotification('Created', name, 'success');
+            return;
+        }
+        try {
+            const res = await fetch(`${API_BASE}/code-editor/files`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, language: lang, path, companyId: currentWorkspace._id, content: '' })
+            });
+            const data = await res.json();
+            if (data.success) {
+                closeModal('newFileModal');
+                document.getElementById('newFileName').value = '';
+                await loadWorkspaceFiles();
+                openFileById(data.file._id);
+                showNotification('Created', name, 'success');
+            } else {
+                showNotification('Error', data.message || 'Failed to create file', 'error');
+            }
+        } catch (e) {
+            console.error('Create file error:', e);
+            showNotification('Error', 'Failed to create file', 'error');
+        }
+    }
+
+    async function createNewFolder() {
+        const name = document.getElementById('newFolderName').value.trim();
+        const path = document.getElementById('newFolderPath').value.trim() || '/';
+        if (!name) { showNotification('Error', 'Enter a folder name', 'error'); return; }
+        // Folders are virtual - just create a placeholder file to establish the path
+        const folderPath = path === '/' ? `/${name}` : `${path}/${name}`;
+        if (currentWorkspace.isPersonal) {
+            closeModal('newFolderModal');
+            document.getElementById('newFolderName').value = '';
+            showNotification('Created', `Folder: ${folderPath}`, 'success');
+            return;
+        }
+        try {
+            const res = await fetch(`${API_BASE}/code-editor/files`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: '.gitkeep', language: 'text', path: folderPath, companyId: currentWorkspace._id, content: '' })
+            });
+            const data = await res.json();
+            closeModal('newFolderModal');
+            document.getElementById('newFolderName').value = '';
+            if (data.success) { await loadWorkspaceFiles(); showNotification('Created', `Folder: ${folderPath}`, 'success'); }
+            else { showNotification('Error', data.message || 'Failed', 'error'); }
+        } catch (e) {
+            console.error('Create folder error:', e);
+            showNotification('Error', 'Failed to create folder', 'error');
+        }
+    }
+
+    async function deleteFileById(fileId, name) {
+        if (!confirm(`Delete "${name}"?`)) return;
+        if (currentWorkspace.isPersonal) {
+            fileTreeData = fileTreeData.filter(f => f._id !== fileId);
+            savePersonalFiles();
+            renderFileTree();
+            if (currentFile && currentFile._id === fileId) { currentFile = null; monacoEditor.setValue(''); }
+            showNotification('Deleted', name, 'success');
+            return;
+        }
+        try {
+            const res = await fetch(`${API_BASE}/code-editor/files/${fileId}`, {
+                method: 'DELETE', headers: { 'Authorization': `Bearer ${TOKEN}` }
+            });
+            const data = await res.json();
+            if (data.success) {
+                await loadWorkspaceFiles();
+                if (currentFile && currentFile._id === fileId) { currentFile = null; monacoEditor.setValue(''); }
+                showNotification('Deleted', name, 'success');
+            }
+        } catch (e) {
+            console.error('Delete error:', e);
+            showNotification('Error', 'Failed to delete', 'error');
+        }
+    }
+
+    async function renameFilePrompt(fileId, oldName) {
+        const newName = prompt('Rename to:', oldName);
+        if (!newName || newName === oldName) return;
+        if (currentWorkspace.isPersonal) {
+            const f = fileTreeData.find(x => x._id === fileId);
+            if (f) { f.name = newName; savePersonalFiles(); renderFileTree(); showNotification('Renamed', `${oldName} → ${newName}`, 'success'); }
+            return;
+        }
+        try {
+            const res = await fetch(`${API_BASE}/code-editor/files/${fileId}`, {
+                method: 'PUT',
+                headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: newName })
+            });
+            const data = await res.json();
+            if (data.success) { await loadWorkspaceFiles(); showNotification('Renamed', `${oldName} → ${newName}`, 'success'); }
+            else { showNotification('Error', data.message || 'Failed', 'error'); }
+        } catch (e) { console.error('Rename error:', e); }
+    }
+
+    // ============ TABS ============
+    function addOrSwitchTab(file) {
+        const existing = openTabs.find(t => t.file._id === file._id);
+        if (existing) {
+            activeTabId = existing.id;
+            renderTabs();
+            return;
+        }
+        const tab = {
+            id: 'tab-' + Date.now(),
+            file: file,
+            label: file.name,
+            modified: false,
+            icon: getFileIcon(file.name)
+        };
+        openTabs.push(tab);
+        activeTabId = tab.id;
+        renderTabs();
+    }
+
+    function closeTab(tabId) {
+        const idx = openTabs.findIndex(t => t.id === tabId);
+        if (idx === -1) return;
+        const tab = openTabs[idx];
+        if (tab.modified && !confirm(`${tab.label} has unsaved changes. Close?`)) return;
+        openTabs.splice(idx, 1);
+        if (activeTabId === tabId) {
+            activeTabId = openTabs.length > 0 ? openTabs[Math.max(0, idx - 1)].id : null;
+            if (activeTabId) {
+                const active = openTabs.find(t => t.id === activeTabId);
+                if (active) openFileById(active.file._id);
+            } else {
+                currentFile = null;
+                monacoEditor.setValue('');
+            }
+        }
+        renderTabs();
+    }
+
+    function markTabModified(tabId, modified) {
+        const tab = openTabs.find(t => t.id === tabId);
+        if (tab) { tab.modified = modified; renderTabs(); }
+    }
+
+    function renderTabs() {
+        const bar = document.getElementById('tabsBar');
+        bar.innerHTML = openTabs.map(t => `
+            <div class="tab ${t.id === activeTabId ? 'active' : ''} ${t.modified ? 'modified' : ''}"
+                 onclick="switchToTab('${t.id}')" oncontextmenu="showTabCtxMenu(event,'${t.id}');return false;">
+                <i class="fas ${t.icon}" style="font-size:12px;"></i>
+                <span class="tab-label">${t.label}</span>
+                <i class="tab-close fas fa-times" onclick="event.stopPropagation();closeTab('${t.id}')"></i>
+            </div>
+        `).join('');
+    }
+
+    function switchToTab(tabId) {
+        const tab = openTabs.find(t => t.id === tabId);
+        if (!tab) return;
+        activeTabId = tabId;
+        openFileById(tab.file._id);
+        renderTabs();
+    }
+
+    function showTabCtxMenu(e, tabId) {
+        e.preventDefault();
+        const menu = document.getElementById('ctxMenu');
+        menu.innerHTML = `
+            <div class="ctx-item" onclick="closeTab('${tabId}');hideCtxMenu()">Close <span class="ctx-shortcut">Ctrl+W</span></div>
+            <div class="ctx-item" onclick="closeAllTabs();hideCtxMenu()">Close All</div>
+            <div class="ctx-sep"></div>
+            <div class="ctx-item" onclick="closeOthers('${tabId}');hideCtxMenu()">Close Others</div>
+        `;
+        menu.style.left = e.pageX + 'px';
+        menu.style.top = e.pageY + 'px';
+        menu.classList.add('show');
+        setTimeout(() => document.addEventListener('click', hideCtxMenu, { once: true }), 0);
+    }
+
+    function closeAllTabs() {
+        openTabs = [];
+        activeTabId = null;
+        currentFile = null;
+        monacoEditor.setValue('');
+        renderTabs();
+    }
+
+    function closeOthers(tabId) {
+        openTabs = openTabs.filter(t => t.id === tabId);
+        activeTabId = tabId;
+        renderTabs();
+    }
+
+    // ============ SIDEBAR ============
+    function switchSidebar(panel) {
+        currentSidebar = panel;
+        document.querySelectorAll('#activityBar .activity-item').forEach(el => el.classList.remove('active'));
+        const btn = document.querySelector(`#activityBar .activity-item[data-panel="${panel}"]`);
+        if (btn) btn.classList.add('active');
+        document.querySelectorAll('#sidebar .sidebar-panel').forEach(p => p.classList.remove('active'));
+        const panelEl = document.getElementById('panel-' + panel);
+        if (panelEl) panelEl.classList.add('active');
+        document.getElementById('sidebar').classList.remove('collapsed');
+        if (panel === 'git') refreshGitStatus();
+    }
+
+    // ============ PANEL (Terminal/Output/Problems) ============
+    function switchPanel(name) {
+        document.querySelectorAll('#panelHeader .panel-tab').forEach(t => t.classList.remove('active'));
+        const tab = document.querySelector(`#panelHeader .panel-tab[data-panel="${name}"]`);
+        if (tab) tab.classList.add('active');
+        document.querySelectorAll('#panelBody .panel-content').forEach(c => c.classList.remove('active'));
+        const content = document.getElementById('content-' + name);
+        if (content) content.classList.add('active');
+        if (name === 'terminal' && !terminalInstance) initTerminal();
+        if (name === 'terminal' && terminalFitAddon) setTimeout(() => terminalFitAddon.fit(), 50);
+    }
+
+    function togglePanel() {
+        panelOpen = !panelOpen;
+        const panel = document.getElementById('panel');
+        const icon = document.getElementById('panelToggleIcon');
+        if (panelOpen) {
+            panel.classList.remove('collapsed');
+            icon.className = 'fas fa-chevron-down';
+            if (terminalFitAddon) setTimeout(() => terminalFitAddon.fit(), 100);
+        } else {
+            panel.classList.add('collapsed');
+            icon.className = 'fas fa-chevron-up';
+        }
+    }
+
+    // ============ TERMINAL ============
+    const SOCKET_BASE = API_BASE.replace(/\/api$/, ''); // e.g. https://codex-backend-7utu.onrender.com
+
+    function initTerminalWhenReady() {
+        // Retry up to 10 times (10 seconds) waiting for xterm.js to load
+        let attempts = 0;
+        const maxAttempts = 10;
+        const tryInit = () => {
+            attempts++;
+            const TermClass = window.Terminal || (window.xterm && window.xterm.Terminal);
+            if (TermClass) {
+                const terminalTab = document.querySelector('#panelHeader .panel-tab[data-panel="terminal"]');
+                if (terminalTab && terminalTab.classList.contains('active')) {
+                    initTerminal();
+                }
+                return;
+            }
+            if (attempts < maxAttempts) {
+                setTimeout(tryInit, 1000);
+            } else {
+                const container = document.getElementById('terminalContainer');
+                if (container && !terminalInstance) {
+                    container.innerHTML = '<div style="padding:20px;color:var(--error);text-align:center;"><i class="fas fa-exclamation-triangle" style="font-size:24px;display:block;margin-bottom:8px;"></i>Terminal library not loaded<br><small>Refresh the page or check console</small></div>';
+                }
+                console.error('Terminal not found after ' + maxAttempts + ' attempts. window.Terminal:', typeof window.Terminal, 'window.xterm:', typeof window.xterm);
+            }
+        };
+        setTimeout(tryInit, 500);
+    }
+
+    function initTerminal() {
+        if (terminalInstance) return;
+        const container = document.getElementById('terminalContainer');
+        if (!container) return;
+
+        // Check if xterm.js loaded - try multiple possible global names
+        const TermClass = window.Terminal || (window.xterm && window.xterm.Terminal);
+        if (!TermClass) {
+            container.innerHTML = '<div style="padding:20px;color:var(--error);text-align:center;"><i class="fas fa-exclamation-triangle" style="font-size:24px;display:block;margin-bottom:8px;"></i>Terminal library not loaded<br><small>Refresh the page or check console</small></div>';
+            console.error('Terminal not found. window.Terminal:', typeof window.Terminal, 'window.xterm:', typeof window.xterm);
+            return;
+        }
+        console.log('Terminal class found:', typeof TermClass, 'name:', TermClass.name || 'unnamed');
+
+        // Clear any previous content
+        container.innerHTML = '';
+
+        terminalInstance = new TermClass({
+            cursorBlink: true,
+            cursorStyle: 'block',
+            fontSize: 13,
+            fontFamily: 'Consolas, "Courier New", monospace',
+            theme: { background: '#1e1e1e', foreground: '#cccccc', cursor: '#ffffff' },
+            scrollback: 2000,
+            allowProposedApi: true,
+            cols: 80,
+            rows: 24,
+        });
+
+        // Load addons - handle both namespaced (FitAddon.FitAddon) and direct (FitAddon) exports
+        try {
+            const FitClass = (typeof FitAddon !== 'undefined') ? (FitAddon.FitAddon || FitAddon) : null;
+            if (FitClass) {
+                terminalFitAddon = new FitClass();
+                terminalInstance.loadAddon(terminalFitAddon);
+            }
+            const WebLinksClass = (typeof WebLinksAddon !== 'undefined') ? (WebLinksAddon.WebLinksAddon || WebLinksAddon) : null;
+            if (WebLinksClass) {
+                terminalInstance.loadAddon(new WebLinksClass());
+            }
+        } catch (e) {
+            console.warn('Terminal addon error:', e);
+        }
+
+        terminalInstance.open(container);
+
+        // Fit after a short delay to ensure container has dimensions
+        setTimeout(() => {
+            if (terminalFitAddon) {
+                try { terminalFitAddon.fit(); } catch (e) {}
+            }
+        }, 200);
+
+        const wsId = currentWorkspace?._id || 'default';
+        connectTerminalSocket(wsId);
+
+        // Handle resize
+        window.addEventListener('resize', () => {
+            if (terminalFitAddon) {
+                try { terminalFitAddon.fit(); } catch (e) {}
+            }
+            if (terminalSocket && terminalSessionId && terminalInstance) {
+                terminalSocket.emit('terminal:resize', {
+                    sessionId: terminalSessionId,
+                    cols: terminalInstance.cols,
+                    rows: terminalInstance.rows
+                });
+            }
+        });
+    }
+
+    function connectTerminalSocket(workspaceId) {
+        if (terminalSocket) {
+            try { terminalSocket.disconnect(); } catch (e) {}
+            terminalSocket = null;
+        }
+
+        terminalInstance.writeln('\x1b[1;33mConnecting to terminal...\x1b[0m');
+
+        try {
+            terminalSocket = io(`${SOCKET_BASE}/terminal`, {
+                auth: { token: TOKEN },
+                transports: ['websocket', 'polling'],
+                reconnection: true,
+                reconnectionAttempts: 5,
+                reconnectionDelay: 1000,
+            });
+        } catch (e) {
+            terminalInstance.writeln(`\r\n\x1b[1;31mFailed to create socket: ${e.message}\x1b[0m\r\n`);
+            return;
+        }
+
+        terminalSocket.on('connect', () => {
+            terminalInstance.writeln('\x1b[1;32m✓ Connected\x1b[0m');
+            terminalSocket.emit('terminal:create', {
+                workspaceId,
+                options: {
+                    cols: terminalInstance?.cols || 80,
+                    rows: terminalInstance?.rows || 24
+                }
+            });
+        });
+
+        terminalSocket.on('terminal:created', (data) => {
+            terminalSessionId = data.sessionId;
+            const wsName = currentWorkspace?.name || 'workspace';
+            const wsId = currentWorkspace?._id || 'local';
+            terminalInstance.writeln('');
+            terminalInstance.writeln(`\x1b[1;36m╔══════════════════════════════════════════════╗\x1b[0m`);
+            terminalInstance.writeln(`\x1b[1;36m║\x1b[0m  \x1b[1;37mCodex Terminal\x1b[0m                               \x1b[1;36m║\x1b[0m`);
+            terminalInstance.writeln(`\x1b[1;36m╠══════════════════════════════════════════════╣\x1b[0m`);
+            terminalInstance.writeln(`\x1b[1;36m║\x1b[0m  \x1b[0;37mWorkspace:\x1b[0m \x1b[1;33m${wsName.padEnd(32)}\x1b[0m\x1b[1;36m║\x1b[0m`);
+            terminalInstance.writeln(`\x1b[1;36m║\x1b[0m  \x1b[0;37mSession:\x1b[0m   \x1b[0;32m${(data.sessionId || '').substring(0,32).padEnd(32)}\x1b[0m\x1b[1;36m║\x1b[0m`);
+            terminalInstance.writeln(`\x1b[1;36m║\x1b[0m  \x1b[0;37mType:\x1b[0m      \x1b[0;32m${(data.type || 'bash').padEnd(32)}\x1b[0m\x1b[1;36m║\x1b[0m`);
+            terminalInstance.writeln(`\x1b[1;36m╚══════════════════════════════════════════════╝\x1b[0m`);
+            terminalInstance.writeln('');
+            terminalInstance.writeln('\x1b[0;37mType commands to interact with your workspace.\x1b[0m');
+            terminalInstance.writeln('\x1b[0;37mUse \x1b[1;33mhelp\x1b[0;37m for available commands.\x1b[0m');
+            terminalInstance.writeln('');
+        });
+
+        terminalSocket.on('terminal:data', ({ data }) => {
+            if (terminalInstance) terminalInstance.write(data);
+        });
+
+        terminalSocket.on('terminal:error', ({ message }) => {
+            if (terminalInstance) terminalInstance.writeln(`\r\n\x1b[1;31mError: ${message}\x1b[0m\r\n`);
+        });
+
+        terminalSocket.on('connect_error', (e) => {
+            if (terminalInstance) {
+                terminalInstance.writeln(`\r\n\x1b[1;31mConnection failed: ${e.message}\x1b[0m\r\n`);
+                terminalInstance.writeln('\x1b[1;33mRetrying...\x1b[0m');
+            }
+        });
+
+        terminalSocket.on('disconnect', (reason) => {
+            if (terminalInstance) {
+                terminalInstance.writeln(`\r\n\x1b[1;33mDisconnected: ${reason}\x1b[0m\r\n`);
+            }
+        });
+
+        // Send terminal input to server
+        if (terminalInstance) {
+            terminalInstance.onData((data) => {
+                if (terminalSocket && terminalSocket.connected && terminalSessionId) {
+                    terminalSocket.emit('terminal:input', {
+                        sessionId: terminalSessionId,
+                        data
+                    });
+                }
+            });
+        }
+    }
+
+    function newTerminal() {
+        if (!terminalInstance) { initTerminal(); return; }
+        if (terminalSocket && terminalSessionId) {
+            terminalSocket.emit('terminal:destroy', { sessionId: terminalSessionId });
+        }
+        terminalInstance.clear();
+        const wsId = currentWorkspace?._id || 'default';
+        connectTerminalSocket(wsId);
+        switchPanel('terminal');
+    }
+
+    // ============ GIT ============
+    async function refreshGitStatus() {
+        const container = document.getElementById('gitStatus');
+        container.innerHTML = '<div class="empty-state"><div class="spinner"></div><div style="margin-top:8px;">Loading...</div></div>';
+        try {
+            const wsId = currentWorkspace?._id;
+            if (!wsId) { container.innerHTML = '<div class="empty-state"><i class="fas fa-code-branch"></i><div class="title">No workspace</div></div>'; return; }
+
+            // First check if GitHub integration is connected
+            const intRes = await fetch(`${API_BASE}/integrations`, {
+                headers: { 'Authorization': `Bearer ${TOKEN}` }
+            });
+            const intData = await intRes.json();
+            const githubConnected = intData.success && intData.integrations?.some(i => i.provider === 'github' && i.isActive);
+
+            if (!githubConnected) {
+                container.innerHTML = `<div class="empty-state">
+                    <i class="fab fa-github"></i>
+                    <div class="title">GitHub Not Connected</div>
+                    <div style="margin-bottom:12px;">Connect your GitHub account to enable source control.</div>
+                    <button class="btn btn-primary" onclick="window.open('${API_BASE}/github/auth','_blank')" style="margin-top:8px;">
+                        <i class="fab fa-github"></i> Connect GitHub
+                    </button>
+                </div>`;
+                document.getElementById('statusGitBranch').innerHTML = '<i class="fas fa-code-branch"></i> <span>not connected</span>';
+                return;
+            }
+
+            // Git status uses path param: /api/git/status/:workspaceId
+            const res = await fetch(`${API_BASE}/git/status/${wsId}`, {
+                headers: { 'Authorization': `Bearer ${TOKEN}` }
+            });
+            const data = await res.json();
+            if (data.success) {
+                renderGitStatus(data.status);
+                document.getElementById('statusGitBranch').innerHTML = `<i class="fas fa-code-branch"></i> <span>${data.status.branch || 'main'}</span>`;
+            } else if (data.error) {
+                container.innerHTML = `<div class="empty-state"><i class="fas fa-info-circle"></i><div class="title">Git not initialized</div><div>${data.error}</div><button class="btn btn-primary" onclick="initGitRepo()" style="margin-top:8px;">Initialize Git Repo</button></div>`;
+            } else {
+                container.innerHTML = `<div class="empty-state"><i class="fas fa-check-circle"></i><div class="title">Clean</div><div>No changes</div></div>`;
+            }
+        } catch (e) {
+            console.error('Git status error:', e);
+            container.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-triangle"></i><div class="title">Git unavailable</div><div>${e.message}</div><button class="btn btn-secondary" onclick="refreshGitStatus()" style="margin-top:8px;">Retry</button></div>`;
+        }
+    }
+
+    async function initGitRepo() {
+        const wsId = currentWorkspace?._id;
+        if (!wsId) return;
+        try {
+            const res = await fetch(`${API_BASE}/git/init`, {
+                method: 'POST', headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ workspaceId: wsId })
+            });
+            const data = await res.json();
+            if (data.success) {
+                showNotification('Git', 'Repository initialized', 'success');
+                refreshGitStatus();
+            } else {
+                showNotification('Git', data.error || 'Failed to init', 'error');
+            }
+        } catch (e) { console.error(e); }
+    }
+
+    function renderGitStatus(status) {
+        const container = document.getElementById('gitStatus');
+        const staged = status.staged || [];
+        const modified = status.modified || [];
+        const added = status.added || [];
+        const deleted = status.deleted || [];
+        const all = [...staged.map(f => ({ ...f, staged: true })), ...modified, ...added, ...deleted];
+
+        if (!all.length) {
+            container.innerHTML = '<div class="empty-state"><i class="fas fa-check-circle"></i><div class="title">No changes</div></div>';
+            return;
+        }
+        let html = '';
+        if (staged.length) {
+            html += `<div class="git-section"><div class="git-section-header">STAGED (${staged.length}) <i class="fas fa-minus" onclick="gitUnstageAll()" title="Unstage all" style="cursor:pointer;"></i></div>`;
+            staged.forEach(f => { html += `<div class="git-file modified"><span class="name">${f.path || f.name}</span><span class="git-actions"><i class="fas fa-minus" onclick="gitUnstage('${f.path||f.name}')" title="Unstage"></i></span></div>`; });
+            html += '</div>';
+        }
+        if (modified.length || added.length || deleted.length) {
+            const count = modified.length + added.length + deleted.length;
+            html += `<div class="git-section"><div class="git-section-header">CHANGES (${count}) <i class="fas fa-plus" onclick="gitStageAll()" title="Stage all" style="cursor:pointer;"></i></div>`;
+            [...modified, ...added, ...deleted].forEach(f => {
+                const cls = f.status === 'added' ? 'added' : f.status === 'deleted' ? 'deleted' : 'modified';
+                html += `<div class="git-file ${cls}"><span class="name">${f.path || f.name}</span><span class="git-actions"><i class="fas fa-plus" onclick="gitStage('${f.path||f.name}')" title="Stage"></i></span></div>`;
+            });
+            html += '</div>';
+        }
+        container.innerHTML = html;
+    }
+
+    async function gitStage(file) {
+        try {
+            const wsId = currentWorkspace?._id;
+            await fetch(`${API_BASE}/git/add`, {
+                method: 'POST', headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ workspaceId: wsId, files: [file] })
+            });
+            refreshGitStatus();
+            showNotification('Git', `Staged: ${file}`, 'success');
+        } catch (e) { console.error(e); }
+    }
+
+    async function gitStageAll() {
+        try {
+            const wsId = currentWorkspace?._id;
+            await fetch(`${API_BASE}/git/add`, {
+                method: 'POST', headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ workspaceId: wsId, files: ['.'] })
+            });
+            refreshGitStatus();
+            showNotification('Git', 'All staged', 'success');
+        } catch (e) { console.error(e); }
+    }
+
+    async function gitUnstage(file) {
+        try {
+            const wsId = currentWorkspace?._id;
+            await fetch(`${API_BASE}/git/reset`, {
+                method: 'POST', headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ workspaceId: wsId, files: [file] })
+            });
+            refreshGitStatus();
+            showNotification('Git', `Unstaged: ${file}`, 'success');
+        } catch (e) { console.error(e); }
+    }
+
+    async function gitUnstageAll() {
+        try {
+            const wsId = currentWorkspace?._id;
+            await fetch(`${API_BASE}/git/reset`, {
+                method: 'POST', headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ workspaceId: wsId, files: ['.'] })
+            });
+            refreshGitStatus();
+            showNotification('Git', 'All unstaged', 'success');
+        } catch (e) { console.error(e); }
+    }
+
+    async function gitCommit() {
+        const msg = document.getElementById('gitCommitMsg').value.trim();
+        if (!msg) { showNotification('Git', 'Enter a commit message', 'warning'); return; }
+        try {
+            const wsId = currentWorkspace?._id;
+            const res = await fetch(`${API_BASE}/git/commit`, {
+                method: 'POST', headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ workspaceId: wsId, message: msg })
+            });
+            const data = await res.json();
+            if (data.success) {
+                document.getElementById('gitCommitMsg').value = '';
+                refreshGitStatus();
+                showNotification('Git', `Committed: ${data.commit?.substring(0,7) || 'OK'}`, 'success');
+            } else { showNotification('Git', data.message || 'Failed', 'error'); }
+        } catch (e) { console.error(e); showNotification('Git', 'Commit failed', 'error'); }
+    }
+
+    async function gitCommitAndPush() {
+        await gitCommit();
+        try {
+            const wsId = currentWorkspace?._id;
+            const res = await fetch(`${API_BASE}/git/push`, {
+                method: 'POST', headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ workspaceId: wsId })
+            });
+            const data = await res.json();
+            if (data.success) showNotification('Git', 'Pushed to remote', 'success');
+            else showNotification('Git', data.message || 'Push failed', 'error');
+        } catch (e) { console.error(e); }
+    }
+
+    // ============ AI ASSISTANT ============
+    function setupAIInput() {
+        const input = document.getElementById('aiInput');
+        input.addEventListener('keydown', e => {
+            if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); sendAIMessage(); }
+        });
+    }
+
+    function toggleAgentMode() {
+        agentMode = !agentMode;
+        const btn = document.getElementById('agentToggle');
+        btn.textContent = agentMode ? 'Agent: ON' : 'Agent: OFF';
+        btn.style.background = agentMode ? 'var(--accent)' : 'var(--bg)';
+        btn.style.color = agentMode ? '#fff' : 'var(--text)';
+    }
+
+    async function sendAIMessage() {
+        const input = document.getElementById('aiInput');
+        const msg = input.value.trim();
+        if (!msg) return;
+        addAIMessage('user', msg);
+        input.value = '';
+        document.getElementById('aiTyping').style.display = 'block';
+
+        try {
+            if (!aiSessionId) {
+                const res = await fetch(`${API_BASE}/ai-pair/session`, {
+                    method: 'POST', headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ repositoryId: currentWorkspace?._id || 'editor', repositoryName: currentWorkspace?.name || 'Editor', repositoryOwner: 'user', branch: 'main', sessionName: 'Editor ' + new Date().toLocaleString() })
+                });
+                const d = await res.json();
+                if (d.success) aiSessionId = d.session._id;
+            }
+
+            const ctx = {
+                currentFile: currentFile ? { name: currentFile.name, language: currentFile.language, content: monacoEditor.getValue(), path: currentFile.path } : null,
+                workspace: currentWorkspace ? { id: currentWorkspace._id, name: currentWorkspace.name } : null,
+                files: fileTreeData.map(f => ({ name: f.name, path: f.path, language: f.language })),
+                openFiles: openTabs.map(t => t.label),
+            };
+
+            const res = await fetch(`${API_BASE}/ai-pair/chat`, {
+                method: 'POST', headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sessionId: aiSessionId, message: msg, codeContext: ctx, enableActions: true, useAgentLoop: agentMode })
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                if (data.actions && data.actions.length > 0) {
+                    addAIMessage('assistant', data.message?.content || 'Executing actions...');
+                    await executeAIActions(data.actions);
+                } else {
+                    addAIMessage('assistant', data.message?.content || 'Done.');
+                }
+                if (data.aiLimit) {
+                    aiUsage = data.aiLimit;
+                    document.getElementById('aiUsage').textContent = `AI: ${aiUsage.used}/${aiUsage.limit >= 9999 ? '∞' : aiUsage.limit} today`;
+                }
+            } else {
+                addAIMessage('system', 'Error: ' + (data.message || 'Unknown'));
+            }
+        } catch (e) {
+            console.error('AI error:', e);
+            addAIMessage('system', 'Failed to communicate with AI');
+        } finally {
+            document.getElementById('aiTyping').style.display = 'none';
+        }
+    }
+
+    function aiQuickAction(action) {
+        const input = document.getElementById('aiInput');
+        const code = monacoEditor.getValue();
+        const sel = monacoEditor.getSelection();
+        const selected = sel && !sel.isEmpty() ? monacoEditor.getModel().getValueInRange(sel) : '';
+        const prompts = {
+            explain: 'Explain this code in detail:\n' + (selected || code),
+            fix: 'Find and fix bugs in this code:\n' + (selected || code),
+            optimize: 'Optimize this code for performance and readability:\n' + (selected || code),
+        };
+        input.value = prompts[action] || '';
+        sendAIMessage();
+    }
+
+    function addAIMessage(role, content) {
+        const container = document.getElementById('aiMessages');
+        const div = document.createElement('div');
+        div.className = `ai-msg ${role}`;
+        div.innerHTML = `<div class="bubble">${content.replace(/\n/g, '<br>').replace(/```(\w*)\n?([\s\S]*?)```/g, '<pre><code>$2</code></pre>')}</div>`;
+        container.appendChild(div);
+        container.scrollTop = container.scrollHeight;
+    }
+
+    async function executeAIActions(actions) {
+        for (const action of actions) {
+            try {
+                switch (action.action) {
+                    case 'create_file':
+                        await aiCreateFile(action.fileName, action.content, action.language, action.path);
+                        break;
+                    case 'update_file':
+                        await aiUpdateFile(action.fileId, action.content);
+                        break;
+                    case 'update_current_file':
+                        monacoEditor.setValue(action.content);
+                        showNotification('AI', 'Code updated in editor', 'success');
+                        break;
+                    case 'delete_file':
+                        await deleteFileById(action.fileId, action.fileName || 'file');
+                        break;
+                    case 'insert_code':
+                        if (action.position) {
+                            const pos = monacoEditor.getPosition();
+                            monacoEditor.executeEdits('ai', [{ range: new monaco.Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column), text: action.code }]);
+                        }
+                        break;
+                }
+            } catch (e) { console.error('AI action error:', e); }
+        }
+        await loadWorkspaceFiles();
+        addAIMessage('system', '✓ Actions completed');
+    }
+
+    async function aiCreateFile(name, content, lang, path) {
+        if (currentWorkspace.isPersonal) {
+            const f = { _id: 'ai-' + Date.now(), name, language: lang || 'javascript', path: path || '/', content: content || '' };
+            fileTreeData.push(f); savePersonalFiles(); renderFileTree(); return;
+        }
+        await fetch(`${API_BASE}/code-editor/files`, {
+            method: 'POST', headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, language: lang || 'javascript', path: path || '/', companyId: currentWorkspace._id, content: content || '' })
+        });
+    }
+
+    async function aiUpdateFile(fileId, content) {
+        if (currentWorkspace.isPersonal) {
+            const f = fileTreeData.find(x => x._id === fileId);
+            if (f) { f.content = content; savePersonalFiles(); }
+            return;
+        }
+        await fetch(`${API_BASE}/code-editor/files/${fileId}`, {
+            method: 'PUT', headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content })
+        });
+    }
+
+    // ============ SEARCH ============
+    async function performSearch() {
+        const query = document.getElementById('searchInput').value.trim();
+        if (!query) return;
+        const container = document.getElementById('searchResults');
+        container.innerHTML = '<div class="empty-state"><div class="spinner"></div></div>';
+        try {
+            const res = await fetch(`${API_BASE}/code-editor/search?q=${encodeURIComponent(query)}&companyId=${currentWorkspace?._id || ''}`, {
+                headers: { 'Authorization': `Bearer ${TOKEN}` }
+            });
+            const data = await res.json();
+            if (data.success && data.results) {
+                container.innerHTML = data.results.map(r => `
+                    <div class="search-result" onclick="openFileById('${r.fileId}')">
+                        <div class="file"><i class="fas fa-file-code"></i> ${r.fileName}</div>
+                        <div class="match">${highlightMatch(r.line, query)}</div>
+                    </div>`).join('') || '<div class="empty-state">No results</div>';
+            } else {
+                container.innerHTML = '<div class="empty-state">No results found</div>';
+            }
+        } catch (e) {
+            container.innerHTML = '<div class="empty-state">Search failed</div>';
+        }
+    }
+
+    function highlightMatch(text, query) {
+        const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+        return text.replace(regex, '<strong>$1</strong>');
+    }
+
+    async function replaceAll() {
+        const search = document.getElementById('searchInput').value.trim();
+        const replace = document.getElementById('replaceInput').value;
+        if (!search) return;
+        try {
+            const res = await fetch(`${API_BASE}/code-editor/replace`, {
+                method: 'POST', headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ search, replace, companyId: currentWorkspace?._id })
+            });
+            const data = await res.json();
+            if (data.success) {
+                showNotification('Replace', `Replaced ${data.count || 0} occurrences`, 'success');
+                performSearch();
+            }
+        } catch (e) { console.error(e); }
+    }
+
+    // ============ PROBLEMS ============
+    function updateProblems() {
+        if (!monacoEditor) return;
+        const model = monacoEditor.getModel();
+        if (!model) return;
+        const markers = monaco.editor.getModelMarkers({ resource: model.uri });
+        const errors = markers.filter(m => m.severity === monaco.MarkerSeverity.Error);
+        const warnings = markers.filter(m => m.severity === monaco.MarkerSeverity.Warning);
+        document.getElementById('statusErrors').innerHTML = `<i class="fas fa-times-circle"></i> <span>${errors.length}</span>`;
+        document.getElementById('statusWarnings').innerHTML = `<i class="fas fa-exclamation-triangle"></i> <span>${warnings.length}</span>`;
+        document.getElementById('problemCount').textContent = errors.length + warnings.length;
+        const pc = document.getElementById('problemsContent');
+        if (markers.length === 0) {
+            pc.innerHTML = '<div style="color:var(--text-dim);padding:8px;">No problems detected</div>';
+        } else {
+            pc.innerHTML = markers.map(m => {
+                const icon = m.severity === monaco.MarkerSeverity.Error ? '❌' : '⚠️';
+                const color = m.severity === monaco.MarkerSeverity.Error ? 'var(--error)' : 'var(--warning)';
+                return `<div style="padding:4px 0;color:${color};font-size:12px;cursor:pointer;" onclick="monacoEditor.revealLine(${m.startLineNumber});monacoEditor.focus();">
+                    ${icon} Line ${m.startLineNumber}: ${m.message}</div>`;
+            }).join('');
+        }
+    }
+
+    // ============ BREADCRUMBS ============
+    function updateBreadcrumbs(path, name) {
+        const bc = document.getElementById('breadcrumbs');
+        let html = '<span onclick="switchSidebar(\'explorer\')"><i class="fas fa-home"></i></span>';
+        if (path && path !== '/') {
+            const parts = path.split('/').filter(Boolean);
+            let acc = '';
+            parts.forEach((p, i) => {
+                acc += '/' + p;
+                html += `<span class="sep">›</span><span>${p}</span>`;
+            });
+        }
+        if (name) html += `<span class="sep">›</span><span style="color:var(--text);">${name}</span>`;
+        bc.innerHTML = html;
+    }
+
+    // ============ COMMAND PALETTE ============
+    const commands = [
+        { id: 'file.new', name: 'File: New File', icon: 'fa-file-plus', shortcut: 'Ctrl+N', action: showNewFileModal },
+        { id: 'file.save', name: 'File: Save', icon: 'fa-save', shortcut: 'Ctrl+S', action: saveCurrentFile },
+        { id: 'file.close', name: 'File: Close Tab', icon: 'fa-times', shortcut: 'Ctrl+W', action: () => activeTabId && closeTab(activeTabId) },
+        { id: 'view.explorer', name: 'View: Explorer', icon: 'fa-folder', shortcut: 'Ctrl+Shift+E', action: () => switchSidebar('explorer') },
+        { id: 'view.search', name: 'View: Search', icon: 'fa-search', shortcut: 'Ctrl+Shift+F', action: () => switchSidebar('search') },
+        { id: 'view.git', name: 'View: Source Control', icon: 'fa-code-branch', shortcut: 'Ctrl+Shift+G', action: () => switchSidebar('git') },
+        { id: 'view.ai', name: 'View: AI Assistant', icon: 'fa-robot', shortcut: 'Ctrl+Shift+A', action: () => switchSidebar('ai') },
+        { id: 'view.design', name: 'View: Design-Code Split', icon: 'fa-columns', shortcut: 'Ctrl+Shift+D', action: () => switchSidebar('design') },
+        { id: 'view.collab', name: 'View: Collaboration', icon: 'fa-users', shortcut: 'Ctrl+Shift+L', action: () => switchSidebar('collab') },
+        { id: 'view.deploy', name: 'View: Deploy & Payments', icon: 'fa-rocket', shortcut: 'Ctrl+Shift+Y', action: () => switchSidebar('deploy') },
+        { id: 'view.terminal', name: 'View: Toggle Terminal', icon: 'fa-terminal', shortcut: 'Ctrl+`', action: togglePanel },
+        { id: 'terminal.new', name: 'Terminal: New', icon: 'fa-plus', action: newTerminal },
+        { id: 'collab.video', name: 'Collaboration: Start Video Call', icon: 'fa-video', action: startVideoCall },
+        { id: 'collab.handoff', name: 'Collaboration: Bug Handoff', icon: 'fa-bug', action: createBugHandoff },
+        { id: 'collab.sandbox', name: 'Collaboration: Share Sandbox', icon: 'fa-share-alt', action: shareSandbox },
+        { id: 'design.figma', name: 'Design: Figma to Code', icon: 'fa-magic', action: figmaToCode },
+        { id: 'deploy.payments', name: 'Deploy: Setup Payments', icon: 'fa-credit-card', action: setupPayments },
+        { id: 'deploy.launch', name: 'Deploy: Deploy Micro-SaaS', icon: 'fa-cloud-upload-alt', action: deployMicroSaaS },
+        { id: 'deploy.review', name: 'Deploy: PR Review Audit', icon: 'fa-shield-alt', action: runPRReview },
+        { id: 'settings', name: 'Preferences: Settings', icon: 'fa-cog', action: openSettings },
+    ];
+    let filteredCmds = [];
+    let selectedCmdIdx = 0;
+
+    function openCmdPalette() {
+        document.getElementById('cmdPalette').classList.add('show');
+        document.getElementById('cmdPaletteInput').value = '';
+        document.getElementById('cmdPaletteInput').focus();
+        filteredCmds = [...commands];
+        selectedCmdIdx = 0;
+        renderCommands();
+    }
+
+    function closeCmdPalette() {
+        document.getElementById('cmdPalette').classList.remove('show');
+    }
+
+    function filterCommands() {
+        const q = document.getElementById('cmdPaletteInput').value.toLowerCase();
+        filteredCmds = q ? commands.filter(c => c.name.toLowerCase().includes(q) || c.id.toLowerCase().includes(q)) : [...commands];
+        selectedCmdIdx = 0;
+        renderCommands();
+    }
+
+    function renderCommands() {
+        document.getElementById('cmdPaletteResults').innerHTML = filteredCmds.map((c, i) => `
+            <div class="cmd-item ${i === selectedCmdIdx ? 'selected' : ''}" onclick="executeCmd('${c.id}')">
+                <i class="fas ${c.icon}"></i> <span>${c.name}</span>
+                ${c.shortcut ? `<span class="shortcut">${c.shortcut}</span>` : ''}
+            </div>`).join('');
+    }
+
+    function handleCmdKey(e) {
+        if (e.key === 'Escape') { closeCmdPalette(); return; }
+        if (e.key === 'ArrowDown') { selectedCmdIdx = Math.min(selectedCmdIdx + 1, filteredCmds.length - 1); renderCommands(); e.preventDefault(); }
+        if (e.key === 'ArrowUp') { selectedCmdIdx = Math.max(selectedCmdIdx - 1, 0); renderCommands(); e.preventDefault(); }
+        if (e.key === 'Enter') { if (filteredCmds[selectedCmdIdx]) executeCmd(filteredCmds[selectedCmdIdx].id); e.preventDefault(); }
+    }
+
+    function executeCmd(id) {
+        closeCmdPalette();
+        const cmd = commands.find(c => c.id === id);
+        if (cmd) cmd.action();
+    }
+
+    function openQuickOpen() {
+        // Simple quick open - filter file tree
+        const q = prompt('Open file:');
+        if (!q) return;
+        const match = fileTreeData.find(f => f.name.toLowerCase().includes(q.toLowerCase()));
+        if (match) openFileById(match._id);
+        else showNotification('Quick Open', 'No file found', 'warning');
+    }
+
+    // ============ SETTINGS ============
+    function openSettings() {
+        document.getElementById('settingFontSize').value = monacoEditor?.getOption(monaco.editor.EditorOption.fontSize) || 14;
+        document.getElementById('settingTabSize').value = monacoEditor?.getOption(monaco.editor.EditorOption.tabSize) || 4;
+        document.getElementById('settingsModal').classList.add('show');
+    }
+
+    function saveSettings() {
+        const fontSize = parseInt(document.getElementById('settingFontSize').value) || 14;
+        const tabSize = parseInt(document.getElementById('settingTabSize').value) || 4;
+        const theme = document.getElementById('settingTheme').value;
+        if (monacoEditor) {
+            monacoEditor.updateOptions({ fontSize, tabSize, theme });
+        }
+        closeModal('settingsModal');
+        showNotification('Settings', 'Saved', 'success');
+    }
+
+    // ============ AUTO SAVE ============
+    function toggleAutoSave() {
+        autoSave = !autoSave;
+        document.getElementById('autoSaveLabel').textContent = 'Auto Save: ' + (autoSave ? 'On' : 'Off');
+    }
+
+    // ============ MODALS ============
+    function showNewFileModal() {
+        document.getElementById('newFileModal').classList.add('show');
+        setTimeout(() => document.getElementById('newFileName').focus(), 100);
+    }
+
+    function showNewFolderModal() {
+        document.getElementById('newFolderModal').classList.add('show');
+        setTimeout(() => document.getElementById('newFolderName').focus(), 100);
+    }
+
+    function closeModal(id) {
+        document.getElementById(id).classList.remove('show');
+    }
+
+    // Close modals on Escape
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') {
+            document.querySelectorAll('.modal-overlay.show').forEach(m => m.classList.remove('show'));
+            closeCmdPalette();
+            hideCtxMenu();
+        }
+    });
+
+    // Close modals on overlay click
+    document.querySelectorAll('.modal-overlay').forEach(m => {
+        m.addEventListener('click', e => { if (e.target === m) m.classList.remove('show'); });
+    });
+
+    // ============ CONTEXT MENU ============
+    function showCtxMenu(e, type, id, name) {
+        e.preventDefault();
+        ctxTarget = { type, id, name };
+        const menu = document.getElementById('ctxMenu');
+        menu.innerHTML = `
+            <div class="ctx-item" onclick="openFileById('${id}');hideCtxMenu()">Open <span class="ctx-shortcut">Enter</span></div>
+            <div class="ctx-item" onclick="renameFilePrompt('${id}','${name}');hideCtxMenu()">Rename <span class="ctx-shortcut">F2</span></div>
+            <div class="ctx-sep"></div>
+            <div class="ctx-item" onclick="deleteFileById('${id}','${name}');hideCtxMenu()">Delete <span class="ctx-shortcut">Del</span></div>
+        `;
+        menu.style.left = e.pageX + 'px';
+        menu.style.top = e.pageY + 'px';
+        menu.classList.add('show');
+        setTimeout(() => document.addEventListener('click', hideCtxMenu, { once: true }), 0);
+    }
+
+    function hideCtxMenu() {
+        document.getElementById('ctxMenu').classList.remove('show');
+    }
+
+    // ============ NOTIFICATIONS ============
+    function clearMessageAfter(elementId, timeoutMs = 8000) {
+    setTimeout(() => {
+        const el = document.getElementById(elementId);
+        if (el && el.innerHTML && el.innerHTML.trim() !== '') {
+            el.innerHTML = '<div style="font-size:12px;color:var(--text-dim);">No active deployment</div>';
+        }
+    }, timeoutMs);
+}
+
+function setDeployStatus(html, autoClearMs = 10000) {
+    const el = document.getElementById('deployStatus');
+    if (el) {
+        el.innerHTML = html;
+        clearTimeout(el._clearTimer);
+        if (autoClearMs > 0) {
+            el._clearTimer = setTimeout(() => {
+                el.innerHTML = '<div style="font-size:12px;color:var(--text-dim);">No active deployment</div>';
+            }, autoClearMs);
+        }
+    }
+}
+
+function showNotification(title, msg, type = 'info') {
+    const icons = { success: 'fa-check-circle', error: 'fa-exclamation-circle', warning: 'fa-exclamation-triangle', info: 'fa-info-circle' };
+    const colors = { success: 'var(--success)', error: 'var(--error)', warning: 'var(--warning)', info: 'var(--accent)' };
+    const container = document.getElementById('notifications');
+    if (!container) return;
+    const el = document.createElement('div');
+    el.className = 'notification';
+    el.innerHTML = `
+        <i class="notif-icon fas ${icons[type]}" style="color:${colors[type]}"></i>
+        <div class="notif-body"><div class="notif-title">${title}</div><div class="notif-msg">${msg}</div></div>
+        <i class="notif-close fas fa-times" onclick="this.parentElement.remove()"></i>
+    `;
+    container.appendChild(el);
+    setTimeout(() => { el.classList.add('removing'); setTimeout(() => el.remove(), 200); }, 4000);
+}
+
+    // ============ KEYBOARD SHORTCUTS ============
+    function setupKeyboardShortcuts() {
+        document.addEventListener('keydown', e => {
+            if (e.ctrlKey && e.shiftKey && e.key === 'P') { e.preventDefault(); openCmdPalette(); }
+            if (e.ctrlKey && !e.shiftKey && e.key === 'p') { e.preventDefault(); openQuickOpen(); }
+            if (e.ctrlKey && e.shiftKey && e.key === 'E') { e.preventDefault(); switchSidebar('explorer'); }
+            if (e.ctrlKey && e.shiftKey && e.key === 'F') { e.preventDefault(); switchSidebar('search'); }
+            if (e.ctrlKey && e.shiftKey && e.key === 'G') { e.preventDefault(); switchSidebar('git'); }
+            if (e.ctrlKey && e.shiftKey && e.key === 'A') { e.preventDefault(); switchSidebar('ai'); }
+            if (e.ctrlKey && e.shiftKey && e.key === 'D') { e.preventDefault(); switchSidebar('design'); }
+            if (e.ctrlKey && e.shiftKey && e.key === 'L') { e.preventDefault(); switchSidebar('collab'); }
+            if (e.ctrlKey && e.shiftKey && e.key === 'Y') { e.preventDefault(); switchSidebar('deploy'); }
+            if (e.ctrlKey && e.key === '`') { e.preventDefault(); togglePanel(); }
+            if (e.ctrlKey && e.key === 'w') { e.preventDefault(); if (activeTabId) closeTab(activeTabId); }
+            if (e.key === 'F2' && ctxTarget) { e.preventDefault(); renameFilePrompt(ctxTarget.id, ctxTarget.name); }
+        });
+    }
+
+    // ============ GIT COMMIT KEYBOARD ============
+    document.getElementById('gitCommitMsg').addEventListener('keydown', e => {
+        if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); gitCommit(); }
+    });
+
+    // ============ DESIGN-CODE SPLIT ============
+    let connectedFigmaProjects = [];
+
+    async function loadFigmaProjects() {
+        try {
+            const res = await fetch(`${API_BASE}/integrations`, {
+                headers: { 'Authorization': `Bearer ${TOKEN}` }
+            });
+            const data = await res.json();
+            if (data.success && data.integrations) {
+                const figma = data.integrations.filter(i => i.provider === 'figma' && i.isActive);
+                if (figma.length > 0) {
+                    connectedFigmaProjects = figma;
+                    renderFigmaProjectList();
+                } else {
+                    document.getElementById('figmaProjectList').innerHTML = `
+                        <div style="text-align:center;padding:12px;color:var(--text-dim);">
+                            <i class="fab fa-figma" style="font-size:24px;opacity:0.3;display:block;margin-bottom:8px;"></i>
+                            No Figma accounts connected.<br>
+                            <a href="integrations-hub.html" target="_blank" style="color:var(--accent);">Connect Figma →</a>
+                        </div>`;
+                }
+            }
+        } catch (e) {
+            console.error('Load Figma projects error:', e);
+        }
+    }
+
+    function renderFigmaProjectList() {
+        const container = document.getElementById('figmaProjectList');
+        if (!connectedFigmaProjects.length) return;
+        container.innerHTML = connectedFigmaProjects.map(p => `
+            <div class="file-item" style="cursor:pointer;padding:8px 12px;margin:4px 0;border-radius:4px;"
+                 onclick="selectFigmaProject('${p.providerUsername || 'Connected'}')">
+                <i class="fab fa-figma" style="color:#a259ff;"></i>
+                <span class="name">${p.providerUsername || 'Figma Account'}</span>
+                <span style="font-size:10px;color:var(--success);margin-left:auto;">✓ Connected</span>
+            </div>
+        `).join('');
+    }
+
+    function selectFigmaProject(projectName) {
+        document.getElementById('figmaUrl').value = projectName;
+        showNotification('Figma', `Selected: ${projectName}`, 'info');
+    }
+
+    // Split view state
+    let splitViewActive = false;
+    let splitViewData = null;
+
+    function openDesignSplit() {
+        const figmaRef = document.getElementById('figmaUrl').value.trim();
+        const target = document.getElementById('designTarget').value;
+        if (!figmaRef) {
+            showNotification('Design Split', 'Select a Figma project or enter a URL first', 'warning');
+            return;
+        }
+        
+        // Activate split view mode within the editor
+        splitViewActive = true;
+        splitViewData = { figmaRef, target, workspaceId: currentWorkspace?._id || '' };
+        
+        // Create split view overlay
+        createSplitViewOverlay(figmaRef, target);
+        showNotification('Design Split', 'Loading design and generating code...', 'info');
+    }
+
+    async function createSplitViewOverlay(figmaRef, target) {
+        // Remove existing overlay if any
+        const existing = document.getElementById('splitViewOverlay');
+        if (existing) existing.remove();
+
+        // Create overlay container
+        const overlay = document.createElement('div');
+        overlay.id = 'splitViewOverlay';
+        overlay.style.cssText = 'position:fixed;inset:0;background:var(--bg);z-index:9000;display:flex;flex-direction:column;';
+        
+        // Header
+        overlay.innerHTML = `
+            <div style="height:48px;background:var(--sidebar-bg);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:12px;flex-shrink:0;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <img src="buildrs.png" style="width:20px;height:20px;">
+                    <span style="font-size:13px;font-weight:600;">Design-Code Split</span>
+                </div>
+                <div style="flex:1;text-align:center;font-size:12px;color:var(--text-dim);" id="splitViewTitle">Processing: ${figmaRef.substring(0, 50)}...</div>
+                <div style="display:flex;gap:8px;">
+                    <button onclick="regenerateSplitCode()" style="padding:6px 12px;background:var(--accent);border:1px solid var(--accent);color:#fff;border-radius:4px;cursor:pointer;font-size:12px;display:flex;align-items:center;gap:6px;">
+                        <i class="fas fa-magic"></i> Regenerate
+                    </button>
+                    <button onclick="closeSplitView()" style="padding:6px 12px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;cursor:pointer;font-size:12px;">
+                        <i class="fas fa-times"></i> Close
+                    </button>
+                </div>
+            </div>
+            <div style="flex:1;display:flex;overflow:hidden;">
+                <div id="splitDesignPanel" style="width:50%;border-right:1px solid var(--border);display:flex;flex-direction:column;">
+                    <div style="height:36px;background:var(--sidebar-bg);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 12px;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-dim);gap:8px;">
+                        <i class="fab fa-figma"></i> Design Preview
+                        <div id="splitDesignStatus" style="margin-left:auto;font-size:10px;color:var(--error);">
+                            <i class="fas fa-circle"></i> Loading...
+                        </div>
+                    </div>
+                    <div id="splitDesignContent" style="flex:1;overflow:auto;background:#0d1117;display:flex;align-items:center;justify-content:center;">
+                        <div style="text-align:center;color:var(--text-dim);">
+                            <i class="fas fa-image" style="font-size:48px;opacity:0.3;display:block;margin-bottom:12px;"></i>
+                            Loading Figma design...
+                        </div>
+                    </div>
+                </div>
+                <div id="splitCodePanel" style="flex:1;display:flex;flex-direction:column;">
+                    <div style="height:36px;background:var(--sidebar-bg);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 12px;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-dim);gap:8px;">
+                        <i class="fas fa-code"></i> Generated Code
+                        <span id="splitFrameworkLabel" style="padding:2px 8px;background:var(--bg);border-radius:3px;font-size:10px;color:var(--accent);">${target}</span>
+                        <div style="margin-left:auto;display:flex;gap:6px;">
+                            <button onclick="copySplitCode()" style="padding:4px 8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:3px;cursor:pointer;font-size:10px;">
+                                <i class="fas fa-copy"></i> Copy
+                            </button>
+                            <button onclick="saveSplitCode()" style="padding:4px 8px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:3px;cursor:pointer;font-size:10px;">
+                                <i class="fas fa-save"></i> Save
+                            </button>
+                        </div>
+                    </div>
+                    <div id="splitEditorContainer" style="flex:1;overflow:hidden;"></div>
+                </div>
+            </div>
+            <div style="height:24px;background:var(--accent);color:#fff;display:flex;align-items:center;padding:0 12px;font-size:11px;gap:16px;flex-shrink:0;">
+                <div><i class="fas fa-palette"></i> <span id="splitTokenCount">0 tokens</span></div>
+                <div><i class="fas fa-cubes"></i> <span id="splitComponentCount">0 components</span></div>
+                <div style="margin-left:auto;" id="splitSyncStatus"><i class="fas fa-sync-alt"></i> Ready</div>
+            </div>
+        `;
+        
+        document.body.appendChild(overlay);
+        
+        // Initialize Monaco editor in split view
+        setTimeout(() => {
+            const splitEditor = monaco.editor.create(document.getElementById('splitEditorContainer'), {
+                value: '// Loading generated code...',
+                language: target === 'flutter' ? 'dart' : target === 'html' ? 'html' : 'typescript',
+                theme: 'vs-dark',
+                fontSize: 14,
+                minimap: { enabled: true },
+                automaticLayout: true,
+                lineNumbers: 'on',
+                scrollBeyondLastLine: false,
+            });
+            
+            // Store reference for later use
+            window.splitEditor = splitEditor;
+            
+            // Load design and generate code
+            loadSplitViewDesign(figmaRef, target);
+        }, 100);
+    }
+
+    async function loadSplitViewDesign(figmaRef, target) {
+        try {
+            // Parse Figma URL
+            let fileKey = figmaRef;
+            let nodeId = null;
+            
+            if (figmaRef.includes('figma.com')) {
+                const urlMatch = figmaRef.match(/figma\.com\/(?:file|design)\/([a-zA-Z0-9]+)/);
+                if (urlMatch) fileKey = urlMatch[1];
+                const nodeMatch = figmaRef.match(/node-id=([^&]+)/);
+                if (nodeMatch) nodeId = decodeURIComponent(nodeMatch[1]);
+            }
+
+            // Fetch design context
+            const ctxRes = await fetch(`${API_BASE}/ai-context/read`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ figmaRef, target, workspaceId: currentWorkspace?._id })
+            });
+            const ctxData = await ctxRes.json();
+
+            if (ctxData.success) {
+                const dc = ctxData.designContext || {};
+                
+                // Update status
+                document.getElementById('splitDesignStatus').innerHTML = '<i class="fas fa-circle"></i> Connected';
+                document.getElementById('splitDesignStatus').style.color = 'var(--success)';
+                document.getElementById('splitTokenCount').textContent = `${dc.tokens?.length || 0} tokens`;
+                document.getElementById('splitComponentCount').textContent = `${dc.components?.length || 0} components`;
+                
+                // Show design preview
+                const designContent = document.getElementById('splitDesignContent');
+                if (ctxData.fileKey) {
+                    const embedUrl = `https://www.figma.com/embed?embed_host=share&url=https://www.figma.com/file/${ctxData.fileKey}`;
+                    designContent.innerHTML = `<iframe src="${embedUrl}" style="width:100%;height:100%;border:none;" allowfullscreen></iframe>`;
+                } else if (dc.tokens?.length > 0 || dc.colors?.length > 0) {
+                    let previewHtml = '<div style="padding:20px;overflow-y:auto;height:100%;">';
+                    previewHtml += '<h3 style="color:#fff;margin-bottom:16px;">Design System</h3>';
+                    
+                    if (dc.colors?.length > 0) {
+                        previewHtml += '<div style="margin-bottom:20px;"><h4 style="color:var(--accent);margin-bottom:8px;">Colors</h4>';
+                        previewHtml += '<div style="display:flex;flex-wrap:wrap;gap:8px;">';
+                        dc.colors.slice(0, 15).forEach(color => {
+                            const colorValue = typeof color === 'string' ? color : color.value;
+                            previewHtml += `<div style="width:50px;height:50px;background:${colorValue};border-radius:4px;" title="${color.name || colorValue}"></div>`;
+                        });
+                        previewHtml += '</div></div>';
+                    }
+                    
+                    if (dc.tokens?.length > 0) {
+                        previewHtml += '<div><h4 style="color:var(--accent);margin-bottom:8px;">Tokens</h4>';
+                        previewHtml += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;">';
+                        dc.tokens.slice(0, 30).forEach(token => {
+                            previewHtml += `<div style="background:var(--sidebar-bg);padding:8px;border-radius:4px;font-size:11px;">
+                                <div style="color:var(--text-dim);">${token.name}</div>
+                                <div style="color:#fff;font-family:monospace;font-size:10px;">${JSON.stringify(token.value).substring(0, 40)}</div>
+                            </div>`;
+                        });
+                        previewHtml += '</div></div>';
+                    }
+                    
+                    previewHtml += '</div>';
+                    designContent.innerHTML = previewHtml;
+                }
+                
+                // Store design context for regeneration
+                splitViewData.designContext = ctxData;
+                splitViewData.fileKey = ctxData.fileKey || fileKey;
+                splitViewData.nodeId = ctxData.nodeId || nodeId;
+                
+                // Generate code
+                await generateSplitCode(ctxData, target);
+            } else {
+                document.getElementById('splitDesignStatus').innerHTML = '<i class="fas fa-circle"></i> Failed';
+                document.getElementById('splitDesignStatus').style.color = 'var(--error)';
+                showNotification('Error', ctxData.message || 'Failed to load design', 'error');
+            }
+        } catch (error) {
+            console.error('Split view error:', error);
+            document.getElementById('splitDesignStatus').innerHTML = '<i class="fas fa-circle"></i> Error';
+            document.getElementById('splitDesignStatus').style.color = 'var(--error)';
+            showNotification('Error', 'Failed to load design: ' + error.message, 'error');
+        }
+    }
+
+    async function generateSplitCode(ctxData, target) {
+        const statusEl = document.getElementById('splitSyncStatus');
+        statusEl.innerHTML = '<i class="fas fa-cog fa-spin"></i> Generating...';
+        
+        try {
+            const dc = ctxData.designContext || {};
+            const designContextStr = `
+Design Context:
+- File Key: ${ctxData.fileKey || splitViewData.fileKey}
+- Tokens: ${dc.tokens?.length || 0} found
+- Colors: ${dc.colors?.length || 0} found
+- Components: ${dc.components?.length || 0} found
+${dc.tokens?.length > 0 ? '- Sample: ' + JSON.stringify(dc.tokens.slice(0, 5)) : ''}
+`;
+
+            const res = await fetch(`${API_BASE}/ai-pair/chat`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    sessionId: 'split-view-' + Date.now(),
+                    message: `Generate ${target} code from this Figma design. Use design tokens, colors, and component structure.
+
+${designContextStr}
+
+Generate clean, production-ready ${target} code.`,
+                    codeContext: {
+                        targetFramework: target,
+                        figmaContext: dc,
+                        workspace: currentWorkspace ? { id: currentWorkspace._id } : null
+                    },
+                    enableActions: false
+                })
+            });
+            
+            const data = await res.json();
+            
+            if (data.success) {
+                let code = data.message?.content || data.message || '';
+                const codeMatch = code.match(/```[\w]*\n([\s\S]*?)```/);
+                if (codeMatch) code = codeMatch[1];
+                
+                if (window.splitEditor) {
+                    window.splitEditor.setValue(code);
+                }
+                statusEl.innerHTML = '<i class="fas fa-check"></i> Code generated';
+                showNotification('Success', 'Code generated from Figma design', 'success');
+            } else {
+                statusEl.innerHTML = '<i class="fas fa-exclamation-circle"></i> Failed';
+                showNotification('Error', data.message || 'Code generation failed', 'error');
+            }
+        } catch (error) {
+            statusEl.innerHTML = '<i class="fas fa-exclamation-circle"></i> Error';
+            showNotification('Error', 'Code generation failed: ' + error.message, 'error');
+        }
+    }
+
+    async function regenerateSplitCode() {
+        if (!splitViewData) return;
+        await generateSplitCode(splitViewData.designContext || { fileKey: splitViewData.figmaRef }, splitViewData.target);
+    }
+
+    function copySplitCode() {
+        if (window.splitEditor) {
+            navigator.clipboard.writeText(window.splitEditor.getValue()).then(() => {
+                showNotification('Copied', 'Code copied to clipboard', 'success');
+            });
+        }
+    }
+
+    async function saveSplitCode() {
+        if (!window.splitEditor || !currentWorkspace?._id) {
+            showNotification('Warning', 'No workspace connected', 'warning');
+            return;
+        }
+        
+        const code = window.splitEditor.getValue();
+        const target = splitViewData?.target || 'react';
+        const ext = target === 'flutter' ? 'dart' : target === 'html' ? 'html' : 'tsx';
+        const fileName = prompt('Save as:', `component.${ext}`);
+        if (!fileName) return;
+
+        try {
+            const response = await fetch(`${API_BASE}/code-editor/files`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: fileName,
+                    path: '/',
+                    language: target === 'flutter' ? 'dart' : target === 'html' ? 'html' : 'typescript',
+                    content: code,
+                    companyId: currentWorkspace._id
+                })
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                showNotification('Saved', `File saved as ${fileName}`, 'success');
+                await loadWorkspaceFiles();
+            } else {
+                showNotification('Error', data.message || 'Failed to save', 'error');
+            }
+        } catch (error) {
+            showNotification('Error', 'Failed to save file', 'error');
+        }
+    }
+
+    function closeSplitView() {
+        const overlay = document.getElementById('splitViewOverlay');
+        if (overlay) overlay.remove();
+        if (window.splitEditor) {
+            window.splitEditor.dispose();
+            window.splitEditor = null;
+        }
+        splitViewActive = false;
+    }
+
+    async function figmaToCode() {
+        const figmaRef = document.getElementById('figmaUrl').value.trim();
+        const target = document.getElementById('designTarget').value;
+        if (!figmaRef) {
+            showNotification('Figma→Code', 'Select a Figma project or enter a URL first', 'warning');
+            return;
+        }
+        showNotification('Figma→Code', 'AI is analyzing Figma design...', 'info');
+        document.getElementById('designPreview').innerHTML = '<div style="text-align:center;padding:20px;"><div class="spinner"></div><div style="margin-top:8px;">Reading design tokens & layout trees...</div></div>';
+
+        try {
+            // Parse Figma URL to extract file key
+            let fileKey = figmaRef;
+            let nodeId = null;
+            
+            if (figmaRef.includes('figma.com')) {
+                const urlMatch = figmaRef.match(/figma\.com\/(?:file|design)\/([a-zA-Z0-9]+)/);
+                if (urlMatch) fileKey = urlMatch[1];
+                const nodeMatch = figmaRef.match(/node-id=([^&]+)/);
+                if (nodeMatch) nodeId = decodeURIComponent(nodeMatch[1]);
+            }
+
+            // Use the figma-context endpoint to read design data
+            const ctxRes = await fetch(`${API_BASE}/ai-context/read`, {
+                method: 'POST', 
+                headers: { 
+                    'Authorization': `Bearer ${TOKEN}`, 
+                    'Content-Type': 'application/json' 
+                },
+                body: JSON.stringify({ 
+                    figmaRef, 
+                    target, 
+                    workspaceId: currentWorkspace?._id 
+                })
+            });
+            const ctxData = await ctxRes.json();
+
+            // Build a comprehensive prompt with design context
+            let designContextStr = '';
+            if (ctxData.success && ctxData.designContext) {
+                const dc = ctxData.designContext;
+                designContextStr = `
+Design Context Extracted:
+- File Key: ${ctxData.fileKey || fileKey}
+- Node ID: ${ctxData.nodeId || nodeId || 'full file'}
+- Design Tokens: ${dc.tokens?.length || 0} tokens found
+- Components: ${dc.components?.length || 0} components found
+- Colors: ${dc.colors?.length || 0} colors found
+${dc.tokens?.length > 0 ? '- Sample tokens: ' + JSON.stringify(dc.tokens.slice(0, 5)) : ''}
+${dc.colors?.length > 0 ? '- Color palette: ' + JSON.stringify(dc.colors.slice(0, 5)) : ''}
+`;
+            }
+
+            const res = await fetch(`${API_BASE}/ai-pair/chat`, {
+                method: 'POST', 
+                headers: { 
+                    'Authorization': `Bearer ${TOKEN}`, 
+                    'Content-Type': 'application/json' 
+                },
+                body: JSON.stringify({
+                    sessionId: aiSessionId || 'design-session-' + Date.now(),
+                    message: `Convert this Figma design to ${target} code.
+
+Figma Reference: ${figmaRef}
+Target Framework: ${target}
+${designContextStr}
+
+Instructions:
+1. Analyze the Figma design structure and design tokens
+2. Generate clean, production-ready ${target} code
+3. Use the design tokens for colors, typography, and spacing
+4. Create responsive components that match the design
+5. Follow ${target} best practices and conventions
+${ctxData.success ? '6. Use the extracted design context to ensure accuracy' : ''}
+
+Generate the code now.`,
+                    codeContext: {
+                        workspace: currentWorkspace ? { id: currentWorkspace._id, name: currentWorkspace.name } : null,
+                        files: fileTreeData.map(f => ({ name: f.name, path: f.path, language: f.language })),
+                        targetFramework: target,
+                        figmaContext: ctxData.success ? ctxData.designContext : null,
+                        fileKey: ctxData.fileKey || fileKey,
+                        nodeId: ctxData.nodeId || nodeId
+                    },
+                    enableActions: true,
+                    useAgentLoop: true
+                })
+            });
+            const data = await res.json();
+            
+            if (data.success) {
+                // Extract and display the generated code
+                let generatedCode = data.message?.content || data.message || '';
+                
+                // Try to extract code blocks from the response
+                const codeMatch = generatedCode.match(/```[\w]*\n([\s\S]*?)```/);
+                if (codeMatch) {
+                    generatedCode = codeMatch[1];
+                }
+                
+                // Show preview of generated code
+                const codePreview = generatedCode.substring(0, 500) + (generatedCode.length > 500 ? '...' : '');
+                document.getElementById('designPreview').innerHTML = `
+                    <div style="padding:12px;">
+                        <div style="color:var(--success);text-align:center;margin-bottom:12px;">
+                            <i class="fas fa-check-circle" style="font-size:24px;display:block;margin-bottom:8px;"></i>
+                            Code generated successfully!
+                        </div>
+                        <div style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:8px;max-height:150px;overflow-y:auto;">
+                            <pre style="font-size:10px;color:var(--text);margin:0;white-space:pre-wrap;">${codePreview.replace(/</g, '<').replace(/>/g, '>')}</pre>
+                        </div>
+                        <div style="margin-top:8px;text-align:center;">
+                            <button onclick="openDesignSplit()" style="padding:6px 12px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px;">
+                                <i class="fas fa-columns"></i> Open in Split View
+                            </button>
+                        </div>
+                    </div>`;
+                
+                await loadWorkspaceFiles();
+                showNotification('Figma→Code', `${target} code generated from Figma design`, 'success');
+            } else {
+                document.getElementById('designPreview').innerHTML = `<div style="padding:12px;color:var(--error);text-align:center;"><i class="fas fa-exclamation-circle" style="font-size:24px;display:block;margin-bottom:8px;"></i>${data.message || 'Conversion failed'}</div>`;
+                setTimeout(() => { const dp = document.getElementById('designPreview'); if(dp) dp.innerHTML = ''; }, 8000);
+                showNotification('Figma→Code', data.message || 'Code generation failed', 'error');
+            }
+        } catch (e) {
+            console.error('Figma→Code error:', e);
+            document.getElementById('designPreview').innerHTML = '<div style="padding:12px;color:var(--error);text-align:center;"><i class="fas fa-exclamation-circle" style="font-size:24px;display:block;margin-bottom:8px;"></i>Failed to process design<br><span style="font-size:10px;">' + e.message + '</span></div>';
+            setTimeout(() => { const dp = document.getElementById('designPreview'); if(dp) dp.innerHTML = ''; }, 8000);
+            showNotification('Figma→Code', 'Failed to process design: ' + e.message, 'error');
+        }
+    }
+
+    // Load Figma projects when switching to design panel
+    const origSwitchSidebar = switchSidebar;
+    switchSidebar = function(panel) {
+        origSwitchSidebar(panel);
+        if (panel === 'design') loadFigmaProjects();
+    };
+
+    // ============ COLLABORATION ============
+    async function startVideoCall() {
+        const companyId = currentWorkspace?._id;
+        if (!companyId) {
+            showNotification('Video Call', 'You need a workspace to start a call', 'warning');
+            return;
+        }
+        try {
+            const res = await fetch(`${API_BASE}/collaboration/overlay/start`, {
+                method: 'POST', headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ companyId, title: 'Editor Pair Programming', context: 'editor', mode: 'company' })
+            });
+            const data = await res.json();
+            if (data.success) {
+                const meetingId = data.meeting?._id || data.meeting?.id;
+                const overlayId = data.overlay?.id;
+                const url = `meeting-room.html?id=${meetingId}&overlayId=${overlayId}`;
+                document.getElementById('videoContainer').style.display = 'block';
+                document.getElementById('videoFrame').src = url;
+                document.getElementById('collabStatus').textContent = 'Live session active';
+                document.getElementById('collabStatus').style.color = 'var(--success)';
+                showNotification('Video Call', 'Live collaboration session started', 'success');
+            } else {
+                showNotification('Video Call', data.message || 'Failed to start call', 'error');
+            }
+        } catch (e) {
+            console.error('Video call error:', e);
+            showNotification('Video Call', 'Failed to start. Check your connection.', 'error');
+        }
+    }
+
+    async function createBugHandoff() {
+        const companyId = currentWorkspace?._id;
+        if (!companyId) {
+            showNotification('Bug Handoff', 'You need a workspace', 'warning');
+            return;
+        }
+        const title = prompt('Handoff title:', 'Bug handoff from editor');
+        if (!title) return;
+        try {
+            const res = await fetch(`${API_BASE}/collaboration/handoff`, {
+                method: 'POST', headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ companyId, title, description: 'Handoff created from code editor', source: 'manual', mode: 'company' })
+            });
+            const data = await res.json();
+            if (data.success) {
+                // Provision ephemeral sandbox
+                try {
+                    const provRes = await fetch(`${API_BASE}/collaboration/handoff/${data.handoff.handoffId}/provision`, {
+                        method: 'POST', headers: { 'Authorization': `Bearer ${TOKEN}` }
+                    });
+                    const prov = await provRes.json();
+                    if (prov.success && prov.sandbox?.sandboxKey) {
+                        window.open(`sandbox.html?key=${prov.sandbox.sandboxKey}`, '_blank');
+                    }
+                } catch (e) { console.error('Provision failed', e); }
+                showNotification('Bug Handoff', `Handoff ${data.handoff.handoffId} created. Sandbox provisioned.`, 'success');
+            } else {
+                showNotification('Bug Handoff', data.message || 'Failed', 'error');
+            }
+        } catch (e) {
+            console.error('Handoff error:', e);
+            showNotification('Bug Handoff', 'Failed to create handoff', 'error');
+        }
+    }
+
+    async function shareSandbox() {
+        const companyId = currentWorkspace?._id;
+        if (!companyId) {
+            showNotification('Sandbox', 'You need a workspace', 'warning');
+            return;
+        }
+        try {
+            const res = await fetch(`${API_BASE}/collaboration/sandbox/share`, {
+                method: 'POST', headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ companyId, code: monacoEditor.getValue(), language: currentFile?.language || 'javascript', files: fileTreeData })
+            });
+            const data = await res.json();
+            if (data.success) {
+                const shareUrl = data.sandbox?.url || data.url;
+                navigator.clipboard.writeText(shareUrl).catch(() => {});
+                showNotification('Sandbox', `Live sandbox ready! URL copied to clipboard.`, 'success');
+                if (shareUrl) window.open(shareUrl, '_blank');
+            } else {
+                showNotification('Sandbox', data.message || 'Failed to create sandbox', 'error');
+            }
+        } catch (e) {
+            console.error('Sandbox error:', e);
+            showNotification('Sandbox', 'Failed to share sandbox', 'error');
+        }
+    }
+
+    // ============ DEPLOY & PAYMENTS ============
+    async function setupPayments() {
+        const provider = document.getElementById('paymentProvider').value;
+        const companyId = currentWorkspace?._id;
+        if (!companyId) {
+            showNotification('Payments', 'You need a workspace', 'warning');
+            return;
+        }
+        setDeployStatus('<div class="spinner"></div><div style="margin-top:4px;">Generating payment endpoints...</div>', 0);
+
+        // Map provider to actual billing route
+        const billingRoutes = {
+            stripe: 'trial-billing',
+            paystack: 'paystack-billing',
+            flutterwave: 'flutterwave-billing'
+        };
+        const route = billingRoutes[provider] || 'trial-billing';
+
+        try {
+            // Initialize billing subscription for the workspace
+            const res = await fetch(`${API_BASE}/${route}/initialize`, {
+                method: 'POST', headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ companyId, plan: 'professional', setupWebhooks: true })
+            });
+            const data = await res.json();
+            if (data.success) {
+                setDeployStatus(`
+                    <div style="color:var(--success);font-size:11px;">
+                        <i class="fas fa-check-circle"></i> ${provider} endpoints ready<br>
+                        <span style="color:var(--text-dim);">Webhooks configured • Subscription logic active</span><br>
+                        ${data.url ? `<a href="${data.url}" target="_blank" style="color:var(--accent);font-size:10px;">Manage in Dashboard →</a>` : ''}
+</div>`);
+                 showNotification('Payments', `${provider} payment endpoints generated`, 'success');
+            } else {
+                // Fallback: try subscription upgrade endpoint
+                const subRes = await fetch(`${API_BASE}/subscription/upgrade`, {
+                    method: 'POST', headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tier: 'professional', provider, companyId })
+                });
+                const subData = await subRes.json();
+                if (subData.success) {
+                    setDeployStatus(`
+                        <div style="color:var(--success);font-size:11px;">
+                            <i class="fas fa-check-circle"></i> ${provider} billing active<br>
+                            <span style="color:var(--text-dim);">Subscription upgraded • Payment processing ready</span>
+</div>`);
+                     showNotification('Payments', `${provider} billing configured`, 'success');
+                } else {
+                    setDeployStatus(`<div style="color:var(--error);font-size:11px;">${data.message || subData.message || 'Setup failed'}<br><span style="color:var(--text-dim);">Go to <a href="pricing.html" target="_blank" style="color:var(--accent);">Pricing</a> to upgrade</span></div>`);
+                }
+            }
+        } catch (e) {
+            console.error('Payment setup error:', e);
+            setDeployStatus('<div style="color:var(--error);font-size:11px;">Failed to setup payments<br><span style="color:var(--text-dim);">Check your connection and try again</span></div>');
+        }
+    }
+
+    async function deployMicroSaaS() {
+        const companyId = currentWorkspace?._id;
+        if (!companyId) {
+            showNotification('Deploy', 'You need a workspace', 'warning');
+            return;
+        }
+        setDeployStatus('<div class="spinner"></div><div style="margin-top:4px;">Deploying Micro-SaaS...</div>', 0);
+        try {
+            // Use the projects endpoint to create a deployment
+            const res = await fetch(`${API_BASE}/projects`, {
+                method: 'POST', headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: currentWorkspace.name || 'Micro-SaaS',
+                    companyId,
+                    type: 'micro-saas',
+                    config: {
+                        provider: document.getElementById('paymentProvider').value,
+                        files: fileTreeData.map(f => ({ name: f.name, path: f.path, language: f.language }))
+                    },
+                    deploy: true
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                const deployUrl = data.project?.url || data.url || `https://${currentWorkspace.name?.toLowerCase().replace(/\s+/g,'-') || 'app'}.codexinc.app`;
+                setDeployStatus(`
+                    <div style="color:var(--success);font-size:11px;">
+                        <i class="fas fa-check-circle"></i> Deployed!<br>
+                        <a href="${deployUrl}" target="_blank" style="color:var(--accent);">${deployUrl}</a>
+</div>`);
+                 showNotification('Deploy', 'Micro-SaaS deployed successfully!', 'success');
+                if (deployUrl) window.open(deployUrl, '_blank');
+            } else {
+                setDeployStatus(`<div style="color:var(--error);font-size:11px;">${data.message || 'Deployment failed'}<br><span style="color:var(--text-dim);">Ensure billing is set up first</span></div>`);
+            }
+        } catch (e) {
+            console.error('Deploy error:', e);
+            setDeployStatus('<div style="color:var(--error);font-size:11px;">Deployment failed<br><span style="color:var(--text-dim);">Check your connection</span></div>');
+        }
+    }
+
+    function openClientPortal() {
+        const companyId = currentWorkspace?._id;
+        if (!companyId) {
+            showNotification('Client Portal', 'You need a workspace', 'warning');
+            return;
+        }
+        window.open(`client-portal.html?company=${companyId}`, '_blank');
+        showNotification('Client Portal', 'Opening client approval portal...', 'info');
+    }
+
+    async function runPRReview() {
+        const code = monacoEditor.getValue();
+        if (!code.trim()) {
+            showNotification('PR Review', 'No code to review', 'warning');
+            return;
+        }
+        document.getElementById('prReviewResult').innerHTML = '<div class="spinner"></div><div style="margin-top:4px;">Auditing code...</div>';
+        try {
+            const res = await fetch(`${API_BASE}/ai-pair/chat`, {
+                method: 'POST', headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    sessionId: aiSessionId || 'pr-review',
+                    message: `Perform a comprehensive PR review on this code. Check for: 1) Security vulnerabilities & leaked credentials 2) Logic bugs & edge cases 3) Performance bottlenecks 4) Code quality & best practices 5) Test coverage gaps. Code:\n\`\`\`\n${code}\n\`\`\``,
+                    codeContext: { currentFile: currentFile ? { name: currentFile.name, language: currentFile.language } : null },
+                    enableActions: false
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                const content = data.message?.content || 'Review complete';
+                document.getElementById('prReviewResult').innerHTML = `<div style="color:var(--text);line-height:1.5;">${content.replace(/\n/g, '<br>')}</div>`;
+                showNotification('PR Review', 'Code audit complete', 'success');
+            } else {
+                document.getElementById('prReviewResult').innerHTML = `<div style="color:var(--error);">${data.message || 'Review failed'}</div>`;
+                setTimeout(() => { const pr = document.getElementById('prReviewResult'); if(pr) pr.innerHTML = ''; }, 8000);
+            }
+        } catch (e) {
+            console.error('PR review error:', e);
+            document.getElementById('prReviewResult').innerHTML = '<div style="color:var(--error);">Review failed</div>';
+            setTimeout(() => { const pr = document.getElementById('prReviewResult'); if(pr) pr.innerHTML = ''; }, 8000);
+        }
+    }
+
+    console.log('✓ Codex Editor initialized - Unified Command Center');
+    console.log('  Ctrl+Shift+P: Command Palette');
+    console.log('  Ctrl+P: Quick Open');
+    console.log('  Ctrl+S: Save');
+    console.log('  Ctrl+`: Toggle Terminal');
+    console.log('  Ctrl+W: Close Tab');
+    console.log('  Ctrl+Shift+E/F/G/A/D/L/Y: Switch views');
+    </script>
+</body>
+</html>
