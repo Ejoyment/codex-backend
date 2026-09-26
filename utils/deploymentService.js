@@ -256,8 +256,11 @@ async function deployProject(subdomain, files) {
   try {
     const tarPath = createTarballSync(fileEntries);
     const tarB64 = Buffer.from(fs.readFileSync(tarPath)).toString('base64');
-    await sshExec(`mkdir -p '${deploymentDir}' && printf '%s' '${tarB64}' | base64 -d | tar -xzf - -C '${deploymentDir}'`);
+    await writeRemoteFile(`${deploymentDir}/deploy.tar.gz`, tarB64, true);
+    await sshExec(`cd '${deploymentDir}' && tar -xzf deploy.tar.gz && rm deploy.tar.gz`);
     fs.unlinkSync(tarPath);
+    const verifyResult = await sshExec(`ls ${deploymentDir} | head -10`).catch(() => '');
+    console.log(`[deploy] Files in ${deploymentDir}: ${verifyResult}`);
   } catch (tarErr) {
     for (const file of fileEntries) {
       const relPath = file.path ? path.join(file.path.replace(/^\//, ''), file.name) : file.name;
@@ -325,16 +328,14 @@ docker run -d \\
   return { containerId: nextContainerId, url: `https://${sanitizedSubdomain}.${DOMAIN}` };
 }
 
-async function writeRemoteFile(remotePath, content) {
-  // Block quote-breakout (remote RCE) and traversal: remotePath is built
-  // from server-side deploymentDir + validated relPath, but validate anyway.
+async function writeRemoteFile(remotePath, content, isBase64 = false) {
   if (remotePath.includes('..') || remotePath.includes("'") || remotePath.includes('\n')) throw new Error('Invalid remote path');
-  const base64 = Buffer.from(content || '').toString('base64');
+  const encoded = isBase64 ? content : Buffer.from(content || '').toString('base64');
   const parentDir = remotePath.includes('/')
     ? remotePath.slice(0, remotePath.lastIndexOf('/'))
     : '.';
   await sshExec(`mkdir -p '${parentDir}'`);
-  await sshExec(`printf '%s' '${base64}' | base64 -d > '${remotePath}'`);
+  await sshExec(`printf '%s' '${encoded}' | base64 -d > '${remotePath}'`);
 }
 
 // Shared validation: every file path segment must be a plain filename.
