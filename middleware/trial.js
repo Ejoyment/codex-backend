@@ -27,8 +27,15 @@ async function getOrCreateSubscription(userId) {
             webrtcVoiceEnabled: false,
             dataRetentionDays: 7
         });
-        await subscription.save();
-        console.log(`Auto-created developer subscription for user ${userId}`);
+        try {
+            await subscription.save();
+        } catch (saveErr) {
+            if (saveErr.code === 11000) {
+                subscription = await Subscription.findOne({ userId });
+            } else {
+                throw saveErr;
+            }
+        }
     }
     return subscription;
 }

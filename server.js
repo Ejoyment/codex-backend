@@ -46,7 +46,6 @@ const globalLimiter = rateLimit({
 const { checkTrialStatus, enforceProjectLimit, enforceAIAccess } = require('./middleware/trial');
 const { enforceCreditPool, enforceCloudComputeLimit, enforceDeploymentLimit, enforceDebugRoomAccess, enforceDebugRoomLimit, enforceSpecEngineLevel } = require('./middleware/tierEnforcement');
 const CreditPoolService = require('./utils/creditPoolService');
-const paymentRouter = require('./utils/paymentRouter');
 const { enforceSecurityHeaders } = require('./utils/securityHeaders');
 
 let server = null;
@@ -210,6 +209,7 @@ app.use(session({
     saveUninitialized: false,
     cookie: {
         secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
         maxAge: 24 * 60 * 60 * 1000 // 24 hours
     }
 }));
