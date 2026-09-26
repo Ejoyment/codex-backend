@@ -122,6 +122,15 @@ async function startServer(port = process.env.PORT || 3000) {
     const sandboxProvisioner = require('./utils/sandboxProvisioner');
     sandboxProvisioner.init(socket);
 
+    // Phase 3 — Ephemeral Debug Rooms (/rooms namespace: signal, terminal relay, control)
+    const roomSocket = require('./server/sockets/roomSocket');
+    const roomSocketApi = roomSocket(socket);
+    app.set('roomSocket', roomSocketApi);
+
+    // Phase 3 — idle/TTL sweeper for debug rooms
+    const roomService = require('./server/services/roomService');
+    roomService.startSweeper();
+
     return new Promise((resolve, reject) => {
         srv.listen(port, () => {
             console.log(`\n🚀 CODEX INC Server running on port ${port}`);
@@ -162,8 +171,18 @@ app.use(cors({
     },
     credentials: true
 }));
-app.use(express.json());
+app.use(express.json({
+    // Phase 3 — capture exact raw bytes for payment webhook signature
+    // verification (Stripe/Paystack/Flutterwave). express.json() consumes the
+    // stream, so a later express.raw() mount would see an empty body —
+    // the verify callback is the only reliable hook.
+    verify: require('./server/services/securityHeaders').captureWebhookRawBody
+}));
 app.use(express.urlencoded({ extended: true }));
+
+// Phase 3 — COOP/COEP cross-origin isolation for WebContainer app routes.
+const { phase3SecurityHeaders } = require('./server/services/securityHeaders');
+app.use(phase3SecurityHeaders);
 
 // Serve uploaded files with proper headers
 app.use('/uploads', express.static('uploads', {
@@ -250,6 +269,9 @@ const designSyncRoutes = require('./routes/design-sync');
 const deploymentRoutes = require('./routes/deployments');
 const agentV1Routes = require('./routes/agent-v1');
 const specRoutes = require('./routes/specs');
+// Phase 3 — Actionable Multiplayer & Global Runtime
+const roomsRoutes = require('./server/routes/rooms');
+const billingV1Routes = require('./server/routes/billing');
 
 // Apply global rate limiter to all API routes
 app.use('/api', globalLimiter);
@@ -300,6 +322,9 @@ app.use('/api/deployments', deploymentRoutes);
 app.use('/api/agent-confirmation', agentConfirmationRoutes);
 app.use('/api/v1/agent', agentV1Routes);
 app.use('/api/v1/specs', specRoutes);
+// Phase 3 — Ephemeral Debug Rooms + Multi-rail billing (entitlement-gated)
+app.use('/api/v1/rooms', roomsRoutes);
+app.use('/api/v1/billing', billingV1Routes);
 // Project routes (enforcement of project limits handled in route handlers)
 app.use('/api/projects', projectRoutes);
 app.use('/api/ai-context', figmaContextRoutes, teamMemoryRoutes, ticketBridgeRoutes);
@@ -450,6 +475,11 @@ const stopServer = async () => {
 
         const agentOrchestrator = require('./utils/agentOrchestrator');
         if (agentOrchestrator && agentOrchestrator.stop) agentOrchestrator.stop();
+
+        try {
+            const roomService = require('./server/services/roomService');
+            if (roomService && roomService.stopSweeper) roomService.stopSweeper();
+        } catch (e) { /* server/services may not be loaded in tests */ }
 
         if (server) {
             await new Promise((resolve, reject) => {
