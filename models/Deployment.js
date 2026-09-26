@@ -39,6 +39,10 @@ const deploymentSchema = new mongoose.Schema({
         type: String,
         default: null
     },
+    httpUrl: {
+        type: String,
+        default: null
+    },
     buildLogs: {
         type: String,
         default: ''

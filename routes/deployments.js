@@ -174,6 +174,7 @@ router.post('/', authenticateToken, async (req, res) => {
             try {
                 let containerId = null;
                 let url = `https://${sanitized}.buildrshq.dev`;
+                let httpUrl = `http://${sanitized}.buildrshq.dev`;
 
                 const deployPromise = depService.deployProject(sanitized, normalizedFiles);
                 const timeoutPromise = new Promise((_, reject) =>
@@ -196,6 +197,7 @@ router.post('/', authenticateToken, async (req, res) => {
                 await Deployment.findByIdAndUpdate(deployId, {
                     containerId,
                     deployedUrl: url,
+                    httpUrl,
                     status: 'success'
                 });
                 console.log(`[deploy] ${sanitized}.buildrshq.dev is live`);
@@ -212,7 +214,8 @@ router.post('/', authenticateToken, async (req, res) => {
             success: true,
             deployment: {
                 ...deployment.toObject(),
-                deployedUrl: `https://${sanitized}.buildrshq.dev`
+                deployedUrl: url,
+                httpUrl
             }
         });
     } catch (error) {
