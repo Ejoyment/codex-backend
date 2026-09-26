@@ -201,23 +201,25 @@ router.post('/', authenticateToken, async (req, res) => {
                     status: 'success'
                 });
                 console.log(`[deploy] ${sanitized}.buildrshq.dev is live`);
+
+                res.status(201).json({
+                    success: true,
+                    deployment: {
+                        ...deployment.toObject(),
+                        deployedUrl: url,
+                        httpUrl
+                    }
+                });
             } catch (err) {
                 console.error(`[deploy] ${sanitized} failed:`, err.message);
                 await Deployment.findByIdAndUpdate(deployId, {
                     status: 'failed',
                     errorMessage: err.message
                 });
+                res.status(500).json({ error: 'Failed to start deployment: ' + err.message });
             }
         });
-
-        res.status(201).json({
-            success: true,
-            deployment: {
-                ...deployment.toObject(),
-                deployedUrl: url,
-                httpUrl
-            }
-        });
+        return;
     } catch (error) {
         console.error('Create deployment error:', error);
         const msg = error.code === 11000
