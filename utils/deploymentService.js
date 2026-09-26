@@ -75,13 +75,15 @@ function getKeyFile() {
   return file;
 }
 
-function sshExec(command) {
+function sshExec(command, input = null) {
   return new Promise((resolve, reject) => {
     try {
       if (!SSH_HOST) return reject(new Error('DEPLOY_SSH_HOST env not set'));
       const key = getKeyFile();
       const sshCmd = `ssh -i "${key}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=20 -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -p ${SSH_PORT} ${SSH_USER}@${SSH_HOST} ${JSON.stringify(command)}`;
       const proc = exec(sshCmd, { timeout: DEPLOY_TIMEOUT_MS, maxBuffer: 20 * 1024 * 1024, encoding: 'utf8' });
+
+      if (input) { proc.stdin.write(input); proc.stdin.end(); }
 
       let stdout = '';
       let stderr = '';
@@ -97,7 +99,7 @@ function sshExec(command) {
         reject(new Error((err.stderr || err.stdout || err.message || '').toString().trim()));
       });
     } catch (err) {
-      reject(new Error((err.stderr || err.stdout || err.message || '').toString().trim()));
+      reject(new Error(err.message || 'SSH command failed'));
     }
   });
 }
@@ -330,7 +332,7 @@ async function writeRemoteFile(remotePath, content, isBase64 = false) {
     ? remotePath.slice(0, remotePath.lastIndexOf('/'))
     : '.';
   await sshExec(`mkdir -p '${parentDir}'`);
-  await sshExec(`printf '%s' '${encoded}' | base64 -d > '${remotePath}'`);
+  await sshExec(`cat | base64 -d > '${remotePath}'`, encoded);
 }
 
 // Shared validation: every file path segment must be a plain filename.
