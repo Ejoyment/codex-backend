@@ -105,16 +105,18 @@ function sshExec(command) {
 function detectRuntime(files) {
   const names = files.map(f => f.name.toLowerCase());
   const paths = files.map(f => ((f.path || '') + '/' + f.name).toLowerCase());
+  const content = files.map(f => (f.content || '').toLowerCase());
 
-  if (names.includes('dockerfile')) {
-    return { runtime: 'docker', dockerfile: null, exposePort: 80 };
+  if (names.includes('dockerfile') || files.some(f => f.name.toLowerCase() === 'dockerfile')) {
+    const userDockerfile = files.find(f => f.name.toLowerCase() === 'dockerfile');
+    return { runtime: 'docker', dockerfile: userDockerfile?.content || null, exposePort: 80 };
   }
 
   if (paths.some(p => p.endsWith('package.json'))) {
     const hasBuild = files.some(f =>
       f.name === 'package.json' && f.content && f.content.includes('"build"')
     );
-    const entry = ['server.js', 'app.js', 'index.js'].find(e => names.includes(e)) || 'index.js';
+    const entry = ['server.js', 'app.js', 'index.js', 'main.js'].find(e => names.includes(e)) || 'index.js';
     const dockerfile = `FROM node:18-alpine
 WORKDIR /app
 COPY package*.json ./
@@ -141,8 +143,55 @@ CMD ["python", "app.py"]
     return { runtime: 'python', dockerfile, exposePort: 8000 };
   }
 
+  if (paths.some(p => p.endsWith('go.mod')) || paths.some(p => p.endsWith('.go'))) {
+    const dockerfile = `FROM golang:1.21-alpine
+WORKDIR /app
+COPY go.mod ./
+COPY . .
+RUN go build -o main .
+EXPOSE 8080
+CMD ["./main"]
+`;
+    return { runtime: 'go', dockerfile, exposePort: 8080 };
+  }
+
+  if (paths.some(p => p.endsWith('Gemfile'))) {
+    const dockerfile = `FROM ruby:3.2-alpine
+WORKDIR /app
+COPY Gemfile* ./
+RUN bundle install
+COPY . .
+EXPOSE 3000
+CMD ["bundle", "exec", "rails", "server", "-b", "0.0.0.0"]
+`;
+    return { runtime: 'ruby', dockerfile, exposePort: 3000 };
+  }
+
+  const hasHtml = names.some(n => n.endsWith('.html'));
+  const hasPhp = names.some(n => n.endsWith('.php'));
+  const hasNginxConfig = names.some(n => n === 'nginx.conf' || n === 'nginx.conf');
+
+  if (hasNginxConfig) {
+    const nginxConf = files.find(f => f.name === 'nginx.conf');
+    const dockerfile = `FROM nginx:alpine
+COPY nginx.conf /etc/nginx/nginx.conf
+COPY . /usr/share/nginx/html
+EXPOSE 80
+`;
+    return { runtime: 'static', dockerfile, exposePort: 80 };
+  }
+
+  if (hasPhp) {
+    const dockerfile = `FROM php:8.2-apache
+COPY . /var/www/html
+EXPOSE 80
+`;
+    return { runtime: 'php', dockerfile, exposePort: 80 };
+  }
+
   const dockerfile = `FROM nginx:alpine
 COPY . /usr/share/nginx/html
+RUN echo 'server { listen 80; root /usr/share/nginx/html; index index.html index.htm; location / { try_files $uri $uri/ /index.html; } }' > /etc/nginx/conf.d/default.conf
 EXPOSE 80
 `;
   return { runtime: 'static', dockerfile, exposePort: 80 };
@@ -187,6 +236,7 @@ async function deployProject(subdomain, files) {
 
   if (dockerfile) {
     await writeRemoteFile(`${deploymentDir}/Dockerfile`, dockerfile);
+    await writeRemoteFile(`${deploymentDir}/.dockerignore`, 'node_modules\nnpm-debug.log\n.git\n.env\n.env.*\n__pycache__\n*.pyc\n*.pyo\n*.log\ncoverage\n.nyc_output\ndist\nbuild\n.venv\nvenv\n');
   }
 
   const fileEntries = files.map(f => ({
@@ -207,7 +257,8 @@ async function deployProject(subdomain, files) {
     }
   }
 
-  await sshExec(`docker build --force-rm -t ${imageTag} ${deploymentDir}`).catch(err => {
+  await sshExec(`docker build --force-rm --no-cache -t ${imageTag} '${deploymentDir}'`).catch(err => {
+    const logs = sshExec(`docker logs ${nextContainerName} 2>&1 || true`).catch(() => '');
     throw new Error(`Docker build failed: ${err.message}`);
   });
 
