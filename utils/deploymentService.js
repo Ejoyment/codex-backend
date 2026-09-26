@@ -1,12 +1,3 @@
-/**
- * Deployment Service
- * Manages Docker containers on the Hetzner VPS via SSH for user deployments.
- *
- * Uses the system `ssh` binary via child_process so OpenSSH Ed25519 / RSA keys
- * in `-----BEGIN OPENSSH PRIVATE KEY-----` format work natively (the `ssh2`
- * npm library cannot parse those keys).
- */
-
 const { execSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
@@ -16,7 +7,6 @@ const SSH_HOST = process.env.DEPLOY_SSH_HOST;
 const SSH_PORT = parseInt(process.env.DEPLOY_SSH_PORT || '22');
 const SSH_USER = process.env.DEPLOY_SSH_USER || 'deployer';
 const DOMAIN = process.env.DEPLOY_DOMAIN || 'buildrshq.dev';
-// Relative to the SSH user's home directory — always writable.
 const DEPLOY_SUBDIR = (process.env.DEPLOY_ROOT || 'deployments').replace(/^\/+/, '').replace(/^~\/?/, '');
 
 function getRawKey() {
@@ -31,7 +21,6 @@ function getRawKey() {
 let keyFile = null;
 let homeDirCache = null;
 
-// Resolve the remote user's home directory once.
 async function getHomeDir() {
   if (homeDirCache) return homeDirCache;
   try {
@@ -43,7 +32,6 @@ async function getHomeDir() {
   return homeDirCache;
 }
 
-// Find a writable deployment base by trying multiple locations.
 async function findWritableBase() {
   const homeDir = await getHomeDir();
   const candidates = [
@@ -56,9 +44,7 @@ async function findWritableBase() {
     try {
       await sshExec(`mkdir -p ${dir} && touch ${dir}/.writetest && rm -f ${dir}/.writetest`);
       return dir;
-    } catch (_) {
-      // try next
-    }
+    } catch (_) {}
   }
   throw new Error(
     'No writable deployment directory found on the VPS. ' +
@@ -105,12 +91,11 @@ function sshExec(command) {
 
 async function writeRemoteFile(remotePath, content) {
   const base64 = Buffer.from(content || '').toString('base64');
-  // Compute the parent directory client-side to avoid nested shell quotes
   const parentDir = remotePath.includes('/')
     ? remotePath.slice(0, remotePath.lastIndexOf('/'))
     : '.';
   await sshExec(`mkdir -p '${parentDir}'`);
-  await sshExec(`echo '${base64}' | base64 -d > '${remotePath}'`);
+  await sshExec(`printf '%s' '${base64}' | base64 -d > '${remotePath}'`);
 }
 
 function detectRuntime(files) {
@@ -187,28 +172,28 @@ async function deployProject(subdomain, files) {
     await writeRemoteFile(`${deploymentDir}/Dockerfile`, dockerfile);
   }
 
-  await sshExec(`docker build -t ${imageTag} ${deploymentDir}`).catch(err => {
+  await sshExec(`docker build --force-rm -t ${imageTag} ${deploymentDir}`).catch(err => {
     throw new Error(`Docker build failed: ${err.message}`);
   });
 
-  const existingContainer = (await sshExec(`docker ps -q --filter "name=^/${containerName}$" 2>/dev/null || true`).catch(() => '')).trim();
+  const existingContainer = (await sshExec(`docker ps -q --filter "name=${containerName}" 2>/dev/null || true`).catch(() => '')).trim();
 
   const runScript = `#!/bin/bash
-  docker rm -f ${nextContainerName} 2>/dev/null || true
-  docker run -d \\
-    --name ${nextContainerName} \\
-    --restart unless-stopped \\
-    --cap-drop ALL \\
-    --security-opt no-new-privileges \\
-    --memory 512m \\
-    --cpus 1 \\
-    --pids-limit 100 \\
-    --label 'traefik.enable=true' \\
-    --label 'traefik.http.routers.${sanitizedSubdomain}.rule=Host(\`${sanitizedSubdomain}.${DOMAIN}\`) || Host(\`www.${sanitizedSubdomain}.${DOMAIN}\`)' \\
-    --label 'traefik.http.routers.${sanitizedSubdomain}.entrypoints=websecure' \\
-    --label 'traefik.http.routers.${sanitizedSubdomain}.tls.certresolver=letsencrypt' \\
-    --label 'traefik.http.services.${sanitizedSubdomain}.loadbalancer.server.port=${exposePort}' \\
-    ${imageTag}
+docker rm -f ${nextContainerName} 2>/dev/null || true
+docker run -d \\
+  --name ${nextContainerName} \\
+  --restart unless-stopped \\
+  --cap-drop ALL \\
+  --security-opt no-new-privileges \\
+  --memory 512m \\
+  --cpus 1 \\
+  --pids-limit 100 \\
+  --label 'traefik.enable=true' \\
+  --label 'traefik.http.routers.${sanitizedSubdomain}.rule=Host(\`${sanitizedSubdomain}.${DOMAIN}\`) || Host(\`www.${sanitizedSubdomain}.${DOMAIN}\`)' \\
+  --label 'traefik.http.routers.${sanitizedSubdomain}.entrypoints=websecure' \\
+  --label 'traefik.http.routers.${sanitizedSubdomain}.tls.certresolver=letsencrypt' \\
+  --label 'traefik.http.services.${sanitizedSubdomain}.loadbalancer.server.port=${exposePort}' \\
+  ${imageTag}
 `;
 
   await writeRemoteFile(`${deploymentDir}/run.sh`, runScript);
@@ -227,6 +212,17 @@ async function deployProject(subdomain, files) {
   console.log(`[deploy] ${containerName} started (${nextContainerId}) using blue-green swap`);
 
   try { await sshExec(`docker image prune -f 2>/dev/null || true`); } catch (_) {}
+
+  try {
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    const health = await sshExec(`docker inspect --format='{{.State.Running}}' ${containerName} 2>/dev/null || echo 'false'`);
+    if (health !== 'true') {
+      throw new Error('Container is not running after deployment');
+    }
+    console.log(`[deploy] ${containerName} health check passed`);
+  } catch (healthErr) {
+    console.warn('[deploy] Health check issue:', healthErr.message);
+  }
 
   return { containerId: nextContainerId, url: `https://${sanitizedSubdomain}.${DOMAIN}` };
 }
