@@ -45,6 +45,10 @@ const globalLimiter = rateLimit({
 
 // Import trial enforcement middleware
 const { checkTrialStatus, enforceProjectLimit, enforceAIAccess } = require('./middleware/trial');
+const { enforceCreditPool, enforceCloudComputeLimit, enforceDeploymentLimit, enforceDebugRoomAccess, enforceDebugRoomLimit } = require('./middleware/tierEnforcement');
+const CreditPoolService = require('./utils/creditPoolService');
+const paymentRouter = require('./utils/paymentRouter');
+const { enforceSecurityHeaders } = require('./utils/securityHeaders');
 
 let server = null;
 let io = null;
@@ -320,14 +324,36 @@ app.use('/api/git', gitRoutes);
 app.use('/api/debug', debugRoutes);
 app.use('/api/deployments', deploymentRoutes);
 app.use('/api/agent-confirmation', agentConfirmationRoutes);
-app.use('/api/v1/agent', agentV1Routes);
-app.use('/api/v1/specs', specRoutes);
+app.use('/api/v1/agent', enforceCreditPool(), enforceCloudComputeLimit(), agentV1Routes);
+app.use('/api/v1/specs', enforceSpecEngineLevel('full_sdd'), specRoutes);
 // Phase 3 — Ephemeral Debug Rooms + Multi-rail billing (entitlement-gated)
-app.use('/api/v1/rooms', roomsRoutes);
-app.use('/api/v1/billing', billingV1Routes);
-// Project routes (enforcement of project limits handled in route handlers)
-app.use('/api/projects', projectRoutes);
+app.use('/api/v1/rooms', enforceDebugRoomAccess(), enforceDebugRoomLimit(), roomsRoutes);
+app.use('/api/v1/billing', paymentRouter);
+app.use('/api/projects', enforceDeploymentLimit(), projectRoutes);
 app.use('/api/ai-context', figmaContextRoutes, teamMemoryRoutes, ticketBridgeRoutes);
+
+// Security headers middleware
+app.use(enforceSecurityHeaders());
+
+// TTL Sweeper for debug rooms — cleans up expired rooms every hour
+const TTL_SWEETER_INTERVAL = parseInt(process.env.DEBUG_ROOM_TTL_CLEANUP_INTERVAL) || 3600000;
+setInterval(async () => {
+    try {
+        const DebugRoom = require('./models/DebugRoom');
+        const expiredRooms = await DebugRoom.deleteMany({
+            expiresAt: { $lte: new Date() },
+            status: { $in: ['active', 'pending'] }
+        });
+        if (expiredRooms.deletedCount > 0) {
+            console.log(`TTL Sweeper: Cleaned up ${expiredRooms.deletedCount} expired debug rooms`);
+        }
+    } catch (error) {
+        console.error('TTL Sweeper error:', error);
+    }
+}, TTL_SWEETER_INTERVAL);
+
+// Credit pool reset check
+CreditPoolService.resetMonthlyCredits();
 
 // Swagger API Documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs, {
