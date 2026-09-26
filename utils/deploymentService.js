@@ -205,7 +205,7 @@ function createTarballSync(files) {
   const tmpDir = path.join(os.tmpdir(), `deploy-src-${Date.now()}`);
   fs.mkdirSync(tmpDir, { recursive: true });
   for (const file of files) {
-    const relPath = file.path ? path.join(file.path.replace(/^\//, ''), file.name) : file.name;
+    const relPath = file.path.replace(/^\//, '');
     assertSafeRelPath(relPath);
     const fullPath = path.join(tmpDir, relPath);
     fs.mkdirSync(path.dirname(fullPath), { recursive: true });
@@ -261,11 +261,13 @@ async function deployProject(subdomain, files) {
     await writeRemoteFile(`${deploymentDir}/deploy.tar.gz`, tarB64, true);
     await sshExec(`cd '${deploymentDir}' && tar -xzf deploy.tar.gz && rm deploy.tar.gz`);
     fs.unlinkSync(tarPath);
-    const verifyResult = await sshExec(`ls ${deploymentDir} | head -10`).catch(() => '');
-    console.log(`[deploy] Files in ${deploymentDir}: ${verifyResult}`);
+    const fileCount = await sshExec(`find ${deploymentDir} -type f | wc -l`).catch(() => '0');
+    const fileList = await sshExec(`ls ${deploymentDir}`).catch(() => '');
+    console.log(`[deploy] ${fileCount.trim()} files in ${deploymentDir}: ${fileList}`);
   } catch (tarErr) {
+    console.error(`[deploy] Tarball failed: ${tarErr.message}`);
     for (const file of fileEntries) {
-      const relPath = file.path ? path.join(file.path.replace(/^\//, ''), file.name) : file.name;
+      const relPath = file.path.replace(/^\//, '');
       await writeRemoteFile(`${deploymentDir}/${relPath}`, file.content || '');
     }
   }
