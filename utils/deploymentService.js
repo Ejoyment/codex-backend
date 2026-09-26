@@ -297,7 +297,6 @@ docker run -d \\
   --label 'traefik.enable=true' \\
   --label 'traefik.http.routers.${sanitizedSubdomain}.rule=Host(\`${sanitizedSubdomain}.${DOMAIN}\`) || Host(\`www.${sanitizedSubdomain}.${DOMAIN}\`)' \\
   --label 'traefik.http.routers.${sanitizedSubdomain}.entrypoints=web' \\
-  --label 'traefik.http.routers.${sanitizedSubdomain}.tls=false' \\
   --label 'traefik.http.services.${sanitizedSubdomain}.loadbalancer.server.port=${exposePort}' \\
   ${imageTag}
 `;
