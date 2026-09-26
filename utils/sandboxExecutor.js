@@ -9,6 +9,7 @@
  * Supported languages: JavaScript, Python, Java, Go, Rust, Ruby, PHP.
  */
 
+const { exec: childExec } = require('child_process');
 const sandboxSecurity = require('./sandboxSecurity');
 
 class SandboxExecutor {
@@ -24,8 +25,30 @@ class SandboxExecutor {
         if (this.available) {
             console.log('✓ Sandbox Executor initialized with Docker backend');
         } else {
-            console.warn('⚠ Docker not available — code execution is disabled');
+            console.warn('⚠ Docker not available — falling back to child_process execution');
         }
+    }
+
+    async childProcessExecute(code, language, options = {}) {
+        return new Promise((resolve) => {
+            const timeout = options.timeout || this.timeout;
+            const startTime = Date.now();
+            const execStr = this.getDockerExecCmd(language, code).join(' ');
+            const proc = childExec(execStr, { timeout, maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
+                const executionTime = Date.now() - startTime;
+                if (error && error.killed) {
+                    return resolve({ success: false, output: stderr || 'Execution timed out', exitCode: 124, executionTime });
+                }
+                if (error) {
+                    return resolve({ success: false, output: stderr || error.message, exitCode: 1, executionTime });
+                }
+                resolve({ success: true, output: stdout + stderr, exitCode: 0, executionTime });
+            });
+            proc.on('error', (err) => {
+                const executionTime = Date.now() - startTime;
+                resolve({ success: false, error: err.message, exitCode: 1, executionTime });
+            });
+        });
     }
 
     /**
@@ -33,10 +56,7 @@ class SandboxExecutor {
      */
     async execute(code, language = 'javascript', options = {}) {
         if (!this.available) {
-            return {
-                success: false,
-                error: 'Docker not available — code execution is disabled'
-            };
+            return await this.childProcessExecute(code, language, options);
         }
 
         const executionOptions = {
