@@ -9,7 +9,7 @@ const SSH_PORT = parseInt(process.env.DEPLOY_SSH_PORT || '22');
 const SSH_USER = process.env.DEPLOY_SSH_USER || 'deployer';
 const DOMAIN = process.env.DEPLOY_DOMAIN || 'buildrshq.dev';
 const DEPLOY_SUBDIR = (process.env.DEPLOY_ROOT || 'deployments').replace(/^\/+/, '').replace(/^~\/?/, '');
-const DEPLOY_TIMEOUT_MS = parseInt(process.env.DEPLOY_TIMEOUT_MS) || 300000;
+const DEPLOY_TIMEOUT_MS = parseInt(process.env.DEPLOY_TIMEOUT_MS) || 900000;
 
 function getRawKey() {
   if (process.env.DEPLOY_SSH_KEY) return process.env.DEPLOY_SSH_KEY;
@@ -107,110 +107,389 @@ function sshExec(command, input = null) {
 }
 
 
-function detectRuntime(files) {
-  const names = files.map(f => f.name.toLowerCase());
-  const paths = files.map(f => ((f.path || '') + '/' + f.name).toLowerCase());
-  const textContent = f => (f.encoding === 'base64'
+// ---------------------------------------------------------------------------
+// Runtime detection & Dockerfile generation
+//
+// detectRuntime(files) returns:
+//   runtime    - 'node' | 'python' | 'go' | 'ruby' | 'php' | 'static' | 'docker'
+//   dockerfile - generated template text, or the user's own Dockerfile text
+//                when runtime === 'docker'
+//   exposePort - container port advertised to traefik
+//   contextDir - repo-relative docker build context ('.' = repo root)
+//
+// Markers are matched ROOT-FIRST so a monorepo's nested app never hijacks a
+// root project. A nested match (e.g. gateway/Dockerfile, gateway/go.mod) sets
+// contextDir to its own directory; the build then runs
+// `docker build -f <dir>/Dockerfile <dir>` so COPY statements resolve inside
+// the app dir instead of the repo root — aegis-ai failed with
+// `COPY go.mod go.sum ./` → "/go.sum": not found when its nested
+// gateway/Dockerfile was hoisted to the repo root.
+// ---------------------------------------------------------------------------
+
+// First path segment that usually marks the real app dir in a monorepo.
+const APP_DIR_PRIORITY = ['app', 'api', 'server', 'backend', 'gateway', 'service', 'src', 'web', 'frontend', 'client'];
+// Deps that compile native addons: node:alpine needs python3/make/g++.
+const NATIVE_DEP_RE = /node-pty|bcrypt|sharp|canvas|better-sqlite3|sqlite3|serialport|epoll|bufferutil|utf-8-validate|node-sass|grpc|re2|leveldown|classic-level|node-gyp|prebuild/;
+// Files whose presence marks a directory as the deployable app (Dockerfile scoring).
+const APP_MANIFESTS = ['package.json', 'requirements.txt', 'go.mod', 'gemfile', 'composer.json', 'pom.xml', 'cargo.toml'];
+// Signals that a nested package.json directory is the real app root.
+const NESTED_PKG_SIGNALS = ['package-lock.json', 'npm-shrinkwrap.json', 'yarn.lock', 'pnpm-lock.yaml', 'bun.lockb', 'dockerfile'];
+
+function fileText(f) {
+  return f && f.encoding === 'base64'
     ? Buffer.from(String(f.content || ''), 'base64').toString('utf8')
-    : String(f.content || ''));
+    : String((f && f.content) || '');
+}
 
-  if (names.includes('dockerfile') || files.some(f => f.name.toLowerCase() === 'dockerfile')) {
-    const userDockerfile = files.find(f => f.name.toLowerCase() === 'dockerfile');
-    return { runtime: 'docker', dockerfile: userDockerfile ? textContent(userDockerfile) : null, exposePort: 80 };
+function parseJsonSafe(text) {
+  try { return JSON.parse(text); } catch (_) { return null; }
+}
+
+function clampPort(value) {
+  const n = parseInt(value, 10);
+  return Number.isInteger(n) && n >= 1 && n <= 65535 ? n : null;
+}
+
+function detectRuntime(files) {
+  // `rel` keeps original case for filesystem use; `key`/`dirKey`/`name` are
+  // lowercased for case-insensitive marker matching.
+  const entries = [];
+  for (const f of files) {
+    const rel = buildFileRelPath(f);
+    const slash = rel.lastIndexOf('/');
+    const dir = slash === -1 ? '' : rel.slice(0, slash);
+    entries.push({
+      f,
+      rel,
+      dir,
+      key: rel.toLowerCase(),
+      dirKey: dir.toLowerCase(),
+      name: (slash === -1 ? rel : rel.slice(slash + 1)).toLowerCase(),
+    });
   }
+  const textCache = new Map();
+  const text = e => {
+    if (!textCache.has(e)) textCache.set(e, fileText(e.f));
+    return textCache.get(e);
+  };
+  const inRoot = name => entries.find(e => e.dirKey === '' && e.name === name);
+  const findIn = (dirKey, name) => entries.find(e => e.dirKey === dirKey && e.name === name);
+  // Path of `e` relative to its context dir (what a Dockerfile COPY uses).
+  const ctxRelOf = (e, dir) => (dir ? e.rel.slice(dir.length + 1) : e.rel);
+  const dirRank = dir => {
+    const i = APP_DIR_PRIORITY.indexOf(dir.split('/')[0].toLowerCase());
+    return i === -1 ? APP_DIR_PRIORITY.length : i;
+  };
+  // Pick the most app-like directory: explicit flag first, then well-known
+  // app dir names (app/api/.../gateway/.../client), then alphabetical.
+  const pickDir = (cands, flagFn) => {
+    const ranked = cands.map(e => ({ e, flag: flagFn ? !!flagFn(e) : false }));
+    ranked.sort((a, b) =>
+      (a.flag === b.flag ? 0 : a.flag ? -1 : 1) ||
+      (dirRank(a.e.dir) - dirRank(b.e.dir)) ||
+      (a.e.key < b.e.key ? -1 : a.e.key > b.e.key ? 1 : 0));
+    return ranked[0].e;
+  };
+  const shallowest = cands => cands.slice().sort((a, b) =>
+    (a.key.split('/').length - b.key.split('/').length) ||
+    (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))[0];
 
-  if (paths.some(p => p.endsWith('package.json'))) {
-    const hasBuild = files.some(f =>
-      f.name === 'package.json' && f.content && textContent(f).includes('"build"')
-    );
-    const entry = ['server.js', 'app.js', 'index.js', 'main.js'].find(e => names.includes(e)) || 'index.js';
-    const dockerfile = `FROM node:18-alpine
-WORKDIR /app
-COPY package*.json ./
-RUN npm install --production --no-audit --no-fund
-COPY . .
-EXPOSE 3000
-ENV PORT=3000
-${hasBuild ? 'RUN npm run build' : ''}
-CMD ["node", "${entry}"]
-`;
-    return { runtime: 'node', dockerfile, exposePort: 3000 };
-  }
-
-  if (paths.some(p => p.endsWith('requirements.txt')) || paths.some(p => p.endsWith('pipfile'))) {
-    const dockerfile = `FROM python:3.11-slim
-WORKDIR /app
-COPY requirements.txt ./
-RUN pip install -r requirements.txt
-COPY . .
-EXPOSE 8000
-ENV PORT=8000
-CMD ["python", "app.py"]
-`;
-    return { runtime: 'python', dockerfile, exposePort: 8000 };
-  }
-
-  if (paths.some(p => p.endsWith('go.mod')) || paths.some(p => p.endsWith('.go'))) {
-    const dockerfile = `FROM golang:1.21-alpine
-WORKDIR /app
-COPY go.mod ./
-COPY . .
-RUN go build -o main .
-EXPOSE 8080
-CMD ["./main"]
-`;
-    return { runtime: 'go', dockerfile, exposePort: 8080 };
-  }
-
-  if (paths.some(p => p.endsWith('Gemfile'))) {
-    const dockerfile = `FROM ruby:3.2-alpine
-WORKDIR /app
-COPY Gemfile* ./
-RUN bundle install
-COPY . .
-EXPOSE 3000
-CMD ["bundle", "exec", "rails", "server", "-b", "0.0.0.0"]
-`;
-    return { runtime: 'ruby', dockerfile, exposePort: 3000 };
-  }
-
-  const hasHtml = names.some(n => n.endsWith('.html'));
-  const hasPhp = names.some(n => n.endsWith('.php'));
-  const hasNginxConfig = names.some(n => n === 'nginx.conf' || n === 'nginx.conf');
-
-  if (hasNginxConfig) {
-    const nginxConf = files.find(f => f.name === 'nginx.conf');
-    const dockerfile = `FROM nginx:alpine
+  // Static nginx image (two variants: custom conf or a generated default
+  // conf). ensureStaticEntry() guarantees a root index.html exists in the
+  // file set *before* the build (copied from the project's own index.html,
+  // or a generated file listing with HTML-escaped / URL-encoded names) — the
+  // old in-image shell listing broke on spaces, unicode and quotes in
+  // filenames. Context is always the repo root so generated entries land
+  // inside the build context.
+  const staticResult = (confRel = null) => ({
+    runtime: 'static',
+    exposePort: 80,
+    contextDir: '.',
+    dockerfile: confRel
+      ? `FROM nginx:alpine
 RUN rm -f /usr/share/nginx/html/index.html /usr/share/nginx/html/50x.html
-COPY nginx.conf /etc/nginx/nginx.conf
+COPY ${confRel} /etc/nginx/nginx.conf
 COPY . /usr/share/nginx/html
 EXPOSE 80
-`;
-    return { runtime: 'static', dockerfile, exposePort: 80 };
-  }
-
-  if (hasPhp) {
-    const dockerfile = `FROM php:8.2-apache
-RUN rm -f /var/www/html/index.html /var/www/html/index.php
-COPY . /var/www/html
-EXPOSE 80
-`;
-    return { runtime: 'php', dockerfile, exposePort: 80 };
-  }
-
-  // Static site: strip the base image's default welcome pages, then make sure
-  // the root URL serves the deployed content. ensureStaticEntry() guarantees a
-  // root index.html exists in the file set *before* the build (copied from the
-  // project's own index.html, or a generated file listing with HTML-escaped /
-  // URL-encoded names) — the old in-image shell listing broke on spaces,
-  // unicode and quotes in filenames.
-  const dockerfile = `FROM nginx:alpine
+`
+      : `FROM nginx:alpine
 RUN rm -f /usr/share/nginx/html/index.html /usr/share/nginx/html/50x.html
 COPY . /usr/share/nginx/html
 RUN echo 'server { listen 80; root /usr/share/nginx/html; index index.html index.htm; location ~* \\.[^/]+\$ { try_files \$uri =404; } location / { try_files \$uri \$uri/ /index.html; } }' > /etc/nginx/conf.d/default.conf
 EXPOSE 80
-`;
-  return { runtime: 'static', dockerfile, exposePort: 80 };
+`,
+  });
+
+  const dockerResult = (e, dir) => {
+    const m = /^\s*EXPOSE\s+(\d+)/im.exec(text(e));
+    return {
+      runtime: 'docker',
+      dockerfile: text(e),
+      exposePort: (m && clampPort(m[1])) || 80,
+      contextDir: dir || '.',
+    };
+  };
+
+  const phpResult = dir => ({
+    runtime: 'php',
+    exposePort: 80,
+    contextDir: dir || '.',
+    dockerfile: `FROM php:8.2-apache
+RUN rm -f /var/www/html/index.html /var/www/html/index.php
+COPY . /var/www/html
+EXPOSE 80
+`,
+  });
+
+  const pythonResult = dir => {
+    const dk = dir.toLowerCase();
+    const entry = ['manage.py', 'app.py', 'main.py', 'server.py', 'run.py']
+      .map(n => findIn(dk, n)).find(Boolean);
+    // No recognizable entry: serve the files instead of building a dead image.
+    if (!entry) return staticResult();
+    const manage = entry.name === 'manage.py';
+    let port = 8000;
+    if (!manage) {
+      const t = text(entry);
+      const pm = t.match(/\.PORT\s*\|\|\s*(\d{4,5})/) || t.match(/listen\(\s*(\d{4,5})/) || t.match(/\bport\s*=\s*(\d{4,5})/i);
+      if (pm) port = clampPort(pm[1]) || 8000;
+    }
+    const entryRel = ctxRelOf(entry, dir);
+    const cmd = manage
+      ? `CMD ["python", ${JSON.stringify(entryRel)}, "runserver", "0.0.0.0:${port}"]`
+      : `CMD ["python", ${JSON.stringify(entryRel)}]`;
+    const req = findIn(dk, 'requirements.txt');
+    const reqRel = req ? ctxRelOf(req, dir) : 'requirements.txt';
+    return {
+      runtime: 'python',
+      exposePort: port,
+      contextDir: dir || '.',
+      dockerfile: `FROM python:3.11-slim
+WORKDIR /app
+COPY "${reqRel}" ./
+RUN pip install --no-cache-dir -r "${reqRel}"
+COPY . .
+EXPOSE ${port}
+ENV PORT=${port}
+${cmd}
+`,
+    };
+  };
+
+  const goResult = dir => {
+    const dk = dir.toLowerCase();
+    const under = e => !dir || e.key.startsWith(dk + '/');
+    const goFiles = entries.filter(e => e.name.endsWith('.go') && under(e));
+    const mainFiles = goFiles.filter(e => /\bpackage\s+main\b/.test(text(e)));
+    // A module without a main package has nothing to run: serve the files.
+    if (!mainFiles.length) return staticResult();
+    let pkg = '.';
+    if (!mainFiles.some(e => e.dirKey === dk)) {
+      const mainDirs = [...new Set(mainFiles.map(e => e.dirKey))].sort();
+      const cmdDir = mainDirs.find(d => d.startsWith((dk ? dk + '/' : '') + 'cmd/'));
+      const chosen = cmdDir || mainDirs[0];
+      pkg = './' + (dir ? chosen.slice(dir.length + 1) : chosen);
+    }
+    const goMod = findIn(dk, 'go.mod');
+    const goSum = findIn(dk, 'go.sum');
+    let goVer = 22;
+    if (goMod) {
+      const vm = /^go\s+1\.(\d+)\s*$/m.exec(text(goMod));
+      if (vm) {
+        const n = parseInt(vm[1], 10);
+        if (Number.isInteger(n) && n >= 21) goVer = n;
+      }
+    }
+    let port = 8080;
+    for (const mf of mainFiles) {
+      const am = text(mf).match(/"[:](\d{4,5})"/);
+      if (am) {
+        const p = clampPort(am[1]);
+        if (p) { port = p; break; }
+      }
+    }
+    const copyLine = `COPY ${goMod ? ctxRelOf(goMod, dir) : 'go.mod'}${goSum ? ' ' + ctxRelOf(goSum, dir) : ''} ./`;
+    return {
+      runtime: 'go',
+      exposePort: port,
+      contextDir: dir || '.',
+      dockerfile: `FROM golang:1.${goVer}-alpine AS build
+WORKDIR /src
+${copyLine}
+COPY . .
+RUN go mod download
+RUN CGO_ENABLED=0 go build -o /out/app ${pkg}
+
+FROM alpine:3.19
+RUN apk add --no-cache ca-certificates git
+COPY --from=build /out/app /usr/local/bin/app
+EXPOSE ${port}
+ENV PORT=${port}
+CMD ["app"]
+`,
+    };
+  };
+
+  const rubyResult = dir => {
+    const dk = dir.toLowerCase();
+    const gemfile = findIn(dk, 'gemfile');
+    const gemLock = findIn(dk, 'gemfile.lock');
+    const copyLine = `COPY ${gemfile ? ctxRelOf(gemfile, dir) : 'Gemfile'}${gemLock ? ' ' + ctxRelOf(gemLock, dir) : ''} ./`;
+    return {
+      runtime: 'ruby',
+      exposePort: 3000,
+      contextDir: dir || '.',
+      dockerfile: `FROM ruby:3.2-alpine
+WORKDIR /app
+${copyLine}
+RUN bundle install
+COPY . .
+EXPOSE 3000
+ENV PORT=3000
+CMD ["bundle", "exec", "rails", "server", "-b", "0.0.0.0"]
+`,
+    };
+  };
+
+  const nodeResult = dir => {
+    const dk = dir.toLowerCase();
+    const pkgEntry = findIn(dk, 'package.json');
+    const pkg = (pkgEntry && parseJsonSafe(text(pkgEntry))) || {};
+    const scripts = (pkg.scripts && typeof pkg.scripts === 'object' && !Array.isArray(pkg.scripts)) ? pkg.scripts : {};
+    // Only THIS package.json's scripts.build decides a build step — the old
+    // code substring-matched '"build"' in any package.json (buildrs-frontend
+    // hijacked the root app and emitted a doomed `npm run build`).
+    const hasBuild = typeof scripts.build === 'string' && scripts.build.trim().length > 0;
+
+    // engines.node: first declared major, floored at 20, snapped to an even
+    // (LTS) major, capped at 24. No/odd engines → node:20-alpine.
+    let nodeMajor = 20;
+    if (pkg.engines && typeof pkg.engines.node === 'string') {
+      const em = pkg.engines.node.match(/(\d+)/);
+      if (em) {
+        let v = parseInt(em[1], 10);
+        if (Number.isInteger(v)) {
+          if (v < 20) v = 20;
+          if (v % 2 === 1) v += 1;
+          if (v > 24) v = 24;
+          nodeMajor = v;
+        }
+      }
+    }
+
+    const depNames = [];
+    for (const b of [pkg.dependencies, pkg.devDependencies, pkg.optionalDependencies]) {
+      if (b && typeof b === 'object') depNames.push(...Object.keys(b));
+    }
+    // Native addons (node-pty, bcrypt, sharp, ...) need python3/make/g++ on
+    // alpine or `npm install` dies with "gyp ERR! find Python".
+    const native = NATIVE_DEP_RE.test(depNames.join(' '))
+      || NATIVE_DEP_RE.test(Object.values(scripts).filter(v => typeof v === 'string').join(' '))
+      || !!findIn(dk, 'binding.gyp');
+
+    const locks = ['package-lock.json', 'npm-shrinkwrap.json', 'yarn.lock', 'pnpm-lock.yaml']
+      .filter(n => findIn(dk, n));
+    const hasNpmLock = locks.includes('package-lock.json') || locks.includes('npm-shrinkwrap.json');
+    const omit = hasBuild ? '' : ' --omit=dev';
+    const install = hasNpmLock
+      ? `RUN npm ci --no-audit --no-fund${omit} || npm install --no-audit --no-fund${omit}`
+      : `RUN npm install --no-audit --no-fund${omit}`;
+    const copyLine = `COPY package.json${locks.length ? ' ' + locks.join(' ') : ''} ./`;
+
+    const start = typeof scripts.start === 'string' ? scripts.start.trim() : '';
+    const rootEntryName = ['server.js', 'app.js', 'index.js', 'main.js'].find(n => findIn(dk, n));
+    let cmd = null;
+    let entryFile = null;
+    const startNode = start.match(/^node\s+([^\s;&|]+)/);
+    if (startNode) {
+      entryFile = startNode[1].replace(/^\.\//, '');
+      cmd = `CMD ["node", ${JSON.stringify(entryFile)}]`;
+    } else if (start) {
+      cmd = 'CMD ["npm", "start"]';
+      entryFile = rootEntryName || null;
+    } else if (rootEntryName) {
+      entryFile = rootEntryName;
+      cmd = `CMD ["node", ${JSON.stringify(rootEntryName)}]`;
+    } else if (typeof pkg.main === 'string' && pkg.main.trim()) {
+      const main = pkg.main.trim().replace(/^\.\//, '');
+      const wanted = [main, main.endsWith('.js') ? main : main + '.js']
+        .map(c => (dir ? dir + '/' + c : c).toLowerCase());
+      const found = entries.find(e => wanted.includes(e.key));
+      if (found) {
+        entryFile = ctxRelOf(found, dir);
+        cmd = `CMD ["node", ${JSON.stringify(entryFile)}]`;
+      } else if (/\.js$/i.test(main)) {
+        entryFile = main;
+        cmd = `CMD ["node", ${JSON.stringify(main)}]`;
+      }
+    }
+    // package.json without a runnable entry: serve the files instead.
+    if (!cmd) return staticResult();
+
+    let port = 3000;
+    const startPort = start.match(/(?:^|\s)(?:-p|--port)(?:=|\s+)(\d{2,5})/) || start.match(/\bPORT=(\d{2,5})/);
+    if (startPort) {
+      port = clampPort(startPort[1]) || 3000;
+    } else if (entryFile) {
+      const ef = entries.find(e => e.key === (dir ? dir + '/' + entryFile : entryFile).toLowerCase());
+      if (ef) {
+        const t = text(ef);
+        const pm = t.match(/\.PORT\s*\|\|\s*(\d{4,5})/) || t.match(/\.listen\(\s*(\d{4,5})/) || t.match(/\bport\s*=\s*(\d{4,5})/i);
+        if (pm) port = clampPort(pm[1]) || 3000;
+      }
+    }
+
+    return {
+      runtime: 'node',
+      exposePort: port,
+      contextDir: dir || '.',
+      dockerfile: `FROM node:${nodeMajor}-alpine
+${native ? 'RUN apk add --no-cache python3 make g++ libc6-compat\n' : ''}WORKDIR /app
+${copyLine}
+${install}
+COPY . .
+${hasBuild ? 'RUN npm run build\nRUN npm prune --omit=dev || true\n' : ''}EXPOSE ${port}
+ENV PORT=${port}
+${cmd}
+`,
+    };
+  };
+
+  // Root-first marker chain. Root markers (design order) always beat nested
+  // ones so a monorepo subdir never hijacks the root project.
+  const rootDockerfile = inRoot('dockerfile');
+  if (rootDockerfile) return dockerResult(rootDockerfile, '');
+  if (inRoot('package.json')) return nodeResult('');
+  if (inRoot('requirements.txt')) return pythonResult('');
+  if (inRoot('go.mod')) return goResult('');
+  if (inRoot('gemfile')) return rubyResult('');
+  const rootNginx = inRoot('nginx.conf');
+  if (rootNginx) return staticResult(ctxRelOf(rootNginx, ''));
+  if (entries.some(e => e.dirKey === '' && e.name.endsWith('.php'))) return phpResult('');
+  if (entries.some(e => e.dirKey === '' && e.name.endsWith('.html'))) return staticResult();
+
+  // Nested markers: build ONLY from the app dir (`docker build -f <dir>/Dockerfile <dir>`).
+  const nestedDockerfiles = entries.filter(e => e.dirKey !== '' && e.name === 'dockerfile');
+  if (nestedDockerfiles.length) {
+    const best = pickDir(nestedDockerfiles, e => APP_MANIFESTS.some(n => findIn(e.dirKey, n)));
+    return dockerResult(best, best.dir);
+  }
+  const nestedPkgs = entries.filter(e => e.dirKey !== '' && e.name === 'package.json');
+  if (nestedPkgs.length) {
+    const best = pickDir(nestedPkgs, e => NESTED_PKG_SIGNALS.some(n => findIn(e.dirKey, n)));
+    return nodeResult(best.dir);
+  }
+  const nestedReqs = entries.filter(e => e.dirKey !== '' && e.name === 'requirements.txt');
+  if (nestedReqs.length) return pythonResult(pickDir(nestedReqs).dir);
+  const nestedGoMods = entries.filter(e => e.dirKey !== '' && e.name === 'go.mod');
+  if (nestedGoMods.length) return goResult(pickDir(nestedGoMods).dir);
+
+  const anyNginx = entries.filter(e => e.name === 'nginx.conf');
+  if (anyNginx.length) return staticResult(shallowest(anyNginx).rel);
+  const phpFiles = entries.filter(e => e.name.endsWith('.php'));
+  if (phpFiles.length) return phpResult(shallowest(phpFiles).dir);
+  if (entries.some(e => e.name.endsWith('.html'))) return staticResult();
+  return staticResult();
 }
 
 // Build the archive-relative path for a file. `f.path` may be a directory
@@ -309,18 +588,15 @@ async function deployProject(subdomain, files) {
   const nextContainerName = `${containerName}-next-${Date.now()}`;
   const imageTag = `${containerName}:${Date.now()}`;
 
-  const { runtime, dockerfile, exposePort } = detectRuntime(files);
-  console.log(`[deploy] Runtime: ${runtime}, port: ${exposePort}, dir: ${deploymentDir}`);
+  const { runtime, dockerfile, exposePort, contextDir } = detectRuntime(files);
+  const contextRel = String(contextDir || '.').replace(/^\.?\/+/, '').replace(/\/+$/, '') || '.';
+  const buildDir = contextRel === '.' ? deploymentDir : `${deploymentDir}/${contextRel}`;
+  console.log(`[deploy] Runtime: ${runtime}, port: ${exposePort}, context: ${contextRel}, dir: ${deploymentDir}`);
 
   // Rebuild the directory from scratch: stale paths from a prior deploy (e.g.
   // directories created by the old double-path bug) break extraction and writes.
   await sshExec(`rm -rf '${deploymentDir}' && mkdir -p '${deploymentDir}'`);
 
-
-  if (dockerfile) {
-    await writeRemoteFile(`${deploymentDir}/Dockerfile`, dockerfile);
-    await writeRemoteFile(`${deploymentDir}/.dockerignore`, dockerIgnoreFor());
-  }
 
   let fileEntries = files.map(f => ({
     name: f.name,
@@ -354,11 +630,27 @@ async function deployProject(subdomain, files) {
     }
   }
 
-await sshExec(`docker build --force-rm --no-cache -t ${imageTag} '${deploymentDir}'`).catch(async err => {
-    const logs = await sshExec(`docker logs ${nextContainerName} 2>&1 || true`).catch(() => '');
-    const dirList = await sshExec(`ls -la ${deploymentDir}`).catch(() => 'DIR_MISSING');
-    throw new Error(`Docker build failed: ${err.message}. Dir contents: ${dirList}`);
-});
+  // Write the Dockerfile and .dockerignore AFTER extraction: a repo file can
+  // never clobber the one we build with, and the file is present even if the
+  // per-file fallback above stopped early. For nested contexts both live
+  // inside the context dir — the build runs `docker build -f <ctx>/Dockerfile <ctx>`
+  // so COPY statements resolve inside the app dir (aegis-ai monorepo fix).
+  if (dockerfile) {
+    await writeRemoteFile(`${buildDir}/Dockerfile`, dockerfile);
+  }
+  const dockerignoreRel = (contextRel === '.' ? '.dockerignore' : `${contextRel}/.dockerignore`).toLowerCase();
+  const hasDockerignore = files.some(f => buildFileRelPath(f).toLowerCase() === dockerignoreRel);
+  if (!hasDockerignore) {
+    await writeRemoteFile(`${buildDir}/.dockerignore`, dockerIgnoreFor());
+  }
+
+  await sshExec(`docker build --force-rm --no-cache -t ${imageTag} -f ${shq(`${buildDir}/Dockerfile`)} ${shq(buildDir)}`).catch(async err => {
+    const ctxList = await sshExec(`ls -la ${shq(buildDir)} 2>/dev/null || echo 'DIR_MISSING'`).catch(() => 'DIR_MISSING');
+    const rootList = contextRel === '.'
+      ? ''
+      : ` Repo root: ${await sshExec(`ls -la ${shq(deploymentDir)} 2>/dev/null || echo 'DIR_MISSING'}`).catch(() => 'DIR_MISSING')}`;
+    throw new Error(`Docker build failed (${runtime}, context '${contextRel}'): ${err.message}. Context contents: ${ctxList}.${rootList}`);
+  });
 
   const imageFiles = await sshExec(`docker run --rm --entrypoint ls ${imageTag} /usr/share/nginx/html/ 2>/dev/null || echo 'NO_FILES'`).catch(() => 'NO_FILES');
   console.log(`[deploy] Image files: ${imageFiles}`);

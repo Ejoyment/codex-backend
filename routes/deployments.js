@@ -14,12 +14,32 @@ const depService = require('../utils/deploymentService');
 const { validateDeployFiles, backfillFileContent, limits: deployLimits } = require('../utils/deployContent');
 const { addAuditLog } = require('../utils/auditLogService');
 
+// Keep in sync with DEPLOY_TIMEOUT_MS in utils/deploymentService.js — that is
+// the SSH-side command timeout (the docker build itself). The HTTP-side race
+// adds slack so the SSH timeout (and its clearer error) fires first.
+const DEPLOY_TIMEOUT = parseInt(process.env.DEPLOY_TIMEOUT_MS) || 900000;
+const DEPLOY_RACE_TIMEOUT = DEPLOY_TIMEOUT + 300000;
+// A deployment still in a non-terminal state after this long lost its async
+// callback (server restart) — sweep it to failed. Must exceed
+// DEPLOY_RACE_TIMEOUT so an in-flight build is never marked stale.
+const STALE_DEPLOY_MS = DEPLOY_TIMEOUT + 600000;
+
+// Build errors can be huge (a full buildkit trace runs to several KB); keep
+// the stored message readable — head holds the failure reason, tail the end.
+function capErrorMessage(msg) {
+    const s = String(msg || 'Deployment failed');
+    if (s.length <= 4500) return s;
+    return `${s.slice(0, 1300)}\n... [truncated ${s.length - 4500} chars] ...\n${s.slice(-3200)}`;
+}
+
 // List deployments for the logged-in user
 router.get('/', authenticateToken, async (req, res) => {
     try {
-        // Auto-fail stale deployments stuck in "building" for > 10 minutes
-        // (e.g. the async deploy lost its callback on a server restart)
-        const staleThreshold = new Date(Date.now() - 10 * 60 * 1000);
+        // Auto-fail stale deployments stuck in a non-terminal state (e.g.
+        // the async deploy lost its callback on a server restart). The
+        // threshold sits comfortably above the deploy race timeout so an
+        // in-flight build is never swept.
+        const staleThreshold = new Date(Date.now() - STALE_DEPLOY_MS);
         await Deployment.updateMany(
             {
                 userId: req.userId,
@@ -161,9 +181,6 @@ router.post('/', authenticateToken, async (req, res) => {
             req
         });
 
-        // Keep in sync with DEPLOY_TIMEOUT_MS in utils/deploymentService.js.
-        const DEPLOY_TIMEOUT = parseInt(process.env.DEPLOY_TIMEOUT_MS) || 300000;
-
         // Send immediate response so client isn't blocked by docker build time
         res.status(201).json({
             success: true,
@@ -198,13 +215,26 @@ router.post('/', authenticateToken, async (req, res) => {
                 // bytes never went through the request-size caps above).
                 validateDeployFiles(normalizedFiles);
 
+                // Record the detected runtime + build context up front so a
+                // failed deploy still shows what was detected instead of
+                // leaving runtime: 'unknown'.
+                try {
+                    const detected = depService.detectRuntime(normalizedFiles);
+                    await Deployment.findByIdAndUpdate(deployId, {
+                        runtime: detected.runtime,
+                        'metadata.contextDir': detected.contextDir
+                    });
+                } catch (detectErr) {
+                    console.warn('[deploy] runtime detection persist failed:', detectErr.message);
+                }
+
                 let containerId = null;
                 let url = `https://${sanitized}.buildrshq.dev`;
                 let httpUrl = `http://${sanitized}.buildrshq.dev`;
 
                 const deployPromise = depService.deployProject(sanitized, normalizedFiles);
                 const timeoutPromise = new Promise((_, reject) =>
-                    setTimeout(() => reject(new Error('Deployment timed out')), DEPLOY_TIMEOUT)
+                    setTimeout(() => reject(new Error('Deployment timed out')), DEPLOY_RACE_TIMEOUT)
                 );
 
                 try {
@@ -215,7 +245,7 @@ router.post('/', authenticateToken, async (req, res) => {
                     console.error(`[deploy] ${sanitized} failed:`, depErr.message);
                     await Deployment.findByIdAndUpdate(deployId, {
                         status: 'failed',
-                        errorMessage: depErr.message
+                        errorMessage: capErrorMessage(depErr.message)
                     });
                     return;
                 }
@@ -231,7 +261,7 @@ router.post('/', authenticateToken, async (req, res) => {
                 console.error(`[deploy] ${sanitized} failed:`, err.message);
                 await Deployment.findByIdAndUpdate(deployId, {
                     status: 'failed',
-                    errorMessage: err.message
+                    errorMessage: capErrorMessage(err.message)
                 });
             }
         });
