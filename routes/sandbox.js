@@ -10,7 +10,25 @@ const path = require('path');
 const fs = require('fs').promises;
 const os = require('os');
 const CodeFile = require('../models/CodeFile');
+const Company = require('../models/Company');
 const { authenticateToken } = require('../middleware/auth');
+
+// Escape HTML special chars to prevent XSS when interpolating into preview HTML.
+function escapeHtml(s) {
+    return String(s ?? '').replace(/[&<>"']/g, (c) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#x27;',
+    }[c]));
+}
+
+const MAX_CONTENT_BYTES = 500 * 1024; // 500KB
+const MAX_NAME_LENGTH = 128;
+const NAME_PATTERN = /^[a-zA-Z0-9._-]+$/;
+const ALLOWED_LANGUAGES = ['html', 'javascript', 'python', 'plaintext', 'css', 'json'];
+const SANDBOX_KEY_PATTERN = /^sb_[0-9a-f]{16}$/;
 
 /**
  * @swagger
@@ -53,7 +71,41 @@ const { authenticateToken } = require('../middleware/auth');
 router.post('/start', authenticateToken, async (req, res) => {
     try {
         const { fileId, file, name, path: filePath, language, content } = req.body;
-        const payloadFile = file || (fileId ? (await CodeFile.findById(fileId).lean()) : null);
+
+        // Input caps: reject oversized / malformed inputs before doing any work.
+        if (typeof content === 'string' && Buffer.byteLength(content, 'utf8') > MAX_CONTENT_BYTES) {
+            return res.status(400).json({ error: 'content exceeds maximum size of 500KB' });
+        }
+        for (const candidateName of [name, file?.name]) {
+            if (typeof candidateName === 'string' && (candidateName.length > MAX_NAME_LENGTH || !NAME_PATTERN.test(candidateName))) {
+                return res.status(400).json({ error: 'invalid file name' });
+            }
+        }
+        if (typeof language === 'string' && !ALLOWED_LANGUAGES.includes(language)) {
+            return res.status(400).json({ error: 'unsupported language' });
+        }
+
+        const inlineFile = file || null;
+        const dbFile = fileId ? await CodeFile.findById(fileId).lean() : null;
+
+        if (fileId && !dbFile && !inlineFile && typeof content !== 'string') {
+            return res.status(404).json({ error: 'File not found' });
+        }
+
+        // Ownership check: a stored file scoped to a company (workspace) may only
+        // be previewed by members/owner of that company. Personal files without
+        // company scoping keep the previous behavior (allowed).
+        if (dbFile && (dbFile.company || dbFile.companyId)) {
+            const company = await Company.findById(dbFile.company || dbFile.companyId).select('members owner').lean();
+            const uid = String(req.userId);
+            const members = (company && company.members) || [];
+            const isMember = company && (members.some((m) => String(m.user || m.userId) === uid) || String(company.owner) === uid);
+            if (!isMember) {
+                return res.status(403).json({ error: 'Access denied' });
+            }
+        }
+
+        const payloadFile = inlineFile || dbFile;
 
         if (!payloadFile && !name) {
             return res.status(400).json({ error: 'fileId or file content is required' });
@@ -61,7 +113,10 @@ router.post('/start', authenticateToken, async (req, res) => {
 
         const resolvedName = payloadFile?.name || name || 'preview.html';
         const resolvedPath = (payloadFile?.path || filePath || '/').replace(/\\/g, '/');
-        const resolvedLanguage = payloadFile?.language || language || (resolvedName.endsWith('.html') ? 'html' : 'javascript');
+        let resolvedLanguage = payloadFile?.language || language || (resolvedName.endsWith('.html') ? 'html' : 'javascript');
+        if (!ALLOWED_LANGUAGES.includes(resolvedLanguage)) {
+            resolvedLanguage = 'plaintext';
+        }
         const resolvedContent = typeof content === 'string' ? content : (payloadFile?.content || '');
 
         const sandboxKey = 'sb_' + crypto.randomBytes(8).toString('hex');
@@ -77,7 +132,7 @@ router.post('/start', authenticateToken, async (req, res) => {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Sandbox Preview - ${resolvedName}</title>
+<title>Sandbox Preview - ${escapeHtml(resolvedName)}</title>
 <style>
   body { font-family: 'Courier New', monospace; background: #1e1e1e; color: #d4d4d4; padding: 2rem; margin: 0; }
   pre { white-space: pre-wrap; word-wrap: break-word; tab-size: 2; }
@@ -88,8 +143,8 @@ router.post('/start', authenticateToken, async (req, res) => {
 </head>
 <body>
 <div class="header">
-  <span class="file-name">${resolvedName}</span>
-  <span class="language">.${resolvedLanguage}</span>
+  <span class="file-name">${escapeHtml(resolvedName)}</span>
+  <span class="language">.${escapeHtml(resolvedLanguage)}</span>
 </div>
 <pre><code>${resolvedContent ? resolvedContent.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '(empty file)'}</code></pre>
 </body>
@@ -108,7 +163,7 @@ router.post('/start', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Sandbox start error:', error);
-        res.status(500).json({ error: error.message || 'Failed to start sandbox' });
+        res.status(500).json({ error: 'Failed to render preview' });
     }
 });
 
@@ -135,12 +190,15 @@ router.post('/start', authenticateToken, async (req, res) => {
 router.get('/preview/:key', async (req, res) => {
     try {
         const { key } = req.params;
+        if (typeof key !== 'string' || !SANDBOX_KEY_PATTERN.test(key)) {
+            return res.status(404).json({ error: 'Sandbox not found or expired' });
+        }
         const sandboxDir = path.join(os.tmpdir(), 'codex-sandboxes', key);
         const indexPath = path.join(sandboxDir, 'index.html');
 
         // Validate path to prevent directory traversal
         const resolvedPath = path.resolve(indexPath);
-        if (!resolvedPath.startsWith(path.resolve(os.tmpdir(), 'codex-sandboxes'))) {
+        if (!resolvedPath.startsWith(path.resolve(os.tmpdir(), 'codex-sandboxes') + path.sep)) {
             return res.status(403).json({ error: 'Invalid sandbox key' });
         }
 
@@ -152,6 +210,8 @@ router.get('/preview/:key', async (req, res) => {
 
         const html = await fs.readFile(indexPath, 'utf8');
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+        res.setHeader('X-Content-Type-Options', 'nosniff');
         res.send(html);
     } catch (error) {
         console.error('Sandbox preview error:', error);

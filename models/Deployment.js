@@ -46,6 +46,11 @@ const deploymentSchema = new mongoose.Schema({
     metadata: {
         type: Map,
         of: mongoose.Schema.Types.Mixed
+    },
+    expiresAt: {
+        type: Date,
+        default: null,
+        index: true
     }
 }, {
     timestamps: true
@@ -53,5 +58,6 @@ const deploymentSchema = new mongoose.Schema({
 
 deploymentSchema.index({ userId: 1, createdAt: -1 });
 deploymentSchema.index({ subdomain: 1 }, { unique: true });
+deploymentSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 module.exports = mongoose.model('Deployment', deploymentSchema);
