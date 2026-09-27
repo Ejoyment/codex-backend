@@ -35,6 +35,7 @@ async function getHomeDir() {
 }
 
 async function findWritableBase() {
+  if (!SSH_HOST) throw new Error('DEPLOY_SSH_HOST env not set');
   const homeDir = await getHomeDir();
   const candidates = [
     `${homeDir}/deployments`,
@@ -201,6 +202,17 @@ EXPOSE 80
   return { runtime: 'static', dockerfile, exposePort: 80 };
 }
 
+// Build the archive-relative path for a file. `f.path` may be a directory
+// ('/', 'src') or a full path that already includes the filename
+// ('/game.html' from the GitHub tree API, '/name' from editor saves).
+// Joining blindly produced nested paths like 'game.html/game.html'.
+function buildFileRelPath(f) {
+  const dir = String(f.path || '').replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/+$/, '');
+  if (!dir) return f.name;
+  if (dir === f.name || dir.endsWith('/' + f.name)) return dir;
+  return path.join(dir, f.name);
+}
+
 function createTarballSync(files) {
   const tarPath = path.join(os.tmpdir(), `deploy-${Date.now()}.tar.gz`);
   const tmpDir = path.join(os.tmpdir(), `deploy-src-${Date.now()}`);
@@ -213,7 +225,10 @@ function createTarballSync(files) {
     fs.writeFileSync(fullPath, file.content || '');
   }
   try {
-    execSync(`tar -czf '${tarPath}' -C '${tmpDir}' .`);
+    // COPYFILE_DISABLE: don't add macOS AppleDouble (._*) junk that breaks re-extraction
+    execSync(`tar -czf '${tarPath}' -C '${tmpDir}' .`, {
+      env: { ...process.env, COPYFILE_DISABLE: '1' }
+    });
     fs.rmSync(tmpDir, { recursive: true, force: true });
   } catch (_) {
     fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -237,7 +252,9 @@ async function deployProject(subdomain, files) {
   const { runtime, dockerfile, exposePort } = detectRuntime(files);
   console.log(`[deploy] Runtime: ${runtime}, port: ${exposePort}, dir: ${deploymentDir}`);
 
-  await sshExec(`mkdir -p ${deploymentDir}`);
+  // Rebuild the directory from scratch: stale paths from a prior deploy (e.g.
+  // directories created by the old double-path bug) break extraction and writes.
+  await sshExec(`rm -rf '${deploymentDir}' && mkdir -p '${deploymentDir}'`);
 
 
   if (dockerfile) {
@@ -247,7 +264,7 @@ async function deployProject(subdomain, files) {
 
   const fileEntries = files.map(f => ({
     name: f.name,
-    path: f.path ? path.join(f.path.replace(/^\//, ''), f.name) : f.name,
+    path: buildFileRelPath(f),
     content: typeof f.content === 'string' ? f.content : (f.content || '')
   }));
   // Validate before tarball + fallback: blocks local tmpDir escape,
@@ -290,13 +307,20 @@ docker run -d \\
   --name ${nextContainerName} \\
   --restart unless-stopped \\
   --cap-drop ALL \\
+  --cap-add CHOWN \\
+  --cap-add SETUID \\
+  --cap-add SETGID \\
+  --cap-add DAC_OVERRIDE \\
+  --cap-add FOWNER \\
+  --cap-add NET_BIND_SERVICE \\
   --security-opt no-new-privileges \\
   --memory 512m \\
   --cpus 1 \\
   --pids-limit 100 \\
   --label 'traefik.enable=true' \\
   --label 'traefik.http.routers.${sanitizedSubdomain}.rule=Host(\`${sanitizedSubdomain}.${DOMAIN}\`) || Host(\`www.${sanitizedSubdomain}.${DOMAIN}\`)' \\
-  --label 'traefik.http.routers.${sanitizedSubdomain}.entrypoints=web' \\
+  --label 'traefik.http.routers.${sanitizedSubdomain}.entrypoints=websecure' \\
+  --label 'traefik.http.routers.${sanitizedSubdomain}.tls.certresolver=letsencrypt' \\
   --label 'traefik.http.services.${sanitizedSubdomain}.loadbalancer.server.port=${exposePort}' \\
   ${imageTag}
 `;
