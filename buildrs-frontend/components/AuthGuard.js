@@ -44,7 +44,7 @@ export default function AuthGuard({ children }) {
         }
       }
 
-      if (!current?.onboardingCompleted) {
+      if (current && !current.onboardingCompleted) {
         router.replace('/onboarding');
       }
     };
