@@ -23,7 +23,7 @@ const deploymentSchema = new mongoose.Schema({
     },
     runtime: {
         type: String,
-        enum: ['node', 'python', 'static', 'docker', 'unknown'],
+        enum: ['node', 'python', 'go', 'ruby', 'php', 'static', 'docker', 'unknown'],
         default: 'unknown'
     },
     status: {
