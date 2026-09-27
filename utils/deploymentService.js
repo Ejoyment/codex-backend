@@ -179,6 +179,7 @@ CMD ["bundle", "exec", "rails", "server", "-b", "0.0.0.0"]
   if (hasNginxConfig) {
     const nginxConf = files.find(f => f.name === 'nginx.conf');
     const dockerfile = `FROM nginx:alpine
+RUN rm -f /usr/share/nginx/html/index.html /usr/share/nginx/html/50x.html
 COPY nginx.conf /etc/nginx/nginx.conf
 COPY . /usr/share/nginx/html
 EXPOSE 80
@@ -188,15 +189,22 @@ EXPOSE 80
 
   if (hasPhp) {
     const dockerfile = `FROM php:8.2-apache
+RUN rm -f /var/www/html/index.html /var/www/html/index.php
 COPY . /var/www/html
 EXPOSE 80
 `;
     return { runtime: 'php', dockerfile, exposePort: 80 };
   }
 
+  // Static site: strip the base image's default welcome pages, then make sure
+  // the root URL serves the deployed content — the project's own index.html
+  // wins; if absent, the single root .html file becomes the entry page;
+  // otherwise generate a clickable listing of all deployed files.
   const dockerfile = `FROM nginx:alpine
+RUN rm -f /usr/share/nginx/html/index.html /usr/share/nginx/html/50x.html
 COPY . /usr/share/nginx/html
-RUN echo 'server { listen 80; root /usr/share/nginx/html; index index.html index.htm; location / { try_files $uri $uri/ /index.html; } }' > /etc/nginx/conf.d/default.conf
+RUN echo 'server { listen 80; root /usr/share/nginx/html; index index.html index.htm; location ~* \\.[^/]+\$ { try_files \$uri =404; } location / { try_files \$uri \$uri/ /index.html; } }' > /etc/nginx/conf.d/default.conf
+RUN cd /usr/share/nginx/html && if [ ! -f index.html ]; then first=$(ls -1 ./*.html 2>/dev/null | grep -v '/50x' | head -n 1); if [ -n "$first" ]; then cp "$first" index.html; else { printf '%s\\n' '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Deployed files</title><style>body{font-family:system-ui,sans-serif;max-width:640px;margin:48px auto;padding:0 16px;color:#111}h1{font-size:20px;font-weight:600}li{margin:8px 0}a{color:#2563eb;text-decoration:none}a:hover{text-decoration:underline}</style></head><body><h1>Deployed files</h1><ul>'; for f in *; do case "$f" in index.html|Dockerfile|.dockerignore|50x.html) continue ;; esac; printf '<li><a href="/%s">%s</a></li>\\n' "$f" "$f"; done; printf '%s\\n' '</ul></body></html>'; } > index.html; fi; fi
 EXPOSE 80
 `;
   return { runtime: 'static', dockerfile, exposePort: 80 };
@@ -259,7 +267,7 @@ async function deployProject(subdomain, files) {
 
   if (dockerfile) {
     await writeRemoteFile(`${deploymentDir}/Dockerfile`, dockerfile);
-    await writeRemoteFile(`${deploymentDir}/.dockerignore`, 'node_modules\nnpm-debug.log\n.git\n.env\n.env.*\n__pycache__\n*.pyc\n*.pyo\n*.log\ncoverage\n.nyc_output\ndist\nbuild\n.venv\nvenv\n');
+    await writeRemoteFile(`${deploymentDir}/.dockerignore`, 'node_modules\nnpm-debug.log\n.git\n.env\n.env.*\n__pycache__\n*.pyc\n*.pyo\n*.log\ncoverage\n.nyc_output\ndist\nbuild\n.venv\nvenv\nDockerfile\n.dockerignore\n');
   }
 
   const fileEntries = files.map(f => ({
