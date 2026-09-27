@@ -81,7 +81,7 @@ router.get('/sessions', authenticateToken, permissionMatrix.requirePermission('t
  *       500:
  *         description: Internal server error
  */
-router.get('/stats', authenticateToken, (req, res) => {
+router.get('/stats', authenticateToken, permissionMatrix.requirePermission('terminal', 'access'), (req, res) => {
   try {
     const stats = terminalService.getStats();
     res.json({ success: true, stats });

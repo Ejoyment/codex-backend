@@ -676,6 +676,7 @@ class TerminalService {
         if (!file) continue;
 
         const fsPath = resolveInWorkspace(terminal.workspacePath, vfsPath);
+        try { const st = await fs.lstat(fsPath); if (st.isSymbolicLink()) continue; } catch (e) { if (e.code !== 'ENOENT') continue; }
         const dir = path.dirname(fsPath);
         await fs.mkdir(dir, { recursive: true });
         await fs.writeFile(fsPath, file.content || '');
@@ -696,6 +697,7 @@ class TerminalService {
         case 'file:created': {
           const vfsPath = data.file.path;
           const fsPath = resolveInWorkspace(terminal.workspacePath, vfsPath);
+          try { const st = await fs.lstat(fsPath); if (st.isSymbolicLink()) return; } catch (e) { if (e.code !== 'ENOENT') return; }
           const dir = path.dirname(fsPath);
           await fs.mkdir(dir, { recursive: true });
 
@@ -708,6 +710,7 @@ class TerminalService {
         case 'file:updated': {
           const vfsPath = data.file.path;
           const fsPath = resolveInWorkspace(terminal.workspacePath, vfsPath);
+          try { const st = await fs.lstat(fsPath); if (st.isSymbolicLink()) return; } catch (e) { if (e.code !== 'ENOENT') return; }
           const file = await CodeFile.findById(data.file._id).select('content').lean();
           if (file) {
             await fs.writeFile(fsPath, file.content || '');

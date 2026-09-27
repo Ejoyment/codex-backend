@@ -188,7 +188,8 @@ router.post('/', authenticateToken, async (req, res) => {
                     console.error(`[deploy] ${sanitized} failed:`, depErr.message);
                     await Deployment.findByIdAndUpdate(deployId, {
                         status: 'failed',
-                        errorMessage: depErr.message
+                        errorMessage: depErr.message,
+                        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
                     });
                     return;
                 }
@@ -203,7 +204,8 @@ router.post('/', authenticateToken, async (req, res) => {
                 console.error(`[deploy] ${sanitized} failed:`, err.message);
                 await Deployment.findByIdAndUpdate(deployId, {
                     status: 'failed',
-                    errorMessage: err.message
+                    errorMessage: err.message,
+                    expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
                 });
             }
         });
@@ -246,9 +248,10 @@ router.delete('/:id', authenticateToken, async (req, res) => {
             }
         }
 
-        // Mark as stopped in DB
+        // Mark as stopped in DB (expires in 30d via TTL index)
         deployment.status = 'stopped';
         deployment.deployedUrl = null;
+        deployment.expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
         await deployment.save();
 
         let stopCompanyId = null;

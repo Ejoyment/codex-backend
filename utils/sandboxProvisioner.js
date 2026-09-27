@@ -83,10 +83,11 @@ function startPreviewServer(sandbox, workdir) {
         if (url.pathname === '/files') {
             const rel = url.searchParams.get('path') || '';
             const filePath = path.join(workdir, rel);
-            if (!filePath.startsWith(workdir + path.sep) || !fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
+            if (!filePath.startsWith(workdir + path.sep) || !fs.existsSync(filePath)) {
                 res.writeHead(404); res.end('Not found'); return;
             }
             try {
+                if (fs.statSync(filePath).isDirectory()) { res.writeHead(404); res.end('Not found'); return; }
                 const realPath = fs.realpathSync(filePath);
                 if (!realPath.startsWith(workdir + path.sep)) { res.writeHead(404); res.end('Not found'); return; }
             } catch (_) { res.writeHead(404); res.end('Not found'); return; }
@@ -97,6 +98,9 @@ function startPreviewServer(sandbox, workdir) {
                 fs.createReadStream(filePath).pipe(res);
                 return;
             }
+            let fileSize = 0;
+            try { fileSize = fs.statSync(filePath).size; } catch (_) { res.writeHead(404); res.end('Not found'); return; }
+            if (fileSize > 2 * 1024 * 1024) { res.writeHead(413); res.end('File too large'); return; }
             const content = fs.readFileSync(filePath, 'utf8');
             res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Content-Security-Policy': "default-src 'none'; sandbox", 'X-Content-Type-Options': 'nosniff' });
             res.end(content);
@@ -180,9 +184,14 @@ async function writeSnapshot(sandbox, workdir) {
     };
 
     const files = Array.isArray(sandbox.files) ? sandbox.files : [];
+    if (files.length > 100) throw new Error('Too many files (max 100)');
+    for (const f of files) {
+        if (f.content != null && Buffer.byteLength(String(f.content), 'utf8') > 500 * 1024) throw new Error(`File too large: ${f.path || 'unknown'} (max 500KB)`);
+    }
     if (files.length === 0 && sandbox._codeSnapshot) {
         const cs = sandbox._codeSnapshot;
         if (cs.filePath && cs.content != null) {
+            if (Buffer.byteLength(String(cs.content), 'utf8') > 500 * 1024) throw new Error(`File too large: ${cs.filePath} (max 500KB)`);
             const fp = safePath(cs.filePath);
             fs.mkdirSync(path.dirname(fp), { recursive: true });
             fs.writeFileSync(fp, cs.content);
@@ -265,6 +274,10 @@ async function provisionPipeline(sandbox, workdir) {
                 await sandbox.save();
                 return sandbox;
             }
+            // Validate branch and commitSha before any git command — fail closed
+            // (throw propagates to the outer catch, which marks the sandbox failed).
+            if (sandbox.branch && (!/^[A-Za-z0-9._\/-]{1,128}$/.test(sandbox.branch) || sandbox.branch.startsWith('-') || sandbox.branch.includes('..'))) throw new Error('Invalid branch');
+            if (sandbox.commitSha && !/^[0-9a-f]{4,40}$/i.test(sandbox.commitSha)) throw new Error('Invalid commitSha');
             sandbox.status = 'cloning';
             await sandbox.save();
             emit(sandbox.sandboxKey, 'sandbox:status', { sandboxKey: sandbox.sandboxKey, status: 'cloning' });
@@ -343,6 +356,12 @@ async function getStatus(sandboxKey) {
 
 async function stopSandbox(sandboxKey) {
     const server = activeServers.get(sandboxKey);
+    // Capture the port BEFORE close (address() returns null afterwards).
+    let port = null;
+    try {
+        const addr = server ? server.address() : null;
+        if (addr && typeof addr.port === 'number') port = addr.port;
+    } catch (_) {}
     if (server) {
         server.close();
         activeServers.delete(sandboxKey);
@@ -350,16 +369,28 @@ async function stopSandbox(sandboxKey) {
     // Clean up filesystem to prevent disk fill and secret leakage
     const sandbox = await EphemeralSandbox.findOne({ sandboxKey }).catch(() => null);
     if (sandbox && sandbox.workdir) {
-        try { require('fs').rmSync(sandbox.workdir, { recursive: true, force: true }); } catch (_) {}
+        try {
+            const resolved = path.resolve(sandbox.workdir);
+            const root = path.resolve(SANDBOX_ROOT);
+            if (resolved === root || !resolved.startsWith(root + path.sep)) throw new Error('Refusing to delete outside sandbox root');
+            fs.rmSync(resolved, { recursive: true, force: true });
+        } catch (_) {}
     }
+    // Release the port back to the pool (fall back to the recorded ports).
+    if (port == null && sandbox && Array.isArray(sandbox.ports) && sandbox.ports.length) port = sandbox.ports[0];
+    if (port != null) usedPorts.delete(port);
     await EphemeralSandbox.updateOne({ sandboxKey }, { status: 'expired', expiresAt: new Date() }).catch(() => {});
 }
 
 function startExpirySweeper() {
     setInterval(async () => {
         try {
-            const expired = await EphemeralSandbox.find({ status: { $in: ['ready', 'failed'] }, expiresAt: { $lte: new Date() } });
-            for (const sb of expired) {
+            const now = new Date();
+            const expired = await EphemeralSandbox.find({ status: { $in: ['ready', 'failed'] }, expiresAt: { $lte: now } });
+            // Stale non-terminal records (pipeline stalled or crashed): 30-minute age ceiling.
+            const staleCutoff = new Date(Date.now() - 30 * 60 * 1000);
+            const stale = await EphemeralSandbox.find({ status: { $in: ['provisioning', 'cloning', 'installing', 'starting'] }, createdAt: { $lt: staleCutoff } });
+            for (const sb of [...expired, ...stale]) {
                 await stopSandbox(sb.sandboxKey);
             }
         } catch (_) {}
