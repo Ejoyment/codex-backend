@@ -462,17 +462,20 @@ router.get('/me', async (req, res) => {
                 subscription: subscription ? {
                     tier: subscription.tier,
                     status: subscription.status,
-                    features: {
-                        maxProjects: subscription.features.maxProjects,
-                        basicAiAssistance: subscription.features.basicAiAssistance,
-                        communitySupport: subscription.features.communitySupport,
-                        limitedApiAccess: subscription.features.limitedApiAccess,
-                        supportResponseHours: subscription.features.supportResponseHours,
-                        advancedAiAssistance: subscription.features.advancedAiAssistance,
-                        fullApiAccess: subscription.features.fullApiAccess,
-                        teamCollaboration: subscription.features.teamCollaboration,
-                        unlimitedProjects: subscription.features.unlimitedProjects
-                    },
+                    features: (() => {
+                        const f = subscription.features || {};
+                        return {
+                            maxProjects: f.maxProjects,
+                            basicAiAssistance: f.basicAiAssistance,
+                            communitySupport: f.communitySupport,
+                            limitedApiAccess: f.limitedApiAccess,
+                            supportResponseHours: f.supportResponseHours,
+                            advancedAiAssistance: f.advancedAiAssistance,
+                            fullApiAccess: f.fullApiAccess,
+                            teamCollaboration: f.teamCollaboration,
+                            unlimitedProjects: f.unlimitedProjects
+                        };
+                    })(),
                     trial: subscription.status === 'trial' ? {
                         trialStartedAt: subscription.trialStartedAt,
                         trialEndsAt: subscription.trialEndsAt,
@@ -491,9 +494,16 @@ router.get('/me', async (req, res) => {
         });
 
     } catch (error) {
-        res.status(401).json({ 
+        console.error('Get /me error:', error);
+        if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
+            return res.status(401).json({ 
+                success: false, 
+                message: 'Invalid token' 
+            });
+        }
+        res.status(500).json({ 
             success: false, 
-            message: 'Invalid token' 
+            message: 'Error fetching user' 
         });
     }
 });

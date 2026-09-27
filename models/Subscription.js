@@ -9,7 +9,7 @@ const subscriptionSchema = new mongoose.Schema({
     },
     tier: {
         type: String,
-        enum: ['developer', 'pro', 'pro_plus', 'team_standard', 'team_premium', 'enterprise'],
+        enum: ['developer', 'pro', 'pro_plus', 'team_standard', 'team_premium', 'enterprise', 'starter', 'freebie', 'professional'],
         default: 'developer'
     },
     status: {
@@ -17,6 +17,17 @@ const subscriptionSchema = new mongoose.Schema({
         enum: ['active', 'cancelled', 'expired', 'trial', 'past_due'],
         default: 'active'
     },
+    // Legacy trial/billing fields — still present on existing documents
+    features: { type: mongoose.Schema.Types.Mixed },
+    trialStartedAt: { type: Date },
+    trialEndsAt: { type: Date },
+    isTrialWithCard: { type: Boolean, default: false },
+    cardAddedAt: { type: Date },
+    firstChargeAt: { type: Date },
+    firstChargeCompleted: { type: Boolean, default: false },
+    nextBillingDate: { type: Date },
+    billingCycle: { type: Number, default: 0 },
+    metadata: { type: mongoose.Schema.Types.Mixed },
     // Team billing
     teamSize: { type: Number, default: 1 },
     seats: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
@@ -78,7 +89,7 @@ const subscriptionSchema = new mongoose.Schema({
     pricing: {
         amount: { type: Number, default: 0 },
         currency: { type: String, default: 'USD' },
-        interval: { type: String, enum: ['monthly', 'yearly', 'custom'], default: 'monthly' }
+        interval: { type: String, enum: ['monthly', 'yearly', 'custom', 'trial'], default: 'monthly' }
     },
     // Team pooled credits
     teamPooledCredits: { type: Number, default: 0 },
@@ -257,6 +268,140 @@ subscriptionSchema.methods.canUseFeature = function(feature, context = {}) {
     if (limit === null) return true; // unlimited/custom
     if (limit === 0) return false;
     return limit;
+};
+
+// Compute days left in trial
+subscriptionSchema.methods.getTrialDaysLeft = function() {
+    if (!this.trialEndsAt || this.status !== 'trial') return 0;
+    const diff = this.trialEndsAt.getTime() - Date.now();
+    return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+};
+
+// Check if trial is on its last day
+subscriptionSchema.methods.isLastTrialDay = function() {
+    return this.getTrialDaysLeft() <= 1 && this.status === 'trial';
+};
+
+// Check if trial has expired
+subscriptionSchema.methods.isTrialExpired = function() {
+    return this.status === 'trial' && this.trialEndsAt && this.trialEndsAt.getTime() < Date.now();
+};
+
+// Upgrade subscription to a given tier (supports legacy tiers used by billing flows)
+subscriptionSchema.methods.upgradeTo = function(tier) {
+    const tiers = {
+        starter: {
+            amount: 50,
+            interval: 'trial',
+            features: {
+                maxProjects: 10,
+                basicAiAssistance: true,
+                communitySupport: true,
+                limitedApiAccess: true,
+                supportResponseHours: 48,
+                localRepositories: true,
+                discordSync: true,
+                advancedAnalytics: false,
+                advancedAiAssistance: false,
+                aiCodeReview: false,
+                fullApiAccess: false,
+                prioritySupport: false,
+                teamCollaboration: false,
+                customIntegrations: false,
+                unlimitedProjects: false
+            }
+        },
+        freebie: {
+            amount: 0,
+            features: {
+                maxProjects: 3,
+                basicAiAssistance: true,
+                communitySupport: true,
+                limitedApiAccess: false,
+                supportResponseHours: 72,
+                localRepositories: true,
+                discordSync: true,
+                advancedAnalytics: false,
+                advancedAiAssistance: false,
+                aiCodeReview: false,
+                fullApiAccess: false,
+                prioritySupport: false,
+                teamCollaboration: false,
+                customIntegrations: false,
+                unlimitedProjects: false
+            }
+        },
+        professional: {
+            amount: 99,
+            interval: 'monthly',
+            features: {
+                maxProjects: 0,
+                unlimitedProjects: true,
+                basicAiAssistance: true,
+                advancedAiAssistance: true,
+                aiCodeReview: true,
+                communitySupport: false,
+                prioritySupport: true,
+                limitedApiAccess: false,
+                fullApiAccess: true,
+                supportResponseHours: 24,
+                localRepositories: true,
+                discordSync: true,
+                advancedAnalytics: true,
+                teamCollaboration: true,
+                customIntegrations: true,
+                videoStandups: true,
+                collaborativeEditing: true
+            }
+        },
+        enterprise: {
+            amount: 299,
+            interval: 'monthly',
+            features: {
+                maxProjects: 0,
+                unlimitedProjects: true,
+                basicAiAssistance: true,
+                advancedAiAssistance: true,
+                aiCodeReview: true,
+                communitySupport: false,
+                prioritySupport: true,
+                limitedApiAccess: false,
+                fullApiAccess: true,
+                supportResponseHours: 1,
+                oneHourSupport: true,
+                localRepositories: true,
+                discordSync: true,
+                advancedAnalytics: true,
+                teamCollaboration: true,
+                customIntegrations: true,
+                soc2Compliance: true,
+                dedicatedSupport: true,
+                videoStandups: true,
+                collaborativeEditing: true,
+                ssoAuthentication: true,
+                customContracts: true,
+                slaAgreement: true,
+                dedicatedAccountManager: true
+            }
+        },
+        developer: { amount: 0, interval: 'monthly', features: { maxProjects: 3 } },
+        pro: { amount: 20, interval: 'monthly', features: { maxProjects: 10, unlimitedProjects: false } },
+        pro_plus: { amount: 60, interval: 'monthly', features: { maxProjects: 0, unlimitedProjects: true } },
+        team_standard: { amount: 40, interval: 'monthly', features: { maxProjects: 0, unlimitedProjects: true, teamCollaboration: true } },
+        team_premium: { amount: 120, interval: 'monthly', features: { maxProjects: 0, unlimitedProjects: true, teamCollaboration: true } }
+    };
+
+    const tierConfig = tiers[tier];
+    if (tierConfig) {
+        this.tier = tier;
+        this.features = { ...this.features, ...tierConfig.features };
+        if (tierConfig.amount !== undefined && this.pricing) {
+            this.pricing.amount = tierConfig.amount;
+        }
+        if (tierConfig.interval && this.pricing) {
+            this.pricing.interval = tierConfig.interval;
+        }
+    }
 };
 
 module.exports = mongoose.model('Subscription', subscriptionSchema);

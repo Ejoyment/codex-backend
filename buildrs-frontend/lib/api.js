@@ -12,6 +12,7 @@ export async function apiFetch(path, options = {}) {
       localStorage.removeItem('authToken');
       localStorage.removeItem('user');
       localStorage.removeItem('subscription');
+      localStorage.removeItem('auth-storage');
       window.location.href = '/sign_in';
     }
     throw new Error('Session expired');
@@ -66,6 +67,7 @@ export async function apiFetch(path, options = {}) {
           localStorage.removeItem('authToken');
           localStorage.removeItem('user');
           localStorage.removeItem('subscription');
+          localStorage.removeItem('auth-storage');
           window.location.href = '/sign_in';
         }
         const error = new Error(data.message || 'Unauthorized');
