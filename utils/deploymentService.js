@@ -478,9 +478,22 @@ async function stopDeployment(subdomain) {
   const containerName = `deploy-${sanitized}`;
   try {
     await sshExec(`docker rm -f ${containerName} 2>/dev/null || true`);
-    await sshExec(`docker rmi ${containerName} 2>/dev/null || true`);
+    // Images are tagged deploy-<sub>:<ts>; `docker rmi deploy-<sub>` alone
+    // targets a nonexistent :latest, so resolve the real ids first.
+    const imgIds = (await sshExec(`docker images -q ${containerName} 2>/dev/null || true`).catch(() => '')).trim();
+    if (imgIds) {
+      await sshExec(`docker rmi ${imgIds.split(/\s+/).join(' ')} 2>/dev/null || true`);
+    }
+    // Remove the build dir from the SAME base deployProject resolved —
+    // findWritableBase falls back to /var/tmp/deployments when the SSH
+    // user's home is not writable, and removing only the home path left
+    // stale build dirs behind on the VPS.
+    try {
+      const base = await findWritableBase();
+      await sshExec(`rm -rf ${shq(`${base}/${sanitized}`)}`);
+    } catch (_) {}
     const homeDir = await getHomeDir();
-    await sshExec(`rm -rf ${homeDir}/${DEPLOY_SUBDIR}/${sanitized} 2>/dev/null || true`);
+    await sshExec(`rm -rf ${shq(`${homeDir}/${DEPLOY_SUBDIR}/${sanitized}`)} 2>/dev/null || true`);
   } catch (_) {}
 }
 
