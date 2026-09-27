@@ -5,97 +5,14 @@
 
 const express = require('express');
 const router = express.Router();
-const axios = require('axios');
 const Deployment = require('../models/Deployment');
 const TeamProject = require('../models/TeamProject');
 const LocalProject = require('../models/LocalProject');
 const CodeFile = require('../models/CodeFile');
-const Integration = require('../models/Integration');
 const { authenticateToken } = require('../middleware/auth');
 const depService = require('../utils/deploymentService');
+const { validateDeployFiles, backfillFileContent, limits: deployLimits } = require('../utils/deployContent');
 const { addAuditLog } = require('../utils/auditLogService');
-
-// Normalize a file's directory + name into a stable key so content can be
-// matched across the different `path` shapes in this codebase:
-//   '/' + name='a.js'        (CodeFile directory shape)
-//   '/a.js' + name='a.js'    (editor save / GitHub tree full-path shape)
-//   '/src' + name='a.js'     (nested directory)
-//   '/src/a.js' + name='a.js'(nested full path)
-function fileKey(f) {
-    const p = String(f.path || '').replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/+$/, '');
-    let dir = p;
-    if (p === f.name) dir = '';
-    else if (p.endsWith('/' + f.name)) dir = p.slice(0, -(f.name.length + 1));
-    return dir ? `${dir}/${f.name}` : f.name;
-}
-
-// Repo-relative path (always includes the filename) for GitHub contents API.
-function repoRelPath(f) {
-    return fileKey(f);
-}
-
-// The project file list (/api/projects/:id/files) and the GitHub tree API
-// return metadata only — no content. The client therefore sends files with
-// empty content, which used to deploy blank sites. Fill content from the DB
-// (project files) or from GitHub blobs (repo files) before building.
-async function backfillFileContent({ userId, projectId, workspaceId, source, repo, files }) {
-    const pending = () => files.filter(f => !f.content || !String(f.content).length);
-    if (!pending().length) return;
-
-    if (projectId) {
-        const or = [{ project: projectId }];
-        if (workspaceId) or.push({ company: workspaceId });
-        const dbFiles = await CodeFile.find({ $or: or }).lean();
-        const byKey = new Map();
-        for (const dbf of dbFiles) {
-            if (dbf.content) byKey.set(fileKey(dbf), dbf.content);
-        }
-        for (const f of pending()) {
-            const content = byKey.get(fileKey(f));
-            if (content) f.content = content;
-        }
-    }
-
-    const stillPending = pending();
-    if (!stillPending.length) return;
-
-    if (source === 'github' && repo && repo.owner && repo.name) {
-        const integration = await Integration.findOne({ userId, provider: 'github', isActive: true }).lean();
-        if (!integration || !integration.accessToken) {
-            throw new Error('Connect your GitHub account under Integrations to deploy repository files.');
-        }
-        for (const f of stillPending) {
-            const rel = repoRelPath(f).split('/').map(encodeURIComponent).join('/');
-            const resp = await axios.get(
-                `https://api.github.com/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}/contents/${rel}`,
-                {
-                    headers: {
-                        Authorization: `Bearer ${integration.accessToken}`,
-                        Accept: 'application/vnd.github+json',
-                        'User-Agent': 'buildrs-deploy',
-                    },
-                    params: repo.defaultBranch ? { ref: repo.defaultBranch } : undefined,
-                    timeout: 20000,
-                }
-            );
-            const data = resp.data;
-            if (data && data.encoding === 'base64' && typeof data.content === 'string') {
-                f.content = Buffer.from(data.content, 'base64').toString('utf8');
-            } else if (data && typeof data.content === 'string') {
-                f.content = data.content;
-            } else {
-                throw new Error(`Could not fetch content for ${f.name} from GitHub (file may exceed 1MB or be missing).`);
-            }
-        }
-        return;
-    }
-
-    if (stillPending.length === files.length) {
-        throw new Error(
-            'No file content to deploy: files were sent without content. Re-open the files in the editor and deploy again.'
-        );
-    }
-}
 
 // List deployments for the logged-in user
 router.get('/', authenticateToken, async (req, res) => {
@@ -194,29 +111,21 @@ router.post('/', authenticateToken, async (req, res) => {
             path: f.path || '/',
             content: typeof f.content === 'string' ? f.content : (f.content || ''),
             language: f.language || 'plaintext',
+            sha: f.sha || undefined,
+            encoding: f.encoding === 'base64' ? 'base64' : undefined,
         }));
 
         if (!normalizedFiles.length) {
             return res.status(400).json({ error: 'Project has no deployable files.' });
         }
 
-        if (normalizedFiles.length > 200) {
-            return res.status(400).json({ error: 'Too many files: maximum 200 files per deployment.' });
-        }
-        for (const f of normalizedFiles) {
-            if (!f.name || typeof f.name !== 'string') {
-                return res.status(400).json({ error: 'Invalid file path' });
-            }
-            const contentStr = typeof f.content === 'string' ? f.content : String(f.content || '');
-            if (Buffer.byteLength(contentStr, 'utf8') > 1024 * 1024) {
-                return res.status(400).json({ error: `File too large: ${f.name} exceeds 1MB.` });
-            }
-            const relCheck = f.path ? `${f.path}/${f.name}` : f.name;
-            for (const segment of relCheck.split('/').filter(s => s.length > 0)) {
-                if (segment === '..' || !/^[a-zA-Z0-9._-]+$/.test(segment)) {
-                    return res.status(400).json({ error: 'Invalid file path' });
-                }
-            }
+        // Env-configurable caps (count, per-file, total) + path safety —
+        // replaces the old hard 200-file / 1MB-per-file / strict-regex checks
+        // that rejected large repos and names with spaces or unicode.
+        try {
+            validateDeployFiles(normalizedFiles);
+        } catch (valErr) {
+            return res.status(400).json({ error: valErr.message });
         }
 
         let deployment = await Deployment.findOne({ subdomain: sanitized });
@@ -252,7 +161,8 @@ router.post('/', authenticateToken, async (req, res) => {
             req
         });
 
-        const DEPLOY_TIMEOUT = parseInt(process.env.DEPLOY_TIMEOUT_MS) || 180000;
+        // Keep in sync with DEPLOY_TIMEOUT_MS in utils/deploymentService.js.
+        const DEPLOY_TIMEOUT = parseInt(process.env.DEPLOY_TIMEOUT_MS) || 300000;
 
         // Send immediate response so client isn't blocked by docker build time
         res.status(201).json({
@@ -267,15 +177,26 @@ router.post('/', authenticateToken, async (req, res) => {
         setImmediate(async () => {
             try {
                 // File lists from the project API and GitHub tree are metadata-only;
-                // pull real content (DB or GitHub blobs) before building the image.
+                // pull real content (DB or GitHub) before building the image.
+                // Backfill has its own deadline so a slow GitHub fetch can't
+                // outlive the deploy timeout.
+                const backfillDeadline = Date.now() + Math.min(
+                    deployLimits().backfillTimeoutMs,
+                    Math.floor(DEPLOY_TIMEOUT * 0.6)
+                );
                 await backfillFileContent({
                     userId: req.userId,
                     projectId,
                     workspaceId,
                     source,
                     repo,
-                    files: normalizedFiles
+                    files: normalizedFiles,
+                    deadline: backfillDeadline
                 });
+
+                // Re-validate now that real content is present (backfilled
+                // bytes never went through the request-size caps above).
+                validateDeployFiles(normalizedFiles);
 
                 let containerId = null;
                 let url = `https://${sanitized}.buildrshq.dev`;

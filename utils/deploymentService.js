@@ -9,7 +9,7 @@ const SSH_PORT = parseInt(process.env.DEPLOY_SSH_PORT || '22');
 const SSH_USER = process.env.DEPLOY_SSH_USER || 'deployer';
 const DOMAIN = process.env.DEPLOY_DOMAIN || 'buildrshq.dev';
 const DEPLOY_SUBDIR = (process.env.DEPLOY_ROOT || 'deployments').replace(/^\/+/, '').replace(/^~\/?/, '');
-const DEPLOY_TIMEOUT_MS = parseInt(process.env.DEPLOY_TIMEOUT_MS) || 180000;
+const DEPLOY_TIMEOUT_MS = parseInt(process.env.DEPLOY_TIMEOUT_MS) || 300000;
 
 function getRawKey() {
   if (process.env.DEPLOY_SSH_KEY) return process.env.DEPLOY_SSH_KEY;
@@ -110,16 +110,18 @@ function sshExec(command, input = null) {
 function detectRuntime(files) {
   const names = files.map(f => f.name.toLowerCase());
   const paths = files.map(f => ((f.path || '') + '/' + f.name).toLowerCase());
-  const content = files.map(f => (f.content || '').toLowerCase());
+  const textContent = f => (f.encoding === 'base64'
+    ? Buffer.from(String(f.content || ''), 'base64').toString('utf8')
+    : String(f.content || ''));
 
   if (names.includes('dockerfile') || files.some(f => f.name.toLowerCase() === 'dockerfile')) {
     const userDockerfile = files.find(f => f.name.toLowerCase() === 'dockerfile');
-    return { runtime: 'docker', dockerfile: userDockerfile?.content || null, exposePort: 80 };
+    return { runtime: 'docker', dockerfile: userDockerfile ? textContent(userDockerfile) : null, exposePort: 80 };
   }
 
   if (paths.some(p => p.endsWith('package.json'))) {
     const hasBuild = files.some(f =>
-      f.name === 'package.json' && f.content && f.content.includes('"build"')
+      f.name === 'package.json' && f.content && textContent(f).includes('"build"')
     );
     const entry = ['server.js', 'app.js', 'index.js', 'main.js'].find(e => names.includes(e)) || 'index.js';
     const dockerfile = `FROM node:18-alpine
@@ -197,14 +199,15 @@ EXPOSE 80
   }
 
   // Static site: strip the base image's default welcome pages, then make sure
-  // the root URL serves the deployed content — the project's own index.html
-  // wins; if absent, the single root .html file becomes the entry page;
-  // otherwise generate a clickable listing of all deployed files.
+  // the root URL serves the deployed content. ensureStaticEntry() guarantees a
+  // root index.html exists in the file set *before* the build (copied from the
+  // project's own index.html, or a generated file listing with HTML-escaped /
+  // URL-encoded names) — the old in-image shell listing broke on spaces,
+  // unicode and quotes in filenames.
   const dockerfile = `FROM nginx:alpine
 RUN rm -f /usr/share/nginx/html/index.html /usr/share/nginx/html/50x.html
 COPY . /usr/share/nginx/html
 RUN echo 'server { listen 80; root /usr/share/nginx/html; index index.html index.htm; location ~* \\.[^/]+\$ { try_files \$uri =404; } location / { try_files \$uri \$uri/ /index.html; } }' > /etc/nginx/conf.d/default.conf
-RUN cd /usr/share/nginx/html && if [ ! -f index.html ]; then first=$(ls -1 ./*.html 2>/dev/null | grep -v '/50x' | head -n 1); if [ -n "$first" ]; then cp "$first" index.html; else { printf '%s\\n' '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Deployed files</title><style>body{font-family:system-ui,sans-serif;max-width:640px;margin:48px auto;padding:0 16px;color:#111}h1{font-size:20px;font-weight:600}li{margin:8px 0}a{color:#2563eb;text-decoration:none}a:hover{text-decoration:underline}</style></head><body><h1>Deployed files</h1><ul>'; for f in *; do case "$f" in index.html|Dockerfile|.dockerignore|50x.html) continue ;; esac; printf '<li><a href="/%s">%s</a></li>\\n' "$f" "$f"; done; printf '%s\\n' '</ul></body></html>'; } > index.html; fi; fi
 EXPOSE 80
 `;
   return { runtime: 'static', dockerfile, exposePort: 80 };
@@ -221,6 +224,50 @@ function buildFileRelPath(f) {
   return path.join(dir, f.name);
 }
 
+// Guarantee a static deployment has a root index.html, computed on the client
+// side so filenames with spaces/unicode/quotes get properly URL-encoded and
+// HTML-escaped (the old in-image shell listing emitted raw hrefs and broke).
+// `entries` use archive-relative paths (see buildFileRelPath output).
+function ensureStaticEntry(entries) {
+  const rel = e => String(e.path || '').replace(/^\//, '');
+  if (entries.some(e => rel(e) === 'index.html')) return entries;
+
+  const rootHtml = entries.filter(e => !rel(e).includes('/') && rel(e).toLowerCase().endsWith('.html'));
+  if (rootHtml.length === 1) {
+    return [...entries, {
+      name: 'index.html',
+      path: 'index.html',
+      content: rootHtml[0].content || '',
+      encoding: rootHtml[0].encoding,
+    }];
+  }
+
+  const items = entries
+    .map(e => rel(e))
+    .filter(r => r !== 'Dockerfile' && r !== '.dockerignore')
+    .sort()
+    .map(r => {
+      const href = r.split('/').map(encodeURIComponent).join('/');
+      const label = r.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      return `<li><a href="/${href}">${label}</a></li>`;
+    })
+    .join('');
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Deployed files</title><style>body{font-family:system-ui,sans-serif;max-width:640px;margin:48px auto;padding:0 16px;color:#111}h1{font-size:20px;font-weight:600}li{margin:8px 0}a{color:#2563eb;text-decoration:none}a:hover{text-decoration:underline}</style></head><body><h1>Deployed files</h1><ul>${items}</ul></body></html>`;
+  return [...entries, { name: 'index.html', path: 'index.html', content: html }];
+}
+
+// .dockerignore for the build context. dist/ and build/ are deliberately NOT
+// ignored: static sites that ship prebuilt output (or Node apps serving a
+// checked-in dist/) would deploy empty if we dropped them. node_modules and
+// the rest are safe to exclude for every runtime.
+function dockerIgnoreFor() {
+  return [
+    'node_modules', 'npm-debug.log', '.git', '.env', '.env.*',
+    '__pycache__', '*.pyc', '*.pyo', '*.log', 'coverage', '.nyc_output',
+    '.venv', 'venv', 'Dockerfile', '.dockerignore', '',
+  ].join('\n');
+}
+
 function createTarballSync(files) {
   const tarPath = path.join(os.tmpdir(), `deploy-${Date.now()}.tar.gz`);
   const tmpDir = path.join(os.tmpdir(), `deploy-src-${Date.now()}`);
@@ -230,7 +277,12 @@ function createTarballSync(files) {
     assertSafeRelPath(relPath);
     const fullPath = path.join(tmpDir, relPath);
     fs.mkdirSync(path.dirname(fullPath), { recursive: true });
-    fs.writeFileSync(fullPath, file.content || '');
+    // Binary files carry base64 content + encoding flag; utf8 round-tripping
+    // them would corrupt images/fonts/wasm.
+    const buf = file.encoding === 'base64'
+      ? Buffer.from(String(file.content || ''), 'base64')
+      : Buffer.from(String(file.content || ''), 'utf8');
+    fs.writeFileSync(fullPath, buf);
   }
   try {
     // COPYFILE_DISABLE: don't add macOS AppleDouble (._*) junk that breaks re-extraction
@@ -267,14 +319,18 @@ async function deployProject(subdomain, files) {
 
   if (dockerfile) {
     await writeRemoteFile(`${deploymentDir}/Dockerfile`, dockerfile);
-    await writeRemoteFile(`${deploymentDir}/.dockerignore`, 'node_modules\nnpm-debug.log\n.git\n.env\n.env.*\n__pycache__\n*.pyc\n*.pyo\n*.log\ncoverage\n.nyc_output\ndist\nbuild\n.venv\nvenv\nDockerfile\n.dockerignore\n');
+    await writeRemoteFile(`${deploymentDir}/.dockerignore`, dockerIgnoreFor());
   }
 
-  const fileEntries = files.map(f => ({
+  let fileEntries = files.map(f => ({
     name: f.name,
     path: buildFileRelPath(f),
-    content: typeof f.content === 'string' ? f.content : (f.content || '')
+    content: typeof f.content === 'string' ? f.content : (f.content || ''),
+    encoding: f.encoding === 'base64' ? 'base64' : undefined,
   }));
+  // Static deployments need a root entry page; generate it here (before the
+  // tarball) so odd filenames survive HTML/URL escaping correctly.
+  if (runtime === 'static') fileEntries = ensureStaticEntry(fileEntries);
   // Validate before tarball + fallback: blocks local tmpDir escape,
   // Tar Slip on the VPS, and remote-path breakout.
   for (const file of fileEntries) {
@@ -294,7 +350,7 @@ async function deployProject(subdomain, files) {
     console.error(`[deploy] Tarball failed: ${tarErr.message}`);
     for (const file of fileEntries) {
       const relPath = file.path.replace(/^\//, '');
-      await writeRemoteFile(`${deploymentDir}/${relPath}`, file.content || '');
+      await writeRemoteFile(`${deploymentDir}/${relPath}`, file.content || '', file.encoding === 'base64');
     }
   }
 
@@ -378,21 +434,42 @@ docker run -d \\
 }
 
 async function writeRemoteFile(remotePath, content, isBase64 = false) {
-  if (remotePath.includes('..') || remotePath.includes("'") || remotePath.includes('\n')) throw new Error('Invalid remote path');
+  if (remotePath.includes('..') || remotePath.includes('\n') || /[\u0000-\u001f\u007f\\$`]/.test(remotePath)) {
+    throw new Error('Invalid remote path');
+  }
   const encoded = isBase64 ? content : Buffer.from(content || '').toString('base64');
   const parentDir = remotePath.includes('/')
     ? remotePath.slice(0, remotePath.lastIndexOf('/'))
     : '.';
-  await sshExec(`mkdir -p '${parentDir}'`);
-  await sshExec(`cat | base64 -d > '${remotePath}'`, encoded);
+  await sshExec(`mkdir -p ${shq(parentDir)}`);
+  await sshExec(`cat | base64 -d > ${shq(remotePath)}`, encoded);
 }
 
-// Shared validation: every file path segment must be a plain filename.
-// Protects local tmpDir writes, tarball entries (Tar Slip on the VPS),
-// and the per-file fallback loop.
+// Single-quote a value for the remote shell. sshExec wraps the whole command
+// in JSON double quotes, which the local shell passes through literally, so
+// the remote shell only ever sees our single-quoted tokens — apostrophes,
+// spaces and unicode survive, and `$`/backtick (rejected by
+// assertSafeRelPath) can never be expanded by either shell.
+function shq(s) {
+  return `'` + String(s).replace(/'/g, `'\"'\"'`) + `'`;
+}
+
+// Shared validation: every file path segment must be a safe, single-level
+// name. Protects local tmpDir writes, tarball entries (Tar Slip on the VPS),
+// and the per-file remote fallback.
+//
+// Real-world names — spaces, unicode, parentheses, '@+#~,()[]' — are allowed.
+// Rejected: traversal ('.', '..'), empty segments (e.g. 'a//b', leading '/'),
+// control characters, and the characters that would be expanded by the local
+// shell wrapping ssh commands (`$`, backtick) or break remote writes ('\').
+// Segments must fit the 255-byte filesystem name limit.
 function assertSafeRelPath(relPath) {
-  for (const segment of String(relPath).split('/')) {
-    if (segment === '..' || !/^[a-zA-Z0-9._-]+$/.test(segment)) throw new Error('Invalid file path');
+  const raw = String(relPath == null ? '' : relPath);
+  if (!raw || raw.length > 4096) throw new Error('Invalid file path');
+  for (const segment of raw.split('/')) {
+    if (!segment || segment === '.' || segment === '..') throw new Error('Invalid file path');
+    if (/[\u0000-\u001f\u007f\\$`]/.test(segment)) throw new Error(`Invalid file path: unsafe character in "${segment}"`);
+    if (Buffer.byteLength(segment, 'utf8') > 255) throw new Error(`Invalid file path: name too long in "${segment.slice(0, 50)}..."`);
   }
 }
 
@@ -415,4 +492,16 @@ async function isSubdomainTaken(subdomain) {
   } catch (_) { return false; }
 }
 
-module.exports = { sshExec, writeRemoteFile, detectRuntime, deployProject, stopDeployment, isSubdomainTaken, createTarballSync };
+module.exports = {
+  sshExec,
+  writeRemoteFile,
+  detectRuntime,
+  deployProject,
+  stopDeployment,
+  isSubdomainTaken,
+  createTarballSync,
+  assertSafeRelPath,
+  buildFileRelPath,
+  ensureStaticEntry,
+  shq,
+};

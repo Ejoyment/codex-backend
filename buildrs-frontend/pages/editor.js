@@ -1331,6 +1331,9 @@ export default function Editor() {
         path: pathValue === '/' ? '/' : pathValue,
         content: contentValue,
         language: file.language || 'plaintext',
+        // GitHub blob sha lets the backend resolve content via the blob API
+        // when the tarball fetch can't cover a file.
+        sha: file.sha || undefined,
       };
     });
   }, [files, getFileKey, selectedFile, selectedProject, selectedRepo]);
