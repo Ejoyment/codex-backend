@@ -299,10 +299,15 @@ router.post('/', authenticateToken, async (req, res) => {
                 finished = true;
                 if (logFlushTimer) { clearTimeout(logFlushTimer); logFlushTimer = null; }
                 const failedStep = liveSteps.find(s => s.status === 'running');
-                if (failedStep) {
-                    failedStep.status = 'failed';
-                    failedStep.finishedAt = new Date();
-                }
+                // Mark every in-flight step failed (normally only the last one
+                // is running; deploy completes before verify starts). Steps
+                // still pending never ran — leave them pending.
+                liveSteps.forEach(s => {
+                    if (s.status === 'running') {
+                        s.status = 'failed';
+                        s.finishedAt = new Date();
+                    }
+                });
                 const timedOut = depErr && depErr.message === 'Deployment timed out';
                 // DeployError carries explicit stage/fault; timeouts are
                 // attributed by whichever step was still running (a hung or
