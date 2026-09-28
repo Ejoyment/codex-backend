@@ -801,6 +801,8 @@ docker run -d \\
   } catch (runErr) {
     throw new DeployError(`The container could not be started on the VPS: ${runErr.message}`, { stage: 'platform', fault: 'platform' });
   }
+  // The container started — deploy step is done; only verify can still fail.
+  emitStep('deploy', 'done', 'container started');
 
   // Verify the NEW container BEFORE swapping traffic (true blue-green): if
   // the user's app crashes on boot, the old container keeps serving and the
@@ -810,10 +812,15 @@ docker run -d \\
   let running = 'false';
   let restarts = 0;
   try {
-    const state = await sshExec(`docker inspect --format '{{.State.Running}} {{.State.RestartCount}}' ${nextContainerName} 2>/dev/null || echo 'false 0'`);
-    const [r, n] = state.trim().split(/\s+/);
-    running = r || 'false';
-    restarts = parseInt(n, 10) || 0;
+    // Full-JSON inspect: the --format template breaks on Docker 29, which
+    // moved RestartCount from .State to top-level (template errors made the
+    // old check report every healthy container as dead).
+    const raw = await sshExec(`docker inspect ${nextContainerName} 2>/dev/null || echo '[]'`);
+    const info = JSON.parse(raw)[0];
+    if (info) {
+      running = info.State && info.State.Running ? 'true' : 'false';
+      restarts = Number(info.RestartCount ?? (info.State && info.State.RestartCount)) || 0;
+    }
   } catch (_) {}
 
   if (running !== 'true' || restarts >= 2) {
@@ -841,7 +848,6 @@ docker run -d \\
     throw new DeployError(`Failed to swap traffic to the new container: ${swapErr.message}`, { stage: 'platform', fault: 'platform' });
   }
 
-  emitStep('deploy', 'done', 'container running');
   emitStep('verify', 'done', 'app is up');
   console.log(`[deploy] ${containerName} started (${nextContainerId}) using blue-green swap`);
 
