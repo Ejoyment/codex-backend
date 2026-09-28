@@ -2313,6 +2313,52 @@
   text-overflow: ellipsis;
 }
 
+/* Folder rows inside Workspace / repo / Other groups */
+.src-dir {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.42rem 0.5rem;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--ws-text-muted);
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, 'Cascadia Code', Menlo, Consolas, monospace;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  min-width: 0;
+}
+.src-dir:hover {
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--ws-text);
+}
+.src-dir span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.src-dir-chev {
+  flex-shrink: 0;
+  color: var(--ws-text-faint);
+  transition: transform 0.12s ease;
+}
+.src-dir-chev.is-open {
+  transform: rotate(90deg);
+}
+/* Muted hint lines under a group header (loading / error) */
+.src-group-note {
+  padding: 0.3rem 0.5rem 0.45rem 1.5rem;
+  font-size: 0.7rem;
+  color: var(--ws-text-faint);
+}
+.src-group-note.is-error {
+  color: #f87171;
+}
+
 .src-viewer {
   flex: 1;
   display: flex;
