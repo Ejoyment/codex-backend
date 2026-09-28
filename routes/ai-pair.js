@@ -30,12 +30,18 @@ const checkAILimits = async (req, res, next) => {
 
         // Define limits
         const limits = {
+            developer: 10,
             freebie: 10,
+            starter: 10,
+            pro: 100,
+            pro_plus: 100,
+            team_standard: 100,
+            team_premium: 100,
             professional: 100,
             enterprise: Infinity
         };
 
-        const limit = limits[tier];
+        const limit = limits[tier] ?? 10;
         
         if (messageCount >= limit) {
             return res.status(429).json({

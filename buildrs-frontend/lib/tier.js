@@ -4,14 +4,61 @@
  * If backend adds a new limit, update here and surface in UI.
  */
 
+const CORE_PAID_FEATURES = {
+  teamChat: true,
+  aiPair: true,
+  advancedAnalytics: true,
+  customBranding: true,
+  prioritySupport: true,
+  videoMeetings: true,
+  codeCollaboration: true,
+  integrations: true,
+};
+
+const FREE_LIMITS = {
+  maxMembers: 1,
+  maxProjects: 1,
+  maxTasksPerProject: 5,
+  maxStorageMB: 50,
+  maxIntegrations: 0,
+  maxMeetingsPerMonth: 0,
+};
+
+const PRO_LIMITS = {
+  maxMembers: 10,
+  maxProjects: 50,
+  maxTasksPerProject: 100,
+  maxStorageMB: 5000,
+  maxIntegrations: 5,
+  maxMeetingsPerMonth: 100,
+};
+
+const TEAM_LIMITS = {
+  maxMembers: -1,
+  maxProjects: -1,
+  maxTasksPerProject: -1,
+  maxStorageMB: -1,
+  maxIntegrations: -1,
+  maxMeetingsPerMonth: -1,
+};
+
 export const TIER_LIMITS = {
+  developer: {
+    ...FREE_LIMITS,
+    maxAiMessagesPerDay: 0,
+    features: {
+      teamChat: false,
+      aiPair: false,
+      advancedAnalytics: false,
+      customBranding: false,
+      prioritySupport: false,
+      videoMeetings: false,
+      codeCollaboration: false,
+      integrations: false,
+    },
+  },
   freebie: {
-    maxMembers: 1,
-    maxProjects: 1,
-    maxTasksPerProject: 5,
-    maxStorageMB: 50,
-    maxIntegrations: 0,
-    maxMeetingsPerMonth: 0,
+    ...FREE_LIMITS,
     maxAiMessagesPerDay: 10,
     features: {
       teamChat: false,
@@ -24,13 +71,18 @@ export const TIER_LIMITS = {
       integrations: false,
     },
   },
+  pro: {
+    ...PRO_LIMITS,
+    maxAiMessagesPerDay: 100,
+    features: { ...CORE_PAID_FEATURES },
+  },
+  pro_plus: {
+    ...PRO_LIMITS,
+    maxAiMessagesPerDay: 100,
+    features: { ...CORE_PAID_FEATURES },
+  },
   professional: {
-    maxMembers: 10,
-    maxProjects: 50,
-    maxTasksPerProject: 100,
-    maxStorageMB: 5000,
-    maxIntegrations: 5,
-    maxMeetingsPerMonth: 100,
+    ...PRO_LIMITS,
     maxAiMessagesPerDay: 100,
     features: {
       teamChat: true,
@@ -42,6 +94,16 @@ export const TIER_LIMITS = {
       codeCollaboration: true,
       integrations: true,
     },
+  },
+  team_standard: {
+    ...TEAM_LIMITS,
+    maxAiMessagesPerDay: 100,
+    features: { ...CORE_PAID_FEATURES },
+  },
+  team_premium: {
+    ...TEAM_LIMITS,
+    maxAiMessagesPerDay: 100,
+    features: { ...CORE_PAID_FEATURES },
   },
   enterprise: {
     maxMembers: -1,

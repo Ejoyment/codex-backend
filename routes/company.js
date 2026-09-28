@@ -80,7 +80,7 @@ router.post('/create', authenticateToken, permissionMatrix.requirePermission('co
         }
         
         // Set member limit based on tier
-        const memberLimit = companyTier === 'freebie' ? 3 : companyTier === 'professional' ? 10 : 999999;
+        const memberLimit = ['freebie', 'developer', 'starter'].includes(companyTier) ? 3 : ['professional', 'pro', 'pro_plus'].includes(companyTier) ? 10 : 999999;
         
         const company = new Company({
             name,
@@ -176,7 +176,7 @@ router.get('/my-companies', authenticateToken, async (req, res) => {
             
             // Update company tier if it doesn't match
             if (company.subscription.tier !== ownerTier) {
-                const memberLimit = ownerTier === 'freebie' ? 1 : ownerTier === 'professional' ? 10 : 999999;
+                const memberLimit = ['freebie', 'developer', 'starter'].includes(ownerTier) ? 1 : ['professional', 'pro', 'pro_plus'].includes(ownerTier) ? 10 : 999999;
                 company.subscription.tier = ownerTier;
                 company.subscription.memberLimit = memberLimit;
                 await company.save();
@@ -316,7 +316,7 @@ router.get('/:companyId', authenticateToken, permissionMatrix.requirePermission(
         
         // Update company tier if it doesn't match owner's subscription
         if (company.subscription.tier !== ownerTier) {
-            const memberLimit = ownerTier === 'freebie' ? 1 : ownerTier === 'professional' ? 10 : 999999;
+            const memberLimit = ['freebie', 'developer', 'starter'].includes(ownerTier) ? 1 : ['professional', 'pro', 'pro_plus'].includes(ownerTier) ? 10 : 999999;
             company.subscription.tier = ownerTier;
             company.subscription.memberLimit = memberLimit;
             await company.save();
