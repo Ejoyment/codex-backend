@@ -48,6 +48,13 @@ export default function SpecEditor({ specId, workspaceId, onDriftDetected }) {
           targetFiles: spec?.targetFiles || [],
           targetModules: spec?.targetModules || [],
           assertions: spec?.assertions || [],
+          description: spec?.description || '',
+          architecturalRules: spec?.architecturalRules || [],
+          requirements: spec?.requirements || [],
+          forbiddenImports: spec?.forbiddenImports || [],
+          constraints: spec?.constraints || [],
+          verificationCommand: spec?.verificationCommand || '',
+          coverageThreshold: spec?.coverageThreshold ?? null,
           specId,
         }),
       });
