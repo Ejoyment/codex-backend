@@ -797,6 +797,7 @@ export default function Editor() {
     let disposed = false;
     let socket = null;
     let fitOnResize = null;
+    let resizeObserver = null;
     const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
 
     Promise.all([import('xterm'), import('@xterm/addon-fit')])
@@ -891,6 +892,13 @@ export default function Editor() {
           }
         };
         window.addEventListener('resize', fitOnResize);
+        if (typeof ResizeObserver !== 'undefined' && terminalRef.current) {
+          resizeObserver = new ResizeObserver(() => fitOnResize());
+          resizeObserver.observe(terminalRef.current);
+        }
+        if (typeof document !== 'undefined' && document.fonts && document.fonts.ready) {
+          document.fonts.ready.then(() => { if (!disposed) fitOnResize(); }).catch(() => {});
+        }
       })
       .catch(() => {
         if (terminalRef.current) terminalRef.current.innerHTML = '<div style="padding:1rem;color:#8c8c8c;font-size:0.76rem">Terminal failed to load. Refresh to retry.</div>';
@@ -899,6 +907,7 @@ export default function Editor() {
     return () => {
       disposed = true;
       if (fitOnResize) window.removeEventListener('resize', fitOnResize);
+      if (resizeObserver) { try { resizeObserver.disconnect(); } catch (_) { /* ignore */ } }
       const sess = termSessionRef.current;
       if (socket) {
         if (sess) socket.emit('terminal:destroy', { sessionId: sess });
