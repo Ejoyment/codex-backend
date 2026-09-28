@@ -14,6 +14,7 @@ import MonacoEditor from '@monaco-editor/react';
 import { io } from 'socket.io-client';
 import useToastStore from '../store/toastStore';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import DeploymentLogsModal from '../components/DeploymentLogsModal';
 import { useCurrentCompany } from '../hooks/useCurrentCompany';
 
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3000';
@@ -290,6 +291,7 @@ export default function Editor() {
   const [showSubdomainInput, setShowSubdomainInput] = useState(false);
   const [deploySubdomain, setDeploySubdomain] = useState('');
   const [deploying, setDeploying] = useState(false);
+  const [logDeployId, setLogDeployId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const { success: toastSuccess, error: toastError } = useToastStore(
     (s) => ({ success: s.success, error: s.error })
@@ -1516,6 +1518,7 @@ export default function Editor() {
         setStatus({ type: 'success', msg: `Deploying to ${subdomain}.buildrshq.dev...` });
         setShowSubdomainInput(false);
         setDeploySubdomain('');
+        setLogDeployId(data.deployment._id);
         setTimeout(loadDeployments, 5000);
       }
     } catch (err) {
@@ -1537,6 +1540,17 @@ export default function Editor() {
     } catch (err) {
       setStatus({ type: 'error', msg: err?.data?.message || err?.data?.error || err?.message || 'Failed to stop' });
     }
+  }
+
+  // Patch the list entry when the log modal polls a newer status (keeps the
+  // status pill in sync without refetching the whole list).
+  function handleDeploymentUpdate(upd) {
+    if (!upd?._id) return;
+    setDeployments((prev) => prev.map((d) => {
+      if (d._id !== upd._id) return d;
+      if (d.status === upd.status && d.deployedUrl === upd.deployedUrl) return d;
+      return { ...d, status: upd.status, deployedUrl: upd.deployedUrl, fault: upd.fault, failureStage: upd.failureStage };
+    }));
   }
 
   async function handleSandboxStart() {
@@ -2030,7 +2044,13 @@ export default function Editor() {
                     ) : (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                         {deployments.slice(0, 4).map((d, i) => (
-                          <div key={i} className="ed-scm-file">
+                          <div
+                            key={i}
+                            className="ed-scm-file"
+                            style={{ cursor: 'pointer' }}
+                            title="View build & runtime logs"
+                            onClick={() => setLogDeployId(d._id)}
+                          >
                             <span className="ed-badge-dot" style={{ background: d.status === 'success' ? '#28c840' : d.status === 'failed' ? '#f87171' : '#e5b84a' }} />
                             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.subdomain ? `${d.subdomain}.buildrshq.dev` : d._id || 'Deployment'}</span>
                           </div>
@@ -2624,6 +2644,9 @@ export default function Editor() {
                                 d.status === 'building' || d.status === 'deploying' ? { background: 'rgba(229,184,74,0.12)', color: '#e5b84a' } :
                                 { background: 'rgba(255,255,255,0.06)', color: '#8c8c8c' }
                               }>{d.status}</span>
+                              <button type="button" onClick={() => setLogDeployId(d._id)} className="text-xs" style={{ color: '#8c8c8c' }} title="View logs">
+                                Logs
+                              </button>
                               {(d.status === 'success' || d.status === 'failed') && (
                                 <button type="button" onClick={() => stopDeployment(d._id, d.subdomain)} className="text-xs" style={{ color: '#f87171' }}>Stop</button>
                               )}
@@ -2889,6 +2912,14 @@ export default function Editor() {
         confirmText="Delete"
         variant="danger"
       />
+
+      {logDeployId && (
+        <DeploymentLogsModal
+          deploymentId={logDeployId}
+          onClose={() => setLogDeployId(null)}
+          onUpdate={handleDeploymentUpdate}
+        />
+      )}
 
       {diffOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">

@@ -47,6 +47,35 @@ const deploymentSchema = new mongoose.Schema({
         type: String,
         default: ''
     },
+    // Tail of the container's stdout/stderr after start (success or crash) —
+    // the Render-style "runtime logs" view.
+    runtimeLogs: {
+        type: String,
+        default: ''
+    },
+    // Ordered deploy pipeline steps with per-step timing/status.
+    steps: {
+        type: [{
+            name: String,
+            status: { type: String, enum: ['pending', 'running', 'done', 'failed'] },
+            detail: { type: String, default: null },
+            startedAt: Date,
+            finishedAt: Date
+        }],
+        default: []
+    },
+    // Failure attribution: 'user' = caused by the deployed codebase/Dockerfile
+    // (build error, app crash), 'platform' = BuildrsHQ infrastructure issue.
+    fault: {
+        type: String,
+        default: null
+    },
+    // Pipeline stage where the failure happened: validation | prepare |
+    // build | start | platform.
+    failureStage: {
+        type: String,
+        default: null
+    },
     metadata: {
         type: Map,
         of: mongoose.Schema.Types.Mixed

@@ -32,6 +32,23 @@ function capErrorMessage(msg) {
     return `${s.slice(0, 1300)}\n... [truncated ${s.length - 4500} chars] ...\n${s.slice(-3200)}`;
 }
 
+// The Render-style pipeline steps shown in the deploy log viewer.
+const INITIAL_STEPS = () => ([
+    { name: 'prepare', status: 'pending' },
+    { name: 'build', status: 'pending' },
+    { name: 'deploy', status: 'pending' },
+    { name: 'verify', status: 'pending' },
+]);
+
+// Attribute a failure raised BEFORE the pipeline started (backfill,
+// re-validation, runtime detection).
+function classifyPreDeployError(err) {
+    const msg = String(err.message || '');
+    if (/limit|Invalid file path|no deployable/i.test(msg)) return { fault: 'user', failureStage: 'validation' };
+    if (/github|integration|repository|token|backfill/i.test(msg)) return { fault: 'user', failureStage: 'prepare' };
+    return { fault: 'platform', failureStage: 'prepare' };
+}
+
 // List deployments for the logged-in user
 router.get('/', authenticateToken, async (req, res) => {
     try {
@@ -48,11 +65,15 @@ router.get('/', authenticateToken, async (req, res) => {
             },
             {
                 status: 'failed',
-                errorMessage: 'Deployment timed out. Please try again.'
+                errorMessage: 'Deployment timed out. Please try again.',
+                fault: 'platform',
+                failureStage: 'platform'
             }
         );
 
+        // List view never needs the log payloads — they can be hundreds of KB.
         const deployments = await Deployment.find({ userId: req.userId })
+            .select('-buildLogs -runtimeLogs')
             .sort({ createdAt: -1 })
             .populate('projectId', 'name')
             .lean();
@@ -61,6 +82,27 @@ router.get('/', authenticateToken, async (req, res) => {
     } catch (error) {
         console.error('List deployments error:', error);
         res.status(500).json({ error: 'Failed to fetch deployments' });
+    }
+});
+
+// Deployment detail — polled by the log viewer while a deploy is in flight
+// (build log, runtime log, step timeline, fault attribution).
+router.get('/:id', authenticateToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!/^[0-9a-fA-F]{24}$/.test(id)) {
+            return res.status(400).json({ error: 'Invalid deployment id' });
+        }
+        const deployment = await Deployment.findOne({ _id: id, userId: req.userId })
+            .populate('projectId', 'name')
+            .lean();
+        if (!deployment) {
+            return res.status(404).json({ error: 'Deployment not found' });
+        }
+        res.json({ success: true, deployment });
+    } catch (error) {
+        console.error('Get deployment error:', error);
+        res.status(500).json({ error: 'Failed to fetch deployment' });
     }
 });
 
@@ -159,13 +201,19 @@ router.post('/', authenticateToken, async (req, res) => {
             deployment.errorMessage = null;
             deployment.deployedUrl = null;
             deployment.containerId = null;
+            deployment.fault = null;
+            deployment.failureStage = null;
+            deployment.buildLogs = '';
+            deployment.runtimeLogs = '';
+            deployment.steps = INITIAL_STEPS();
             await deployment.save();
         } else {
             deployment = await Deployment.create({
                 userId: req.userId,
                 projectId: projectId || null,
                 subdomain: sanitized,
-                status: 'building'
+                status: 'building',
+                steps: INITIAL_STEPS()
             });
         }
 
@@ -192,6 +240,111 @@ router.post('/', authenticateToken, async (req, res) => {
         });
 
         setImmediate(async () => {
+            // ---- Observability state (Render-style log streaming) ----
+            let buildLog = '';
+            let logFlushTimer = null;
+            let finished = false;
+            let liveSteps = INITIAL_STEPS();
+
+            const flushLogs = async () => {
+                logFlushTimer = null;
+                if (finished || !buildLog) return;
+                try {
+                    await Deployment.updateOne({ _id: deployId }, { buildLogs: depService.capLogTail(buildLog) });
+                } catch (flushErr) {
+                    console.warn('[deploy] build log flush failed:', flushErr.message);
+                }
+            };
+            const persistSteps = async (extra = {}) => {
+                if (finished) return;
+                try {
+                    await Deployment.updateOne({ _id: deployId }, { steps: liveSteps, ...extra });
+                } catch (e) {
+                    console.warn('[deploy] steps persist failed:', e.message);
+                }
+            };
+
+            const deployHooks = {
+                onLog: chunk => {
+                    if (finished) return;
+                    buildLog += chunk;
+                    // Bound memory during long builds (keep head + recent tail).
+                    if (buildLog.length > 1200000) {
+                        buildLog = `${buildLog.slice(0, 150000)}\n... [earlier build output omitted] ...\n${buildLog.slice(-900000)}`;
+                    }
+                    if (!logFlushTimer) logFlushTimer = setTimeout(flushLogs, 1200);
+                },
+                onStep: ({ name, status, detail }) => {
+                    if (finished) return;
+                    const step = liveSteps.find(s => s.name === name);
+                    const now = new Date();
+                    if (step) {
+                        if (status === 'running') {
+                            step.status = 'running';
+                            step.startedAt = now;
+                            if (detail) step.detail = detail;
+                        } else if (status === 'done' || status === 'failed') {
+                            step.status = status;
+                            step.finishedAt = now;
+                            if (detail) step.detail = detail;
+                        }
+                    }
+                    const extra = {};
+                    if (name === 'deploy' && status === 'running') extra.status = 'deploying';
+                    persistSteps(extra);
+                },
+            };
+
+            const persistFailure = async (depErr) => {
+                finished = true;
+                if (logFlushTimer) { clearTimeout(logFlushTimer); logFlushTimer = null; }
+                const failedStep = liveSteps.find(s => s.status === 'running');
+                if (failedStep) {
+                    failedStep.status = 'failed';
+                    failedStep.finishedAt = new Date();
+                }
+                const timedOut = depErr && depErr.message === 'Deployment timed out';
+                // DeployError carries explicit stage/fault; timeouts are
+                // attributed by whichever step was still running (a hung or
+                // endless build is the user's build; a hang before/after is
+                // our infrastructure); anything else unexpected is platform.
+                let fault = depErr && depErr.fault;
+                let failureStage = depErr && depErr.stage;
+                if (!fault && timedOut) {
+                    const inFlight = failedStep || liveSteps.find(s => s.status === 'running');
+                    const isBuild = inFlight && inFlight.name === 'build';
+                    fault = isBuild ? 'user' : 'platform';
+                    failureStage = isBuild ? 'build' : (inFlight ? inFlight.name : 'platform');
+                } else if (!fault) {
+                    fault = 'platform';
+                    failureStage = failureStage || 'platform';
+                }
+                if (timedOut) {
+                    const mins = Math.round(DEPLOY_RACE_TIMEOUT / 60000);
+                    const what = failedStep ? ` while "${failedStep.name}" was running` : '';
+                    depErr = Object.assign(new Error(`Deployment timed out after ${mins} minutes${what}. ` +
+                        (fault === 'user'
+                            ? 'Your build or startup exceeded the time limit.'
+                            : 'Our build infrastructure did not respond in time — please retry.')), { fault, stage: failureStage });
+                }
+                const logTail = buildLog
+                    ? `${buildLog}\n--- DEPLOYMENT FAILED ---\n${depErr.message}\n`
+                    : `--- DEPLOYMENT FAILED ---\n${depErr.message}\n`;
+                try {
+                    await Deployment.findByIdAndUpdate(deployId, {
+                        status: 'failed',
+                        errorMessage: capErrorMessage(depErr.message),
+                        fault,
+                        failureStage: failureStage || 'platform',
+                        steps: liveSteps,
+                        buildLogs: depService.capLogTail(logTail),
+                        ...(depErr.runtimeLogs ? { runtimeLogs: String(depErr.runtimeLogs).slice(-200000) } : {}),
+                    });
+                } catch (saveErr) {
+                    console.error('[deploy] failed to persist failure state:', saveErr.message);
+                }
+            };
+
             try {
                 // File lists from the project API and GitHub tree are metadata-only;
                 // pull real content (DB or GitHub) before building the image.
@@ -231,38 +384,51 @@ router.post('/', authenticateToken, async (req, res) => {
                 let containerId = null;
                 let url = `https://${sanitized}.buildrshq.dev`;
                 let httpUrl = `http://${sanitized}.buildrshq.dev`;
+                let runtimeLogs = '';
 
-                const deployPromise = depService.deployProject(sanitized, normalizedFiles);
+                const deployPromise = depService.deployProject(sanitized, normalizedFiles, deployHooks);
                 const timeoutPromise = new Promise((_, reject) =>
                     setTimeout(() => reject(new Error('Deployment timed out')), DEPLOY_RACE_TIMEOUT)
                 );
 
+                let result;
                 try {
-                    const result = await Promise.race([deployPromise, timeoutPromise]);
+                    result = await Promise.race([deployPromise, timeoutPromise]);
                     containerId = result.containerId;
                     url = result.url || url;
+                    runtimeLogs = result.runtimeLogs || '';
                 } catch (depErr) {
                     console.error(`[deploy] ${sanitized} failed:`, depErr.message);
-                    await Deployment.findByIdAndUpdate(deployId, {
-                        status: 'failed',
-                        errorMessage: capErrorMessage(depErr.message)
-                    });
+                    await persistFailure(depErr);
                     return;
                 }
 
+                finished = true;
+                if (logFlushTimer) { clearTimeout(logFlushTimer); logFlushTimer = null; }
+                // Service emitted each step; make sure none are left dangling.
+                liveSteps.forEach(s => {
+                    if (s.status !== 'done') {
+                        s.status = 'done';
+                        s.finishedAt = new Date();
+                    }
+                });
                 await Deployment.findByIdAndUpdate(deployId, {
                     containerId,
                     deployedUrl: url,
                     httpUrl,
-                    status: 'success'
+                    status: 'success',
+                    fault: null,
+                    failureStage: null,
+                    errorMessage: null,
+                    steps: liveSteps,
+                    buildLogs: depService.capLogTail(buildLog),
+                    runtimeLogs: String(runtimeLogs).slice(-200000),
                 });
                 console.log(`[deploy] ${sanitized}.buildrshq.dev is live`);
             } catch (err) {
                 console.error(`[deploy] ${sanitized} failed:`, err.message);
-                await Deployment.findByIdAndUpdate(deployId, {
-                    status: 'failed',
-                    errorMessage: capErrorMessage(err.message)
-                });
+                const { fault, failureStage } = classifyPreDeployError(err);
+                await persistFailure(Object.assign(err, { fault, stage: failureStage }));
             }
         });
         return;

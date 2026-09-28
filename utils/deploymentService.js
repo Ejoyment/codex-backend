@@ -76,7 +76,7 @@ function getKeyFile() {
   return file;
 }
 
-function sshExec(command, input = null) {
+function sshExec(command, input = null, onData = null) {
   return new Promise((resolve, reject) => {
     try {
       if (!SSH_HOST) return reject(new Error('DEPLOY_SSH_HOST env not set'));
@@ -89,8 +89,8 @@ function sshExec(command, input = null) {
 
       let stdout = '';
       let stderr = '';
-      proc.stdout.on('data', d => { stdout += d; });
-      proc.stderr.on('data', d => { stderr += d; });
+      proc.stdout.on('data', d => { stdout += d; if (onData) onData(String(d)); });
+      proc.stderr.on('data', d => { stderr += d; if (onData) onData(String(d)); });
 
       proc.on('close', (code) => {
         if (code !== 0) return reject(new Error(stderr || `Process exited with code ${code}`));
@@ -148,6 +148,33 @@ function parseJsonSafe(text) {
 function clampPort(value) {
   const n = parseInt(value, 10);
   return Number.isInteger(n) && n >= 1 && n <= 65535 ? n : null;
+}
+
+// Classified deploy failure. `stage` says WHERE it broke (validation |
+// prepare | build | start | platform), `fault` says WHOSE fault:
+//   'user'    — the deployed codebase/Dockerfile/app is at fault
+//               (Render-style: "your build failed", "your app crashed")
+//   'platform'— BuildrsHQ infrastructure (SSH, VPS, our swap logic)
+class DeployError extends Error {
+  constructor(message, { stage = 'platform', fault = 'platform', runtimeLogs = null } = {}) {
+    super(message);
+    this.name = 'DeployError';
+    this.stage = stage;
+    this.fault = fault;
+    if (runtimeLogs) this.runtimeLogs = runtimeLogs;
+  }
+}
+
+// Keep stored logs bounded: build output can run to megabytes (npm ci noise,
+// buildkit traces). Retain the HEAD (setup context) and the TAIL (where the
+// failure is) — tail matters most, so it gets the larger share.
+function capLogTail(text, maxBytes = 512 * 1024) {
+  const s = String(text || '');
+  if (Buffer.byteLength(s, 'utf8') <= maxBytes) return s;
+  const tail = s.slice(-Math.floor(maxBytes * 0.85));
+  const head = s.slice(0, Math.floor(maxBytes * 0.1));
+  const dropped = s.length - head.length - tail.length;
+  return `${head}\n\n... [${dropped} chars of build output omitted] ...\n\n${tail}`;
 }
 
 function detectRuntime(files) {
@@ -605,13 +632,30 @@ function createTarballSync(files) {
   return tarPath;
 }
 
-async function deployProject(subdomain, files) {
+async function deployProject(subdomain, files, hooks = {}) {
+  // Observability hooks (Render-style): onStep drives the step timeline in
+  // the UI, onLog streams raw build output while docker build runs.
+  const emitStep = (name, status, detail = null) => {
+    try { if (hooks.onStep) hooks.onStep({ name, status, detail }); } catch (_) {}
+  };
+  const emitLog = chunk => {
+    try { if (hooks.onLog) hooks.onLog(String(chunk)); } catch (_) {}
+  };
+
   const sanitizedSubdomain = subdomain.toLowerCase().replace(/[^a-z0-9-]/g, '-');
   if (!sanitizedSubdomain || sanitizedSubdomain.length < 2) {
-    throw new Error('Subdomain must be at least 2 characters');
+    throw new DeployError('Subdomain must be at least 2 characters', { stage: 'validation', fault: 'user' });
   }
 
-  const deployBase = await findWritableBase();
+  emitStep('prepare', 'running');
+  emitLog(`Preparing ${files.length} file(s) for deployment...\n`);
+
+  let deployBase;
+  try {
+    deployBase = await findWritableBase();
+  } catch (fsErr) {
+    throw new DeployError(`Deployment storage is unavailable: ${fsErr.message}`, { stage: 'platform', fault: 'platform' });
+  }
   const deploymentDir = `${deployBase}/${sanitizedSubdomain}`;
   const containerName = `deploy-${sanitizedSubdomain}`;
   const nextContainerName = `${containerName}-next-${Date.now()}`;
@@ -621,11 +665,15 @@ async function deployProject(subdomain, files) {
   const contextRel = String(contextDir || '.').replace(/^\.?\/+/, '').replace(/\/+$/, '') || '.';
   const buildDir = contextRel === '.' ? deploymentDir : `${deploymentDir}/${contextRel}`;
   console.log(`[deploy] Runtime: ${runtime}, port: ${exposePort}, context: ${contextRel}, dir: ${deploymentDir}`);
+  emitLog(`Detected ${runtime} application (build context: ${contextRel}, port ${exposePort})\n`);
 
   // Rebuild the directory from scratch: stale paths from a prior deploy (e.g.
   // directories created by the old double-path bug) break extraction and writes.
-  await sshExec(`rm -rf '${deploymentDir}' && mkdir -p '${deploymentDir}'`);
-
+  try {
+    await sshExec(`rm -rf '${deploymentDir}' && mkdir -p '${deploymentDir}'`);
+  } catch (prepErr) {
+    throw new DeployError(`Could not prepare the deployment directory on the VPS: ${prepErr.message}`, { stage: 'platform', fault: 'platform' });
+  }
 
   let fileEntries = files.map(f => ({
     name: f.name,
@@ -639,7 +687,11 @@ async function deployProject(subdomain, files) {
   // Validate before tarball + fallback: blocks local tmpDir escape,
   // Tar Slip on the VPS, and remote-path breakout.
   for (const file of fileEntries) {
-    assertSafeRelPath(file.path);
+    try {
+      assertSafeRelPath(file.path);
+    } catch (valErr) {
+      throw new DeployError(valErr.message, { stage: 'validation', fault: 'user' });
+    }
   }
 
   try {
@@ -651,11 +703,16 @@ async function deployProject(subdomain, files) {
     const fileCount = await sshExec(`find ${deploymentDir} -type f | wc -l`).catch(() => '0');
     const fileList = await sshExec(`ls ${deploymentDir}`).catch(() => '');
     console.log(`[deploy] ${fileCount.trim()} files in ${deploymentDir}: ${fileList}`);
+    emitLog(`Uploaded ${fileCount.trim()} file(s) to the build server\n`);
   } catch (tarErr) {
     console.error(`[deploy] Tarball failed: ${tarErr.message}`);
-    for (const file of fileEntries) {
-      const relPath = file.path.replace(/^\//, '');
-      await writeRemoteFile(`${deploymentDir}/${relPath}`, file.content || '', file.encoding === 'base64');
+    try {
+      for (const file of fileEntries) {
+        const relPath = file.path.replace(/^\//, '');
+        await writeRemoteFile(`${deploymentDir}/${relPath}`, file.content || '', file.encoding === 'base64');
+      }
+    } catch (upErr) {
+      throw new DeployError(`Failed to upload project files to the VPS: ${upErr.message}`, { stage: 'prepare', fault: 'platform' });
     }
   }
 
@@ -664,27 +721,54 @@ async function deployProject(subdomain, files) {
   // per-file fallback above stopped early. For nested contexts both live
   // inside the context dir — the build runs `docker build -f <ctx>/Dockerfile <ctx>`
   // so COPY statements resolve inside the app dir (aegis-ai monorepo fix).
-  if (dockerfile) {
-    await writeRemoteFile(`${buildDir}/Dockerfile`, dockerfile);
-  }
-  const dockerignoreRel = (contextRel === '.' ? '.dockerignore' : `${contextRel}/.dockerignore`).toLowerCase();
-  const hasDockerignore = files.some(f => buildFileRelPath(f).toLowerCase() === dockerignoreRel);
-  if (!hasDockerignore) {
-    await writeRemoteFile(`${buildDir}/.dockerignore`, dockerIgnoreFor());
+  try {
+    if (dockerfile) {
+      await writeRemoteFile(`${buildDir}/Dockerfile`, dockerfile);
+    }
+    const dockerignoreRel = (contextRel === '.' ? '.dockerignore' : `${contextRel}/.dockerignore`).toLowerCase();
+    const hasDockerignore = files.some(f => buildFileRelPath(f).toLowerCase() === dockerignoreRel);
+    if (!hasDockerignore) {
+      await writeRemoteFile(`${buildDir}/.dockerignore`, dockerIgnoreFor());
+    }
+  } catch (dfErr) {
+    throw new DeployError(`Failed to write the build files on the VPS: ${dfErr.message}`, { stage: 'platform', fault: 'platform' });
   }
 
-  await sshExec(`docker build --force-rm --no-cache -t ${imageTag} -f ${shq(`${buildDir}/Dockerfile`)} ${shq(buildDir)}`).catch(async err => {
+  emitStep('prepare', 'done', `${fileEntries.length} files`);
+  emitStep('build', 'running', `docker build (${runtime}, context ${contextRel})`);
+
+  const buildCmd = `docker build --force-rm --no-cache -t ${imageTag} -f ${shq(`${buildDir}/Dockerfile`)} ${shq(buildDir)}`;
+  emitLog(`\n$ ${buildCmd}\n`);
+  try {
+    // Stream raw build output to the UI while it runs (hooks.onLog → buildLogs).
+    await sshExec(buildCmd, null, emitLog);
+  } catch (err) {
     const ctxList = await sshExec(`ls -la ${shq(buildDir)} 2>/dev/null || echo 'DIR_MISSING'`).catch(() => 'DIR_MISSING');
     const rootList = contextRel === '.'
       ? ''
       : ` Repo root: ${await sshExec(`ls -la ${shq(deploymentDir)} 2>/dev/null || echo 'DIR_MISSING'}`).catch(() => 'DIR_MISSING')}`;
-    throw new Error(`Docker build failed (${runtime}, context '${contextRel}'): ${err.message}. Context contents: ${ctxList}.${rootList}`);
-  });
+    const detail = ` Context contents: ${ctxList}.${rootList}`;
+    // A failed docker build is almost always the user's code/Dockerfile:
+    // dependency errors, compile failures, bad Dockerfile instructions.
+    // SSH timeouts during build mean the build itself hung or exceeded the
+    // time limit — also on the user's side of the contract.
+    const isTimeout = /timeout exceeded/i.test(err.message || '');
+    const message = isTimeout
+      ? `Your build exceeded the ${Math.round(DEPLOY_TIMEOUT_MS / 60000)} minute time limit and was stopped.${detail}`
+      : `Your build failed (${runtime}, context '${contextRel}'). See the build log for the failing step.${detail}`;
+    emitLog(`\n--- BUILD FAILED ---\n${err.message}\n`);
+    throw new DeployError(message, { stage: 'build', fault: 'user' });
+  }
+  emitStep('build', 'done', 'image built');
+  emitLog(`\nBuild succeeded — image ${imageTag}\n`);
 
   const imageFiles = await sshExec(`docker run --rm --entrypoint ls ${imageTag} /usr/share/nginx/html/ 2>/dev/null || echo 'NO_FILES'`).catch(() => 'NO_FILES');
   console.log(`[deploy] Image files: ${imageFiles}`);
 
   const existingContainer = (await sshExec(`docker ps -q --filter "name=${containerName}" 2>/dev/null || true`).catch(() => '')).trim();
+
+  emitStep('deploy', 'running', `starting ${nextContainerName}`);
+  emitLog(`\nStarting container ${nextContainerName}...\n`);
 
   const runScript = `#!/bin/bash
 docker rm -f ${nextContainerName} 2>/dev/null || true
@@ -710,39 +794,64 @@ docker run -d \\
   ${imageTag}
 `;
 
-  await writeRemoteFile(`${deploymentDir}/run.sh`, runScript);
-  const nextContainerId = (await sshExec(`bash ${deploymentDir}/run.sh`)).trim();
-
-  if (existingContainer) {
-    await sshExec(`docker rm -f ${containerName} 2>/dev/null || true`);
+  let nextContainerId;
+  try {
+    await writeRemoteFile(`${deploymentDir}/run.sh`, runScript);
+    nextContainerId = (await sshExec(`bash ${deploymentDir}/run.sh`)).trim();
+  } catch (runErr) {
+    throw new DeployError(`The container could not be started on the VPS: ${runErr.message}`, { stage: 'platform', fault: 'platform' });
   }
 
-  await sshExec(`docker rename ${nextContainerName} ${containerName}`).catch(async (renameErr) => {
-    console.warn('[deploy] rename to active container failed, leaving standby container:', renameErr.message);
-    await sshExec(`docker rm -f ${nextContainerName} 2>/dev/null || true`);
-    throw renameErr;
-  });
+  // Verify the NEW container BEFORE swapping traffic (true blue-green): if
+  // the user's app crashes on boot, the old container keeps serving and the
+  // failure is attributed to the user's code with its runtime logs attached.
+  emitStep('verify', 'running', 'waiting for the app to start');
+  await new Promise(resolve => setTimeout(resolve, 3000));
+  let running = 'false';
+  let restarts = 0;
+  try {
+    const state = await sshExec(`docker inspect --format '{{.State.Running}} {{.State.RestartCount}}' ${nextContainerName} 2>/dev/null || echo 'false 0'`);
+    const [r, n] = state.trim().split(/\s+/);
+    running = r || 'false';
+    restarts = parseInt(n, 10) || 0;
+  } catch (_) {}
 
+  if (running !== 'true' || restarts >= 2) {
+    const runtimeLogs = await sshExec(`docker logs --tail 2000 ${nextContainerName} 2>&1`).catch(() => '');
+    await sshExec(`docker rm -f ${nextContainerName} 2>/dev/null || true`).catch(() => '');
+    emitLog(`\n--- APP FAILED TO START (restarted ${restarts}x) ---\n`);
+    const reason = running !== 'true'
+      ? 'Your app exited immediately after starting.'
+      : `Your app is crash-looping (restarted ${restarts} times within seconds).`;
+    throw new DeployError(
+      `${reason} This is caused by your application code or configuration — see the runtime logs for the crash output. The previous deployment (if any) is still serving traffic.`,
+      { stage: 'start', fault: 'user', runtimeLogs }
+    );
+  }
+
+  // Swap: retire the old container, promote the verified one.
+  try {
+    if (existingContainer) {
+      await sshExec(`docker rm -f ${containerName} 2>/dev/null || true`);
+    }
+    await sshExec(`docker rename ${nextContainerName} ${containerName}`);
+  } catch (swapErr) {
+    console.warn('[deploy] blue-green swap failed, leaving standby container:', swapErr.message);
+    await sshExec(`docker rm -f ${nextContainerName} 2>/dev/null || true`).catch(() => '');
+    throw new DeployError(`Failed to swap traffic to the new container: ${swapErr.message}`, { stage: 'platform', fault: 'platform' });
+  }
+
+  emitStep('deploy', 'done', 'container running');
+  emitStep('verify', 'done', 'app is up');
   console.log(`[deploy] ${containerName} started (${nextContainerId}) using blue-green swap`);
 
   try { await sshExec(`docker image prune -f 2>/dev/null || true`); } catch (_) {}
 
-  try {
-    await new Promise(resolve => setTimeout(resolve, 3000));
-    const health = await sshExec(`docker inspect --format='{{.State.Running}}' ${containerName} 2>/dev/null || echo 'false'`);
-    if (health !== 'true') {
-      throw new Error('Container is not running after deployment');
-    }
-    console.log(`[deploy] ${containerName} health check passed`);
-  } catch (healthErr) {
-    console.warn('[deploy] Health check issue:', healthErr.message);
-  }
+  const runtimeLogs = await sshExec(`docker logs --tail 2000 ${containerName} 2>&1`).catch(() => '');
 
   try {
     const containerFiles = await sshExec(`docker exec ${containerName} ls /usr/share/nginx/html/ 2>/dev/null || echo 'N/A'`).catch(() => 'N/A');
     console.log(`[deploy] Container nginx files: ${containerFiles}`);
-    const indexCheck = await sshExec(`docker exec ${containerName} cat /usr/share/nginx/html/index.html 2>/dev/null | head -1 || echo 'NO_INDEX'`).catch(() => 'NO_INDEX');
-    console.log(`[deploy] index.html content check: ${indexCheck}`);
     const curlCheck = await sshExec(`docker exec ${containerName} curl -s -o /dev/null -w '%{http_code}' http://localhost/ 2>/dev/null || echo 'CURL_FAILED'`).catch(() => 'CURL_FAILED');
     console.log(`[deploy] HTTP status check: ${curlCheck}`);
     const labelsCheck = await sshExec(`docker inspect ${containerName} --format '{{json .Config.Labels}}' 2>/dev/null || echo 'LABELS_FAILED'`).catch(() => 'LABELS_FAILED');
@@ -751,7 +860,7 @@ docker run -d \\
     console.warn('[deploy] File check issue:', checkErr.message);
   }
 
-  return { containerId: nextContainerId, url: `https://${sanitizedSubdomain}.${DOMAIN}` };
+  return { containerId: nextContainerId, url: `https://${sanitizedSubdomain}.${DOMAIN}`, runtimeLogs };
 }
 
 async function writeRemoteFile(remotePath, content, isBase64 = false) {
@@ -838,4 +947,6 @@ module.exports = {
   buildFileRelPath,
   ensureStaticEntry,
   shq,
+  DeployError,
+  capLogTail,
 };

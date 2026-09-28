@@ -17,6 +17,8 @@ const {
     detectRuntime,
     ensureStaticEntry,
     buildFileRelPath,
+    DeployError,
+    capLogTail,
 } = require('../utils/deploymentService');
 const { validateDeployFiles, fileKey, fileBytes, looksBinary } = require('../utils/deployContent');
 
@@ -422,5 +424,61 @@ describe('buildFileRelPath', () => {
         expect(buildFileRelPath({ path: '/src', name: 'a.js' })).toBe(path.join('src', 'a.js'));
         expect(buildFileRelPath({ path: '/game.html', name: 'game.html' })).toBe('game.html');
         expect(buildFileRelPath({ path: '/src/deep', name: 'b.css' })).toBe(path.join('src/deep', 'b.css'));
+    });
+});
+
+describe('DeployError', () => {
+    test('carries stage, fault and optional runtime logs for attribution', () => {
+        const err = new DeployError('your build failed', { stage: 'build', fault: 'user', runtimeLogs: 'TypeError: x' });
+        expect(err).toBeInstanceOf(Error);
+        expect(err.name).toBe('DeployError');
+        expect(err.message).toBe('your build failed');
+        expect(err.stage).toBe('build');
+        expect(err.fault).toBe('user');
+        expect(err.runtimeLogs).toBe('TypeError: x');
+        expect(err.stack).toMatch(/DeployError/);
+    });
+
+    test('defaults to platform attribution when not specified', () => {
+        const err = new DeployError('ssh connection refused');
+        expect(err.stage).toBe('platform');
+        expect(err.fault).toBe('platform');
+        expect(err.runtimeLogs).toBeUndefined();
+    });
+
+    test('user-attributed errors without runtime logs omit the field', () => {
+        const err = new DeployError('build exceeded limit', { stage: 'build', fault: 'user' });
+        expect(err.fault).toBe('user');
+        expect(err.runtimeLogs).toBeUndefined();
+    });
+});
+
+describe('capLogTail', () => {
+    test('returns short logs untouched', () => {
+        expect(capLogTail('')).toBe('');
+        expect(capLogTail('npm warn whatever\nbuild ok')).toBe('npm warn whatever\nbuild ok');
+    });
+
+    test('keeps the head and tail with an omission marker for huge logs', () => {
+        const text = `HEAD_MARK${'x'.repeat(600 * 1024)}TAIL_MARK`;
+        const out = capLogTail(text, 1000);
+        expect(out.length).toBeLessThan(text.length);
+        expect(out).toContain('HEAD_MARK');
+        expect(out).toContain('TAIL_MARK');
+        expect(out).toMatch(/\[\d+ chars of build output omitted\]/);
+        // head (10%) + marker + tail (85%) ≈ the cap, never the full log
+        expect(out.length).toBeLessThan(1000 + 120);
+    });
+
+    test('always preserves the failure tail — the last lines of output survive', () => {
+        const failLine = 'ERROR: failed to solve: process did not complete successfully';
+        const text = 'a'.repeat(200 * 1024) + failLine;
+        const out = capLogTail(text, 4096);
+        expect(out.endsWith(failLine)).toBe(true);
+    });
+
+    test('logs exactly at the cap are not modified', () => {
+        const text = 'y'.repeat(512 * 1024);
+        expect(capLogTail(text)).toBe(text);
     });
 });
