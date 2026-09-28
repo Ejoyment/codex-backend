@@ -1,4 +1,6 @@
-// Language restrictions based on subscription tier
+// Programming languages are available on every subscription tier — no
+// tier-based language limits. (FREE_LANGUAGES/ALL_LANGUAGES are kept for
+// display/catalog purposes only.)
 
 const FREE_LANGUAGES = ['python', 'javascript', 'dart', 'flutter'];
 
@@ -82,16 +84,13 @@ const LANGUAGE_DISPLAY_NAMES = {
 };
 
 function getAllowedLanguages(subscriptionTier) {
-    if (!subscriptionTier || subscriptionTier === 'free') {
-        return FREE_LANGUAGES;
-    }
-    // Professional, Business, Enterprise get all languages
+    // All tiers have access to every language.
     return ALL_LANGUAGES;
 }
 
 function isLanguageAllowed(language, subscriptionTier) {
-    const allowed = getAllowedLanguages(subscriptionTier);
-    return allowed.includes(language.toLowerCase());
+    // No tier-based language limits — every language is allowed on every plan.
+    return true;
 }
 
 function getLanguageDisplayName(language) {
