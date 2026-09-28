@@ -341,13 +341,13 @@ export default function AiPair() {
                 <span className="dot" style={{ background: remaining <= 0 ? '#f87171' : '#2fd6e6' }} />
                 {aiLimit === Infinity ? `${remaining} messages` : `${remaining}/${aiLimit} today`}
               </span>
-              {tier === 'freebie' && (
+              {tier === 'developer' && (
                 <button
                   type="button"
                   onClick={() => router.push('/pricing')}
                   className="dash-action"
                 >
-                  Upgrade to Professional
+                  Upgrade to Pro
                   <ChevronRight className="w-3.5 h-3.5" />
                 </button>
               )}

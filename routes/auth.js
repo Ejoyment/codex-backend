@@ -134,11 +134,11 @@ router.post('/signup', authLimiter, async (req, res) => {
             authProvider: 'local'
         });
 
-        // Create default subscription (STARTER free trial - 14 days)
+        // Create default subscription (14-day free trial on the pro tier)
         const trialEndsAt = new Date(Date.now() + (14 * 24 * 60 * 60 * 1000)); // 14 days
         const subscription = await Subscription.create({
             userId: user._id,
-            tier: 'starter',
+            tier: 'pro',
             status: 'trial',
             trialStartedAt: new Date(),
             trialEndsAt,
@@ -428,11 +428,11 @@ router.get('/me', async (req, res) => {
         const Subscription = require('../models/Subscription');
         const subscription = await Subscription.findOne({ userId });
 
-        // Handle trial expiry: auto-downgrade to freebie if trial expired
+        // Handle trial expiry: auto-downgrade to developer (free) if trial expired
         if (subscription && subscription.isTrialExpired && subscription.isTrialExpired()) {
             const previousTier = subscription.tier;
             subscription.status = 'expired';
-            subscription.upgradeTo('freebie');
+            subscription.upgradeTo('developer');
             await subscription.save();
 
             // Send trial expired email notification
@@ -443,7 +443,7 @@ router.get('/me', async (req, res) => {
                 console.error('Trial expired email error:', emailError);
             }
 
-            console.log(`User ${userId} trial expired, downgraded from ${previousTier} to freebie`);
+            console.log(`User ${userId} trial expired, downgraded from ${previousTier} to developer`);
         }
 
         res.json({
@@ -483,7 +483,7 @@ router.get('/me', async (req, res) => {
                         isLastDay: subscription.isLastTrialDay ? subscription.isLastTrialDay() : false
                     } : null
                 } : {
-                    tier: 'starter',
+                    tier: 'pro',
                     status: 'trial',
                     features: {},
                     trial: null

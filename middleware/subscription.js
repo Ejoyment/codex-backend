@@ -69,25 +69,28 @@ const requireFeature = (featureName) => {
 // Helper function to determine required tier for a feature
 function getRequiredTier(featureName) {
     const featureTiers = {
-        localRepositories: 'freebie',
-        discordSync: 'freebie',
-        advancedAnalytics: 'professional',
-        aiCodeReview: 'professional',
-        videoStandups: 'professional',
-        collaborativeEditing: 'professional',
+        localRepositories: 'developer',
+        discordSync: 'developer',
+        advancedAnalytics: 'pro',
+        aiCodeReview: 'pro',
+        videoStandups: 'pro',
+        collaborativeEditing: 'pro',
         soc2Compliance: 'enterprise',
         dedicatedSupport: 'enterprise'
     };
     
-    return featureTiers[featureName] || 'professional';
+    return featureTiers[featureName] || 'pro';
 }
 
 // Middleware to check subscription tier
 const requireTier = (minTier) => {
     const tierLevels = {
-        freebie: 1,
-        professional: 2,
-        enterprise: 3
+        developer: 1,
+        pro: 2,
+        pro_plus: 3,
+        team_standard: 4,
+        team_premium: 5,
+        enterprise: 6
     };
 
     return async (req, res, next) => {

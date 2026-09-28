@@ -45,20 +45,6 @@ const TEAM_LIMITS = {
 export const TIER_LIMITS = {
   developer: {
     ...FREE_LIMITS,
-    maxAiMessagesPerDay: 0,
-    features: {
-      teamChat: false,
-      aiPair: false,
-      advancedAnalytics: false,
-      customBranding: false,
-      prioritySupport: false,
-      videoMeetings: false,
-      codeCollaboration: false,
-      integrations: false,
-    },
-  },
-  freebie: {
-    ...FREE_LIMITS,
     maxAiMessagesPerDay: 10,
     features: {
       teamChat: false,
@@ -80,20 +66,6 @@ export const TIER_LIMITS = {
     ...PRO_LIMITS,
     maxAiMessagesPerDay: 100,
     features: { ...CORE_PAID_FEATURES },
-  },
-  professional: {
-    ...PRO_LIMITS,
-    maxAiMessagesPerDay: 100,
-    features: {
-      teamChat: true,
-      aiPair: true,
-      advancedAnalytics: true,
-      customBranding: true,
-      prioritySupport: true,
-      videoMeetings: true,
-      codeCollaboration: true,
-      integrations: true,
-    },
   },
   team_standard: {
     ...TEAM_LIMITS,
@@ -129,14 +101,27 @@ export const TIER_LIMITS = {
   },
 };
 
+// Legacy tier names still present in older API responses -> canonical six.
+const LEGACY_TIER_MAP = {
+  freebie: 'developer',
+  starter: 'developer',
+  trial: 'developer',
+  free: 'developer',
+  basic: 'developer',
+  hobby: 'developer',
+  professional: 'pro',
+  business: 'enterprise',
+  team: 'enterprise',
+};
+
 export function normalizeTier(tier) {
-  if (!tier) return 'freebie';
-  if (tier === 'starter') return 'freebie';
-  return tier;
+  if (!tier) return 'developer';
+  if (LEGACY_TIER_MAP[tier]) return LEGACY_TIER_MAP[tier];
+  return TIER_LIMITS[tier] ? tier : 'developer';
 }
 
 export function getTierLimits(tier) {
-  return TIER_LIMITS[normalizeTier(tier)] || TIER_LIMITS.freebie;
+  return TIER_LIMITS[normalizeTier(tier)] || TIER_LIMITS.developer;
 }
 
 export function hasFeature(tier, feature) {

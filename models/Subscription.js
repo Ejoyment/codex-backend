@@ -9,7 +9,7 @@ const subscriptionSchema = new mongoose.Schema({
     },
     tier: {
         type: String,
-        enum: ['developer', 'pro', 'pro_plus', 'team_standard', 'team_premium', 'enterprise', 'starter', 'freebie', 'professional'],
+        enum: ['developer', 'pro', 'pro_plus', 'team_standard', 'team_premium', 'enterprise'],
         default: 'developer'
     },
     status: {
@@ -287,32 +287,40 @@ subscriptionSchema.methods.isTrialExpired = function() {
     return this.status === 'trial' && this.trialEndsAt && this.trialEndsAt.getTime() < Date.now();
 };
 
-// Upgrade subscription to a given tier (supports legacy tiers used by billing flows)
+// Upgrade subscription to a given tier (canonical pricing tiers only:
+// developer, pro, pro_plus, team_standard, team_premium, enterprise).
+// Legacy tier names (freebie, starter, professional) map to their canonical equivalent.
 subscriptionSchema.methods.upgradeTo = function(tier) {
+    const { TIERS, LEGACY_TIER_MAP } = require('../utils/tierNames');
+    const resolved = TIERS.includes(tier) ? tier : LEGACY_TIER_MAP[tier];
+    if (!resolved) {
+        throw new Error(`Unknown tier: ${tier}. Valid tiers: ${TIERS.join(', ')}`);
+    }
+
+    // Feature entitlements shared by every paid tier (mirrors the pricing blueprint)
+    const PAID_FEATURES = {
+        maxProjects: 0,
+        unlimitedProjects: true,
+        basicAiAssistance: true,
+        advancedAiAssistance: true,
+        aiCodeReview: true,
+        communitySupport: false,
+        prioritySupport: true,
+        limitedApiAccess: false,
+        fullApiAccess: true,
+        supportResponseHours: 24,
+        localRepositories: true,
+        discordSync: true,
+        advancedAnalytics: true,
+        teamCollaboration: true,
+        customIntegrations: true,
+        videoStandups: true,
+        collaborativeEditing: true
+    };
     const tiers = {
-        starter: {
-            amount: 50,
-            interval: 'trial',
-            features: {
-                maxProjects: 10,
-                basicAiAssistance: true,
-                communitySupport: true,
-                limitedApiAccess: true,
-                supportResponseHours: 48,
-                localRepositories: true,
-                discordSync: true,
-                advancedAnalytics: false,
-                advancedAiAssistance: false,
-                aiCodeReview: false,
-                fullApiAccess: false,
-                prioritySupport: false,
-                teamCollaboration: false,
-                customIntegrations: false,
-                unlimitedProjects: false
-            }
-        },
-        freebie: {
+        developer: {
             amount: 0,
+            interval: 'monthly',
             features: {
                 maxProjects: 3,
                 basicAiAssistance: true,
@@ -331,76 +339,35 @@ subscriptionSchema.methods.upgradeTo = function(tier) {
                 unlimitedProjects: false
             }
         },
-        professional: {
-            amount: 99,
-            interval: 'monthly',
-            features: {
-                maxProjects: 0,
-                unlimitedProjects: true,
-                basicAiAssistance: true,
-                advancedAiAssistance: true,
-                aiCodeReview: true,
-                communitySupport: false,
-                prioritySupport: true,
-                limitedApiAccess: false,
-                fullApiAccess: true,
-                supportResponseHours: 24,
-                localRepositories: true,
-                discordSync: true,
-                advancedAnalytics: true,
-                teamCollaboration: true,
-                customIntegrations: true,
-                videoStandups: true,
-                collaborativeEditing: true
-            }
-        },
+        pro: { amount: 20, interval: 'monthly', features: { ...PAID_FEATURES, maxProjects: 10, unlimitedProjects: false } },
+        pro_plus: { amount: 60, interval: 'monthly', features: { ...PAID_FEATURES } },
+        team_standard: { amount: 40, interval: 'monthly', features: { ...PAID_FEATURES } },
+        team_premium: { amount: 120, interval: 'monthly', features: { ...PAID_FEATURES } },
         enterprise: {
             amount: 299,
             interval: 'monthly',
             features: {
-                maxProjects: 0,
-                unlimitedProjects: true,
-                basicAiAssistance: true,
-                advancedAiAssistance: true,
-                aiCodeReview: true,
-                communitySupport: false,
-                prioritySupport: true,
-                limitedApiAccess: false,
-                fullApiAccess: true,
+                ...PAID_FEATURES,
                 supportResponseHours: 1,
                 oneHourSupport: true,
-                localRepositories: true,
-                discordSync: true,
-                advancedAnalytics: true,
-                teamCollaboration: true,
-                customIntegrations: true,
                 soc2Compliance: true,
                 dedicatedSupport: true,
-                videoStandups: true,
-                collaborativeEditing: true,
                 ssoAuthentication: true,
                 customContracts: true,
                 slaAgreement: true,
                 dedicatedAccountManager: true
             }
-        },
-        developer: { amount: 0, interval: 'monthly', features: { maxProjects: 3 } },
-        pro: { amount: 20, interval: 'monthly', features: { maxProjects: 10, unlimitedProjects: false } },
-        pro_plus: { amount: 60, interval: 'monthly', features: { maxProjects: 0, unlimitedProjects: true } },
-        team_standard: { amount: 40, interval: 'monthly', features: { maxProjects: 0, unlimitedProjects: true, teamCollaboration: true } },
-        team_premium: { amount: 120, interval: 'monthly', features: { maxProjects: 0, unlimitedProjects: true, teamCollaboration: true } }
+        }
     };
 
-    const tierConfig = tiers[tier];
-    if (tierConfig) {
-        this.tier = tier;
-        this.features = { ...this.features, ...tierConfig.features };
-        if (tierConfig.amount !== undefined && this.pricing) {
-            this.pricing.amount = tierConfig.amount;
-        }
-        if (tierConfig.interval && this.pricing) {
-            this.pricing.interval = tierConfig.interval;
-        }
+    const tierConfig = tiers[resolved];
+    this.tier = resolved;
+    this.features = { ...tierConfig.features };
+    if (tierConfig.amount !== undefined && this.pricing) {
+        this.pricing.amount = tierConfig.amount;
+    }
+    if (tierConfig.interval && this.pricing) {
+        this.pricing.interval = tierConfig.interval;
     }
 };
 

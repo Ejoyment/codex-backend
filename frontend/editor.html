@@ -851,7 +851,7 @@
     let aiSessionId = null;
     let aiUsage = { used: 0, limit: 10 };
     let agentMode = false;
-    let currentTier = 'freebie';
+    let currentTier = 'developer';
     let terminalInstance = null;
     let terminalSocket = null;
     let terminalFitAddon = null;
@@ -960,12 +960,12 @@
             
             if (result.success && result.user) {
                 const user = result.user;
-                currentTier = user.subscription?.tier || 'freebie';
-                const names = { freebie: 'Free', starter: 'Free', professional: 'Pro', enterprise: 'Enterprise' };
-                const colors = { freebie: '#94a3b8', starter: '#94a3b8', professional: '#3b82f6', enterprise: '#8b5cf6' };
+                currentTier = user.subscription?.tier || 'developer';
+                const names = { developer: 'Free', pro: 'Pro', pro_plus: 'Pro+', team_standard: 'Team', team_premium: 'Team', enterprise: 'Enterprise' };
+                const colors = { developer: '#94a3b8', pro: '#3b82f6', pro_plus: '#3b82f6', team_standard: '#3b82f6', team_premium: '#3b82f6', enterprise: '#8b5cf6' };
                 document.getElementById('statusSubscription').innerHTML =
-                    `<i class="fas fa-crown" style="color:${colors[currentTier] || colors.freebie}"></i> <span>${names[currentTier] || 'Free'}</span>`;
-                const limits = { freebie: 10, starter: 10, professional: 100, enterprise: 9999 };
+                    `<i class="fas fa-crown" style="color:${colors[currentTier] || colors.developer}"></i> <span>${names[currentTier] || 'Free'}</span>`;
+                const limits = { developer: 10, pro: 100, pro_plus: 100, team_standard: 100, team_premium: 100, enterprise: 9999 };
                 aiUsage.limit = limits[currentTier] || 10;
                 document.getElementById('aiUsage').textContent =
                     `AI: ${aiUsage.used}/${aiUsage.limit >= 9999 ? '∞' : aiUsage.limit} today`;
@@ -988,12 +988,12 @@
             });
             const data = await res.json();
             if (data.success && data.subscription) {
-                currentTier = data.subscription.tier || 'freebie';
-                const names = { freebie: 'Free', starter: 'Free', professional: 'Pro', enterprise: 'Enterprise' };
-                const colors = { freebie: '#94a3b8', starter: '#94a3b8', professional: '#3b82f6', enterprise: '#8b5cf6' };
+                currentTier = data.subscription.tier || 'developer';
+                const names = { developer: 'Free', pro: 'Pro', pro_plus: 'Pro+', team_standard: 'Team', team_premium: 'Team', enterprise: 'Enterprise' };
+                const colors = { developer: '#94a3b8', pro: '#3b82f6', pro_plus: '#3b82f6', team_standard: '#3b82f6', team_premium: '#3b82f6', enterprise: '#8b5cf6' };
                 document.getElementById('statusSubscription').innerHTML =
-                    `<i class="fas fa-crown" style="color:${colors[currentTier] || colors.freebie}"></i> <span>${names[currentTier] || 'Free'}</span>`;
-                const limits = { freebie: 10, starter: 10, professional: 100, enterprise: 9999 };
+                    `<i class="fas fa-crown" style="color:${colors[currentTier] || colors.developer}"></i> <span>${names[currentTier] || 'Free'}</span>`;
+                const limits = { developer: 10, pro: 100, pro_plus: 100, team_standard: 100, team_premium: 100, enterprise: 9999 };
                 aiUsage.limit = limits[currentTier] || 10;
                 document.getElementById('aiUsage').textContent =
                     `AI: ${aiUsage.used}/${aiUsage.limit >= 9999 ? '∞' : aiUsage.limit} today`;
@@ -2874,7 +2874,7 @@ Generate the code now.`,
             // Initialize billing subscription for the workspace
             const res = await fetch(`${API_BASE}/${route}/initialize`, {
                 method: 'POST', headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ companyId, plan: 'professional', setupWebhooks: true })
+                body: JSON.stringify({ companyId, plan: 'pro', setupWebhooks: true })
             });
             const data = await res.json();
             if (data.success) {
@@ -2889,7 +2889,7 @@ Generate the code now.`,
                 // Fallback: try subscription upgrade endpoint
                 const subRes = await fetch(`${API_BASE}/subscription/upgrade`, {
                     method: 'POST', headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ tier: 'professional', provider, companyId })
+                    body: JSON.stringify({ tier: 'pro', provider, companyId })
                 });
                 const subData = await subRes.json();
                 if (subData.success) {

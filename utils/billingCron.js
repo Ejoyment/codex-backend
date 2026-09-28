@@ -88,7 +88,7 @@ class BillingCron {
                 // Handle expired trials - auto downgrade
                 if (isExpired) {
                     subscription.status = 'expired';
-                    subscription.upgradeTo('freebie');
+                    subscription.upgradeTo('developer');
                     await subscription.save();
 
                     // Send trial expired email
@@ -99,7 +99,7 @@ class BillingCron {
                         console.error('Trial expired email error:', emailError);
                     }
 
-                    console.log(`Auto-downgraded user ${user.email} from trial to freebie (trial expired)`);
+                    console.log(`Auto-downgraded user ${user.email} from trial to developer tier (trial expired)`);
                     continue;
                 }
 

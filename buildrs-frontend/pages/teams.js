@@ -160,7 +160,7 @@ export default function Teams() {
                 <span className="text-xs text-[#e5b84a] hidden md:inline">
                   Member limit reached —
                   <button type="button" onClick={() => router.push('/pricing')} className="underline hover:text-[#f2cd6b] ml-1">
-                    Upgrade to {tier === 'freebie' ? 'Professional' : 'Enterprise'}
+                    Upgrade to {['developer', 'pro', 'pro_plus'].includes(tier) ? 'Team' : 'Enterprise'}
                   </button>
                 </span>
               )}

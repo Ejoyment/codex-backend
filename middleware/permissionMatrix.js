@@ -1,78 +1,85 @@
 /**
  * Permission Matrix - Zero Trust IAM
- * Enforces tier-based access control for all IDE operations
+ * Enforces tier-based access control for all IDE operations.
+ * Canonical tiers: developer, pro, pro_plus, team_standard, team_premium, enterprise
+ * (legacy tier names are normalized via utils/tierNames).
  */
 
 const User = require('../models/User');
 const CodeFile = require('../models/CodeFile');
 const Company = require('../models/Company');
+const { TIERS, LEGACY_TIER_MAP, canonicalTier } = require('../utils/tierNames');
+
+const ALL_TIERS = [...TIERS];
+const PAID_TIERS = TIERS.filter((t) => t !== 'developer');
+const ENTERPRISE_TIERS = ['enterprise'];
 
 class PermissionMatrix {
   constructor() {
-    // Define permission scopes by tier.
-    // Starter/trial users are treated as paid IDE users for core development flows,
-    // while freebie remains read-only for a few product features.
+    // Permission scopes by canonical tier.
+    // The free developer tier gets the full local IDE (files, terminal, git,
+    // run, agents via local execution) — cloud/monetized surfaces stay paid.
     this.scopes = {
-      // File operations
-      'file:read': ['freebie', 'starter', 'professional', 'enterprise'],
-      'file:write': ['starter', 'professional', 'enterprise'],
-      'file:delete': ['starter', 'professional', 'enterprise'],
-      'file:create': ['starter', 'professional', 'enterprise'],
+      // File operations (blueprint: developers code on every tier)
+      'file:read': ALL_TIERS,
+      'file:write': ALL_TIERS,
+      'file:delete': ALL_TIERS,
+      'file:create': ALL_TIERS,
 
-      // Terminal access (freebie: one shared shell for evaluation/trials)
-      'terminal:access': ['freebie', 'starter', 'professional', 'enterprise'],
-      'terminal:create': ['freebie', 'starter', 'professional', 'enterprise'],
-      'terminal:execute': ['freebie', 'starter', 'professional', 'enterprise'],
+      // Terminal access (every tier gets a shell)
+      'terminal:access': ALL_TIERS,
+      'terminal:create': ALL_TIERS,
+      'terminal:execute': ALL_TIERS,
 
       // Code execution (editor Run button)
-      'ide:run': ['freebie', 'starter', 'professional', 'enterprise'],
+      'ide:run': ALL_TIERS,
 
       // Git operations
-      'git:read': ['starter', 'professional', 'enterprise'],
-      'git:commit': ['starter', 'professional', 'enterprise'],
-      'git:push': ['starter', 'professional', 'enterprise'],
-      'git:pull': ['starter', 'professional', 'enterprise'],
-      'git:branch': ['starter', 'professional', 'enterprise'],
+      'git:read': ALL_TIERS,
+      'git:commit': ALL_TIERS,
+      'git:push': ALL_TIERS,
+      'git:pull': ALL_TIERS,
+      'git:branch': ALL_TIERS,
 
-      // Collaboration
-      'collab:join': ['starter', 'professional', 'enterprise'],
-      'collab:edit': ['starter', 'professional', 'enterprise'],
+      // Collaboration (joining is open; shared editing is paid)
+      'collab:join': ALL_TIERS,
+      'collab:edit': PAID_TIERS,
 
-      // LSP features
-      'lsp:completions': ['freebie', 'starter', 'professional', 'enterprise'],
-      'lsp:hover': ['freebie', 'starter', 'professional', 'enterprise'],
-      'lsp:definition': ['starter', 'professional', 'enterprise'],
-      'lsp:references': ['starter', 'professional', 'enterprise'],
+      // LSP features (local tooling)
+      'lsp:completions': ALL_TIERS,
+      'lsp:hover': ALL_TIERS,
+      'lsp:definition': ALL_TIERS,
+      'lsp:references': ALL_TIERS,
 
       // VFS operations
-      'vfs:read': ['freebie', 'starter', 'professional', 'enterprise'],
-      'vfs:write': ['starter', 'professional', 'enterprise'],
-      'vfs:search': ['starter', 'professional', 'enterprise'],
-      'vfs:index': ['starter', 'professional', 'enterprise'],
+      'vfs:read': ALL_TIERS,
+      'vfs:write': ALL_TIERS,
+      'vfs:search': ALL_TIERS,
+      'vfs:index': ALL_TIERS,
 
-      // Agent operations
-      'agent:basic': ['starter', 'professional', 'enterprise'],
-      'agent:autonomous': ['starter', 'professional', 'enterprise'],
-      'agent:deploy': ['starter', 'professional', 'enterprise'],
+      // Agent operations (developer: local agent only; cloud autonomy is paid)
+      'agent:basic': ALL_TIERS,
+      'agent:autonomous': PAID_TIERS,
+      'agent:deploy': PAID_TIERS,
 
       // Company operations
-      'company:create': ['professional', 'enterprise'],
-      'company:read': ['freebie', 'professional', 'enterprise'],
-      'company:update': ['professional', 'enterprise'],
-      'company:delete': ['enterprise'],
-      'company:invite': ['professional', 'enterprise']
+      'company:create': PAID_TIERS,
+      'company:read': ALL_TIERS,
+      'company:update': PAID_TIERS,
+      'company:delete': ENTERPRISE_TIERS,
+      'company:invite': PAID_TIERS
     };
 
-    // Resource limits by tier
+    // Resource limits by pricing group (developer / paid / enterprise)
     this.limits = {
-      freebie: {
+      developer: {
         maxFiles: 100,
         maxFileSize: 1024 * 1024, // 1MB
         maxTerminals: 1,
         maxCollaborators: 1,
         maxWorkspaces: 1
       },
-      professional: {
+      pro: {
         maxFiles: 10000,
         maxFileSize: 10 * 1024 * 1024, // 10MB
         maxTerminals: 3,
@@ -90,44 +97,22 @@ class PermissionMatrix {
   }
 
   normalizeTier(tier) {
-    const normalized = String(tier || 'freebie').trim().toLowerCase();
-    const aliases = {
-      free: 'freebie',
-      basic: 'freebie',
-      developer: 'freebie',
-      starter: 'starter',
-      trial: 'starter',
-      pro: 'professional',
-      professional: 'professional',
-      pro_plus: 'professional',
-      team_standard: 'professional',
-      team_premium: 'professional',
-      enterprise: 'enterprise',
-      business: 'enterprise',
-      team: 'enterprise',
-    };
-    return aliases[normalized] || normalized || 'freebie';
+    return canonicalTier(tier);
+  }
+
+  // Map any canonical tier onto the three limit groups above.
+  limitKey(tier) {
+    const normalized = canonicalTier(tier);
+    if (normalized === 'developer' || normalized === 'enterprise') return normalized;
+    return 'pro';
   }
 
   isTierAllowed(tier, allowedTiers, scope) {
-    const normalizedTier = this.normalizeTier(tier);
-    const normalizedAllowed = (allowedTiers || []).map((value) => this.normalizeTier(value));
+    const normalizedTier = canonicalTier(tier);
+    const normalizedAllowed = (allowedTiers || []).map((value) => canonicalTier(value));
 
-    if (normalizedAllowed.includes(normalizedTier)) {
-      return true;
-    }
-
-    // Starter/trial users get the same IDE access as professional for tooling flows only.
     // Fail closed: no scope (undefined/null) means no fallback.
-    // Company/admin scopes (company:, etc.) never fall back.
-    if (normalizedTier === 'starter' && normalizedAllowed.includes('professional') && typeof scope === 'string') {
-      const toolingPrefixes = ['file:', 'terminal:', 'git:', 'collab:', 'lsp:', 'vfs:', 'agent:', 'debug:', 'mcp:', 'pipeline:'];
-      if (toolingPrefixes.some((prefix) => scope.startsWith(prefix))) {
-        return true;
-      }
-    }
-
-    return false;
+    return normalizedAllowed.includes(normalizedTier);
   }
 
   /**
@@ -142,7 +127,7 @@ class PermissionMatrix {
         throw new Error('User not found');
       }
 
-      const tier = this.normalizeTier(user.subscription?.tier || 'freebie');
+      const tier = this.normalizeTier(user.subscription?.tier || 'developer');
       const scope = `${resource}:${action}`;
       const allowedTiers = this.scopes[scope];
 
@@ -265,8 +250,8 @@ class PermissionMatrix {
   async checkLimit(userId, limitType) {
     try {
       const user = await User.findById(userId).populate('subscription');
-      const tier = this.normalizeTier(user.subscription?.tier || 'freebie');
-      const limits = this.limits[tier];
+      const tier = this.normalizeTier(user.subscription?.tier || 'developer');
+      const limits = this.limits[this.limitKey(tier)];
 
       if (!limits) {
         return {
@@ -329,7 +314,7 @@ class PermissionMatrix {
   async getUserPermissions(userId) {
     try {
       const user = await User.findById(userId).populate('subscription');
-      const tier = this.normalizeTier(user.subscription?.tier || 'freebie');
+      const tier = this.normalizeTier(user.subscription?.tier || 'developer');
 
       const permissions = {};
       
@@ -341,7 +326,7 @@ class PermissionMatrix {
       return {
         tier,
         permissions,
-        limits: this.limits[tier]
+        limits: this.limits[this.limitKey(tier)]
       };
     } catch (error) {
       console.error('Get permissions error:', error);

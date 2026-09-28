@@ -7,7 +7,7 @@ const User = require('../models/User');
 /**
  * Get or create a subscription for a user.
  * Never blocks a user for having no subscription record — instead creates
- * a default freebie/starter subscription so the rest of the app keeps working.
+ * a default developer-tier subscription so the rest of the app keeps working.
  */
 async function getOrCreateSubscription(userId) {
     let subscription = await Subscription.findOne({ userId });
@@ -47,7 +47,7 @@ async function getOrCreateSubscription(userId) {
  * 1. Is the user currently on a free trial?
  * 2. How many days left?
  * 3. Is this the last day? → send email notification
- * 4. Is the trial expired? → auto-downgrade to freebie + notify via email
+ * 4. Is the trial expired? → auto-downgrade to developer (free) + notify via email
  * 5. Are the correct features enabled for the user's tier?
  */
 const checkTrialStatus = async (req, res, next) => {
@@ -77,11 +77,11 @@ const checkTrialStatus = async (req, res, next) => {
             const isLastDay = subscription.isLastTrialDay();
             const isExpired = subscription.isTrialExpired();
 
-            // Trial expired -> auto downgrade to freebie
+            // Trial expired -> auto downgrade to developer (free)
             if (isExpired) {
                 const previousTier = subscription.tier;
                 subscription.status = 'expired';
-                subscription.upgradeTo('freebie');
+                subscription.upgradeTo('developer');
                 await subscription.save();
                 
                 // Send trial expired email
@@ -91,7 +91,7 @@ const checkTrialStatus = async (req, res, next) => {
                     console.error('Trial expired email error:', emailError);
                 }
                 
-                console.log(`User ${userId} trial expired, downgraded from ${previousTier} to freebie`);
+                console.log(`User ${userId} trial expired, downgraded from ${previousTier} to developer`);
                 
                 return res.status(403).json({
                     success: false,

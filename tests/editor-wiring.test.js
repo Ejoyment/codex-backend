@@ -58,14 +58,14 @@ describe('Terminal wiring (Phase 4)', () => {
     expect(src()).toContain('Workspace Shell · PTY');
   });
 
-  test('freebie tier gets one terminal', () => {
+  test('developer tier gets one terminal', () => {
     const permissionMatrix = require('../middleware/permissionMatrix');
-    expect(permissionMatrix.limits.freebie.maxTerminals).toBe(1);
+    expect(permissionMatrix.limits.developer.maxTerminals).toBe(1);
     expect(permissionMatrix.scopes['terminal:access']).toEqual([
-      'freebie', 'starter', 'professional', 'enterprise',
+      'developer', 'pro', 'pro_plus', 'team_standard', 'team_premium', 'enterprise',
     ]);
     expect(permissionMatrix.scopes['terminal:create']).toEqual([
-      'freebie', 'starter', 'professional', 'enterprise',
+      'developer', 'pro', 'pro_plus', 'team_standard', 'team_premium', 'enterprise',
     ]);
   });
 

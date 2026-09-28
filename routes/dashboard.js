@@ -5,6 +5,7 @@ const Integration = require('../models/Integration');
 const IntegrationData = require('../models/IntegrationData');
 const Subscription = require('../models/Subscription');
 const { authenticateToken } = require('../middleware/auth');
+const { canonicalTier } = require('../utils/tierNames');
 
 /**
  * @swagger
@@ -43,7 +44,7 @@ router.get('/data', authenticateToken, async (req, res) => {
     try {
         // Get user's subscription
         const subscription = await Subscription.findOne({ userId: req.userId });
-        const tier = subscription?.tier || 'starter';
+        const tier = canonicalTier(subscription?.tier);
         const status = subscription?.status || 'trial';
 
         // Get user's connected integrations
@@ -53,9 +54,11 @@ router.get('/data', authenticateToken, async (req, res) => {
         
         // Define which integrations each tier can access
         const allowedIntegrationsMap = {
-            'starter': ['discord'],
-            'freebie': ['discord'],
-            'professional': ['github', 'discord', 'slack', 'notion', 'figma', 'vscode'],
+            'developer': ['discord'],
+            'pro': ['github', 'discord', 'slack', 'notion', 'figma', 'vscode'],
+            'pro_plus': ['github', 'discord', 'slack', 'notion', 'figma', 'vscode'],
+            'team_standard': ['github', 'discord', 'slack', 'notion', 'figma', 'vscode'],
+            'team_premium': ['github', 'discord', 'slack', 'notion', 'figma', 'vscode'],
             'enterprise': ['github', 'discord', 'slack', 'notion', 'figma', 'vscode']
         };
         const allowedIntegrations = allowedIntegrationsMap[tier] || ['discord'];

@@ -555,7 +555,7 @@ router.delete('/files/:fileId', authenticateToken, permissionMatrix.requirePermi
 // Editor file/folder creation is authenticated-only by convention (the
 // code-editor routes that create and save files carry no tier gate either) —
 // gating folders on vfs:write made "New Folder" return 403 Permission denied
-// for freebie-tier users while file creation worked fine.
+// for developer-tier users while file creation worked fine.
 router.post('/folders', authenticateToken, async (req, res) => {
   try {
     const { name, path, projectId } = req.body;

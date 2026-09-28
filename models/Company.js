@@ -62,12 +62,12 @@ const companySchema = new mongoose.Schema({
     subscription: {
         tier: {
             type: String,
-            enum: ['freebie', 'professional', 'enterprise'],
-            default: 'freebie'
+            enum: ['developer', 'pro', 'pro_plus', 'team_standard', 'team_premium', 'enterprise'],
+            default: 'developer'
         },
         memberLimit: {
             type: Number,
-            default: 1  // Freebie: 1 member only (owner)
+            default: 1  // Developer (free): 1 member only (owner)
         }
     },
     stats: {

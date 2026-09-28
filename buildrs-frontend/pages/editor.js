@@ -21,6 +21,22 @@ import useToastStore from '../store/toastStore';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import DeploymentLogsModal from '../components/DeploymentLogsModal';
 import { useCurrentCompany } from '../hooks/useCurrentCompany';
+import { normalizeTier } from '../lib/tier';
+
+function tierBadgeLabel(t) {
+  const n = normalizeTier(t);
+  if (n === 'enterprise') return 'Enterprise';
+  if (n === 'developer') return 'Free';
+  if (n === 'team_standard' || n === 'team_premium') return 'Team';
+  return 'Pro';
+}
+
+function tierBadgeClass(t) {
+  const n = normalizeTier(t);
+  if (n === 'enterprise') return '';
+  if (n === 'developer') return 'is-free';
+  return 'is-pro';
+}
 
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3000';
 
@@ -3846,7 +3862,7 @@ export default function Editor() {
                         </div>
                         <div className="ed-intel-card">
                           <span className="ed-intel-label">Environment</span>
-                          <strong>{subscription?.tier === 'enterprise' ? 'Enterprise' : subscription?.tier === 'professional' ? 'Pro' : 'Free'}</strong>
+                          <strong>{tierBadgeLabel(subscription?.tier)}</strong>
                           <small>{blockCount ? `${blockCount} language(s) locked` : 'Full toolchain enabled'}</small>
                         </div>
                         <div className="ed-intel-card">
@@ -3953,8 +3969,8 @@ export default function Editor() {
               <span className="ed-status-item">{(selectedFile?.language || detectLanguage(selectedFile?.name) || 'text').toUpperCase()}</span>
               <span className="ed-status-item">UTF-8</span>
               <span className="ed-status-item">Spaces: 2</span>
-              <span className={`ed-tier-badge ${subscription?.tier === 'professional' ? 'is-pro' : subscription?.tier === 'enterprise' ? '' : 'is-free'}`}>
-                {subscription?.tier === 'enterprise' ? 'Enterprise' : subscription?.tier === 'professional' ? 'Pro' : 'Free'}
+              <span className={`ed-tier-badge ${tierBadgeClass(subscription?.tier)}`}>
+                {tierBadgeLabel(subscription?.tier)}
               </span>
             </div>
           </footer>

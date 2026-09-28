@@ -1,6 +1,7 @@
 const Company = require('../models/Company');
 const Subscription = require('../models/Subscription');
 const jwt = require('jsonwebtoken');
+const { canonicalTier } = require('../utils/tierNames');
 
 // Tier limits configuration
 const CORE_PAID_FEATURES = {
@@ -16,24 +17,6 @@ const CORE_PAID_FEATURES = {
 
 const TIER_LIMITS = {
     developer: {
-        maxMembers: 1,
-        maxProjects: 1,
-        maxTasksPerProject: 5,
-        maxStorageMB: 50,
-        maxIntegrations: 0,
-        maxMeetingsPerMonth: 0,
-        features: {
-            teamChat: false,
-            aiPair: false,
-            advancedAnalytics: false,
-            customBranding: false,
-            prioritySupport: false,
-            videoMeetings: false,
-            codeCollaboration: false,
-            integrations: false
-        }
-    },
-    freebie: {
         maxMembers: 1,
         maxProjects: 1,
         maxTasksPerProject: 5,
@@ -69,24 +52,6 @@ const TIER_LIMITS = {
         maxMeetingsPerMonth: 100,
         features: { ...CORE_PAID_FEATURES }
     },
-    professional: {
-        maxMembers: 10,
-        maxProjects: 50,
-        maxTasksPerProject: 100,
-        maxStorageMB: 5000,
-        maxIntegrations: 5,
-        maxMeetingsPerMonth: 100,
-        features: {
-            teamChat: true,
-            aiPair: true,
-            advancedAnalytics: true,
-            customBranding: true,
-            prioritySupport: true,
-            videoMeetings: true,
-            codeCollaboration: true,
-            integrations: true
-        }
-    },
     team_standard: {
         maxMembers: -1,
         maxProjects: -1,
@@ -104,24 +69,6 @@ const TIER_LIMITS = {
         maxIntegrations: -1,
         maxMeetingsPerMonth: -1,
         features: { ...CORE_PAID_FEATURES }
-    },
-    starter: {
-        maxMembers: 1,
-        maxProjects: 1,
-        maxTasksPerProject: 5,
-        maxStorageMB: 50,
-        maxIntegrations: 0,
-        maxMeetingsPerMonth: 0,
-        features: {
-            teamChat: false,
-            aiPair: false,
-            advancedAnalytics: false,
-            customBranding: false,
-            prioritySupport: false,
-            videoMeetings: false,
-            codeCollaboration: false,
-            integrations: false
-        }
     },
     enterprise: {
         maxMembers: -1, // unlimited
@@ -159,7 +106,7 @@ async function checkMemberLimit(req, res, next) {
             });
         }
 
-        const tier = company.subscription.tier || 'freebie';
+        const tier = canonicalTier(company.subscription.tier);
         const limits = TIER_LIMITS[tier];
         const currentMembers = company.members.length;
 
@@ -200,7 +147,7 @@ async function checkProjectLimit(req, res, next) {
             });
         }
 
-        const tier = company.subscription.tier || 'freebie';
+        const tier = canonicalTier(company.subscription.tier);
         const limits = TIER_LIMITS[tier];
         const currentProjects = company.stats.totalProjects || 0;
 
@@ -240,7 +187,7 @@ async function checkTaskLimit(req, res, next) {
             });
         }
 
-        const tier = company.subscription.tier || 'freebie';
+        const tier = canonicalTier(company.subscription.tier);
         const limits = TIER_LIMITS[tier];
         
         // Get task count for this project
@@ -287,7 +234,7 @@ function requireTeamFeature(featureName) {
                 });
             }
 
-            const tier = company.subscription.tier || 'freebie';
+            const tier = canonicalTier(company.subscription.tier);
             const limits = TIER_LIMITS[tier];
 
             if (!limits.features[featureName]) {
@@ -336,17 +283,17 @@ async function getCompanyLimits(companyId) {
 
         // Sync company tier with owner's subscription
         const ownerSubscription = await Subscription.findOne({ userId: company.owner._id });
-        const ownerTier = ownerSubscription?.tier || 'freebie';
+        const ownerTier = canonicalTier(ownerSubscription?.tier);
         
         // Update company tier if it doesn't match
         if (company.subscription.tier !== ownerTier) {
-            const memberLimit = ['freebie', 'developer', 'starter'].includes(ownerTier) ? 1 : ['professional', 'pro', 'pro_plus'].includes(ownerTier) ? 10 : 999999;
+            const memberLimit = ownerTier === 'developer' ? 1 : ['pro', 'pro_plus'].includes(ownerTier) ? 10 : 999999;
             company.subscription.tier = ownerTier;
             company.subscription.memberLimit = memberLimit;
             await company.save();
         }
 
-        const tier = company.subscription.tier || 'freebie';
+        const tier = canonicalTier(company.subscription.tier);
         return {
             tier,
             limits: TIER_LIMITS[tier],
@@ -377,11 +324,11 @@ async function checkUserSubscription(req, res, next) {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         const subscription = await Subscription.findOne({ userId: decoded.id });
         
-        if (!subscription || subscription.tier === 'freebie') {
+        if (!subscription || canonicalTier(subscription.tier) === 'developer') {
             return res.status(403).json({
                 success: false,
                 message: 'This feature requires a paid subscription',
-                tier: subscription?.tier || 'freebie',
+                tier: canonicalTier(subscription?.tier),
                 requiresUpgrade: true,
                 upgradeUrl: '/pricing.html'
             });
