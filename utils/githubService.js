@@ -204,6 +204,89 @@ class GitHubService {
         }
     }
 
+    /**
+     * Push N files as ONE commit using the Git Data API
+     * (blobs → tree → commit → ref). The Contents API can only commit a
+     * single file per call, which produced N commits (or failed on path
+     * joins) for one "Push" click.
+     */
+    async pushCommit(userId, owner, repo, branch, files, message) {
+        const octokit = await this.getClient(userId);
+
+        const targetBranch = branch || await (async () => {
+            const { data } = await octokit.repos.get({ owner, repo });
+            return data.default_branch || 'main';
+        })();
+
+        // Current branch tip → base tree
+        let refSha = null;
+        try {
+            const { data: ref } = await octokit.git.getRef({ owner, repo, ref: `heads/${targetBranch}` });
+            refSha = ref.object.sha;
+        } catch (err) {
+            if (!/Branch|ref/i.test(err?.message || '')) throw err;
+            // Branch does not exist yet — create it from HEAD.
+            const { data: repoData } = await octokit.repos.get({ owner, repo });
+            const { data: headRef } = await octokit.git.getRef({
+                owner, repo, ref: `heads/${repoData.default_branch || 'main'}`,
+            });
+            const { data: created } = await octokit.git.createRef({
+                owner, repo, ref: `refs/heads/${targetBranch}`, sha: headRef.object.sha,
+            });
+            refSha = created.object.sha;
+        }
+
+        const baseTreeSha = refSha
+            ? (await octokit.git.getCommit({ owner, repo, commit_sha: refSha })).data.tree.sha
+            : undefined;
+
+        const treeEntries = [];
+        for (const file of files) {
+            const { data: blob } = await octokit.git.createBlob({
+                owner, repo,
+                content: Buffer.from(String(file.content ?? ''), 'utf-8').toString('base64'),
+                encoding: 'base64',
+            });
+            treeEntries.push({ path: file.path, mode: '100644', type: 'blob', sha: blob.sha });
+        }
+
+        const { data: tree } = await octokit.git.createTree({
+            owner, repo, base_tree: baseTreeSha, tree: treeEntries,
+        });
+
+        const { data: commit } = await octokit.git.createCommit({
+            owner, repo,
+            message: message || `Update ${files.length} file(s) from Buildrs`,
+            tree: tree.sha,
+            parents: refSha ? [refSha] : [],
+        });
+
+        try {
+            await octokit.git.updateRef({
+                owner, repo, ref: `heads/${targetBranch}`, sha: commit.sha,
+            });
+        } catch (err) {
+            // Non-fast-forward: someone pushed meanwhile — retry once on top.
+            const { data: freshRef } = await octokit.git.getRef({ owner, repo, ref: `heads/${targetBranch}` });
+            const { data: freshCommit } = await octokit.git.createCommit({
+                owner, repo,
+                message: message || `Update ${files.length} file(s) from Buildrs`,
+                tree: tree.sha,
+                parents: [freshRef.object.sha],
+            });
+            await octokit.git.updateRef({ owner, repo, ref: `heads/${targetBranch}`, sha: freshCommit.sha });
+            return {
+                commit: { sha: freshCommit.sha, message: freshCommit.message, url: freshCommit.html_url },
+                branch: targetBranch,
+            };
+        }
+
+        return {
+            commit: { sha: commit.sha, message: commit.message, url: commit.html_url },
+            branch: targetBranch,
+        };
+    }
+
     async deleteFile(userId, owner, repo, path, message, branch = null) {
         try {
             const octokit = await this.getClient(userId);

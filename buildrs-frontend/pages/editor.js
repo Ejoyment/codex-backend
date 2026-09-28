@@ -13,7 +13,7 @@ import {
   Save, ChevronDown, ChevronRight, FileCode, Terminal, Bot, Layers, Rocket, Box,
   Users, GitBranch, Eye, X, FolderOpen, Search, Settings, Folder, Trash2,
   FolderPlus, AlertCircle, CheckCircle, XCircle, RefreshCw, Puzzle, HelpCircle,
-  FilePlus, Play, Loader2, LayoutDashboard, GitPullRequestArrow, Copy,
+  FilePlus, Play, Loader2, LayoutDashboard, GitPullRequestArrow, Copy, GitCommit,
 } from 'lucide-react';
 import MonacoEditor from '@monaco-editor/react';
 import { io } from 'socket.io-client';
@@ -108,11 +108,14 @@ function getMonacoLanguage(lang) {
 function detectLanguage(filename) {
   const ext = (filename || '').split('.').pop()?.toLowerCase() || '';
   const map = {
-    js: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript',
-    py: 'python', java: 'java', go: 'go', rs: 'rust', cpp: 'cpp', c: 'c',
+    js: 'javascript', jsx: 'javascript', mjs: 'javascript', cjs: 'javascript',
+    ts: 'typescript', tsx: 'typescript',
+    py: 'python', pyw: 'python', java: 'java', go: 'go', rs: 'rust', cpp: 'cpp', c: 'c',
     rb: 'ruby', php: 'php', html: 'html', css: 'css', json: 'json',
     yml: 'yaml', yaml: 'yaml', md: 'markdown', sh: 'shell', bash: 'shell', sql: 'sql',
     lua: 'lua', groovy: 'groovy', pl: 'perl', r: 'r',
+    ex: 'elixir', exs: 'elixir', cs: 'csharp', dart: 'dart', swift: 'swift',
+    ps1: 'powershell', kt: 'kotlin', scala: 'scala', hs: 'haskell',
   };
   return map[ext] || 'text';
 }
@@ -130,6 +133,8 @@ function LANG_COLORS() {
     css: '#563d7c', json: '#292929', yaml: '#cb171e', markdown: '#083fa1',
     shell: '#89e051', sql: '#e38c00', text: '#6e7681',
     lua: '#000080', groovy: '#4298b4', perl: '#0298c3', r: '#276dc3',
+    elixir: '#4b275f', csharp: '#68217a', dart: '#0175c2', swift: '#f05138',
+    powershell: '#012456', kotlin: '#7f52ff', scala: '#dc322f', haskell: '#5e5086',
   };
 }
 
@@ -444,6 +449,7 @@ export default function Editor() {
   const [repoCreateError, setRepoCreateError] = useState(null);
   const [expandedFolders, setExpandedFolders] = useState({});
   const [fileFilter, setFileFilter] = useState('');
+  const [commitMsg, setCommitMsg] = useState('');
 
   const selectedFileRef = useRef(null);
   selectedFileRef.current = selectedFile;
@@ -454,10 +460,16 @@ export default function Editor() {
     if (!file) return null;
     if (file._id) return String(file._id);
     if (file.id) return String(file.id);
-    if (file.path) return `github:${file.path}`;
-    if (file.name) return `github:${file.name}`;
+    // Scope path-derived keys to the selected repo (and branch) so the same
+    // path in two repos never collides into one buffer/dirty state.
+    const repoScope = selectedRepo
+      ? (selectedRepo.fullName || `${selectedRepo.owner?.login || selectedRepo.owner || selectedRepo.ownerName || 'gh'}/${selectedRepo.name}`) +
+        (selectedRepo.default_branch ? `@${selectedRepo.default_branch}` : '')
+      : 'none';
+    if (file.path) return `github:${repoScope}:${file.path}`;
+    if (file.name) return `github:${repoScope}:${file.name}`;
     return `tmp:${Math.random().toString(36).slice(2)}`;
-  }, []);
+  }, [selectedRepo]);
 
   function buildSession() {
     const contents = {};
@@ -851,7 +863,16 @@ export default function Editor() {
         socket.on('connect', () => {
           socket.emit('terminal:create', {
             workspaceId: workspaceId || user?._id || 'default',
-            options: { cols: term.cols, rows: term.rows },
+            options: {
+              cols: term.cols,
+              rows: term.rows,
+              // Scope the shell to the current project/repo so it hydrates
+              // and watches only that project's files.
+              projectId: selectedProject?._id || selectedProject?.id || undefined,
+              repoFullName: selectedRepo
+                ? (selectedRepo.fullName || `${selectedRepo.owner?.login || selectedRepo.owner || selectedRepo.ownerName || ''}/${selectedRepo.name}`)
+                : undefined,
+            },
           });
         });
         socket.on('terminal:created', (data) => {
@@ -918,18 +939,25 @@ export default function Editor() {
       setTermInfo(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [panel, workspaceId]);
+  }, [panel, workspaceId, selectedProject?._id || selectedProject?.id || null, selectedRepo ? (selectedRepo.fullName || selectedRepo.name) : null]);
+
+  // Monotonic token so a slow response for workspace files can't overwrite
+  // the file list of the project/repo the user switched to meanwhile.
+  const filesSeqRef = useRef(0);
 
   async function loadFiles(companyId) {
+    const seq = ++filesSeqRef.current;
+    setLoading(true);
     try {
-      setLoading(true);
       const qs = companyId ? `?companyId=${encodeURIComponent(companyId)}` : '';
       const data = await apiFetch(`/api/code-editor/files${qs}`);
+      if (seq !== filesSeqRef.current) return;
       setFiles(data.files || []);
     } catch {
+      if (seq !== filesSeqRef.current) return;
       setStatus({ type: 'error', msg: 'Failed to load files' });
     } finally {
-      setLoading(false);
+      if (seq === filesSeqRef.current) setLoading(false);
     }
   }
 
@@ -941,14 +969,17 @@ export default function Editor() {
   }
 
   async function loadProjectFiles(projectId) {
+    const seq = ++filesSeqRef.current;
     setLoading(true);
     try {
       const data = await projectApi.listProjectFiles(projectId);
+      if (seq !== filesSeqRef.current) return;
       setFiles(data.files || []);
     } catch {
+      if (seq !== filesSeqRef.current) return;
       setFiles([]);
     } finally {
-      setLoading(false);
+      if (seq === filesSeqRef.current) setLoading(false);
     }
   }
 
@@ -1094,14 +1125,19 @@ export default function Editor() {
   }
 
   async function loadGithubRepoFiles(repo) {
+    const seq = ++filesSeqRef.current;
     setLoading(true);
     try {
-      const data = await apiFetch(`/api/github/repos/${repo.owner}/${repo.name}/git/tree?recursive=1`);
+      const ref = repo.default_branch || repo.defaultBranch;
+      const qs = `recursive=1${ref ? `&ref=${encodeURIComponent(ref)}` : ''}`;
+      const data = await apiFetch(`/api/github/repos/${repo.owner}/${repo.name}/git/tree?${qs}`);
+      if (seq !== filesSeqRef.current) return;
       setFiles(data.files || []);
     } catch {
+      if (seq !== filesSeqRef.current) return;
       setFiles([]);
     } finally {
-      setLoading(false);
+      if (seq === filesSeqRef.current) setLoading(false);
     }
   }
 
@@ -1124,7 +1160,10 @@ export default function Editor() {
     if (!workspaceId) return;
     try {
       const data = await apiFetch(`/api/git/status/${workspaceId}`).catch(() => null);
-      if (data) setGitStatus(data);
+      // success:false = repo not initialised yet (or git error) — show the
+      // empty state instead of a fake clean tree.
+      if (data && data.success !== false) setGitStatus(data);
+      else setGitStatus(null);
     } catch {}
   }
 
@@ -1663,10 +1702,6 @@ export default function Editor() {
       return;
     }
     const lang = runLanguageFor(file);
-    if (lang.error) {
-      setStatus({ type: 'error', msg: lang.error });
-      return;
-    }
     const editor = editorRef.current;
     const activeContent = editor?.getValue?.();
     if (typeof activeContent !== 'string') {
@@ -1680,7 +1715,10 @@ export default function Editor() {
     };
     const files = [];
     openFiles.forEach((f) => {
-      const rel = safePath(f.path || f.name);
+      // fileFullPath: workspace CodeFiles carry only the directory in `path`
+      // — the old `f.path || f.name` produced '/src' (dir) or '/' for root
+      // files, so entries were wrong or rejected outright.
+      const rel = safePath(fileFullPath(f));
       if (!rel || files.some((x) => x.path === rel) || files.length >= 50) return;
       const key = getFileKey(f);
       const content = key === getFileKey(file)
@@ -1688,7 +1726,7 @@ export default function Editor() {
         : openContentsRef.current[key];
       if (typeof content === 'string') files.push({ path: rel, content });
     });
-    const entry = safePath(file.path || file.name);
+    const entry = safePath(fileFullPath(file));
     if (!entry || !files.some((f) => f.path === entry)) {
       setStatus({ type: 'error', msg: `Cannot run '${file.name}': file name has unsupported characters` });
       return;
@@ -1701,7 +1739,7 @@ export default function Editor() {
     setRunProblems(monacoRef.current, editor?.getModel?.() || null, []);
     clearOutput();
     setPanel('output');
-    appendOutput('sys', `▸ Running ${file.name} as ${lang.language}${dirty ? ' (unsaved buffer)' : ''}…`);
+    appendOutput('sys', `▸ Running ${file.name} as ${lang.language === 'auto' ? 'auto-detected' : lang.language}${dirty ? ' (unsaved buffer)' : ''}…`);
     runLineBufRef.current = '';
 
     try {
@@ -2020,6 +2058,9 @@ export default function Editor() {
       return {
         name: file.name,
         path: pathValue === '/' ? '/' : pathValue,
+        // Full path (dir + name for CodeFiles, full for GitHub entries) —
+        // consumers that must not guess the shape use this.
+        fullPath: fileFullPath(file),
         content: contentValue,
         language: file.language || 'plaintext',
         // GitHub blob sha lets the backend resolve content via the blob API
@@ -2150,14 +2191,10 @@ export default function Editor() {
           return;
         }
 
-        if (action === 'commit') {
-          setStatus({ type: 'success', msg: 'Push commits your saved changes to GitHub' });
-          setTimeout(() => setStatus(null), 3000);
-          return;
-        }
-
-        if (action === 'push') {
-          const filesToPush = gatherDeploymentFiles().filter((file) => !!file.name && !!file.content);
+        if (action === 'commit' || action === 'push') {
+          const filesToPush = gatherDeploymentFiles().filter(
+            (file) => !!file.name && typeof file.content === 'string'
+          );
           if (!filesToPush.length) {
             setStatus({ type: 'error', msg: 'No file changes to push to the selected repository.' });
             return;
@@ -2165,14 +2202,19 @@ export default function Editor() {
 
           const repoOwner = selectedRepo.owner?.login || selectedRepo.owner || selectedRepo.ownerName;
           const repoName = selectedRepo.name;
+          const message = (commitMsg || '').trim()
+            || `Update ${filesToPush.length} file(s) from Buildrs HQ`;
           const data = await apiFetch('/api/github-advanced/push', {
             method: 'POST',
             body: JSON.stringify({
               owner: repoOwner,
               repo: repoName,
-              branch: selectedRepo.default_branch || 'main',
-              files: filesToPush.map((file) => ({ path: file.path === '/' ? file.name : `${file.path.replace(/^\/+|\/+$/g, '')}/${file.name}`, content: file.content })),
-              message: `Update ${filesToPush[0].name} from Buildrs HQ`,
+              branch: selectedRepo.default_branch || selectedRepo.defaultBranch || 'main',
+              files: filesToPush.map((file) => ({
+                path: (file.fullPath || fileFullPath(file)).replace(/^\/+/, ''),
+                content: file.content,
+              })),
+              message,
             }),
           });
 
@@ -2197,8 +2239,13 @@ export default function Editor() {
           });
           schedulePersist();
           refreshGitModified();
+          setCommitMsg('');
+          await loadRepoGitStatus(selectedRepo).catch(() => {});
 
-          setStatus({ type: 'success', msg: `Pushed ${filesToPush.length} file(s) to ${repoOwner}/${repoName}` });
+          setStatus({
+            type: 'success',
+            msg: `Pushed ${filesToPush.length} file(s): “${message.split('\n')[0]}”`,
+          });
           return;
         }
       } catch (e) {
@@ -2218,9 +2265,53 @@ export default function Editor() {
         setStatus({ type: 'success', msg: 'Git status refreshed' });
         return;
       }
-      const data = await apiFetch(`/api/git/${action}`, { method: 'POST', body: JSON.stringify({ workspaceId, fileId: selectedFile?._id }) });
-      setGitStatus(data);
+
+      if (action === 'commit') {
+        const message = (commitMsg || '').trim();
+        if (!message) {
+          setStatus({ type: 'error', msg: 'Write a commit message first.' });
+          return;
+        }
+        const commit = () => apiFetch('/api/git/commit', {
+          method: 'POST',
+          body: JSON.stringify({ workspaceId, message }),
+        });
+        let data = await commit();
+        if (data?.success === false && /not a git repository/i.test(String(data.error || ''))) {
+          // First commit in this workspace: initialise the repo, then retry.
+          await apiFetch('/api/git/init', {
+            method: 'POST',
+            body: JSON.stringify({
+              workspaceId,
+              userName: user?.fullName || 'CODEX User',
+              userEmail: user?.email || 'user@codex.dev',
+            }),
+          }).catch(() => null);
+          data = await commit();
+        }
+        if (data?.success === false) throw new Error(data.error || 'Commit failed');
+        setCommitMsg('');
+        const st = await apiFetch(`/api/git/status/${workspaceId}`).catch(() => null);
+        if (st && st.success !== false) setGitStatus(st);
+        setStatus({
+          type: 'success',
+          msg: `Committed “${message.split('\n')[0]}”`,
+        });
+        return;
+      }
+
+      const data = await apiFetch(`/api/git/${action}`, {
+        method: 'POST',
+        body: JSON.stringify({ workspaceId, fileId: selectedFile?._id }),
+      });
+      if (data?.success === false) throw new Error(data.error || `Git ${action} failed`);
+      setGitStatus((prev) => (data && (data.branch !== undefined || data.modified !== undefined)
+        ? { ...(prev || {}), ...data }
+        : prev));
       setStatus({ type: 'success', msg: `Git ${action} done` });
+      if (action === 'push' || action === 'pull') {
+        await loadGitStatus().catch(() => {});
+      }
     } catch (e) {
       setStatus({ type: 'error', msg: `Git ${action} failed: ${e.message}` });
     }
@@ -2539,7 +2630,9 @@ export default function Editor() {
   };
 
   const extList = languages.filter((l) => l.allowed !== false);
-  const modifiedCount = gitStatus?.modified?.length || 0;
+  const modifiedCount = (gitStatus?.modified?.length || 0)
+    + (gitStatus?.created?.length || 0)
+    + (gitStatus?.deleted?.length || 0);
   const blockCount = languages.filter((l) => l.allowed === false).length;
   const problemCounts = useMemo(
     () => countProblems([...externalProblems, ...problemList]),
@@ -2791,90 +2884,130 @@ export default function Editor() {
                       <button type="button" className="ed-sidebar-btn" onClick={() => handleGitAction('status')} title="Refresh status"><RefreshCw className="w-3.5 h-3.5" /></button>
                     </div>
                   </div>
-                  <div className="ed-sidebar-body">
-                    <div className="ed-stat">
+                  <div className="ed-sidebar-body ed-scm-body">
+                    <div className="ed-scm-summary">
                       <span className="ed-badge-dot" style={{ background: '#2fd6e6' }} />
                       <b>{gitStatus?.branch || 'main'}</b>
-                      <span style={{ color: '#6e6e6e' }}>
+                      <span className="ed-scm-remote">
                         {gitStatus?.repo
-                          ? ` · ${gitStatus.repo}`
-                          : gitStatus ? ` · ${gitStatus.ahead || 0} ahead, ${gitStatus.behind || 0} behind` : 'no git info'}
+                          ? gitStatus.repo
+                          : gitStatus ? `${gitStatus.ahead || 0}↑ ${gitStatus.behind || 0}↓` : 'no git info'}
                       </span>
                     </div>
+
+                    <div className="ed-scm-commit-box">
+                      <textarea
+                        className="ed-scm-commit-input"
+                        rows={3}
+                        placeholder={selectedRepo
+                          ? `Commit message — pushes to ${selectedRepo.fullName || selectedRepo.name} (Ctrl+Enter)`
+                          : 'Commit message (Ctrl+Enter)'}
+                        value={commitMsg}
+                        onChange={(e) => setCommitMsg(e.target.value)}
+                        onKeyDown={(e) => {
+                          if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                            e.preventDefault();
+                            handleGitAction('commit');
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="btn-workspace btn-primary ed-scm-commit-btn"
+                        onClick={() => handleGitAction('commit')}
+                        disabled={modifiedCount === 0 || !(commitMsg || '').trim()}
+                        title={modifiedCount === 0
+                          ? 'No changes to commit'
+                          : (commitMsg || '').trim() ? 'Commit (Ctrl+Enter)' : 'Write a commit message'}
+                      >
+                        <GitCommit className="w-3.5 h-3.5 mr-1 inline" />
+                        {selectedRepo ? 'Commit & Push' : 'Commit'}
+                      </button>
+                    </div>
+
                     {!gitStatus && (
                       <div className="ed-empty">
                         <GitBranch className="w-6 h-6" />
-                        <p className="text-xs">Opt in to version control from your workspace settings.</p>
+                        <p className="text-xs">No git information yet — press refresh.</p>
                       </div>
                     )}
-                    <div className="ed-sidebar-title" style={{ padding: '0.1rem 0.55rem' }}>
-                      Changes {modifiedCount > 0 ? `(${modifiedCount})` : ''}
+
+                    <div className="ed-scm-section">
+                      <span>Changes{modifiedCount > 0 ? ` (${modifiedCount})` : ''}</span>
                     </div>
                     {modifiedCount === 0 ? (
-                      <p className="text-xs" style={{ color: '#6e6e6e', padding: '0.2rem 0.55rem' }}>
+                      <p className="ed-scm-clean">
                         {gitStatus ? 'Working tree clean' : 'No changes'}
                       </p>
                     ) : (
-                      (gitStatus?.modified || []).map((name, i) => (
-                        <button
-                          key={`${name}-${i}`}
-                          type="button"
-                          className="ed-scm-file ed-scm-file-btn"
-                          style={{ width: '100%', textAlign: 'left' }}
-                          onClick={() => loadFileDiff(name)}
-                          title="View diff"
-                        >
-                          <GitBranch className="w-3.5 h-3.5" />
-                          <span>{name}</span>
-                        </button>
-                      ))
+                      <div className="ed-scm-files">
+                        {[
+                          ...(gitStatus?.modified || []).map((n) => ({ n, letter: 'M', color: '#fbbf24' })),
+                          ...(gitStatus?.created || []).map((n) => ({ n, letter: 'A', color: '#34d399' })),
+                          ...(gitStatus?.deleted || []).map((n) => ({ n, letter: 'D', color: '#f87171' })),
+                        ].map(({ n, letter, color }) => (
+                          <button
+                            key={`${letter}:${n}`}
+                            type="button"
+                            className="ed-scm-file ed-scm-file-btn"
+                            onClick={() => loadFileDiff(n)}
+                            title={`View diff — ${letter}`}
+                          >
+                            <span className="ed-scm-status" style={{ color }}>{letter}</span>
+                            <span className="ed-scm-name">{n}</span>
+                          </button>
+                        ))}
+                      </div>
                     )}
+
                     {(gitStatus?.commits || []).length > 0 && (
-                      <>
-                        <div className="ed-sidebar-title" style={{ padding: '0.4rem 0.55rem 0.1rem' }}>Recent commits</div>
+                      <div className="ed-scm-commits">
+                        <div className="ed-scm-section"><span>Recent commits</span></div>
                         {gitStatus.commits.slice(0, 8).map((c) => (
                           <div
-                            key={c.sha}
-                            className="ed-scm-file"
+                            key={c.sha || c.hash}
+                            className="ed-scm-commit"
                             title={c.url || c.message || ''}
-                            style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem', cursor: c.url ? 'pointer' : 'default' }}
                             onClick={() => { if (c.url) window.open(c.url, '_blank'); }}
                           >
-                            <span className="text-xs" style={{ color: '#c7d3df', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <span className="ed-scm-commit-msg">
                               {(c.message || '').split('\n')[0]}
                             </span>
-                            <span className="text-xs" style={{ color: '#6e6e6e' }}>
-                              {(c.sha || '').slice(0, 7)} · {c.author?.name || c.author?.username || ''}
+                            <span className="ed-scm-commit-meta">
+                              {(c.sha || c.hash || '').slice(0, 7)} · {c.author?.name || c.author?.username || c.author_name || ''}
                             </span>
                           </div>
                         ))}
-                      </>
-                    )}
-                    {!selectedRepo && workspaceId && (
-                      <div style={{ paddingBottom: '0.5rem' }}>
-                        <button type="button" className="btn-workspace btn-secondary" style={{ width: '100%' }} onClick={() => setRepoCreateOpen(true)}>
-                          <GitBranch className="w-3.5 h-3.5 mr-1 inline" /> Create GitHub Repo
-                        </button>
                       </div>
                     )}
-                    <div style={{ display: 'flex', gap: '0.4rem', paddingTop: '0.4rem' }}>
-                      <button type="button" className="btn-workspace btn-secondary" style={{ flex: 1 }} onClick={() => handleGitAction('pull')}>Pull</button>
-                      <button type="button" className="btn-workspace btn-secondary" style={{ flex: 1 }} onClick={() => handleGitAction('commit')}>Commit</button>
-                      <button type="button" className="btn-workspace btn-primary" style={{ flex: 1 }} onClick={() => handleGitAction('push')}>Push</button>
-                    </div>
-                    <div style={{ paddingTop: '0.4rem' }}>
+
+                    <div className="ed-scm-actions">
+                      <button type="button" className="btn-workspace btn-secondary" onClick={() => handleGitAction('pull')}>Pull</button>
                       <button
                         type="button"
                         className="btn-workspace btn-secondary"
-                        style={{ width: '100%' }}
-                        onClick={() => { setPrError(null); setPrDone(null); setPrOpen(true); }}
-                        disabled={!selectedRepo}
-                        title={selectedRepo ? 'Open pull request from current branch' : 'Select a GitHub repository in the Explorer first'}
+                        onClick={() => handleGitAction('push')}
+                        disabled={!selectedRepo && !workspaceId}
                       >
-                        <GitPullRequestArrow className="w-3.5 h-3.5 mr-1 inline" />
-                        Create Pull Request
+                        Push
                       </button>
                     </div>
+
+                    {!selectedRepo && workspaceId && (
+                      <button type="button" className="btn-workspace btn-secondary ed-scm-wide" onClick={() => setRepoCreateOpen(true)}>
+                        <GitBranch className="w-3.5 h-3.5 mr-1 inline" /> Create GitHub Repo
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="btn-workspace btn-secondary ed-scm-wide"
+                      onClick={() => { setPrError(null); setPrDone(null); setPrOpen(true); }}
+                      disabled={!selectedRepo}
+                      title={selectedRepo ? 'Open pull request from current branch' : 'Select a GitHub repository in the Explorer first'}
+                    >
+                      <GitPullRequestArrow className="w-3.5 h-3.5 mr-1 inline" />
+                      Create Pull Request
+                    </button>
                   </div>
                 </>
               )}

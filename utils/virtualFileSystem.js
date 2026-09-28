@@ -7,6 +7,20 @@ const { LRUCache } = require('lru-cache');
 const CodeFile = require('../models/CodeFile');
 const { assertValidWorkspaceId } = require('./sanitize');
 
+// CodeFiles store the DIRECTORY path + name (path '/src', name 'app.js').
+// Index keys, tree paths and readFileByPath callers all expect the FULL file
+// path — joining here stops same-directory files from colliding on one key
+// (the old dir-keyed index kept only the last file per folder) and makes
+// terminal hydration write real filenames.
+function fullPathOf(file) {
+  const name = String(file?.name || '');
+  const base = String(file?.path || '/').replace(/\/+$/, '');
+  if (!name) return base || '/';
+  if (!base || base === '/') return `/${name}`;
+  if (base === name || base.endsWith(`/${name}`)) return base.startsWith('/') ? base : `/${base}`;
+  return `${base.startsWith('/') ? base : `/${base}`}/${name}`;
+}
+
 class VirtualFileSystem {
   constructor() {
     // LRU cache for recently accessed files (max 100 files, ~50MB)
@@ -31,19 +45,23 @@ class VirtualFileSystem {
     assertValidWorkspaceId(workspaceId);
     console.log(`Building VFS index for workspace: ${workspaceId}`);
     
-    // Fetch only metadata (no content)
-    const files = await CodeFile.find({ companyId: workspaceId })
+    // Fetch only metadata (no content). Field is `company` — the old
+    // `{ companyId: ... }` query matched nothing, so the index was always
+    // empty (explorer stats, path reads and terminal hydration all no-oped).
+    const files = await CodeFile.find({ company: workspaceId })
       .select('name path language size updatedAt createdBy')
       .lean()
       .exec();
 
-    // Create index map
+    // Create index map keyed by full file path
     const index = new Map();
     files.forEach(file => {
-      index.set(file.path, {
+      const full = fullPathOf(file);
+      index.set(full, {
         id: file._id.toString(),
         name: file.name,
-        path: file.path,
+        path: full,
+        dirPath: file.path,
         size: file.size,
         language: file.language,
         lastModified: file.updatedAt,
@@ -191,10 +209,14 @@ class VirtualFileSystem {
 
     // Update index
     const index = this.indexes.get(workspaceId);
-    if (index && index.has(file.path)) {
-      const metadata = index.get(file.path);
+    const full = fullPathOf(file);
+    if (index && index.has(full)) {
+      const metadata = index.get(full);
       metadata.size = file.size;
       metadata.lastModified = file.updatedAt;
+      metadata.name = file.name;
+      metadata.path = full;
+      metadata.dirPath = file.path;
     }
 
     return file;
@@ -211,10 +233,12 @@ class VirtualFileSystem {
     // Update index
     const index = this.indexes.get(workspaceId);
     if (index) {
-      index.set(file.path, {
+      const full = fullPathOf(file);
+      index.set(full, {
         id: file._id.toString(),
         name: file.name,
-        path: file.path,
+        path: full,
+        dirPath: file.path,
         size: file.size,
         language: file.language,
         lastModified: file.updatedAt,
@@ -252,7 +276,7 @@ class VirtualFileSystem {
     // Remove from index
     const index = this.indexes.get(workspaceId);
     if (index) {
-      index.delete(path);
+      index.delete(fullPathOf(file));
     }
 
     return { success: true, path };
@@ -303,7 +327,8 @@ class VirtualFileSystem {
     return file ? {
       id: file._id.toString(),
       name: file.name,
-      path: file.path,
+      path: fullPathOf(file),
+      dirPath: file.path,
       size: file.size,
       language: file.language,
       lastModified: file.updatedAt,
@@ -392,3 +417,4 @@ class VirtualFileSystem {
 const vfs = new VirtualFileSystem();
 
 module.exports = vfs;
+module.exports.fullPathOf = fullPathOf;

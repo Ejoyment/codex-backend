@@ -14,6 +14,7 @@ const { authenticateToken } = require('../middleware/auth');
 const permissionMatrix = require('../middleware/permissionMatrix');
 const {
   resolveLanguage,
+  detectLanguageFrom,
   listLanguages,
   sanitizeFiles,
   rateGate,
@@ -119,16 +120,26 @@ router.post(
   async (req, res) => {
     const userId = String(req.userId || req.user?._id || '');
 
-    const def = resolveLanguage(req.body?.language);
-    if (!def) {
-      return res.status(400).json({ error: `Unsupported language: ${req.body?.language}` });
-    }
     const v = sanitizeFiles(req.body?.files);
     if (v.error) {
       return res.status(400).json({ error: v.error });
     }
 
-    const entry = String(req.body?.entry || def.defaultEntry).replace(/^\/+/, '');
+    // Resolve the language: explicit id/alias first, then fall back to
+    // extension + shebang detection so ANY file type can be run — the editor
+    // sends language:'auto' when it doesn't recognize the file itself.
+    const entryHint = String(req.body?.entry || '').replace(/^\/+/, '') || v.files[0]?.path || '';
+    let def = resolveLanguage(req.body?.language);
+    if (!def) def = detectLanguageFrom(entryHint, v.files);
+    if (!def) {
+      return res.status(400).json({
+        error: `Cannot detect how to run '${entryHint || 'this file'}'. Run it from a terminal, or use one of: ${listLanguages().map((l) => l.id).join(', ')}`,
+      });
+    }
+
+    const explicitEntry = String(req.body?.entry || '').replace(/^\/+/, '');
+    const entry = explicitEntry
+      || (v.files.some((f) => f.path === def.defaultEntry) ? def.defaultEntry : v.files[0].path);
     if (!v.files.some((f) => f.path === entry)) {
       return res.status(400).json({ error: `Entry file not found: ${entry}` });
     }

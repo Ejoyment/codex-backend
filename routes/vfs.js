@@ -552,7 +552,11 @@ router.delete('/files/:fileId', authenticateToken, permissionMatrix.requirePermi
  * Folders are virtual - represented by the path hierarchy.
  * This endpoint creates a placeholder file to establish the folder structure.
  */
-router.post('/folders', authenticateToken, permissionMatrix.requirePermission('vfs', 'write'), async (req, res) => {
+// Editor file/folder creation is authenticated-only by convention (the
+// code-editor routes that create and save files carry no tier gate either) —
+// gating folders on vfs:write made "New Folder" return 403 Permission denied
+// for freebie-tier users while file creation worked fine.
+router.post('/folders', authenticateToken, async (req, res) => {
   try {
     const { name, path, projectId } = req.body;
     let { companyId } = req.body;

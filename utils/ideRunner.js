@@ -255,6 +255,16 @@ const MANIFEST = {
     host: (c) => ['groovy', c.entry],
     errorStyle: 'groovy',
   },
+  elixir: {
+    name: 'Elixir',
+    aliases: ['ex', 'exs'],
+    image: 'elixir:1.17-alpine',
+    defaultEntry: 'main.exs',
+    timeoutMs: COMPILE_TIMEOUT_MS,
+    script: (c) => `elixir ${c.entry}`,
+    host: (c) => ['elixir', c.entry],
+    errorStyle: 'generic',
+  },
 };
 
 const ALIAS_INDEX = (() => {
@@ -270,6 +280,45 @@ function resolveLanguage(input) {
   const key = String(input || '').trim().toLowerCase();
   const id = ALIAS_INDEX[key];
   return id ? { id, ...MANIFEST[id] } : null;
+}
+
+// Extra extension spellings the editor's file.language field may carry but
+// the manifest aliases don't cover.
+const EXT_EXTRAS = {
+  cjs: 'javascript', mjs: 'javascript', pyw: 'python', phtml: 'php',
+  rbw: 'ruby', csx: 'csharp', jsm: 'javascript',
+};
+
+// Program names that can appear in a shebang line.
+const SHEBANG_MAP = {
+  python: 'python', python2: 'python', python3: 'python',
+  node: 'javascript', nodejs: 'javascript', deno: 'typescript',
+  bash: 'bash', sh: 'shell', zsh: 'shell', dash: 'shell', ksh: 'bash',
+  ruby: 'ruby', perl: 'perl', php: 'php', elixir: 'elixir',
+  lua: 'lua', groovy: 'groovy', rscript: 'r',
+};
+
+/**
+ * Detect the run language for a file the editor couldn't classify:
+ * extension first, then the entry file's shebang line. Returns a manifest
+ * def ({ id, ... }) or null when nothing matches.
+ */
+function detectLanguageFrom(entry, files) {
+  const name = String(entry || '').split('/').pop() || '';
+  const ext = name.includes('.') ? name.split('.').pop().toLowerCase() : '';
+  const byExt = (ext && (EXT_EXTRAS[ext] || ALIAS_INDEX[ext])) || null;
+  if (byExt && MANIFEST[byExt]) return { id: byExt, ...MANIFEST[byExt] };
+
+  const list = Array.isArray(files) ? files : [];
+  const f = list.find((x) => String(x?.path || '').replace(/^\/+/, '') === String(entry || '').replace(/^\/+/, '')) || list[0];
+  const first = String(f?.content || '').split('\n', 1)[0] || '';
+  const m = first.match(/^#!\s*(?:\S*\/)?(?:env\s+)?([A-Za-z0-9._-]+)/);
+  if (m) {
+    const prog = m[1].split('/').pop().toLowerCase();
+    const id = SHEBANG_MAP[m[1].toLowerCase()] || SHEBANG_MAP[prog] || ALIAS_INDEX[prog];
+    if (id && MANIFEST[id]) return { id, ...MANIFEST[id] };
+  }
+  return null;
 }
 
 function listLanguages() {
@@ -807,6 +856,7 @@ function generateRunId() {
 module.exports = {
   MANIFEST,
   resolveLanguage,
+  detectLanguageFrom,
   listLanguages,
   sanitizeFiles,
   buildContainerScript,

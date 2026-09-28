@@ -78,68 +78,57 @@ const aiService = require('../utils/aiService');
  *       500:
  *         description: Internal server error
  */
-// Direct push to GitHub (multi-file commit)
+// Direct push to GitHub — one atomic commit for all files (Git Data API).
 router.post('/push', authenticateToken, async (req, res) => {
     try {
         const { owner, repo, branch, files, message, description } = req.body;
-        
+
         if (!files || files.length === 0) {
             return res.status(400).json({ success: false, message: 'No files to push' });
         }
 
-        const results = [];
-        let commitSha = null;
+        // Accept both path conventions: directory path + name (workspace
+        // CodeFiles) and full path including the filename (GitHub tree
+        // entries) — the old naive `${path}/${name}` join doubled paths like
+        // src/app.js/app.js and the push failed.
+        const smartPath = (f) => {
+            const name = String(f.name || '');
+            const p = String(f.path || '/').replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/+$/, '');
+            if (!name) return p;
+            if (p === name) return name;
+            if (p.endsWith('/' + name)) return p;
+            return p ? `${p}/${name}` : name;
+        };
 
-        // Push each file
-        for (const file of files) {
-            try {
-                // Get current file SHA if it exists
-                let sha = null;
-                try {
-                    const existing = await githubService.getFileContent(
-                        req.userId, owner, repo, file.path, branch
-                    );
-                    sha = existing.sha;
-                } catch (error) {
-                    // File doesn't exist, will create new
-                }
+        const entries = files
+            .filter((f) => f && typeof f.content === 'string')
+            .map((f) => ({ path: smartPath(f), content: f.content }));
 
-                const result = await githubService.createOrUpdateFile(
-                    req.userId,
-                    owner,
-                    repo,
-                    file.path,
-                    file.content,
-                    message || `Update ${file.path}`,
-                    branch,
-                    sha
-                );
-
-                commitSha = result.commit.sha;
-                results.push({
-                    path: file.path,
-                    success: true,
-                    commitSha: result.commit.sha
-                });
-            } catch (error) {
-                results.push({
-                    path: file.path,
-                    success: false,
-                    error: error.message
-                });
-            }
+        if (!entries.length) {
+            return res.status(400).json({ success: false, message: 'No file content to push' });
         }
 
-        const successCount = results.filter(r => r.success).length;
-        const failCount = results.filter(r => !r.success).length;
+        try {
+            const result = await githubService.pushCommit(
+                req.userId, owner, repo, branch, entries,
+                message || `Update ${entries.length} file(s) from Buildrs HQ`
+            );
 
-        res.json({
-            success: successCount > 0,
-            message: `Pushed ${successCount} file(s) successfully${failCount > 0 ? `, ${failCount} failed` : ''}`,
-            results,
-            commitSha,
-            commitUrl: commitSha ? `https://github.com/${owner}/${repo}/commit/${commitSha}` : null
-        });
+            res.json({
+                success: true,
+                message: `Pushed ${entries.length} file(s) in commit ${String(result.commit.sha).slice(0, 7)}`,
+                results: entries.map((e) => ({ path: e.path, success: true, commitSha: result.commit.sha })),
+                commitSha: result.commit.sha,
+                commitUrl: result.commit.url || `https://github.com/${owner}/${repo}/commit/${result.commit.sha}`,
+                branch: result.branch,
+            });
+        } catch (pushErr) {
+            console.error('Push error:', pushErr);
+            res.status(502).json({
+                success: false,
+                message: `Push to ${owner}/${repo} failed: ${pushErr.message}`,
+            });
+        }
     } catch (error) {
         console.error('Push error:', error);
         res.status(500).json({ success: false, message: error.message });

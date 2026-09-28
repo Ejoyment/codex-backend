@@ -1218,10 +1218,19 @@ router.get('/repos/:owner/:repo/git/tree', authenticateToken, async (req, res) =
     try {
         const integration = await getGitHubIntegration(req.userId);
         const { owner, repo } = req.params;
-        const { ref = 'HEAD', recursive = 1 } = req.query;
+        const { ref, recursive = 1 } = req.query;
 
-        // First get the default branch's latest commit SHA to get the tree
-        const refData = await githubAPI(integration.accessToken, `/repos/${owner}/${repo}/git/ref/heads/${ref === 'HEAD' ? 'main' : ref}`);
+        // Resolve the actual default branch when no ref is given — hardcoding
+        // 'main' 404s on master/default-named repos and fell back to a root-only
+        // listing (files in subdirectories vanished from the explorer).
+        let branch = ref && ref !== 'HEAD' ? String(ref) : null;
+        if (!branch) {
+            const repoData = await githubAPI(integration.accessToken, `/repos/${owner}/${repo}`);
+            branch = repoData.default_branch || 'main';
+        }
+
+        // Latest commit SHA on that branch → its tree
+        const refData = await githubAPI(integration.accessToken, `/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(branch)}`);
         const commitSha = refData.object.sha;
 
         const commitData = await githubAPI(integration.accessToken, `/repos/${owner}/${repo}/git/commits/${commitSha}`);
