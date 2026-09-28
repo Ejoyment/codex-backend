@@ -13,6 +13,15 @@ const TerminalLog = require('../models/TerminalLog');
 const vfs = require('./virtualFileSystem');
 const { emitWorkspaceChange } = require('./realTimeEvents');
 const unifiedStateGraph = require('./unifiedStateGraph');
+const { VpsShell, terminalTransportEnabled } = require('./vpsShell');
+
+// VFS extension → language id (shared by per-file and bulk workspace sync).
+const EXT_LANG_MAP = {
+  '.js': 'javascript', '.ts': 'typescript', '.py': 'python', '.java': 'java',
+  '.html': 'html', '.css': 'css', '.json': 'json', '.md': 'markdown',
+  '.go': 'go', '.rs': 'rust', '.cpp': 'cpp', '.c': 'c',
+  '.php': 'php', '.rb': 'ruby', '.sh': 'shell', '.sql': 'sql'
+};
 
 /**
  * Resolve an untrusted VFS-style path inside a workspace directory.
@@ -96,12 +105,7 @@ class TerminalService {
       const relativePath = path.relative(terminal.workspacePath, filePath);
       const fileName = path.basename(filePath);
       const ext = path.extname(fileName).toLowerCase();
-      const langMap = {
-        '.js': 'javascript', '.ts': 'typescript', '.py': 'python', '.java': 'java',
-        '.html': 'html', '.css': 'css', '.json': 'json', '.md': 'markdown',
-        '.go': 'go', '.rs': 'rust', '.cpp': 'cpp', '.c': 'c',
-        '.php': 'php', '.rb': 'ruby', '.sh': 'shell', '.sql': 'sql'
-      };
+      const langMap = EXT_LANG_MAP;
       
       // Check if file already exists in DB
       const existing = await CodeFile.findOne({
@@ -299,6 +303,30 @@ class TerminalService {
     this.workspaces.set(sessionId, workspacePath);
 
     if (this.usePty) {
+      if (terminalTransportEnabled()) {
+        // Remote PTY: ssh → docker exec in a VPS toolbox container. The shell
+        // implements the node-pty subset (write/resize/kill/onData) so the
+        // rest of this service treats it exactly like a local pty.
+        const shell = new VpsShell({
+          sessionId,
+          workspaceId,
+          userId,
+          cols: options.cols || 80,
+          rows: options.rows || 24,
+          workspacePath,
+        });
+        this.terminals.set(sessionId, {
+          type: 'pty',
+          process: shell,
+          vps: true,
+          workspacePath,
+          userId,
+          workspaceId,
+          token: sessionToken,
+          createdAt: Date.now()
+        });
+        console.log(`✓ VPS terminal queued: ${sessionId}`);
+      } else {
       // Real PTY terminal
       const shell = os.platform() === 'win32' ? 'powershell.exe' : 'bash';
       
@@ -330,6 +358,7 @@ class TerminalService {
       });
 
       console.log(`✓ PTY terminal created: ${sessionId}`);
+      }
     } else {
       // Simulated terminal (fallback) - virtual VFS-backed cwd
       // Create a persistent log document for this session
@@ -367,8 +396,25 @@ class TerminalService {
       await this.syncVfsToPty(sessionId);
     }
 
-    // Setup directory watcher for PTY terminals
-    if (this.usePty) {
+    // VPS transport: start ssh+container, then push the materialized files in.
+    const vpsProcess = this.usePty ? this.terminals.get(sessionId)?.process : null;
+    if (vpsProcess && this.terminals.get(sessionId)?.vps) {
+      try {
+        await vpsProcess.start();
+        await vpsProcess.pushFiles();
+      } catch (err) {
+        try { vpsProcess.kill(); } catch (_) { /* ignore */ }
+        this.terminals.delete(sessionId);
+        this.workspaces.delete(sessionId);
+        try { await fs.rm(workspacePath, { recursive: true, force: true }); } catch (_) { /* ignore */ }
+        throw err;
+      }
+      console.log(`✓ VPS terminal created: ${sessionId}`);
+    }
+
+    // Setup directory watcher for PTY terminals (local transport only — the
+    // VPS session syncs back to the VFS on destroy instead).
+    if (this.usePty && !this.terminals.get(sessionId)?.vps) {
       this.setupDirectoryWatcher(sessionId);
     }
 
@@ -768,12 +814,51 @@ class TerminalService {
    * Get terminal history (simulated only).
    * Returns in-memory history for active sessions, falls back to Mongo.
    */
+  /**
+   * Bulk upsert every file in the local PTY workspace dir back into the VFS.
+   * Used after a VPS session's pull-back so container edits persist.
+   */
+  async syncPtyDirToVfs(sessionId) {
+    const terminal = this.terminals.get(sessionId);
+    if (!terminal) return;
+
+    const walk = async (dir) => {
+      const entries = await fs.readdir(dir, { withFileTypes: true });
+      for (const e of entries) {
+        const full = path.join(dir, e.name);
+        if (e.isDirectory()) {
+          await walk(full);
+          continue;
+        }
+        if (!e.isFile()) continue;
+        const content = await fs.readFile(full, 'utf8').catch(() => null);
+        if (content === null) continue;
+        const vfsPath = '/' + path.relative(terminal.workspacePath, full).replace(/\\/g, '/');
+        await CodeFile.updateOne(
+          { company: terminal.workspaceId, path: vfsPath },
+          {
+            $set: { content, lastModifiedBy: terminal.userId },
+            $setOnInsert: {
+              name: e.name,
+              language: EXT_LANG_MAP[path.extname(e.name).toLowerCase()] || 'text',
+              company: terminal.workspaceId,
+              path: vfsPath,
+              createdBy: terminal.userId,
+            },
+          },
+          { upsert: true }
+        );
+      }
+    };
+
+    await walk(terminal.workspacePath);
+  }
+
   async getHistory(sessionId, token) {
     const terminal = this._checkAccess(sessionId, token);
     if (!terminal || terminal.type !== 'simulated') {
       return [];
     }
-
     // Return in-memory if available
     if (terminal.history && terminal.history.length > 0) {
       return terminal.history;
@@ -830,6 +915,11 @@ class TerminalService {
     }
 
     if (terminal.type === 'pty') {
+      if (terminal.vps) {
+        // Round-trip: container workspace → local dir → VFS before teardown.
+        try { await terminal.process.pullFiles(); } catch (e) { console.warn(`VPS terminal pull-back failed: ${e.message}`); }
+        try { await this.syncPtyDirToVfs(sessionId); } catch (e) { console.warn(`VFS sync-back failed: ${e.message}`); }
+      }
       terminal.process.kill();
     }
 
