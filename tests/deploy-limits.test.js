@@ -335,6 +335,43 @@ describe('detectRuntime', () => {
             { name: 'Dockerfile', path: '/Gateway', content: 'FROM alpine\nEXPOSE 9000\n' },
         ]).exposePort).toBe(9000);
     });
+
+    test('user Dockerfile golang pin is bumped when go.mod requires a newer toolchain', () => {
+        const { dockerfile } = detectRuntime([
+            { name: 'Dockerfile', path: '/gateway', content: 'FROM golang:1.22-alpine AS builder\nRUN go mod download\n' },
+            { name: 'go.mod', path: '/gateway', content: 'module x\n\ngo 1.26.3\n' },
+        ]);
+        expect(dockerfile).toContain('FROM golang:1.26.3-alpine AS builder');
+        expect(dockerfile).toContain('buildrs: bumped golang:1.22-alpine');
+    });
+
+    test('satisfying or newer golang pins are left untouched (no buildrs comment)', () => {
+        const { dockerfile } = detectRuntime([
+            { name: 'Dockerfile', path: '/gateway', content: 'FROM golang:1.26.3-alpine AS builder\nRUN go mod download\n' },
+            { name: 'go.mod', path: '/gateway', content: 'module x\n\ngo 1.26.3\n' },
+        ]);
+        expect(dockerfile).not.toContain('buildrs:');
+        expect(dockerfile).toContain('FROM golang:1.26.3-alpine AS builder');
+        const newer = detectRuntime([
+            { name: 'Dockerfile', path: '/gateway', content: 'FROM golang:1.27-alpine AS builder\n' },
+            { name: 'go.mod', path: '/gateway', content: 'module x\n\ngo 1.26.3\n' },
+        ]);
+        expect(newer.dockerfile).not.toContain('buildrs:');
+        expect(newer.dockerfile).toContain('FROM golang:1.27-alpine AS builder');
+    });
+
+    test('generated go template uses the full go.mod version including patch', () => {
+        const { dockerfile } = detectRuntime([
+            { name: 'go.mod', path: '/', content: 'module x\n\ngo 1.26.3\n' },
+            { name: 'main.go', path: '/', content: 'package main\nfunc main() {}' },
+        ]);
+        expect(dockerfile).toContain('FROM golang:1.26.3-alpine');
+        const minorOnly = detectRuntime([
+            { name: 'go.mod', path: '/', content: 'module x\n\ngo 1.21\n' },
+            { name: 'main.go', path: '/', content: 'package main\nfunc main() {}' },
+        ]);
+        expect(minorOnly.dockerfile).toContain('FROM golang:1.21-alpine');
+    });
 });
 
 describe('ensureStaticEntry', () => {
