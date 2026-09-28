@@ -26,6 +26,9 @@ const aiPairSessionSchema = new mongoose.Schema({
         type: String,
         required: true
     },
+    language: {
+        type: String
+    },
     status: {
         type: String,
         enum: ['active', 'paused', 'completed', 'archived'],

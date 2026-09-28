@@ -174,7 +174,7 @@ export default function AiPair() {
     setLoadingSessions(true);
     try {
       const data = await apiFetch('/api/ai-pair/sessions');
-      if (data.success) setSessions(data.sessions);
+      if (data.success) setSessions(data.sessions || []);
     } catch (err) {
       setError('Failed to load sessions');
     } finally {
@@ -185,7 +185,7 @@ export default function AiPair() {
   async function fetchRepos() {
     try {
       const data = await apiFetch('/api/ai-pair/repos');
-      if (data.success) setRepos(data.repos);
+      if (data.success) setRepos(data.repositories || data.repos || []);
     } catch (err) {
       setError('Failed to load repositories');
     }
@@ -196,17 +196,30 @@ export default function AiPair() {
     setCreatingSession(true);
     setError(null);
     try {
+      const repo = repos.find((r) =>
+        typeof r === 'string' ? r === selectedRepo : (r.fullName || r.name) === selectedRepo
+      );
+      const repoName = typeof repo === 'object' && repo ? repo.name : selectedRepo;
       const data = await apiFetch('/api/ai-pair/session', {
         method: 'POST',
-        body: JSON.stringify({ repoName: selectedRepo, language: selectedLang }),
+        body: JSON.stringify({
+          repositoryId: String((typeof repo === 'object' && repo && repo.id) || selectedRepo),
+          repositoryName: repoName,
+          repositoryOwner: (typeof repo === 'object' && repo && repo.owner) || '',
+          branch: (typeof repo === 'object' && repo && repo.defaultBranch) || 'main',
+          sessionName: `${repoName} · ${selectedLang}`,
+          language: selectedLang,
+        }),
       });
-      if (data.success) {
+      if (data.success && data.session) {
         const sess = data.session;
         setSessions((prev) => [sess, ...prev]);
         setActiveSession(sess);
         setMessages([]);
         setRemaining(aiLimit);
         setShowNewSession(false);
+      } else {
+        setError(data.message || 'Failed to create session');
       }
     } catch (err) {
       setError(err.message || 'Failed to create session');
@@ -289,6 +302,7 @@ export default function AiPair() {
     setShowNewSession(true);
     setSelectedRepo('');
     setSelectedLang('JavaScript');
+    setError(null);
     fetchRepos();
   }
 
@@ -318,7 +332,7 @@ export default function AiPair() {
               <h1 className="dash-title">AI Pair Programming</h1>
               <div className="dash-statusline">
                 <span className="status-indicator status-online" />
-                <span>{activeSession ? `${activeSession.repoName} · ${activeSession.language}` : 'No active session'}</span>
+                <span>{activeSession ? `${activeSession.repositoryName || activeSession.repoName || 'Session'}${activeSession.language ? ` · ${activeSession.language}` : ''}` : 'No active session'}</span>
                 <span className="dash-clock">· {clock || '—:——:——'}</span>
               </div>
             </div>
@@ -393,10 +407,10 @@ export default function AiPair() {
                             </span>
                             <span className="ail-sess-main">
                               <span className="ail-sess-top">
-                                <span className="ail-sess-name">{sess.repoName}</span>
+                                <span className="ail-sess-name">{sess.repositoryName || sess.repoName || 'Session'}</span>
                               </span>
                               <span className="ail-sess-meta">
-                                <span className="ail-sess-lang">{sess.language}</span>
+                                <span className="ail-sess-lang">{sess.language || '—'}</span>
                                 <span
                                   className="ail-sess-status"
                                   style={
@@ -610,6 +624,12 @@ export default function AiPair() {
             </div>
 
             <div className="p-5 space-y-4">
+              {error && (
+                <div className="std-alert std-alert-error">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  <p className="flex-1">{error}</p>
+                </div>
+              )}
               <div>
                 <label className="ws-label">Repository</label>
                 <select
@@ -619,8 +639,8 @@ export default function AiPair() {
                 >
                   <option value="">Select a repository...</option>
                   {repos.map((repo) => (
-                    <option key={repo.name || repo} value={repo.name || repo}>
-                      {repo.name || repo}
+                    <option key={repo.fullName || repo.name || repo} value={repo.fullName || repo.name || repo}>
+                      {repo.fullName || repo.name || repo}
                     </option>
                   ))}
                 </select>
