@@ -9,8 +9,10 @@ const LANG_IDS = new Set([
   'javascript', 'typescript', 'python', 'c', 'cpp', 'java', 'go', 'rust',
   'ruby', 'php', 'bash', 'shell', 'perl', 'r', 'csharp', 'dart', 'swift',
   'elixir', 'powershell', 'sql', 'lua', 'groovy',
+  'kotlin', 'scala', 'haskell', 'julia',
   'js', 'jsx', 'mjs', 'cjs', 'ts', 'tsx', 'py', 'rb', 'sh', 'pl', 'cs',
   'ps1', 'ex', 'exs', 'pwsh', 'rs',
+  'kt', 'kts', 'sc', 'hs', 'lhs', 'jl',
 ]);
 
 // Extension → run engine language id.
@@ -25,6 +27,10 @@ const EXT_TO_LANG = {
   pl: 'perl', r: 'r', cs: 'csharp', dart: 'dart', swift: 'swift',
   ex: 'elixir', exs: 'elixir', ps1: 'powershell',
   sql: 'sql', lua: 'lua', groovy: 'groovy',
+  kt: 'kotlin', kts: 'kotlin',
+  scala: 'scala', sc: 'scala',
+  hs: 'haskell', lhs: 'haskell',
+  jl: 'julia',
 };
 
 export function runLanguageFor(file) {

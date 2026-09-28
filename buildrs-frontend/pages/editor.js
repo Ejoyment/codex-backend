@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
-import { apiFetch, projectApi } from '../lib/api';
+import { apiFetch, projectApi, API_BASE_URL } from '../lib/api';
 import * as editorDrafts from '../lib/editorDrafts';
 import { registerEditorSnippets } from '../lib/monacoExtras';
 import { normalizeMarkers, countProblems, setRunProblems } from '../lib/monacoDiagnostics';
@@ -327,6 +327,10 @@ export default function Editor() {
   const subscription = useAuthStore((s) => s.subscription);
 
   const [files, setFiles] = useState([]);
+  // Files/folders the user created while a GitHub repo is selected — kept out
+  // of `files` (which mirrors the remote tree) until Commit & Push publishes
+  // them, but merged into the explorer so they're visible and editable now.
+  const [repoPending, setRepoPending] = useState([]);
   const [selectedFile, setSelectedFile] = useState(null);
   const [openFiles, setOpenFiles] = useState([]);
   const openContentsRef = useRef({});
@@ -431,6 +435,7 @@ export default function Editor() {
   const runSeqRef = useRef(0);
   const termSocketRef = useRef(null);
   const termSessionRef = useRef(null);
+  const termRef = useRef(null);
   const originalContentRef = useRef('');
   const aiSessionRef = useRef(null);
   const { selectedCompany } = useCurrentCompany();
@@ -454,7 +459,11 @@ export default function Editor() {
   const selectedFileRef = useRef(null);
   selectedFileRef.current = selectedFile;
 
-  const tree = useMemo(() => buildFileTree(files), [files]);
+  const tree = useMemo(() => buildFileTree(
+    selectedRepo && !selectedProject && repoPending.length
+      ? [...files, ...repoPending]
+      : files,
+  ), [files, repoPending, selectedRepo, selectedProject]);
 
   const getFileKey = useCallback((file) => {
     if (!file) return null;
@@ -651,6 +660,7 @@ export default function Editor() {
   }, [projects, openFiles, selectedFile, loading, selectedProject]);
 
   useEffect(() => {
+    setRepoPending([]); // pending repo entries don't follow you across scopes
     if (selectedProject) {
       loadProjectFiles(selectedProject._id || selectedProject.id);
     } else if (selectedRepo) {
@@ -702,6 +712,39 @@ export default function Editor() {
       socketRef.current = null;
     };
   }, []);
+
+  // Real-time explorer: join the workspace room and refresh the file tree
+  // when the backend watcher (e.g. `mkdir`/`touch` inside the terminal)
+  // emits workspace:change.
+  useEffect(() => {
+    const socket = socketRef.current;
+    if (!socket || !workspaceId) return undefined;
+    socket.emit('workspace:join', { workspaceId });
+    let timer = null;
+    const reload = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (selectedRepo) return; // repo files come from GitHub, not the watcher
+        if (selectedProject) loadProjectFiles(selectedProject._id || selectedProject.id);
+        else loadFiles(workspaceId);
+      }, 400);
+    };
+    socket.on('workspace:change', reload);
+    return () => {
+      if (timer) clearTimeout(timer);
+      socket.off('workspace:change', reload);
+      socket.emit('workspace:leave', { workspaceId });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceId, selectedProject?._id || selectedProject?.id || null, selectedRepo ? (selectedRepo.fullName || selectedRepo.name) : null]);
+
+  // Status messages dismiss themselves — a toast that never disappears makes
+  // a transient error look permanent. Errors linger a bit longer to be readable.
+  useEffect(() => {
+    if (!status) return undefined;
+    const timer = setTimeout(() => setStatus(null), status.type === 'error' ? 6000 : 3500);
+    return () => clearTimeout(timer);
+  }, [status]);
 
   const loadPendingConfirmations = useCallback(async () => {
     try {
@@ -805,47 +848,54 @@ export default function Editor() {
 
   // Terminal xterm init — real PTY shell via the /terminal socket.io namespace
   useEffect(() => {
-    if (panel !== 'terminal' || !terminalRef.current || terminalRef.current.hasChildNodes()) return;
+    if (panel !== 'terminal' || !terminalRef.current) return;
     let disposed = false;
     let socket = null;
     let fitOnResize = null;
     let resizeObserver = null;
     const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
 
+    // Scope switch / panel toggle: wipe the previous terminal DOM so a fresh
+    // xterm instance mounts cleanly (the old instance is disposed in cleanup).
+    terminalRef.current.innerHTML = '';
+
     Promise.all([import('xterm'), import('@xterm/addon-fit')])
       .then(([xtermMod, fitMod]) => {
         if (disposed || !terminalRef.current) return;
         const term = new xtermMod.Terminal({
+          // VS Code dark+ palette
           theme: {
-            background: '#091118',
-            foreground: '#e6f1ff',
-            cursor: '#67e8f9',
-            cursorAccent: '#091118',
-            black: '#0b1017',
-            red: '#f87171',
-            green: '#34d399',
-            yellow: '#fbbf24',
-            blue: '#60a5fa',
-            magenta: '#c084fc',
-            cyan: '#67e8f9',
-            white: '#e2e8f0',
-            brightBlack: '#475569',
-            brightRed: '#fca5a5',
-            brightGreen: '#6ee7b7',
-            brightYellow: '#fcd34d',
-            brightBlue: '#93c5fd',
-            brightMagenta: '#d8b4fe',
-            brightCyan: '#a5f3fc',
-            brightWhite: '#f8fafc',
+            background: '#1e1e1e',
+            foreground: '#cccccc',
+            cursor: '#aeafad',
+            cursorAccent: '#1e1e1e',
+            selectionBackground: '#264f78',
+            black: '#000000',
+            red: '#cd3131',
+            green: '#0dbc79',
+            yellow: '#e5e510',
+            blue: '#2472c8',
+            magenta: '#bc3fbc',
+            cyan: '#11a8cd',
+            white: '#e5e5e5',
+            brightBlack: '#666666',
+            brightRed: '#f14c4c',
+            brightGreen: '#23d18b',
+            brightYellow: '#f5f543',
+            brightBlue: '#3b8eea',
+            brightMagenta: '#d670d6',
+            brightCyan: '#29b8db',
+            brightWhite: '#e5e5e5',
           },
-          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-          fontSize: 12,
-          lineHeight: 1.45,
-          letterSpacing: 0.12,
+          fontFamily: "Menlo, Monaco, 'Courier New', monospace",
+          fontSize: 13,
+          lineHeight: 1.25,
+          letterSpacing: 0,
           cursorBlink: true,
           scrollback: 4000,
           allowTransparency: false,
         });
+        termRef.current = term;
         const fit = new fitMod.FitAddon();
         term.loadAddon(fit);
         term.open(terminalRef.current);
@@ -937,6 +987,9 @@ export default function Editor() {
       termSessionRef.current = null;
       termSocketRef.current = null;
       setTermInfo(null);
+      try { termRef.current?.dispose(); } catch (_) { /* ignore */ }
+      termRef.current = null;
+      if (terminalRef.current) terminalRef.current.innerHTML = '';
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [panel, workspaceId, selectedProject?._id || selectedProject?.id || null, selectedRepo ? (selectedRepo.fullName || selectedRepo.name) : null]);
@@ -1694,6 +1747,35 @@ export default function Editor() {
     }
   }
 
+  // Collect the runnable/previewable file set: open buffers first (they win
+  // over the saved copy), then everything else in the explorer tree.
+  function collectActiveFiles(activeContentOverride) {
+    const safePath = (p) => {
+      const rel = String(p || '').replace(/^\/+/, '');
+      return /^[\w.\-]+(\/[\w.\-]+)*$/.test(rel) ? rel : null;
+    };
+    const out = [];
+    const seen = new Set();
+    const add = (rel, c) => {
+      if (!rel || seen.has(rel) || typeof c !== 'string' || out.length >= 200) return;
+      seen.add(rel);
+      out.push({ path: rel, content: c });
+    };
+    const activeKey = selectedFileRef.current ? getFileKey(selectedFileRef.current) : null;
+    openFiles.forEach((f) => {
+      const key = getFileKey(f);
+      const c = activeContentOverride !== undefined && key === activeKey && typeof activeContentOverride === 'string'
+        ? activeContentOverride
+        : openContentsRef.current[key];
+      add(safePath(fileFullPath(f)), c);
+    });
+    [...files, ...repoPending].forEach((f) => {
+      const key = getFileKey(f);
+      add(safePath(fileFullPath(f)), openContentsRef.current[key] ?? parkedRef.current[key]?.c ?? f.content);
+    });
+    return { files: out, safePath };
+  }
+
   async function handleRun() {
     const file = selectedFileRef.current;
     if (!file) return;
@@ -1702,6 +1784,13 @@ export default function Editor() {
       return;
     }
     const lang = runLanguageFor(file);
+    // Web pages (and anything the runner can't classify) don't run through
+    // the code runner — preview them in the sandbox instead of erroring out.
+    if (lang.language === 'auto' || /\.(html?|xhtml|css)$/i.test(file.name || '')) {
+      await handleSandboxStart(file);
+      setPanel('preview');
+      return;
+    }
     const editor = editorRef.current;
     const activeContent = editor?.getValue?.();
     if (typeof activeContent !== 'string') {
@@ -1709,23 +1798,7 @@ export default function Editor() {
       return;
     }
 
-    const safePath = (p) => {
-      const rel = String(p || '').replace(/^\/+/, '');
-      return /^[\w.\-]+(\/[\w.\-]+)*$/.test(rel) ? rel : null;
-    };
-    const files = [];
-    openFiles.forEach((f) => {
-      // fileFullPath: workspace CodeFiles carry only the directory in `path`
-      // — the old `f.path || f.name` produced '/src' (dir) or '/' for root
-      // files, so entries were wrong or rejected outright.
-      const rel = safePath(fileFullPath(f));
-      if (!rel || files.some((x) => x.path === rel) || files.length >= 50) return;
-      const key = getFileKey(f);
-      const content = key === getFileKey(file)
-        ? activeContent
-        : openContentsRef.current[key];
-      if (typeof content === 'string') files.push({ path: rel, content });
-    });
+    const { files, safePath } = collectActiveFiles(activeContent);
     const entry = safePath(fileFullPath(file));
     if (!entry || !files.some((f) => f.path === entry)) {
       setStatus({ type: 'error', msg: `Cannot run '${file.name}': file name has unsupported characters` });
@@ -1954,7 +2027,34 @@ export default function Editor() {
     e.preventDefault();
     if (!newFileName.trim()) return;
     if (selectedRepo && !selectedProject) {
-      setStatus({ type: 'error', msg: 'Repo files come from GitHub — switch to a workspace or project to create files.' });
+      // Repo mode: the remote tree stays server-owned — stage the new file
+      // locally and let Commit & Push publish it (see handleGitAction).
+      const name = newFileName.trim();
+      const dir = (newFilePath || '/').replace(/\/+$/, '');
+      const full = `${dir}/${name}`.replace(/\/{2,}/g, '/');
+      const key = getFileKey({ path: full, name });
+      const entry = {
+        _id: key,
+        id: key,
+        name,
+        path: full, // GitHub entries carry the full path
+        language: newFileLang,
+        content: newFileContent,
+        source: 'github',
+        pending: true,
+      };
+      openContentsRef.current[key] = newFileContent;
+      openOriginalsRef.current[key] = newFileContent;
+      remoteBaselineRef.current[key] = ''; // not on the remote yet → shows in SCM
+      setRepoPending((prev) => [...prev.filter((f) => getFileKey(f) !== key), entry]);
+      setShowNewModal(false);
+      setNewFileName('');
+      setNewFileLang('javascript');
+      setNewFileContent('');
+      refreshGitModified();
+      setStatus({ type: 'success', msg: 'File staged — Commit & Push to publish it' });
+      openFile(entry);
+      loadFile(entry);
       return;
     }
     try {
@@ -1998,7 +2098,26 @@ export default function Editor() {
     e.preventDefault();
     if (!newFolderName.trim()) return;
     if (selectedRepo && !selectedProject) {
-      setStatus({ type: 'error', msg: 'Repo files come from GitHub — switch to a workspace or project to create folders.' });
+      // Repo mode: stage a .gitkeep placeholder (git can't track empty
+      // folders) until Commit & Push publishes it.
+      const name = newFolderName.trim();
+      const dir = (newFolderPath || '/').replace(/\/+$/, '');
+      const full = `${dir}/${name}`.replace(/\/{2,}/g, '/');
+      const entry = {
+        _id: `pending-dir:${full}`,
+        id: `pending-dir:${full}`,
+        name: '.gitkeep',
+        path: full,
+        language: 'text',
+        content: '',
+        source: 'github',
+        pending: true,
+      };
+      setRepoPending((prev) => [...prev.filter((f) => getFileKey(f) !== getFileKey(entry)), entry]);
+      setShowNewFolderModal(false);
+      setNewFolderName('');
+      setStatus({ type: 'success', msg: 'Folder staged — Commit & Push to publish it' });
+      setExpandedFolders((prev) => ({ ...prev, [full]: true }));
       return;
     }
     try {
@@ -2041,15 +2160,25 @@ export default function Editor() {
   }
 
   const gatherDeploymentFiles = useCallback(() => {
-    const sourceFiles = selectedProject
+    const base = selectedProject
       ? files
       : selectedRepo
         ? (files.length ? files : (selectedFile ? [selectedFile] : []))
         : (selectedFile ? [selectedFile] : []);
+    // Staged repo-mode entries ride along until Commit & Push publishes them.
+    const sourceFiles = selectedRepo && !selectedProject && repoPending.length
+      ? [...base, ...repoPending]
+      : base;
 
     if (!sourceFiles.length) return [];
 
-    return sourceFiles.map((file) => {
+    const seenPaths = new Set();
+    return sourceFiles.filter((f) => {
+      const p = fileFullPath(f);
+      if (seenPaths.has(p)) return false;
+      seenPaths.add(p);
+      return true;
+    }).map((file) => {
       const key = getFileKey(file);
       const rawValue = openContentsRef.current[key] ?? parkedRef.current[key]?.c ?? file.content;
       const hasContent = typeof rawValue === 'string';
@@ -2071,7 +2200,7 @@ export default function Editor() {
         _resolved: hasContent,
       };
     });
-  }, [files, getFileKey, selectedFile, selectedProject, selectedRepo]);
+  }, [files, repoPending, getFileKey, selectedFile, selectedProject, selectedRepo]);
 
   // ---- Save-triggered auto-redeploy -----------------------------------
   // After a successful save, if this project/repo already has a deployment,
@@ -2240,6 +2369,7 @@ export default function Editor() {
           schedulePersist();
           refreshGitModified();
           setCommitMsg('');
+          setRepoPending([]); // staged entries are on the remote now
           await loadRepoGitStatus(selectedRepo).catch(() => {});
 
           setStatus({
@@ -2463,8 +2593,11 @@ export default function Editor() {
     }));
   }
 
-  async function handleSandboxStart() {
-    const previewTarget = selectedFile || files[0] || null;
+  async function handleSandboxStart(fileOverride) {
+    // Also used as a click handler — ignore the event object it receives.
+    const previewTarget = (fileOverride && typeof fileOverride === 'object' && fileOverride.name)
+      ? fileOverride
+      : (selectedFile || files[0] || null);
     if (!previewTarget) {
       setStatus({ type: 'error', msg: 'Select a file to preview first.' });
       return;
@@ -2472,12 +2605,25 @@ export default function Editor() {
 
     try {
       setStatus({ type: 'success', msg: 'Starting sandbox...' });
+      const { files: collected, safePath } = collectActiveFiles(undefined);
+      const entryRel = safePath(fileFullPath(previewTarget));
+      const entryContent = openContentsRef.current[getFileKey(previewTarget)]
+        ?? previewTarget.content
+        ?? content
+        ?? '';
+      if (entryRel && !collected.some((f) => f.path === entryRel)) {
+        collected.unshift({ path: entryRel, content: typeof entryContent === 'string' ? entryContent : '' });
+      }
+      const rawId = String(previewTarget._id || previewTarget.id || '');
       const payload = {
-        fileId: previewTarget._id || previewTarget.id || null,
+        // Only send a real Mongo id — GitHub/pending pseudo-ids would make
+        // CodeFile.findById throw a cast error server-side.
+        fileId: /^[0-9a-f]{24}$/i.test(rawId) ? rawId : null,
         name: previewTarget.name,
         path: previewTarget.path || '/',
         language: previewTarget.language || 'javascript',
-        content: openContentsRef.current[getFileKey(previewTarget)] ?? previewTarget.content ?? content ?? '',
+        content: typeof entryContent === 'string' ? entryContent : '',
+        files: collected.slice(0, 200),
         source: selectedRepo ? 'github' : selectedProject ? 'project' : 'local',
       };
 
@@ -2485,10 +2631,17 @@ export default function Editor() {
         method: 'POST',
         body: JSON.stringify(payload),
       });
-      if (data.sandboxUrl) {
-        setSandboxUrl(data.sandboxUrl);
+      // Prefer the path form: behind Render's proxy the server's own
+      // protocol/host can be wrong (http → mixed-content iframe).
+      const url = data.sandboxPath
+        ? `${API_BASE_URL}${data.sandboxPath}`
+        : data.sandboxUrl;
+      if (url) {
+        setSandboxUrl(url);
         setStatus({ type: 'success', msg: 'Sandbox ready!' });
         setTimeout(() => setStatus(null), 2000);
+      } else {
+        setStatus({ type: 'error', msg: 'Sandbox did not start' });
       }
     } catch (err) {
       setStatus({ type: 'error', msg: `Sandbox error: ${err.message}` });
@@ -3484,6 +3637,14 @@ export default function Editor() {
                           <span className={`ed-term-capsule ${termInfo ? 'is-live' : ''}`}>{termInfo ? 'LIVE' : 'CONNECTING'}</span>
                           <span className="ed-term-label">
                             {termInfo ? (termInfo.type === 'pty' ? 'Workspace Shell · PTY' : 'Workspace Shell · simulated') : 'Workspace Shell'}
+                            {(selectedRepo || selectedProject) && (
+                              <span className="ed-term-scope">
+                                {' — '}
+                                {selectedRepo
+                                  ? (selectedRepo.fullName || selectedRepo.name)
+                                  : selectedProject?.name}
+                              </span>
+                            )}
                           </span>
                         </div>
                         <div className="ed-term-actions">
