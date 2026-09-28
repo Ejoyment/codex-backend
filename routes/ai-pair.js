@@ -305,15 +305,16 @@ router.get('/file/:owner/:repo/*', authenticateToken, async (req, res) => {
 // Create new AI pair session
 router.post('/session', authenticateToken, async (req, res) => {
     try {
-        const { repositoryId, repositoryName, repositoryOwner, branch, sessionName } = req.body;
+        const { repositoryId, repositoryName, repositoryOwner, branch, sessionName, language } = req.body;
         
         const session = await AIPairSession.create({
             userId: req.userId,
             repositoryId,
             repositoryName,
-            repositoryOwner,
+            repositoryOwner: repositoryOwner || 'unknown',
             branch: branch || 'main',
             sessionName: sessionName || `Session ${new Date().toLocaleString()}`,
+            language,
             status: 'active'
         });
 
