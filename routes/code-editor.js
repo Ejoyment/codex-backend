@@ -11,14 +11,14 @@ const { emitWorkspaceChange } = require('../utils/realTimeEvents');
  * @swagger
  * /api/code-editor/languages:
  *   get:
- *     summary: Get allowed programming languages for user's subscription tier
+ *     summary: Get available programming languages (all tiers have full access)
  *     tags:
  *       - Code Editor
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: List of languages with availability status
+ *         description: List of languages (all available on every tier)
  *         content:
  *           application/json:
  *             schema:
@@ -37,7 +37,7 @@ const { emitWorkspaceChange } = require('../utils/realTimeEvents');
  *       401:
  *         description: Unauthorized
  */
-// Get allowed languages for user's tier
+// Get available languages (every tier has access to all of them)
 router.get('/languages', authenticateToken, async (req, res) => {
     try {
         const user = await require('../models/User').findById(req.userId).populate('subscription');
