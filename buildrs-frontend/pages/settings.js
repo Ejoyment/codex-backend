@@ -7,7 +7,7 @@ import useAuthStore from '../store/authStore';
 import { apiFetch, subscriptionApi, integrationApi } from '../lib/api';
 import { rateLimit, validate, createSubmitGuard } from '../lib/security';
 import { getAvatarUrl } from '../lib/utils';
-import { User, Shield, CreditCard, Plug, Camera, Save, ExternalLink, Unplug, Loader2, Zap } from 'lucide-react';
+import { User, Shield, CreditCard, Plug, Camera, Save, ExternalLink, Unplug, Loader2, Zap, AlertTriangle, Trash2 } from 'lucide-react';
 import useToastStore from '../store/toastStore';
 
 const submitGuard = createSubmitGuard();
@@ -135,6 +135,7 @@ export default function Settings() {
   const subscription = useAuthStore((s) => s.subscription);
   const setAuth = useAuthStore((s) => s.setAuth);
   const setSubscription = useAuthStore((s) => s.setSubscription);
+  const clearAuth = useAuthStore((s) => s.clearAuth);
 
   const [activeTab, setActiveTab] = useState('profile');
   const [name, setName] = useState('');
@@ -153,6 +154,33 @@ export default function Settings() {
   const previewRef = useRef(null);
   const dragRef = useRef(null);
   const toast = useToastStore();
+  const [deleteText, setDeleteText] = useState('');
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDeleteAccount = async () => {
+    if (deleteText !== 'DELETE' || deleting) return;
+    const confirmed = window.confirm(
+      'Delete your account permanently? Your profile, projects, files, AI sessions, messages and deployments will be removed. This cannot be undone.'
+    );
+    if (!confirmed) return;
+    setDeleting(true);
+    try {
+      const data = await apiFetch('/api/auth/delete-account', {
+        method: 'DELETE',
+        body: JSON.stringify({ confirm: 'DELETE' }),
+      });
+      if (data.success) {
+        clearAuth();
+        router.replace('/sign_in');
+      } else {
+        toast.error(data.message || 'Failed to delete account');
+      }
+    } catch (err) {
+      toast.error(err.message || 'Failed to delete account');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   useEffect(() => {
     const tick = () => {
@@ -512,7 +540,7 @@ export default function Settings() {
                 )}
 
                 {activeTab === 'security' && (
-                  <div className="max-w-xl">
+                  <div className="max-w-xl space-y-6">
                     <div className="set-gate">
                       <div className="set-gate-ico">
                         <Shield className="w-4 h-4" />
@@ -520,6 +548,43 @@ export default function Settings() {
                       <div>
                         <h3 className="mem-rule" style={{ marginBottom: '0.15rem' }}>Security Settings</h3>
                         <p className="set-hint">Password change and 2FA are coming soon.</p>
+                      </div>
+                    </div>
+
+                    <div className="set-gate" style={{ borderColor: 'rgba(248,113,113,0.3)', background: 'rgba(248,113,113,0.04)' }}>
+                      <div className="set-gate-ico" style={{ background: 'rgba(248,113,113,0.12)', color: '#f87171' }}>
+                        <AlertTriangle className="w-4 h-4" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="mem-rule" style={{ marginBottom: '0.15rem', color: '#f87171' }}>Delete Account</h3>
+                        <p className="set-hint" style={{ marginBottom: '0.75rem' }}>
+                          Permanently deletes your profile, projects, files, AI sessions, messages, deployments
+                          and usage data. Your integration connections (GitHub, Figma, Slack, Notion, Discord)
+                          and synced data such as GitHub repos are kept. This cannot be undone.
+                        </p>
+                        <input
+                          type="text"
+                          value={deleteText}
+                          onChange={(e) => setDeleteText(e.target.value)}
+                          placeholder="Type DELETE to confirm"
+                          className="ws-input w-full"
+                          style={{ marginBottom: '0.5rem' }}
+                          autoComplete="off"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleDeleteAccount}
+                          disabled={deleteText !== 'DELETE' || deleting}
+                          className="btn-workspace btn-secondary text-[#f87171] border-[rgba(248,113,113,0.3)] hover:bg-[rgba(248,113,113,0.08)] opacity-60 cursor-not-allowed"
+                          style={
+                            deleteText === 'DELETE' && !deleting
+                              ? { opacity: 1, cursor: 'pointer' }
+                              : undefined
+                          }
+                        >
+                          {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                          {deleting ? 'Deleting...' : 'Delete my account'}
+                        </button>
                       </div>
                     </div>
                   </div>
