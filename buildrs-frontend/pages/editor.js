@@ -4,6 +4,7 @@ import Head from 'next/head';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch, projectApi } from '../lib/api';
+import * as editorDrafts from '../lib/editorDrafts';
 import {
   Save, ChevronDown, ChevronRight, FileCode, Terminal, Bot, Layers, Rocket, Box,
   Users, GitBranch, Eye, X, FolderOpen, Search, Settings, Folder, Trash2,
@@ -135,18 +136,40 @@ function getLanguageGlyph(name) {
   );
 }
 
+// Two file shapes exist: GitHub tree entries store the FULL path (including
+// the filename, e.g. '/src/app.js'), workspace CodeFiles store the DIRECTORY
+// path plus name (path '/src' + name 'app.js'). Normalize to a full path.
+function fileFullPath(f) {
+  const name = f.name || '';
+  const base = String(f.path || '/').replace(/\/+$/, '');
+  if (!name) return base || '/';
+  if (!base) return `/${name}`;
+  if (base === name || base.endsWith(`/${name}`)) return `/${base}`.replace(/^\/+/, '/');
+  return `${base}/${name}`;
+}
+
 function buildFileTree(files) {
   const root = { name: 'root', type: 'folder', children: {} };
   files.forEach((f) => {
-    const parts = (f.path || '/').split('/').filter(Boolean);
+    const full = fileFullPath(f);
+    const parts = full.split('/').filter(Boolean);
+    if (!parts.length) return;
+    // VFS creates '.gitkeep' placeholders so empty folders show up in the
+    // explorer — render the folder itself, never a file node.
+    const isKeep = (f.name || '') === '.gitkeep';
+    const dirParts = parts.slice(0, -1);
+    const leaf = isKeep ? null : parts[parts.length - 1];
     let cur = root; let rp = '';
-    for (let i = 0; i < parts.length; i++) {
-      rp = rp ? rp + '/' + parts[i] : parts[i];
-      if (i === parts.length - 1) {
-        cur.children[parts[i]] = { ...f, type: 'file' };
-      } else {
-        if (!cur.children[parts[i]]) cur.children[parts[i]] = { name: parts[i], type: 'folder', children: {}, path: rp };
-        cur = cur.children[parts[i]];
+    for (let i = 0; i < dirParts.length; i++) {
+      rp = rp ? rp + '/' + dirParts[i] : dirParts[i];
+      if (!cur.children[dirParts[i]] || cur.children[dirParts[i]].type !== 'folder') {
+        cur.children[dirParts[i]] = { name: dirParts[i], type: 'folder', children: {}, path: rp };
+      }
+      cur = cur.children[dirParts[i]];
+    }
+    if (leaf) {
+      if (!cur.children[leaf] || cur.children[leaf].type !== 'folder') {
+        cur.children[leaf] = { ...f, name: leaf, type: 'file', _fullPath: full, _id: f._id || `github:${full}` };
       }
     }
   });
@@ -193,7 +216,7 @@ function FileTreeNode({ node, depth, selectedId, onSelect, expanded, onToggle })
         {isOpen && sortedChildren && (
           <div>
             {sortedChildren.map((child) => (
-              <FileTreeNode key={child.path || child.name || child._id} node={child} depth={depth + 1}
+              <FileTreeNode key={child._fullPath || child.path || child.name || child._id} node={child} depth={depth + 1}
                 selectedId={selectedId} onSelect={onSelect} expanded={expanded} onToggle={onToggle} />
             ))}
           </div>
@@ -230,6 +253,14 @@ export default function Editor() {
   const [openFiles, setOpenFiles] = useState([]);
   const openContentsRef = useRef({});
   const openDirtyRef = useRef({});
+  const openOriginalsRef = useRef({});     // last locally-saved content per file (dirty = buffer !== this)
+  const remoteBaselineRef = useRef({});     // last-known GitHub remote content (for SCM changes)
+  const parkedRef = useRef({});             // saved-but-closed GitHub drafts (still deploy/push-able)
+  const persistTimerRef = useRef(null);
+  const pendingRestoreRef = useRef(null);
+  const autoRedeployRef = useRef(new Set());
+  const pollTimersRef = useRef({});
+  const pollWhenDoneRef = useRef({});
   const [content, setContent] = useState('');
   const [languages, setLanguages] = useState([]);
   const [tier, setTier] = useState('');
@@ -341,6 +372,55 @@ export default function Editor() {
     return `tmp:${Math.random().toString(36).slice(2)}`;
   }, []);
 
+  function buildSession() {
+    const contents = {};
+    const metaByKey = {};
+    openFiles.forEach((f) => { metaByKey[getFileKey(f)] = f; });
+    files.forEach((f) => { const k = getFileKey(f); if (!metaByKey[k]) metaByKey[k] = f; });
+    Object.entries(openContentsRef.current).forEach(([k, c]) => {
+      const meta = metaByKey[k] || {};
+      const o = openOriginalsRef.current[k] ?? c;
+      const isGh = String(k).startsWith('github:') || meta.source === 'github';
+      contents[k] = {
+        c, o,
+        n: meta.name || (String(k).startsWith('github:') ? String(k).split('/').pop() : k),
+        p: meta.path || '/',
+        s: isGh ? 'gh' : 'db',
+        g: remoteBaselineRef.current[k],
+        t: Date.now(),
+      };
+    });
+    return {
+      contents,
+      parked: { ...parkedRef.current },
+      openFiles: openFiles.map((f) => ({
+        _id: getFileKey(f), name: f.name, path: f.path, source: f.source,
+        language: f.language, sha: f.sha,
+      })),
+      selectedKey: selectedFileRef.current ? getFileKey(selectedFileRef.current) : null,
+      repo: selectedRepo,
+      projectId: selectedProject?._id || selectedProject?.id || null,
+    };
+  }
+  const buildSessionRef = useRef(() => null);
+  buildSessionRef.current = buildSession;
+
+  function schedulePersist() {
+    if (typeof window === 'undefined') return;
+    if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+    persistTimerRef.current = setTimeout(() => {
+      persistTimerRef.current = null;
+      try { editorDrafts.saveSession(buildSessionRef.current()); } catch (_) { /* ignore */ }
+    }, 400);
+  }
+
+  function refreshGitModified() {
+    setGitStatus((prev) => {
+      if (!prev || !prev.isGithub) return prev;
+      return { ...prev, modified: computeLocalModified(prev.repo) };
+    });
+  }
+
   const monacoOptions = useMemo(() => ({
     fontSize: 13,
     minimap: { enabled: true },
@@ -359,8 +439,54 @@ export default function Editor() {
     automaticLayout: true,
   }), []);
 
+  // Restore the previous editor session (tabs, buffers, drafts, repo/project)
+  // from localStorage before any data fetch resolves.
   useEffect(() => {
-    loadFiles();
+    const boot = editorDrafts.loadSession();
+    if (!boot) return;
+    Object.entries(boot.contents || {}).forEach(([k, e]) => {
+      if (!e || typeof e.c !== 'string') return;
+      openContentsRef.current[k] = e.c;
+      openOriginalsRef.current[k] = typeof e.o === 'string' ? e.o : e.c;
+      openDirtyRef.current[k] = e.c !== openOriginalsRef.current[k];
+      if (typeof e.g === 'string') remoteBaselineRef.current[k] = e.g;
+    });
+    Object.entries(boot.parked || {}).forEach(([k, e]) => {
+      if (e && typeof e.c === 'string') parkedRef.current[k] = e;
+    });
+    if (Array.isArray(boot.openFiles) && boot.openFiles.length) setOpenFiles(boot.openFiles);
+    if (boot.repo && boot.repo.name) {
+      setSelectedRepo(boot.repo);
+      setSelectedProject(null);
+      pendingRestoreRef.current = { selectedKey: boot.selectedKey || null, projectId: null };
+    } else {
+      pendingRestoreRef.current = { selectedKey: boot.selectedKey || null, projectId: boot.projectId || null };
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist on unmount and when the tab is hidden so navigating away never
+  // loses work (beforeunload catches hard refresh/close too).
+  useEffect(() => {
+    const flush = () => {
+      try {
+        if (persistTimerRef.current) { clearTimeout(persistTimerRef.current); persistTimerRef.current = null; }
+        editorDrafts.saveSession(buildSessionRef.current());
+      } catch (_) { /* ignore */ }
+    };
+    const onVisibility = () => { if (document.visibilityState === 'hidden') flush(); };
+    window.addEventListener('beforeunload', flush);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      flush();
+      window.removeEventListener('beforeunload', flush);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    loadFiles(workspaceId);
     loadLanguages();
     loadCollaborators();
     loadDeployments();
@@ -370,17 +496,47 @@ export default function Editor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Version control follows the selection: a GitHub repo shows that repo's
+  // branch/commits/local changes; otherwise the workspace git state.
   useEffect(() => {
-    if (selectedRepo && !workspaceId) {
-      setGitStatus({ success: true, branch: selectedRepo.default_branch || 'main', ahead: 0, behind: 0, modified: [] });
+    if (selectedRepo) {
+      loadRepoGitStatus(selectedRepo);
       return;
     }
-
     if (workspaceId) {
       loadGitStatus();
+      return;
     }
+    setGitStatus(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId, selectedRepo]);
+
+  // Finish restoring a previous session once its inputs arrive.
+  useEffect(() => {
+    const pend = pendingRestoreRef.current;
+    if (!pend) return;
+    if (pend.projectId && projects.length) {
+      const p = projects.find((x) => (x._id || x.id) === pend.projectId);
+      pendingRestoreRef.current = { ...pend, projectId: null };
+      if (!selectedProject && p) {
+        setSelectedProject(p);
+        setSelectedRepo(null);
+        return;
+      }
+    }
+    const cur = pendingRestoreRef.current;
+    if (cur && cur.selectedKey && openFiles.length) {
+      pendingRestoreRef.current = { ...cur, selectedKey: null };
+      const target = openFiles.find((f) => getFileKey(f) === cur.selectedKey);
+      if (target && getFileKey(selectedFile) !== cur.selectedKey) {
+        openFile(target);
+        loadFile(target);
+      }
+    } else if (cur && cur.selectedKey && !openFiles.length && !loading) {
+      pendingRestoreRef.current = { ...cur, selectedKey: null };
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projects, openFiles, selectedFile, loading, selectedProject]);
 
   useEffect(() => {
     if (selectedProject) {
@@ -388,7 +544,7 @@ export default function Editor() {
     } else if (selectedRepo) {
       loadGithubRepoFiles(selectedRepo);
     } else {
-      loadFiles();
+      loadFiles(workspaceId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProject, selectedRepo]);
@@ -624,10 +780,11 @@ export default function Editor() {
     term.writeln('Available commands: ls, pwd, git status, clear, help');
   }
 
-  async function loadFiles() {
+  async function loadFiles(companyId) {
     try {
       setLoading(true);
-      const data = await apiFetch('/api/code-editor/files');
+      const qs = companyId ? `?companyId=${encodeURIComponent(companyId)}` : '';
+      const data = await apiFetch(`/api/code-editor/files${qs}`);
       setFiles(data.files || []);
     } catch {
       setStatus({ type: 'error', msg: 'Failed to load files' });
@@ -829,6 +986,50 @@ export default function Editor() {
       const data = await apiFetch(`/api/git/status/${workspaceId}`).catch(() => null);
       if (data) setGitStatus(data);
     } catch {}
+  }
+
+  // Branch + recent commits + local changes for the selected GitHub repo.
+  // Local changes = dirty buffers, locally-saved-but-unpushed files, and
+  // parked drafts that differ from the last-known remote content.
+  async function loadRepoGitStatus(repo) {
+    if (!repo) return;
+    const owner = repo.owner?.login || repo.owner || repo.ownerName || '';
+    const fullName = repo.fullName || `${owner}/${repo.name}`;
+    let commits = [];
+    try {
+      const data = await apiFetch(`/api/github/repos/${owner}/${repo.name}/commits?per_page=10`);
+      commits = data?.commits || [];
+    } catch {}
+    setGitStatus({
+      success: true,
+      branch: repo.default_branch || repo.defaultBranch || 'main',
+      ahead: 0,
+      behind: 0,
+      modified: computeLocalModified(fullName),
+      commits,
+      isGithub: true,
+      repo: fullName,
+    });
+  }
+
+  function computeLocalModified(repoFull) {
+    const out = [];
+    const seen = new Set();
+    const push = (label, k) => { if (!seen.has(k)) { seen.add(k); out.push(label); } };
+    openFiles.forEach((f) => {
+      const k = getFileKey(f);
+      const dirtyBuffer = !!openDirtyRef.current[k];
+      const buf = openContentsRef.current[k];
+      const remote = remoteBaselineRef.current[k];
+      const unpushed = repoFull && typeof buf === 'string' && typeof remote === 'string' && buf !== remote;
+      if (dirtyBuffer || unpushed) push(f.name || k, k);
+    });
+    Object.entries(parkedRef.current).forEach(([k, e]) => {
+      if (e?.s !== 'gh' || typeof e.c !== 'string') return;
+      const remote = e.g;
+      if (remote === undefined || e.c !== remote) push(e.n || k, k);
+    });
+    return out;
   }
 
   async function loadDeployments() {
@@ -1049,12 +1250,44 @@ export default function Editor() {
     const fileKey = getFileKey(file);
     const sourceFile = file && file.path && selectedRepo ? { ...file, _id: fileKey, id: fileKey, source: 'github', owner: selectedRepo.owner?.login || selectedRepo.owner, repo: selectedRepo.name } : file;
     const saved = openContentsRef.current[fileKey];
-    const contentFromGithub = sourceFile?.source === 'github' && saved === undefined ? await fetchGithubFileContent(sourceFile) : null;
-    const val = saved !== undefined ? saved : (contentFromGithub ?? sourceFile?.content ?? '');
+    let val;
+    let baseline;
+    if (saved !== undefined) {
+      // Buffer already in memory (open tab, restored session, or local draft).
+      val = saved;
+      baseline = openOriginalsRef.current[fileKey] ?? saved;
+    } else if (sourceFile?.source === 'github') {
+      baseline = await fetchGithubFileContent(sourceFile);
+      val = baseline;
+    } else if (file?.content !== undefined && file?.content !== null) {
+      baseline = file.content;
+      val = file.content;
+    } else if (/^[0-9a-f]{24}$/i.test(String(file?._id || ''))) {
+      // Project file lists are metadata-only — hydrate the real content so
+      // opening a project file (and saving it) actually works.
+      try {
+        const data = await apiFetch(`/api/code-editor/files/${file._id}`);
+        baseline = typeof data?.file?.content === 'string' ? data.file.content : '';
+      } catch (_) {
+        baseline = '';
+      }
+      val = baseline;
+    } else {
+      baseline = '';
+      val = '';
+    }
+    if (sourceFile?.source === 'github' && remoteBaselineRef.current[fileKey] === undefined) {
+      remoteBaselineRef.current[fileKey] = baseline;
+    }
     setSelectedFile(sourceFile || file);
     setContent(val);
-    originalContentRef.current = val;
-    setDirty(!!openDirtyRef.current[fileKey]);
+    originalContentRef.current = baseline;
+    openContentsRef.current[fileKey] = val;
+    openOriginalsRef.current[fileKey] = baseline;
+    const initDirty = openDirtyRef.current[fileKey] ?? (val !== baseline);
+    openDirtyRef.current[fileKey] = initDirty;
+    setDirty(initDirty);
+    schedulePersist();
     setShowProjectSelector(false);
     setStatus(null);
     if (sourceFile?._id) {
@@ -1089,7 +1322,7 @@ export default function Editor() {
     const fileKey = getFileKey(file);
     const i = openFiles.findIndex((o) => getFileKey(o) === fileKey);
     if (i === -1) return;
-    if (getFileKey(selectedFile) === fileKey && (dirty || openDirtyRef.current[fileKey])) {
+    if (openDirtyRef.current[fileKey] || (getFileKey(selectedFile) === fileKey && dirty)) {
       setConfirmClose(file);
       return;
     }
@@ -1102,17 +1335,36 @@ export default function Editor() {
     const next = [...openFiles];
     next.splice(i, 1);
     setOpenFiles(next);
+    const isGh = String(fileKey).startsWith('github:') || file?.source === 'github';
+    const buf = openContentsRef.current[fileKey];
+    if (isGh && typeof buf === 'string') {
+      const o = openOriginalsRef.current[fileKey] ?? buf;
+      if (buf === o) {
+        const repoOwner = selectedRepo?.owner?.login || selectedRepo?.owner || selectedRepo?.ownerName || '';
+        parkedRef.current[fileKey] = {
+          c: buf, o,
+          n: file?.name || String(fileKey).split('/').pop(),
+          p: file?.path || '/',
+          s: 'gh',
+          g: remoteBaselineRef.current[fileKey],
+          r: selectedRepo ? (selectedRepo.fullName || `${repoOwner}/${selectedRepo.name}`) : null,
+        };
+      }
+    }
     delete openContentsRef.current[fileKey];
     delete openDirtyRef.current[fileKey];
+    delete openOriginalsRef.current[fileKey];
+    delete remoteBaselineRef.current[fileKey];
     if (getFileKey(selectedFile) === fileKey) {
       const neighbour = next[i] || next[i - 1];
       if (neighbour) {
         const neighbourKey = getFileKey(neighbour);
         const saved = openContentsRef.current[neighbourKey];
-        const val = saved !== undefined ? saved : neighbour.content || '';
+        const baseline = openOriginalsRef.current[neighbourKey];
+        const val = saved !== undefined ? saved : (baseline ?? neighbour.content ?? '');
         setSelectedFile(neighbour);
         setContent(val);
-        originalContentRef.current = val;
+        originalContentRef.current = baseline ?? val;
         setDirty(!!openDirtyRef.current[neighbourKey]);
       } else {
         setSelectedFile(null);
@@ -1121,6 +1373,8 @@ export default function Editor() {
         setDirty(false);
       }
     }
+    schedulePersist();
+    refreshGitModified();
   }
 
   const handleConfirmClose = () => {
@@ -1143,6 +1397,8 @@ export default function Editor() {
       openDirtyRef.current[fileKey] = val !== originalContentRef.current;
     }
     setDirty(val !== originalContentRef.current);
+    schedulePersist();
+    refreshGitModified();
   }, [getFileKey, selectedFile]);
 
   async function handleSave() {
@@ -1151,42 +1407,38 @@ export default function Editor() {
     try {
       setSaving(true);
       const fileKey = getFileKey(file);
-      if (file.source === 'github' && selectedRepo) {
-        const owner = selectedRepo.owner?.login || selectedRepo.owner || selectedRepo.ownerName;
-        const repo = selectedRepo.name;
-        const path = String(file.path || file.name).replace(/^\/+/, '');
-        const data = await apiFetch(`/api/github/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`, {
-          method: 'PUT',
-          body: JSON.stringify({
-            content,
-            message: `Update ${file.name} from Buildrs HQ editor`,
-            sha: file.sha,
-            branch: selectedRepo.default_branch || 'main',
-          }),
-        });
-        if (data?.success) {
-          if (file.sha !== data?.commit?.sha) file.sha = data?.commit?.sha;
-          originalContentRef.current = content;
-          openContentsRef.current[fileKey] = content;
-          openDirtyRef.current[fileKey] = false;
-          setDirty(false);
-          setStatus({ type: 'success', msg: 'GitHub file saved' });
-          setTimeout(() => setStatus(null), 2000);
-          return;
-        }
-        throw new Error(data?.message || 'GitHub save failed');
+      const isGithub = file.source === 'github' || String(fileKey).startsWith('github:');
+      if (isGithub && selectedRepo) {
+        // Local save: the editor buffer becomes the source of truth for
+        // deploys; Push in Source Control is what writes changes to GitHub.
+        openContentsRef.current[fileKey] = content;
+        openOriginalsRef.current[fileKey] = content;
+        openDirtyRef.current[fileKey] = false;
+        setDirty(false);
+        schedulePersist();
+        refreshGitModified();
+        setStatus({ type: 'success', msg: 'Saved locally — Deploy republishes it, Push commits it to GitHub' });
+        setTimeout(() => setStatus(null), 3000);
+        maybeAutoRedeploy();
+        return;
+      }
+      if (!/^[0-9a-f]{24}$/i.test(String(file._id || ''))) {
+        throw new Error('Cannot save: this file has no workspace record — recreate it from the Explorer.');
       }
       const data = await apiFetch(`/api/code-editor/files/${file._id}`, {
         method: 'PUT',
         body: JSON.stringify({ content, name: file.name }),
       });
-      originalContentRef.current = content;
       openContentsRef.current[fileKey] = content;
+      openOriginalsRef.current[fileKey] = content;
       openDirtyRef.current[fileKey] = false;
+      originalContentRef.current = content;
       setDirty(false);
       setFiles((prev) => prev.map((f) => (getFileKey(f) === fileKey ? { ...f, ...data.file } : f)));
+      schedulePersist();
       setStatus({ type: 'success', msg: 'File saved' });
       setTimeout(() => setStatus(null), 2000);
+      maybeAutoRedeploy();
     } catch (err) {
       setStatus({ type: 'error', msg: err.message || 'Save failed' });
     } finally {
@@ -1236,6 +1488,10 @@ export default function Editor() {
   async function handleCreateFile(e) {
     e.preventDefault();
     if (!newFileName.trim()) return;
+    if (selectedRepo && !selectedProject) {
+      setStatus({ type: 'error', msg: 'Repo files come from GitHub — switch to a workspace or project to create files.' });
+      return;
+    }
     try {
       setCreating(true);
       const filePath = newFilePath || '/';
@@ -1276,6 +1532,10 @@ export default function Editor() {
   async function handleCreateFolder(e) {
     e.preventDefault();
     if (!newFolderName.trim()) return;
+    if (selectedRepo && !selectedProject) {
+      setStatus({ type: 'error', msg: 'Repo files come from GitHub — switch to a workspace or project to create folders.' });
+      return;
+    }
     try {
       setCreating(true);
       const folderPath = newFolderPath || '/';
@@ -1311,7 +1571,7 @@ export default function Editor() {
     } else if (selectedRepo) {
       await loadGithubRepoFiles(selectedRepo);
     } else {
-      await loadFiles();
+      await loadFiles(workspaceId);
     }
   }
 
@@ -1325,8 +1585,10 @@ export default function Editor() {
     if (!sourceFiles.length) return [];
 
     return sourceFiles.map((file) => {
-      const pageValue = openContentsRef.current[getFileKey(file)] ?? file.content ?? '';
-      const contentValue = typeof pageValue === 'string' ? pageValue : '';
+      const key = getFileKey(file);
+      const rawValue = openContentsRef.current[key] ?? parkedRef.current[key]?.c ?? file.content;
+      const hasContent = typeof rawValue === 'string';
+      const contentValue = hasContent ? rawValue : '';
       const pathValue = (file.path || '/').replace(/\\/g, '/').replace(/\/+$|^\/+$/, '/');
       return {
         name: file.name,
@@ -1336,22 +1598,134 @@ export default function Editor() {
         // GitHub blob sha lets the backend resolve content via the blob API
         // when the tarball fetch can't cover a file.
         sha: file.sha || undefined,
+        // Marks client-provided content (including intentional empties) as
+        // final so the server's backfill does not overwrite it.
+        _resolved: hasContent,
       };
     });
   }, [files, getFileKey, selectedFile, selectedProject, selectedRepo]);
 
+  // ---- Save-triggered auto-redeploy -----------------------------------
+  // After a successful save, if this project/repo already has a deployment,
+  // republish it (same subdomain) with the current editor buffers. No GitHub
+  // push involved — the edited files are what get deployed.
+
+  function findOwnDeployment() {
+    const pid = selectedProject?._id || selectedProject?.id || null;
+    const owner = selectedRepo?.owner?.login || selectedRepo?.owner || selectedRepo?.ownerName || '';
+    const repoFull = selectedRepo ? (selectedRepo.fullName || `${owner}/${selectedRepo.name}`) : null;
+    return deployments.find((d) => {
+      const dk = d.projectKey || (d.projectId?._id ? String(d.projectId._id) : (d.projectId ? String(d.projectId) : null));
+      if (pid && dk && dk === String(pid)) return true;
+      if (repoFull && d.repoFullName && d.repoFullName === repoFull) return true;
+      return false;
+    }) || null;
+  }
+
+  function pollDeploymentToTerminal(id, subdomain, redeployWhenDone) {
+    if (redeployWhenDone) pollWhenDoneRef.current[subdomain] = true;
+    if (pollTimersRef.current[subdomain]) return;
+    let tries = 0;
+    pollTimersRef.current[subdomain] = setInterval(async () => {
+      tries += 1;
+      try {
+        const data = await apiFetch(`/api/deployments/${id}`);
+        const d = data?.deployment;
+        if (d) {
+          setDeployments((prev) => prev.map((x) => (x._id === id
+            ? { ...x, status: d.status, deployedUrl: d.deployedUrl, fault: d.fault, failureStage: d.failureStage, errorMessage: d.errorMessage }
+            : x)));
+        }
+        const done = !d || ['success', 'failed', 'stopped'].includes(d.status) || tries > 200;
+        if (done) {
+          clearInterval(pollTimersRef.current[subdomain]);
+          delete pollTimersRef.current[subdomain];
+          const whenDone = !!pollWhenDoneRef.current[subdomain];
+          delete pollWhenDoneRef.current[subdomain];
+          if (whenDone) triggerRedeploy({ subdomain, _id: id });
+        }
+      } catch (_) {
+        clearInterval(pollTimersRef.current[subdomain]);
+        delete pollTimersRef.current[subdomain];
+      }
+    }, 3000);
+  }
+
+  async function triggerRedeploy(dep) {
+    const key = dep.subdomain || String(dep._id);
+    if (autoRedeployRef.current.has(key)) return;
+    autoRedeployRef.current.add(key);
+    try {
+      const deploymentFiles = gatherDeploymentFiles();
+      if (!deploymentFiles.length) throw new Error('Nothing to deploy — open your files first.');
+      const payload = {
+        projectId: selectedProject?._id || selectedProject?.id || null,
+        subdomain: dep.subdomain,
+        companyId: selectedProject?.workspaceId || workspaceId,
+        source: selectedRepo ? 'github' : selectedProject ? 'project' : 'local',
+        repo: selectedRepo ? {
+          owner: selectedRepo.owner?.login || selectedRepo.owner || selectedRepo.ownerName,
+          name: selectedRepo.name,
+          defaultBranch: selectedRepo.default_branch || 'main',
+          fullName: selectedRepo.fullName || selectedRepo.name,
+        } : null,
+        files: deploymentFiles,
+      };
+      const data = await apiFetch('/api/deployments', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      if (data?.deployment) {
+        setDeployments((prev) => {
+          const next = prev.filter((d) => d._id !== data.deployment._id && d.subdomain !== data.deployment.subdomain);
+          return [data.deployment, ...next];
+        });
+        setStatus({ type: 'success', msg: `Auto-redeploying ${dep.subdomain}.buildrshq.dev…` });
+        setTimeout(() => setStatus(null), 3000);
+        pollDeploymentToTerminal(data.deployment._id, dep.subdomain, false);
+      }
+    } catch (err) {
+      setStatus({ type: 'error', msg: `Auto-redeploy failed: ${err?.data?.error || err?.data?.message || err?.message}` });
+      setTimeout(() => setStatus(null), 4000);
+    } finally {
+      autoRedeployRef.current.delete(key);
+    }
+  }
+
+  function maybeAutoRedeploy() {
+    const dep = findOwnDeployment();
+    if (!dep || !dep.subdomain) return;
+    if (['pending', 'building', 'deploying'].includes(dep.status)) {
+      setStatus({ type: 'success', msg: 'Saved — waiting for the current deploy, then republishing…' });
+      pollDeploymentToTerminal(dep._id, dep.subdomain, true);
+      return;
+    }
+    triggerRedeploy(dep);
+  }
+
   async function handleGitAction(action) {
-    if (selectedRepo && !workspaceId) {
+    // A selected GitHub repo always drives version control, even inside a
+    // workspace — branch/status/commits follow the selected repo.
+    if (selectedRepo) {
       try {
         if (action === 'status') {
-          setGitStatus({ success: true, branch: selectedRepo.default_branch || 'main', ahead: 0, behind: 0, modified: [] });
-          setStatus({ type: 'success', msg: `GitHub repo ${selectedRepo.fullName || selectedRepo.name} selected` });
+          await loadRepoGitStatus(selectedRepo);
+          setStatus({ type: 'success', msg: `Status refreshed for ${selectedRepo.fullName || selectedRepo.name}` });
+          setTimeout(() => setStatus(null), 2000);
           return;
         }
 
         if (action === 'pull') {
           await loadGithubRepoFiles(selectedRepo);
+          await loadRepoGitStatus(selectedRepo);
           setStatus({ type: 'success', msg: 'GitHub repo refreshed' });
+          setTimeout(() => setStatus(null), 2000);
+          return;
+        }
+
+        if (action === 'commit') {
+          setStatus({ type: 'success', msg: 'Push commits your saved changes to GitHub' });
+          setTimeout(() => setStatus(null), 3000);
           return;
         }
 
@@ -1378,6 +1752,24 @@ export default function Editor() {
           if (!data.success) {
             throw new Error(data.message || 'GitHub push failed');
           }
+
+          // Push published everything — local drafts now match the remote.
+          const fullName = selectedRepo.fullName || `${repoOwner}/${repoName}`;
+          Object.keys(openContentsRef.current).forEach((k) => {
+            if (String(k).startsWith('github:')) {
+              remoteBaselineRef.current[k] = openContentsRef.current[k];
+            }
+          });
+          Object.keys(parkedRef.current).forEach((k) => {
+            const e = parkedRef.current[k];
+            if (e?.s === 'gh' && (!e.r || e.r === fullName)) delete parkedRef.current[k];
+          });
+          openFiles.forEach((f) => {
+            const k = getFileKey(f);
+            if (String(k).startsWith('github:')) openDirtyRef.current[k] = false;
+          });
+          schedulePersist();
+          refreshGitModified();
 
           setStatus({ type: 'success', msg: `Pushed ${filesToPush.length} file(s) to ${repoOwner}/${repoName}` });
           return;
@@ -1603,12 +1995,20 @@ export default function Editor() {
     try {
       await apiFetch(`/api/code-editor/files/${file._id}`, { method: 'DELETE' });
       setFiles((prev) => prev.filter((f) => f._id !== file._id));
+      const delKey = getFileKey(file);
+      delete openContentsRef.current[delKey];
+      delete openDirtyRef.current[delKey];
+      delete openOriginalsRef.current[delKey];
+      delete remoteBaselineRef.current[delKey];
+      delete parkedRef.current[delKey];
+      setOpenFiles((prev) => prev.filter((f) => getFileKey(f) !== delKey));
       if (selectedFile?._id === file._id) {
         setSelectedFile(null);
         setContent('');
         originalContentRef.current = '';
         setDirty(false);
       }
+      schedulePersist();
       toastSuccess('File deleted');
     } catch (err) {
       toastError(err.message || 'Delete failed');
@@ -1958,7 +2358,11 @@ export default function Editor() {
                     <div className="ed-stat">
                       <span className="ed-badge-dot" style={{ background: '#2fd6e6' }} />
                       <b>{gitStatus?.branch || 'main'}</b>
-                      <span style={{ color: '#6e6e6e' }}> · {gitStatus ? `${gitStatus.ahead || 0} ahead, ${gitStatus.behind || 0} behind` : 'no git info'}</span>
+                      <span style={{ color: '#6e6e6e' }}>
+                        {gitStatus?.repo
+                          ? ` · ${gitStatus.repo}`
+                          : gitStatus ? ` · ${gitStatus.ahead || 0} ahead, ${gitStatus.behind || 0} behind` : 'no git info'}
+                      </span>
                     </div>
                     {!gitStatus && (
                       <div className="ed-empty">
@@ -1987,6 +2391,27 @@ export default function Editor() {
                           <span>{name}</span>
                         </button>
                       ))
+                    )}
+                    {(gitStatus?.commits || []).length > 0 && (
+                      <>
+                        <div className="ed-sidebar-title" style={{ padding: '0.4rem 0.55rem 0.1rem' }}>Recent commits</div>
+                        {gitStatus.commits.slice(0, 8).map((c) => (
+                          <div
+                            key={c.sha}
+                            className="ed-scm-file"
+                            title={c.url || c.message || ''}
+                            style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem', cursor: c.url ? 'pointer' : 'default' }}
+                            onClick={() => { if (c.url) window.open(c.url, '_blank'); }}
+                          >
+                            <span className="text-xs" style={{ color: '#c7d3df', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {(c.message || '').split('\n')[0]}
+                            </span>
+                            <span className="text-xs" style={{ color: '#6e6e6e' }}>
+                              {(c.sha || '').slice(0, 7)} · {c.author?.name || c.author?.username || ''}
+                            </span>
+                          </div>
+                        ))}
+                      </>
                     )}
                     {!selectedRepo && workspaceId && (
                       <div style={{ paddingBottom: '0.5rem' }}>

@@ -194,9 +194,15 @@ router.post('/', authenticateToken, async (req, res) => {
         if (deployment && deployment.userId.toString() !== req.userId.toString()) {
             return res.status(409).json({ error: 'Subdomain already taken by another user.' });
         }
+        const repoFullName = repo
+            ? (repo.fullName || (repo.owner && repo.name ? `${repo.owner}/${repo.name}` : null))
+            : null;
+        const projectKey = projectId ? String(projectId) : null;
         if (deployment) {
             deployment.userId = req.userId;
             deployment.projectId = projectId || null;
+            deployment.projectKey = projectKey;
+            deployment.repoFullName = repoFullName;
             deployment.status = 'building';
             deployment.errorMessage = null;
             deployment.deployedUrl = null;
@@ -211,6 +217,8 @@ router.post('/', authenticateToken, async (req, res) => {
             deployment = await Deployment.create({
                 userId: req.userId,
                 projectId: projectId || null,
+                projectKey,
+                repoFullName,
                 subdomain: sanitized,
                 status: 'building',
                 steps: INITIAL_STEPS()

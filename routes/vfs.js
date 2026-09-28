@@ -554,10 +554,25 @@ router.delete('/files/:fileId', authenticateToken, permissionMatrix.requirePermi
  */
 router.post('/folders', authenticateToken, permissionMatrix.requirePermission('vfs', 'write'), async (req, res) => {
   try {
-    const { name, path, companyId, projectId } = req.body;
+    const { name, path, projectId } = req.body;
+    let { companyId } = req.body;
     
-    if (!name || !companyId) {
-      return res.status(400).json({ error: 'name and companyId are required' });
+    if (!name) {
+      return res.status(400).json({ error: 'name is required' });
+    }
+
+    // Same fallback as file creation: without an explicit workspace, use a
+    // company the user belongs to so folders can be created from the editor
+    // even when no workspace is selected.
+    if (!companyId) {
+      const Company = require('../models/Company');
+      const mine = await Company.findOne({
+        $or: [{ owner: req.userId }, { 'members.user': req.userId }]
+      }).select('_id').lean();
+      if (!mine) {
+        return res.status(400).json({ error: 'You must be in a workspace to create folders.' });
+      }
+      companyId = mine._id;
     }
     
     const folderPath = path === '/' ? `/${name}` : `${path}/${name}`;
