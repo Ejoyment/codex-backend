@@ -1,459 +1,431 @@
 /**
  * LSP Manager - Language Server Protocol Integration
- * Provides real-time IntelliSense without consuming AI tokens
- * Supports TypeScript, JavaScript, Python, Java
+ * Real-time IntelliSense without consuming AI tokens.
+ *
+ * Supports TypeScript/JavaScript (typescript-language-server + tsserver)
+ * and Python (pyright). Fixes over the original implementation:
+ *   - language aliases (javascript → typescript) prevent unbounded recursion
+ *   - correct nested server registry keying (userId → language → server)
+ *   - proper Content-Length framed message parser (was double-splitting)
+ *   - `initialized` notification after the initialize handshake
+ *   - spawn ENOENT / early-exit handling → graceful empty results
+ *   - monotonic request ids (Date.now() collided within one millisecond)
+ *   - server→client requests answered so servers never stall
  */
 
 const { spawn } = require('child_process');
 const path = require('path');
-const fs = require('fs').promises;
+const { pathToFileURL } = require('url');
+
+const INITIALIZE_TIMEOUT_MS = 15000;
+const REQUEST_TIMEOUT_MS = 8000;
 
 class LSPManager {
   constructor() {
-    this.servers = new Map(); // userId -> { language -> serverProcess }
-    this.capabilities = new Map(); // language -> capabilities
-    this.documentVersions = new Map(); // documentUri -> version
-    
-    // Language server configurations
+    this.servers = new Map(); // userId -> Map(language -> server)
+    this.starting = new Map(); // `${userId}-${language}` -> Promise (single-flight)
+    this.documentVersions = new Map(); // `${userId}-${documentUri}` -> version
+    this.capabilities = new Map(); // language -> server capabilities
+    this.requestCounter = 0;
+    // Workspace root used as LSP rootUri — must contain node_modules with
+    // typescript so typescript-language-server can resolve tsserver.
+    this.rootUri = pathToFileURL(process.cwd()).href;
+
     this.serverConfigs = {
       typescript: {
-        command: 'node',
-        args: [path.join(__dirname, '../node_modules/typescript-language-server/lib/cli.js'), '--stdio'],
+        command: process.execPath,
+        args: [path.join(__dirname, '../node_modules/typescript-language-server/lib/cli.mjs'), '--stdio'],
+        available: (() => {
+          try { return require('fs').existsSync(path.join(__dirname, '../node_modules/typescript-language-server/lib/cli.mjs')); }
+          catch (_) { return false; }
+        })(),
         extensions: ['.ts', '.tsx', '.js', '.jsx'],
-        capabilities: ['completion', 'hover', 'definition', 'references', 'diagnostics']
+        capabilities: ['completion', 'hover', 'definition', 'references', 'diagnostics'],
       },
       python: {
-        command: 'pyright-langserver',
-        args: ['--stdio'],
+        command: process.execPath,
+        args: (() => {
+          try { return [require.resolve('pyright/langserver.index.js'), '--stdio']; }
+          catch (_) { return null; }
+        })(),
+        available: (() => {
+          try { require.resolve('pyright/langserver.index.js'); return true; }
+          catch (_) { return false; }
+        })(),
         extensions: ['.py'],
-        capabilities: ['completion', 'hover', 'definition', 'references', 'diagnostics']
+        capabilities: ['completion', 'hover', 'definition', 'references', 'diagnostics'],
       },
       java: {
         command: 'jdtls',
         args: [],
+        available: false, // jdtls is not bundled; enable when provisioned
         extensions: ['.java'],
-        capabilities: ['completion', 'hover', 'definition', 'references', 'diagnostics']
-      }
+        capabilities: ['completion', 'hover', 'definition', 'references', 'diagnostics'],
+      },
+    };
+
+    this.languageAliases = {
+      javascript: 'typescript', js: 'typescript', jsx: 'typescript',
+      node: 'typescript', mjs: 'typescript', cjs: 'typescript',
+      ts: 'typescript', tsx: 'typescript', typescript: 'typescript',
+      python: 'python', py: 'python', python3: 'python',
+      java: 'java',
     };
   }
 
+  normalizeLanguage(language) {
+    const key = String(language || '').trim().toLowerCase();
+    return this.languageAliases[key] || null;
+  }
+
+  getServer(userId, language) {
+    return this.servers.get(userId)?.get(language) || null;
+  }
+
   /**
-   * Start LSP server for a user and language
+   * Start (or await the start of) an LSP server for a user + language.
    */
   async startServer(userId, language) {
-    const key = `${userId}-${language}`;
-    
-    if (this.servers.has(key)) {
-      return { success: true, message: 'Server already running' };
+    const norm = this.normalizeLanguage(language);
+    if (!norm) {
+      return { success: false, error: `Unsupported language: ${language}` };
+    }
+    const existing = this.getServer(userId, norm);
+    if (existing) {
+      return { success: true, message: 'Server already running', language: norm };
     }
 
+    const startKey = `${userId}-${norm}`;
+    if (this.starting.has(startKey)) {
+      await this.starting.get(startKey);
+      return this.getServer(userId, norm)
+        ? { success: true, message: 'Server already running', language: norm }
+        : { success: false, error: `Failed to start LSP server for ${norm}` };
+    }
+
+    const startPromise = this._start(userId, norm);
+    this.starting.set(startKey, startPromise);
+    try {
+      return await startPromise;
+    } finally {
+      this.starting.delete(startKey);
+    }
+  }
+
+  async _start(userId, language) {
     const config = this.serverConfigs[language];
     if (!config) {
       return { success: false, error: `Unsupported language: ${language}` };
     }
+    if (!config.available || !config.args) {
+      return { success: false, error: `Language server for ${language} is not installed` };
+    }
 
+    let serverProcess;
     try {
-      const serverProcess = spawn(config.command, config.args, {
-        stdio: ['pipe', 'pipe', 'pipe']
+      serverProcess = spawn(config.command, config.args, {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        cwd: process.cwd(),
       });
-
-      // Initialize LSP connection
-      const initializeParams = {
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'initialize',
-        params: {
-          processId: process.pid,
-          rootUri: null,
-          capabilities: {
-            textDocument: {
-              completion: { dynamicRegistration: true },
-              hover: { dynamicRegistration: true },
-              definition: { dynamicRegistration: true },
-              references: { dynamicRegistration: true },
-              publishDiagnostics: { relatedInformation: true }
-            }
-          }
-        }
-      };
-
-      this.sendMessage(serverProcess, initializeParams);
-
-      // Store server process
-      if (!this.servers.has(userId)) {
-        this.servers.set(userId, new Map());
-      }
-      this.servers.get(userId).set(language, {
-        process: serverProcess,
-        messageQueue: [],
-        responseHandlers: new Map()
-      });
-
-      // Handle server responses
-      this.setupMessageHandler(userId, language, serverProcess);
-
-      return { success: true, message: `LSP server started for ${language}` };
     } catch (error) {
       return { success: false, error: error.message };
     }
-  }
 
-  /**
-   * Setup message handler for LSP responses
-   */
-  setupMessageHandler(userId, language, serverProcess) {
-    const key = `${userId}-${language}`;
-    let buffer = '';
-
-    serverProcess.stdout.on('data', (data) => {
-      buffer += data.toString();
-      
-      // Process complete messages
-      const messages = buffer.split('\r\n\r\n');
-      buffer = messages.pop(); // Keep incomplete message in buffer
-
-      messages.forEach(msg => {
-        if (msg.trim()) {
-          try {
-            const [headers, content] = msg.split('\r\n\r\n');
-            const response = JSON.parse(content);
-            this.handleServerResponse(userId, language, response);
-          } catch (error) {
-            console.error('LSP message parse error:', error);
-          }
-        }
-      });
-    });
-
-    serverProcess.stderr.on('data', (data) => {
-      console.error(`LSP ${language} error:`, data.toString());
-    });
-
-    serverProcess.on('exit', (code) => {
-      console.log(`LSP ${language} server exited with code ${code}`);
-      this.servers.get(userId)?.delete(language);
-    });
-  }
-
-  /**
-   * Handle LSP server responses
-   */
-  handleServerResponse(userId, language, response) {
-    const key = `${userId}-${language}`;
-    const server = this.servers.get(userId)?.get(language);
-    
-    if (!server) return;
-
-    if (response.id && server.responseHandlers.has(response.id)) {
-      const handler = server.responseHandlers.get(response.id);
-      handler(response.result || response.error);
-      server.responseHandlers.delete(response.id);
+    if (!this.servers.has(userId)) {
+      this.servers.set(userId, new Map());
     }
-  }
+    const server = {
+      process: serverProcess,
+      responseHandlers: new Map(), // id -> resolve(result|null)
+      ready: false,
+      dead: false,
+    };
+    this.servers.get(userId).set(language, server);
 
-  /**
-   * Send message to LSP server
-   */
-  sendMessage(serverProcess, message) {
-    const content = JSON.stringify(message);
-    const headers = `Content-Length: ${Buffer.byteLength(content)}\r\n\r\n`;
-    serverProcess.stdin.write(headers + content);
-  }
-
-  /**
-   * Get completions for a document position
-   */
-  async getCompletions(userId, language, documentUri, position, content) {
-    const key = `${userId}-${language}`;
-    const server = this.servers.get(userId)?.get(language);
-    
-    if (!server) {
-      await this.startServer(userId, language);
-      return this.getCompletions(userId, language, documentUri, position, content);
-    }
-
-    // Open document if not already open
-    await this.didOpenDocument(userId, language, documentUri, content);
-
-    return new Promise((resolve) => {
-      const requestId = Date.now();
-      const request = {
-        jsonrpc: '2.0',
-        id: requestId,
-        method: 'textDocument/completion',
-        params: {
-          textDocument: { uri: documentUri },
-          position: { line: position.line, character: position.character }
-        }
-      };
-
-      server.responseHandlers.set(requestId, resolve);
-      this.sendMessage(server.process, request);
-
-      // Timeout after 5 seconds
-      setTimeout(() => {
-        if (server.responseHandlers.has(requestId)) {
-          server.responseHandlers.delete(requestId);
-          resolve({ items: [] });
-        }
-      }, 5000);
-    });
-  }
-
-  /**
-   * Get hover information
-   */
-  async getHover(userId, language, documentUri, position, content) {
-    const key = `${userId}-${language}`;
-    const server = this.servers.get(userId)?.get(language);
-    
-    if (!server) {
-      await this.startServer(userId, language);
-      return this.getHover(userId, language, documentUri, position, content);
-    }
-
-    await this.didOpenDocument(userId, language, documentUri, content);
-
-    return new Promise((resolve) => {
-      const requestId = Date.now();
-      const request = {
-        jsonrpc: '2.0',
-        id: requestId,
-        method: 'textDocument/hover',
-        params: {
-          textDocument: { uri: documentUri },
-          position: { line: position.line, character: position.character }
-        }
-      };
-
-      server.responseHandlers.set(requestId, resolve);
-      this.sendMessage(server.process, request);
-
-      setTimeout(() => {
-        if (server.responseHandlers.has(requestId)) {
-          server.responseHandlers.delete(requestId);
-          resolve(null);
-        }
-      }, 5000);
-    });
-  }
-
-  /**
-   * Get definition location
-   */
-  async getDefinition(userId, language, documentUri, position, content) {
-    const key = `${userId}-${language}`;
-    const server = this.servers.get(userId)?.get(language);
-    
-    if (!server) {
-      await this.startServer(userId, language);
-      return this.getDefinition(userId, language, documentUri, position, content);
-    }
-
-    await this.didOpenDocument(userId, language, documentUri, content);
-
-    return new Promise((resolve) => {
-      const requestId = Date.now();
-      const request = {
-        jsonrpc: '2.0',
-        id: requestId,
-        method: 'textDocument/definition',
-        params: {
-          textDocument: { uri: documentUri },
-          position: { line: position.line, character: position.character }
-        }
-      };
-
-      server.responseHandlers.set(requestId, resolve);
-      this.sendMessage(server.process, request);
-
-      setTimeout(() => {
-        if (server.responseHandlers.has(requestId)) {
-          server.responseHandlers.delete(requestId);
-          resolve(null);
-        }
-      }, 5000);
-    });
-  }
-
-  /**
-   * Get references
-   */
-  async getReferences(userId, language, documentUri, position, content) {
-    const key = `${userId}-${language}`;
-    const server = this.servers.get(userId)?.get(language);
-    
-    if (!server) {
-      await this.startServer(userId, language);
-      return this.getReferences(userId, language, documentUri, position, content);
-    }
-
-    await this.didOpenDocument(userId, language, documentUri, content);
-
-    return new Promise((resolve) => {
-      const requestId = Date.now();
-      const request = {
-        jsonrpc: '2.0',
-        id: requestId,
-        method: 'textDocument/references',
-        params: {
-          textDocument: { uri: documentUri },
-          position: { line: position.line, character: position.character },
-          context: { includeDeclaration: true }
-        }
-      };
-
-      server.responseHandlers.set(requestId, resolve);
-      this.sendMessage(server.process, request);
-
-      setTimeout(() => {
-        if (server.responseHandlers.has(requestId)) {
-          server.responseHandlers.delete(requestId);
-          resolve([]);
-        }
-      }, 5000);
-    });
-  }
-
-  /**
-   * Notify server that document was opened
-   */
-  async didOpenDocument(userId, language, documentUri, content) {
-    const versionKey = `${userId}-${documentUri}`;
-    
-    if (this.documentVersions.has(versionKey)) {
-      return; // Already open
-    }
-
-    const server = this.servers.get(userId)?.get(language);
-    if (!server) return;
-
-    const notification = {
-      jsonrpc: '2.0',
-      method: 'textDocument/didOpen',
-      params: {
-        textDocument: {
-          uri: documentUri,
-          languageId: language,
-          version: 1,
-          text: content
-        }
-      }
+    const failPending = () => {
+      for (const handler of server.responseHandlers.values()) handler(null);
+      server.responseHandlers.clear();
     };
 
-    this.sendMessage(server.process, notification);
+    serverProcess.on('error', () => {
+      // ENOENT or similar — binary missing
+      server.dead = true;
+      this._removeServer(userId, language);
+      failPending();
+    });
+    serverProcess.on('exit', () => {
+      server.dead = true;
+      this._removeServer(userId, language);
+      failPending();
+    });
+    serverProcess.stderr.on('data', (data) => {
+      console.error(`LSP ${language} stderr:`, String(data).slice(0, 500));
+    });
+
+    this._setupMessageHandler(language, serverProcess, server);
+
+    // Initialize handshake: initialize → (result) → initialized
+    const initResult = await this._request(
+      server,
+      'initialize',
+      {
+        processId: process.pid,
+        rootUri: this.rootUri,
+        capabilities: {
+          textDocument: {
+            completion: { completionItem: { snippetSupport: false } },
+            hover: { contentFormat: ['markdown', 'plaintext'] },
+            definition: {},
+            references: {},
+            publishDiagnostics: { relatedInformation: true },
+          },
+          workspace: { configuration: false },
+        },
+      },
+      INITIALIZE_TIMEOUT_MS,
+      null
+    );
+
+    if (!initResult || server.dead) {
+      try { serverProcess.kill(); } catch (_) { /* ignore */ }
+      this._removeServer(userId, language);
+      return { success: false, error: `LSP server for ${language} failed to initialize (binary missing or too slow)` };
+    }
+
+    this._notify(server, 'initialized', {});
+    server.ready = true;
+    this.capabilities.set(language, initResult.capabilities || {});
+    return { success: true, message: `LSP server started for ${language}`, language };
+  }
+
+  _removeServer(userId, language) {
+    const userMap = this.servers.get(userId);
+    if (!userMap) return;
+    const key = `${userId}-`;
+    for (const versionKey of this.documentVersions.keys()) {
+      if (versionKey.startsWith(key)) this.documentVersions.delete(versionKey);
+    }
+    userMap.delete(language);
+    if (userMap.size === 0) this.servers.delete(userId);
+  }
+
+  /**
+   * Content-Length framed parser. The previous implementation split the
+   * header and body apart and then tried to re-split them, so responses
+   * never parsed. This accumulates bytes and extracts exact frames.
+   */
+  _setupMessageHandler(language, serverProcess, server) {
+    let buffer = Buffer.alloc(0);
+
+    serverProcess.stdout.on('data', (chunk) => {
+      buffer = Buffer.concat([buffer, chunk]);
+      for (;;) {
+        const headerEnd = buffer.indexOf('\r\n\r\n');
+        if (headerEnd === -1) break;
+        const header = buffer.slice(0, headerEnd).toString('ascii');
+        const match = header.match(/Content-Length:\s*(\d+)/i);
+        if (!match) {
+          buffer = buffer.slice(headerEnd + 4);
+          continue;
+        }
+        const length = parseInt(match[1], 10);
+        const frameEnd = headerEnd + 4 + length;
+        if (buffer.length < frameEnd) break;
+        const body = buffer.slice(headerEnd + 4, frameEnd).toString('utf8');
+        buffer = buffer.slice(frameEnd);
+        let message;
+        try {
+          message = JSON.parse(body);
+        } catch (_) {
+          continue;
+        }
+        this._handleMessage(language, server, message);
+      }
+    });
+  }
+
+  _handleMessage(language, server, message) {
+    if (message.id !== undefined && message.method) {
+      // Server → client request. Answer with null so servers never stall
+      // (e.g. client/registerCapability, workspace/configuration).
+      this._sendMessage(server, { jsonrpc: '2.0', id: message.id, result: null });
+      return;
+    }
+    if (message.id !== undefined && (message.result !== undefined || message.error !== undefined)) {
+      const handler = server.responseHandlers.get(message.id);
+      if (handler) {
+        server.responseHandlers.delete(message.id);
+        handler(message.error ? null : message.result);
+      }
+      return;
+    }
+    // Notifications (textDocument/publishDiagnostics, window/logMessage, …)
+    // are ignored — Monaco's built-in workers own editor diagnostics.
+  }
+
+  _sendMessage(server, message) {
+    if (server.dead || !server.process.stdin.writable) return;
+    const content = JSON.stringify(message);
+    server.process.stdin.write(`Content-Length: ${Buffer.byteLength(content, 'utf8')}\r\n\r\n${content}`);
+  }
+
+  _notify(server, method, params) {
+    this._sendMessage(server, { jsonrpc: '2.0', method, params });
+  }
+
+  _request(server, method, params, timeoutMs = REQUEST_TIMEOUT_MS, fallback = null) {
+    if (!server || server.dead) return Promise.resolve(fallback);
+    const id = ++this.requestCounter;
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        server.responseHandlers.delete(id);
+        resolve(fallback);
+      }, timeoutMs);
+      server.responseHandlers.set(id, (result) => {
+        clearTimeout(timer);
+        resolve(result);
+      });
+      this._sendMessage(server, { jsonrpc: '2.0', id, method, params });
+    });
+  }
+
+  /**
+   * Ensure a server is running for this user+language.
+   * Returns the server + normalized language, or null (no recursion).
+   */
+  async _ensure(userId, language) {
+    const norm = this.normalizeLanguage(language);
+    if (!norm) return null;
+    let server = this.getServer(userId, norm);
+    if (!server) {
+      const result = await this.startServer(userId, norm);
+      if (!result.success) return null;
+      server = this.getServer(userId, norm);
+      if (!server) return null;
+    }
+    return { server, norm };
+  }
+
+  async getCompletions(userId, language, documentUri, position, content) {
+    const ensured = await this._ensure(userId, language);
+    if (!ensured) return { items: [] };
+    const { server, norm } = ensured;
+    await this.didOpenDocument(userId, norm, documentUri, content, language);
+    const result = await this._request(server, 'textDocument/completion', {
+      textDocument: { uri: documentUri },
+      position: { line: position.line, character: position.character },
+    });
+    if (!result) return { items: [] };
+    if (Array.isArray(result)) return { items: result };
+    if (Array.isArray(result.items)) return result;
+    return { items: [] };
+  }
+
+  async getHover(userId, language, documentUri, position, content) {
+    const ensured = await this._ensure(userId, language);
+    if (!ensured) return null;
+    const { server, norm } = ensured;
+    await this.didOpenDocument(userId, norm, documentUri, content, language);
+    return this._request(server, 'textDocument/hover', {
+      textDocument: { uri: documentUri },
+      position: { line: position.line, character: position.character },
+    });
+  }
+
+  async getDefinition(userId, language, documentUri, position, content) {
+    const ensured = await this._ensure(userId, language);
+    if (!ensured) return null;
+    const { server, norm } = ensured;
+    await this.didOpenDocument(userId, norm, documentUri, content, language);
+    return this._request(server, 'textDocument/definition', {
+      textDocument: { uri: documentUri },
+      position: { line: position.line, character: position.character },
+    });
+  }
+
+  async getReferences(userId, language, documentUri, position, content) {
+    const ensured = await this._ensure(userId, language);
+    if (!ensured) return [];
+    const { server, norm } = ensured;
+    await this.didOpenDocument(userId, norm, documentUri, content, language);
+    const result = await this._request(server, 'textDocument/references', {
+      textDocument: { uri: documentUri },
+      position: { line: position.line, character: position.character },
+      context: { includeDeclaration: true },
+    });
+    return Array.isArray(result) ? result : [];
+  }
+
+  async didOpenDocument(userId, language, documentUri, content) {
+    const versionKey = `${userId}-${documentUri}`;
+    if (this.documentVersions.has(versionKey)) return;
+    const server = this.getServer(userId, language);
+    if (!server) return;
+    this._notify(server, 'textDocument/didOpen', {
+      textDocument: {
+        uri: documentUri,
+        languageId: language,
+        version: 1,
+        text: content,
+      },
+    });
     this.documentVersions.set(versionKey, 1);
   }
 
-  /**
-   * Notify server of document changes
-   */
   async didChangeDocument(userId, language, documentUri, content) {
+    const norm = this.normalizeLanguage(language) || language;
     const versionKey = `${userId}-${documentUri}`;
-    const server = this.servers.get(userId)?.get(language);
-    
+    const server = this.getServer(userId, norm);
     if (!server) return;
-
     const version = (this.documentVersions.get(versionKey) || 0) + 1;
     this.documentVersions.set(versionKey, version);
-
-    const notification = {
-      jsonrpc: '2.0',
-      method: 'textDocument/didChange',
-      params: {
-        textDocument: {
-          uri: documentUri,
-          version: version
-        },
-        contentChanges: [{ text: content }]
-      }
-    };
-
-    this.sendMessage(server.process, notification);
+    this._notify(server, 'textDocument/didChange', {
+      textDocument: { uri: documentUri, version },
+      contentChanges: [{ text: content }],
+    });
   }
 
-  /**
-   * Notify server that document was closed
-   */
   async didCloseDocument(userId, language, documentUri) {
+    const norm = this.normalizeLanguage(language) || language;
     const versionKey = `${userId}-${documentUri}`;
-    const server = this.servers.get(userId)?.get(language);
-    
-    if (!server) return;
-
-    const notification = {
-      jsonrpc: '2.0',
-      method: 'textDocument/didClose',
-      params: {
-        textDocument: { uri: documentUri }
-      }
-    };
-
-    this.sendMessage(server.process, notification);
+    const server = this.getServer(userId, norm);
+    if (server) {
+      this._notify(server, 'textDocument/didClose', {
+        textDocument: { uri: documentUri },
+      });
+    }
     this.documentVersions.delete(versionKey);
   }
 
-  /**
-   * Stop LSP server for a user and language
-   */
   async stopServer(userId, language) {
-    const server = this.servers.get(userId)?.get(language);
-    
+    const norm = this.normalizeLanguage(language) || language;
+    const server = this.getServer(userId, norm);
     if (!server) {
       return { success: false, error: 'Server not running' };
     }
-
-    // Send shutdown request
-    const shutdownRequest = {
-      jsonrpc: '2.0',
-      id: Date.now(),
-      method: 'shutdown',
-      params: null
-    };
-
-    this.sendMessage(server.process, shutdownRequest);
-
-    // Send exit notification
+    await this._request(server, 'shutdown', null, 2000, null);
+    this._notify(server, 'exit', null);
     setTimeout(() => {
-      const exitNotification = {
-        jsonrpc: '2.0',
-        method: 'exit',
-        params: null
-      };
-      this.sendMessage(server.process, exitNotification);
-      server.process.kill();
-    }, 1000);
-
-    this.servers.get(userId)?.delete(language);
-    return { success: true, message: `LSP server stopped for ${language}` };
+      try { server.process.kill(); } catch (_) { /* ignore */ }
+    }, 250);
+    this._removeServer(userId, norm);
+    return { success: true, message: `LSP server stopped for ${norm}` };
   }
 
-  /**
-   * Stop all servers for a user
-   */
   async stopAllServers(userId) {
     const userServers = this.servers.get(userId);
     if (!userServers) return;
-
-    for (const [language] of userServers) {
+    for (const language of [...userServers.keys()]) {
       await this.stopServer(userId, language);
     }
-
     this.servers.delete(userId);
   }
 
-  /**
-   * Get language from file extension
-   */
   getLanguageFromExtension(filename) {
-    const ext = path.extname(filename);
-    
+    const ext = path.extname(String(filename || '')).toLowerCase();
     for (const [language, config] of Object.entries(this.serverConfigs)) {
-      if (config.extensions.includes(ext)) {
-        return language;
-      }
+      if (config.extensions.includes(ext)) return language;
     }
-    
     return null;
   }
 }
@@ -462,3 +434,4 @@ class LSPManager {
 const lspManager = new LSPManager();
 
 module.exports = lspManager;
+module.exports.LSPManager = LSPManager;
