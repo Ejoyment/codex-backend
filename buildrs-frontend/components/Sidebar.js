@@ -37,7 +37,7 @@ const NAV_SECTIONS = [
       { href: '/editor', label: 'Editor', icon: FileCode2 },
       { href: '/source-code', label: 'Source', icon: Database },
       { href: '/ai-pair', label: 'AI Pair', icon: Sparkles },
-      { href: '/team-memory', label: 'Team Memory', icon: Database },
+      { href: '/specs', label: 'Specs', icon: FileCode2 },
       { href: '/mcp', label: 'MCP Servers', icon: Server },
     ],
   },

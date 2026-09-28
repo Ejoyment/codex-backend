@@ -28,9 +28,15 @@ const localTaskSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ['pending', 'in-progress', 'in_review', 'completed', 'archived'],
+        enum: ['backlog', 'in_progress', 'in_review', 'blocked', 'done', 'pending', 'in-progress', 'completed', 'archived'],
         default: 'pending'
     },
+    specIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Spec' }],
+    figmaNodeId: { type: String, default: null },
+    blockedBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'LocalTask' }],
+    branch: { type: String, default: null },
+    pullRequestId: { type: String, default: null },
+    agentSessionId: { type: mongoose.Schema.Types.ObjectId, ref: 'AgentExecution', default: null },
     agentExecution: {
         status: {
             type: String,
@@ -54,7 +60,7 @@ const localTaskSchema = new mongoose.Schema({
     },
     priority: {
         type: String,
-        enum: ['low', 'medium', 'high', 'urgent'],
+        enum: ['critical', 'high', 'medium', 'low', 'urgent'],
         default: 'medium'
     },
     // Task types: local or linked to GitHub issue

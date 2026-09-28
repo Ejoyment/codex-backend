@@ -455,3 +455,7 @@ function AddConventionModal({ companyId, onClose, onCreated }) {
     </div>
   );
 }
+
+export async function getServerSideProps() {
+  return { redirect: { destination: '/specs', permanent: false } };
+}

@@ -3,10 +3,7 @@ const aiRouterService = require('./aiRouterService');
 const sddVerificationService = require('./sddVerificationService');
 const realtimeBus = require('./realtimeBus');
 const AgentExecution = require('../models/AgentExecution');
-const SpecModel = require('../models/SpecModel');
-const CodeFile = require('../models/CodeFile');
-
-const { executionId, taskId, workspaceId, specId, provider, localPrivacyMode } = workerData;
+const { executionId, taskId, workspaceId, specIds = [], provider, localPrivacyMode } = workerData;
 
 async function runAgent() {
   try {
@@ -16,25 +13,30 @@ async function runAgent() {
       return;
     }
 
-    const spec = specId ? await SpecModel.findById(specId) : null;
-    const task = taskId ? await require('../models/LocalTask').findById(taskId) : null;
+    const snapshot = execution.contextSnapshot || {};
+    const task = snapshot.task || {};
+    const specs = snapshot.specs || [];
 
     const messages = [
-      { role: 'system', content: `You are an autonomous AI agent executing a task. Task: ${execution.taskTitle}` },
+      { role: 'system', content: `You are an autonomous AI agent executing a task. Task: ${task.title || execution.taskTitle}\n\nProduce a concise implementation plan first, then provide specific file-level changes. Do not claim changes were applied unless a tool actually applied them.` },
     ];
-    if (spec && spec.content) {
-      messages.push({ role: 'system', content: `Spec contract: ${spec.content}` });
+    if (specs.length) {
+      messages.push({ role: 'system', content: `Frozen spec contracts:\n${JSON.stringify(specs.map((spec) => ({ name: spec.title, description: spec.description, targetModules: spec.targetModules, architecturalRules: spec.architecturalRules, requirements: spec.requirements, forbiddenImports: spec.forbiddenImports, constraints: spec.constraints })), null, 2)}` });
     }
-    if (task && task.description) {
+    if (task.description) {
       messages.push({ role: 'user', content: task.description });
     }
+    if (execution.summary) {
+      messages.push({ role: 'assistant', content: `Previous work in this session:\n${execution.summary}` });
+    }
+    for (const tweak of execution.tweaks || []) messages.push({ role: 'user', content: `Follow-up instruction: ${tweak.instruction}` });
 
-    const codeFiles = await CodeFile.find({ company: workspaceId });
+    const codeFiles = snapshot.codebaseSnapshot?.files || [];
     const codeContext = {
       workspaceId,
-      files: codeFiles.map(f => ({ path: f.path, name: f.name, language: f.language, content: f.content })),
+      files: codeFiles,
       agentMode: true,
-      instructions: spec ? `Follow the spec contract: ${spec.specId}` : undefined,
+      instructions: `Use branch ${execution.branch} based on ${execution.baseBranch}. Follow these architectural rules: ${(snapshot.architecturalRules || []).join('; ') || 'none supplied'}. Return a written plan and file-level proposed changes.`,
     };
 
     parentPort.postMessage({
@@ -60,7 +62,9 @@ async function runAgent() {
         },
       });
 
-      const sddResult = await sddVerificationService.runSDDVerification(workspaceId, specId);
+      const specResults = await Promise.all(specs.map((spec) => sddVerificationService.verifySpecSnapshot(spec, codeFiles)));
+      const sddResult = { specs: specResults, command: { status: 'pending', reason: 'Verification commands require an isolated workspace runner' } };
+      const planMatch = result.content?.match(/(?:plan|implementation plan)[\s\S]{0,1200}/i);
 
       parentPort.postMessage({
         type: 'progress',
@@ -74,9 +78,14 @@ async function runAgent() {
       });
 
       await AgentExecution.findByIdAndUpdate(executionId, {
-        status: 'awaiting_approval',
+        status: 'awaiting_review',
         diffSummary: result.diffSummary || { filesChanged: 0, insertions: 0, deletions: 0 },
+        summary: result.content || result.summary || '',
+        plan: planMatch?.[0] || '',
+        validationResult: sddResult,
+        completedAt: new Date(),
         logs: [...execution.logs, { timestamp: new Date(), message: 'Agent execution completed, awaiting approval' }],
+        $push: { terminalLog: { timestamp: new Date(), type: 'complete', message: 'Agent response and spec checks completed' } },
       });
 
       parentPort.postMessage({ type: 'complete', result });
@@ -90,7 +99,11 @@ async function runAgent() {
   } catch (error) {
     await AgentExecution.findByIdAndUpdate(executionId, {
       status: 'failed',
-      logs: [...execution.logs, { timestamp: new Date(), message: `Agent worker error: ${error.message}` }],
+      completedAt: new Date(),
+      $push: {
+        logs: { timestamp: new Date(), message: `Agent worker error: ${error.message}` },
+        terminalLog: { timestamp: new Date(), type: 'error', message: error.message },
+      },
     });
     parentPort.postMessage({ type: 'error', error: error.message });
   }

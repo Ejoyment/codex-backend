@@ -355,6 +355,19 @@ class GitService {
     }
   }
 
+  async deleteBranch(workspaceId, branchName, baseBranch = 'main') {
+    try {
+      const git = await this.getGit(workspaceId);
+      const branches = await git.branchLocal();
+      if (branches.current === branchName) await git.checkout(baseBranch);
+      await git.deleteLocalBranch(branchName, true);
+      return { success: true, branch: branchName };
+    } catch (error) {
+      console.error('Git delete branch error:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
   /**
    * Pull from remote
    */
