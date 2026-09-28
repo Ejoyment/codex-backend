@@ -193,13 +193,13 @@ export default function Messaging() {
                   <MessageSquare className="w-5 h-5" style={{ color: '#e5b84a' }} />
                 </div>
                 <p className="dash-empty-title" style={{ fontSize: '1.05rem', marginBottom: '0.4rem' }}>
-                  Team Chat requires Professional
+                  Team Chat requires a paid plan
                 </p>
                 <p className="dash-empty-sub" style={{ maxWidth: '26rem', lineHeight: '1.5', marginBottom: '1.5rem' }}>
                   Upgrade to unlock messaging, channels, and team chat for your workspace.
                 </p>
                 <button onClick={() => router.push('/pricing')} className="btn-workspace btn-primary">
-                  Upgrade to Professional
+                  Upgrade to Pro
                   <ArrowUpRight className="w-4 h-4" />
                 </button>
               </div>

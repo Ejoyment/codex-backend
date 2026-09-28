@@ -5,6 +5,8 @@
  * Requires human confirmation before executing high-risk actions
  */
 
+const { canonicalTier } = require('../utils/tierNames');
+
 class HITLGates {
     constructor(io) {
         this.io = io; // Socket.io instance for real-time communication
@@ -33,13 +35,14 @@ class HITLGates {
      * Check if tool requires confirmation
      */
     requiresConfirmation(tool, params, userTier) {
+        userTier = canonicalTier(userTier);
         // Enterprise users can bypass some confirmations
         if (userTier === 'enterprise') {
             return ['delete_file'].includes(tool); // Only critical operations
         }
         
-        // Professional users need confirmation for dangerous tools
-        if (userTier === 'professional') {
+        // Paid tiers need confirmation for dangerous tools
+        if (userTier !== 'developer') {
             return this.dangerousTools.includes(tool);
         }
         
@@ -306,13 +309,14 @@ class HITLGates {
      * Auto-approve safe operations
      */
     shouldAutoApprove(tool, params, userTier) {
+        userTier = canonicalTier(userTier);
         // Enterprise users can auto-approve most operations
         if (userTier === 'enterprise') {
             return !['delete_file'].includes(tool);
         }
         
-        // Professional users can auto-approve read operations
-        if (userTier === 'professional') {
+        // Paid tiers can auto-approve read operations
+        if (userTier !== 'developer') {
             const safeTools = ['read_file', 'list_files', 'search_code', 'analyze_code'];
             return safeTools.includes(tool);
         }

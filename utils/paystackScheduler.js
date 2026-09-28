@@ -162,11 +162,11 @@ class PaystackScheduler {
             billingSchedule.error = error.message;
             await billingSchedule.save();
 
-            // Update subscription status and downgrade to freebie tier
+            // Update subscription status and downgrade to developer (free) tier
             const subscription = await Subscription.findById(billingSchedule.subscriptionId);
             if (subscription) {
-                // Downgrade to freebie tier (NO REFUND)
-                subscription.upgradeTo('freebie');
+                // Downgrade to developer (free) tier (NO REFUND)
+                subscription.upgradeTo('developer');
                 subscription.status = 'cancelled';
                 subscription.cancelledAt = new Date();
                 subscription.isTrialWithCard = false;
@@ -175,7 +175,7 @@ class PaystackScheduler {
                 subscription.nextBillingDate = null;
                 await subscription.save();
                 
-                console.log(`✗ Payment failed for user ${subscription.userId}, downgraded to freebie tier`);
+                console.log(`✗ Payment failed for user ${subscription.userId}, downgraded to developer tier`);
             }
 
             return { success: false, error: error.message };

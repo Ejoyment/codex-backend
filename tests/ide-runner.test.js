@@ -406,7 +406,7 @@ describe('ide route wiring', () => {
   test('ide:run scope exists for all tiers', () => {
     const permissionMatrix = require('../middleware/permissionMatrix');
     expect(permissionMatrix.scopes['ide:run']).toEqual([
-      'freebie', 'starter', 'professional', 'enterprise',
+      'developer', 'pro', 'pro_plus', 'team_standard', 'team_premium', 'enterprise',
     ]);
   });
 

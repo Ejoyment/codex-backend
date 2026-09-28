@@ -16,7 +16,6 @@ Options:
   --help          Show this help
 
 Tiers (current lineup): developer, pro, team_standard, pro_plus, team_premium, enterprise
-Legacy tiers (still valid): freebie, starter, professional
 
 Examples:
   node scripts/upgrade-tier.js you@example.com

@@ -15,14 +15,20 @@ class StripeAdapter extends PaymentAdapter {
     return require('stripe')(key);
   }
 
-  async createCheckout({ userId, email, plan = 'professional', interval = 'monthly', successUrl, cancelUrl }) {
+  async createCheckout({ userId, email, plan = 'pro', interval = 'monthly', successUrl, cancelUrl }) {
     const stripe = this._client();
     const priceMap = {
-      professional_monthly: process.env.STRIPE_PROFESSIONAL_PRICE_ID,
-      professional_yearly: process.env.STRIPE_PROFESSIONAL_YEARLY_PRICE_ID,
+      pro_monthly: process.env.STRIPE_PRO_PRICE_ID || process.env.STRIPE_PROFESSIONAL_PRICE_ID,
+      pro_yearly: process.env.STRIPE_PRO_YEARLY_PRICE_ID || process.env.STRIPE_PROFESSIONAL_YEARLY_PRICE_ID,
+      pro_plus_monthly: process.env.STRIPE_PRO_PLUS_PRICE_ID,
+      pro_plus_yearly: process.env.STRIPE_PRO_PLUS_YEARLY_PRICE_ID,
+      team_standard_monthly: process.env.STRIPE_TEAM_STANDARD_PRICE_ID,
+      team_standard_yearly: process.env.STRIPE_TEAM_STANDARD_YEARLY_PRICE_ID,
+      team_premium_monthly: process.env.STRIPE_TEAM_PREMIUM_PRICE_ID,
+      team_premium_yearly: process.env.STRIPE_TEAM_PREMIUM_YEARLY_PRICE_ID,
       enterprise: process.env.STRIPE_ENTERPRISE_PRICE_ID,
     };
-    const price = priceMap[plan === 'enterprise' ? 'enterprise' : `professional_${interval}`];
+    const price = priceMap[plan === 'enterprise' ? 'enterprise' : `${plan}_${interval}`];
     if (!price) throw new Error('Unknown plan/price for Stripe checkout');
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',

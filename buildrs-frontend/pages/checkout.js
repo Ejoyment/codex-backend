@@ -8,45 +8,97 @@ import useAuthStore from '../store/authStore';
 import { apiFetch, subscriptionApi } from '../lib/api';
 import useToastStore from '../store/toastStore';
 import { Loader2, CreditCard, Check, ArrowLeft, Zap, Building2, Mail } from 'lucide-react';
+import { normalizeTier } from '../lib/tier';
+
+const planById = (id) => PLANS.find((p) => p.id === id) || PLANS[0];
 
 const PLANS = [
   {
-    id: 'professional',
-    name: 'Professional',
-    monthlyPrice: 25,
-    yearlyPrice: 290,
+    id: 'pro',
+    name: 'Pro',
+    monthlyPrice: 20,
+    yearlyPrice: 192,
     monthlyNote: '/mo',
     yearlyNote: '/yr',
-    blurb: 'For teams that ship on a cadence.',
+    blurb: 'For individual builders shipping fast.',
     featured: true,
     features: [
-      'Everything in Starter',
-      'Unlimited projects',
-      'Advanced AI pair · codebase memory',
-      'Real-time co-editing · presence',
-      'Tasks · standups · meetings',
-      'GitHub · Slack · Figma integrations',
+      '100 AI messages/day · AI pair enabled',
+      '20 AI credits · 10 cloud hours/mo',
+      '1 debug room · real-time co-editing',
+      'GitHub · Slack · Discord integrations',
+      'Priority support',
+    ],
+  },
+  {
+    id: 'pro_plus',
+    name: 'Pro+',
+    monthlyPrice: 60,
+    yearlyPrice: 576,
+    monthlyNote: '/mo',
+    yearlyNote: '/yr',
+    blurb: 'For power users who live in the IDE.',
+    featured: false,
+    features: [
+      'Everything in Pro',
+      '70 AI credits · 50 cloud hours/mo',
+      '3 debug rooms · 10 deployments/mo',
+      'Real-time drift spec engine',
+      '30-day data retention',
+    ],
+  },
+  {
+    id: 'team_standard',
+    name: 'Team Standard',
+    monthlyPrice: 40,
+    yearlyPrice: 384,
+    monthlyNote: '/seat/mo',
+    yearlyNote: '/yr',
+    perSeat: true,
+    blurb: 'For small teams shipping together.',
+    featured: false,
+    features: [
+      'Everything in Pro+',
+      'Unlimited members & projects',
+      'Team spec library · team RBAC',
+      '25 cloud hours/mo · 20 deployments/mo',
+      'Unlimited debug rooms (4 peers)',
+    ],
+  },
+  {
+    id: 'team_premium',
+    name: 'Team Premium',
+    monthlyPrice: 120,
+    yearlyPrice: 1152,
+    monthlyNote: '/seat/mo',
+    yearlyNote: '/yr',
+    perSeat: true,
+    blurb: 'For orgs that need it all.',
+    featured: false,
+    features: [
+      'Everything in Team Standard',
+      '200 AI credits · 120 cloud hours/mo',
+      'Unlimited deployments · cross-repo specs',
+      '8-peer debug rooms · 90-day retention',
       'Priority support',
     ],
   },
   {
     id: 'enterprise',
     name: 'Enterprise',
-    monthlyPrice: 999,
-    yearlyPrice: 9990,
-    monthlyNote: '/mo',
-    yearlyNote: '/yr',
+    monthlyPrice: null,
+    yearlyPrice: null,
+    monthlyNote: '',
+    yearlyNote: '',
     blurb: 'For orgs with compliance to meet.',
     featured: false,
     contactSales: true,
     features: [
-      'Everything in Professional',
+      'Everything in Team Premium',
       'SSO authentication',
-      'Audit logs',
+      'Audit logs · SCIM provisioning',
       'Dedicated account manager',
-      '1-hour support SLA',
-      'Custom contracts',
-      'SOC 2-ready infrastructure',
+      'Custom contracts · SOC 2-ready',
     ],
   },
 ];
@@ -64,7 +116,7 @@ export default function Checkout() {
   const setSubscription = useAuthStore((s) => s.setSubscription);
   const toast = useToastStore();
 
-  const [selectedPlan, setSelectedPlan] = useState('professional');
+  const [selectedPlan, setSelectedPlan] = useState('pro');
   const [yearly, setYearly] = useState(true);
   const [selectedProvider, setSelectedProvider] = useState('stripe');
   const [loading, setLoading] = useState(false);
@@ -121,7 +173,7 @@ export default function Checkout() {
   }, [stripeReady, clientSecret, loadStripe]);
 
   useEffect(() => {
-    if (selectedProvider === 'stripe' && selectedPlan === 'professional' && !stripeReady) {
+    if (selectedProvider === 'stripe' && selectedPlan !== 'enterprise' && !stripeReady) {
       const timer = setTimeout(() => initStripeElements(), 100);
       return () => clearTimeout(timer);
     }
@@ -162,9 +214,8 @@ export default function Checkout() {
   const handlePaystack = async () => {
     setLoading(true);
     try {
-      const amount = selectedPlan === 'professional'
-        ? (yearly ? 29000 : 2500)
-        : 0;
+      const plan = planById(selectedPlan);
+      const amount = (yearly ? plan.yearlyPrice : plan.monthlyPrice) * 100; // kobo
       const data = await apiFetch('/api/paystack-billing/initialize', {
         method: 'POST',
         body: JSON.stringify({
@@ -188,9 +239,8 @@ export default function Checkout() {
   const handleFlutterwave = async () => {
     setLoading(true);
     try {
-      const amount = selectedPlan === 'professional'
-        ? (yearly ? 290 : 25)
-        : 0;
+      const plan = planById(selectedPlan);
+      const amount = yearly ? plan.yearlyPrice : plan.monthlyPrice;
       const data = await apiFetch('/api/flutterwave-billing/initialize', {
         method: 'POST',
         body: JSON.stringify({
@@ -274,12 +324,12 @@ export default function Checkout() {
 
           <div className="workspace-content">
             <div className="max-w-4xl mx-auto space-y-8">
-              {subscription?.tier && subscription.tier !== 'free' && subscription.tier !== 'starter' && (
+              {subscription?.tier && normalizeTier(subscription.tier) !== 'developer' && (
                 <div className="flex items-center gap-3 p-4 rounded-xl border border-[rgba(47,214,230,0.2)] bg-[rgba(47,214,230,0.05)]">
                   <Check className="w-5 h-5 text-[#2fd6e6] flex-shrink-0" />
                   <div className="flex-1">
                     <p className="text-sm font-medium text-white">
-                      You're on the {subscription.tier} plan
+                      You're on the {normalizeTier(subscription.tier)} plan
                     </p>
                     <p className="text-xs text-[#9aa1ae] mt-0.5">
                       Status: {subscription.status || 'active'}
@@ -324,7 +374,7 @@ export default function Checkout() {
                 <p className="mkt-eyebrow mb-4">
                   <span className="dot">●</span> billing · plan
                 </p>
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {PLANS.map((plan) => (
                     <button
                       key={plan.id}
@@ -349,10 +399,10 @@ export default function Checkout() {
                       <p className="mt-2 text-[13.5px] text-[#a8adba]">{plan.blurb}</p>
                       <div className="mt-4 flex items-end gap-2">
                         <span className="text-3xl font-semibold text-white">
-                          {plan.contactSales ? '$999' : yearly ? `$${Math.round(plan.yearlyPrice / 12)}` : `$${plan.monthlyPrice}`}
+                          {plan.contactSales ? 'Custom' : yearly ? `$${Math.round(plan.yearlyPrice / 12)}` : `$${plan.monthlyPrice}`}
                         </span>
                         <span className="mkt-mono pb-1 text-xs text-[#686e7c]">
-                          {plan.contactSales ? '/mo' : plan.monthlyNote}
+                          {plan.contactSales ? '' : yearly && plan.perSeat ? '/seat/mo' : plan.monthlyNote}
                         </span>
                       </div>
                       {yearly && !plan.contactSales && (
@@ -394,10 +444,10 @@ export default function Checkout() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => setSelectedPlan('professional')}
+                    onClick={() => setSelectedPlan('pro')}
                     className="text-xs text-[#686e7c] hover:text-white transition"
                   >
-                    ← Back to Professional plan
+                    ← Back to plans
                   </button>
                 </div>
               ) : (
@@ -473,7 +523,11 @@ export default function Checkout() {
                       ) : (
                         <>
                           <CreditCard className="w-4 h-4" />
-                          Subscribe · ${yearly ? Math.round(290 / 12) : 25}/mo
+                          {(() => {
+                            const plan = planById(selectedPlan);
+                            const price = yearly ? Math.round(plan.yearlyPrice / 12) : plan.monthlyPrice;
+                            return `Subscribe · $${price}${plan.perSeat ? '/seat' : ''}/mo`;
+                          })()}
                         </>
                       )}
                     </button>

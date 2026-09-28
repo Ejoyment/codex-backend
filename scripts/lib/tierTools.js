@@ -15,26 +15,8 @@ const TIERS = {
     members: 1, projects: 1, tasks: 5, storageMB: 50, integrations: 0, meetings: 0,
     flags: { teamSpecLibrary: false, teamRBAC: false, ssoAuthentication: false, auditLogs: false, scimProvisioning: false, dedicatedAccountManager: false, slaUptime: false }
   },
-  freebie: {
-    rank: 1, label: 'Freebie', price: 0, family: 'legacy',
-    aiMsgs: 10, aiPair: false,
-    credits: 0, hours: 0, jobs: 0, timeout: 5,
-    rooms: 0, peers: 0, deployments: 1, spec: 'read_only',
-    webrtc: false, retention: 7,
-    members: 1, projects: 1, tasks: 5, storageMB: 50, integrations: 0, meetings: 0,
-    flags: { teamSpecLibrary: false, teamRBAC: false, ssoAuthentication: false, auditLogs: false, scimProvisioning: false, dedicatedAccountManager: false, slaUptime: false }
-  },
-  starter: {
-    rank: 2, label: 'Starter trial', price: 50, family: 'legacy',
-    aiMsgs: 10, aiPair: false,
-    credits: 0, hours: 0, jobs: 0, timeout: 5,
-    rooms: 0, peers: 0, deployments: 1, spec: 'read_only',
-    webrtc: false, retention: 7,
-    members: 1, projects: 1, tasks: 5, storageMB: 50, integrations: 0, meetings: 0,
-    flags: { teamSpecLibrary: false, teamRBAC: false, ssoAuthentication: false, auditLogs: false, scimProvisioning: false, dedicatedAccountManager: false, slaUptime: false }
-  },
   pro: {
-    rank: 3, label: 'Pro', price: 20, family: 'modern',
+    rank: 1, label: 'Pro', price: 20, family: 'modern',
     aiMsgs: 100, aiPair: true,
     credits: 20, hours: 10, jobs: 1, timeout: 15,
     rooms: 1, peers: 2, deployments: 3, spec: 'full_sdd',
@@ -43,7 +25,7 @@ const TIERS = {
     flags: { teamSpecLibrary: false, teamRBAC: false, ssoAuthentication: false, auditLogs: false, scimProvisioning: false, dedicatedAccountManager: false, slaUptime: false }
   },
   team_standard: {
-    rank: 4, label: 'Team Standard', price: 40, family: 'modern',
+    rank: 3, label: 'Team Standard', price: 40, family: 'modern',
     aiMsgs: 100, aiPair: true,
     credits: 40, hours: 25, jobs: 2, timeout: 30,
     rooms: Infinity, peers: 4, deployments: 20, spec: 'team_library',
@@ -52,7 +34,7 @@ const TIERS = {
     flags: { teamSpecLibrary: true, teamRBAC: true, ssoAuthentication: false, auditLogs: false, scimProvisioning: false, dedicatedAccountManager: false, slaUptime: false }
   },
   pro_plus: {
-    rank: 5, label: 'Pro+', price: 60, family: 'modern',
+    rank: 2, label: 'Pro+', price: 60, family: 'modern',
     aiMsgs: 100, aiPair: true,
     credits: 70, hours: 50, jobs: 3, timeout: 30,
     rooms: 3, peers: 4, deployments: 10, spec: 'realtime_drift',
@@ -60,17 +42,8 @@ const TIERS = {
     members: 10, projects: 50, tasks: 100, storageMB: 5000, integrations: 5, meetings: 100,
     flags: { teamSpecLibrary: false, teamRBAC: false, ssoAuthentication: false, auditLogs: false, scimProvisioning: false, dedicatedAccountManager: false, slaUptime: false }
   },
-  professional: {
-    rank: 6, label: 'Professional', price: 99, family: 'legacy',
-    aiMsgs: 100, aiPair: true,
-    credits: 0, hours: 0, jobs: 0, timeout: 5,
-    rooms: 0, peers: 0, deployments: 1, spec: 'read_only',
-    webrtc: false, retention: 7,
-    members: 10, projects: 50, tasks: 100, storageMB: 5000, integrations: 5, meetings: 100,
-    flags: { teamSpecLibrary: false, teamRBAC: false, ssoAuthentication: false, auditLogs: false, scimProvisioning: false, dedicatedAccountManager: false, slaUptime: false }
-  },
   team_premium: {
-    rank: 7, label: 'Team Premium', price: 120, family: 'modern',
+    rank: 4, label: 'Team Premium', price: 120, family: 'modern',
     aiMsgs: 100, aiPair: true,
     credits: 200, hours: 120, jobs: 5, timeout: 60,
     rooms: Infinity, peers: 8, deployments: Infinity, spec: 'cross_repo',
@@ -79,7 +52,7 @@ const TIERS = {
     flags: { teamSpecLibrary: true, teamRBAC: true, ssoAuthentication: false, auditLogs: false, scimProvisioning: false, dedicatedAccountManager: false, slaUptime: false }
   },
   enterprise: {
-    rank: 8, label: 'Enterprise', price: 299, family: 'modern',
+    rank: 5, label: 'Enterprise', price: 299, family: 'modern',
     aiMsgs: Infinity, aiPair: true,
     credits: null, hours: null, jobs: null, timeout: null,
     rooms: Infinity, peers: Infinity, deployments: Infinity, spec: 'custom',
@@ -227,12 +200,8 @@ function directionAllowed(direction, currentTier, targetTier) {
   const current = TIERS[currentTier];
   const target = TIERS[targetTier];
   if (!current || !target) return false;
-  if (direction === 'upgrade') {
-    if (target.rank > current.rank) return true;
-    return current.family === 'legacy' && target.family === 'modern' && targetTier !== 'developer';
-  }
-  if (target.rank < current.rank) return true;
-  return current.family === 'modern' && target.family === 'legacy';
+  if (direction === 'upgrade') return target.rank > current.rank;
+  return target.rank < current.rank;
 }
 
 async function applyTier({ user, subscription, tier, direction, dryRun, force }) {
@@ -246,10 +215,6 @@ async function applyTier({ user, subscription, tier, direction, dryRun, force })
 
   console.log(`\nTarget: ${user.email} (${user._id})`);
   console.log(`Action: ${direction} ${current} -> ${target}${dryRun ? '  [DRY RUN - no changes will be written]' : ''}`);
-
-  if (subscription && TIERS[subscription.tier] && TIERS[subscription.tier].family === 'legacy' && TIERS[target].family === 'modern') {
-    console.log(`  Note: migrating off legacy tier "${subscription.tier}" to the current lineup.`);
-  }
 
   if (subscription && subscription.tier === target) {
     console.log(`\nAlready on "${target}" — nothing to do.`);
@@ -330,7 +295,6 @@ async function runTierScript({ direction, defaultTier, argv, usage }) {
   if (opts.help || (!opts.email && !opts.userId)) {
     console.log(usage);
     console.log(`Current pricing tiers: ${MODERN_TIERS.join(', ')}`);
-    console.log(`Legacy tiers (still valid): ${LEGACY_TIERS.join(', ')}`);
     console.log(`Run with --list to see every tier's restrictions.`);
     process.exit(opts.help ? 0 : 1);
   }

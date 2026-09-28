@@ -59,7 +59,7 @@ describe('Stripe Payment Gateway', () => {
   });
 
   test('should create checkout session', async () => {
-    const result = await stripeModule.createCheckoutSession('user-123', 'test@test.com', 'professional', 'monthly');
+    const result = await stripeModule.createCheckoutSession('user-123', 'test@test.com', 'pro', 'monthly');
     expect(result.success).toBe(true);
     expect(result.sessionId).toContain('cs_test');
     expect(result.url).toContain('stripe.com');
@@ -73,8 +73,8 @@ describe('Stripe Payment Gateway', () => {
   });
   
   test('should have PRICE_IDS mapping', () => {
-    expect(stripeModule.PRICE_IDS.professional_monthly).toBe('price_prof_monthly');
-    expect(stripeModule.PRICE_IDS.professional_yearly).toBe('price_prof_yearly');
+    expect(stripeModule.PRICE_IDS.pro_monthly).toBe('price_prof_monthly');
+    expect(stripeModule.PRICE_IDS.pro_yearly).toBe('price_prof_yearly');
     expect(stripeModule.PRICE_IDS.enterprise).toBe('price_enterprise');
   });
 });

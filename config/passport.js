@@ -73,7 +73,7 @@ module.exports = function(passport) {
                 try {
                     await Subscription.create({
                         userId: user._id,
-                        tier: 'freebie',
+                        tier: 'developer',
                         status: 'active'
                     });
                 } catch (subError) {

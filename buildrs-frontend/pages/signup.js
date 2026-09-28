@@ -14,7 +14,7 @@ export default function SignUp() {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [plan, setPlan] = useState('team');
+  const [plan, setPlan] = useState('pro');
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
   const [rateLimited, setRateLimited] = useState(false);
@@ -144,7 +144,7 @@ export default function SignUp() {
           </div>
 
           <div className="feature-list">
-            {['AI pair programmer (Groq-powered)', 'Real-time multi-cursor editing', 'GitHub, Slack, Discord integrations', 'Free forever on Starter plan'].map(f => (
+            {['AI pair programmer (Groq-powered)', 'Real-time multi-cursor editing', 'GitHub, Slack, Discord integrations', 'Free forever on Developer plan'].map(f => (
               <div key={f} className="feature-item">
                 <div className="feature-check">
                   <svg width="10" height="10" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24">
@@ -255,12 +255,12 @@ export default function SignUp() {
               <div className="form-group">
                 <label className="form-label">PLAN</label>
                 <div className="plan-grid">
-                  <button type="button" onClick={() => setPlan('starter')} className={`plan-btn ${plan === 'starter' ? 'active' : ''}`}>
-                    <div className="plan-name">Starter</div>
+                  <button type="button" onClick={() => setPlan('developer')} className={`plan-btn ${plan === 'developer' ? 'active' : ''}`}>
+                    <div className="plan-name">Developer</div>
                     <div className="plan-sub">Free forever</div>
                   </button>
-                  <button type="button" onClick={() => setPlan('team')} className={`plan-btn ${plan === 'team' ? 'active' : ''}`}>
-                    <div className="plan-name">Team</div>
+                  <button type="button" onClick={() => setPlan('pro')} className={`plan-btn ${plan === 'pro' ? 'active' : ''}`}>
+                    <div className="plan-name">Pro</div>
                     <div className="plan-sub">14-day free trial</div>
                   </button>
                 </div>

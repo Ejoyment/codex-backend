@@ -7,6 +7,7 @@ import useAuthStore from '../store/authStore';
 import { apiFetch, subscriptionApi, integrationApi } from '../lib/api';
 import { rateLimit, validate, createSubmitGuard } from '../lib/security';
 import { getAvatarUrl } from '../lib/utils';
+import { normalizeTier } from '../lib/tier';
 import { User, Shield, CreditCard, Plug, Camera, Save, ExternalLink, Unplug, Loader2, Zap, AlertTriangle, Trash2 } from 'lucide-react';
 import useToastStore from '../store/toastStore';
 
@@ -45,7 +46,7 @@ function BillingTab({ subscription, setSubscription, router, toast }) {
 
   const isTrialing = subscription?.status === 'trialing';
   const isActive = subscription?.status === 'active';
-  const isFree = !subscription || subscription.tier === 'free' || subscription.tier === 'starter';
+  const isFree = !subscription || normalizeTier(subscription.tier) === 'developer';
   const trialDaysLeft = subscription?.trialEnd
     ? Math.max(0, Math.ceil((new Date(subscription.trialEnd) - Date.now()) / (1000 * 60 * 60 * 24)))
     : null;

@@ -605,7 +605,7 @@ class AgentOrchestrator {
 
         try {
             // Check if HITL confirmation is required
-            const userTier = context.userTier || 'freebie';
+            const userTier = context.userTier || 'developer';
             
             if (this.hitlGates.requiresConfirmation(action.tool, action.parameters, userTier)) {
                 console.log(`🔒 HITL Gate: Requesting confirmation for ${action.tool}`);
