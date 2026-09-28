@@ -11,6 +11,19 @@ const deploymentSchema = new mongoose.Schema({
         ref: 'TeamProject',
         default: null
     },
+    // String copy of the project id (LocalProject or TeamProject) — populate()
+    // on projectId nulls ids that don't exist in the TeamProject collection,
+    // so this is what "redeploy this project's deployment" matches on.
+    projectKey: {
+        type: String,
+        default: null
+    },
+    // owner/name of the GitHub repo this deployment came from (null for
+    // workspace/local deploys) — lets the editor auto-redeploy on save.
+    repoFullName: {
+        type: String,
+        default: null
+    },
     subdomain: {
         type: String,
         required: true,

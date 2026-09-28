@@ -374,7 +374,24 @@ router.get('/files', authenticateToken, async (req, res) => {
     try {
         const { companyId, projectId, language, path } = req.query;
         
-        const query = { company: companyId };
+        // Scope: companyId/projectId when given, otherwise only files in the
+        // user's own companies or created by them — never the whole database
+        // (an unscoped query used to make newly created files invisible in
+        // the editor explorer whenever companyId was missing).
+        const query = {};
+        if (companyId) {
+            query.company = companyId;
+        } else if (projectId) {
+            query.project = projectId;
+        } else {
+            const Company = require('../models/Company');
+            const mine = await Company.find({
+                $or: [{ owner: req.userId }, { 'members.user': req.userId }]
+            }).select('_id').lean();
+            const or = [{ createdBy: req.userId }];
+            if (mine.length) or.push({ company: { $in: mine.map(c => c._id) } });
+            query.$or = or;
+        }
         if (projectId) query.project = projectId;
         if (language) query.language = language.toLowerCase();
         if (path) query.path = path;
