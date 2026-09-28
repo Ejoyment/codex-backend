@@ -265,6 +265,69 @@ const MANIFEST = {
     host: (c) => ['elixir', c.entry],
     errorStyle: 'generic',
   },
+  haskell: {
+    name: 'Haskell',
+    aliases: ['hs', 'lhs'],
+    image: 'haskell:9.6',
+    defaultEntry: 'main.hs',
+    timeoutMs: COMPILE_TIMEOUT_MS,
+    memoryMb: 768,
+    script: (c) => `runghc ${c.entry}`,
+    host: (c) => ['sh', '-c', `if command -v runghc >/dev/null 2>&1; then runghc ${shq(c.entry)}; else echo "runghc not installed on the host runner (production runs use the container image)"; exit 127; fi`, 'haskell-run'],
+    errorStyle: 'generic',
+  },
+  julia: {
+    name: 'Julia',
+    aliases: ['jl'],
+    image: 'julia:1.10',
+    defaultEntry: 'main.jl',
+    timeoutMs: COMPILE_TIMEOUT_MS,
+    memoryMb: 512,
+    script: (c) => `julia --startup-file=no ${c.entry}`,
+    host: (c) => ['sh', '-c', `if command -v julia >/dev/null 2>&1; then julia --startup-file=no ${shq(c.entry)}; else echo "julia not installed on the host runner (production runs use the container image)"; exit 127; fi`, 'julia-run'],
+    errorStyle: 'generic',
+  },
+  // kotlin/scala have no maintained official image, so the run downloads the
+  // compiler on first use — that needs a networked container (everything else
+  // runs with --network=none) and a bigger heap/timeout.
+  kotlin: {
+    name: 'Kotlin',
+    aliases: ['kt', 'kts'],
+    image: 'eclipse-temurin:21-jdk-jammy',
+    defaultEntry: 'main.kt',
+    timeoutMs: 180000,
+    memoryMb: 768,
+    network: true,
+    script: (c) => [
+      'export DEBIAN_FRONTEND=noninteractive',
+      'apt-get update -qq >/dev/null 2>&1 || true',
+      'apt-get install -y -qq curl unzip >/dev/null 2>&1 || true',
+      'KVER=1.9.24',
+      'if ! command -v kotlinc >/dev/null 2>&1 && ! test -d /opt/kotlinc; then curl -fsSL -o /tmp/k.zip "https://github.com/JetBrains/kotlin/releases/download/v$KVER/kotlin-compiler-$KVER.zip" && unzip -q /tmp/k.zip -d /opt; fi',
+      `export JAVA_OPTS=-Xmx512m`,
+      `sh -c 'if command -v kotlinc >/dev/null 2>&1; then K=kotlinc; else K=/opt/kotlinc/bin/kotlinc; fi; "$K" ${c.entry} -include-runtime -d /tmp/app.jar && java -jar /tmp/app.jar'`,
+    ].join('\n'),
+    host: (c) => ['sh', '-c', `if command -v kotlinc >/dev/null 2>&1; then kotlinc ${shq(c.entry)} -include-runtime -d /tmp/app.jar && java -jar /tmp/app.jar; else echo "kotlinc not installed on the host runner (production runs use the container image)"; exit 127; fi`, 'kotlin-run'],
+    errorStyle: 'generic',
+  },
+  scala: {
+    name: 'Scala',
+    aliases: ['sc'],
+    image: 'eclipse-temurin:21-jdk-jammy',
+    defaultEntry: 'main.scala',
+    timeoutMs: 180000,
+    memoryMb: 768,
+    network: true,
+    script: (c) => [
+      'export DEBIAN_FRONTEND=noninteractive',
+      'apt-get update -qq >/dev/null 2>&1 || true',
+      'apt-get install -y -qq curl gzip >/dev/null 2>&1 || true',
+      'if ! command -v scala-cli >/dev/null 2>&1; then curl -fsSL -o /tmp/sc.gz "https://github.com/VirtusLab/scala-cli/releases/download/v1.5.1/scala-cli-x86_64-pc-linux.gz" && gzip -df /tmp/sc.gz && mv /tmp/sc /usr/local/bin/scala-cli && chmod +x /usr/local/bin/scala-cli; fi',
+      `sh -c 'if command -v scala-cli >/dev/null 2>&1; then scala-cli run ${c.entry} --server=false; elif command -v scala >/dev/null 2>&1; then scala ${c.entry}; else echo "scala-cli not installed"; exit 127; fi'`,
+    ].join('\n'),
+    host: (c) => ['sh', '-c', `if command -v scala-cli >/dev/null 2>&1; then scala-cli run ${shq(c.entry)} --server=false; elif command -v scala >/dev/null 2>&1; then scala ${shq(c.entry)}; else echo "scala-cli not installed on the host runner (production runs use the container image)"; exit 127; fi`, 'scala-run'],
+    errorStyle: 'generic',
+  },
 };
 
 const ALIAS_INDEX = (() => {
@@ -461,12 +524,19 @@ const DOCKER_FLAGS = [
   '-e', 'LANG=C.UTF-8', '-e', 'HOME=/tmp',
 ];
 
-function dockerRunArgs(image, script) {
-  return ['run', ...DOCKER_FLAGS, image, 'sh', '-c', script];
+// Per-language overrides: `network: true` opts a def into a networked
+// container (compiler downloads), `memoryMb` raises the default 256m cap.
+function dockerRunArgs(image, script, def) {
+  const flags = DOCKER_FLAGS.map((f) => {
+    if (f === '--network=none') return def && def.network ? '--network=bridge' : f;
+    if (f === '--memory=256m') return def && def.memoryMb ? `--memory=${def.memoryMb}m` : f;
+    return f;
+  });
+  return ['run', ...flags, image, 'sh', '-c', script];
 }
 
-function vpsDockerCommand(image, script) {
-  const argv = ['docker', ...dockerRunArgs(image, script)].map(shq).join(' ');
+function vpsDockerCommand(image, script, def) {
+  const argv = ['docker', ...dockerRunArgs(image, script, def)].map(shq).join(' ');
   return argv;
 }
 
@@ -523,9 +593,9 @@ function runOnVps(cmd, { stdinData, timeoutMs, onOutput }) {
   });
 }
 
-function runOnDockerCli(image, script, { stdinData, timeoutMs, onOutput }) {
+function runOnDockerCli(image, script, { stdinData, timeoutMs, onOutput, def }) {
   return new Promise((resolve) => {
-    const proc = spawn('docker', dockerRunArgs(image, script), { stdio: ['pipe', 'pipe', 'pipe'] });
+    const proc = spawn('docker', dockerRunArgs(image, script, def), { stdio: ['pipe', 'pipe', 'pipe'] });
     let output = '';
     let timedOut = false;
     const timer = setTimeout(() => {
@@ -805,7 +875,7 @@ async function executeRun({ language, files, entry, args, stdin, timeoutMs, onOu
     throw new Error(`Entry file not found: ${entryRel}`);
   }
   const safeArgs = (Array.isArray(args) ? args : []).slice(0, 20).map((a) => String(a).slice(0, 200));
-  const timeout = Math.min(Math.max(parseInt(timeoutMs, 10) || def.timeoutMs, 1000), 120000);
+  const timeout = Math.min(Math.max(parseInt(timeoutMs, 10) || def.timeoutMs, 1000), 180000);
   const script = buildContainerScript(def, v.files, entryRel, safeArgs);
   const strategy = pickStrategy();
 
@@ -821,6 +891,7 @@ async function executeRun({ language, files, entry, args, stdin, timeoutMs, onOu
       stdinData: typeof stdin === 'string' && stdin.length ? stdin.slice(0, 64 * 1024) : null,
       timeoutMs: timeout + PULL_GRACE_MS,
       onOutput,
+      def,
     });
   } else {
     result = await runOnHost(def, v.files, entryRel, safeArgs, {

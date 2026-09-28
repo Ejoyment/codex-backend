@@ -28,7 +28,9 @@ class VirtualFileSystem {
       max: 100,
       maxSize: 50 * 1024 * 1024, // 50MB
       sizeCalculation: (value) => {
-        return Buffer.byteLength(value.content || '', 'utf8');
+        // lru-cache rejects size 0 — empty files (or files without content)
+        // made every cache.set throw "sizeCalculation return invalid".
+        return Math.max(1, Buffer.byteLength(value.content || '', 'utf8'));
       },
       ttl: 1000 * 60 * 30 // 30 minutes
     });

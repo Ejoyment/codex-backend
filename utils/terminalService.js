@@ -285,20 +285,66 @@ class TerminalService {
                 }
               }
             } else if (stats.isDirectory()) {
-              // Directory change - invalidate VFS index
-              const vfs = require('./virtualFileSystem');
-              vfs.invalidateIndex(terminal.workspaceId);
-              
+              // New folder — drop a .gitkeep placeholder into the VFS so the
+              // explorer tree renders the folder (it never lists empty dirs).
+              const relDir = path.relative(terminal.workspacePath, fullPath).replace(/\\/g, '/');
+              if (relDir && !relDir.includes('..')) {
+                const vfs = require('./virtualFileSystem');
+                const dirPosix = `/${relDir}`;
+                try {
+                  const existing = await CodeFile.findOne({
+                    company: terminal.workspaceId,
+                    path: dirPosix,
+                    name: '.gitkeep',
+                  });
+                  if (!existing) {
+                    await CodeFile.create({
+                      name: '.gitkeep',
+                      language: 'text',
+                      content: '',
+                      company: terminal.workspaceId,
+                      project: terminal.projectId || undefined,
+                      path: dirPosix,
+                      createdBy: terminal.userId,
+                      lastModifiedBy: terminal.userId,
+                    });
+                    emitWorkspaceChange(terminal.workspaceId, 'file:created', {
+                      file: { _id: null, name: '.gitkeep', path: dirPosix, company: terminal.workspaceId },
+                    });
+                  }
+                } catch (e) {
+                  console.error('PTY folder sync error:', e);
+                }
+                vfs.invalidateIndex(terminal.workspaceId);
+              }
+
               emitWorkspaceChange(terminal.workspaceId, 'folder:changed', {
-                path: '/' + path.relative(terminal.workspacePath, fullPath).replace(/\\/g, '/')
+                path: '/' + (relDir || ''),
               });
             }
           }
         } catch (error) {
-          // File might not exist anymore (deleted)
+          // Path is gone (file deleted, or a whole directory removed).
           if (eventType === 'rename') {
-            const relativePath = path.relative(terminal.workspacePath, fullPath);
             await this.syncDeletedFileFromVFS(sessionId, fullPath, terminal.workspaceId);
+            // Sweep everything that lived under a removed directory (files at
+            // any depth plus .gitkeep folder placeholders) so the explorer
+            // doesn't keep showing a ghost folder after `rm -rf`.
+            const relDir = path.relative(terminal.workspacePath, fullPath).replace(/\\/g, '/');
+            if (relDir && !relDir.includes('..')) {
+              try {
+                const prefix = `/${relDir}`.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const rx = new RegExp(`^${prefix}(/|$)`);
+                const result = await CodeFile.deleteMany({
+                  company: terminal.workspaceId,
+                  path: rx,
+                });
+                if (result.deletedCount) {
+                  require('./virtualFileSystem').invalidateIndex(terminal.workspaceId);
+                  emitWorkspaceChange(terminal.workspaceId, 'folder:changed', { path: `/${relDir}` });
+                }
+              } catch (_) { /* best effort */ }
+            }
           }
         }
       });

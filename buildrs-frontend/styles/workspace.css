@@ -5553,29 +5553,30 @@
   font-size: 0.76rem;
   color: #bbbbbb;
 }
+/* VS Code-style terminal: flat surfaces, neutral greys, no gradients. */
 .ed-term-shell {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  background: linear-gradient(180deg, rgba(8, 12, 16, 0.96), rgba(12, 17, 23, 0.96));
-  border: 1px solid rgba(148, 163, 184, 0.14);
-  border-radius: 12px;
+  background: #1e1e1e;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
   overflow: hidden;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
 }
 .ed-term-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  height: 36px;
-  padding: 0 0.7rem;
-  background: rgba(15, 23, 32, 0.9);
-  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
-  font-size: 0.65rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  height: 30px;
+  padding: 0 0.6rem;
+  flex-shrink: 0;
+  background: #252526;
+  border-bottom: 1px solid #3c3c3c;
+  font-size: 0.7rem;
+  letter-spacing: 0.01em;
+  text-transform: none;
 }
 .ed-term-meta {
   display: flex;
@@ -5586,23 +5587,29 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0.18rem 0.45rem;
-  border-radius: 999px;
-  font-size: 0.56rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  font-size: 0.58rem;
   font-weight: 700;
-  border: 1px solid rgba(52, 211, 153, 0.28);
-  background: rgba(52, 211, 153, 0.12);
-  color: #6ee7b7;
+  letter-spacing: 0.06em;
+  border: 1px solid #3c3c3c;
+  background: #2d2d2d;
+  color: #a0a0a0;
 }
 .ed-term-capsule.is-live {
-  border-color: rgba(103, 232, 249, 0.28);
-  background: rgba(103, 232, 249, 0.12);
-  color: #67e8f9;
+  border-color: #3c3c3c;
+  background: #2d2d2d;
+  color: #4ec9b0;
 }
 .ed-term-label {
-  color: #d6e2ee;
-  font-weight: 700;
-  letter-spacing: 0.12em;
+  color: #cccccc;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.ed-term-scope {
+  color: #8c8c8c;
+  font-weight: 400;
+  letter-spacing: 0.01em;
 }
 .ed-term-actions {
   display: flex;
@@ -5613,21 +5620,20 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0.2rem 0.45rem;
-  border-radius: 999px;
-  background: rgba(148, 163, 184, 0.08);
-  border: 1px solid rgba(148, 163, 184, 0.12);
-  color: #b8c7d8;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  padding: 0.15rem 0.45rem;
+  border-radius: 3px;
+  background: #2d2d2d;
+  border: 1px solid #3c3c3c;
+  color: #cccccc;
+  font-size: 0.64rem;
+  letter-spacing: 0.02em;
+  text-transform: none;
 }
 .ed-term-root {
   flex: 1;
   min-height: 0;
-  padding: 0.6rem;
-  background:
-    radial-gradient(circle at top left, rgba(47, 214, 230, 0.06), transparent 24%),
-    linear-gradient(180deg, #071018 0%, #0a1117 100%);
+  padding: 4px 8px;
+  background: #1e1e1e;
 }
 .ed-term-root .xterm {
   height: 100%;
@@ -5636,9 +5642,6 @@
 .ed-term-root .xterm-viewport,
 .ed-term-root .xterm-screen {
   background: transparent !important;
-}
-.ed-term-root .xterm-cursor {
-  box-shadow: 0 0 0 1px rgba(103, 232, 249, 0.55);
 }
 
 /* ---- Status bar ----------------------------------------------------------------- */
