@@ -159,14 +159,16 @@ router.post('/files', authenticateToken, async (req, res) => {
         
         await codeFile.populate('createdBy', 'fullName email profilePicture');
         
-        // Update VFS index
+        // Update VFS index (keyed by full path: dir + name)
         try {
             const existingIndex = vfs.indexes.get(effectiveCompanyId);
             if (existingIndex) {
-                existingIndex.set(codeFile.path, {
+                const full = vfs.fullPathOf(codeFile);
+                existingIndex.set(full, {
                     id: codeFile._id.toString(),
                     name: codeFile.name,
-                    path: codeFile.path,
+                    path: full,
+                    dirPath: codeFile.path,
                     size: codeFile.size,
                     language: codeFile.language,
                     lastModified: codeFile.updatedAt,
@@ -289,14 +291,16 @@ router.post('/files/batch', authenticateToken, async (req, res) => {
                 await codeFile.populate('createdBy', 'fullName email profilePicture');
                 createdFiles.push(codeFile);
                 
-                // Update VFS index
+                // Update VFS index (keyed by full path: dir + name)
                 try {
                     const existingIndex = vfs.indexes.get(companyId);
                     if (existingIndex) {
-                        existingIndex.set(codeFile.path, {
+                        const full = vfs.fullPathOf(codeFile);
+                        existingIndex.set(full, {
                             id: codeFile._id.toString(),
                             name: codeFile.name,
-                            path: codeFile.path,
+                            path: full,
+                            dirPath: codeFile.path,
                             size: codeFile.size,
                             language: codeFile.language,
                             lastModified: codeFile.updatedAt,
@@ -516,6 +520,7 @@ router.put('/files/:id', authenticateToken, async (req, res) => {
         if (!file) {
             return res.status(404).json({ success: false, message: 'File not found' });
         }
+        const oldFull = vfs.fullPathOf(file);
         
         // Save version if content changed
         if (content && content !== file.content) {
@@ -545,16 +550,23 @@ router.put('/files/:id', authenticateToken, async (req, res) => {
             req
         });
         
-        // Update VFS cache and index
+        // Update VFS cache and index (re-key when the name/path changed)
         try {
             const workspaceId = file.company.toString();
             const cacheKey = `${workspaceId}:${file._id}`;
             const index = vfs.indexes.get(workspaceId);
-            if (index && index.has(file.path)) {
-                const metadata = index.get(file.path);
+            if (index) {
+                const newFull = vfs.fullPathOf(file);
+                if (oldFull !== newFull) index.delete(oldFull);
+                const metadata = index.get(newFull) || {};
+                metadata.id = file._id.toString();
+                metadata.name = file.name;
+                metadata.path = newFull;
+                metadata.dirPath = file.path;
                 metadata.size = file.size;
+                metadata.language = file.language;
                 metadata.lastModified = file.updatedAt;
-                if (name) metadata.name = file.name;
+                index.set(newFull, metadata);
             }
             vfs.cache.set(cacheKey, file.toObject());
         } catch (vfsError) {
@@ -593,16 +605,17 @@ router.delete('/files/:id', authenticateToken, async (req, res) => {
         
         const workspaceId = file.company.toString();
         const fileId = file._id.toString();
-        const filePath = file.path;
+        const filePath = vfs.fullPathOf(file);
         
-        await CodeFile.findByIdAndDelete(req.params.id);
-        
-        // Update VFS
+        // VFS first: it re-reads the doc to drop the index entry, so it must
+        // run before the hard delete (the old order always threw not-found
+        // and leaked the index entry).
         try {
-            vfs.deleteFile(fileId, workspaceId);
+            await vfs.deleteFile(fileId, workspaceId);
         } catch (vfsError) {
             console.error('VFS delete error:', vfsError);
         }
+        await CodeFile.findByIdAndDelete(req.params.id).catch(() => null);
         
         // Emit real-time event
         emitWorkspaceChange(workspaceId, 'file:deleted', {

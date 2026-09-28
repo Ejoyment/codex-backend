@@ -5190,6 +5190,105 @@
   font: inherit;
 }
 .ed-scm-file-btn:hover { background: rgba(255, 255, 255, 0.06); }
+
+/* SCM panel — VS Code-style source control */
+.ed-scm-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.6rem 0.7rem;
+}
+.ed-scm-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.74rem;
+  color: #c7d3df;
+  padding: 0.4rem 0.55rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 6px;
+  min-width: 0;
+}
+.ed-scm-summary b { color: #e6f1ff; font-weight: 600; }
+.ed-scm-remote {
+  margin-left: auto;
+  color: #6e6e6e;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.66rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 55%;
+}
+.ed-scm-commit-box { display: flex; flex-direction: column; gap: 0.4rem; }
+.ed-scm-commit-input {
+  width: 100%;
+  min-height: 3.4rem;
+  resize: vertical;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: #e6f1ff;
+  font-size: 0.76rem;
+  font-family: inherit;
+  line-height: 1.45;
+  padding: 0.45rem 0.55rem;
+  outline: none;
+  transition: border-color 0.12s ease;
+}
+.ed-scm-commit-input:focus { border-color: #2fd6e6; }
+.ed-scm-commit-input::placeholder { color: #5c6672; }
+.ed-scm-commit-btn { width: 100%; justify-content: center; }
+.ed-scm-commit-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.ed-scm-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #8a94a3;
+  padding: 0.3rem 0.3rem 0;
+}
+.ed-scm-clean { font-size: 0.72rem; color: #6e6e6e; padding: 0.15rem 0.3rem; }
+.ed-scm-files, .ed-scm-commits { display: flex; flex-direction: column; gap: 1px; }
+.ed-scm-status {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.68rem;
+  font-weight: 700;
+  width: 0.95rem;
+  text-align: center;
+  flex-shrink: 0;
+}
+.ed-scm-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ed-scm-file-btn { width: 100%; text-align: left; }
+.ed-scm-commit {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.35rem 0.55rem;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+.ed-scm-commit:hover { background: rgba(255, 255, 255, 0.06); }
+.ed-scm-commit-msg {
+  font-size: 0.74rem;
+  color: #c7d3df;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ed-scm-commit-meta {
+  font-size: 0.66rem;
+  color: #6e6e6e;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+}
+.ed-scm-actions { display: flex; gap: 0.4rem; padding-top: 0.2rem; }
+.ed-scm-actions .btn-workspace { flex: 1; }
+.ed-scm-wide { width: 100%; }
+.ed-scm-wide:disabled, .ed-scm-actions .btn-workspace:disabled { opacity: 0.45; cursor: not-allowed; }
 .ws-code-block {
   background: rgba(0, 0, 0, 0.35);
   border: 1px solid rgba(255, 255, 255, 0.09);

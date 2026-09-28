@@ -618,10 +618,11 @@ router.get('/:projectId/files', authenticateToken, async (req, res) => {
             return res.status(404).json({ success: false, message: 'Project not found' });
         }
 
-        // If project has a workspaceId, use that; otherwise use project's company
-        const query = project.workspaceId 
-            ? { company: project.workspaceId }
-            : { project: projectId };
+        // Strict project scoping. The old fallback (`{ company: workspaceId }`
+        // when the project had a workspace) returned EVERY file of the whole
+        // workspace, so one project's explorer showed another project's files.
+        // Files created from the editor carry `project`, so scope by it.
+        const query = { project: projectId };
 
         const files = await CodeFile.find(query)
             .select('name path language size updatedAt createdAt')

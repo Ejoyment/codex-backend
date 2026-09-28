@@ -106,11 +106,20 @@ class TerminalService {
       const fileName = path.basename(filePath);
       const ext = path.extname(fileName).toLowerCase();
       const langMap = EXT_LANG_MAP;
+      // CodeFiles store the DIRECTORY path + name. The old lookup searched
+      // for the full disk path, missed editor-created files, and then
+      // re-created them as duplicates with an inverted path shape.
+      const relPosix = relativePath.replace(/\\/g, '/');
+      const dirPosix = relPosix.includes('/') ? `/${relPosix.slice(0, relPosix.lastIndexOf('/'))}` : '/';
+      const fullVfsPath = `/${relPosix}`;
       
-      // Check if file already exists in DB
+      // Check if file already exists in DB (new or legacy full-path shape)
       const existing = await CodeFile.findOne({
         company: workspaceId,
-        path: '/' + relativePath.replace(/\\/g, '/')
+        $or: [
+          { path: dirPosix, name: fileName },
+          { path: fullVfsPath },
+        ],
       });
       
       if (!existing) {
@@ -126,7 +135,8 @@ class TerminalService {
           language: langMap[ext] || 'text',
           content,
           company: workspaceId,
-          path: '/' + relativePath.replace(/\\/g, '/'),
+          project: terminal.projectId || undefined,
+          path: dirPosix,
           createdBy: userId,
           lastModifiedBy: userId
         });
@@ -135,10 +145,12 @@ class TerminalService {
         const vfs = require('./virtualFileSystem');
         const index = vfs.indexes.get(workspaceId);
         if (index) {
-          index.set(codeFile.path, {
+          const full = vfs.fullPathOf(codeFile);
+          index.set(full, {
             id: codeFile._id.toString(),
             name: codeFile.name,
-            path: codeFile.path,
+            path: full,
+            dirPath: codeFile.path,
             size: codeFile.size,
             language: codeFile.language,
             lastModified: codeFile.updatedAt,
@@ -171,11 +183,17 @@ class TerminalService {
       if (!terminal) return;
       
       const relativePath = path.relative(terminal.workspacePath, filePath);
-      const vfsPath = '/' + relativePath.replace(/\\/g, '/');
+      const relPosix = relativePath.replace(/\\/g, '/');
+      const vfsPath = `/${relPosix}`;
+      const fileName = path.basename(filePath);
+      const dirPosix = relPosix.includes('/') ? `/${relPosix.slice(0, relPosix.lastIndexOf('/'))}` : '/';
       
       const file = await CodeFile.findOne({
         company: workspaceId,
-        path: vfsPath
+        $or: [
+          { path: dirPosix, name: fileName },
+          { path: vfsPath },
+        ],
       });
       
       if (file) {
@@ -222,12 +240,18 @@ class TerminalService {
             if (stats.isFile()) {
               // File created or modified
               const relativePath = path.relative(terminal.workspacePath, fullPath);
-              const vfsPath = '/' + relativePath.replace(/\\/g, '/');
+              const relPosix = relativePath.replace(/\\/g, '/');
+              const fileName = path.basename(fullPath);
+              const dirPosix = relPosix.includes('/') ? `/${relPosix.slice(0, relPosix.lastIndexOf('/'))}` : '/';
+              const fullVfsPath = `/${relPosix}`;
               
-              // Check if file exists in DB
+              // Check if file exists in DB (dir+name shape, legacy full-path shape)
               const existing = await CodeFile.findOne({
                 company: terminal.workspaceId,
-                path: vfsPath
+                $or: [
+                  { path: dirPosix, name: fileName },
+                  { path: fullVfsPath },
+                ],
               });
               
               if (!existing) {
@@ -296,6 +320,23 @@ class TerminalService {
 
     const sessionToken = require('crypto').randomBytes(32).toString('hex');
     const sessionId = `${userId}_${workspaceId}_${Date.now()}`;
+
+    // Project scope drives hydration AND is stamped onto files the shell
+    // creates — verify it belongs to this user before trusting it, otherwise
+    // a client could plant foreign project ids on its CodeFiles.
+    let scopedProjectId = null;
+    if (options.projectId && mongoose.isValidObjectId(options.projectId)) {
+      try {
+        const LocalProject = require('../models/LocalProject');
+        const owned = await LocalProject.findOne({ _id: options.projectId, userId }).select('_id').lean();
+        if (owned) scopedProjectId = String(options.projectId);
+      } catch (_) {
+        scopedProjectId = null;
+      }
+    }
+    const scopedRepo = (typeof options.repoFullName === 'string' && /^[\w.\-\/]{1,200}$/.test(options.repoFullName))
+      ? options.repoFullName
+      : null;
     
     // Create workspace directory
     const workspacePath = path.join(os.tmpdir(), 'codex-workspaces', sessionId);
@@ -322,6 +363,8 @@ class TerminalService {
           workspacePath,
           userId,
           workspaceId,
+          projectId: scopedProjectId,
+          repoFullName: scopedRepo,
           token: sessionToken,
           createdAt: Date.now()
         });
@@ -343,6 +386,11 @@ class TerminalService {
           safeEnv.TERM = 'xterm-256color';
           safeEnv.WORKSPACE_ID = workspaceId;
           safeEnv.USER_ID = userId;
+          if (scopedProjectId) safeEnv.PROJECT_ID = scopedProjectId;
+          if (scopedRepo) safeEnv.REPO = scopedRepo;
+          // Project-aware prompt: cwd basename + current git branch, so the
+          // shell says WHERE it is instead of a random temp path.
+          safeEnv.PS1 = '\\[\\e[36m\\]\\w\\[\\e[0m\\] \\[\\e[33m\\]$(git rev-parse --abbrev-ref HEAD 2>/dev/null | sed -e "s/^/(/" -e "s/$/)/")\\[\\e[0m\\] \\[\\e[32m\\]\\$ \\[\\e[0m\\]';
           return safeEnv;
         })()
       });
@@ -353,6 +401,8 @@ class TerminalService {
         workspacePath,
         userId,
         workspaceId,
+        projectId: options.projectId || null,
+        repoFullName: options.repoFullName || null,
         token: sessionToken,
         createdAt: Date.now()
       });
@@ -707,26 +757,25 @@ class TerminalService {
     const terminal = this.terminals.get(sessionId);
     if (!terminal || terminal.type !== 'pty') return;
 
-    let index = vfs.indexes.get(terminal.workspaceId);
-    if (!index) {
-      await vfs.buildIndex(terminal.workspaceId);
-      index = vfs.indexes.get(terminal.workspaceId);
-    }
-    if (!index) return;
+    // Direct query instead of the shared index: keeps hydration working even
+    // before an index exists, and scopes to the selected project so the shell
+    // only sees THIS project's files (the old company-wide dump mixed files
+    // from every project in the workspace into the terminal).
+    const query = { company: terminal.workspaceId };
+    if (terminal.projectId) query.project = terminal.projectId;
 
-    const CodeFile = require('../models/CodeFile');
+    const docs = await CodeFile.find(query).select('name path content').lean();
 
-    for (const [vfsPath, metadata] of index) {
+    for (const doc of docs) {
       try {
-        const file = await CodeFile.findById(metadata.id).select('content').lean();
-        if (!file) continue;
-
-        const fsPath = resolveInWorkspace(terminal.workspacePath, vfsPath);
+        // Skip GitHub-repo-style entries already stored full-path — fullPathOf
+        // normalizes both dir+name and full-path shapes.
+        const fsPath = resolveInWorkspace(terminal.workspacePath, vfs.fullPathOf(doc));
         const dir = path.dirname(fsPath);
         await fs.mkdir(dir, { recursive: true });
-        await fs.writeFile(fsPath, file.content || '');
+        await fs.writeFile(fsPath, doc.content || '');
       } catch (error) {
-        console.error(`Failed to sync file ${metadata.path} to PTY:`, error);
+        console.error(`Failed to sync file ${doc.path}/${doc.name} to PTY:`, error);
       }
     }
   }
@@ -740,8 +789,7 @@ class TerminalService {
     try {
       switch (event) {
         case 'file:created': {
-          const vfsPath = data.file.path;
-          const fsPath = resolveInWorkspace(terminal.workspacePath, vfsPath);
+          const fsPath = resolveInWorkspace(terminal.workspacePath, vfs.fullPathOf(data.file));
           const dir = path.dirname(fsPath);
           await fs.mkdir(dir, { recursive: true });
 
@@ -752,8 +800,7 @@ class TerminalService {
           break;
         }
         case 'file:updated': {
-          const vfsPath = data.file.path;
-          const fsPath = resolveInWorkspace(terminal.workspacePath, vfsPath);
+          const fsPath = resolveInWorkspace(terminal.workspacePath, vfs.fullPathOf(data.file));
           const file = await CodeFile.findById(data.file._id).select('content').lean();
           if (file) {
             await fs.writeFile(fsPath, file.content || '');

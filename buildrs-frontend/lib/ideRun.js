@@ -1,28 +1,44 @@
 // Run engine client: start a run and stream its SSE events (status/output/result).
 import { apiFetch, API_BASE_URL } from './api';
 
-// Languages the Run engine accepts, keyed by what detectLanguage() produces
-// plus common extensions. Kept in sync with utils/ideRunner.js MANIFEST.
-const RUNNABLE = new Set([
+// Run engine language ids (utils/ideRunner.js MANIFEST) plus their aliases.
+// The backend also accepts language:'auto' and detects from extension/shebang,
+// so unknown file types are never blocked here — we ask the server to figure
+// it out instead of refusing to run (requirement: any file type must be tryable).
+const LANG_IDS = new Set([
   'javascript', 'typescript', 'python', 'c', 'cpp', 'java', 'go', 'rust',
   'ruby', 'php', 'bash', 'shell', 'perl', 'r', 'csharp', 'dart', 'swift',
   'elixir', 'powershell', 'sql', 'lua', 'groovy',
-  // extension spellings
-  'js', 'jsx', 'ts', 'tsx', 'py', 'rs', 'rb', 'sh', 'pl', 'cs', 'ps1', 'ex',
+  'js', 'jsx', 'mjs', 'cjs', 'ts', 'tsx', 'py', 'rb', 'sh', 'pl', 'cs',
+  'ps1', 'ex', 'exs', 'pwsh', 'rs',
 ]);
+
+// Extension → run engine language id.
+const EXT_TO_LANG = {
+  js: 'javascript', jsx: 'javascript', mjs: 'javascript', cjs: 'javascript',
+  ts: 'typescript', tsx: 'typescript',
+  py: 'python', pyw: 'python',
+  c: 'c', h: 'c',
+  cpp: 'cpp', cc: 'cpp', cxx: 'cpp', hpp: 'cpp', csx: 'cpp',
+  java: 'java', go: 'go', rs: 'rust', rb: 'ruby', php: 'php',
+  sh: 'bash', bash: 'bash', zsh: 'bash',
+  pl: 'perl', r: 'r', cs: 'csharp', dart: 'dart', swift: 'swift',
+  ex: 'elixir', exs: 'elixir', ps1: 'powershell',
+  sql: 'sql', lua: 'lua', groovy: 'groovy',
+};
 
 export function runLanguageFor(file) {
   const name = file?.name || '';
   const ext = name.includes('.') ? name.split('.').pop().toLowerCase() : '';
   const lang = String(file?.language || '').toLowerCase();
-  const candidates = [lang, ext];
-  for (const c of candidates) {
-    if (c && RUNNABLE.has(c)) return { language: c };
-  }
-  const shown = lang || ext || 'text';
-  return {
-    error: `No run configuration for '${shown}' files`,
-  };
+
+  if (lang && LANG_IDS.has(lang)) return { language: lang };
+  if (ext && EXT_TO_LANG[ext]) return { language: EXT_TO_LANG[ext] };
+  if (ext && LANG_IDS.has(ext)) return { language: ext };
+  if (lang && EXT_TO_LANG[lang]) return { language: EXT_TO_LANG[lang] };
+
+  // Unknown type: let the backend detect from extension/shebang/entry file.
+  return { language: 'auto' };
 }
 
 export async function startRun(payload) {

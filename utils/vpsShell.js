@@ -169,6 +169,8 @@ class VpsShell {
       '-w /workspace',
       `-e WORKSPACE_ID=${shq(this.workspaceId)}`,
       `-e USER_ID=${shq(this.userId)}`,
+      // Project-aware prompt: cwd basename + current git branch.
+      `-e PS1=${shq('\\[\\e[36m\\]\\w\\[\\e[0m\\] \\[\\e[33m\\]$(git rev-parse --abbrev-ref HEAD 2>/dev/null | sed -e "s/^/(/" -e "s/$/)/")\\[\\e[0m\\] \\[\\e[32m\\]\\$ \\[\\e[0m\\]')}`,
       shq(TOOLBOX_IMAGE),
       'sleep infinity',
     ].join(' ');
