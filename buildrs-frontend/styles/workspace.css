@@ -3670,12 +3670,6 @@
   border: 1px solid rgba(248, 113, 113, 0.25);
   color: #f87171;
 }
-.ed-panel {
-  background: #0a0b10;
-  border: 1px solid var(--ws-border);
-  border-radius: 10px;
-  padding: 0.85rem;
-}
 .ed-invite-row {
   display: flex;
   gap: 0.6rem;
@@ -5543,9 +5537,6 @@
 .ed-term-root .xterm-viewport,
 .ed-term-root .xterm-screen {
   background: transparent !important;
-}
-.ed-term-root .xterm .xterm-helpers {
-  display: none;
 }
 .ed-term-root .xterm-cursor {
   box-shadow: 0 0 0 1px rgba(103, 232, 249, 0.55);
