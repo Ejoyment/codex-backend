@@ -407,7 +407,8 @@ function capOutput(text) {
 
 const DOCKER_FLAGS = [
   '--rm', '-i', '--network=none', '--memory=256m', '--cpus=1',
-  '--pids-limit=256', '--tmpfs', '/tmp:rw,size=64m',
+  '--pids-limit=256', '--tmpfs', '/tmp:rw,exec,nosuid,size=64m',
+  '-u', '0:0',
   '-e', 'LANG=C.UTF-8', '-e', 'HOME=/tmp',
 ];
 
