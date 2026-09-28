@@ -3,7 +3,36 @@ const Subscription = require('../models/Subscription');
 const jwt = require('jsonwebtoken');
 
 // Tier limits configuration
+const CORE_PAID_FEATURES = {
+    teamChat: true,
+    aiPair: true,
+    advancedAnalytics: true,
+    customBranding: true,
+    prioritySupport: true,
+    videoMeetings: true,
+    codeCollaboration: true,
+    integrations: true
+};
+
 const TIER_LIMITS = {
+    developer: {
+        maxMembers: 1,
+        maxProjects: 1,
+        maxTasksPerProject: 5,
+        maxStorageMB: 50,
+        maxIntegrations: 0,
+        maxMeetingsPerMonth: 0,
+        features: {
+            teamChat: false,
+            aiPair: false,
+            advancedAnalytics: false,
+            customBranding: false,
+            prioritySupport: false,
+            videoMeetings: false,
+            codeCollaboration: false,
+            integrations: false
+        }
+    },
     freebie: {
         maxMembers: 1,
         maxProjects: 1,
@@ -22,6 +51,24 @@ const TIER_LIMITS = {
             integrations: false
         }
     },
+    pro: {
+        maxMembers: 10,
+        maxProjects: 50,
+        maxTasksPerProject: 100,
+        maxStorageMB: 5000,
+        maxIntegrations: 5,
+        maxMeetingsPerMonth: 100,
+        features: { ...CORE_PAID_FEATURES }
+    },
+    pro_plus: {
+        maxMembers: 10,
+        maxProjects: 50,
+        maxTasksPerProject: 100,
+        maxStorageMB: 5000,
+        maxIntegrations: 5,
+        maxMeetingsPerMonth: 100,
+        features: { ...CORE_PAID_FEATURES }
+    },
     professional: {
         maxMembers: 10,
         maxProjects: 50,
@@ -38,6 +85,42 @@ const TIER_LIMITS = {
             videoMeetings: true,
             codeCollaboration: true,
             integrations: true
+        }
+    },
+    team_standard: {
+        maxMembers: -1,
+        maxProjects: -1,
+        maxTasksPerProject: -1,
+        maxStorageMB: -1,
+        maxIntegrations: -1,
+        maxMeetingsPerMonth: -1,
+        features: { ...CORE_PAID_FEATURES }
+    },
+    team_premium: {
+        maxMembers: -1,
+        maxProjects: -1,
+        maxTasksPerProject: -1,
+        maxStorageMB: -1,
+        maxIntegrations: -1,
+        maxMeetingsPerMonth: -1,
+        features: { ...CORE_PAID_FEATURES }
+    },
+    starter: {
+        maxMembers: 1,
+        maxProjects: 1,
+        maxTasksPerProject: 5,
+        maxStorageMB: 50,
+        maxIntegrations: 0,
+        maxMeetingsPerMonth: 0,
+        features: {
+            teamChat: false,
+            aiPair: false,
+            advancedAnalytics: false,
+            customBranding: false,
+            prioritySupport: false,
+            videoMeetings: false,
+            codeCollaboration: false,
+            integrations: false
         }
     },
     enterprise: {
@@ -257,7 +340,7 @@ async function getCompanyLimits(companyId) {
         
         // Update company tier if it doesn't match
         if (company.subscription.tier !== ownerTier) {
-            const memberLimit = ownerTier === 'freebie' ? 1 : ownerTier === 'professional' ? 10 : 999999;
+            const memberLimit = ['freebie', 'developer', 'starter'].includes(ownerTier) ? 1 : ['professional', 'pro', 'pro_plus'].includes(ownerTier) ? 10 : 999999;
             company.subscription.tier = ownerTier;
             company.subscription.memberLimit = memberLimit;
             await company.save();
