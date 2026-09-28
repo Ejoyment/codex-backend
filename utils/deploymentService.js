@@ -221,13 +221,40 @@ EXPOSE 80
   });
 
   const dockerResult = (e, dir) => {
-    const m = /^\s*EXPOSE\s+(\d+)/im.exec(text(e));
+    const dfText = repairGoToolchain(text(e), dir);
+    const m = /^\s*EXPOSE\s+(\d+)/im.exec(dfText);
     return {
       runtime: 'docker',
-      dockerfile: text(e),
+      dockerfile: dfText,
       exposePort: (m && clampPort(m[1])) || 80,
       contextDir: dir || '.',
     };
+  };
+
+  // Official golang images run with GOTOOLCHAIN=local, so a Dockerfile that
+  // pins an older toolchain than go.mod's `go` directive hard-fails with
+  // "go.mod requires go >= X". go.mod is authoritative — bump outdated
+  // `FROM golang:` tags (variant suffix like -alpine preserved) and leave a
+  // comment explaining the repair. Images already satisfying go.mod are
+  // untouched, as are digest-pinned FROMs.
+  const repairGoToolchain = (dfText, dir) => {
+    const goMod = findIn(dir.toLowerCase(), 'go.mod');
+    if (!goMod) return dfText;
+    const gm = /^go\s+(\d+)\.(\d+)(?:\.(\d+))?/m.exec(text(goMod));
+    if (!gm) return dfText;
+    const req = [Number(gm[1]), Number(gm[2]), Number(gm[3] || 0)];
+    const reqTag = gm[3] ? `${gm[1]}.${gm[2]}.${gm[3]}` : `${gm[1]}.${gm[2]}`;
+    let patched = null;
+    const out = dfText.replace(/^FROM[ \t]+golang:(\d+)\.(\d+)(?:\.(\d+))?(\S*)/gm, (line, ma, mi, pa, suffix) => {
+      if (suffix.includes('@')) return line;
+      const cur = [Number(ma), Number(mi), Number(pa || 0)];
+      const cmp = (req[0] - cur[0]) || (req[1] - cur[1]) || (req[2] - cur[2]);
+      if (cmp <= 0) return line;
+      patched = `golang:${ma}.${mi}${pa ? '.' + pa : ''}${suffix}`;
+      return `FROM golang:${reqTag}${suffix}`;
+    });
+    if (!patched) return dfText;
+    return `# buildrs: bumped ${patched} to golang:${reqTag} to satisfy go.mod\n${out}`;
   };
 
   const phpResult = dir => ({
@@ -292,12 +319,14 @@ ${cmd}
     }
     const goMod = findIn(dk, 'go.mod');
     const goSum = findIn(dk, 'go.sum');
-    let goVer = 22;
+    // go.mod `go` directive → full version tag (patch included: `go 1.26.3`
+    // must map to golang:1.26.3-alpine, not a possibly-older 1.26 minor).
+    let goVer = '1.22';
     if (goMod) {
-      const vm = /^go\s+1\.(\d+)\s*$/m.exec(text(goMod));
+      const vm = /^go\s+(\d+)\.(\d+)(?:\.(\d+))?/m.exec(text(goMod));
       if (vm) {
-        const n = parseInt(vm[1], 10);
-        if (Number.isInteger(n) && n >= 21) goVer = n;
+        const minor = Number(vm[2]);
+        if (Number(vm[1]) === 1 && minor >= 21) goVer = vm[1] + '.' + vm[2] + (vm[3] ? '.' + vm[3] : '');
       }
     }
     let port = 8080;
@@ -313,7 +342,7 @@ ${cmd}
       runtime: 'go',
       exposePort: port,
       contextDir: dir || '.',
-      dockerfile: `FROM golang:1.${goVer}-alpine AS build
+      dockerfile: `FROM golang:${goVer}-alpine AS build
 WORKDIR /src
 ${copyLine}
 COPY . .
