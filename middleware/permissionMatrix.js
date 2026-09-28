@@ -19,10 +19,13 @@ class PermissionMatrix {
       'file:delete': ['starter', 'professional', 'enterprise'],
       'file:create': ['starter', 'professional', 'enterprise'],
 
-      // Terminal access
-      'terminal:access': ['starter', 'professional', 'enterprise'],
-      'terminal:create': ['starter', 'professional', 'enterprise'],
-      'terminal:execute': ['starter', 'professional', 'enterprise'],
+      // Terminal access (freebie: one shared shell for evaluation/trials)
+      'terminal:access': ['freebie', 'starter', 'professional', 'enterprise'],
+      'terminal:create': ['freebie', 'starter', 'professional', 'enterprise'],
+      'terminal:execute': ['freebie', 'starter', 'professional', 'enterprise'],
+
+      // Code execution (editor Run button)
+      'ide:run': ['freebie', 'starter', 'professional', 'enterprise'],
 
       // Git operations
       'git:read': ['starter', 'professional', 'enterprise'],
@@ -65,7 +68,7 @@ class PermissionMatrix {
       freebie: {
         maxFiles: 100,
         maxFileSize: 1024 * 1024, // 1MB
-        maxTerminals: 0,
+        maxTerminals: 1,
         maxCollaborators: 1,
         maxWorkspaces: 1
       },
