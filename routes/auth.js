@@ -800,15 +800,17 @@ router.post('/change-password', authLimiter, async (req, res) => {
  *       404:
  *         description: User not found
  */
-// Delete account
+// Delete account — removes the user and everything owned by the account.
+// Integration data (Integration connections + IntegrationData synced content such as
+// GitHub repos) is explicitly preserved.
 router.delete('/delete-account', async (req, res) => {
     try {
         const token = req.headers.authorization?.split(' ')[1];
-        
+
         if (!token) {
-            return res.status(401).json({ 
-                success: false, 
-                message: 'No token provided' 
+            return res.status(401).json({
+                success: false,
+                message: 'No token provided'
             });
         }
 
@@ -816,35 +818,162 @@ router.delete('/delete-account', async (req, res) => {
         const user = await User.findById(decoded.userId || decoded.id);
 
         if (!user) {
-            return res.status(404).json({ 
-                success: false, 
-                message: 'User not found' 
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
             });
         }
 
-        // Delete user's profile photo if exists
+        if (!req.body || req.body.confirm !== 'DELETE') {
+            return res.status(400).json({
+                success: false,
+                message: "Confirmation required: send { confirm: 'DELETE' } to permanently delete this account"
+            });
+        }
+
+        const userId = user._id;
+        const deleted = {};
+        const count = (name, n) => {
+            if (typeof n === 'number' && n > 0) deleted[name] = n;
+        };
+        const track = (name, result) => {
+            if (!result) return;
+            if (typeof result === 'number') return count(name, result);
+            count(name, result.deletedCount ?? result.modifiedCount ?? 0);
+        };
+        const safely = async (label, fn) => {
+            try {
+                return await fn();
+            } catch (err) {
+                console.error(`Delete account — ${label} failed:`, err.message);
+                return null;
+            }
+        };
+
+        // Profile photo on disk
         if (user.profilePicture && user.profilePicture.startsWith('/uploads/')) {
-            const photoPath = path.join(__dirname, '..', user.profilePicture);
-            if (fs.existsSync(photoPath)) {
-                fs.unlinkSync(photoPath);
+            try {
+                const photoPath = path.join(__dirname, '..', user.profilePicture);
+                if (fs.existsSync(photoPath)) fs.unlinkSync(photoPath);
+            } catch (err) {
+                console.error('Delete account — photo removal failed:', err.message);
             }
         }
 
-        // Delete related data
-        const Integration = require('../models/Integration');
-        const Subscription = require('../models/Subscription');
-        const OTP = require('../models/OTP');
-        
-        await Integration.deleteMany({ userId: user._id });
-        await Subscription.deleteMany({ userId: user._id });
-        await OTP.deleteMany({ userId: user._id });
-        
-        // Delete user
-        await User.findByIdAndDelete(user._id);
+        // Every account-owned collection (models with a userId field).
+        // Integration and IntegrationData are intentionally NOT in this list.
+        const ownedModels = {
+            AIPairSession: require('../models/AIPairSession'),
+            AgentExecution: require('../models/AgentExecution'),
+            BillingSchedule: require('../models/BillingSchedule'),
+            ChatMessage: require('../models/ChatMessage'),
+            CodeChange: require('../models/CodeChange'),
+            CodeFile: require('../models/CodeFile'),
+            CollaborationSession: require('../models/CollaborationSession'),
+            Deployment: require('../models/Deployment'),
+            DesignToken: require('../models/DesignToken'),
+            LocalProject: require('../models/LocalProject'),
+            LocalTask: require('../models/LocalTask'),
+            Notification: require('../models/Notification'),
+            Subscription: require('../models/Subscription'),
+            SupportTicket: require('../models/SupportTicket'),
+            TerminalLog: require('../models/TerminalLog'),
+            TicketAnalysis: require('../models/TicketAnalysis')
+        };
+        const ownedResults = await Promise.allSettled(
+            Object.entries(ownedModels).map(async ([name, model]) => {
+                const r = await model.deleteMany({ userId });
+                return [name, r.deletedCount];
+            })
+        );
+        ownedResults.forEach((r) => {
+            if (r.status === 'fulfilled') track(r.value[0], r.value[1]);
+            else console.error('Delete account — owned collection failed:', r.reason?.message);
+        });
+
+        // Records linked by email or other user fields
+        const linkedOps = [
+            ['OTP', () => require('../models/OTP').deleteMany({ email: user.email })],
+            ['AuthLockout', () => require('../models/AuthLockout').deleteMany({ key: user.email.toLowerCase() })],
+            ['AuditLog', () => require('../models/AuditLog').deleteMany({ $or: [{ actor: userId }, { email: user.email }] })],
+            ['Standup', () => require('../models/Standup').deleteMany({ user: userId })],
+            ['TeamActivity', () => require('../models/TeamActivity').deleteMany({ user: userId })],
+            ['Message', () => require('../models/Message').deleteMany({ sender: userId })],
+            ['TeamChat', () => require('../models/TeamChat').deleteMany({ sender: userId })],
+            ['DebugHandoff', () => require('../models/DebugHandoff').deleteMany({ createdBy: userId })],
+            ['EphemeralSandbox', () => require('../models/EphemeralSandbox').deleteMany({ createdBy: userId })],
+            ['DesignSyncSession', () => require('../models/DesignSyncSession').deleteMany({ createdBy: userId })]
+        ];
+        await Promise.allSettled(
+            linkedOps.map(async ([name, fn]) => {
+                const r = await safely(name, fn);
+                if (r) track(name, r.deletedCount);
+            })
+        );
+
+        // File uploads: DB records plus files on disk
+        await safely('FileUpload', async () => {
+            const uploads = await require('../models/FileUpload').find({ uploadedBy: userId }).select('url');
+            for (const upload of uploads) {
+                if (upload.url && upload.url.startsWith('/uploads/')) {
+                    try {
+                        const filePath = path.join(__dirname, '..', upload.url.split('?')[0]);
+                        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+                    } catch (err) {
+                        console.error('Delete account — upload removal failed:', err.message);
+                    }
+                }
+            }
+            track('FileUpload', await require('../models/FileUpload').deleteMany({ uploadedBy: userId }));
+        });
+
+        // Shared team data: remove the user's references, keep the team resources
+        await safely('TeamTask.unassign', async () => {
+            track('TeamTask.unassigned', await require('../models/TeamTask').updateMany({ assignedTo: userId }, { $unset: { assignedTo: '' } }));
+        });
+        await safely('Channel.members', () => require('../models/Channel').updateMany({ members: userId }, { $pull: { members: userId } }));
+        await safely('TeamProject.members', () => require('../models/TeamProject').updateMany({ members: userId }, { $pull: { members: userId } }));
+        await safely('TeamProject.owner', async () => {
+            const ownedProjects = await require('../models/TeamProject').find({ owner: userId });
+            for (const project of ownedProjects) {
+                if (project.members && project.members.length > 0) {
+                    project.owner = project.members[0];
+                    await project.save();
+                }
+            }
+        });
+        await safely('Company.members', () => require('../models/Company').updateMany({ 'members.user': userId }, { $pull: { members: { user: userId } } }));
+        await safely('Company.owner', async () => {
+            const ownedCompanies = await require('../models/Company').find({ owner: userId });
+            for (const company of ownedCompanies) {
+                if (company.members.length > 0) {
+                    company.owner = company.members[0].user;
+                    company.members[0].role = 'owner';
+                } else {
+                    company.isActive = false;
+                }
+                await company.save();
+            }
+        });
+
+        // Integration data is preserved on purpose:
+        // Integration (OAuth connections) and IntegrationData (synced GitHub repos, etc.)
+        const keptIntegrations = await safely('Integration.count', async () => {
+            const Integration = require('../models/Integration');
+            const IntegrationData = require('../models/IntegrationData');
+            const n = await Integration.countDocuments({ userId });
+            const d = await IntegrationData.countDocuments({ userId });
+            return n + d;
+        });
+
+        // Finally remove the user record itself
+        await User.findByIdAndDelete(userId);
 
         res.json({
             success: true,
-            message: 'Account deleted successfully'
+            message: 'Account deleted successfully',
+            deleted,
+            kept: { integrationRecords: keptIntegrations || 0, note: 'Integration connections and synced data (GitHub repos, etc.) were kept' }
         });
 
     } catch (error) {
