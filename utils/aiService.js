@@ -30,7 +30,7 @@ class AIService {
             groq: {
                 available: !!process.env.GROQ_API_KEY,
                 apiKey: process.env.GROQ_API_KEY,
-                model: process.env.GROQ_MODEL || 'mixtral-8x7b-32768',
+                model: process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
                 endpoint: 'https://api.groq.com/openai/v1/chat/completions',
                 name: 'Groq (Fast Inference)'
             },
@@ -249,7 +249,8 @@ Please:
                 model: config.model,
                 messages: formattedMessages,
                 max_tokens: parseInt(process.env.AI_MAX_TOKENS) || 8192,
-                temperature: parseFloat(process.env.AI_TEMPERATURE) || 0.7
+                temperature: parseFloat(process.env.AI_TEMPERATURE) || 0.7,
+                ...(String(config.model).includes('gpt-oss') ? { reasoning_effort: 'low' } : {})
             })
         });
 
@@ -259,7 +260,8 @@ Please:
         }
 
         const data = await response.json();
-        const text = data.choices[0].message.content;
+        const msg = data.choices[0].message;
+        const text = msg.content || msg.reasoning || '';
 
         return {
             success: true,
