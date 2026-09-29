@@ -9,6 +9,15 @@ const fs = require('fs').promises;
 const os = require('os');
 const { assertValidWorkspaceId, assertValidRepoUrl } = require('./sanitize');
 
+const BRANCH_RE = /^[A-Za-z0-9._\/-]{1,128}$/;
+function assertSafeBranch(v, name='branch') { if (typeof v !== 'string' || !BRANCH_RE.test(v) || v.startsWith('-') || v.includes('..') || v.includes('@{') || v.includes(':')) throw new Error(`Invalid ${name}`); }
+function assertSafeCommit(v) { if (typeof v !== 'string' || !/^[0-9a-f]{4,40}$/i.test(v)) throw new Error('Invalid commit'); }
+function assertSafeRemote(v) { if (typeof v !== 'string' || !/^\w[\w.-]{0,63}$/.test(v)) throw new Error('Invalid remote'); }
+function assertSafePath(v) { if (typeof v !== 'string' || v.includes('..') || /(^|\/)-/.test(v)) throw new Error('Invalid path'); for (const s of v.split('/')) { if (s.length && !/^[a-zA-Z0-9._-]+$/.test(s)) throw new Error('Invalid path'); } }
+function clampLimit(v, def=50, max=200) { const n = parseInt(v, 10); if (!Number.isFinite(n)) return def; return Math.min(Math.max(n, 1), max); }
+function assertSafeMessage(v, name='message') { if (typeof v !== 'string') throw new Error(`Invalid ${name}`); if (v.length > 500) throw new Error(`Invalid ${name}`); if (v.trim().startsWith('-')) throw new Error(`Invalid ${name}`); }
+function toFileArray(files) { const arr = Array.isArray(files) ? files : [files]; for (const f of arr) assertSafePath(f); return ['--', ...arr]; }
+
 class GitService {
   constructor() {
     this.repositories = new Map(); // workspaceId -> git instance
@@ -139,7 +148,12 @@ class GitService {
     try {
       await this.hydrateFromVFS(workspaceId).catch(() => {});
       const git = await this.getGit(workspaceId);
-      const diffText = file ? await git.diff([file]) : await git.diff();
+      let diffArgs;
+      if (file) {
+        assertSafePath(file);
+        diffArgs = ['--', file];
+      }
+      const diffText = file ? await git.diff(diffArgs) : await git.diff();
 
       const parsed = this.parseDiff(diffText);
 
@@ -210,7 +224,7 @@ class GitService {
     try {
       await this.hydrateFromVFS(workspaceId).catch(() => {});
       const git = await this.getGit(workspaceId);
-      await git.add(files);
+      await git.add(toFileArray(files));
 
       return { success: true, message: 'Files staged' };
     } catch (error) {
@@ -225,7 +239,9 @@ class GitService {
   async reset(workspaceId, files) {
     try {
       const git = await this.getGit(workspaceId);
-      await git.reset(['HEAD', ...files]);
+      const arr = Array.isArray(files) ? files : [files];
+      for (const f of arr) assertSafePath(f);
+      await git.reset(['HEAD', '--', ...arr]);
 
       return { success: true, message: 'Files unstaged' };
     } catch (error) {
@@ -239,11 +255,12 @@ class GitService {
    */
   async commit(workspaceId, message, files = null) {
     try {
+      assertSafeMessage(message);
       await this.hydrateFromVFS(workspaceId).catch(() => {});
       const git = await this.getGit(workspaceId);
 
       if (files) {
-        await git.add(files);
+        await git.add(toFileArray(files));
       }
 
       const result = await git.commit(message);
@@ -266,8 +283,9 @@ class GitService {
   async log(workspaceId, options = {}) {
     try {
       const git = await this.getGit(workspaceId);
+      if (options.file) assertSafePath(options.file);
       const log = await git.log({
-        maxCount: options.limit || 50,
+        maxCount: clampLimit(options.limit),
         file: options.file
       });
 
@@ -312,6 +330,7 @@ class GitService {
    */
   async createBranch(workspaceId, branchName) {
     try {
+      assertSafeBranch(branchName, 'branchName');
       const git = await this.getGit(workspaceId);
       await git.checkoutLocalBranch(branchName);
 
@@ -327,6 +346,7 @@ class GitService {
    */
   async checkout(workspaceId, branchName) {
     try {
+      assertSafeBranch(branchName, 'branchName');
       const git = await this.getGit(workspaceId);
       await git.checkout(branchName);
 
@@ -342,6 +362,7 @@ class GitService {
    */
   async merge(workspaceId, branchName) {
     try {
+      assertSafeBranch(branchName, 'branchName');
       const git = await this.getGit(workspaceId);
       const result = await git.merge([branchName]);
 
@@ -373,6 +394,8 @@ class GitService {
    */
   async pull(workspaceId, remote = 'origin', branch = null) {
     try {
+      assertSafeRemote(remote);
+      if (branch) assertSafeBranch(branch);
       const git = await this.getGit(workspaceId);
       const result = branch 
         ? await git.pull(remote, branch)
@@ -393,6 +416,8 @@ class GitService {
    */
   async push(workspaceId, remote = 'origin', branch = null) {
     try {
+      assertSafeRemote(remote);
+      if (branch) assertSafeBranch(branch);
       const git = await this.getGit(workspaceId);
       const result = branch
         ? await git.push(remote, branch)
@@ -413,6 +438,8 @@ class GitService {
    */
   async addRemote(workspaceId, name, url) {
     try {
+      assertSafeRemote(name);
+      assertValidRepoUrl(url);
       const git = await this.getGit(workspaceId);
       await git.addRemote(name, url);
 
@@ -457,7 +484,15 @@ class GitService {
       await fs.mkdir(workspacePath, { recursive: true });
 
       const git = simpleGit();
-      await git.clone(repoUrl, workspacePath, options.args || []);
+      const cloneArgs = [];
+      const d = parseInt(options.depth, 10);
+      if (Number.isFinite(d) && d >= 1 && d <= 100) cloneArgs.push('--depth', String(d));
+      if (options.branch !== undefined && options.branch !== null) {
+        assertSafeBranch(options.branch);
+        cloneArgs.push('--branch', options.branch);
+      }
+      if (options.singleBranch) cloneArgs.push('--single-branch');
+      await git.clone(repoUrl, workspacePath, cloneArgs);
 
       const newGit = simpleGit(workspacePath);
       this.repositories.set(workspaceId, newGit);
@@ -475,6 +510,8 @@ class GitService {
    */
   async show(workspaceId, commitHash, filePath) {
     try {
+      assertSafeCommit(commitHash);
+      assertSafePath(filePath);
       const git = await this.getGit(workspaceId);
       const content = await git.show([`${commitHash}:${filePath}`]);
 
@@ -493,6 +530,7 @@ class GitService {
    */
   async stash(workspaceId, message = null) {
     try {
+      if (message) assertSafeMessage(message);
       const git = await this.getGit(workspaceId);
       const result = message
         ? await git.stash(['save', message])

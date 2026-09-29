@@ -205,8 +205,100 @@ const sendInvitationEmail = async (invitation) => {
     }
 };
 
+// --- Waitlist ---------------------------------------------------------------
+
+// Shared Resend transport for waitlist mail (console mock when unconfigured)
+const postToResend = async (emailData) => {
+    const RESEND_API_KEY = process.env.RESEND_API_KEY;
+
+    if (!RESEND_API_KEY) {
+        console.log(`📧 [waitlist mock] to: ${emailData.to.join(', ')} | ${emailData.subject}`);
+        return { success: true, messageId: 'mock-' + Date.now(), isMock: true };
+    }
+
+    try {
+        const response = await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${RESEND_API_KEY}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(emailData)
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            console.log('✅ Waitlist email sent via Resend:', result.id);
+            return { success: true, messageId: result.id };
+        }
+
+        console.error('❌ Resend API error:', result);
+        return { success: false, error: result.message || 'Resend error' };
+    } catch (error) {
+        console.error('❌ Waitlist email failed:', error.message);
+        return { success: false, error: error.message };
+    }
+};
+
+// Thank-you mail sent the moment someone joins the waitlist
+const sendWaitlistWelcomeEmail = async (email) => {
+    const waitlistUrl = `${FRONTEND_URL}/#waitlist`;
+
+    return postToResend({
+        from: process.env.EMAIL_FROM || DEFAULT_FROM,
+        to: [email],
+        subject: `You're on the ${BRAND_NAME} waitlist \u{1F389}`,
+        html: renderEmail({
+            eyebrow: 'buildrs · waitlist',
+            title: 'Thank you for joining.',
+            greeting: 'Hi there,',
+            paragraphs: [
+                `You\u2019re officially on the <strong>${BRAND_NAME}</strong> waitlist.`,
+                'We\u2019ll email you the moment your seat is ready \u2014 no spam, no noise, just the launch note you signed up for.',
+            ],
+            info: {
+                label: 'Your position is saved for:',
+                value: email,
+                accent: true,
+            },
+            cta: { url: waitlistUrl, label: 'See where you stand' },
+            link: waitlistUrl,
+        }),
+    });
+};
+
+// Launch announcement mailed to every waitlist member on release day
+const sendWaitlistReleaseEmail = async (email) => {
+    const launchUrl = `${FRONTEND_URL}/sign_in`;
+
+    return postToResend({
+        from: process.env.EMAIL_FROM || DEFAULT_FROM,
+        to: [email],
+        subject: `${BRAND_NAME} is live \u{1F680}`,
+        html: renderEmail({
+            eyebrow: 'buildrs · launch',
+            title: 'We just shipped.',
+            greeting: 'Hi there,',
+            paragraphs: [
+                `<strong>${BRAND_NAME}</strong> is officially open \u2014 and your waitlist seat got you in first.`,
+                'Your account is ready: sign in and start building.',
+            ],
+            features: [
+                'AI code assistance and pair programming',
+                'Real-time collaboration with your team',
+                'Deployments, sandboxes and pipelines',
+            ],
+            cta: { url: launchUrl, label: 'Open your workspace' },
+            link: launchUrl,
+        }),
+    });
+};
+
 module.exports = {
     sendOTPEmail,
     sendWelcomeEmail,
-    sendInvitationEmail
+    sendInvitationEmail,
+    sendWaitlistWelcomeEmail,
+    sendWaitlistReleaseEmail
 };

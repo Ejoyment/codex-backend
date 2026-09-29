@@ -817,6 +817,8 @@ class TerminalService {
         // Skip GitHub-repo-style entries already stored full-path — fullPathOf
         // normalizes both dir+name and full-path shapes.
         const fsPath = resolveInWorkspace(terminal.workspacePath, vfs.fullPathOf(doc));
+        // Never write through a symlink that already sits at the target.
+        try { const st = await fs.lstat(fsPath); if (st.isSymbolicLink()) continue; } catch (e) { if (e.code !== 'ENOENT') continue; }
         const dir = path.dirname(fsPath);
         await fs.mkdir(dir, { recursive: true });
         await fs.writeFile(fsPath, doc.content || '');
@@ -836,6 +838,8 @@ class TerminalService {
       switch (event) {
         case 'file:created': {
           const fsPath = resolveInWorkspace(terminal.workspacePath, vfs.fullPathOf(data.file));
+          // Never write through a symlink that already sits at the target.
+          try { const st = await fs.lstat(fsPath); if (st.isSymbolicLink()) return; } catch (e) { if (e.code !== 'ENOENT') return; }
           const dir = path.dirname(fsPath);
           await fs.mkdir(dir, { recursive: true });
 
@@ -847,6 +851,8 @@ class TerminalService {
         }
         case 'file:updated': {
           const fsPath = resolveInWorkspace(terminal.workspacePath, vfs.fullPathOf(data.file));
+          // Never write through a symlink that already sits at the target.
+          try { const st = await fs.lstat(fsPath); if (st.isSymbolicLink()) return; } catch (e) { if (e.code !== 'ENOENT') return; }
           const file = await CodeFile.findById(data.file._id).select('content').lean();
           if (file) {
             await fs.writeFile(fsPath, file.content || '');

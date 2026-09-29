@@ -8,6 +8,25 @@ const debugAdapter = require('../utils/debugAdapter');
 const sandboxProvisioner = require('../utils/sandboxProvisioner');
 const crypto = require('crypto');
 
+async function checkHandoffAccess(handoff, userId) {
+  if (!handoff || !userId) return false;
+  const uid = String(userId);
+  if (handoff.createdBy && String(handoff.createdBy) === uid) return true;
+  const invited = (handoff.access && handoff.access.invitedUserIds) || [];
+  if (invited.map(String).includes(uid)) return true;
+  if (handoff.companyId) {
+    try {
+      const Company = require('../models/Company');
+      const company = await Company.findById(handoff.companyId).select('members owner').lean();
+      if (company) {
+        const members = company.members || [];
+        if (members.some(m => String(m.user || m.userId) === uid) || String(company.owner) === uid) return true;
+      }
+    } catch (_) {}
+  }
+  return false;
+}
+
 /**
  * @swagger
  * /api/collaboration/handoff:
@@ -156,6 +175,7 @@ router.post('/handoff/:handoffId/resolve', authenticateToken, async (req, res) =
         if (!handoff) {
             return res.status(404).json({ success: false, message: 'Handoff not found' });
         }
+        if (!(await checkHandoffAccess(handoff, req.userId))) return res.status(403).json({ success: false, message: 'Access denied' });
         
         handoff.resolvedAt = new Date();
         handoff.resolvedBy = req.userId;
@@ -251,6 +271,7 @@ router.post('/handoff/:handoffId/provision', authenticateToken, async (req, res)
     try {
         const handoff = await DebugHandoff.findOne({ handoffId: req.params.handoffId });
         if (!handoff) return res.status(404).json({ success: false, message: 'Handoff not found' });
+        if (!(await checkHandoffAccess(handoff, req.userId))) return res.status(403).json({ success: false, message: 'Access denied' });
 
         const existing = await EphemeralSandbox.findOne({ handoffId: handoff._id, status: { $in: ['provisioning', 'cloning', 'installing', 'starting', 'ready'] } });
         if (existing) {
@@ -296,6 +317,7 @@ router.get('/handoff/:handoffId/sandbox', authenticateToken, async (req, res) =>
     try {
         const handoff = await DebugHandoff.findOne({ handoffId: req.params.handoffId });
         if (!handoff) return res.status(404).json({ success: false, message: 'Handoff not found' });
+        if (!(await checkHandoffAccess(handoff, req.userId))) return res.status(403).json({ success: false, message: 'Access denied' });
 
         const sandbox = await EphemeralSandbox.findOne({ handoffId: handoff._id }).sort({ createdAt: -1 });
         if (!sandbox) return res.json({ success: true, sandbox: null });
@@ -353,8 +375,13 @@ router.post('/handoff/:handoffId/invite', authenticateToken, async (req, res) =>
     try {
         const handoff = await DebugHandoff.findOne({ handoffId: req.params.handoffId });
         if (!handoff) return res.status(404).json({ success: false, message: 'Handoff not found' });
+        if (!(await checkHandoffAccess(handoff, req.userId))) return res.status(403).json({ success: false, message: 'Access denied' });
+        if (String(handoff.createdBy) !== String(req.userId)) return res.status(403).json({ success: false, message: 'Access denied' });
 
         const { userIds = [] } = req.body;
+        if (!Array.isArray(userIds) || userIds.length === 0 || userIds.length > 20 || !userIds.every(id => typeof id === 'string' && id.trim().length > 0)) {
+            return res.status(400).json({ success: false, message: 'userIds must be a non-empty array of strings (max 20)' });
+        }
         const unique = Array.from(new Set([...(handoff.access.invitedUserIds || []).map(String), ...userIds.map(String)]));
         handoff.access.invitedUserIds = unique;
         handoff.access.mode = 'invited';
@@ -403,11 +430,28 @@ router.post('/handoff/from-chat', authenticateToken, async (req, res) => {
         if (fileId) {
             const file = await CodeFile.findById(fileId);
             if (file) {
+                const fileUid = String(req.userId);
+                const isCreator = file.createdBy && String(file.createdBy) === fileUid;
+                const isCollaborator = (file.collaborators || []).some(c => String(c.user || c.userId) === fileUid);
+                if (!isCreator && !isCollaborator && file.company) {
+                    const Company = require('../models/Company');
+                    const fileCompany = await Company.findById(file.company).select('members owner').lean();
+                    const isMember = fileCompany && ((fileCompany.members || []).some(m => String(m.user || m.userId) === fileUid) || String(fileCompany.owner) === fileUid);
+                    if (!isMember) return res.status(403).json({ success: false, message: 'Access denied' });
+                }
                 codeSnapshot.fileId = file._id.toString();
                 codeSnapshot.filePath = file.path;
                 codeSnapshot.content = file.content;
                 codeSnapshot.language = file.language;
             }
+        }
+
+        if (companyId) {
+            const Company = require('../models/Company');
+            const targetCompany = await Company.findById(companyId).select('members owner').lean();
+            const reqUid = String(req.userId);
+            const belongs = targetCompany && ((targetCompany.members || []).some(m => String(m.user || m.userId) === reqUid) || String(targetCompany.owner) === reqUid);
+            if (!belongs) return res.status(400).json({ success: false, message: 'Invalid companyId' });
         }
 
         let runtimeState = null;
@@ -478,6 +522,12 @@ router.get('/sandbox/:sandboxKey', authenticateToken, async (req, res) => {
     try {
         const sandbox = await EphemeralSandbox.findOne({ sandboxKey: req.params.sandboxKey });
         if (!sandbox) return res.status(404).json({ success: false, message: 'Sandbox not found' });
+        if (sandbox.handoffId) {
+            const linkedHandoff = await DebugHandoff.findById(sandbox.handoffId);
+            if (linkedHandoff && !(await checkHandoffAccess(linkedHandoff, req.userId))) {
+                return res.status(403).json({ success: false, message: 'Access denied' });
+            }
+        }
         res.json({
             success: true,
             sandbox: {
