@@ -4,6 +4,7 @@ const MeetingRoom = require('../models/MeetingRoom');
 const { authenticateToken } = require('../middleware/auth');
 const crypto = require('crypto');
 const Company = require('../models/Company');
+const { notifyMeetingEvent } = require('../utils/notificationTriggers');
 
 // Verify user is a member of the company before operating
 async function requireCompanyMember(req, res, next) {
@@ -82,6 +83,14 @@ router.post('/', authenticateToken, requireCompanyMember, async (req, res) => {
         await meeting.populate('host', 'fullName email profilePicture');
         await meeting.populate('participants.user', 'fullName email profilePicture');
         
+        notifyMeetingEvent({
+            type: 'meeting_scheduled',
+            meeting,
+            userIds: (meeting.participants || []).map(p => p.user?._id || p.user),
+            actor: meeting.host,
+            detail: `${meeting.title} — scheduled for ${meeting.scheduledAt ? new Date(meeting.scheduledAt).toLocaleString() : 'unscheduled date'}`,
+        });
+
         res.json({
             success: true,
             meeting

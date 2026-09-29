@@ -11,6 +11,7 @@ const Company = require('../models/Company');
 const TeamProject = require('../models/TeamProject');
 const TeamTask = require('../models/TeamTask');
 const collaborationService = require('../utils/collaborationService');
+const { notifyTaskAssigned } = require('../utils/notificationTriggers');
 
 const ensureCompanyMember = async (req, res, next) => {
     try {
@@ -435,6 +436,10 @@ router.post('/:companyId/tasks', authenticateToken, ensureCompanyMember, async (
         await task.populate('assignedTo', 'fullName email profilePicture');
         await task.populate('createdBy', 'fullName email profilePicture');
         
+        if (task.assignedTo) {
+            notifyTaskAssigned({ task, assigneeId: task.assignedTo, assigner: task.createdBy });
+        }
+
         res.status(201).json({
             success: true,
             message: 'Task created successfully',

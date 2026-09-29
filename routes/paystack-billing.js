@@ -5,6 +5,7 @@ const { authenticateToken } = require('../middleware/auth');
 const Subscription = require('../models/Subscription');
 const User = require('../models/User');
 const BillingScheduler = require('../utils/paystackScheduler');
+const { notifyPaymentEvent } = require('../utils/notificationTriggers');
 
 /**
  * @swagger
@@ -435,6 +436,13 @@ async function handleChargeSuccess(data) {
 
         console.log(`Charge successful for user ${userId}, reference: ${reference}`);
 
+        notifyPaymentEvent({
+            type: 'payment_succeeded',
+            userId,
+            detail: `Payment received (ref ${reference}). Your subscription is active.`,
+            data: { reference, provider: 'paystack' },
+        });
+
         // Update subscription if needed
         const subscription = await Subscription.findOne({ userId });
         if (subscription && subscription.status === 'past_due') {
@@ -462,6 +470,13 @@ async function handleChargeFailed(data) {
         }
 
         console.log(`Charge failed for user ${userId}, reference: ${reference}`);
+
+        notifyPaymentEvent({
+            type: 'payment_failed',
+            userId,
+            detail: `A charge failed (ref ${reference}). Please update your payment method.`,
+            data: { reference, provider: 'paystack' },
+        });
 
         // Update subscription status and downgrade to developer
         const subscription = await Subscription.findOne({ userId });

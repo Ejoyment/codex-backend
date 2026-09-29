@@ -110,6 +110,10 @@ async function startServer(port = process.env.PORT || 3000) {
     const AgentSocketHandler = require('./utils/agentSocket');
     const agentSocketHandler = new AgentSocketHandler(socket);
 
+    // Real-time notification delivery (bell badge + sound + toasts)
+    const notificationSocket = require('./utils/notificationSocket');
+    notificationSocket(socket);
+
     // Container Worker Service for sandboxed agent execution
     const containerWorker = require('./utils/containerWorker');
     if (containerWorker.isAvailable()) {

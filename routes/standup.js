@@ -8,6 +8,7 @@ const Channel = require('../models/Channel');
 const Message = require('../models/Message');
 const { authenticateToken } = require('../middleware/auth');
 const { canPostToChannel } = require('../utils/channelPolicy');
+const { notifyStandupPosted } = require('../utils/notificationTriggers');
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -203,6 +204,10 @@ router.post('/', authenticateToken, async (req, res) => {
             delivered = true;
         } catch (postError) {
             console.error('Standup saved but failed to post to channel:', postError);
+        }
+
+        if (delivered) {
+            notifyStandupPosted({ standup, channel, author: req.user });
         }
 
         res.status(201).json({

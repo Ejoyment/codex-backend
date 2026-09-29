@@ -6,6 +6,7 @@ import '../styles/auth.css';
 import { Inter } from 'next/font/google';
 import ErrorBoundary from '../components/ErrorBoundary';
 import { ToastContainer } from '../components/Toast';
+import NotificationProvider from '../components/NotificationProvider';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -13,8 +14,10 @@ function MyApp({ Component, pageProps }) {
   return (
     <ErrorBoundary>
       <div className={inter.className}>
-        <Component {...pageProps} />
-        <ToastContainer />
+        <NotificationProvider>
+          <Component {...pageProps} />
+          <ToastContainer />
+        </NotificationProvider>
       </div>
     </ErrorBoundary>
   );

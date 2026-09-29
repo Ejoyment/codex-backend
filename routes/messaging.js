@@ -5,6 +5,7 @@ const Channel = require('../models/Channel');
 const { authenticateToken } = require('../middleware/auth');
 const Company = require('../models/Company');
 const { CHANNEL_TYPES, normalizeChannelType, canPostToChannel } = require('../utils/channelPolicy');
+const { notifyNewMessage, notifyChannelCreated } = require('../utils/notificationTriggers');
 
 // Verify user is a member of the company before operating
 async function requireCompanyMember(req, res, next) {
@@ -105,6 +106,12 @@ router.post('/channels', authenticateToken, requireCompanyMember, async (req, re
         
         await channel.populate('members.user', 'fullName email profilePicture');
         await channel.populate('createdBy', 'fullName email profilePicture');
+
+        notifyChannelCreated({
+            channel,
+            userIds: (channel.members || []).map(m => m.user?._id || m.user),
+            actor: channel.createdBy,
+        });
         
         res.status(201).json({
             success: true,
@@ -310,13 +317,14 @@ router.post('/messages', authenticateToken, requireCompanyMember, async (req, re
     try {
         const { content, channelId, recipientId, type, attachments, mentions } = req.body;
         let companyId = req.body.companyId;
+        let channel = null;
 
         if (!String(content || '').trim()) {
             return res.status(400).json({ success: false, message: 'Message content is required' });
         }
 
         if (channelId) {
-            const channel = await Channel.findById(String(channelId)).select('company members type');
+            channel = await Channel.findById(String(channelId)).select('company members type name');
             if (!channel) {
                 return res.status(404).json({ success: false, message: 'Channel not found' });
             }
@@ -358,6 +366,8 @@ router.post('/messages', authenticateToken, requireCompanyMember, async (req, re
                 lastMessageAt: new Date()
             });
         }
+
+        notifyNewMessage({ message, channel, recipientId, mentions });
         
         res.json({
             success: true,

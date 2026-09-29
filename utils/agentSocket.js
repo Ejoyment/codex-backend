@@ -10,6 +10,7 @@ const gitService = require('./gitService');
 const terminalService = require('./terminalService');
 const containerWorker = require('./containerWorker');
 const { execSync } = require('child_process');
+const { notifyAgentEvent } = require('./notificationTriggers');
 
 class AgentSocketHandler {
   constructor(io) {
@@ -225,6 +226,13 @@ class AgentSocketHandler {
           result,
           status: 'awaiting_approval',
         });
+
+        notifyAgentEvent({
+          type: 'agent_needs_input',
+          execution,
+          userId: socket.userId,
+          detail: 'The agent finished and is waiting for your approval before applying changes.',
+        });
       } else {
         execution.status = 'failed';
         execution.logs.push({ timestamp: new Date(), message: `Agent execution failed: ${result.error}` });
@@ -240,6 +248,12 @@ class AgentSocketHandler {
           execution,
           error: result.error,
           status: 'failed',
+        });
+        notifyAgentEvent({
+          type: 'agent_failed',
+          execution,
+          userId: socket.userId,
+          detail: String(result.error || 'The agent run failed').slice(0, 200),
         });
       }
 

@@ -106,6 +106,25 @@ const userSchema = new mongoose.Schema({
         enum: ['local', 'google'],
         default: 'local'
     },
+    // In-app notification delivery preferences. Absent means "use defaults"
+    // (everything on, sound on), so existing users are unaffected.
+    notificationPrefs: {
+        enabled: { type: Boolean, default: true },
+        sound: { type: Boolean, default: true },
+        // Only play when the tab is in the background.
+        soundWhenHiddenOnly: { type: Boolean, default: true },
+        // Per-category switches. Only categories explicitly set to false mute.
+        categories: {
+            messages: { type: Boolean, default: true },
+            tasks: { type: Boolean, default: true },
+            specs: { type: Boolean, default: true },
+            agents: { type: Boolean, default: true },
+            meetings: { type: Boolean, default: true },
+            workspace: { type: Boolean, default: true },
+            deployments: { type: Boolean, default: true },
+            billing: { type: Boolean, default: true },
+        }
+    },
     createdAt: {
         type: Date,
         default: Date.now
