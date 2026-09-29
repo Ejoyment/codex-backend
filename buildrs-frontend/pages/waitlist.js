@@ -3,11 +3,11 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { Loader2, CheckCircle } from 'lucide-react';
+import { apiFetch } from '../lib/api';
 
-// ── Placeholders – wire to backend when ready ─────────────────────────────────
 const TARGET_LAUNCH_DATE = new Date('2027-01-01T00:00:00');
-const REGISTERED_COUNT = 2427; // replace with live API value
-// ─────────────────────────────────────────────────────────────────────────────
+// Shown until the live counter responds, then replaced by the real number.
+const FALLBACK_COUNT = 2427;
 
 const AVATARS = [
   'https://i.pravatar.cc/40?img=11',
@@ -19,7 +19,30 @@ export default function Waitlist() {
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState('idle'); // idle | loading | success | error
   const [errMsg, setErrMsg] = useState('');
+  const [already, setAlready] = useState(false);
+  const [count, setCount] = useState(null);
+  const [members, setMembers] = useState([]);
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+
+  useEffect(() => {
+    let cancelled = false;
+    // One call returns both the live counter and the newest public joiner
+    // profiles (masked emails + avatars — no raw addresses are exposed).
+    apiFetch('/api/waitlist/recent?limit=5')
+      .then((data) => {
+        if (cancelled) return;
+        if (typeof data?.count === 'number') setCount(data.count);
+        if (Array.isArray(data?.members)) setMembers(data.members);
+      })
+      .catch(() =>
+        apiFetch('/api/waitlist/count')
+          .then((data) => {
+            if (!cancelled && typeof data?.count === 'number') setCount(data.count);
+          })
+          .catch(() => { /* keep the fallback number */ })
+      );
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     const tick = () => {
@@ -42,11 +65,22 @@ export default function Waitlist() {
     e.preventDefault();
     setStatus('loading');
     setErrMsg('');
-    // TODO: replace with real API call
-    setTimeout(() => {
-      if (email.includes('@')) setStatus('success');
-      else { setStatus('error'); setErrMsg('Please enter a valid email address.'); }
-    }, 1500);
+    setAlready(false);
+    try {
+      const data = await apiFetch('/api/waitlist', {
+        method: 'POST',
+        body: JSON.stringify({ email, source: 'waitlist-page' }),
+      });
+      if (typeof data?.count === 'number') setCount(data.count);
+      if (data?.member && !data?.alreadySubscribed) {
+        setMembers((prev) => [data.member, ...prev].slice(0, 5));
+      }
+      setAlready(!!data?.alreadySubscribed);
+      setStatus('success');
+    } catch (err) {
+      setStatus('error');
+      setErrMsg(err?.message || 'Something went wrong. Please try again.');
+    }
   };
 
   const pad = (n) => String(n).padStart(2, '0');
@@ -166,10 +200,12 @@ export default function Waitlist() {
                 <CheckCircle size={30} color="#2fd6e6" />
               </div>
               <h1 style={{ fontSize: 'clamp(32px,6vw,52px)', fontWeight: 700, letterSpacing: '-0.03em', color: '#eceef1', margin: '0 0 14px', lineHeight: 1.1 }}>
-                You're on the list!
+                {already ? "You're already on the list!" : "You're on the list!"}
               </h1>
               <p style={{ fontSize: '17px', color: '#a8adba', lineHeight: 1.65, margin: '0 0 32px', maxWidth: '400px' }}>
-                We'll notify <span style={{ color: '#2fd6e6' }}>{email}</span> the moment Buildrs goes live. Day one, full access, no queues.
+                {already
+                  ? <>{email} is already signed up — nothing else to do. We'll be in touch on launch day.</>
+                  : <>We'll notify <span style={{ color: '#2fd6e6' }}>{email}</span> the moment Buildrs goes live. Day one, full access, no queues.</>}
               </p>
               <Link href="/" className="mkt-btn mkt-btn-primary" style={{ padding: '12px 32px', fontSize: '15px' }}>
                 Back to home →
@@ -254,13 +290,17 @@ export default function Waitlist() {
         position: 'relative',
         zIndex: 1,
       }}>
-        {/* Avatar stack */}
+        {/* Avatar stack — live joiners when loaded, placeholders until then */}
         <div style={{ display: 'flex', alignItems: 'center' }}>
-          {AVATARS.map((src, i) => (
+          {(members.length > 0
+            ? members.map((m) => ({ src: m.avatar, label: m.name || m.maskedEmail }))
+            : AVATARS.map((src) => ({ src, label: 'member' }))
+          ).map((a, i) => (
             <img
-              key={i}
-              src={src}
-              alt="member"
+              key={`${a.src}-${i}`}
+              src={a.src}
+              alt={a.label}
+              title={a.label}
               style={{
                 width: '44px', height: '44px', borderRadius: '50%',
                 border: '3px solid #0d0d12',
@@ -273,7 +313,7 @@ export default function Waitlist() {
           ))}
         </div>
         <p style={{ fontSize: '16px', color: '#a8adba', margin: 0, letterSpacing: '-0.01em' }}>
-          <span style={{ color: '#eceef1', fontWeight: 600 }}>{REGISTERED_COUNT.toLocaleString()}</span> have already joined
+          <span style={{ color: '#eceef1', fontWeight: 600 }}>{(count ?? FALLBACK_COUNT).toLocaleString()}</span> have already joined
         </p>
       </footer>
     </div>

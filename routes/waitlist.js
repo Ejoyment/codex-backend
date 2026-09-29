@@ -27,6 +27,29 @@ const normalizeEmail = (raw) => (typeof raw === 'string' ? raw.trim().toLowerCas
 
 const isValidEmail = (email) => email.length > 0 && email.length <= 254 && EMAIL_REGEX.test(email);
 
+const normalizeName = (raw) => (typeof raw === 'string' ? raw.trim().slice(0, 80) : '');
+
+// Public profiles must never leak raw emails: masked address + Gravatar
+// avatar derived from the email hash, so the waitlist page can show real
+// joiners without exposing anyone's inbox.
+const maskEmail = (email) => {
+    const [local = '', domain = ''] = String(email).split('@');
+    if (!domain) return '***';
+    return `${local.slice(0, 1)}***@${domain}`;
+};
+
+const avatarFor = (email) => {
+    const hash = crypto.createHash('md5').update(String(email).trim().toLowerCase()).digest('hex');
+    return `https://www.gravatar.com/avatar/${hash}?s=88&d=identicon`;
+};
+
+const publicMember = (entry) => ({
+    name: entry.name || null,
+    maskedEmail: maskEmail(entry.email),
+    avatar: avatarFor(entry.email),
+    joinedAt: entry.subscribedAt || entry.createdAt || null
+});
+
 const isAdminAuthorized = (req) => {
     const configured = process.env.WAITLIST_ADMIN_TOKEN;
     if (!configured) return false;
@@ -58,6 +81,9 @@ const isAdminAuthorized = (req) => {
  *               email:
  *                 type: string
  *                 format: email
+ *               name:
+ *                 type: string
+ *                 description: Optional display name shown on the public joiner list
  *               source:
  *                 type: string
  *     responses:
@@ -83,11 +109,13 @@ router.post('/', subscribeLimiter, async (req, res) => {
             ? req.body.source.trim().slice(0, 64)
             : 'landing-page';
 
+        const name = normalizeName(req.body?.name);
+
         let entry;
         let alreadySubscribed = false;
 
         try {
-            entry = await Waitlist.create({ email, source });
+            entry = await Waitlist.create({ email, source, name });
         } catch (error) {
             if (error && error.code === 11000) {
                 alreadySubscribed = true;
@@ -118,7 +146,8 @@ router.post('/', subscribeLimiter, async (req, res) => {
             success: true,
             alreadySubscribed,
             emailSent,
-            count
+            count,
+            member: publicMember(entry || { email, name })
         });
     } catch (error) {
         console.error('❌ Waitlist signup error:', error.message);
@@ -136,6 +165,16 @@ router.post('/', subscribeLimiter, async (req, res) => {
  *       200:
  *         description: Current waitlist size
  */
+/**
+ * @swagger
+ * /api/waitlist/count:
+ *   get:
+ *     summary: Public number of people on the waitlist
+ *     tags: [Waitlist]
+ *     responses:
+ *       200:
+ *         description: Current waitlist size
+ */
 router.get('/count', async (req, res) => {
     try {
         const count = await Waitlist.countDocuments({});
@@ -143,6 +182,41 @@ router.get('/count', async (req, res) => {
     } catch (error) {
         console.error('❌ Waitlist count error:', error.message);
         return res.status(500).json({ success: false, message: 'Could not load the waitlist count.' });
+    }
+});
+
+/**
+ * @swagger
+ * /api/waitlist/recent:
+ *   get:
+ *     summary: Newest public joiner profiles (masked emails, no raw addresses)
+ *     tags: [Waitlist]
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 6, maximum: 12 }
+ *     responses:
+ *       200:
+ *         description: Total count plus newest public member profiles
+ */
+router.get('/recent', async (req, res) => {
+    try {
+        const parsed = parseInt(req.query.limit, 10);
+        const limit = Math.min(Math.max(Number.isNaN(parsed) ? 6 : parsed, 1), 12);
+
+        const [count, entries] = await Promise.all([
+            Waitlist.countDocuments({}),
+            Waitlist.find({}).sort({ subscribedAt: -1 }).limit(limit).select('email name subscribedAt').lean()
+        ]);
+
+        return res.status(200).json({
+            success: true,
+            count,
+            members: entries.map(publicMember)
+        });
+    } catch (error) {
+        console.error('❌ Waitlist recent error:', error.message);
+        return res.status(500).json({ success: false, message: 'Could not load recent joiners.' });
     }
 });
 

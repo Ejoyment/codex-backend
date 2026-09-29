@@ -58,9 +58,15 @@ describe('POST /api/waitlist', () => {
       success: true,
       alreadySubscribed: false,
       emailSent: true,
-      count: 12
+      count: 12,
+      member: {
+        name: null,
+        maskedEmail: 'f***@example.com',
+        avatar: expect.stringMatching(/^https:\/\/www\.gravatar\.com\/avatar\/[a-f0-9]{32}\?s=88&d=identicon$/),
+        joinedAt: null
+      }
     });
-    expect(Waitlist.create).toHaveBeenCalledWith({ email: 'fan@example.com', source: 'landing-page' });
+    expect(Waitlist.create).toHaveBeenCalledWith({ email: 'fan@example.com', source: 'landing-page', name: '' });
     expect(sendWaitlistWelcomeEmail).toHaveBeenCalledWith('fan@example.com');
     expect(Waitlist.updateOne).toHaveBeenCalledWith({ _id: 'w1' }, { $set: { welcomeSentAt: expect.any(Date) } });
   });
@@ -112,9 +118,9 @@ describe('POST /api/waitlist', () => {
   test('stores a custom source tag', async () => {
     Waitlist.create.mockResolvedValue({ _id: 'w3', email: 'fan@example.com' });
 
-    await request(app).post('/api/waitlist').send({ email: 'fan@example.com', source: 'twitter' });
+    await request(app).post('/api/waitlist').send({ email: 'fan@example.com', source: 'twitter', name: ' Ada ' });
 
-    expect(Waitlist.create).toHaveBeenCalledWith({ email: 'fan@example.com', source: 'twitter' });
+    expect(Waitlist.create).toHaveBeenCalledWith({ email: 'fan@example.com', source: 'twitter', name: 'Ada' });
   });
 });
 
@@ -133,6 +139,71 @@ describe('GET /api/waitlist/count', () => {
     Waitlist.countDocuments.mockRejectedValue(new Error('db down'));
 
     const res = await request(app).get('/api/waitlist/count');
+
+    expect(res.status).toBe(500);
+    expect(res.body.success).toBe(false);
+  });
+});
+
+describe('GET /api/waitlist/recent', () => {
+  const rows = [
+    { email: 'new@example.com', name: 'New', subscribedAt: new Date('2026-09-02T00:00:00Z') },
+    { email: 'old@example.com', name: '', subscribedAt: new Date('2026-09-01T00:00:00Z') }
+  ];
+
+  const mockRecent = (result) => {
+    Waitlist.find.mockReturnValue({
+      sort: jest.fn().mockReturnValue({
+        limit: jest.fn().mockReturnValue({
+          select: jest.fn().mockReturnValue({ lean: async () => result })
+        })
+      })
+    });
+  };
+
+  test('returns count plus masked public profiles, newest first', async () => {
+    mockRecent(rows);
+    Waitlist.countDocuments.mockResolvedValue(42);
+
+    const res = await request(app).get('/api/waitlist/recent?limit=5');
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.count).toBe(42);
+    expect(res.body.members).toHaveLength(2);
+    expect(res.body.members[0]).toEqual({
+      name: 'New',
+      maskedEmail: 'n***@example.com',
+      avatar: expect.stringMatching(/^https:\/\/www\.gravatar\.com\/avatar\/[a-f0-9]{32}\?s=88&d=identicon$/),
+      joinedAt: '2026-09-02T00:00:00.000Z'
+    });
+    expect(res.body.members[1].name).toBeNull();
+    expect(Waitlist.find).toHaveBeenCalledWith({});
+  });
+
+  test('never exposes raw email addresses', async () => {
+    mockRecent(rows);
+
+    const res = await request(app).get('/api/waitlist/recent');
+    const raw = JSON.stringify(res.body);
+
+    expect(raw).not.toContain('new@example.com');
+    expect(raw).not.toContain('old@example.com');
+  });
+
+  test('caps the limit at 12', async () => {
+    mockRecent([]);
+
+    await request(app).get('/api/waitlist/recent?limit=500');
+
+    const limitFn = Waitlist.find().sort().limit;
+    expect(limitFn).toHaveBeenCalledWith(12);
+  });
+
+  test('returns 500 when the query fails', async () => {
+    Waitlist.countDocuments.mockRejectedValue(new Error('db down'));
+
+    const res = await request(app).get('/api/waitlist/recent');
 
     expect(res.status).toBe(500);
     expect(res.body.success).toBe(false);
