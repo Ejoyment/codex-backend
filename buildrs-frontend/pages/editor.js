@@ -3,20 +3,109 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
-import { apiFetch, projectApi } from '../lib/api';
+import { apiFetch, projectApi, API_BASE_URL } from '../lib/api';
+import * as editorDrafts from '../lib/editorDrafts';
+import { registerEditorSnippets } from '../lib/monacoExtras';
+import { normalizeMarkers, countProblems, setRunProblems } from '../lib/monacoDiagnostics';
+import { startRun, streamRun, runLanguageFor } from '../lib/ideRun';
+import { lspApi, docUri, lspKindToMonaco, lspRangeToMonaco } from '../lib/lspClient';
 import {
   Save, ChevronDown, ChevronRight, FileCode, Terminal, Bot, Layers, Rocket, Box,
   Users, GitBranch, Eye, X, FolderOpen, Search, Settings, Folder, Trash2,
   FolderPlus, AlertCircle, CheckCircle, XCircle, RefreshCw, Puzzle, HelpCircle,
-  FilePlus, Play, Loader2, LayoutDashboard, GitPullRequestArrow,
+  FilePlus, Play, Loader2, LayoutDashboard, GitPullRequestArrow, Copy, GitCommit,
 } from 'lucide-react';
 import MonacoEditor from '@monaco-editor/react';
 import { io } from 'socket.io-client';
 import useToastStore from '../store/toastStore';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import DeploymentLogsModal from '../components/DeploymentLogsModal';
 import { useCurrentCompany } from '../hooks/useCurrentCompany';
+import { normalizeTier, tierDisplayLabel, tierDisplayDetail } from '../lib/tier';
+
+function tierBadgeLabel(t) {
+  const n = normalizeTier(t);
+  if (n === 'enterprise') return 'Enterprise';
+  if (n === 'developer') return 'Free';
+  if (n === 'team_standard' || n === 'team_premium') return 'Team';
+  return 'Pro';
+}
+
+function tierBadgeClass(t) {
+  const n = normalizeTier(t);
+  if (n === 'enterprise') return '';
+  if (n === 'developer') return 'is-free';
+  return 'is-pro';
+}
 
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3000';
+
+// --- ANSI output handling (run output can carry terminal color codes) -------
+const ANSI_SGR_RE = /\x1b\[([0-9;]*)m/g;
+const ANSI_PALETTE = [
+  '#000000', '#cd3131', '#0dbc79', '#e5e510', '#2472c8', '#bc3fbc', '#11a8cd', '#e5e5e5',
+  '#666666', '#f14c4c', '#23d18b', '#f5f543', '#3b8eea', '#d670d6', '#29b8db', '#ffffff',
+];
+
+function stripAnsi(text) {
+  return String(text ?? '').replace(ANSI_SGR_RE, '');
+}
+
+function ansi256Color(v) {
+  if (v < 16) return ANSI_PALETTE[v];
+  if (v > 231) { const g = 8 + (v - 232) * 10; return `rgb(${g},${g},${g})`; }
+  const n = v - 16;
+  const steps = [0, 95, 135, 175, 215, 255];
+  return `rgb(${steps[Math.floor(n / 36) % 6]},${steps[Math.floor(n / 6) % 6]},${steps[n % 6]})`;
+}
+
+// Split one output line into styled segments (fg/bg/bold/dim/underline).
+function ansiSegments(text) {
+  const str = String(text ?? '');
+  const segs = [];
+  const st = { fg: null, bg: null, bold: false, dim: false, underline: false };
+  const applyCodes = (raw) => {
+    const codes = String(raw || '0').split(';').filter((x) => x !== '').map((x) => parseInt(x, 10));
+    if (!codes.length) codes.push(0);
+    for (let i = 0; i < codes.length; i++) {
+      const c = codes[i];
+      if (c === 0) { st.fg = null; st.bg = null; st.bold = false; st.dim = false; st.underline = false; }
+      else if (c === 1) st.bold = true;
+      else if (c === 2) st.dim = true;
+      else if (c === 4) st.underline = true;
+      else if (c === 22) { st.bold = false; st.dim = false; }
+      else if (c === 24) st.underline = false;
+      else if (c === 39) st.fg = null;
+      else if (c === 49) st.bg = null;
+      else if (c >= 30 && c <= 37) st.fg = ANSI_PALETTE[c - 30];
+      else if (c >= 90 && c <= 97) st.fg = ANSI_PALETTE[c - 90 + 8];
+      else if (c >= 40 && c <= 47) st.bg = ANSI_PALETTE[c - 40];
+      else if (c >= 100 && c <= 107) st.bg = ANSI_PALETTE[c - 100 + 8];
+      else if ((c === 38 || c === 48) && codes[i + 1] === 5) {
+        const col = ansi256Color(codes[i + 2] || 0);
+        if (c === 38) st.fg = col; else st.bg = col;
+        i += 2;
+      } else if ((c === 38 || c === 48) && codes[i + 1] === 2) {
+        const col = `rgb(${codes[i + 2] || 0},${codes[i + 3] || 0},${codes[i + 4] || 0})`;
+        if (c === 38) st.fg = col; else st.bg = col;
+        i += 4;
+      }
+    }
+  };
+  let cursor = 0;
+  let m;
+  ANSI_SGR_RE.lastIndex = 0;
+  const push = (end) => {
+    if (end > cursor) segs.push({ text: str.slice(cursor, end), ...st });
+  };
+  while ((m = ANSI_SGR_RE.exec(str))) {
+    push(m.index);
+    applyCodes(m[1]);
+    cursor = m.index + m[0].length;
+  }
+  push(str.length);
+  return segs;
+}
 
 function getMonacoLanguage(lang) {
   if (!lang) return 'plaintext';
@@ -35,10 +124,14 @@ function getMonacoLanguage(lang) {
 function detectLanguage(filename) {
   const ext = (filename || '').split('.').pop()?.toLowerCase() || '';
   const map = {
-    js: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript',
-    py: 'python', java: 'java', go: 'go', rs: 'rust', cpp: 'cpp', c: 'c',
+    js: 'javascript', jsx: 'javascript', mjs: 'javascript', cjs: 'javascript',
+    ts: 'typescript', tsx: 'typescript',
+    py: 'python', pyw: 'python', java: 'java', go: 'go', rs: 'rust', cpp: 'cpp', c: 'c',
     rb: 'ruby', php: 'php', html: 'html', css: 'css', json: 'json',
     yml: 'yaml', yaml: 'yaml', md: 'markdown', sh: 'shell', bash: 'shell', sql: 'sql',
+    lua: 'lua', groovy: 'groovy', pl: 'perl', r: 'r',
+    ex: 'elixir', exs: 'elixir', cs: 'csharp', dart: 'dart', swift: 'swift',
+    ps1: 'powershell', kt: 'kotlin', scala: 'scala', hs: 'haskell',
   };
   return map[ext] || 'text';
 }
@@ -55,6 +148,9 @@ function LANG_COLORS() {
     c: '#555555', ruby: '#cc342d', php: '#777bb4', html: '#e34c26',
     css: '#563d7c', json: '#292929', yaml: '#cb171e', markdown: '#083fa1',
     shell: '#89e051', sql: '#e38c00', text: '#6e7681',
+    lua: '#000080', groovy: '#4298b4', perl: '#0298c3', r: '#276dc3',
+    elixir: '#4b275f', csharp: '#68217a', dart: '#0175c2', swift: '#f05138',
+    powershell: '#012456', kotlin: '#7f52ff', scala: '#dc322f', haskell: '#5e5086',
   };
 }
 
@@ -134,18 +230,40 @@ function getLanguageGlyph(name) {
   );
 }
 
+// Two file shapes exist: GitHub tree entries store the FULL path (including
+// the filename, e.g. '/src/app.js'), workspace CodeFiles store the DIRECTORY
+// path plus name (path '/src' + name 'app.js'). Normalize to a full path.
+function fileFullPath(f) {
+  const name = f.name || '';
+  const base = String(f.path || '/').replace(/\/+$/, '');
+  if (!name) return base || '/';
+  if (!base) return `/${name}`;
+  if (base === name || base.endsWith(`/${name}`)) return `/${base}`.replace(/^\/+/, '/');
+  return `${base}/${name}`;
+}
+
 function buildFileTree(files) {
   const root = { name: 'root', type: 'folder', children: {} };
   files.forEach((f) => {
-    const parts = (f.path || '/').split('/').filter(Boolean);
+    const full = fileFullPath(f);
+    const parts = full.split('/').filter(Boolean);
+    if (!parts.length) return;
+    // VFS creates '.gitkeep' placeholders so empty folders show up in the
+    // explorer — render the folder itself, never a file node.
+    const isKeep = (f.name || '') === '.gitkeep';
+    const dirParts = parts.slice(0, -1);
+    const leaf = isKeep ? null : parts[parts.length - 1];
     let cur = root; let rp = '';
-    for (let i = 0; i < parts.length; i++) {
-      rp = rp ? rp + '/' + parts[i] : parts[i];
-      if (i === parts.length - 1) {
-        cur.children[parts[i]] = { ...f, type: 'file' };
-      } else {
-        if (!cur.children[parts[i]]) cur.children[parts[i]] = { name: parts[i], type: 'folder', children: {}, path: rp };
-        cur = cur.children[parts[i]];
+    for (let i = 0; i < dirParts.length; i++) {
+      rp = rp ? rp + '/' + dirParts[i] : dirParts[i];
+      if (!cur.children[dirParts[i]] || cur.children[dirParts[i]].type !== 'folder') {
+        cur.children[dirParts[i]] = { name: dirParts[i], type: 'folder', children: {}, path: rp };
+      }
+      cur = cur.children[dirParts[i]];
+    }
+    if (leaf) {
+      if (!cur.children[leaf] || cur.children[leaf].type !== 'folder') {
+        cur.children[leaf] = { ...f, name: leaf, type: 'file', _fullPath: full, _id: f._id || `github:${full}` };
       }
     }
   });
@@ -192,7 +310,7 @@ function FileTreeNode({ node, depth, selectedId, onSelect, expanded, onToggle })
         {isOpen && sortedChildren && (
           <div>
             {sortedChildren.map((child) => (
-              <FileTreeNode key={child.path || child.name || child._id} node={child} depth={depth + 1}
+              <FileTreeNode key={child._fullPath || child.path || child.name || child._id} node={child} depth={depth + 1}
                 selectedId={selectedId} onSelect={onSelect} expanded={expanded} onToggle={onToggle} />
             ))}
           </div>
@@ -225,10 +343,22 @@ export default function Editor() {
   const subscription = useAuthStore((s) => s.subscription);
 
   const [files, setFiles] = useState([]);
+  // Files/folders the user created while a GitHub repo is selected — kept out
+  // of `files` (which mirrors the remote tree) until Commit & Push publishes
+  // them, but merged into the explorer so they're visible and editable now.
+  const [repoPending, setRepoPending] = useState([]);
   const [selectedFile, setSelectedFile] = useState(null);
   const [openFiles, setOpenFiles] = useState([]);
   const openContentsRef = useRef({});
   const openDirtyRef = useRef({});
+  const openOriginalsRef = useRef({});     // last locally-saved content per file (dirty = buffer !== this)
+  const remoteBaselineRef = useRef({});     // last-known GitHub remote content (for SCM changes)
+  const parkedRef = useRef({});             // saved-but-closed GitHub drafts (still deploy/push-able)
+  const persistTimerRef = useRef(null);
+  const pendingRestoreRef = useRef(null);
+  const autoRedeployRef = useRef(new Set());
+  const pollTimersRef = useRef({});
+  const pollWhenDoneRef = useRef({});
   const [content, setContent] = useState('');
   const [languages, setLanguages] = useState([]);
   const [tier, setTier] = useState('');
@@ -245,6 +375,12 @@ export default function Editor() {
   const [creating, setCreating] = useState(false);
   const [status, setStatus] = useState(null);
   const [dirty, setDirty] = useState(false);
+  const [problemList, setProblemList] = useState([]);
+  const [externalProblems, setExternalProblems] = useState([]); // compiler/run diagnostics with explicit file names
+  const [outputLines, setOutputLines] = useState([]);
+  const monacoRef = useRef(null);
+  const markersSubscribedRef = useRef(false);
+  const lspProvidersRef = useRef(false);
   const [cursorPos, setCursorPos] = useState({ line: 1, col: 1 });
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [activeSidebar, setActiveSidebar] = useState('explorer');
@@ -287,9 +423,12 @@ export default function Editor() {
   const [prDone, setPrDone] = useState(null);
   const [deployments, setDeployments] = useState([]);
   const [sandboxUrl, setSandboxUrl] = useState(null);
+  const [running, setRunning] = useState(false);
+  const [termInfo, setTermInfo] = useState(null); // { type: 'pty'|'simulated', sessionId }
   const [showSubdomainInput, setShowSubdomainInput] = useState(false);
   const [deploySubdomain, setDeploySubdomain] = useState('');
   const [deploying, setDeploying] = useState(false);
+  const [logDeployId, setLogDeployId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const { success: toastSuccess, error: toastError } = useToastStore(
     (s) => ({ success: s.success, error: s.error })
@@ -306,6 +445,13 @@ export default function Editor() {
   const menuRef = useRef(null);
   const terminalRef = useRef(null);
   const editorRef = useRef(null);
+  const runRef = useRef(null);
+  const runAbortRef = useRef(null);
+  const runLineBufRef = useRef('');
+  const runSeqRef = useRef(0);
+  const termSocketRef = useRef(null);
+  const termSessionRef = useRef(null);
+  const termRef = useRef(null);
   const originalContentRef = useRef('');
   const aiSessionRef = useRef(null);
   const { selectedCompany } = useCurrentCompany();
@@ -324,20 +470,80 @@ export default function Editor() {
   const [repoCreateError, setRepoCreateError] = useState(null);
   const [expandedFolders, setExpandedFolders] = useState({});
   const [fileFilter, setFileFilter] = useState('');
+  const [commitMsg, setCommitMsg] = useState('');
 
   const selectedFileRef = useRef(null);
   selectedFileRef.current = selectedFile;
 
-  const tree = useMemo(() => buildFileTree(files), [files]);
+  const tree = useMemo(() => buildFileTree(
+    selectedRepo && !selectedProject && repoPending.length
+      ? [...files, ...repoPending]
+      : files,
+  ), [files, repoPending, selectedRepo, selectedProject]);
 
   const getFileKey = useCallback((file) => {
     if (!file) return null;
     if (file._id) return String(file._id);
     if (file.id) return String(file.id);
-    if (file.path) return `github:${file.path}`;
-    if (file.name) return `github:${file.name}`;
+    // Scope path-derived keys to the selected repo (and branch) so the same
+    // path in two repos never collides into one buffer/dirty state.
+    const repoScope = selectedRepo
+      ? (selectedRepo.fullName || `${selectedRepo.owner?.login || selectedRepo.owner || selectedRepo.ownerName || 'gh'}/${selectedRepo.name}`) +
+        (selectedRepo.default_branch ? `@${selectedRepo.default_branch}` : '')
+      : 'none';
+    if (file.path) return `github:${repoScope}:${file.path}`;
+    if (file.name) return `github:${repoScope}:${file.name}`;
     return `tmp:${Math.random().toString(36).slice(2)}`;
-  }, []);
+  }, [selectedRepo]);
+
+  function buildSession() {
+    const contents = {};
+    const metaByKey = {};
+    openFiles.forEach((f) => { metaByKey[getFileKey(f)] = f; });
+    files.forEach((f) => { const k = getFileKey(f); if (!metaByKey[k]) metaByKey[k] = f; });
+    Object.entries(openContentsRef.current).forEach(([k, c]) => {
+      const meta = metaByKey[k] || {};
+      const o = openOriginalsRef.current[k] ?? c;
+      const isGh = String(k).startsWith('github:') || meta.source === 'github';
+      contents[k] = {
+        c, o,
+        n: meta.name || (String(k).startsWith('github:') ? String(k).split('/').pop() : k),
+        p: meta.path || '/',
+        s: isGh ? 'gh' : 'db',
+        g: remoteBaselineRef.current[k],
+        t: Date.now(),
+      };
+    });
+    return {
+      contents,
+      parked: { ...parkedRef.current },
+      openFiles: openFiles.map((f) => ({
+        _id: getFileKey(f), name: f.name, path: f.path, source: f.source,
+        language: f.language, sha: f.sha,
+      })),
+      selectedKey: selectedFileRef.current ? getFileKey(selectedFileRef.current) : null,
+      repo: selectedRepo,
+      projectId: selectedProject?._id || selectedProject?.id || null,
+    };
+  }
+  const buildSessionRef = useRef(() => null);
+  buildSessionRef.current = buildSession;
+
+  function schedulePersist() {
+    if (typeof window === 'undefined') return;
+    if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+    persistTimerRef.current = setTimeout(() => {
+      persistTimerRef.current = null;
+      try { editorDrafts.saveSession(buildSessionRef.current()); } catch (_) { /* ignore */ }
+    }, 400);
+  }
+
+  function refreshGitModified() {
+    setGitStatus((prev) => {
+      if (!prev || !prev.isGithub) return prev;
+      return { ...prev, modified: computeLocalModified(prev.repo) };
+    });
+  }
 
   const monacoOptions = useMemo(() => ({
     fontSize: 13,
@@ -349,6 +555,19 @@ export default function Editor() {
     bracketPairColorization: { enabled: true },
     cursorBlinking: 'smooth',
     smoothScrolling: true,
+    // VS Code-like IntelliSense behaviour
+    quickSuggestions: { other: true, comments: false, strings: false },
+    suggestOnTriggerCharacters: true,
+    tabCompletion: 'on',
+    wordBasedSuggestions: 'currentDocument',
+    snippetSuggestions: 'top',
+    acceptSuggestionOnEnter: 'on',
+    autoClosingBrackets: 'always',
+    autoClosingQuotes: 'always',
+    autoSurround: 'languageDefined',
+    formatOnType: true,
+    suggest: { showWords: true, snippets: 'top', preview: true, showIcons: true },
+    padding: { top: 8 },
   }), []);
 
   const monacoPreviewOptions = useMemo(() => ({
@@ -357,8 +576,54 @@ export default function Editor() {
     automaticLayout: true,
   }), []);
 
+  // Restore the previous editor session (tabs, buffers, drafts, repo/project)
+  // from localStorage before any data fetch resolves.
   useEffect(() => {
-    loadFiles();
+    const boot = editorDrafts.loadSession();
+    if (!boot) return;
+    Object.entries(boot.contents || {}).forEach(([k, e]) => {
+      if (!e || typeof e.c !== 'string') return;
+      openContentsRef.current[k] = e.c;
+      openOriginalsRef.current[k] = typeof e.o === 'string' ? e.o : e.c;
+      openDirtyRef.current[k] = e.c !== openOriginalsRef.current[k];
+      if (typeof e.g === 'string') remoteBaselineRef.current[k] = e.g;
+    });
+    Object.entries(boot.parked || {}).forEach(([k, e]) => {
+      if (e && typeof e.c === 'string') parkedRef.current[k] = e;
+    });
+    if (Array.isArray(boot.openFiles) && boot.openFiles.length) setOpenFiles(boot.openFiles);
+    if (boot.repo && boot.repo.name) {
+      setSelectedRepo(boot.repo);
+      setSelectedProject(null);
+      pendingRestoreRef.current = { selectedKey: boot.selectedKey || null, projectId: null };
+    } else {
+      pendingRestoreRef.current = { selectedKey: boot.selectedKey || null, projectId: boot.projectId || null };
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist on unmount and when the tab is hidden so navigating away never
+  // loses work (beforeunload catches hard refresh/close too).
+  useEffect(() => {
+    const flush = () => {
+      try {
+        if (persistTimerRef.current) { clearTimeout(persistTimerRef.current); persistTimerRef.current = null; }
+        editorDrafts.saveSession(buildSessionRef.current());
+      } catch (_) { /* ignore */ }
+    };
+    const onVisibility = () => { if (document.visibilityState === 'hidden') flush(); };
+    window.addEventListener('beforeunload', flush);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      flush();
+      window.removeEventListener('beforeunload', flush);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    loadFiles(workspaceId);
     loadLanguages();
     loadCollaborators();
     loadDeployments();
@@ -368,25 +633,56 @@ export default function Editor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Version control follows the selection: a GitHub repo shows that repo's
+  // branch/commits/local changes; otherwise the workspace git state.
   useEffect(() => {
-    if (selectedRepo && !workspaceId) {
-      setGitStatus({ success: true, branch: selectedRepo.default_branch || 'main', ahead: 0, behind: 0, modified: [] });
+    if (selectedRepo) {
+      loadRepoGitStatus(selectedRepo);
       return;
     }
-
     if (workspaceId) {
       loadGitStatus();
+      return;
     }
+    setGitStatus(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId, selectedRepo]);
 
+  // Finish restoring a previous session once its inputs arrive.
   useEffect(() => {
+    const pend = pendingRestoreRef.current;
+    if (!pend) return;
+    if (pend.projectId && projects.length) {
+      const p = projects.find((x) => (x._id || x.id) === pend.projectId);
+      pendingRestoreRef.current = { ...pend, projectId: null };
+      if (!selectedProject && p) {
+        setSelectedProject(p);
+        setSelectedRepo(null);
+        return;
+      }
+    }
+    const cur = pendingRestoreRef.current;
+    if (cur && cur.selectedKey && openFiles.length) {
+      pendingRestoreRef.current = { ...cur, selectedKey: null };
+      const target = openFiles.find((f) => getFileKey(f) === cur.selectedKey);
+      if (target && getFileKey(selectedFile) !== cur.selectedKey) {
+        openFile(target);
+        loadFile(target);
+      }
+    } else if (cur && cur.selectedKey && !openFiles.length && !loading) {
+      pendingRestoreRef.current = { ...cur, selectedKey: null };
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projects, openFiles, selectedFile, loading, selectedProject]);
+
+  useEffect(() => {
+    setRepoPending([]); // pending repo entries don't follow you across scopes
     if (selectedProject) {
       loadProjectFiles(selectedProject._id || selectedProject.id);
     } else if (selectedRepo) {
       loadGithubRepoFiles(selectedRepo);
     } else {
-      loadFiles();
+      loadFiles(workspaceId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProject, selectedRepo]);
@@ -432,6 +728,39 @@ export default function Editor() {
       socketRef.current = null;
     };
   }, []);
+
+  // Real-time explorer: join the workspace room and refresh the file tree
+  // when the backend watcher (e.g. `mkdir`/`touch` inside the terminal)
+  // emits workspace:change.
+  useEffect(() => {
+    const socket = socketRef.current;
+    if (!socket || !workspaceId) return undefined;
+    socket.emit('workspace:join', { workspaceId });
+    let timer = null;
+    const reload = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (selectedRepo) return; // repo files come from GitHub, not the watcher
+        if (selectedProject) loadProjectFiles(selectedProject._id || selectedProject.id);
+        else loadFiles(workspaceId);
+      }, 400);
+    };
+    socket.on('workspace:change', reload);
+    return () => {
+      if (timer) clearTimeout(timer);
+      socket.off('workspace:change', reload);
+      socket.emit('workspace:leave', { workspaceId });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceId, selectedProject?._id || selectedProject?.id || null, selectedRepo ? (selectedRepo.fullName || selectedRepo.name) : null]);
+
+  // Status messages dismiss themselves — a toast that never disappears makes
+  // a transient error look permanent. Errors linger a bit longer to be readable.
+  useEffect(() => {
+    if (!status) return undefined;
+    const timer = setTimeout(() => setStatus(null), status.type === 'error' ? 6000 : 3500);
+    return () => clearTimeout(timer);
+  }, [status]);
 
   const loadPendingConfirmations = useCallback(async () => {
     try {
@@ -523,6 +852,9 @@ export default function Editor() {
       } else if (k === 'd' && e.shiftKey) {
         e.preventDefault();
         router.push('/dashboard');
+      } else if (k === 'r') {
+        e.preventDefault();
+        runRef.current?.();
       }
     }
     window.addEventListener('keydown', onKey);
@@ -530,107 +862,171 @@ export default function Editor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Terminal xterm init
+  // Terminal xterm init — real PTY shell via the /terminal socket.io namespace
   useEffect(() => {
-    if (panel !== 'terminal' || !terminalRef.current || terminalRef.current.hasChildNodes()) return;
-    import('xterm').then(({ Terminal: XTerm }) => {
-      const term = new XTerm({
-        theme: {
-          background: '#091118',
-          foreground: '#e6f1ff',
-          cursor: '#67e8f9',
-          cursorAccent: '#091118',
-          black: '#0b1017',
-          red: '#f87171',
-          green: '#34d399',
-          yellow: '#fbbf24',
-          blue: '#60a5fa',
-          magenta: '#c084fc',
-          cyan: '#67e8f9',
-          white: '#e2e8f0',
-          brightBlack: '#475569',
-          brightRed: '#fca5a5',
-          brightGreen: '#6ee7b7',
-          brightYellow: '#fcd34d',
-          brightBlue: '#93c5fd',
-          brightMagenta: '#d8b4fe',
-          brightCyan: '#a5f3fc',
-          brightWhite: '#f8fafc',
-        },
-        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-        fontSize: 12,
-        lineHeight: 1.45,
-        letterSpacing: 0.12,
-        cursorBlink: true,
-        scrollback: 4000,
-        allowTransparency: false,
-      });
-      term.open(terminalRef.current);
-      term.writeln('\x1b[36mBuildrsHQ Terminal\x1b[0m — type `help` for commands');
-      let line = '';
-      term.onKey(({ key, domEvent }) => {
-        if (domEvent.keyCode === 13) {
-          term.writeln('');
-          handleTerminalCommand(line, term);
-          line = '';
-        } else if (domEvent.keyCode === 8) {
-          if (line.length > 0) {
-            term.write('\b \b');
-            line = line.slice(0, -1);
-          }
-        } else if (key.length === 1) {
-          line += key;
-          term.write(key);
+    if (panel !== 'terminal' || !terminalRef.current) return;
+    let disposed = false;
+    let socket = null;
+    let fitOnResize = null;
+    let resizeObserver = null;
+    const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
+
+    // Scope switch / panel toggle: wipe the previous terminal DOM so a fresh
+    // xterm instance mounts cleanly (the old instance is disposed in cleanup).
+    terminalRef.current.innerHTML = '';
+
+    Promise.all([import('xterm'), import('@xterm/addon-fit')])
+      .then(([xtermMod, fitMod]) => {
+        if (disposed || !terminalRef.current) return;
+        const term = new xtermMod.Terminal({
+          // VS Code dark+ palette
+          theme: {
+            background: '#1e1e1e',
+            foreground: '#cccccc',
+            cursor: '#aeafad',
+            cursorAccent: '#1e1e1e',
+            selectionBackground: '#264f78',
+            black: '#000000',
+            red: '#cd3131',
+            green: '#0dbc79',
+            yellow: '#e5e510',
+            blue: '#2472c8',
+            magenta: '#bc3fbc',
+            cyan: '#11a8cd',
+            white: '#e5e5e5',
+            brightBlack: '#666666',
+            brightRed: '#f14c4c',
+            brightGreen: '#23d18b',
+            brightYellow: '#f5f543',
+            brightBlue: '#3b8eea',
+            brightMagenta: '#d670d6',
+            brightCyan: '#29b8db',
+            brightWhite: '#e5e5e5',
+          },
+          fontFamily: "Menlo, Monaco, 'Courier New', monospace",
+          fontSize: 13,
+          lineHeight: 1.25,
+          letterSpacing: 0,
+          cursorBlink: true,
+          scrollback: 4000,
+          allowTransparency: false,
+        });
+        termRef.current = term;
+        const fit = new fitMod.FitAddon();
+        term.loadAddon(fit);
+        term.open(terminalRef.current);
+        try { fit.fit(); } catch (_) { /* ignore */ }
+
+        if (!token) {
+          term.writeln('\x1b[31mNot authenticated — sign in to open a shell.\x1b[0m');
+          return;
         }
+
+        term.writeln('\x1b[36mConnecting to workspace shell…\x1b[0m');
+        socket = io(`${SOCKET_URL}/terminal`, { auth: { token }, transports: ['websocket', 'polling'] });
+        termSocketRef.current = socket;
+
+        socket.on('connect', () => {
+          socket.emit('terminal:create', {
+            workspaceId: workspaceId || user?._id || 'default',
+            options: {
+              cols: term.cols,
+              rows: term.rows,
+              // Scope the shell to the current project/repo so it hydrates
+              // and watches only that project's files.
+              projectId: selectedProject?._id || selectedProject?.id || undefined,
+              repoFullName: selectedRepo
+                ? (selectedRepo.fullName || `${selectedRepo.owner?.login || selectedRepo.owner || selectedRepo.ownerName || ''}/${selectedRepo.name}`)
+                : undefined,
+            },
+          });
+        });
+        socket.on('terminal:created', (data) => {
+          if (disposed) return;
+          termSessionRef.current = data.sessionId;
+          setTermInfo({ type: data.type, sessionId: data.sessionId });
+          term.write('\r\n\x1b[1;32m● Connected\x1b[0m');
+          if (data.type !== 'pty') {
+            term.write(' \x1b[33m(simulated shell — node-pty unavailable on server)\x1b[0m');
+          }
+          term.write('\r\n\r\n');
+          term.focus();
+        });
+        socket.on('terminal:data', ({ data }) => term.write(data));
+        socket.on('terminal:error', ({ message }) => {
+          term.write(`\r\n\x1b[1;31m${message}\x1b[0m\r\n`);
+        });
+        socket.on('terminal:destroyed', () => {
+          termSessionRef.current = null;
+          setTermInfo(null);
+          term.write('\r\n\x1b[1;33mSession ended\x1b[0m\r\n');
+        });
+        socket.on('connect_error', (err) => {
+          if (disposed) return;
+          term.write(`\r\n\x1b[1;31mConnection failed: ${err?.message || err}\x1b[0m\r\n`);
+        });
+
+        term.onData((data) => {
+          if (termSessionRef.current && socket) {
+            socket.emit('terminal:input', { sessionId: termSessionRef.current, data });
+          }
+        });
+
+        fitOnResize = () => {
+          try { fit.fit(); } catch (_) { /* ignore */ }
+          if (termSessionRef.current && socket) {
+            socket.emit('terminal:resize', { sessionId: termSessionRef.current, cols: term.cols, rows: term.rows });
+          }
+        };
+        window.addEventListener('resize', fitOnResize);
+        if (typeof ResizeObserver !== 'undefined' && terminalRef.current) {
+          resizeObserver = new ResizeObserver(() => fitOnResize());
+          resizeObserver.observe(terminalRef.current);
+        }
+        if (typeof document !== 'undefined' && document.fonts && document.fonts.ready) {
+          document.fonts.ready.then(() => { if (!disposed) fitOnResize(); }).catch(() => {});
+        }
+      })
+      .catch(() => {
+        if (terminalRef.current) terminalRef.current.innerHTML = '<div style="padding:1rem;color:#8c8c8c;font-size:0.76rem">Terminal failed to load. Refresh to retry.</div>';
       });
-    }).catch(() => {
-      if (terminalRef.current) terminalRef.current.innerHTML = '<div style="padding:1rem;color:#8c8c8c;font-size:0.76rem">Terminal failed to load. Refresh to retry.</div>';
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [panel]);
 
-  async function handleTerminalCommand(cmd, term) {
-    const trimmed = cmd.trim();
-    if (!trimmed) return;
-    if (trimmed === 'help') {
-      term.writeln('Available: ls, pwd, git status, clear, help, plus server commands.');
-      return;
-    }
-    if (trimmed === 'clear') {
-      term.clear();
-      return;
-    }
-    if (trimmed === 'ls') {
-      term.writeln((files.length ? files.map((f) => f.name).join('  ') : '(no files)'));
-      return;
-    }
-    if (trimmed === 'pwd') {
-      term.writeln('/home/buildrs');
-      return;
-    }
-    if (trimmed === 'git status') {
-      if (gitStatus) {
-        term.writeln(`On branch ${gitStatus.branch || 'main'}`);
-        const mods = gitStatus.modified || [];
-        term.writeln(mods.length ? `${mods.length} file(s) modified` : 'nothing to commit, working tree clean');
-      } else {
-        term.writeln('Not a git repository (or git not set up for this workspace).');
+    return () => {
+      disposed = true;
+      if (fitOnResize) window.removeEventListener('resize', fitOnResize);
+      if (resizeObserver) { try { resizeObserver.disconnect(); } catch (_) { /* ignore */ } }
+      const sess = termSessionRef.current;
+      if (socket) {
+        if (sess) socket.emit('terminal:destroy', { sessionId: sess });
+        setTimeout(() => { try { socket.disconnect(); } catch (_) { /* ignore */ } }, 50);
       }
-      return;
-    }
-    term.writeln(`Unknown command: ${trimmed}`);
-    term.writeln('Available commands: ls, pwd, git status, clear, help');
-  }
+      termSessionRef.current = null;
+      termSocketRef.current = null;
+      setTermInfo(null);
+      try { termRef.current?.dispose(); } catch (_) { /* ignore */ }
+      termRef.current = null;
+      if (terminalRef.current) terminalRef.current.innerHTML = '';
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panel, workspaceId, selectedProject?._id || selectedProject?.id || null, selectedRepo ? (selectedRepo.fullName || selectedRepo.name) : null]);
 
-  async function loadFiles() {
+  // Monotonic token so a slow response for workspace files can't overwrite
+  // the file list of the project/repo the user switched to meanwhile.
+  const filesSeqRef = useRef(0);
+
+  async function loadFiles(companyId) {
+    const seq = ++filesSeqRef.current;
+    setLoading(true);
     try {
-      setLoading(true);
-      const data = await apiFetch('/api/code-editor/files');
+      const qs = companyId ? `?companyId=${encodeURIComponent(companyId)}` : '';
+      const data = await apiFetch(`/api/code-editor/files${qs}`);
+      if (seq !== filesSeqRef.current) return;
       setFiles(data.files || []);
     } catch {
+      if (seq !== filesSeqRef.current) return;
       setStatus({ type: 'error', msg: 'Failed to load files' });
     } finally {
-      setLoading(false);
+      if (seq === filesSeqRef.current) setLoading(false);
     }
   }
 
@@ -642,14 +1038,17 @@ export default function Editor() {
   }
 
   async function loadProjectFiles(projectId) {
+    const seq = ++filesSeqRef.current;
     setLoading(true);
     try {
       const data = await projectApi.listProjectFiles(projectId);
+      if (seq !== filesSeqRef.current) return;
       setFiles(data.files || []);
     } catch {
+      if (seq !== filesSeqRef.current) return;
       setFiles([]);
     } finally {
-      setLoading(false);
+      if (seq === filesSeqRef.current) setLoading(false);
     }
   }
 
@@ -795,14 +1194,19 @@ export default function Editor() {
   }
 
   async function loadGithubRepoFiles(repo) {
+    const seq = ++filesSeqRef.current;
     setLoading(true);
     try {
-      const data = await apiFetch(`/api/github/repos/${repo.owner}/${repo.name}/git/tree?recursive=1`);
+      const ref = repo.default_branch || repo.defaultBranch;
+      const qs = `recursive=1${ref ? `&ref=${encodeURIComponent(ref)}` : ''}`;
+      const data = await apiFetch(`/api/github/repos/${repo.owner}/${repo.name}/git/tree?${qs}`);
+      if (seq !== filesSeqRef.current) return;
       setFiles(data.files || []);
     } catch {
+      if (seq !== filesSeqRef.current) return;
       setFiles([]);
     } finally {
-      setLoading(false);
+      if (seq === filesSeqRef.current) setLoading(false);
     }
   }
 
@@ -825,8 +1229,55 @@ export default function Editor() {
     if (!workspaceId) return;
     try {
       const data = await apiFetch(`/api/git/status/${workspaceId}`).catch(() => null);
-      if (data) setGitStatus(data);
+      // success:false = repo not initialised yet (or git error) — show the
+      // empty state instead of a fake clean tree.
+      if (data && data.success !== false) setGitStatus(data);
+      else setGitStatus(null);
     } catch {}
+  }
+
+  // Branch + recent commits + local changes for the selected GitHub repo.
+  // Local changes = dirty buffers, locally-saved-but-unpushed files, and
+  // parked drafts that differ from the last-known remote content.
+  async function loadRepoGitStatus(repo) {
+    if (!repo) return;
+    const owner = repo.owner?.login || repo.owner || repo.ownerName || '';
+    const fullName = repo.fullName || `${owner}/${repo.name}`;
+    let commits = [];
+    try {
+      const data = await apiFetch(`/api/github/repos/${owner}/${repo.name}/commits?per_page=10`);
+      commits = data?.commits || [];
+    } catch {}
+    setGitStatus({
+      success: true,
+      branch: repo.default_branch || repo.defaultBranch || 'main',
+      ahead: 0,
+      behind: 0,
+      modified: computeLocalModified(fullName),
+      commits,
+      isGithub: true,
+      repo: fullName,
+    });
+  }
+
+  function computeLocalModified(repoFull) {
+    const out = [];
+    const seen = new Set();
+    const push = (label, k) => { if (!seen.has(k)) { seen.add(k); out.push(label); } };
+    openFiles.forEach((f) => {
+      const k = getFileKey(f);
+      const dirtyBuffer = !!openDirtyRef.current[k];
+      const buf = openContentsRef.current[k];
+      const remote = remoteBaselineRef.current[k];
+      const unpushed = repoFull && typeof buf === 'string' && typeof remote === 'string' && buf !== remote;
+      if (dirtyBuffer || unpushed) push(f.name || k, k);
+    });
+    Object.entries(parkedRef.current).forEach(([k, e]) => {
+      if (e?.s !== 'gh' || typeof e.c !== 'string') return;
+      const remote = e.g;
+      if (remote === undefined || e.c !== remote) push(e.n || k, k);
+    });
+    return out;
   }
 
   async function loadDeployments() {
@@ -1047,12 +1498,45 @@ export default function Editor() {
     const fileKey = getFileKey(file);
     const sourceFile = file && file.path && selectedRepo ? { ...file, _id: fileKey, id: fileKey, source: 'github', owner: selectedRepo.owner?.login || selectedRepo.owner, repo: selectedRepo.name } : file;
     const saved = openContentsRef.current[fileKey];
-    const contentFromGithub = sourceFile?.source === 'github' && saved === undefined ? await fetchGithubFileContent(sourceFile) : null;
-    const val = saved !== undefined ? saved : (contentFromGithub ?? sourceFile?.content ?? '');
+    let val;
+    let baseline;
+    if (saved !== undefined) {
+      // Buffer already in memory (open tab, restored session, or local draft).
+      val = saved;
+      baseline = openOriginalsRef.current[fileKey] ?? saved;
+    } else if (sourceFile?.source === 'github') {
+      baseline = await fetchGithubFileContent(sourceFile);
+      val = baseline;
+    } else if (file?.content !== undefined && file?.content !== null) {
+      baseline = file.content;
+      val = file.content;
+    } else if (/^[0-9a-f]{24}$/i.test(String(file?._id || ''))) {
+      // Project file lists are metadata-only — hydrate the real content so
+      // opening a project file (and saving it) actually works.
+      try {
+        const data = await apiFetch(`/api/code-editor/files/${file._id}`);
+        baseline = typeof data?.file?.content === 'string' ? data.file.content : '';
+      } catch (_) {
+        baseline = '';
+      }
+      val = baseline;
+    } else {
+      baseline = '';
+      val = '';
+    }
+    if (sourceFile?.source === 'github' && remoteBaselineRef.current[fileKey] === undefined) {
+      remoteBaselineRef.current[fileKey] = baseline;
+    }
     setSelectedFile(sourceFile || file);
     setContent(val);
-    originalContentRef.current = val;
-    setDirty(!!openDirtyRef.current[fileKey]);
+    originalContentRef.current = baseline;
+    openContentsRef.current[fileKey] = val;
+    openOriginalsRef.current[fileKey] = baseline;
+    const initDirty = openDirtyRef.current[fileKey] ?? (val !== baseline);
+    openDirtyRef.current[fileKey] = initDirty;
+    setDirty(initDirty);
+    schedulePersist();
+    refreshProblems();
     setShowProjectSelector(false);
     setStatus(null);
     if (sourceFile?._id) {
@@ -1087,7 +1571,7 @@ export default function Editor() {
     const fileKey = getFileKey(file);
     const i = openFiles.findIndex((o) => getFileKey(o) === fileKey);
     if (i === -1) return;
-    if (getFileKey(selectedFile) === fileKey && (dirty || openDirtyRef.current[fileKey])) {
+    if (openDirtyRef.current[fileKey] || (getFileKey(selectedFile) === fileKey && dirty)) {
       setConfirmClose(file);
       return;
     }
@@ -1100,17 +1584,36 @@ export default function Editor() {
     const next = [...openFiles];
     next.splice(i, 1);
     setOpenFiles(next);
+    const isGh = String(fileKey).startsWith('github:') || file?.source === 'github';
+    const buf = openContentsRef.current[fileKey];
+    if (isGh && typeof buf === 'string') {
+      const o = openOriginalsRef.current[fileKey] ?? buf;
+      if (buf === o) {
+        const repoOwner = selectedRepo?.owner?.login || selectedRepo?.owner || selectedRepo?.ownerName || '';
+        parkedRef.current[fileKey] = {
+          c: buf, o,
+          n: file?.name || String(fileKey).split('/').pop(),
+          p: file?.path || '/',
+          s: 'gh',
+          g: remoteBaselineRef.current[fileKey],
+          r: selectedRepo ? (selectedRepo.fullName || `${repoOwner}/${selectedRepo.name}`) : null,
+        };
+      }
+    }
     delete openContentsRef.current[fileKey];
     delete openDirtyRef.current[fileKey];
+    delete openOriginalsRef.current[fileKey];
+    delete remoteBaselineRef.current[fileKey];
     if (getFileKey(selectedFile) === fileKey) {
       const neighbour = next[i] || next[i - 1];
       if (neighbour) {
         const neighbourKey = getFileKey(neighbour);
         const saved = openContentsRef.current[neighbourKey];
-        const val = saved !== undefined ? saved : neighbour.content || '';
+        const baseline = openOriginalsRef.current[neighbourKey];
+        const val = saved !== undefined ? saved : (baseline ?? neighbour.content ?? '');
         setSelectedFile(neighbour);
         setContent(val);
-        originalContentRef.current = val;
+        originalContentRef.current = baseline ?? val;
         setDirty(!!openDirtyRef.current[neighbourKey]);
       } else {
         setSelectedFile(null);
@@ -1119,6 +1622,9 @@ export default function Editor() {
         setDirty(false);
       }
     }
+    schedulePersist();
+    refreshGitModified();
+    refreshProblems();
   }
 
   const handleConfirmClose = () => {
@@ -1141,6 +1647,8 @@ export default function Editor() {
       openDirtyRef.current[fileKey] = val !== originalContentRef.current;
     }
     setDirty(val !== originalContentRef.current);
+    schedulePersist();
+    refreshGitModified();
   }, [getFileKey, selectedFile]);
 
   async function handleSave() {
@@ -1149,42 +1657,38 @@ export default function Editor() {
     try {
       setSaving(true);
       const fileKey = getFileKey(file);
-      if (file.source === 'github' && selectedRepo) {
-        const owner = selectedRepo.owner?.login || selectedRepo.owner || selectedRepo.ownerName;
-        const repo = selectedRepo.name;
-        const path = String(file.path || file.name).replace(/^\/+/, '');
-        const data = await apiFetch(`/api/github/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`, {
-          method: 'PUT',
-          body: JSON.stringify({
-            content,
-            message: `Update ${file.name} from Buildrs HQ editor`,
-            sha: file.sha,
-            branch: selectedRepo.default_branch || 'main',
-          }),
-        });
-        if (data?.success) {
-          if (file.sha !== data?.commit?.sha) file.sha = data?.commit?.sha;
-          originalContentRef.current = content;
-          openContentsRef.current[fileKey] = content;
-          openDirtyRef.current[fileKey] = false;
-          setDirty(false);
-          setStatus({ type: 'success', msg: 'GitHub file saved' });
-          setTimeout(() => setStatus(null), 2000);
-          return;
-        }
-        throw new Error(data?.message || 'GitHub save failed');
+      const isGithub = file.source === 'github' || String(fileKey).startsWith('github:');
+      if (isGithub && selectedRepo) {
+        // Local save: the editor buffer becomes the source of truth for
+        // deploys; Push in Source Control is what writes changes to GitHub.
+        openContentsRef.current[fileKey] = content;
+        openOriginalsRef.current[fileKey] = content;
+        openDirtyRef.current[fileKey] = false;
+        setDirty(false);
+        schedulePersist();
+        refreshGitModified();
+        setStatus({ type: 'success', msg: 'Saved locally — Deploy republishes it, Push commits it to GitHub' });
+        setTimeout(() => setStatus(null), 3000);
+        maybeAutoRedeploy();
+        return;
+      }
+      if (!/^[0-9a-f]{24}$/i.test(String(file._id || ''))) {
+        throw new Error('Cannot save: this file has no workspace record — recreate it from the Explorer.');
       }
       const data = await apiFetch(`/api/code-editor/files/${file._id}`, {
         method: 'PUT',
         body: JSON.stringify({ content, name: file.name }),
       });
-      originalContentRef.current = content;
       openContentsRef.current[fileKey] = content;
+      openOriginalsRef.current[fileKey] = content;
       openDirtyRef.current[fileKey] = false;
+      originalContentRef.current = content;
       setDirty(false);
       setFiles((prev) => prev.map((f) => (getFileKey(f) === fileKey ? { ...f, ...data.file } : f)));
+      schedulePersist();
       setStatus({ type: 'success', msg: 'File saved' });
       setTimeout(() => setStatus(null), 2000);
+      maybeAutoRedeploy();
     } catch (err) {
       setStatus({ type: 'error', msg: err.message || 'Save failed' });
     } finally {
@@ -1192,8 +1696,312 @@ export default function Editor() {
     }
   }
 
+  function refreshProblems() {
+    const monaco = monacoRef.current;
+    const model = editorRef.current?.getModel?.() || null;
+    setProblemList(normalizeMarkers(monaco, model));
+  }
+
+  function jumpToProblem(p) {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.setPosition({ lineNumber: p.line || 1, column: p.column || 1 });
+    editor.revealLineInCenterIfOutsideViewport(p.line || 1);
+    editor.focus();
+  }
+
+  function appendOutput(kind, text) {
+    const lines = String(text ?? '').split('\n');
+    setOutputLines((prev) => {
+      const next = [...prev, ...lines.map((line) => ({ kind, text: line, ts: Date.now() }))];
+      return next.length > 2000 ? next.slice(next.length - 2000) : next;
+    });
+  }
+
+  function clearOutput() {
+    setOutputLines([]);
+  }
+
+  function copyOutput() {
+    try {
+      const text = outputLines.map((l) => stripAnsi(l.text)).join('\n');
+      navigator.clipboard?.writeText(text);
+    } catch (_) { /* clipboard unavailable */ }
+  }
+
+  function flushRunLine() {
+    const rest = runLineBufRef.current;
+    if (rest) {
+      runLineBufRef.current = '';
+      appendOutput('out', rest);
+    }
+  }
+
+  function applyRunResult(result, file) {
+    const problems = Array.isArray(result?.problems) ? result.problems : [];
+    setExternalProblems(problems);
+    const model = editorRef.current?.getModel?.() || null;
+    const base = file?.name;
+    const forFile = problems.filter((p) => !p?.file || p.file === base || String(p.file).endsWith(`/${base}`));
+    setRunProblems(monacoRef.current, model, forFile);
+    problems.forEach((p) => {
+      appendOutput('err', `${p.file || base}:${p.line}:${p.column || 1} ${p.severity || 'error'} — ${p.message}`);
+    });
+    if (result?.error) appendOutput('err', result.error);
+    if (result?.timedOut) appendOutput('err', 'Run timed out');
+    if (result?.success) {
+      appendOutput('sys', `✓ Finished successfully (${result.backend} backend)`);
+    } else if (!result?.error) {
+      appendOutput('sys', `✗ Exited with code ${result.exitCode ?? -1} (${result.backend || 'unknown'} backend)`);
+    }
+  }
+
+  function stopRun() {
+    if (runAbortRef.current) {
+      runAbortRef.current.abort();
+      appendOutput('sys', '▸ Run stopped');
+    }
+  }
+
+  // Collect the runnable/previewable file set: open buffers first (they win
+  // over the saved copy), then everything else in the explorer tree.
+  function collectActiveFiles(activeContentOverride) {
+    const safePath = (p) => {
+      const rel = String(p || '').replace(/^\/+/, '');
+      return /^[\w.\-]+(\/[\w.\-]+)*$/.test(rel) ? rel : null;
+    };
+    const out = [];
+    const seen = new Set();
+    const add = (rel, c) => {
+      if (!rel || seen.has(rel) || typeof c !== 'string' || out.length >= 200) return;
+      seen.add(rel);
+      out.push({ path: rel, content: c });
+    };
+    const activeKey = selectedFileRef.current ? getFileKey(selectedFileRef.current) : null;
+    openFiles.forEach((f) => {
+      const key = getFileKey(f);
+      const c = activeContentOverride !== undefined && key === activeKey && typeof activeContentOverride === 'string'
+        ? activeContentOverride
+        : openContentsRef.current[key];
+      add(safePath(fileFullPath(f)), c);
+    });
+    [...files, ...repoPending].forEach((f) => {
+      const key = getFileKey(f);
+      add(safePath(fileFullPath(f)), openContentsRef.current[key] ?? parkedRef.current[key]?.c ?? f.content);
+    });
+    return { files: out, safePath };
+  }
+
+  async function handleRun() {
+    const file = selectedFileRef.current;
+    if (!file) return;
+    if (running) {
+      stopRun();
+      return;
+    }
+    const lang = runLanguageFor(file);
+    // Web pages (and anything the runner can't classify) don't run through
+    // the code runner — preview them in the sandbox instead of erroring out.
+    if (lang.language === 'auto' || /\.(html?|xhtml|css)$/i.test(file.name || '')) {
+      await handleSandboxStart(file);
+      setPanel('preview');
+      return;
+    }
+    const editor = editorRef.current;
+    const activeContent = editor?.getValue?.();
+    if (typeof activeContent !== 'string') {
+      setStatus({ type: 'error', msg: 'Open a file to run it' });
+      return;
+    }
+
+    const { files, safePath } = collectActiveFiles(activeContent);
+    const entry = safePath(fileFullPath(file));
+    if (!entry || !files.some((f) => f.path === entry)) {
+      setStatus({ type: 'error', msg: `Cannot run '${file.name}': file name has unsupported characters` });
+      return;
+    }
+
+    runAbortRef.current?.abort();
+    const myRun = ++runSeqRef.current;
+    setRunning(true);
+    setExternalProblems([]);
+    setRunProblems(monacoRef.current, editor?.getModel?.() || null, []);
+    clearOutput();
+    setPanel('output');
+    appendOutput('sys', `▸ Running ${file.name} as ${lang.language === 'auto' ? 'auto-detected' : lang.language}${dirty ? ' (unsaved buffer)' : ''}…`);
+    runLineBufRef.current = '';
+
+    try {
+      const started = await startRun({ language: lang.language, files, entry });
+      const stream = streamRun(started.runId, (event, data) => {
+        if (runSeqRef.current !== myRun) return;
+        if (event === 'output') {
+          const buf = runLineBufRef.current + (data?.chunk || '');
+          const parts = buf.split('\n');
+          runLineBufRef.current = parts.pop() ?? '';
+          parts.forEach((line) => appendOutput('out', line));
+        } else if (event === 'result') {
+          flushRunLine();
+          applyRunResult(data, file);
+        }
+      });
+      runAbortRef.current = stream;
+      await stream.done;
+    } catch (err) {
+      if (err?.name !== 'AbortError' && runSeqRef.current === myRun) {
+        appendOutput('err', `Run failed: ${err.message || err}`);
+      }
+    } finally {
+      if (runSeqRef.current === myRun) {
+        flushRunLine();
+        runAbortRef.current = null;
+        setRunning(false);
+      }
+    }
+  }
+  runRef.current = handleRun;
+
+  // Backend LSP providers. JS/TS/HTML/CSS use Monaco's built-in workers;
+  // Python (and other server-backed languages) get completions/hover/
+  // definition from /api/lsp. Failures degrade to empty results.
+  function registerLspProviders(editor, monaco) {
+    const activeUri = () => {
+      const f = selectedFileRef.current;
+      if (!f) return null;
+      return docUri(f.path || f.name);
+    };
+    const lspPayload = (model, position) => {
+      if (model.getLanguageId() !== 'python') return null;
+      const uri = activeUri();
+      if (!uri) return null;
+      return {
+        documentUri: uri,
+        position: { line: position.lineNumber - 1, character: position.column - 1 },
+        content: model.getValue(),
+        language: 'python',
+      };
+    };
+
+    monaco.languages.registerCompletionItemProvider('python', {
+      triggerCharacters: ['.', '(', '"', "'"],
+      async provideCompletionItems(model, position) {
+        const payload = lspPayload(model, position);
+        if (!payload) return { suggestions: [] };
+        try {
+          const res = await lspApi.completions(payload);
+          const items = Array.isArray(res?.completions?.items)
+            ? res.completions.items
+            : Array.isArray(res?.completions) ? res.completions : [];
+          return {
+            suggestions: items.slice(0, 120).map((it, idx) => ({
+              label: it.label,
+              kind: lspKindToMonaco(monaco, it.kind),
+              insertText: it.textEdit?.newText || it.insertText || it.label,
+              detail: it.detail,
+              documentation: it.documentation
+                ? { value: typeof it.documentation === 'string' ? it.documentation : it.documentation.value || '' }
+                : undefined,
+              sortText: it.sortText || String(idx).padStart(4, '0'),
+            })),
+          };
+        } catch (_) {
+          return { suggestions: [] };
+        }
+      },
+    });
+
+    monaco.languages.registerHoverProvider('python', {
+      async provideHover(model, position) {
+        const payload = lspPayload(model, position);
+        if (!payload) return null;
+        try {
+          const res = await lspApi.hover(payload);
+          const contents = res?.hover?.contents;
+          const list = Array.isArray(contents) ? contents : contents ? [contents] : [];
+          const values = list
+            .map((c) => (typeof c === 'string' ? c : c?.value || ''))
+            .filter(Boolean)
+            .map((value) => ({ value }));
+          if (!values.length) return null;
+          return {
+            contents: values,
+            range: lspRangeToMonaco(res.hover.range) || undefined,
+          };
+        } catch (_) {
+          return null;
+        }
+      },
+    });
+
+    monaco.languages.registerDefinitionProvider('python', {
+      async provideDefinition(model, position) {
+        const payload = lspPayload(model, position);
+        if (!payload) return null;
+        try {
+          const res = await lspApi.definition(payload);
+          const def = Array.isArray(res?.definition) ? res.definition[0] : res?.definition;
+          if (!def) return null;
+          const uri = def.uri || def.targetUri;
+          const range = lspRangeToMonaco(def.range || def.targetSelectionRange);
+          if (!uri || !range) return null;
+          return { uri: monaco.Uri.parse(uri), range };
+        } catch (_) {
+          return null;
+        }
+      },
+    });
+
+    monaco.languages.registerReferenceProvider('python', {
+      async provideReferences(model, position) {
+        const payload = lspPayload(model, position);
+        if (!payload) return null;
+        try {
+          const res = await lspApi.references({ ...payload, includeDeclaration: true });
+          const list = Array.isArray(res?.references) ? res.references : [];
+          return list
+            .map((loc) => {
+              const range = lspRangeToMonaco(loc.range);
+              if (!loc.uri || !range) return null;
+              return { uri: monaco.Uri.parse(loc.uri), range };
+            })
+            .filter(Boolean);
+        } catch (_) {
+          return [];
+        }
+      },
+    });
+
+    // Keep the server-side document in sync with the buffer (debounced).
+    let lspChangeTimer = null;
+    editor.onDidChangeModelContent(() => {
+      if (lspChangeTimer) clearTimeout(lspChangeTimer);
+      lspChangeTimer = setTimeout(() => {
+        const model = editor.getModel();
+        if (!model || model.getLanguageId() !== 'python') return;
+        const uri = activeUri();
+        if (!uri) return;
+        lspApi.change({ documentUri: uri, content: model.getValue(), language: 'python' }).catch(() => {});
+      }, 700);
+    });
+  }
+
   function handleEditorMount(editor, monaco) {
     editorRef.current = editor;
+    monacoRef.current = monaco;
+    registerEditorSnippets(monaco);
+    if (!markersSubscribedRef.current) {
+      markersSubscribedRef.current = true;
+      try {
+        // Any diagnostic change (TS/JS/HTML/CSS workers, run markers) refreshes
+        // the Problems panel.
+        monaco.editor.onDidChangeMarkers(() => refreshProblems());
+      } catch (_) { /* ignore */ }
+    }
+    if (!lspProvidersRef.current) {
+      lspProvidersRef.current = true;
+      registerLspProviders(editor, monaco);
+    }
+    refreshProblems();
     const decorationsCollection = editor.createDecorationsCollection([]);
     const currentUserName = user?.fullName || user?.name || 'You';
 
@@ -1234,6 +2042,37 @@ export default function Editor() {
   async function handleCreateFile(e) {
     e.preventDefault();
     if (!newFileName.trim()) return;
+    if (selectedRepo && !selectedProject) {
+      // Repo mode: the remote tree stays server-owned — stage the new file
+      // locally and let Commit & Push publish it (see handleGitAction).
+      const name = newFileName.trim();
+      const dir = (newFilePath || '/').replace(/\/+$/, '');
+      const full = `${dir}/${name}`.replace(/\/{2,}/g, '/');
+      const key = getFileKey({ path: full, name });
+      const entry = {
+        _id: key,
+        id: key,
+        name,
+        path: full, // GitHub entries carry the full path
+        language: newFileLang,
+        content: newFileContent,
+        source: 'github',
+        pending: true,
+      };
+      openContentsRef.current[key] = newFileContent;
+      openOriginalsRef.current[key] = newFileContent;
+      remoteBaselineRef.current[key] = ''; // not on the remote yet → shows in SCM
+      setRepoPending((prev) => [...prev.filter((f) => getFileKey(f) !== key), entry]);
+      setShowNewModal(false);
+      setNewFileName('');
+      setNewFileLang('javascript');
+      setNewFileContent('');
+      refreshGitModified();
+      setStatus({ type: 'success', msg: 'File staged — Commit & Push to publish it' });
+      openFile(entry);
+      loadFile(entry);
+      return;
+    }
     try {
       setCreating(true);
       const filePath = newFilePath || '/';
@@ -1274,6 +2113,29 @@ export default function Editor() {
   async function handleCreateFolder(e) {
     e.preventDefault();
     if (!newFolderName.trim()) return;
+    if (selectedRepo && !selectedProject) {
+      // Repo mode: stage a .gitkeep placeholder (git can't track empty
+      // folders) until Commit & Push publishes it.
+      const name = newFolderName.trim();
+      const dir = (newFolderPath || '/').replace(/\/+$/, '');
+      const full = `${dir}/${name}`.replace(/\/{2,}/g, '/');
+      const entry = {
+        _id: `pending-dir:${full}`,
+        id: `pending-dir:${full}`,
+        name: '.gitkeep',
+        path: full,
+        language: 'text',
+        content: '',
+        source: 'github',
+        pending: true,
+      };
+      setRepoPending((prev) => [...prev.filter((f) => getFileKey(f) !== getFileKey(entry)), entry]);
+      setShowNewFolderModal(false);
+      setNewFolderName('');
+      setStatus({ type: 'success', msg: 'Folder staged — Commit & Push to publish it' });
+      setExpandedFolders((prev) => ({ ...prev, [full]: true }));
+      return;
+    }
     try {
       setCreating(true);
       const folderPath = newFolderPath || '/';
@@ -1309,49 +2171,175 @@ export default function Editor() {
     } else if (selectedRepo) {
       await loadGithubRepoFiles(selectedRepo);
     } else {
-      await loadFiles();
+      await loadFiles(workspaceId);
     }
   }
 
   const gatherDeploymentFiles = useCallback(() => {
-    const sourceFiles = selectedProject
+    const base = selectedProject
       ? files
       : selectedRepo
         ? (files.length ? files : (selectedFile ? [selectedFile] : []))
         : (selectedFile ? [selectedFile] : []);
+    // Staged repo-mode entries ride along until Commit & Push publishes them.
+    const sourceFiles = selectedRepo && !selectedProject && repoPending.length
+      ? [...base, ...repoPending]
+      : base;
 
     if (!sourceFiles.length) return [];
 
-    return sourceFiles.map((file) => {
-      const pageValue = openContentsRef.current[getFileKey(file)] ?? file.content ?? '';
-      const contentValue = typeof pageValue === 'string' ? pageValue : '';
+    const seenPaths = new Set();
+    return sourceFiles.filter((f) => {
+      const p = fileFullPath(f);
+      if (seenPaths.has(p)) return false;
+      seenPaths.add(p);
+      return true;
+    }).map((file) => {
+      const key = getFileKey(file);
+      const rawValue = openContentsRef.current[key] ?? parkedRef.current[key]?.c ?? file.content;
+      const hasContent = typeof rawValue === 'string';
+      const contentValue = hasContent ? rawValue : '';
       const pathValue = (file.path || '/').replace(/\\/g, '/').replace(/\/+$|^\/+$/, '/');
       return {
         name: file.name,
         path: pathValue === '/' ? '/' : pathValue,
+        // Full path (dir + name for CodeFiles, full for GitHub entries) —
+        // consumers that must not guess the shape use this.
+        fullPath: fileFullPath(file),
         content: contentValue,
         language: file.language || 'plaintext',
+        // GitHub blob sha lets the backend resolve content via the blob API
+        // when the tarball fetch can't cover a file.
+        sha: file.sha || undefined,
+        // Marks client-provided content (including intentional empties) as
+        // final so the server's backfill does not overwrite it.
+        _resolved: hasContent,
       };
     });
-  }, [files, getFileKey, selectedFile, selectedProject, selectedRepo]);
+  }, [files, repoPending, getFileKey, selectedFile, selectedProject, selectedRepo]);
+
+  // ---- Save-triggered auto-redeploy -----------------------------------
+  // After a successful save, if this project/repo already has a deployment,
+  // republish it (same subdomain) with the current editor buffers. No GitHub
+  // push involved — the edited files are what get deployed.
+
+  function findOwnDeployment() {
+    const pid = selectedProject?._id || selectedProject?.id || null;
+    const owner = selectedRepo?.owner?.login || selectedRepo?.owner || selectedRepo?.ownerName || '';
+    const repoFull = selectedRepo ? (selectedRepo.fullName || `${owner}/${selectedRepo.name}`) : null;
+    return deployments.find((d) => {
+      const dk = d.projectKey || (d.projectId?._id ? String(d.projectId._id) : (d.projectId ? String(d.projectId) : null));
+      if (pid && dk && dk === String(pid)) return true;
+      if (repoFull && d.repoFullName && d.repoFullName === repoFull) return true;
+      return false;
+    }) || null;
+  }
+
+  function pollDeploymentToTerminal(id, subdomain, redeployWhenDone) {
+    if (redeployWhenDone) pollWhenDoneRef.current[subdomain] = true;
+    if (pollTimersRef.current[subdomain]) return;
+    let tries = 0;
+    pollTimersRef.current[subdomain] = setInterval(async () => {
+      tries += 1;
+      try {
+        const data = await apiFetch(`/api/deployments/${id}`);
+        const d = data?.deployment;
+        if (d) {
+          setDeployments((prev) => prev.map((x) => (x._id === id
+            ? { ...x, status: d.status, deployedUrl: d.deployedUrl, fault: d.fault, failureStage: d.failureStage, errorMessage: d.errorMessage }
+            : x)));
+        }
+        const done = !d || ['success', 'failed', 'stopped'].includes(d.status) || tries > 200;
+        if (done) {
+          clearInterval(pollTimersRef.current[subdomain]);
+          delete pollTimersRef.current[subdomain];
+          const whenDone = !!pollWhenDoneRef.current[subdomain];
+          delete pollWhenDoneRef.current[subdomain];
+          if (whenDone) triggerRedeploy({ subdomain, _id: id });
+        }
+      } catch (_) {
+        clearInterval(pollTimersRef.current[subdomain]);
+        delete pollTimersRef.current[subdomain];
+      }
+    }, 3000);
+  }
+
+  async function triggerRedeploy(dep) {
+    const key = dep.subdomain || String(dep._id);
+    if (autoRedeployRef.current.has(key)) return;
+    autoRedeployRef.current.add(key);
+    try {
+      const deploymentFiles = gatherDeploymentFiles();
+      if (!deploymentFiles.length) throw new Error('Nothing to deploy — open your files first.');
+      const payload = {
+        projectId: selectedProject?._id || selectedProject?.id || null,
+        subdomain: dep.subdomain,
+        companyId: selectedProject?.workspaceId || workspaceId,
+        source: selectedRepo ? 'github' : selectedProject ? 'project' : 'local',
+        repo: selectedRepo ? {
+          owner: selectedRepo.owner?.login || selectedRepo.owner || selectedRepo.ownerName,
+          name: selectedRepo.name,
+          defaultBranch: selectedRepo.default_branch || 'main',
+          fullName: selectedRepo.fullName || selectedRepo.name,
+        } : null,
+        files: deploymentFiles,
+      };
+      const data = await apiFetch('/api/deployments', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      if (data?.deployment) {
+        setDeployments((prev) => {
+          const next = prev.filter((d) => d._id !== data.deployment._id && d.subdomain !== data.deployment.subdomain);
+          return [data.deployment, ...next];
+        });
+        setStatus({ type: 'success', msg: `Auto-redeploying ${dep.subdomain}.buildrshq.dev…` });
+        setTimeout(() => setStatus(null), 3000);
+        pollDeploymentToTerminal(data.deployment._id, dep.subdomain, false);
+      }
+    } catch (err) {
+      setStatus({ type: 'error', msg: `Auto-redeploy failed: ${err?.data?.error || err?.data?.message || err?.message}` });
+      setTimeout(() => setStatus(null), 4000);
+    } finally {
+      autoRedeployRef.current.delete(key);
+    }
+  }
+
+  function maybeAutoRedeploy() {
+    const dep = findOwnDeployment();
+    if (!dep || !dep.subdomain) return;
+    if (['pending', 'building', 'deploying'].includes(dep.status)) {
+      setStatus({ type: 'success', msg: 'Saved — waiting for the current deploy, then republishing…' });
+      pollDeploymentToTerminal(dep._id, dep.subdomain, true);
+      return;
+    }
+    triggerRedeploy(dep);
+  }
 
   async function handleGitAction(action) {
-    if (selectedRepo && !workspaceId) {
+    // A selected GitHub repo always drives version control, even inside a
+    // workspace — branch/status/commits follow the selected repo.
+    if (selectedRepo) {
       try {
         if (action === 'status') {
-          setGitStatus({ success: true, branch: selectedRepo.default_branch || 'main', ahead: 0, behind: 0, modified: [] });
-          setStatus({ type: 'success', msg: `GitHub repo ${selectedRepo.fullName || selectedRepo.name} selected` });
+          await loadRepoGitStatus(selectedRepo);
+          setStatus({ type: 'success', msg: `Status refreshed for ${selectedRepo.fullName || selectedRepo.name}` });
+          setTimeout(() => setStatus(null), 2000);
           return;
         }
 
         if (action === 'pull') {
           await loadGithubRepoFiles(selectedRepo);
+          await loadRepoGitStatus(selectedRepo);
           setStatus({ type: 'success', msg: 'GitHub repo refreshed' });
+          setTimeout(() => setStatus(null), 2000);
           return;
         }
 
-        if (action === 'push') {
-          const filesToPush = gatherDeploymentFiles().filter((file) => !!file.name && !!file.content);
+        if (action === 'commit' || action === 'push') {
+          const filesToPush = gatherDeploymentFiles().filter(
+            (file) => !!file.name && typeof file.content === 'string'
+          );
           if (!filesToPush.length) {
             setStatus({ type: 'error', msg: 'No file changes to push to the selected repository.' });
             return;
@@ -1359,14 +2347,19 @@ export default function Editor() {
 
           const repoOwner = selectedRepo.owner?.login || selectedRepo.owner || selectedRepo.ownerName;
           const repoName = selectedRepo.name;
+          const message = (commitMsg || '').trim()
+            || `Update ${filesToPush.length} file(s) from Buildrs HQ`;
           const data = await apiFetch('/api/github-advanced/push', {
             method: 'POST',
             body: JSON.stringify({
               owner: repoOwner,
               repo: repoName,
-              branch: selectedRepo.default_branch || 'main',
-              files: filesToPush.map((file) => ({ path: file.path === '/' ? file.name : `${file.path.replace(/^\/+|\/+$/g, '')}/${file.name}`, content: file.content })),
-              message: `Update ${filesToPush[0].name} from Buildrs HQ`,
+              branch: selectedRepo.default_branch || selectedRepo.defaultBranch || 'main',
+              files: filesToPush.map((file) => ({
+                path: (file.fullPath || fileFullPath(file)).replace(/^\/+/, ''),
+                content: file.content,
+              })),
+              message,
             }),
           });
 
@@ -1374,7 +2367,31 @@ export default function Editor() {
             throw new Error(data.message || 'GitHub push failed');
           }
 
-          setStatus({ type: 'success', msg: `Pushed ${filesToPush.length} file(s) to ${repoOwner}/${repoName}` });
+          // Push published everything — local drafts now match the remote.
+          const fullName = selectedRepo.fullName || `${repoOwner}/${repoName}`;
+          Object.keys(openContentsRef.current).forEach((k) => {
+            if (String(k).startsWith('github:')) {
+              remoteBaselineRef.current[k] = openContentsRef.current[k];
+            }
+          });
+          Object.keys(parkedRef.current).forEach((k) => {
+            const e = parkedRef.current[k];
+            if (e?.s === 'gh' && (!e.r || e.r === fullName)) delete parkedRef.current[k];
+          });
+          openFiles.forEach((f) => {
+            const k = getFileKey(f);
+            if (String(k).startsWith('github:')) openDirtyRef.current[k] = false;
+          });
+          schedulePersist();
+          refreshGitModified();
+          setCommitMsg('');
+          setRepoPending([]); // staged entries are on the remote now
+          await loadRepoGitStatus(selectedRepo).catch(() => {});
+
+          setStatus({
+            type: 'success',
+            msg: `Pushed ${filesToPush.length} file(s): “${message.split('\n')[0]}”`,
+          });
           return;
         }
       } catch (e) {
@@ -1394,9 +2411,53 @@ export default function Editor() {
         setStatus({ type: 'success', msg: 'Git status refreshed' });
         return;
       }
-      const data = await apiFetch(`/api/git/${action}`, { method: 'POST', body: JSON.stringify({ workspaceId, fileId: selectedFile?._id }) });
-      setGitStatus(data);
+
+      if (action === 'commit') {
+        const message = (commitMsg || '').trim();
+        if (!message) {
+          setStatus({ type: 'error', msg: 'Write a commit message first.' });
+          return;
+        }
+        const commit = () => apiFetch('/api/git/commit', {
+          method: 'POST',
+          body: JSON.stringify({ workspaceId, message }),
+        });
+        let data = await commit();
+        if (data?.success === false && /not a git repository/i.test(String(data.error || ''))) {
+          // First commit in this workspace: initialise the repo, then retry.
+          await apiFetch('/api/git/init', {
+            method: 'POST',
+            body: JSON.stringify({
+              workspaceId,
+              userName: user?.fullName || 'CODEX User',
+              userEmail: user?.email || 'user@codex.dev',
+            }),
+          }).catch(() => null);
+          data = await commit();
+        }
+        if (data?.success === false) throw new Error(data.error || 'Commit failed');
+        setCommitMsg('');
+        const st = await apiFetch(`/api/git/status/${workspaceId}`).catch(() => null);
+        if (st && st.success !== false) setGitStatus(st);
+        setStatus({
+          type: 'success',
+          msg: `Committed “${message.split('\n')[0]}”`,
+        });
+        return;
+      }
+
+      const data = await apiFetch(`/api/git/${action}`, {
+        method: 'POST',
+        body: JSON.stringify({ workspaceId, fileId: selectedFile?._id }),
+      });
+      if (data?.success === false) throw new Error(data.error || `Git ${action} failed`);
+      setGitStatus((prev) => (data && (data.branch !== undefined || data.modified !== undefined)
+        ? { ...(prev || {}), ...data }
+        : prev));
       setStatus({ type: 'success', msg: `Git ${action} done` });
+      if (action === 'push' || action === 'pull') {
+        await loadGitStatus().catch(() => {});
+      }
     } catch (e) {
       setStatus({ type: 'error', msg: `Git ${action} failed: ${e.message}` });
     }
@@ -1513,6 +2574,7 @@ export default function Editor() {
         setStatus({ type: 'success', msg: `Deploying to ${subdomain}.buildrshq.dev...` });
         setShowSubdomainInput(false);
         setDeploySubdomain('');
+        setLogDeployId(data.deployment._id);
         setTimeout(loadDeployments, 5000);
       }
     } catch (err) {
@@ -1536,8 +2598,22 @@ export default function Editor() {
     }
   }
 
-  async function handleSandboxStart() {
-    const previewTarget = selectedFile || files[0] || null;
+  // Patch the list entry when the log modal polls a newer status (keeps the
+  // status pill in sync without refetching the whole list).
+  function handleDeploymentUpdate(upd) {
+    if (!upd?._id) return;
+    setDeployments((prev) => prev.map((d) => {
+      if (d._id !== upd._id) return d;
+      if (d.status === upd.status && d.deployedUrl === upd.deployedUrl) return d;
+      return { ...d, status: upd.status, deployedUrl: upd.deployedUrl, fault: upd.fault, failureStage: upd.failureStage };
+    }));
+  }
+
+  async function handleSandboxStart(fileOverride) {
+    // Also used as a click handler — ignore the event object it receives.
+    const previewTarget = (fileOverride && typeof fileOverride === 'object' && fileOverride.name)
+      ? fileOverride
+      : (selectedFile || files[0] || null);
     if (!previewTarget) {
       setStatus({ type: 'error', msg: 'Select a file to preview first.' });
       return;
@@ -1545,12 +2621,25 @@ export default function Editor() {
 
     try {
       setStatus({ type: 'success', msg: 'Starting sandbox...' });
+      const { files: collected, safePath } = collectActiveFiles(undefined);
+      const entryRel = safePath(fileFullPath(previewTarget));
+      const entryContent = openContentsRef.current[getFileKey(previewTarget)]
+        ?? previewTarget.content
+        ?? content
+        ?? '';
+      if (entryRel && !collected.some((f) => f.path === entryRel)) {
+        collected.unshift({ path: entryRel, content: typeof entryContent === 'string' ? entryContent : '' });
+      }
+      const rawId = String(previewTarget._id || previewTarget.id || '');
       const payload = {
-        fileId: previewTarget._id || previewTarget.id || null,
+        // Only send a real Mongo id — GitHub/pending pseudo-ids would make
+        // CodeFile.findById throw a cast error server-side.
+        fileId: /^[0-9a-f]{24}$/i.test(rawId) ? rawId : null,
         name: previewTarget.name,
         path: previewTarget.path || '/',
         language: previewTarget.language || 'javascript',
-        content: openContentsRef.current[getFileKey(previewTarget)] ?? previewTarget.content ?? content ?? '',
+        content: typeof entryContent === 'string' ? entryContent : '',
+        files: collected.slice(0, 200),
         source: selectedRepo ? 'github' : selectedProject ? 'project' : 'local',
       };
 
@@ -1558,10 +2647,17 @@ export default function Editor() {
         method: 'POST',
         body: JSON.stringify(payload),
       });
-      if (data.sandboxUrl) {
-        setSandboxUrl(data.sandboxUrl);
+      // Prefer the path form: behind Render's proxy the server's own
+      // protocol/host can be wrong (http → mixed-content iframe).
+      const url = data.sandboxPath
+        ? `${API_BASE_URL}${data.sandboxPath}`
+        : data.sandboxUrl;
+      if (url) {
+        setSandboxUrl(url);
         setStatus({ type: 'success', msg: 'Sandbox ready!' });
         setTimeout(() => setStatus(null), 2000);
+      } else {
+        setStatus({ type: 'error', msg: 'Sandbox did not start' });
       }
     } catch (err) {
       setStatus({ type: 'error', msg: `Sandbox error: ${err.message}` });
@@ -1586,12 +2682,20 @@ export default function Editor() {
     try {
       await apiFetch(`/api/code-editor/files/${file._id}`, { method: 'DELETE' });
       setFiles((prev) => prev.filter((f) => f._id !== file._id));
+      const delKey = getFileKey(file);
+      delete openContentsRef.current[delKey];
+      delete openDirtyRef.current[delKey];
+      delete openOriginalsRef.current[delKey];
+      delete remoteBaselineRef.current[delKey];
+      delete parkedRef.current[delKey];
+      setOpenFiles((prev) => prev.filter((f) => getFileKey(f) !== delKey));
       if (selectedFile?._id === file._id) {
         setSelectedFile(null);
         setContent('');
         originalContentRef.current = '';
         setDirty(false);
       }
+      schedulePersist();
       toastSuccess('File deleted');
     } catch (err) {
       toastError(err.message || 'Delete failed');
@@ -1635,6 +2739,9 @@ export default function Editor() {
     },
     {
       id: 'run', label: 'Run', items: [
+        { label: 'Run File', kbd: '⌘R', run: () => handleRun() },
+        { label: 'Stop Run', run: stopRun },
+        { label: null },
         { label: 'Deploy Project...', run: handleDeploy },
         { label: 'Start Sandbox', run: handleSandboxStart },
         { label: null },
@@ -1666,6 +2773,8 @@ export default function Editor() {
     const cmds = [
       { kind: 'command', label: 'File: New File', icon: FilePlus, run: () => setShowNewModal(true) },
       { kind: 'command', label: 'File: Save', icon: Save, run: handleSave },
+      { kind: 'command', label: 'Run: Run File', icon: Play, run: handleRun },
+      { kind: 'command', label: 'Run: Stop Run', icon: XCircle, run: stopRun },
       { kind: 'command', label: 'Git: Refresh Status', icon: GitBranch, run: () => handleGitAction('status') },
       { kind: 'command', label: 'Deploy: Deploy Project', icon: Rocket, run: handleDeploy },
       { kind: 'command', label: 'Sandbox: Start preview', icon: Box, run: handleSandboxStart },
@@ -1690,8 +2799,15 @@ export default function Editor() {
   };
 
   const extList = languages.filter((l) => l.allowed !== false);
-  const modifiedCount = gitStatus?.modified?.length || 0;
+  const modifiedCount = (gitStatus?.modified?.length || 0)
+    + (gitStatus?.created?.length || 0)
+    + (gitStatus?.deleted?.length || 0);
   const blockCount = languages.filter((l) => l.allowed === false).length;
+  const problemCounts = useMemo(
+    () => countProblems([...externalProblems, ...problemList]),
+    [externalProblems, problemList]
+  );
+  const allProblems = [...externalProblems, ...problemList];
   const filePathSegs = selectedFile ? String(selectedFile.path || selectedFile.name || '').split('/').filter(Boolean) : [];
   const commandStats = [
     { label: 'Files', value: files.length, tone: 'cyan', icon: FileCode },
@@ -1937,65 +3053,130 @@ export default function Editor() {
                       <button type="button" className="ed-sidebar-btn" onClick={() => handleGitAction('status')} title="Refresh status"><RefreshCw className="w-3.5 h-3.5" /></button>
                     </div>
                   </div>
-                  <div className="ed-sidebar-body">
-                    <div className="ed-stat">
+                  <div className="ed-sidebar-body ed-scm-body">
+                    <div className="ed-scm-summary">
                       <span className="ed-badge-dot" style={{ background: '#2fd6e6' }} />
                       <b>{gitStatus?.branch || 'main'}</b>
-                      <span style={{ color: '#6e6e6e' }}> · {gitStatus ? `${gitStatus.ahead || 0} ahead, ${gitStatus.behind || 0} behind` : 'no git info'}</span>
+                      <span className="ed-scm-remote">
+                        {gitStatus?.repo
+                          ? gitStatus.repo
+                          : gitStatus ? `${gitStatus.ahead || 0}↑ ${gitStatus.behind || 0}↓` : 'no git info'}
+                      </span>
                     </div>
+
+                    <div className="ed-scm-commit-box">
+                      <textarea
+                        className="ed-scm-commit-input"
+                        rows={3}
+                        placeholder={selectedRepo
+                          ? `Commit message — pushes to ${selectedRepo.fullName || selectedRepo.name} (Ctrl+Enter)`
+                          : 'Commit message (Ctrl+Enter)'}
+                        value={commitMsg}
+                        onChange={(e) => setCommitMsg(e.target.value)}
+                        onKeyDown={(e) => {
+                          if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                            e.preventDefault();
+                            handleGitAction('commit');
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="btn-workspace btn-primary ed-scm-commit-btn"
+                        onClick={() => handleGitAction('commit')}
+                        disabled={modifiedCount === 0 || !(commitMsg || '').trim()}
+                        title={modifiedCount === 0
+                          ? 'No changes to commit'
+                          : (commitMsg || '').trim() ? 'Commit (Ctrl+Enter)' : 'Write a commit message'}
+                      >
+                        <GitCommit className="w-3.5 h-3.5 mr-1 inline" />
+                        {selectedRepo ? 'Commit & Push' : 'Commit'}
+                      </button>
+                    </div>
+
                     {!gitStatus && (
                       <div className="ed-empty">
                         <GitBranch className="w-6 h-6" />
-                        <p className="text-xs">Opt in to version control from your workspace settings.</p>
+                        <p className="text-xs">No git information yet — press refresh.</p>
                       </div>
                     )}
-                    <div className="ed-sidebar-title" style={{ padding: '0.1rem 0.55rem' }}>
-                      Changes {modifiedCount > 0 ? `(${modifiedCount})` : ''}
+
+                    <div className="ed-scm-section">
+                      <span>Changes{modifiedCount > 0 ? ` (${modifiedCount})` : ''}</span>
                     </div>
                     {modifiedCount === 0 ? (
-                      <p className="text-xs" style={{ color: '#6e6e6e', padding: '0.2rem 0.55rem' }}>
+                      <p className="ed-scm-clean">
                         {gitStatus ? 'Working tree clean' : 'No changes'}
                       </p>
                     ) : (
-                      (gitStatus?.modified || []).map((name, i) => (
-                        <button
-                          key={`${name}-${i}`}
-                          type="button"
-                          className="ed-scm-file ed-scm-file-btn"
-                          style={{ width: '100%', textAlign: 'left' }}
-                          onClick={() => loadFileDiff(name)}
-                          title="View diff"
-                        >
-                          <GitBranch className="w-3.5 h-3.5" />
-                          <span>{name}</span>
-                        </button>
-                      ))
-                    )}
-                    {!selectedRepo && workspaceId && (
-                      <div style={{ paddingBottom: '0.5rem' }}>
-                        <button type="button" className="btn-workspace btn-secondary" style={{ width: '100%' }} onClick={() => setRepoCreateOpen(true)}>
-                          <GitBranch className="w-3.5 h-3.5 mr-1 inline" /> Create GitHub Repo
-                        </button>
+                      <div className="ed-scm-files">
+                        {[
+                          ...(gitStatus?.modified || []).map((n) => ({ n, letter: 'M', color: '#fbbf24' })),
+                          ...(gitStatus?.created || []).map((n) => ({ n, letter: 'A', color: '#34d399' })),
+                          ...(gitStatus?.deleted || []).map((n) => ({ n, letter: 'D', color: '#f87171' })),
+                        ].map(({ n, letter, color }) => (
+                          <button
+                            key={`${letter}:${n}`}
+                            type="button"
+                            className="ed-scm-file ed-scm-file-btn"
+                            onClick={() => loadFileDiff(n)}
+                            title={`View diff — ${letter}`}
+                          >
+                            <span className="ed-scm-status" style={{ color }}>{letter}</span>
+                            <span className="ed-scm-name">{n}</span>
+                          </button>
+                        ))}
                       </div>
                     )}
-                    <div style={{ display: 'flex', gap: '0.4rem', paddingTop: '0.4rem' }}>
-                      <button type="button" className="btn-workspace btn-secondary" style={{ flex: 1 }} onClick={() => handleGitAction('pull')}>Pull</button>
-                      <button type="button" className="btn-workspace btn-secondary" style={{ flex: 1 }} onClick={() => handleGitAction('commit')}>Commit</button>
-                      <button type="button" className="btn-workspace btn-primary" style={{ flex: 1 }} onClick={() => handleGitAction('push')}>Push</button>
-                    </div>
-                    <div style={{ paddingTop: '0.4rem' }}>
+
+                    {(gitStatus?.commits || []).length > 0 && (
+                      <div className="ed-scm-commits">
+                        <div className="ed-scm-section"><span>Recent commits</span></div>
+                        {gitStatus.commits.slice(0, 8).map((c) => (
+                          <div
+                            key={c.sha || c.hash}
+                            className="ed-scm-commit"
+                            title={c.url || c.message || ''}
+                            onClick={() => { if (c.url) window.open(c.url, '_blank'); }}
+                          >
+                            <span className="ed-scm-commit-msg">
+                              {(c.message || '').split('\n')[0]}
+                            </span>
+                            <span className="ed-scm-commit-meta">
+                              {(c.sha || c.hash || '').slice(0, 7)} · {c.author?.name || c.author?.username || c.author_name || ''}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="ed-scm-actions">
+                      <button type="button" className="btn-workspace btn-secondary" onClick={() => handleGitAction('pull')}>Pull</button>
                       <button
                         type="button"
                         className="btn-workspace btn-secondary"
-                        style={{ width: '100%' }}
-                        onClick={() => { setPrError(null); setPrDone(null); setPrOpen(true); }}
-                        disabled={!selectedRepo}
-                        title={selectedRepo ? 'Open pull request from current branch' : 'Select a GitHub repository in the Explorer first'}
+                        onClick={() => handleGitAction('push')}
+                        disabled={!selectedRepo && !workspaceId}
                       >
-                        <GitPullRequestArrow className="w-3.5 h-3.5 mr-1 inline" />
-                        Create Pull Request
+                        Push
                       </button>
                     </div>
+
+                    {!selectedRepo && workspaceId && (
+                      <button type="button" className="btn-workspace btn-secondary ed-scm-wide" onClick={() => setRepoCreateOpen(true)}>
+                        <GitBranch className="w-3.5 h-3.5 mr-1 inline" /> Create GitHub Repo
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="btn-workspace btn-secondary ed-scm-wide"
+                      onClick={() => { setPrError(null); setPrDone(null); setPrOpen(true); }}
+                      disabled={!selectedRepo}
+                      title={selectedRepo ? 'Open pull request from current branch' : 'Select a GitHub repository in the Explorer first'}
+                    >
+                      <GitPullRequestArrow className="w-3.5 h-3.5 mr-1 inline" />
+                      Create Pull Request
+                    </button>
                   </div>
                 </>
               )}
@@ -2013,6 +3194,15 @@ export default function Editor() {
                       <span className="ed-badge-dot" style={{ background: blockCount ? '#e5b84a' : '#28c840' }} />
                       {blockCount ? `${blockCount} language(s) locked on your tier` : 'All languages unlocked'}
                     </div>
+                    <button
+                      type="button"
+                      className="btn-workspace btn-primary"
+                      onClick={handleRun}
+                      style={{ background: running ? '#b45309' : '#16a34a', color: '#fff' }}
+                    >
+                      {running ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+                      {running ? 'Stop Run' : 'Run File (⌘R)'}
+                    </button>
                     <button type="button" className="btn-workspace btn-primary" onClick={handleSandboxStart}>
                       <Box className="w-4 h-4" /> Start Sandbox
                     </button>
@@ -2027,7 +3217,13 @@ export default function Editor() {
                     ) : (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                         {deployments.slice(0, 4).map((d, i) => (
-                          <div key={i} className="ed-scm-file">
+                          <div
+                            key={i}
+                            className="ed-scm-file"
+                            style={{ cursor: 'pointer' }}
+                            title="View build & runtime logs"
+                            onClick={() => setLogDeployId(d._id)}
+                          >
                             <span className="ed-badge-dot" style={{ background: d.status === 'success' ? '#28c840' : d.status === 'failed' ? '#f87171' : '#e5b84a' }} />
                             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.subdomain ? `${d.subdomain}.buildrshq.dev` : d._id || 'Deployment'}</span>
                           </div>
@@ -2286,7 +3482,7 @@ export default function Editor() {
                   <div className="ed-sidebar-body">
                     <div className="ed-stat">
                       <span className="ed-badge-dot" style={{ background: blockCount ? '#e5b84a' : '#28c840' }} />
-                      Environment: <b>{tier || subscription?.tier || 'Free'}</b> · {extList.length}/{languages.length || '—'} languages active
+                      Environment: <b>{subscription ? tierDisplayLabel(subscription) : tierDisplayLabel({ tier })}</b> · {extList.length}/{languages.length || '—'} languages active
                     </div>
                     <div className="ed-sidebar-title" style={{ padding: '0.1rem 0.55rem' }}>Productivity</div>
                     {FEATURE_MODULES.map((m) => (
@@ -2349,6 +3545,16 @@ export default function Editor() {
               <div className="ed-tabsbar-right">
                 {selectedFile && (
                   <>
+                    <button
+                      type="button"
+                      className="btn-workspace btn-primary"
+                      onClick={handleRun}
+                      title={running ? 'Stop run' : 'Run file (⌘R)'}
+                      style={{ background: running ? '#b45309' : '#16a34a', color: '#fff' }}
+                    >
+                      {running ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+                      {running ? 'Stop' : 'Run'}
+                    </button>
                     <button type="button" className="btn-workspace btn-secondary" onClick={() => handleDelete(selectedFile)} title="Delete file" style={{ color: '#f87171' }}>
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -2413,15 +3619,28 @@ export default function Editor() {
                   {[
                     { id: 'terminal', label: 'Terminal', icon: Terminal },
                     { id: 'problems', label: 'Problems', icon: AlertCircle },
+                    { id: 'output', label: 'Output', icon: FileCode },
                     { id: 'preview', label: 'Preview', icon: Eye },
                     { id: 'deploy', label: 'Deployments', icon: Rocket },
                   ].map((t) => (
                     <button key={t.id} type="button" className={`ed-panel-tab ${panel === t.id ? 'is-active' : ''}`} onClick={() => setPanel(t.id)}>
                       <t.icon className="w-3.5 h-3.5" /> {t.label}
-                      {t.id === 'problems' && blockCount > 0 && <span style={{ color: '#e5b84a' }}> {blockCount}</span>}
+                      {t.id === 'problems' && (problemCounts.error > 0 || blockCount > 0) && (
+                        <span style={{ color: problemCounts.error > 0 ? '#f87171' : '#e5b84a' }}> {problemCounts.error || blockCount}</span>
+                      )}
                     </button>
                   ))}
                   <div className="ed-panel-actions">
+                    {panel === 'output' && outputLines.length > 0 && (
+                      <button type="button" className="ed-panel-close" onClick={copyOutput} title="Copy output">
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    {panel === 'output' && outputLines.length > 0 && (
+                      <button type="button" className="ed-panel-close" onClick={clearOutput} title="Clear output">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                     <button type="button" className="ed-panel-close" onClick={() => setPanel(null)} title="Close panel"><X className="w-4 h-4" /></button>
                   </div>
                 </div>
@@ -2431,12 +3650,22 @@ export default function Editor() {
                     <div className="ed-term-shell">
                       <div className="ed-term-toolbar">
                         <div className="ed-term-meta">
-                          <span className="ed-term-capsule is-live">LIVE</span>
-                          <span className="ed-term-label">Workspace Shell</span>
+                          <span className={`ed-term-capsule ${termInfo ? 'is-live' : ''}`}>{termInfo ? 'LIVE' : 'CONNECTING'}</span>
+                          <span className="ed-term-label">
+                            {termInfo ? (termInfo.type === 'pty' ? 'Workspace Shell · PTY' : 'Workspace Shell · simulated') : 'Workspace Shell'}
+                            {(selectedRepo || selectedProject) && (
+                              <span className="ed-term-scope">
+                                {' — '}
+                                {selectedRepo
+                                  ? (selectedRepo.fullName || selectedRepo.name)
+                                  : selectedProject?.name}
+                              </span>
+                            )}
+                          </span>
                         </div>
                         <div className="ed-term-actions">
-                          <span className="ed-term-pill">Bash</span>
-                          <span className="ed-term-pill">BuildrsHQ</span>
+                          <span className="ed-term-pill">{termInfo?.type === 'simulated' ? 'Bash (sim)' : 'Bash'}</span>
+                          {termInfo?.sessionId && <span className="ed-term-pill">{String(termInfo.sessionId).slice(-10)}</span>}
                         </div>
                       </div>
                       <div ref={terminalRef} className="ed-term-root" />
@@ -2446,9 +3675,44 @@ export default function Editor() {
                   {panel === 'problems' && (
                     <>
                       <div className="ed-stat">
-                        <CheckCircle className="w-3.5 h-3.5 ed-status-ok" style={{ verticalAlign: '-2px', marginRight: '0.4rem' }} />
-                        0 errors · 0 warnings from compiler
+                        {problemCounts.error === 0 && problemCounts.warning === 0 && problemCounts.info === 0 ? (
+                          <>
+                            <CheckCircle className="w-3.5 h-3.5 ed-status-ok" style={{ verticalAlign: '-2px', marginRight: '0.4rem' }} />
+                            0 errors · 0 warnings — no problems detected
+                          </>
+                        ) : (
+                          <>
+                            <AlertCircle className="w-3.5 h-3.5" style={{ color: problemCounts.error ? '#f87171' : '#e5b84a', verticalAlign: '-2px', marginRight: '0.4rem' }} />
+                            {problemCounts.error} error(s) · {problemCounts.warning} warning(s) · {problemCounts.info} info
+                          </>
+                        )}
                       </div>
+                      {allProblems.length > 0 && (
+                        <div style={{ overflowY: 'auto', minHeight: 0, flex: 1 }}>
+                          {allProblems.map((p, i) => (
+                            <button
+                              key={`${p.file || ''}:${p.line || 0}:${p.column || 0}:${i}`}
+                              type="button"
+                              className="ed-scm-file ed-scm-file-btn"
+                              style={{
+                                width: '100%', textAlign: 'left',
+                                color: p.severity === 'error' ? '#f87171' : p.severity === 'warning' ? '#e5b84a' : '#7bd197',
+                              }}
+                              onClick={() => {
+                                if (p.line) jumpToProblem(p);
+                              }}
+                              title={p.message}
+                            >
+                              <span style={{ display: 'flex', gap: '0.4rem', alignItems: 'baseline' }}>
+                                <span style={{ color: '#6e6e6e', fontSize: '0.66rem', whiteSpace: 'nowrap' }}>
+                                  {p.file ? `${p.file}:` : ''}{p.line || 1}:{p.column || 1}
+                                </span>
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.message}</span>
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       {blockCount > 0 ? (
                         <div className="ed-stat">
                           <AlertCircle className="w-3.5 h-3.5" style={{ color: '#e5b84a', verticalAlign: '-2px', marginRight: '0.4rem' }} />
@@ -2461,10 +3725,51 @@ export default function Editor() {
                           {modifiedCount} modified file(s) — commit them from Source Control.
                         </div>
                       )}
-                      {!blockCount && !modifiedCount && (
+                      {!allProblems.length && !blockCount && !modifiedCount && (
                         <div className="ed-stat">All systems nominal. No problems to report.</div>
                       )}
                     </>
+                  )}
+
+                  {panel === 'output' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', fontSize: '0.72rem' }}>
+                      {outputLines.length === 0 ? (
+                        <div className="ed-empty" style={{ flex: 1 }}>
+                          <Play className="w-6 h-6" />
+                          <p className="text-xs">Run a file to see build &amp; program output here</p>
+                        </div>
+                      ) : (
+                        <div style={{ overflowY: 'auto', minHeight: 0, flex: 1, padding: '0.35rem 0.6rem' }}>
+                          {outputLines.map((l, i) => {
+                            const segs = ansiSegments(l.text);
+                            return (
+                              <div
+                                key={i}
+                                style={{
+                                  whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.5,
+                                  color: l.kind === 'err' ? '#f87171' : l.kind === 'sys' ? '#7bd197' : '#c7d3df',
+                                }}
+                              >
+                                {segs.length === 0 ? ' ' : segs.map((seg, j) => (
+                                  <span
+                                    key={j}
+                                    style={{
+                                      ...(seg.fg ? { color: seg.fg } : null),
+                                      ...(seg.bg ? { backgroundColor: seg.bg } : null),
+                                      ...(seg.bold ? { fontWeight: 700 } : null),
+                                      ...(seg.dim ? { opacity: 0.65 } : null),
+                                      ...(seg.underline ? { textDecoration: 'underline' } : null),
+                                    }}
+                                  >
+                                    {seg.text}
+                                  </span>
+                                ))}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                   )}
 
                   {panel === 'preview' && (
@@ -2557,7 +3862,7 @@ export default function Editor() {
                         </div>
                         <div className="ed-intel-card">
                           <span className="ed-intel-label">Environment</span>
-                          <strong>{subscription?.tier === 'enterprise' ? 'Enterprise' : subscription?.tier === 'professional' ? 'Pro' : 'Free'}</strong>
+                          <strong>{subscription ? tierDisplayLabel(subscription) : tierBadgeLabel(subscription?.tier)}</strong>
                           <small>{blockCount ? `${blockCount} language(s) locked` : 'Full toolchain enabled'}</small>
                         </div>
                         <div className="ed-intel-card">
@@ -2621,6 +3926,9 @@ export default function Editor() {
                                 d.status === 'building' || d.status === 'deploying' ? { background: 'rgba(229,184,74,0.12)', color: '#e5b84a' } :
                                 { background: 'rgba(255,255,255,0.06)', color: '#8c8c8c' }
                               }>{d.status}</span>
+                              <button type="button" onClick={() => setLogDeployId(d._id)} className="text-xs" style={{ color: '#8c8c8c' }} title="View logs">
+                                Logs
+                              </button>
                               {(d.status === 'success' || d.status === 'failed') && (
                                 <button type="button" onClick={() => stopDeployment(d._id, d.subdomain)} className="text-xs" style={{ color: '#f87171' }}>Stop</button>
                               )}
@@ -2661,8 +3969,8 @@ export default function Editor() {
               <span className="ed-status-item">{(selectedFile?.language || detectLanguage(selectedFile?.name) || 'text').toUpperCase()}</span>
               <span className="ed-status-item">UTF-8</span>
               <span className="ed-status-item">Spaces: 2</span>
-              <span className={`ed-tier-badge ${subscription?.tier === 'professional' ? 'is-pro' : subscription?.tier === 'enterprise' ? '' : 'is-free'}`}>
-                {subscription?.tier === 'enterprise' ? 'Enterprise' : subscription?.tier === 'professional' ? 'Pro' : 'Free'}
+              <span className={`ed-tier-badge ${tierBadgeClass(subscription?.tier)}`} title={tierDisplayDetail(subscription)}>
+                {subscription ? tierDisplayLabel(subscription) : tierBadgeLabel(subscription?.tier)}
               </span>
             </div>
           </footer>
@@ -2846,7 +4154,7 @@ export default function Editor() {
               <div>
                 <p className="ws-label">Keyboard Shortcuts</p>
                 <div className="ed-stat" style={{ lineHeight: 2 }}>
-                  ⌘S Save · ⌘B Toggle Sidebar · ⌘P Command Palette<br />
+                  ⌘S Save · ⌘R Run · ⌘B Toggle Sidebar · ⌘P Command Palette<br />
                   ⌘` Terminal · ⌘W Close Tab · ⌘N New File
                 </div>
               </div>
@@ -2886,6 +4194,14 @@ export default function Editor() {
         confirmText="Delete"
         variant="danger"
       />
+
+      {logDeployId && (
+        <DeploymentLogsModal
+          deploymentId={logDeployId}
+          onClose={() => setLogDeployId(null)}
+          onUpdate={handleDeploymentUpdate}
+        />
+      )}
 
       {diffOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">

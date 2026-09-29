@@ -22,7 +22,7 @@ class AIRouterService {
       'groq': {
         name: 'Groq (Fast Completion)',
         type: 'cloud',
-        model: process.env.GROQ_MODEL || 'mixtral-8x7b-32768',
+        model: process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
         endpoint: 'https://api.groq.com/openai/v1/chat/completions',
         available: !!process.env.GROQ_API_KEY,
         apiKey: process.env.GROQ_API_KEY,

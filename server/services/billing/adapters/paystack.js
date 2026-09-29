@@ -16,7 +16,7 @@ class PaystackAdapter extends PaymentAdapter {
     return s;
   }
 
-  async createCheckout({ userId, email, plan = 'professional', amount, currency = 'NGN', callbackUrl }) {
+  async createCheckout({ userId, email, plan = 'pro', amount, currency = 'NGN', callbackUrl }) {
     const axios = require('axios');
     const res = await axios.post(
       'https://api.paystack.co/transaction/initialize',

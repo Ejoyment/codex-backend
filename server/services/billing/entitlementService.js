@@ -3,6 +3,7 @@
  * Updated ONLY via verified, idempotent webhooks (dedupe by event ID).
  */
 const Entitlement = require('../../models/EntitlementModel');
+const { canonicalTier } = require('../../../utils/tierNames');
 
 async function getOrCreateEntitlement(userId) {
   let e = await Entitlement.findOne({ userId });
@@ -31,7 +32,7 @@ async function applyWebhookEvent(normalized) {
     err.code = 'DUPLICATE_EVENT';
     throw err;
   }
-  if (plan) entitlement.plan = plan;
+  if (plan) entitlement.plan = canonicalTier(plan);
   if (status) entitlement.status = status;
   if (provider) entitlement.provider = provider;
   if (customerId) entitlement.providerCustomerId = String(customerId);

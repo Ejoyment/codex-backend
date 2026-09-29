@@ -10,7 +10,7 @@ export default function VerifyEmail() {
   const router = useRouter();
   const setAuth = useAuthStore((s) => s.setAuth);
   const toast = useToastStore();
-  const [inputs, setInputs] = useState(['', '', '', '']);
+  const [inputs, setInputs] = useState(['', '', '', '', '', '']);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -40,8 +40,8 @@ export default function VerifyEmail() {
   const submit = async (e) => {
     e.preventDefault();
     const otp = inputs.join('');
-    if (otp.length !== 4) {
-      toast.error('Please enter the complete 4-digit code');
+    if (otp.length !== 6) {
+      toast.error('Please enter the complete 6-digit code');
       return;
     }
     setSubmitting(true);
@@ -57,7 +57,7 @@ export default function VerifyEmail() {
         router.push('/verify-success');
       } else {
         toast.error(result.message || 'Invalid OTP. Please try again.');
-        setInputs(['', '', '', '']);
+        setInputs(['', '', '', '', '', '']);
       }
     } catch (err) {
       if (err.data?.message) {
@@ -75,7 +75,7 @@ export default function VerifyEmail() {
       const result = await authApi.resendOTP(sessionStorage.getItem('userEmail'));
       if (result.success) {
         toast.success('Verification code has been resent to your email!');
-        setInputs(['', '', '', '']);
+        setInputs(['', '', '', '', '', '']);
       } else {
         toast.error(result.message || 'Error resending code');
       }

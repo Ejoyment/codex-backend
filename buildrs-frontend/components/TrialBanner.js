@@ -27,7 +27,7 @@ export default function TrialBanner({ trial }) {
     text = 'Add a payment method to continue uninterrupted.';
   } else {
     title = `Free trial · ${trial.daysLeft} ` + (trial.daysLeft !== 1 ? 'days' : 'day') + ' remaining';
-    text = 'You are on the Starter plan with full features until your trial ends.';
+    text = 'You are on the Pro plan with full features until your trial ends.';
   }
 
   return (

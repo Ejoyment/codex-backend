@@ -45,7 +45,7 @@ const globalLimiter = rateLimit({
 
 // Import trial enforcement middleware
 const { checkTrialStatus, enforceProjectLimit, enforceAIAccess } = require('./middleware/trial');
-const { enforceCreditPool, enforceCloudComputeLimit, enforceDeploymentLimit, enforceDebugRoomAccess, enforceDebugRoomLimit, enforceSpecEngineLevel } = require('./middleware/tierEnforcement');
+const { enforceCreditPool, enforceCloudComputeLimit, enforceDeploymentLimit, enforceDebugRoomAccess, enforceDebugRoomLimit } = require('./middleware/tierEnforcement');
 const CreditPoolService = require('./utils/creditPoolService');
 const { enforceSecurityHeaders } = require('./utils/securityHeaders');
 
@@ -174,6 +174,11 @@ app.use(cors({
     },
     credentials: true
 }));
+// Large-payload routes (deployment file lists, GitHub push) exceed
+// express.json()'s 100kb default, which silently 413s big projects before
+// the route handler runs. Parse them with a bigger cap first; the global
+// parser below skips bodies already parsed (req._body set).
+app.use(['/api/deployments', '/api/github-advanced'], express.json({ limit: '50mb' }));
 app.use(express.json({
     // Phase 3 — capture exact raw bytes for payment webhook signature
     // verification (Stripe/Paystack/Flutterwave). express.json() consumes the
@@ -259,6 +264,8 @@ const lspRoutes = require('./routes/lsp');
 const vfsRoutes = require('./routes/vfs');
 const terminalRoutes = require('./routes/terminal');
 const gitRoutes = require('./routes/git');
+const ideRoutes = require('./routes/ide');
+const sandboxRoutes = require('./routes/sandbox');
 const debugRoutes = require('./routes/debug');
 const agentConfirmationRoutes = require('./routes/agent-confirmation');
 const flutterwaveBillingRoutes = require('./routes/flutterwave-billing');
@@ -322,12 +329,16 @@ app.use('/api/mcp', mcpRoutes);
 app.use('/api/lsp', lspRoutes);
 app.use('/api/vfs', vfsRoutes);
 app.use('/api/terminal', terminalRoutes);
+app.use('/api/ide', ideRoutes);
+app.use('/api/sandbox', sandboxRoutes);
 app.use('/api/git', gitRoutes);
 app.use('/api/debug', debugRoutes);
 app.use('/api/deployments', deploymentRoutes);
 app.use('/api/agent-confirmation', agentConfirmationRoutes);
 app.use('/api/v1/agent', checkTrialStatus, enforceCreditPool(), enforceCloudComputeLimit(), agentV1Routes);
-app.use('/api/v1/specs', checkTrialStatus, enforceSpecEngineLevel('full_sdd'), specRoutes);
+// Specs are project-level and part of the local project workflow, so the spec
+// engine is no longer tier-gated: a solo developer gets the full spec loop.
+app.use('/api/v1/specs', checkTrialStatus, specRoutes);
 // Phase 3 — Ephemeral Debug Rooms + Multi-rail billing (entitlement-gated)
 app.use('/api/v1/rooms', checkTrialStatus, enforceDebugRoomAccess(), enforceDebugRoomLimit(), roomsRoutes);
 app.use('/api/v1/billing', billingV1Routes);

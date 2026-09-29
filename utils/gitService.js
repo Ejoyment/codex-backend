@@ -65,10 +65,60 @@ class GitService {
   }
 
   /**
+   * Mirror the workspace's VFS (source of truth: Mongo CodeFiles) into the
+   * on-disk git dir. Without this the tmpdir repo is empty, so status is
+   * always clean and commits capture nothing. Also prunes files that were
+   * deleted from the VFS so git sees the deletions.
+   */
+  async hydrateFromVFS(workspaceId) {
+    assertValidWorkspaceId(workspaceId);
+    const CodeFile = require('../models/CodeFile');
+    const vfs = require('./virtualFileSystem');
+
+    const workspacePath =
+      this.workspacePaths.get(workspaceId) ||
+      path.join(os.tmpdir(), 'codex-git', workspaceId);
+    await fs.mkdir(workspacePath, { recursive: true });
+
+    const docs = await CodeFile.find({ company: workspaceId })
+      .select('name path content')
+      .lean();
+
+    const written = new Set();
+    for (const doc of docs) {
+      const rel = String(vfs.fullPathOf(doc)).replace(/^\/+/, '');
+      if (!rel || rel === '.' || rel.split('/').includes('..')) continue;
+      const target = path.normalize(path.join(workspacePath, rel));
+      if (target !== workspacePath && !target.startsWith(workspacePath + path.sep)) continue;
+      await fs.mkdir(path.dirname(target), { recursive: true });
+      await fs.writeFile(target, doc.content || '');
+      written.add(target);
+    }
+
+    const gitDir = path.join(workspacePath, '.git');
+    const prune = async (dir) => {
+      const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
+      for (const entry of entries) {
+        const full = path.join(dir, entry.name);
+        if (full === gitDir) continue;
+        if (entry.isDirectory()) {
+          await prune(full);
+          const remaining = await fs.readdir(full).catch(() => null);
+          if (remaining && remaining.length === 0) await fs.rmdir(full).catch(() => {});
+        } else if (!written.has(full)) {
+          await fs.unlink(full).catch(() => {});
+        }
+      }
+    };
+    await prune(workspacePath);
+  }
+
+  /**
    * Get repository status
    */
   async status(workspaceId) {
     try {
+      await this.hydrateFromVFS(workspaceId).catch(() => {});
       const git = await this.getGit(workspaceId);
       const status = await git.status();
 
@@ -96,6 +146,7 @@ class GitService {
    */
   async diff(workspaceId, file = null) {
     try {
+      await this.hydrateFromVFS(workspaceId).catch(() => {});
       const git = await this.getGit(workspaceId);
       let diffArgs;
       if (file) {
@@ -171,6 +222,7 @@ class GitService {
    */
   async add(workspaceId, files) {
     try {
+      await this.hydrateFromVFS(workspaceId).catch(() => {});
       const git = await this.getGit(workspaceId);
       await git.add(toFileArray(files));
 
@@ -204,6 +256,7 @@ class GitService {
   async commit(workspaceId, message, files = null) {
     try {
       assertSafeMessage(message);
+      await this.hydrateFromVFS(workspaceId).catch(() => {});
       const git = await this.getGit(workspaceId);
 
       if (files) {
@@ -319,6 +372,19 @@ class GitService {
       };
     } catch (error) {
       console.error('Git merge error:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  async deleteBranch(workspaceId, branchName, baseBranch = 'main') {
+    try {
+      const git = await this.getGit(workspaceId);
+      const branches = await git.branchLocal();
+      if (branches.current === branchName) await git.checkout(baseBranch);
+      await git.deleteLocalBranch(branchName, true);
+      return { success: true, branch: branchName };
+    } catch (error) {
+      console.error('Git delete branch error:', error);
       return { success: false, error: error.message };
     }
   }

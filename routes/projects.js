@@ -5,6 +5,7 @@ const { enforceProjectLimit } = require('../middleware/trial');
 const LocalProject = require('../models/LocalProject');
 const LocalTask = require('../models/LocalTask');
 const CodeFile = require('../models/CodeFile');
+const { resolveAccessibleSpecs, getAccessibleProjects } = require('../utils/specAccess');
 
 /**
  * @swagger
@@ -25,10 +26,7 @@ const CodeFile = require('../models/CodeFile');
 router.get('/', authenticateToken, async (req, res) => {
     try {
         const userId = req.userId || req.user.userId || req.user.id;
-        const projects = await LocalProject.find({ 
-            userId, 
-            isArchived: false 
-        }).sort({ updatedAt: -1 });
+        const projects = await getAccessibleProjects(userId);
 
         res.json({
             success: true,
@@ -152,6 +150,14 @@ router.get('/tasks', authenticateToken, async (req, res) => {
                 priority: t.priority,
                 taskType: t.taskType,
                 projectId: t.projectId,
+                companyId: t.companyId,
+                specIds: t.specIds,
+                figmaNodeId: t.figmaNodeId,
+                blockedBy: t.blockedBy,
+                branch: t.branch,
+                pullRequestId: t.pullRequestId,
+                agentSessionId: t.agentSessionId,
+                agentExecution: t.agentExecution,
                 dueDate: t.dueDate,
                 labels: t.labels,
                 createdAt: t.createdAt,
@@ -196,10 +202,21 @@ router.get('/tasks', authenticateToken, async (req, res) => {
 router.post('/tasks', authenticateToken, async (req, res) => {
     try {
         const userId = req.userId || req.user.userId || req.user.id;
-        const { title, description, priority, taskType, dueDate, projectId } = req.body;
+        const { title, description, priority, taskType, dueDate, projectId, companyId, specIds = [], figmaNodeId, blockedBy = [] } = req.body;
 
         if (!title) {
             return res.status(400).json({ success: false, message: 'Task title is required' });
+        }
+
+        if (!['critical', 'high', 'medium', 'low', 'urgent'].includes(priority || 'medium')) {
+            return res.status(400).json({ success: false, message: 'Invalid task priority' });
+        }
+
+        if (specIds.length) {
+            const resolved = await resolveAccessibleSpecs(specIds, { projectId, userId });
+            if (!resolved.ok) {
+                return res.status(400).json({ success: false, message: resolved.message });
+            }
         }
 
         const task = await LocalTask.create({
@@ -207,10 +224,14 @@ router.post('/tasks', authenticateToken, async (req, res) => {
             title,
             description: description || '',
             priority: priority || 'medium',
-            taskType: taskType || 'local',
+            taskType: ['github', 'gitlab'].includes(taskType) ? taskType : 'local',
             dueDate: dueDate ? new Date(dueDate) : null,
             projectId: projectId || null,
-            status: 'pending'
+            companyId: companyId || null,
+            specIds,
+            figmaNodeId: figmaNodeId || null,
+            blockedBy,
+            status: 'backlog'
         });
 
         res.status(201).json({
@@ -257,7 +278,7 @@ router.post('/tasks', authenticateToken, async (req, res) => {
 router.put('/tasks/:taskId', authenticateToken, async (req, res) => {
     try {
         const userId = req.userId || req.user.userId || req.user.id;
-        const { status, title, description, priority } = req.body;
+        const { status, title, description, priority, specIds, companyId, figmaNodeId, blockedBy } = req.body;
 
         const task = await LocalTask.findOne({ _id: req.params.taskId, userId });
         if (!task) {
@@ -265,14 +286,38 @@ router.put('/tasks/:taskId', authenticateToken, async (req, res) => {
         }
 
         if (status) {
+            if (!['backlog', 'in_progress', 'in_review', 'blocked', 'done', 'pending', 'in-progress', 'completed'].includes(status)) {
+                return res.status(400).json({ success: false, message: 'Invalid task status' });
+            }
             task.status = status;
-            if (status === 'completed') {
+            if (status === 'completed' || status === 'done') {
                 task.completedAt = new Date();
             }
         }
         if (title) task.title = title;
         if (description !== undefined) task.description = description;
-        if (priority) task.priority = priority;
+        if (priority) {
+            if (!['critical', 'high', 'medium', 'low', 'urgent'].includes(priority)) {
+                return res.status(400).json({ success: false, message: 'Invalid task priority' });
+            }
+            task.priority = priority;
+        }
+        if (specIds !== undefined) {
+            const resolved = await resolveAccessibleSpecs(specIds, { projectId: task.projectId || null, userId });
+            if (!resolved.ok) {
+                return res.status(400).json({ success: false, message: resolved.message });
+            }
+            task.specIds = specIds;
+            if (companyId) task.companyId = companyId;
+        }
+        if (figmaNodeId !== undefined) task.figmaNodeId = figmaNodeId || null;
+        if (blockedBy !== undefined) {
+            const blockers = await LocalTask.find({ _id: { $in: blockedBy }, userId });
+            if (blockers.length !== new Set(blockedBy.map(String)).size) {
+                return res.status(400).json({ success: false, message: 'One or more blocking tasks were not found' });
+            }
+            task.blockedBy = blockedBy;
+        }
 
         await task.save();
 
@@ -618,10 +663,11 @@ router.get('/:projectId/files', authenticateToken, async (req, res) => {
             return res.status(404).json({ success: false, message: 'Project not found' });
         }
 
-        // If project has a workspaceId, use that; otherwise use project's company
-        const query = project.workspaceId 
-            ? { company: project.workspaceId }
-            : { project: projectId };
+        // Strict project scoping. The old fallback (`{ company: workspaceId }`
+        // when the project had a workspace) returned EVERY file of the whole
+        // workspace, so one project's explorer showed another project's files.
+        // Files created from the editor carry `project`, so scope by it.
+        const query = { project: projectId };
 
         const files = await CodeFile.find(query)
             .select('name path language size updatedAt createdAt')

@@ -149,7 +149,7 @@ router.post('/verify', authenticateToken, async (req, res) => {
             if (!subscription) {
                 subscription = new Subscription({
                     userId,
-                    tier: 'professional',
+                    tier: 'pro',
                     status: 'trial',
                     isTrialWithCard: true,
                     cardAddedAt,
@@ -170,13 +170,13 @@ router.post('/verify', authenticateToken, async (req, res) => {
                 subscription.customerId = customerId;
                 subscription.paymentId = cardToken;
                 subscription.status = 'trial';
-                subscription.tier = 'professional';
+                subscription.tier = 'pro';
                 subscription.email = user.email;
                 subscription.trialEndsAt = new Date(Date.now() + (14 * 24 * 60 * 60 * 1000));
             }
 
-            // Enable professional features during trial
-            subscription.upgradeTo('professional');
+            // Enable pro-tier features during trial
+            subscription.upgradeTo('pro');
             await subscription.save();
 
             // Schedule first charge (10 seconds from now)

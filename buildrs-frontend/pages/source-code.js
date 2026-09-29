@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import Head from 'next/head';
 import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
+import { useCurrentCompany } from '../hooks/useCurrentCompany';
 import { apiFetch } from '../lib/api';
 import {
   FileCode,
@@ -12,6 +13,9 @@ import {
   Loader2,
   FolderTree,
   Search,
+  Folder,
+  FolderOpen,
+  Github,
 } from 'lucide-react';
 
 const LANG_COLORS = {
@@ -32,6 +36,10 @@ const LANG_COLORS = {
   markdown: '#083fa1',
   shell: '#89e051',
   sql: '#e38c00',
+  kotlin: '#a97bff',
+  scala: '#c22d40',
+  haskell: '#5e5086',
+  julia: '#a05fdd',
   text: '#6e7681',
 };
 
@@ -63,77 +71,156 @@ function detectLanguage(filename) {
     sh: 'shell',
     bash: 'shell',
     sql: 'sql',
+    kt: 'kotlin',
+    kts: 'kotlin',
+    scala: 'scala',
+    hs: 'haskell',
+    jl: 'julia',
   };
   return map[ext] || 'text';
 }
 
-function FileTree({ files, selectedFile, onSelect }) {
-  const [openDirs, setOpenDirs] = useState({});
+// Canonical language for coloring/badging: trust the stored value only when
+// it's a known color key (repo blobs store raw extensions like 'js').
+function fileLang(file) {
+  const raw = String(file?.language || '').toLowerCase();
+  return LANG_COLORS[raw] ? raw : detectLanguage(file?.name);
+}
 
-  const grouped = files.reduce((acc, file) => {
-    const lang = file.language || detectLanguage(file.name);
-    if (!acc[lang]) acc[lang] = [];
-    acc[lang].push(file);
-    return acc;
-  }, {});
+// Two file shapes: GitHub tree entries store the FULL path ('/src/app.js'),
+// workspace CodeFiles store the DIRECTORY ('/src') plus name ('app.js').
+function fullFilePath(f) {
+  const name = f.name || '';
+  const base = String(f.path || '/').replace(/\/+$/, '');
+  if (!name) return base || '/';
+  if (!base) return `/${name}`;
+  if (base === name || base.endsWith(`/${name}`)) return `/${base}`.replace(/^\/+/, '/');
+  return `${base}/${name}`;
+}
 
-  const sortedLangs = Object.keys(grouped).sort();
+// Flat file list → folder tree ({type:'folder'|'file', children}) using the
+// full path, so folders from any source render as a real explorer.
+function buildTree(files) {
+  const root = { type: 'folder', name: '', path: '/', children: new Map() };
+  files.forEach((f) => {
+    const full = fullFilePath(f);
+    const parts = full.split('/').filter(Boolean);
+    if (!parts.length) return;
+    // Folder markers: GitHub tree folder entries and .gitkeep placeholders
+    // create the folder itself, never a file node.
+    const marker = f.type === 'folder' || (f.name || '') === '.gitkeep';
+    const dirParts = marker ? parts : parts.slice(0, -1);
+    const leaf = marker ? null : parts[parts.length - 1];
+    let cur = root;
+    let rp = '';
+    for (let i = 0; i < dirParts.length; i++) {
+      rp = rp ? `${rp}/${dirParts[i]}` : dirParts[i];
+      if (!cur.children.has(dirParts[i]) || cur.children.get(dirParts[i]).type !== 'folder') {
+        cur.children.set(dirParts[i], { type: 'folder', name: dirParts[i], path: rp, children: new Map() });
+      }
+      cur = cur.children.get(dirParts[i]);
+    }
+    if (leaf && (!cur.children.has(leaf) || cur.children.get(leaf).type !== 'folder')) {
+      cur.children.set(leaf, { type: 'file', name: leaf, file: f, full });
+    }
+  });
+  return root;
+}
 
-  if (files.length === 0) {
-    return (
-      <div className="src-empty py-10">
-        <div className="src-empty-ico">
-          <FolderTree className="w-6 h-6" />
-        </div>
-        <p className="dash-empty-title">No source files found</p>
-      </div>
-    );
-  }
+function sortNodes(nodes) {
+  return nodes.sort((a, b) => {
+    if ((a.type === 'folder') !== (b.type === 'folder')) return a.type === 'folder' ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
+}
 
-  return (
-    <div>
-      {sortedLangs.map((lang) => (
-        <div key={lang} className="src-lang-group">
+// Selection is keyed per group so the same path in a workspace and in a repo
+// never highlight/replace each other ('ws:/a.js' vs 'gh:owner/repo:/a.js').
+function makeSelectKey(groupKey, full) {
+  return groupKey === 'workspace' || groupKey === 'other'
+    ? `${groupKey}:${full}`
+    : `gh:${groupKey}:${full}`;
+}
+
+// Recursive folder/file rows inside one group.
+function GroupNodes({ groupKey, node, depth, openDirs, setOpenDirs, forceOpen, selectedKey, onSelect }) {
+  const children = sortNodes([...node.children.values()]);
+  return children.map((child) => {
+    if (child.type === 'folder') {
+      const dk = `${groupKey}:${child.path}`;
+      const open = forceOpen || (dk in openDirs ? openDirs[dk] : true);
+      return (
+        <div key={dk}>
           <button
             type="button"
-            onClick={() =>
-              setOpenDirs((prev) => ({ ...prev, [lang]: !prev[lang] }))
-            }
-            className="src-lang-head"
+            className="src-dir"
+            style={{ paddingLeft: `${8 + depth * 12}px` }}
+            onClick={() => setOpenDirs((prev) => ({ ...prev, [dk]: !open }))}
           >
-            {openDirs[lang] === false ? (
-              <ChevronRight className="w-3 h-3" />
+            {open ? (
+              <ChevronRight className="w-3 h-3 src-dir-chev is-open" />
             ) : (
-              <ChevronDown className="w-3 h-3" />
+              <ChevronRight className="w-3 h-3 src-dir-chev" />
             )}
-            <span
-              className="src-lang-dot"
-              style={{ background: LANG_COLORS[lang] || '#6e7681' }}
-            />
-            <span>{lang}</span>
-            <span className="src-lang-count">{grouped[lang].length}</span>
+            {open ? (
+              <FolderOpen className="w-3.5 h-3.5" style={{ color: '#9aa7b8' }} />
+            ) : (
+              <Folder className="w-3.5 h-3.5" style={{ color: '#9aa7b8' }} />
+            )}
+            <span>{child.name}</span>
           </button>
-          {openDirs[lang] !== false &&
-            grouped[lang]
-              .sort((a, b) => a.name.localeCompare(b.name))
-              .map((file) => (
-                <button
-                  key={file._id}
-                  type="button"
-                  onClick={() => onSelect(file)}
-                  className={`src-file ${selectedFile?._id === file._id ? 'is-active' : ''}`}
-                >
-                  <FileCode
-                    className="w-4 h-4 flex-shrink-0"
-                    style={{
-                      color: LANG_COLORS[lang] || '#6e7681',
-                    }}
-                  />
-                  <span>{file.name}</span>
-                </button>
-              ))}
+          {open && (
+            <GroupNodes
+              groupKey={groupKey}
+              node={child}
+              depth={depth + 1}
+              openDirs={openDirs}
+              setOpenDirs={setOpenDirs}
+              forceOpen={forceOpen}
+              selectedKey={selectedKey}
+              onSelect={onSelect}
+            />
+          )}
         </div>
-      ))}
+      );
+    }
+    const lang = fileLang(child.file);
+    const key = makeSelectKey(groupKey, child.full);
+    return (
+      <button
+        key={child.full}
+        type="button"
+        onClick={() => onSelect(child.file, groupKey)}
+        className={`src-file ${selectedKey === key ? 'is-active' : ''}`}
+        style={{ paddingLeft: `${24 + depth * 12}px` }}
+      >
+        <FileCode className="w-4 h-4 flex-shrink-0" style={{ color: LANG_COLORS[lang] || '#6e7681' }} />
+        <span>{child.name}</span>
+      </button>
+    );
+  });
+}
+
+// One collapsible top-level section: Workspace / a GitHub repo / Other files.
+function GroupSection({ icon, label, count, open, loading, error, children }) {
+  return (
+    <div className="src-lang-group">
+      <button type="button" onClick={() => open.onToggle()} className="src-lang-head">
+        {open.isOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+        {icon}
+        <span>{label}</span>
+        {loading ? (
+          <Loader2 className="w-3 h-3 src-lang-count animate-spin" />
+        ) : count !== null && count !== undefined ? (
+          <span className="src-lang-count">{count}</span>
+        ) : null}
+      </button>
+      {open.isOpen && (
+        <>
+          {error && <p className="src-group-note is-error">{error}</p>}
+          {!error && children}
+        </>
+      )}
     </div>
   );
 }
@@ -141,14 +228,27 @@ function FileTree({ files, selectedFile, onSelect }) {
 export default function SourceCode() {
   const user = useAuthStore((s) => s.user);
   const subscription = useAuthStore((s) => s.subscription);
+  const { selectedCompany } = useCurrentCompany();
 
   const [files, setFiles] = useState([]);
+  const [repos, setRepos] = useState([]);
   const [languages, setLanguages] = useState([]);
   const [selectedFile, setSelectedFile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [clock, setClock] = useState('');
+  // Section open/closed: 'workspace'/'other' default open, repos closed
+  // until clicked (their file list is fetched lazily on first open).
+  const [openGroups, setOpenGroups] = useState({ workspace: true, other: true });
+  // Folder open/closed inside groups, keyed `${group}:${dirPath}`.
+  const [openDirs, setOpenDirs] = useState({});
+  // repo fullName → { status: 'loading'|'ready'|'error', files, error }
+  const [repoTrees, setRepoTrees] = useState({});
+  // Content fetch state for lazy (GitHub) files: keyed by selectKey.
+  const [loadingKey, setLoadingKey] = useState(null);
+  const [contentError, setContentError] = useState(null);
+  const repoContentRef = useRef({});
 
   useEffect(() => {
     const tick = () => {
@@ -165,9 +265,10 @@ export default function SourceCode() {
       try {
         setLoading(true);
         setError(null);
-        const [filesRes, langsRes] = await Promise.allSettled([
+        const [filesRes, langsRes, reposRes] = await Promise.allSettled([
           apiFetch('/api/code-editor/files'),
           apiFetch('/api/code-editor/languages'),
+          apiFetch('/api/github/repos?per_page=30'),
         ]);
         if (cancelled) return;
         if (filesRes.status === 'fulfilled' && filesRes.value.success) {
@@ -175,6 +276,9 @@ export default function SourceCode() {
         }
         if (langsRes.status === 'fulfilled' && langsRes.value.success) {
           setLanguages(langsRes.value.languages || []);
+        }
+        if (reposRes.status === 'fulfilled' && reposRes.value?.success) {
+          setRepos(reposRes.value.repositories || []);
         }
       } catch (err) {
         if (!cancelled) setError(err.message || 'Failed to load source files');
@@ -186,23 +290,112 @@ export default function SourceCode() {
     return () => { cancelled = true; };
   }, []);
 
-  const filtered = searchQuery.trim()
-    ? files.filter((f) =>
-        f.name.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : files;
+  const q = searchQuery.trim().toLowerCase();
+  const allowedLangs = useMemo(
+    () => languages.filter((l) => l.allowed).map((l) => l.name.toLowerCase()),
+    [languages],
+  );
 
-  const allowedLangs = languages
-    .filter((l) => l.allowed)
-    .map((l) => l.name.toLowerCase());
+  const matchesQuery = (f) => {
+    if (!q) return true;
+    return f.name?.toLowerCase().includes(q) || fullFilePath(f).toLowerCase().includes(q);
+  };
+  const langAllowed = (f) => allowedLangs.length === 0 || allowedLangs.includes(fileLang(f));
+  const visible = (list) => list.filter((f) => langAllowed(f) && matchesQuery(f));
 
-  const displayFiles =
-    allowedLangs.length > 0
-      ? filtered.filter((f) => {
-          const lang = (f.language || detectLanguage(f.name)).toLowerCase();
-          return allowedLangs.includes(lang);
-        })
-      : filtered;
+  // Workspace = the current workspace's files; the rest (other workspaces /
+  // stray files) is shown after the repo dropdowns.
+  const workspaceAll = useMemo(() => {
+    if (!selectedCompany) return files;
+    const sid = String(selectedCompany._id);
+    return files.filter((f) => String(f.company || '') === sid);
+  }, [files, selectedCompany]);
+  const restAll = useMemo(() => {
+    if (!selectedCompany) return [];
+    const sid = String(selectedCompany._id);
+    return files.filter((f) => String(f.company || '') !== sid);
+  }, [files, selectedCompany]);
+
+  const workspaceFiles = visible(workspaceAll);
+  const restFiles = visible(restAll);
+
+  const repoVisibleCount = (fullName) => {
+    const st = repoTrees[fullName];
+    if (!st || st.status !== 'ready') return null;
+    return visible(st.files).length;
+  };
+  const totalVisible =
+    workspaceFiles.length
+    + restFiles.length
+    + repos.reduce((n, r) => n + (repoVisibleCount(r.fullName) || 0), 0);
+
+  const forceOpen = !!q;
+
+  const toggleGroup = (key) => {
+    setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  // Lazily fetch a repo's recursive tree the first time it is expanded.
+  const toggleRepo = async (repo) => {
+    const key = repo.fullName;
+    const willOpen = !openGroups[key];
+    setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }));
+    if (!willOpen || repoTrees[key]) return;
+    setRepoTrees((prev) => ({ ...prev, [key]: { status: 'loading', files: [] } }));
+    try {
+      const data = await apiFetch(`/api/github/repos/${repo.owner}/${repo.name}/git/tree?recursive=1`);
+      const all = [...(data?.files || []), ...(data?.folders || [])];
+      setRepoTrees((prev) => ({ ...prev, [key]: { status: 'ready', files: all } }));
+    } catch (err) {
+      setRepoTrees((prev) => ({
+        ...prev,
+        [key]: { status: 'error', files: [], error: err.message || 'Failed to load repo files' },
+      }));
+    }
+  };
+
+  const selectFile = async (file, groupKey) => {
+    const full = fullFilePath(file);
+    if (groupKey === 'workspace' || groupKey === 'other') {
+      setContentError(null);
+      setSelectedFile({ ...file, selectKey: makeSelectKey(groupKey, full), group: groupKey });
+      return;
+    }
+    const repo = repos.find((r) => r.fullName === groupKey);
+    const selectKey = makeSelectKey(groupKey, full);
+    const cached = repoContentRef.current[selectKey];
+    setContentError(null);
+    setSelectedFile({ ...file, selectKey, group: groupKey, content: cached });
+    if (cached !== undefined) return;
+    setLoadingKey(selectKey);
+    try {
+      const pathNoSlash = full.replace(/^\/+/, '');
+      const ref = repo?.defaultBranch ? `?ref=${encodeURIComponent(repo.defaultBranch)}` : '';
+      const data = await apiFetch(
+        `/api/github/repos/${repo.owner}/${repo.name}/contents/${encodeURIComponent(pathNoSlash)}${ref}`,
+      );
+      const content = data?.file?.content;
+      if (typeof content !== 'string') throw new Error('File content unavailable');
+      repoContentRef.current[selectKey] = content;
+      setSelectedFile((prev) => (prev && prev.selectKey === selectKey ? { ...prev, content } : prev));
+    } catch (err) {
+      setContentError(err.message || 'Failed to load file content');
+      setSelectedFile((prev) => (prev && prev.selectKey === selectKey ? { ...prev, content: '' } : prev));
+    } finally {
+      setLoadingKey(null);
+    }
+  };
+
+  const selectedLang = selectedFile ? fileLang(selectedFile) : 'text';
+  const isRepoSelection = selectedFile
+    && selectedFile.group !== 'workspace'
+    && selectedFile.group !== 'other';
+  const contentLoading = selectedFile && loadingKey === selectedFile.selectKey;
+
+  const workspaceTree = useMemo(() => buildTree(workspaceFiles), [workspaceFiles]);
+  const restTree = useMemo(() => buildTree(restFiles), [restFiles]);
+  const nothingAtAll =
+    !loading && files.length === 0 && repos.length === 0;
 
   return (
     <AuthGuard>
@@ -231,7 +424,7 @@ export default function SourceCode() {
               {!loading && (
                 <span className="dash-pill hidden md:inline-flex">
                   <span className="dot" />
-                  {displayFiles.length} file{displayFiles.length !== 1 ? 's' : ''}
+                  {totalVisible} file{totalVisible !== 1 ? 's' : ''}
                 </span>
               )}
               <div className="src-search">
@@ -254,7 +447,7 @@ export default function SourceCode() {
                   <div className="src-pane-head">
                     <FolderTree className="w-4 h-4" style={{ color: '#2fd6e6' }} />
                     <span className="src-pane-title">Files</span>
-                    {!loading && <span className="src-count">{displayFiles.length}</span>}
+                    {!loading && <span className="src-count">{totalVisible}</span>}
                   </div>
                   <div className="src-tree">
                     {loading ? (
@@ -269,12 +462,118 @@ export default function SourceCode() {
                         <p className="dash-empty-title">Error loading files</p>
                         <p className="dash-empty-sub">{error}</p>
                       </div>
+                    ) : nothingAtAll ? (
+                      <div className="src-empty py-10">
+                        <div className="src-empty-ico">
+                          <FolderTree className="w-6 h-6" />
+                        </div>
+                        <p className="dash-empty-title">No source files found</p>
+                      </div>
                     ) : (
-                      <FileTree
-                        files={displayFiles}
-                        selectedFile={selectedFile}
-                        onSelect={setSelectedFile}
-                      />
+                      <>
+                        {/* 1 — current workspace */}
+                        {workspaceFiles.length > 0 && (
+                          <GroupSection
+                            groupKey="workspace"
+                            icon={
+                              openGroups.workspace || forceOpen ? (
+                                <FolderOpen className="w-3.5 h-3.5" style={{ color: '#2fd6e6' }} />
+                              ) : (
+                                <Folder className="w-3.5 h-3.5" style={{ color: '#2fd6e6' }} />
+                              )
+                            }
+                            label="Workspace"
+                            count={workspaceFiles.length}
+                            open={{
+                              isOpen: forceOpen || !!openGroups.workspace,
+                              onToggle: () => toggleGroup('workspace'),
+                            }}
+                          >
+                            <GroupNodes
+                              groupKey="workspace"
+                              node={workspaceTree}
+                              depth={0}
+                              openDirs={openDirs}
+                              setOpenDirs={setOpenDirs}
+                              forceOpen={forceOpen}
+                              selectedKey={selectedFile?.selectKey}
+                              onSelect={selectFile}
+                            />
+                          </GroupSection>
+                        )}
+
+                        {/* 2 — one dropdown per GitHub repo (lazy-loaded) */}
+                        {repos.map((repo) => {
+                          const key = repo.fullName;
+                          const st = repoTrees[key];
+                          const isOpen = forceOpen && st?.status === 'ready' ? true : !!openGroups[key];
+                          const count = st?.status === 'ready' ? repoVisibleCount(key) : null;
+                          return (
+                            <GroupSection
+                              key={key}
+                              groupKey={key}
+                              icon={<Github className="w-3.5 h-3.5" style={{ color: '#8b949e' }} />}
+                              label={repo.fullName}
+                              count={count}
+                              loading={st?.status === 'loading'}
+                              error={st?.status === 'error' ? st.error : null}
+                              open={{ isOpen, onToggle: () => toggleRepo(repo) }}
+                            >
+                              {st?.status === 'ready' && (
+                                <GroupNodes
+                                  groupKey={key}
+                                  node={buildTree(visible(st.files))}
+                                  depth={0}
+                                  openDirs={openDirs}
+                                  setOpenDirs={setOpenDirs}
+                                  forceOpen={forceOpen}
+                                  selectedKey={selectedFile?.selectKey}
+                                  onSelect={selectFile}
+                                />
+                              )}
+                              {st?.status === 'loading' && (
+                                <p className="src-group-note">Loading repository files…</p>
+                              )}
+                            </GroupSection>
+                          );
+                        })}
+
+                        {/* 3 — the rest (other workspaces / stray files) */}
+                        {restFiles.length > 0 && (
+                          <GroupSection
+                            groupKey="other"
+                            icon={<FileCode className="w-3.5 h-3.5" style={{ color: '#e5b84a' }} />}
+                            label="Other files"
+                            count={restFiles.length}
+                            open={{
+                              isOpen: forceOpen || !!openGroups.other,
+                              onToggle: () => toggleGroup('other'),
+                            }}
+                          >
+                            <GroupNodes
+                              groupKey="other"
+                              node={restTree}
+                              depth={0}
+                              openDirs={openDirs}
+                              setOpenDirs={setOpenDirs}
+                              forceOpen={forceOpen}
+                              selectedKey={selectedFile?.selectKey}
+                              onSelect={selectFile}
+                            />
+                          </GroupSection>
+                        )}
+
+                        {workspaceFiles.length === 0
+                          && restFiles.length === 0
+                          && repos.length === 0 && (
+                          <div className="src-empty py-10">
+                            <div className="src-empty-ico">
+                              <FolderTree className="w-6 h-6" />
+                            </div>
+                            <p className="dash-empty-title">No source files found</p>
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 </aside>
@@ -286,13 +585,7 @@ export default function SourceCode() {
                       <div className="src-viewer-head">
                         <FileCode
                           className="w-4 h-4 flex-shrink-0"
-                          style={{
-                            color:
-                              LANG_COLORS[
-                                selectedFile.language ||
-                                  detectLanguage(selectedFile.name)
-                              ] || '#6e7681',
-                          }}
+                          style={{ color: LANG_COLORS[selectedLang] || '#6e7681' }}
                         />
                         <span className="src-viewer-name">
                           {selectedFile.name}
@@ -300,34 +593,45 @@ export default function SourceCode() {
                         <span
                           className="src-lang-badge"
                           style={{
-                            background:
-                              (LANG_COLORS[
-                                selectedFile.language ||
-                                  detectLanguage(selectedFile.name)
-                              ] || '#6e7681') + '22',
-                            color:
-                              LANG_COLORS[
-                                selectedFile.language ||
-                                  detectLanguage(selectedFile.name)
-                              ] || '#6e7681',
+                            background: (LANG_COLORS[selectedLang] || '#6e7681') + '22',
+                            color: LANG_COLORS[selectedLang] || '#6e7681',
                           }}
                         >
-                          {(selectedFile.language ||
-                            detectLanguage(selectedFile.name)
-                          ).toUpperCase()}
+                          {selectedLang.toUpperCase()}
                         </span>
-                        <span className="src-updated">
-                          {selectedFile.updatedAt
-                            ? new Date(
-                                selectedFile.updatedAt
-                              ).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-                            : ''}
-                        </span>
+                        {isRepoSelection && (
+                          <span className="src-updated">
+                            <Github className="w-3 h-3" style={{ verticalAlign: '-2px', marginRight: '4px' }} />
+                            {selectedFile.group}
+                          </span>
+                        )}
+                        {selectedFile.updatedAt ? (
+                          <span className="src-updated">
+                            {new Date(selectedFile.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          </span>
+                        ) : null}
                       </div>
                       <div className="src-canvas">
-                        <pre className="src-code">
-                          {selectedFile.content || '(empty file)'}
-                        </pre>
+                        {contentLoading ? (
+                          <div className="src-empty">
+                            <div className="src-empty-ico">
+                              <Loader2 className="w-6 h-6 animate-spin" />
+                            </div>
+                            <p className="dash-empty-title">Loading file...</p>
+                          </div>
+                        ) : contentError ? (
+                          <div className="src-empty">
+                            <div className="src-empty-ico">
+                              <Code2 className="w-7 h-7" />
+                            </div>
+                            <p className="dash-empty-title">Could not load file</p>
+                            <p className="dash-empty-sub">{contentError}</p>
+                          </div>
+                        ) : (
+                          <pre className="src-code">
+                            {selectedFile.content || '(empty file)'}
+                          </pre>
+                        )}
                       </div>
                     </>
                   ) : (

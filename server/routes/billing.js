@@ -16,7 +16,7 @@ const router = express.Router();
 // Checkout needs auth; webhook must NOT (providers call it without a JWT).
 router.post('/checkout', authenticateToken, async (req, res) => {
   try {
-    const { plan = 'professional', interval = 'monthly', country, currency, provider: hint, amount, email, successUrl, cancelUrl, callbackUrl, redirectUrl, lat, lng } = req.body || {};
+    const { plan = 'pro', interval = 'monthly', country, currency, provider: hint, amount, email, successUrl, cancelUrl, callbackUrl, redirectUrl, lat, lng } = req.body || {};
     const provider = hint || routeProvider({ country, currency });
     const adapter = getAdapter(provider);
     const FRONTEND = process.env.FRONTEND_URL || 'http://localhost:5500';

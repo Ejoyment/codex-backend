@@ -119,4 +119,19 @@ describe('Middleware - permissionMatrix', () => {
   test('should export middleware functions', () => {
     expect(permissionMatrix).toBeDefined();
   });
+
+  test('should authorize team creation from the stored Pro trial subscription', async () => {
+    const User = require('../models/User');
+    const Subscription = require('../models/Subscription');
+    const userId = '507f1f77bcf86cd799439011';
+    jest.spyOn(User, 'findById').mockResolvedValue({ _id: userId });
+    jest.spyOn(User, 'updateOne').mockResolvedValue({ acknowledged: true });
+    jest.spyOn(Subscription, 'findOne').mockResolvedValue(new Subscription({ userId, tier: 'pro', status: 'trial' }));
+
+    const result = await permissionMatrix.checkPermission(userId, 'create', 'company');
+
+    expect(result.allowed).toBe(true);
+    expect(result.tier).toBe('pro');
+    jest.restoreAllMocks();
+  });
 });

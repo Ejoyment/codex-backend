@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { tierDisplayLabel, tierDisplayDetail } from '../lib/tier';
 import {
   LayoutDashboard,
   CheckSquare,
@@ -36,7 +37,7 @@ const NAV_SECTIONS = [
       { href: '/editor', label: 'Editor', icon: FileCode2 },
       { href: '/source-code', label: 'Source', icon: Database },
       { href: '/ai-pair', label: 'AI Pair', icon: Sparkles },
-      { href: '/team-memory', label: 'Team Memory', icon: Database },
+      { href: '/specs', label: 'Specs', icon: FileCode2 },
       { href: '/mcp', label: 'MCP Servers', icon: Server },
     ],
   },
@@ -57,13 +58,6 @@ const NAV_SECTIONS = [
     ],
   },
 ];
-
-const TIER_LABELS = {
-  freebie: 'Free',
-  starter: 'Free',
-  professional: 'Pro',
-  enterprise: 'Enterprise',
-};
 
 export default function Sidebar({ user, subscription }) {
   const pathname = usePathname();
@@ -120,8 +114,8 @@ export default function Sidebar({ user, subscription }) {
             </div>
           </div>
         </div>
-        <div id="subscriptionBadge" className="sidebar-badge">
-          <span>{TIER_LABELS[subscription?.tier] || TIER_LABELS[user?.subscription?.tier] || 'Free'}</span>
+        <div id="subscriptionBadge" className="sidebar-badge" title={tierDisplayDetail(subscription, user?.subscription?.tier)}>
+          <span>{tierDisplayLabel(subscription, user?.subscription?.tier)}</span>
         </div>
       </div>
     </aside>

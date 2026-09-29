@@ -13,6 +13,15 @@ const TerminalLog = require('../models/TerminalLog');
 const vfs = require('./virtualFileSystem');
 const { emitWorkspaceChange } = require('./realTimeEvents');
 const unifiedStateGraph = require('./unifiedStateGraph');
+const { VpsShell, terminalTransportEnabled } = require('./vpsShell');
+
+// VFS extension → language id (shared by per-file and bulk workspace sync).
+const EXT_LANG_MAP = {
+  '.js': 'javascript', '.ts': 'typescript', '.py': 'python', '.java': 'java',
+  '.html': 'html', '.css': 'css', '.json': 'json', '.md': 'markdown',
+  '.go': 'go', '.rs': 'rust', '.cpp': 'cpp', '.c': 'c',
+  '.php': 'php', '.rb': 'ruby', '.sh': 'shell', '.sql': 'sql'
+};
 
 /**
  * Resolve an untrusted VFS-style path inside a workspace directory.
@@ -96,17 +105,21 @@ class TerminalService {
       const relativePath = path.relative(terminal.workspacePath, filePath);
       const fileName = path.basename(filePath);
       const ext = path.extname(fileName).toLowerCase();
-      const langMap = {
-        '.js': 'javascript', '.ts': 'typescript', '.py': 'python', '.java': 'java',
-        '.html': 'html', '.css': 'css', '.json': 'json', '.md': 'markdown',
-        '.go': 'go', '.rs': 'rust', '.cpp': 'cpp', '.c': 'c',
-        '.php': 'php', '.rb': 'ruby', '.sh': 'shell', '.sql': 'sql'
-      };
+      const langMap = EXT_LANG_MAP;
+      // CodeFiles store the DIRECTORY path + name. The old lookup searched
+      // for the full disk path, missed editor-created files, and then
+      // re-created them as duplicates with an inverted path shape.
+      const relPosix = relativePath.replace(/\\/g, '/');
+      const dirPosix = relPosix.includes('/') ? `/${relPosix.slice(0, relPosix.lastIndexOf('/'))}` : '/';
+      const fullVfsPath = `/${relPosix}`;
       
-      // Check if file already exists in DB
+      // Check if file already exists in DB (new or legacy full-path shape)
       const existing = await CodeFile.findOne({
         company: workspaceId,
-        path: '/' + relativePath.replace(/\\/g, '/')
+        $or: [
+          { path: dirPosix, name: fileName },
+          { path: fullVfsPath },
+        ],
       });
       
       if (!existing) {
@@ -122,7 +135,8 @@ class TerminalService {
           language: langMap[ext] || 'text',
           content,
           company: workspaceId,
-          path: '/' + relativePath.replace(/\\/g, '/'),
+          project: terminal.projectId || undefined,
+          path: dirPosix,
           createdBy: userId,
           lastModifiedBy: userId
         });
@@ -131,10 +145,12 @@ class TerminalService {
         const vfs = require('./virtualFileSystem');
         const index = vfs.indexes.get(workspaceId);
         if (index) {
-          index.set(codeFile.path, {
+          const full = vfs.fullPathOf(codeFile);
+          index.set(full, {
             id: codeFile._id.toString(),
             name: codeFile.name,
-            path: codeFile.path,
+            path: full,
+            dirPath: codeFile.path,
             size: codeFile.size,
             language: codeFile.language,
             lastModified: codeFile.updatedAt,
@@ -167,11 +183,17 @@ class TerminalService {
       if (!terminal) return;
       
       const relativePath = path.relative(terminal.workspacePath, filePath);
-      const vfsPath = '/' + relativePath.replace(/\\/g, '/');
+      const relPosix = relativePath.replace(/\\/g, '/');
+      const vfsPath = `/${relPosix}`;
+      const fileName = path.basename(filePath);
+      const dirPosix = relPosix.includes('/') ? `/${relPosix.slice(0, relPosix.lastIndexOf('/'))}` : '/';
       
       const file = await CodeFile.findOne({
         company: workspaceId,
-        path: vfsPath
+        $or: [
+          { path: dirPosix, name: fileName },
+          { path: vfsPath },
+        ],
       });
       
       if (file) {
@@ -218,12 +240,18 @@ class TerminalService {
             if (stats.isFile()) {
               // File created or modified
               const relativePath = path.relative(terminal.workspacePath, fullPath);
-              const vfsPath = '/' + relativePath.replace(/\\/g, '/');
+              const relPosix = relativePath.replace(/\\/g, '/');
+              const fileName = path.basename(fullPath);
+              const dirPosix = relPosix.includes('/') ? `/${relPosix.slice(0, relPosix.lastIndexOf('/'))}` : '/';
+              const fullVfsPath = `/${relPosix}`;
               
-              // Check if file exists in DB
+              // Check if file exists in DB (dir+name shape, legacy full-path shape)
               const existing = await CodeFile.findOne({
                 company: terminal.workspaceId,
-                path: vfsPath
+                $or: [
+                  { path: dirPosix, name: fileName },
+                  { path: fullVfsPath },
+                ],
               });
               
               if (!existing) {
@@ -257,20 +285,66 @@ class TerminalService {
                 }
               }
             } else if (stats.isDirectory()) {
-              // Directory change - invalidate VFS index
-              const vfs = require('./virtualFileSystem');
-              vfs.invalidateIndex(terminal.workspaceId);
-              
+              // New folder — drop a .gitkeep placeholder into the VFS so the
+              // explorer tree renders the folder (it never lists empty dirs).
+              const relDir = path.relative(terminal.workspacePath, fullPath).replace(/\\/g, '/');
+              if (relDir && !relDir.includes('..')) {
+                const vfs = require('./virtualFileSystem');
+                const dirPosix = `/${relDir}`;
+                try {
+                  const existing = await CodeFile.findOne({
+                    company: terminal.workspaceId,
+                    path: dirPosix,
+                    name: '.gitkeep',
+                  });
+                  if (!existing) {
+                    await CodeFile.create({
+                      name: '.gitkeep',
+                      language: 'text',
+                      content: '',
+                      company: terminal.workspaceId,
+                      project: terminal.projectId || undefined,
+                      path: dirPosix,
+                      createdBy: terminal.userId,
+                      lastModifiedBy: terminal.userId,
+                    });
+                    emitWorkspaceChange(terminal.workspaceId, 'file:created', {
+                      file: { _id: null, name: '.gitkeep', path: dirPosix, company: terminal.workspaceId },
+                    });
+                  }
+                } catch (e) {
+                  console.error('PTY folder sync error:', e);
+                }
+                vfs.invalidateIndex(terminal.workspaceId);
+              }
+
               emitWorkspaceChange(terminal.workspaceId, 'folder:changed', {
-                path: '/' + path.relative(terminal.workspacePath, fullPath).replace(/\\/g, '/')
+                path: '/' + (relDir || ''),
               });
             }
           }
         } catch (error) {
-          // File might not exist anymore (deleted)
+          // Path is gone (file deleted, or a whole directory removed).
           if (eventType === 'rename') {
-            const relativePath = path.relative(terminal.workspacePath, fullPath);
             await this.syncDeletedFileFromVFS(sessionId, fullPath, terminal.workspaceId);
+            // Sweep everything that lived under a removed directory (files at
+            // any depth plus .gitkeep folder placeholders) so the explorer
+            // doesn't keep showing a ghost folder after `rm -rf`.
+            const relDir = path.relative(terminal.workspacePath, fullPath).replace(/\\/g, '/');
+            if (relDir && !relDir.includes('..')) {
+              try {
+                const prefix = `/${relDir}`.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const rx = new RegExp(`^${prefix}(/|$)`);
+                const result = await CodeFile.deleteMany({
+                  company: terminal.workspaceId,
+                  path: rx,
+                });
+                if (result.deletedCount) {
+                  require('./virtualFileSystem').invalidateIndex(terminal.workspaceId);
+                  emitWorkspaceChange(terminal.workspaceId, 'folder:changed', { path: `/${relDir}` });
+                }
+              } catch (_) { /* best effort */ }
+            }
           }
         }
       });
@@ -292,6 +366,23 @@ class TerminalService {
 
     const sessionToken = require('crypto').randomBytes(32).toString('hex');
     const sessionId = `${userId}_${workspaceId}_${Date.now()}`;
+
+    // Project scope drives hydration AND is stamped onto files the shell
+    // creates — verify it belongs to this user before trusting it, otherwise
+    // a client could plant foreign project ids on its CodeFiles.
+    let scopedProjectId = null;
+    if (options.projectId && mongoose.isValidObjectId(options.projectId)) {
+      try {
+        const LocalProject = require('../models/LocalProject');
+        const owned = await LocalProject.findOne({ _id: options.projectId, userId }).select('_id').lean();
+        if (owned) scopedProjectId = String(options.projectId);
+      } catch (_) {
+        scopedProjectId = null;
+      }
+    }
+    const scopedRepo = (typeof options.repoFullName === 'string' && /^[\w.\-\/]{1,200}$/.test(options.repoFullName))
+      ? options.repoFullName
+      : null;
     
     // Create workspace directory
     const workspacePath = path.join(os.tmpdir(), 'codex-workspaces', sessionId);
@@ -299,6 +390,32 @@ class TerminalService {
     this.workspaces.set(sessionId, workspacePath);
 
     if (this.usePty) {
+      if (terminalTransportEnabled()) {
+        // Remote PTY: ssh → docker exec in a VPS toolbox container. The shell
+        // implements the node-pty subset (write/resize/kill/onData) so the
+        // rest of this service treats it exactly like a local pty.
+        const shell = new VpsShell({
+          sessionId,
+          workspaceId,
+          userId,
+          cols: options.cols || 80,
+          rows: options.rows || 24,
+          workspacePath,
+        });
+        this.terminals.set(sessionId, {
+          type: 'pty',
+          process: shell,
+          vps: true,
+          workspacePath,
+          userId,
+          workspaceId,
+          projectId: scopedProjectId,
+          repoFullName: scopedRepo,
+          token: sessionToken,
+          createdAt: Date.now()
+        });
+        console.log(`✓ VPS terminal queued: ${sessionId}`);
+      } else {
       // Real PTY terminal
       const shell = os.platform() === 'win32' ? 'powershell.exe' : 'bash';
       
@@ -315,6 +432,11 @@ class TerminalService {
           safeEnv.TERM = 'xterm-256color';
           safeEnv.WORKSPACE_ID = workspaceId;
           safeEnv.USER_ID = userId;
+          if (scopedProjectId) safeEnv.PROJECT_ID = scopedProjectId;
+          if (scopedRepo) safeEnv.REPO = scopedRepo;
+          // Project-aware prompt: cwd basename + current git branch, so the
+          // shell says WHERE it is instead of a random temp path.
+          safeEnv.PS1 = '\\[\\e[36m\\]\\w\\[\\e[0m\\] \\[\\e[33m\\]$(git rev-parse --abbrev-ref HEAD 2>/dev/null | sed -e "s/^/(/" -e "s/$/)/")\\[\\e[0m\\] \\[\\e[32m\\]\\$ \\[\\e[0m\\]';
           return safeEnv;
         })()
       });
@@ -325,11 +447,14 @@ class TerminalService {
         workspacePath,
         userId,
         workspaceId,
+        projectId: options.projectId || null,
+        repoFullName: options.repoFullName || null,
         token: sessionToken,
         createdAt: Date.now()
       });
 
       console.log(`✓ PTY terminal created: ${sessionId}`);
+      }
     } else {
       // Simulated terminal (fallback) - virtual VFS-backed cwd
       // Create a persistent log document for this session
@@ -367,8 +492,25 @@ class TerminalService {
       await this.syncVfsToPty(sessionId);
     }
 
-    // Setup directory watcher for PTY terminals
-    if (this.usePty) {
+    // VPS transport: start ssh+container, then push the materialized files in.
+    const vpsProcess = this.usePty ? this.terminals.get(sessionId)?.process : null;
+    if (vpsProcess && this.terminals.get(sessionId)?.vps) {
+      try {
+        await vpsProcess.start();
+        await vpsProcess.pushFiles();
+      } catch (err) {
+        try { vpsProcess.kill(); } catch (_) { /* ignore */ }
+        this.terminals.delete(sessionId);
+        this.workspaces.delete(sessionId);
+        try { await fs.rm(workspacePath, { recursive: true, force: true }); } catch (_) { /* ignore */ }
+        throw err;
+      }
+      console.log(`✓ VPS terminal created: ${sessionId}`);
+    }
+
+    // Setup directory watcher for PTY terminals (local transport only — the
+    // VPS session syncs back to the VFS on destroy instead).
+    if (this.usePty && !this.terminals.get(sessionId)?.vps) {
       this.setupDirectoryWatcher(sessionId);
     }
 
@@ -661,27 +803,27 @@ class TerminalService {
     const terminal = this.terminals.get(sessionId);
     if (!terminal || terminal.type !== 'pty') return;
 
-    let index = vfs.indexes.get(terminal.workspaceId);
-    if (!index) {
-      await vfs.buildIndex(terminal.workspaceId);
-      index = vfs.indexes.get(terminal.workspaceId);
-    }
-    if (!index) return;
+    // Direct query instead of the shared index: keeps hydration working even
+    // before an index exists, and scopes to the selected project so the shell
+    // only sees THIS project's files (the old company-wide dump mixed files
+    // from every project in the workspace into the terminal).
+    const query = { company: terminal.workspaceId };
+    if (terminal.projectId) query.project = terminal.projectId;
 
-    const CodeFile = require('../models/CodeFile');
+    const docs = await CodeFile.find(query).select('name path content').lean();
 
-    for (const [vfsPath, metadata] of index) {
+    for (const doc of docs) {
       try {
-        const file = await CodeFile.findById(metadata.id).select('content').lean();
-        if (!file) continue;
-
-        const fsPath = resolveInWorkspace(terminal.workspacePath, vfsPath);
+        // Skip GitHub-repo-style entries already stored full-path — fullPathOf
+        // normalizes both dir+name and full-path shapes.
+        const fsPath = resolveInWorkspace(terminal.workspacePath, vfs.fullPathOf(doc));
+        // Never write through a symlink that already sits at the target.
         try { const st = await fs.lstat(fsPath); if (st.isSymbolicLink()) continue; } catch (e) { if (e.code !== 'ENOENT') continue; }
         const dir = path.dirname(fsPath);
         await fs.mkdir(dir, { recursive: true });
-        await fs.writeFile(fsPath, file.content || '');
+        await fs.writeFile(fsPath, doc.content || '');
       } catch (error) {
-        console.error(`Failed to sync file ${metadata.path} to PTY:`, error);
+        console.error(`Failed to sync file ${doc.path}/${doc.name} to PTY:`, error);
       }
     }
   }
@@ -695,8 +837,8 @@ class TerminalService {
     try {
       switch (event) {
         case 'file:created': {
-          const vfsPath = data.file.path;
-          const fsPath = resolveInWorkspace(terminal.workspacePath, vfsPath);
+          const fsPath = resolveInWorkspace(terminal.workspacePath, vfs.fullPathOf(data.file));
+          // Never write through a symlink that already sits at the target.
           try { const st = await fs.lstat(fsPath); if (st.isSymbolicLink()) return; } catch (e) { if (e.code !== 'ENOENT') return; }
           const dir = path.dirname(fsPath);
           await fs.mkdir(dir, { recursive: true });
@@ -708,8 +850,8 @@ class TerminalService {
           break;
         }
         case 'file:updated': {
-          const vfsPath = data.file.path;
-          const fsPath = resolveInWorkspace(terminal.workspacePath, vfsPath);
+          const fsPath = resolveInWorkspace(terminal.workspacePath, vfs.fullPathOf(data.file));
+          // Never write through a symlink that already sits at the target.
           try { const st = await fs.lstat(fsPath); if (st.isSymbolicLink()) return; } catch (e) { if (e.code !== 'ENOENT') return; }
           const file = await CodeFile.findById(data.file._id).select('content').lean();
           if (file) {
@@ -771,12 +913,51 @@ class TerminalService {
    * Get terminal history (simulated only).
    * Returns in-memory history for active sessions, falls back to Mongo.
    */
+  /**
+   * Bulk upsert every file in the local PTY workspace dir back into the VFS.
+   * Used after a VPS session's pull-back so container edits persist.
+   */
+  async syncPtyDirToVfs(sessionId) {
+    const terminal = this.terminals.get(sessionId);
+    if (!terminal) return;
+
+    const walk = async (dir) => {
+      const entries = await fs.readdir(dir, { withFileTypes: true });
+      for (const e of entries) {
+        const full = path.join(dir, e.name);
+        if (e.isDirectory()) {
+          await walk(full);
+          continue;
+        }
+        if (!e.isFile()) continue;
+        const content = await fs.readFile(full, 'utf8').catch(() => null);
+        if (content === null) continue;
+        const vfsPath = '/' + path.relative(terminal.workspacePath, full).replace(/\\/g, '/');
+        await CodeFile.updateOne(
+          { company: terminal.workspaceId, path: vfsPath },
+          {
+            $set: { content, lastModifiedBy: terminal.userId },
+            $setOnInsert: {
+              name: e.name,
+              language: EXT_LANG_MAP[path.extname(e.name).toLowerCase()] || 'text',
+              company: terminal.workspaceId,
+              path: vfsPath,
+              createdBy: terminal.userId,
+            },
+          },
+          { upsert: true }
+        );
+      }
+    };
+
+    await walk(terminal.workspacePath);
+  }
+
   async getHistory(sessionId, token) {
     const terminal = this._checkAccess(sessionId, token);
     if (!terminal || terminal.type !== 'simulated') {
       return [];
     }
-
     // Return in-memory if available
     if (terminal.history && terminal.history.length > 0) {
       return terminal.history;
@@ -833,6 +1014,11 @@ class TerminalService {
     }
 
     if (terminal.type === 'pty') {
+      if (terminal.vps) {
+        // Round-trip: container workspace → local dir → VFS before teardown.
+        try { await terminal.process.pullFiles(); } catch (e) { console.warn(`VPS terminal pull-back failed: ${e.message}`); }
+        try { await this.syncPtyDirToVfs(sessionId); } catch (e) { console.warn(`VFS sync-back failed: ${e.message}`); }
+      }
       terminal.process.kill();
     }
 

@@ -292,16 +292,11 @@
                 
                 if (result.success && result.user) {
                     const user = result.user;
-                    const tier = user.subscription?.tier || 'freebie';
+                    const tier = user.subscription?.tier || 'developer';
                     const badge = document.getElementById('subscriptionBadge');
                     
                     if (badge) {
-                        const tierNames = {
-                            freebie: 'Free',
-                            starter: 'Free',
-                            professional: 'Pro',
-                            enterprise: 'Enterprise'
-                        };
+                        const tierNames = { developer: 'Free', pro: 'Pro', pro_plus: 'Pro+', team_standard: 'Team', team_premium: 'Team', enterprise: 'Enterprise' };
                         badge.textContent = tierNames[tier] || 'Free';
                     }
                 }
@@ -317,12 +312,7 @@
                     if (data.success && data.subscription) {
                         const badge = document.getElementById('subscriptionBadge');
                         if (badge) {
-                            const tierNames = {
-                                freebie: 'Free',
-                                starter: 'Free',
-                                professional: 'Pro',
-                                enterprise: 'Enterprise'
-                            };
+                            const tierNames = { developer: 'Free', pro: 'Pro', pro_plus: 'Pro+', team_standard: 'Team', team_premium: 'Team', enterprise: 'Enterprise' };
                             badge.textContent = tierNames[data.subscription.tier] || 'Free';
                         }
                     }

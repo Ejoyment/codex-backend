@@ -163,7 +163,7 @@ router.post('/verify', authenticateToken, async (req, res) => {
         if (!subscription) {
             subscription = new Subscription({
                 userId,
-                tier: 'professional',
+                tier: 'pro',
                 status: 'trial',
                 isTrialWithCard: true,
                 cardAddedAt,
@@ -183,13 +183,13 @@ router.post('/verify', authenticateToken, async (req, res) => {
             subscription.customerId = customerId;
             subscription.paymentId = authorizationCode;
             subscription.status = 'trial';
-            subscription.tier = 'professional';
+            subscription.tier = 'pro';
             subscription.trialEndsAt = new Date(Date.now() + (14 * 24 * 60 * 60 * 1000));
             subscription.paymentProvider = 'paystack';
         }
 
-        // Enable professional features during trial
-        subscription.upgradeTo('professional');
+        // Enable pro-tier features during trial
+        subscription.upgradeTo('pro');
         await subscription.save();
 
         // Schedule first charge (14 days from now - after trial ends)
@@ -323,8 +323,8 @@ router.post('/cancel', authenticateToken, async (req, res) => {
         // Cancel all pending charges
         await BillingScheduler.cancelUserCharges(userId);
 
-        // Downgrade to freebie tier (NO REFUND)
-        subscription.upgradeTo('freebie');
+        // Downgrade to developer (free) tier (NO REFUND)
+        subscription.upgradeTo('developer');
         subscription.status = 'cancelled';
         subscription.cancelledAt = new Date();
         
@@ -336,7 +336,7 @@ router.post('/cancel', authenticateToken, async (req, res) => {
         
         await subscription.save();
 
-        console.log(`✓ Subscription cancelled for user ${userId}, downgraded to freebie tier`);
+        console.log(`✓ Subscription cancelled for user ${userId}, downgraded to developer (free) tier`);
 
         res.json({
             success: true,
@@ -463,11 +463,11 @@ async function handleChargeFailed(data) {
 
         console.log(`Charge failed for user ${userId}, reference: ${reference}`);
 
-        // Update subscription status and downgrade to freebie
+        // Update subscription status and downgrade to developer
         const subscription = await Subscription.findOne({ userId });
         if (subscription) {
-            // Downgrade to freebie tier (NO REFUND)
-            subscription.upgradeTo('freebie');
+            // Downgrade to developer (free) tier (NO REFUND)
+            subscription.upgradeTo('developer');
             subscription.status = 'cancelled';
             subscription.cancelledAt = new Date();
             subscription.isTrialWithCard = false;
@@ -476,7 +476,7 @@ async function handleChargeFailed(data) {
             subscription.nextBillingDate = null;
             await subscription.save();
             
-            console.log(`✗ Payment failed for user ${userId}, downgraded to freebie tier`);
+            console.log(`✗ Payment failed for user ${userId}, downgraded to developer (free) tier`);
         }
 
     } catch (error) {
@@ -498,8 +498,8 @@ async function handleSubscriptionDisabled(data) {
         });
 
         if (subscription) {
-            // Downgrade to freebie tier (NO REFUND)
-            subscription.upgradeTo('freebie');
+            // Downgrade to developer (free) tier (NO REFUND)
+            subscription.upgradeTo('developer');
             subscription.status = 'cancelled';
             subscription.cancelledAt = new Date();
             subscription.isTrialWithCard = false;
@@ -508,7 +508,7 @@ async function handleSubscriptionDisabled(data) {
             subscription.nextBillingDate = null;
             await subscription.save();
             
-            console.log(`✓ Subscription cancelled for user ${subscription.userId}, downgraded to freebie tier`);
+            console.log(`✓ Subscription cancelled for user ${subscription.userId}, downgraded to developer (free) tier`);
         }
 
     } catch (error) {

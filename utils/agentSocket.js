@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const AgentExecution = require('../models/AgentExecution');
 const LocalTask = require('../models/LocalTask');
 const SpecModel = require('../models/SpecModel');
+const { userCanAccessSpec } = require('./specAccess');
 const aiRouterService = require('./aiRouterService');
 const sddVerificationService = require('./sddVerificationService');
 const realtimeBus = require('./realtimeBus');
@@ -113,6 +114,10 @@ class AgentSocketHandler {
       }
 
       if (specId) {
+        const spec = await SpecModel.findById(specId);
+        if (!spec || !await userCanAccessSpec(spec, socket.userId)) {
+          return socket.emit('agent:error', { message: 'Spec not found or project access denied' });
+        }
         await SpecModel.findByIdAndUpdate(specId, { updatedAt: new Date() });
       }
 
@@ -174,6 +179,11 @@ class AgentSocketHandler {
 
       const task = taskId ? await LocalTask.findById(taskId) : null;
       const spec = specId ? await SpecModel.findById(specId) : null;
+      // Spec content is fed to the model below, so never read one the socket
+      // user cannot reach.
+      if (spec && !await userCanAccessSpec(spec, socket.userId)) {
+        return socket.emit('agent:error', { message: 'Spec not found or project access denied' });
+      }
 
       const messages = [
         { role: 'system', content: `You are an autonomous AI agent executing a task. Task: ${execution.taskTitle}` },
