@@ -44,7 +44,7 @@ export default function SiteHeader() {
             >
               Sign in
             </Link>
-            <Link href="/signup" className="mkt-btn mkt-btn-primary !py-1.5 !px-4 !text-[13px]">
+            <Link href="/waitlist" className="mkt-btn mkt-btn-primary !py-1.5 !px-4 !text-[13px]">
               Start free <span className="mkt-arrow">→</span>
             </Link>
           </div>
