@@ -24,6 +24,12 @@ const waitlistSchema = new mongoose.Schema({
         default: 'landing-page',
         maxlength: 64
     },
+    name: {
+        type: String,
+        trim: true,
+        maxlength: 80,
+        default: ''
+    },
     subscribedAt: {
         type: Date,
         default: Date.now
