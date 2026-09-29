@@ -8,6 +8,7 @@ const { createCheckoutSession, createPortalSession, verifyWebhookSignature, stri
 const paymentRouter = require('../utils/paymentRouter');
 const { authenticateToken } = require('../middleware/auth');
 const { TIERS, canonicalTier } = require('../utils/tierNames');
+const { getOrCreateSubscription } = require('../middleware/trial');
 
 // Tiers that can be purchased (everything except the free developer tier)
 const PAID_TIERS = TIERS.filter((t) => t !== 'developer');
@@ -39,17 +40,7 @@ const PAID_TIERS = TIERS.filter((t) => t !== 'developer');
 // Get current subscription
 router.get('/current', authenticateToken, async (req, res) => {
     try {
-        let subscription = await Subscription.findOne({ userId: req.userId });
-        
-        // Create default subscription if none exists
-        if (!subscription) {
-            subscription = new Subscription({
-                userId: req.userId,
-                tier: 'developer',
-                status: 'active'
-            });
-            await subscription.save();
-        }
+        const subscription = await getOrCreateSubscription(req.userId);
 
         // Convert features object to array of enabled features
         const enabledFeatures = [];

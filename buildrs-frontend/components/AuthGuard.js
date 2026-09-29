@@ -12,6 +12,7 @@ export default function AuthGuard({ children }) {
   const subscription = useAuthStore((s) => s.subscription);
   const { fetchUser } = useAuth();
   const socketRef = useRef(null);
+  const subscriptionLoadedForToken = useRef(null);
 
   useEffect(() => {
     if (!token) {
@@ -33,7 +34,8 @@ export default function AuthGuard({ children }) {
         }
       }
 
-      if (!subscription) {
+      if (subscriptionLoadedForToken.current !== token) {
+        subscriptionLoadedForToken.current = token;
         try {
           const subRes = await subscriptionApi.getCurrent();
           if (subRes.subscription) {

@@ -8,6 +8,7 @@
 const User = require('../models/User');
 const CodeFile = require('../models/CodeFile');
 const Company = require('../models/Company');
+const { getOrCreateSubscription } = require('./trial');
 const { TIERS, LEGACY_TIER_MAP, canonicalTier } = require('../utils/tierNames');
 
 const ALL_TIERS = [...TIERS];
@@ -121,13 +122,14 @@ class PermissionMatrix {
   async checkPermission(userId, action, resource, resourceId = null) {
     try {
       // Get user with subscription
-      const user = await User.findById(userId).populate('subscription');
+      const user = await User.findById(userId);
 
       if (!user) {
         throw new Error('User not found');
       }
 
-      const tier = this.normalizeTier(user.subscription?.tier || 'developer');
+      const subscription = await getOrCreateSubscription(userId);
+      const tier = this.normalizeTier(subscription.tier);
       const scope = `${resource}:${action}`;
       const allowedTiers = this.scopes[scope];
 
@@ -249,8 +251,10 @@ class PermissionMatrix {
    */
   async checkLimit(userId, limitType) {
     try {
-      const user = await User.findById(userId).populate('subscription');
-      const tier = this.normalizeTier(user.subscription?.tier || 'developer');
+      const user = await User.findById(userId);
+      if (!user) return { allowed: false, reason: 'User not found' };
+      const subscription = await getOrCreateSubscription(userId);
+      const tier = this.normalizeTier(subscription.tier);
       const limits = this.limits[this.limitKey(tier)];
 
       if (!limits) {
@@ -281,7 +285,7 @@ class PermissionMatrix {
 
         case 'maxWorkspaces':
           currentUsage = await Company.countDocuments({
-            'members.userId': user._id
+            owner: user._id
           });
           break;
 
@@ -313,8 +317,10 @@ class PermissionMatrix {
    */
   async getUserPermissions(userId) {
     try {
-      const user = await User.findById(userId).populate('subscription');
-      const tier = this.normalizeTier(user.subscription?.tier || 'developer');
+      const user = await User.findById(userId);
+      if (!user) return null;
+      const subscription = await getOrCreateSubscription(userId);
+      const tier = this.normalizeTier(subscription.tier);
 
       const permissions = {};
       

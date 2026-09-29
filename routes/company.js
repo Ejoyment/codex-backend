@@ -49,21 +49,23 @@ router.post('/create', authenticateToken, permissionMatrix.requirePermission('co
         const subscription = await Subscription.findOne({ userId: req.userId });
         const companyTier = canonicalTier(subscription?.tier);
         
-        // Check if user already owns a company
-        const existingCompany = await Company.findOne({ owner: req.userId });
-        
-        // Tier-based restrictions
-        if (companyTier === 'developer' && existingCompany) {
+        const workspaceLimits = {
+            developer: 1,
+            pro: 10,
+            pro_plus: 10,
+            team_standard: Infinity,
+            team_premium: Infinity,
+            enterprise: Infinity,
+        };
+        const workspaceLimit = workspaceLimits[companyTier] ?? 1;
+        const ownedWorkspaceCount = await Company.countDocuments({ owner: req.userId });
+        if (ownedWorkspaceCount >= workspaceLimit) {
             return res.status(403).json({
                 success: false,
-                message: 'Developer (free) tier allows only one workspace. Upgrade to a paid tier for more workspaces.'
-            });
-        }
-        
-        if (['pro', 'pro_plus'].includes(companyTier) && existingCompany) {
-            return res.status(403).json({
-                success: false,
-                message: 'Pro tiers allow only one workspace. Upgrade to Team or Enterprise for multiple workspaces.'
+                message: `${companyTier} tier allows ${Number.isFinite(workspaceLimit) ? workspaceLimit : 'unlimited'} workspaces. Upgrade your plan to create more.`,
+                code: 'WORKSPACE_LIMIT_REACHED',
+                currentCount: ownedWorkspaceCount,
+                workspaceLimit: Number.isFinite(workspaceLimit) ? workspaceLimit : null,
             });
         }
         
@@ -80,7 +82,7 @@ router.post('/create', authenticateToken, permissionMatrix.requirePermission('co
         }
         
         // Set member limit based on tier
-        const memberLimit = companyTier === 'developer' ? 3 : ['pro', 'pro_plus'].includes(companyTier) ? 10 : 999999;
+        const memberLimit = companyTier === 'developer' ? 1 : ['pro', 'pro_plus'].includes(companyTier) ? 10 : 999999;
         
         const company = new Company({
             name,
