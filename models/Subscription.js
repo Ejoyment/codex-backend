@@ -369,6 +369,22 @@ subscriptionSchema.methods.upgradeTo = function(tier) {
     if (tierConfig.interval && this.pricing) {
         this.pricing.interval = tierConfig.interval;
     }
+
+    const entitlements = subscriptionSchema.statics.tierConfigs?.[resolved];
+    if (entitlements) {
+        this.creditPool.monthlyLimit = entitlements.monthlyCreditLimit === undefined ? 0 : entitlements.monthlyCreditLimit;
+        this.cloudComputeHours.monthlyLimit = entitlements.cloudComputeHours === undefined ? 0 : entitlements.cloudComputeHours;
+        this.maxConcurrentAgentJobs = entitlements.maxConcurrentJobs === undefined ? 0 : entitlements.maxConcurrentJobs;
+        this.taskTimeoutMinutes = entitlements.taskTimeout === undefined ? 5 : entitlements.taskTimeout;
+        this.maxDebugHostRooms = entitlements.maxDebugHostRooms === undefined ? 0 : entitlements.maxDebugHostRooms;
+        this.maxDebugParticipants = entitlements.maxDebugParticipants === undefined ? 0 : entitlements.maxDebugParticipants;
+        this.maxActiveDeployments = entitlements.maxDeployments === undefined ? 1 : entitlements.maxDeployments;
+        this.specEngineLevel = entitlements.specEngineLevel || 'read_only';
+        this.webrtcVoiceEnabled = Boolean(entitlements.webrtcEnabled);
+        this.dataRetentionDays = entitlements.dataRetentionDays === undefined ? 7 : entitlements.dataRetentionDays;
+        this.teamSpecLibrary = Boolean(entitlements.features?.teamLibrary);
+        this.teamRBAC = Boolean(entitlements.features?.rbac);
+    }
 };
 
 module.exports = mongoose.model('Subscription', subscriptionSchema);

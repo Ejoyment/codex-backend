@@ -11,11 +11,17 @@ const useAuthStore = create(
       error: null,
 
       setAuth: (token, user) => {
+        const current = get();
+        const subscription = user && Object.prototype.hasOwnProperty.call(user, 'subscription')
+          ? user.subscription
+          : token === current.token ? current.subscription : null;
         if (typeof window !== 'undefined') {
           localStorage.setItem('authToken', token);
           localStorage.setItem('user', JSON.stringify(user));
+          if (subscription) localStorage.setItem('subscription', JSON.stringify(subscription));
+          else localStorage.removeItem('subscription');
         }
-        set({ token, user, error: null });
+        set({ token, user, subscription, error: null });
       },
 
       updateUser: (userPatch) => {

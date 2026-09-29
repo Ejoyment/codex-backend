@@ -1,6 +1,6 @@
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const User = require('../models/User');
-const Subscription = require('../models/Subscription');
+const { getOrCreateSubscription } = require('../middleware/trial');
 
 module.exports = function(passport) {
     // Serialize user
@@ -40,6 +40,7 @@ module.exports = function(passport) {
                     // Update last login
                     user.lastLogin = new Date();
                     await user.save();
+                    await getOrCreateSubscription(user._id);
                     return done(null, user);
                 }
 
@@ -55,6 +56,7 @@ module.exports = function(passport) {
                         user.profilePicture = profile.photos && profile.photos[0] && profile.photos[0].value;
                     }
                     await user.save();
+                    await getOrCreateSubscription(user._id);
                     return done(null, user);
                 }
 
@@ -69,16 +71,7 @@ module.exports = function(passport) {
                     lastLogin: new Date()
                 });
 
-                // Create default subscription (don't fail auth if this errors)
-                try {
-                    await Subscription.create({
-                        userId: user._id,
-                        tier: 'developer',
-                        status: 'active'
-                    });
-                } catch (subError) {
-                    console.error('Failed to create subscription for Google user:', subError.message);
-                }
+                await getOrCreateSubscription(user._id);
 
                 done(null, user);
             } catch (error) {

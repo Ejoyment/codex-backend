@@ -11,6 +11,7 @@ const rateLimit = require('express-rate-limit');
 const emailService = require('../utils/emailServiceResend');
 const { authenticateToken } = require('../middleware/auth');
 const { isLockedOut, recordFailure, clearLockout } = require('../models/AuthLockout');
+const { createTrialSubscription, getOrCreateSubscription } = require('../middleware/trial');
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -135,19 +136,11 @@ router.post('/signup', authLimiter, async (req, res) => {
         });
 
         // Create default subscription (14-day free trial on the pro tier)
-        const trialEndsAt = new Date(Date.now() + (14 * 24 * 60 * 60 * 1000)); // 14 days
-        const subscription = await Subscription.create({
-            userId: user._id,
-            tier: 'pro',
-            status: 'trial',
-            trialStartedAt: new Date(),
-            trialEndsAt,
-            pricing: {
-                amount: 0,
-                currency: 'USD',
-                interval: 'trial'
-            }
-        });
+        const subscription = createTrialSubscription(user._id);
+        await subscription.save();
+        user.subscription = subscription._id;
+        await user.save();
+        const trialEndsAt = subscription.trialEndsAt;
 
         // Send trial welcome email (non-blocking)
         try {
@@ -280,6 +273,7 @@ router.post('/signin', authLimiter, async (req, res) => {
         // Update last login
         user.lastLogin = new Date();
         await user.save();
+        const subscription = await getOrCreateSubscription(user._id);
 
         // Generate token
         const token = generateToken(user._id);
@@ -307,7 +301,13 @@ router.post('/signin', authLimiter, async (req, res) => {
                 profilePicture: user.profilePicture,
                 authProvider: user.authProvider,
                 role: user.role,
-                onboardingCompleted: user.onboardingCompleted
+                onboardingCompleted: user.onboardingCompleted,
+                subscription: {
+                    tier: subscription.tier,
+                    status: subscription.status,
+                    trialEndsAt: subscription.trialEndsAt,
+                    daysLeft: subscription.status === 'trial' ? subscription.getTrialDaysLeft() : 0,
+                }
             }
         });
 
@@ -425,8 +425,7 @@ router.get('/me', async (req, res) => {
         }
 
         // Get user's subscription
-        const Subscription = require('../models/Subscription');
-        const subscription = await Subscription.findOne({ userId });
+        const subscription = await getOrCreateSubscription(userId);
 
         // Handle trial expiry: auto-downgrade to developer (free) if trial expired
         if (subscription && subscription.isTrialExpired && subscription.isTrialExpired()) {
@@ -482,12 +481,7 @@ router.get('/me', async (req, res) => {
                         daysLeft: subscription.trialEndsAt ? Math.max(0, Math.ceil((subscription.trialEndsAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24))) : 0,
                         isLastDay: subscription.isLastTrialDay ? subscription.isLastTrialDay() : false
                     } : null
-                } : {
-                    tier: 'pro',
-                    status: 'trial',
-                    features: {},
-                    trial: null
-                },
+                } : null,
                 createdAt: user.createdAt,
                 lastLogin: user.lastLogin
             }

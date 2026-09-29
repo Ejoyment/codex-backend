@@ -236,6 +236,7 @@ router.post('/cancel', authenticateToken, async (req, res) => {
         // Update subscription
         subscription.status = 'cancelled';
         subscription.cancelledAt = new Date();
+        subscription.upgradeTo('developer');
         await subscription.save();
 
         res.json({
