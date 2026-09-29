@@ -9,99 +9,7 @@ import { apiFetch, subscriptionApi } from '../lib/api';
 import useToastStore from '../store/toastStore';
 import { Loader2, CreditCard, Check, ArrowLeft, Zap, Building2, Mail } from 'lucide-react';
 import { normalizeTier } from '../lib/tier';
-
-const planById = (id) => PLANS.find((p) => p.id === id) || PLANS[0];
-
-const PLANS = [
-  {
-    id: 'pro',
-    name: 'Pro',
-    monthlyPrice: 20,
-    yearlyPrice: 192,
-    monthlyNote: '/mo',
-    yearlyNote: '/yr',
-    blurb: 'For individual builders shipping fast.',
-    featured: true,
-    features: [
-      '100 AI messages/day · AI pair enabled',
-      '20 AI credits · 10 cloud hours/mo',
-      '1 debug room · real-time co-editing',
-      'GitHub · Slack · Discord integrations',
-      'Priority support',
-    ],
-  },
-  {
-    id: 'pro_plus',
-    name: 'Pro+',
-    monthlyPrice: 60,
-    yearlyPrice: 576,
-    monthlyNote: '/mo',
-    yearlyNote: '/yr',
-    blurb: 'For power users who live in the IDE.',
-    featured: false,
-    features: [
-      'Everything in Pro',
-      '70 AI credits · 50 cloud hours/mo',
-      '3 debug rooms · 10 deployments/mo',
-      'Real-time drift spec engine',
-      '30-day data retention',
-    ],
-  },
-  {
-    id: 'team_standard',
-    name: 'Team Standard',
-    monthlyPrice: 40,
-    yearlyPrice: 384,
-    monthlyNote: '/seat/mo',
-    yearlyNote: '/yr',
-    perSeat: true,
-    blurb: 'For small teams shipping together.',
-    featured: false,
-    features: [
-      'Everything in Pro+',
-      'Unlimited members & projects',
-      'Team spec library · team RBAC',
-      '25 cloud hours/mo · 20 deployments/mo',
-      'Unlimited debug rooms (4 peers)',
-    ],
-  },
-  {
-    id: 'team_premium',
-    name: 'Team Premium',
-    monthlyPrice: 120,
-    yearlyPrice: 1152,
-    monthlyNote: '/seat/mo',
-    yearlyNote: '/yr',
-    perSeat: true,
-    blurb: 'For orgs that need it all.',
-    featured: false,
-    features: [
-      'Everything in Team Standard',
-      '200 AI credits · 120 cloud hours/mo',
-      'Unlimited deployments · cross-repo specs',
-      '8-peer debug rooms · 90-day retention',
-      'Priority support',
-    ],
-  },
-  {
-    id: 'enterprise',
-    name: 'Enterprise',
-    monthlyPrice: null,
-    yearlyPrice: null,
-    monthlyNote: '',
-    yearlyNote: '',
-    blurb: 'For orgs with compliance to meet.',
-    featured: false,
-    contactSales: true,
-    features: [
-      'Everything in Team Premium',
-      'SSO authentication',
-      'Audit logs · SCIM provisioning',
-      'Dedicated account manager',
-      'Custom contracts · SOC 2-ready',
-    ],
-  },
-];
+import { PLANS, planById } from '../lib/plans';
 
 const PAYMENT_PROVIDERS = [
   { id: 'stripe', label: 'Stripe', desc: 'Pay with card', icon: CreditCard },
@@ -133,6 +41,20 @@ export default function Checkout() {
       }).catch(() => {});
     }
   }, [subscription, setSubscription]);
+
+  // Deep links from the settings billing tab: /checkout?plan=pro&interval=monthly
+  // Without this, "Upgrade to Pro" always landed on the default yearly plan and
+  // the user had to re-find the plan they actually chose.
+  useEffect(() => {
+    if (!router.isReady) return;
+    const { plan, interval: queryInterval } = router.query || {};
+    if (plan && PLANS.some((p) => p.id === plan)) {
+      setSelectedPlan(plan);
+    }
+    if (queryInterval === 'monthly' || queryInterval === 'yearly') {
+      setYearly(queryInterval === 'yearly');
+    }
+  }, [router.isReady, router.query]);
 
   const interval = yearly ? 'yearly' : 'monthly';
 

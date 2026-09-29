@@ -103,7 +103,7 @@ export default function Sidebar({ user, subscription }) {
             id="sidebarAvatar"
             className="sidebar-user-avatar"
             src={getAvatarUrl(user, user?.fullName || user?.name || 'User')}
-            alt={user?.fullName || 'User'}
+            alt={user?.fullName || user?.name}
           />
           <div className="sidebar-user-details">
             <div id="sidebarName" className="sidebar-user-name">
