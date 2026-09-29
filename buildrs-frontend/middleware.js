@@ -8,7 +8,7 @@ import { NextResponse } from 'next/server';
 // Static assets (_next/*, files with extensions, e.g. /buildrs.png and the
 // google verification html) are excluded via `config.matcher` below.
 
-const PRELAUNCH_GATE = false;
+const PRELAUNCH_GATE = true;
 
 // Exact public paths (trailing slash is normalized before comparison).
 const PUBLIC_PATHS = new Set([
