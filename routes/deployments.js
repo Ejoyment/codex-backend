@@ -13,6 +13,7 @@ const { authenticateToken } = require('../middleware/auth');
 const depService = require('../utils/deploymentService');
 const { validateDeployFiles, backfillFileContent, limits: deployLimits } = require('../utils/deployContent');
 const { addAuditLog } = require('../utils/auditLogService');
+const { notifyDeploymentEvent } = require('../utils/notificationTriggers');
 
 // Keep in sync with DEPLOY_TIMEOUT_MS in utils/deploymentService.js — that is
 // the SSH-side command timeout (the docker build itself). The HTTP-side race
@@ -356,6 +357,12 @@ router.post('/', authenticateToken, async (req, res) => {
                 } catch (saveErr) {
                     console.error('[deploy] failed to persist failure state:', saveErr.message);
                 }
+                notifyDeploymentEvent({
+                    type: 'deployment_failed',
+                    deployment: { _id: deployId, environment: sanitized, company: companyId || null },
+                    userId: req.userId,
+                    detail: capErrorMessage(depErr.message) || 'The deployment failed.',
+                });
             };
 
             try {
@@ -438,6 +445,12 @@ router.post('/', authenticateToken, async (req, res) => {
                     runtimeLogs: String(runtimeLogs).slice(-200000),
                 });
                 console.log(`[deploy] ${sanitized}.buildrshq.dev is live`);
+                notifyDeploymentEvent({
+                    type: 'deployment_succeeded',
+                    deployment: { _id: deployId, environment: sanitized, company: companyId || null },
+                    userId: req.userId,
+                    detail: `${sanitized}.buildrshq.dev is live.`,
+                });
             } catch (err) {
                 console.error(`[deploy] ${sanitized} failed:`, err.message);
                 const { fault, failureStage } = classifyPreDeployError(err);

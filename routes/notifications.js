@@ -3,6 +3,10 @@ const router = express.Router();
 const { authenticateToken: auth } = require('../middleware/auth');
 const NotificationService = require('../utils/notificationService');
 
+const currentUserId = (req) => req.userId || req.user?.userId || req.user?.id;
+
+const asyncRoute = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+
 /**
  * @swagger
  * /api/notifications:
@@ -37,20 +41,20 @@ const NotificationService = require('../utils/notificationService');
 // Get user notifications
 router.get('/', auth, async (req, res) => {
     try {
-        const { limit = 50, skip = 0, unreadOnly = false } = req.query;
-        const userId = req.userId || req.user.userId || req.user.id;
+        const { limit, skip, unreadOnly } = req.query;
+        const userId = currentUserId(req);
 
-        const notifications = await NotificationService.getNotifications(
-            userId,
-            parseInt(limit),
-            parseInt(skip),
-            unreadOnly === 'true'
-        );
+        const [notifications, count, byCategory] = await Promise.all([
+            NotificationService.getNotifications(userId, {
+                limit,
+                skip,
+                unreadOnly: unreadOnly === 'true',
+            }),
+            NotificationService.getUnreadCount(userId),
+            NotificationService.getUnreadByCategory(userId),
+        ]);
 
-        res.json({
-            success: true,
-            notifications
-        });
+        res.json({ success: true, notifications, count, byCategory });
     } catch (error) {
         console.error('Get notifications error:', error);
         res.status(500).json({
@@ -87,7 +91,7 @@ router.get('/', auth, async (req, res) => {
 // Get unread count
 router.get('/unread-count', auth, async (req, res) => {
     try {
-        const userId = req.userId || req.user.userId || req.user.id;
+        const userId = currentUserId(req);
         const count = await NotificationService.getUnreadCount(userId);
 
         res.json({
@@ -130,7 +134,7 @@ router.get('/unread-count', auth, async (req, res) => {
 // Mark notification as read
 router.put('/:id/read', auth, async (req, res) => {
     try {
-        const userId = req.userId || req.user.userId || req.user.id;
+        const userId = currentUserId(req);
         const notificationId = req.params.id;
 
         const notification = await NotificationService.markAsRead(notificationId, userId);
@@ -173,12 +177,12 @@ router.put('/:id/read', auth, async (req, res) => {
 // Mark all notifications as read
 router.put('/read-all', auth, async (req, res) => {
     try {
-        const userId = req.userId || req.user.userId || req.user.id;
-        const result = await NotificationService.markAllAsRead(userId);
+        const userId = currentUserId(req);
+        const modifiedCount = await NotificationService.markAllAsRead(userId);
 
         res.json({
             success: true,
-            modifiedCount: result.modifiedCount
+            modifiedCount
         });
     } catch (error) {
         console.error('Mark all as read error:', error);
@@ -213,10 +217,97 @@ router.put('/read-all', auth, async (req, res) => {
  *       401:
  *         description: Unauthorized
  */
+/**
+ * @swagger
+ * /api/notifications/read-all:
+ *   delete:
+ *     summary: Delete all read notifications
+ *     tags:
+ *       - Notifications
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: All read notifications deleted
+ *       401:
+ *         description: Unauthorized
+ */
+// Delete all read notifications
+router.delete('/read-all', auth, async (req, res) => {
+    try {
+        const userId = currentUserId(req);
+        const deletedCount = await NotificationService.deleteAllRead(userId);
+
+        res.json({
+            success: true,
+            deletedCount
+        });
+    } catch (error) {
+        console.error('Delete all read error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to delete read notifications'
+        });
+    }
+});
+
+/**
+ * @swagger
+ * /api/notifications/preferences:
+ *   get:
+ *     summary: Get notification preferences (sound, categories)
+ *     tags:
+ *       - Notifications
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Current preferences
+ *       401:
+ *         description: Unauthorized
+ */
+router.get('/preferences', auth, async (req, res) => {
+    try {
+        const preferences = await NotificationService.getPreferences(currentUserId(req));
+        res.json({ success: true, preferences });
+    } catch (error) {
+        console.error('Get notification preferences error:', error);
+        res.status(500).json({ success: false, message: 'Failed to get preferences' });
+    }
+});
+
+/**
+ * @swagger
+ * /api/notifications/preferences:
+ *   put:
+ *     summary: Update notification preferences
+ *     tags:
+ *       - Notifications
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Updated preferences
+ *       401:
+ *         description: Unauthorized
+ */
+router.put('/preferences', auth, async (req, res) => {
+    try {
+        const preferences = await NotificationService.updatePreferences(
+            currentUserId(req),
+            req.body || {}
+        );
+        res.json({ success: true, preferences });
+    } catch (error) {
+        console.error('Update notification preferences error:', error);
+        res.status(500).json({ success: false, message: 'Failed to update preferences' });
+    }
+});
+
 // Delete notification
 router.delete('/:id', auth, async (req, res) => {
     try {
-        const userId = req.userId || req.user.userId || req.user.id;
+        const userId = currentUserId(req);
         const notificationId = req.params.id;
 
         const result = await NotificationService.deleteNotification(notificationId, userId);
@@ -237,40 +328,6 @@ router.delete('/:id', auth, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Failed to delete notification'
-        });
-    }
-});
-
-/**
- * @swagger
- * /api/notifications/read-all:
- *   delete:
- *     summary: Delete all read notifications
- *     tags:
- *       - Notifications
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: All read notifications deleted
- *       401:
- *         description: Unauthorized
- */
-// Delete all read notifications
-router.delete('/read-all', auth, async (req, res) => {
-    try {
-        const userId = req.userId || req.user.userId || req.user.id;
-        const result = await NotificationService.deleteAllRead(userId);
-
-        res.json({
-            success: true,
-            deletedCount: result.deletedCount
-        });
-    } catch (error) {
-        console.error('Delete all read error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to delete read notifications'
         });
     }
 });

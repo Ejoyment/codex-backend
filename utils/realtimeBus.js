@@ -27,4 +27,15 @@ function emitAgentProgress(userId, payload) {
     }
 }
 
-module.exports = { setIO, emitCollab, emitSandbox, emitAgentProgress };
+// Push a notification to a user's sockets on the /notifications namespace.
+// Called after the notification row is persisted, so a client that misses the
+// push can still fetch it from the REST API.
+function emitNotification(userId, payload) {
+    if (_io && userId) {
+        _io.of('/notifications').to(`user:${userId}`).emit('notification:new', payload);
+        return true;
+    }
+    return false;
+}
+
+module.exports = { setIO, emitCollab, emitSandbox, emitAgentProgress, emitNotification };
