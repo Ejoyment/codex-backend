@@ -8,7 +8,10 @@ buildrs-frontend/.next/
 .env.local
 .env.development
 *.pdf
-*.test.js
+# NOTE: *.test.js used to be ignored here, which kept six real suites
+# (messaging-channels, phase2-blueprint, standup-submit, tier-display,
+# messaging-page-render, trial-tier-restrictions) out of version control and
+# out of review. Tests must be committed.
 
 # Uploads
 uploads/

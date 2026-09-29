@@ -2,23 +2,38 @@
  * Stripe Adapter — paymentRouter.js provider
  */
 
-const stripe = require('../config/stripe');
+const { stripe } = require('../config/stripe');
+
+/**
+ * NOTE: config/stripe.js exports { stripe, createCheckoutSession, ... }.
+ * Requiring the module itself and calling stripe.checkout.sessions.create()
+ * threw a TypeError, so checkout was structurally broken.
+ */
+function requireStripe() {
+    if (!stripe || typeof stripe.checkout?.sessions?.create !== 'function') {
+        throw new Error('Stripe client is not initialized — check STRIPE_SECRET_KEY.');
+    }
+    return stripe;
+}
 
 async function createCheckout({ userId, tier, amount, currency, interval, customerId, metadata }) {
-    const session = await stripe.checkout.sessions.create({
-        customer: customerId,
+    const client = requireStripe();
+    const session = await client.checkout.sessions.create({
+        // Only pass `customer` when we actually have one; Stripe rejects the
+        // key outright when it is undefined.
+        ...(customerId ? { customer: customerId } : { customer_email: undefined }),
         payment_method_types: ['card'],
         mode: 'subscription',
         line_items: [{
             price_data: {
-                product_data: { name: `BuildrsHQ ${tier}`, },
+                product_data: { name: `BuildrsHQ ${tier}` },
                 unit_amount: Math.round(amount * 100),
                 currency: currency || 'usd',
                 recurring: { interval: interval || 'month' }
             },
             quantity: 1
         }],
-        metadata: { tier, userId, interval: interval || 'monthly' },
+        metadata: { tier, userId, interval: interval || 'monthly', ...(metadata || {}) },
         success_url: `${process.env.FRONTEND_URL}/payment/success`,
         cancel_url: `${process.env.FRONTEND_URL}/pricing`
     });
@@ -27,10 +42,15 @@ async function createCheckout({ userId, tier, amount, currency, interval, custom
 }
 
 async function verifyWebhook(rawBody, signature) {
-    const sig = signature;
     const endpoint = process.env.STRIPE_WEBHOOK_SECRET;
+    if (!endpoint) {
+        return { success: false, error: 'STRIPE_WEBHOOK_SECRET is not configured' };
+    }
+    if (!signature) {
+        return { success: false, error: 'Missing stripe-signature header' };
+    }
     try {
-        const event = stripe.webhooks.constructEvent(rawBody, sig, endpoint);
+        const event = requireStripe().webhooks.constructEvent(rawBody, signature, endpoint);
         return { success: true, event };
     } catch (err) {
         return { success: false, error: err.message };
@@ -38,26 +58,37 @@ async function verifyWebhook(rawBody, signature) {
 }
 
 async function parseEvent(event) {
+    const object = (event && event.data && event.data.object) || {};
     return {
         id: event.id,
         type: event.type,
-        customerId: event.data.object.customer,
-        subscriptionId: event.data.object.subscription,
-        amount: event.data.object.amount,
-        currency: event.data.object.currency
+        customerId: object.customer,
+        subscriptionId: object.subscription,
+        amount: object.amount,
+        currency: object.currency
     };
 }
 
 async function cancelSubscription(customerId) {
-    const subscription = await stripe.subscriptions.list({ customer, limit: 1 });
-    if (subscription.data.length > 0) {
-        await stripe.subscriptions.cancel(subscription.data[0].id);
+    if (!customerId) {
+        return { success: false, error: 'customerId is required' };
     }
-    return { success: true };
+    const client = requireStripe();
+    // `customer` was not in scope here (the parameter is customerId), so this
+    // threw ReferenceError and cancellation never worked.
+    const subscriptions = await client.subscriptions.list({ customer: customerId, limit: 1 });
+    if (subscriptions.data.length > 0) {
+        await client.subscriptions.cancel(subscriptions.data[0].id);
+        return { success: true, cancelled: subscriptions.data[0].id };
+    }
+    return { success: true, cancelled: null };
 }
 
 async function getCustomerPortal(customerId) {
-    const portalSession = await stripe.billingPortal.sessions.create({
+    if (!customerId) {
+        return { success: false, error: 'customerId is required' };
+    }
+    const portalSession = await requireStripe().billingPortal.sessions.create({
         customer: customerId,
         return_url: `${process.env.FRONTEND_URL}/settings/billing`
     });

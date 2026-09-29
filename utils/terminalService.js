@@ -364,6 +364,19 @@ class TerminalService {
     if (!/^[a-zA-Z0-9_-]{1,64}$/.test(String(userId))) throw new Error('Invalid userId');
     if (!/^[a-zA-Z0-9_-]{1,64}$/.test(String(workspaceId))) throw new Error('Invalid workspaceId format');
 
+    // This spawns a shell, so authorization is enforced HERE rather than only
+    // in the route/socket handlers — every caller (REST, Socket.IO, agent
+    // tools) passes through this method. Without it, any authenticated user
+    // could name any workspaceId and receive a shell rooted outside their own
+    // workspace, reading and writing other tenants' files.
+    const { assertWorkspaceAccess } = require('./workspaceAuth');
+    const access = await assertWorkspaceAccess(workspaceId, userId);
+    if (!access.ok) {
+      const err = new Error(access.reason);
+      err.statusCode = 403;
+      throw err;
+    }
+
     const sessionToken = require('crypto').randomBytes(32).toString('hex');
     const sessionId = `${userId}_${workspaceId}_${Date.now()}`;
 

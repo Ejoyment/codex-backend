@@ -57,16 +57,17 @@ describe('Authentication - Auth Middleware', () => {
     expect(res.status).toHaveBeenCalledWith(401);
   });
 
-  test('should accept valid Bearer token', () => {
+  test('should accept valid Bearer token', async () => {
     const req = { headers: { authorization: 'Bearer valid-jwt-token' } };
     const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
     const next = jest.fn();
-    authenticateToken(req, res, next);
+    // authenticateToken is async: it also confirms the account still exists.
+    await authenticateToken(req, res, next);
     expect(next).toHaveBeenCalled();
     expect(req.userId).toBe('mock-user-id');
   });
 
-  test('should handle token verification failure gracefully', () => {
+  test('should handle token verification failure gracefully', async () => {
     // Override the mock for this test
     const jwt = require('jsonwebtoken');
     jwt.verify = jest.fn((token, secret, cb) => {
@@ -80,7 +81,7 @@ describe('Authentication - Auth Middleware', () => {
 
     // Re-require to get fresh module with overridden mock
     const freshAuth = require('../middleware/auth').authenticateToken;
-    freshAuth(req, res, next);
+    await freshAuth(req, res, next);
     expect(res.status).toHaveBeenCalledWith(403);
   });
 });

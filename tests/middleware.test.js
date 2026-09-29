@@ -42,7 +42,7 @@ describe('Middleware - Auth', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  test('should call next if valid token provided', () => {
+  test('should call next if valid token provided', async () => {
     const req = { headers: { authorization: 'Bearer valid-token' } };
     const res = {
       status: jest.fn().mockReturnThis(),
@@ -50,13 +50,14 @@ describe('Middleware - Auth', () => {
     };
     const next = jest.fn();
 
-    authenticateToken(req, res, next);
+    // authenticateToken is async: it now also confirms the account still exists.
+    await authenticateToken(req, res, next);
 
     expect(next).toHaveBeenCalled();
     expect(req.userId).toBe('mock-user-id');
   });
 
-  test('should return 403 if token is invalid', () => {
+  test('should return 403 if token is invalid', async () => {
     jest.resetModules();
     jest.mock('jsonwebtoken', () => ({
       verify: jest.fn((token, secret, cb) => {
@@ -76,7 +77,7 @@ describe('Middleware - Auth', () => {
     };
     const next = jest.fn();
 
-    authBad(req, res, next);
+    await authBad(req, res, next);
 
     expect(res.status).toHaveBeenCalledWith(403);
     expect(next).not.toHaveBeenCalled();

@@ -5,6 +5,7 @@ const Subscription = require('../models/Subscription');
 const Entitlement = require('../server/models/EntitlementModel');
 const User = require('../models/User');
 const { createCheckoutSession, createPortalSession, verifyWebhookSignature, stripe } = require('../config/stripe');
+const { requireVerifiedWebhook } = require('../utils/webhookSecurity');
 const paymentRouter = require('../utils/paymentRouter');
 const { authenticateToken } = require('../middleware/auth');
 const { TIERS, canonicalTier } = require('../utils/tierNames');
@@ -635,30 +636,37 @@ router.post('/portal', authenticateToken, async (req, res) => {
  *       200:
  *         description: Webhook received
  */
-// Stripe webhook handler
-router.post('/payment/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
-    try {
-        // In production, verify Stripe signature
-        const event = req.body;
+// Stripe webhook handler.
+// The signature is verified before any subscription state is touched. Without
+// this check the endpoint is a public "activate any subscription" primitive:
+// anyone could POST a fabricated checkout.session.completed and grant a paid
+// tier to any customer, or customer.subscription.deleted and downgrade a
+// paying customer.
+router.post('/payment/stripe', requireVerifiedWebhook('stripe', async (req, res) => {
+    const event = req.verifiedWebhookEvent;
 
-        switch (event.type) {
-            case 'checkout.session.completed':
-                const session = event.data.object;
-                // Update subscription based on payment
-                await handleSuccessfulPayment(session.customer, session.metadata);
-                break;
-            
-            case 'customer.subscription.deleted':
-                const subscription = event.data.object;
-                await handleCancelledSubscription(subscription.customer);
-                break;
+    switch (event.type) {
+        case 'checkout.session.completed': {
+            const session = event.data.object;
+            await handleSuccessfulPayment(session.customer, session.metadata);
+            break;
         }
 
-        res.json({ received: true });
-    } catch (error) {
-        console.error('Stripe webhook error:', error);
-        res.status(400).json({ success: false });
+        case 'customer.subscription.deleted': {
+            const subscription = event.data.object;
+            await handleCancelledSubscription(subscription.customer);
+            break;
+        }
+
+        default:
+            break;
     }
+
+    res.json({ received: true });
+}), async (req, res, next) => {
+    // requireVerifiedWebhook already responded on verification failure.
+    if (res.headersSent) return;
+    next();
 });
 
 /**
@@ -673,21 +681,24 @@ router.post('/payment/stripe', express.raw({ type: 'application/json' }), async 
  *       200:
  *         description: Webhook received
  */
-// Paystack webhook handler
-router.post('/payment/paystack', async (req, res) => {
-    try {
-        const event = req.body;
+// Paystack webhook handler.
+// Signature-verified for the same reason as the Stripe route above. This one
+// previously had no verification at all, so a single unauthenticated POST
+// granted a free 30-day subscription to any customer code.
+router.post('/payment/paystack', requireVerifiedWebhook('paystack', async (req, res) => {
+    const event = req.verifiedWebhookEvent;
 
-        if (event.event === 'charge.success') {
-            const { customer, metadata } = event.data;
+    if (event.event === 'charge.success') {
+        const { customer, metadata } = event.data;
+        if (customer && customer.customer_code) {
             await handleSuccessfulPayment(customer.customer_code, metadata);
         }
-
-        res.json({ success: true });
-    } catch (error) {
-        console.error('Paystack webhook error:', error);
-        res.status(400).json({ success: false });
     }
+
+    res.json({ success: true });
+}), async (req, res, next) => {
+    if (res.headersSent) return;
+    next();
 });
 
 // Helper function to handle successful payment

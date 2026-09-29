@@ -10,6 +10,7 @@ const TeamProject = require('../models/TeamProject');
 const LocalProject = require('../models/LocalProject');
 const CodeFile = require('../models/CodeFile');
 const { authenticateToken } = require('../middleware/auth');
+const { enforceDeploymentLimit } = require('../middleware/tierEnforcement');
 const depService = require('../utils/deploymentService');
 const { validateDeployFiles, backfillFileContent, limits: deployLimits } = require('../utils/deployContent');
 const { addAuditLog } = require('../utils/auditLogService');
@@ -109,7 +110,11 @@ router.get('/:id', authenticateToken, async (req, res) => {
 });
 
 // Create a new deployment (spins up a real Docker container)
-router.post('/', authenticateToken, async (req, res) => {
+// Each create provisions real infrastructure on the shared VPS, so it is
+// quota-limited per tier. Applied here rather than as a router-level mount so
+// hitting the cap blocks provisioning but still allows listing/inspecting/
+// deleting existing deployments.
+router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) => {
     try {
         const { projectId, subdomain, companyId, source, repo, files: directFiles } = req.body;
 

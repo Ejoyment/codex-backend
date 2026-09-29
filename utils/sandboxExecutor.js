@@ -12,6 +12,17 @@
 const { exec: childExec, spawn: childSpawn } = require('child_process');
 const sandboxSecurity = require('./sandboxSecurity');
 
+/**
+ * Host execution runs submitted code directly on the Node process's host with
+ * no OS-level isolation — same uid, same filesystem, same network. It is
+ * therefore opt-in for local development ONLY, and must be explicitly refused
+ * in production. Set SANDBOX_ALLOW_HOST_EXEC=true to enable it locally.
+ */
+function hostExecAllowed() {
+    if (process.env.SANDBOX_ALLOW_HOST_EXEC === 'true') return true;
+    return process.env.NODE_ENV !== 'production';
+}
+
 class SandboxExecutor {
     constructor() {
         this.timeout = parseInt(process.env.SANDBOX_TIMEOUT) || 5000;
@@ -24,12 +35,23 @@ class SandboxExecutor {
         this.available = await sandboxSecurity.isDockerAvailable();
         if (this.available) {
             console.log('✓ Sandbox Executor initialized with Docker backend');
+        } else if (hostExecAllowed()) {
+            console.warn('⚠ Docker not available — falling back to UNSANDBOXED host execution.');
+            console.warn('  Development only. Set NODE_ENV=production to forbid this entirely.');
         } else {
-            console.warn('⚠ Docker not available — falling back to child_process execution');
+            console.error('✗ Docker not available and host execution is disabled — sandbox executions will fail closed.');
         }
     }
 
     async childProcessExecute(code, language, options = {}) {
+        if (!hostExecAllowed()) {
+            return {
+                success: false,
+                error: 'Code execution is unavailable: the Docker sandbox is not running. Refusing to execute code directly on the host.',
+                exitCode: 1,
+                executionTime: 0,
+            };
+        }
         return new Promise((resolve) => {
             const timeout = options.timeout || this.timeout;
             const startTime = Date.now();
@@ -57,6 +79,7 @@ class SandboxExecutor {
         if (typeof code === 'string' && code.length > 200000) throw new Error('Code too large');
         if (typeof language !== 'string') throw new Error('Invalid language');
         if (!this.available) {
+            // Fail closed rather than silently dropping to the host.
             return await this.childProcessExecute(code, language, options);
         }
 
@@ -289,7 +312,7 @@ class SandboxExecutor {
      */
     getStats() {
         return {
-            backend: this.available ? 'docker' : 'none',
+            backend: this.available ? 'docker' : (hostExecAllowed() ? 'host-unsafe' : 'none'),
             timeout: this.timeout,
             memoryLimit: this.memoryLimit,
             available: this.available

@@ -27,6 +27,11 @@ class LSPManager {
     this.documentVersions = new Map(); // `${userId}-${documentUri}` -> version
     this.capabilities = new Map(); // language -> server capabilities
     this.requestCounter = 0;
+    // Each language server is a real process holding the user's whole project
+    // in memory. Without a global cap and idle eviction, N users × M languages
+    // exhausts host memory — a cheap DoS from the client side.
+    this.maxTotalServers = parseInt(process.env.LSP_MAX_SERVERS, 10) || 40;
+    this.idleTimeoutMs = parseInt(process.env.LSP_IDLE_TIMEOUT_MS, 10) || 15 * 60 * 1000;
     // Workspace root used as LSP rootUri — must contain node_modules with
     // typescript so typescript-language-server can resolve tsserver.
     this.rootUri = pathToFileURL(process.cwd()).href;
@@ -79,7 +84,56 @@ class LSPManager {
   }
 
   getServer(userId, language) {
-    return this.servers.get(userId)?.get(language) || null;
+    const server = this.servers.get(userId)?.get(language) || null;
+    if (server) this._touch(userId, language, server);
+    return server;
+  }
+
+  /** Total live language-server processes across all users. */
+  countServers() {
+    let total = 0;
+    for (const userMap of this.servers.values()) total += userMap.size;
+    return total;
+  }
+
+  /** Restart an idle timer so an actively-used server is never evicted. */
+  _touch(userId, language, server) {
+    if (server.idleTimer) clearTimeout(server.idleTimer);
+    server.lastUsedAt = Date.now();
+    server.idleTimer = setTimeout(() => {
+      this._evict(userId, language);
+    }, this.idleTimeoutMs);
+    // Do not hold the event loop open for an eviction timer.
+    if (typeof server.idleTimer.unref === 'function') server.idleTimer.unref();
+  }
+
+  /** Stop the least-recently-used language server to free a slot. */
+  _evictOne() {
+    let oldest = null;
+    for (const [userId, userMap] of this.servers.entries()) {
+      for (const [language, server] of userMap.entries()) {
+        if (!oldest || (server.lastUsedAt || 0) < (oldest.server.lastUsedAt || 0)) {
+          oldest = { userId, language, server };
+        }
+      }
+    }
+    if (oldest) this._evict(oldest.userId, oldest.language);
+    return Boolean(oldest);
+  }
+
+  _evict(userId, language) {
+    const userMap = this.servers.get(userId);
+    if (!userMap) return;
+    const server = userMap.get(language);
+    if (!server) return;
+    if (server.idleTimer) clearTimeout(server.idleTimer);
+    console.log(`LSP: evicting idle server ${language} for user ${userId}`);
+    try { server.process.kill('SIGTERM'); } catch (_) { /* already gone */ }
+    server.dead = true;
+    for (const handler of server.responseHandlers.values()) handler(null);
+    server.responseHandlers.clear();
+    userMap.delete(language);
+    if (userMap.size === 0) this.servers.delete(userId);
   }
 
   /**
@@ -121,6 +175,11 @@ class LSPManager {
       return { success: false, error: `Language server for ${language} is not installed` };
     }
 
+    // Enforce the global process cap before spawning another server.
+    while (this.countServers() >= this.maxTotalServers) {
+      if (!this._evictOne()) break;
+    }
+
     let serverProcess;
     try {
       serverProcess = spawn(config.command, config.args, {
@@ -139,8 +198,11 @@ class LSPManager {
       responseHandlers: new Map(), // id -> resolve(result|null)
       ready: false,
       dead: false,
+      lastUsedAt: Date.now(),
+      idleTimer: null,
     };
     this.servers.get(userId).set(language, server);
+    this._touch(userId, language, server);
 
     const failPending = () => {
       for (const handler of server.responseHandlers.values()) handler(null);
@@ -201,6 +263,13 @@ class LSPManager {
   _removeServer(userId, language) {
     const userMap = this.servers.get(userId);
     if (!userMap) return;
+    // Clear the eviction timer, otherwise a removed server's timer fires later
+    // and evicts an unrelated server that has since taken this slot.
+    const server = userMap.get(language);
+    if (server && server.idleTimer) {
+      clearTimeout(server.idleTimer);
+      server.idleTimer = null;
+    }
     const key = `${userId}-`;
     for (const versionKey of this.documentVersions.keys()) {
       if (versionKey.startsWith(key)) this.documentVersions.delete(versionKey);

@@ -59,7 +59,16 @@ jest.mock('stripe', () => {
 // Mock mongoose with properly nested Schema.Types
 const mockMongoose = {
   connect: jest.fn().mockResolvedValue({ connection: { name: 'test-db' } }),
-  connection: { name: 'test-db' },
+  // server.js registers reconnect handlers via mongoose.connection.on() at
+  // module scope, so the mock needs the EventEmitter surface as well as .name.
+  connection: {
+    name: 'test-db',
+    on: jest.fn(),
+    once: jest.fn(),
+    off: jest.fn(),
+    removeListener: jest.fn(),
+    close: jest.fn().mockResolvedValue(undefined),
+  },
   model: jest.fn(() => ({
     find: jest.fn().mockReturnThis(),
     findOne: jest.fn().mockReturnThis(),
@@ -74,6 +83,9 @@ const mockMongoose = {
   })),
   Schema: function() {
     this.pre = jest.fn();
+    // models/CodeFile.js registers a post('save') hook; without this the
+    // module throws "codeFileSchema.post is not a function" on require.
+    this.post = jest.fn();
     this.methods = {};
     this.index = jest.fn();
     this.virtual = jest.fn(() => ({

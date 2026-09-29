@@ -11,6 +11,7 @@
 const aiService = require('./aiService');
 const AgentSession = require('../models/AIPairSession');
 const ChatMessage = require('../models/ChatMessage');
+const mongoose = require('mongoose');
 const vectorMemory = require('./vectorMemory');
 const HITLGates = require('./hitlGates');
 
@@ -56,6 +57,25 @@ class AgentOrchestrator {
     }
 
     /**
+     * Load a CodeFile only if it belongs to the caller's workspace.
+     *
+     * The agent's tools take fileId values chosen by an LLM reading
+     * user-supplied text, which is prompt-injectable. An unscoped
+     * findById(fileId) therefore turns "read this file" into "read any file in
+     * any tenant" — and update/delete would let a poisoned prompt corrupt or
+     * destroy another company's source. Every fileId-based tool goes through
+     * here so the workspace boundary is enforced in exactly one place.
+     */
+    async _findOwnedFile(CodeFile, fileId, context) {
+        if (!mongoose.isValidObjectId(fileId)) return null;
+        const query = { _id: fileId, company: context.workspaceId };
+        if (context.userId && context.createdBySelfOnly) {
+            query.createdBy = context.userId;
+        }
+        return CodeFile.findOne(query);
+    }
+
+    /**
      * Initialize available tools that the agent can use
      * Each tool has a schema that the LLM can understand
      */
@@ -70,7 +90,13 @@ class AgentOrchestrator {
                 },
                 execute: async (params, context) => {
                     const CodeFile = require('../models/CodeFile');
-                    const file = await CodeFile.findById(params.fileId);
+                    const file = await this._findOwnedFile(CodeFile, params.fileId, context);
+                    if (!file) {
+                        return {
+                            success: false,
+                            error: `File not found in this workspace: ${params.fileId}`
+                        };
+                    }
                     return {
                         success: true,
                         content: file.content,
@@ -117,8 +143,14 @@ class AgentOrchestrator {
                 },
                 execute: async (params, context) => {
                     const CodeFile = require('../models/CodeFile');
-                    const file = await CodeFile.findById(params.fileId);
-                    
+                    const file = await this._findOwnedFile(CodeFile, params.fileId, context);
+                    if (!file) {
+                        return {
+                            success: false,
+                            error: `File not found in this workspace: ${params.fileId}`
+                        };
+                    }
+
                     // Save version history
                     file.versions.push({
                         content: file.content,
@@ -126,11 +158,11 @@ class AgentOrchestrator {
                         modifiedAt: file.updatedAt,
                         comment: 'AI Agent Update'
                     });
-                    
+
                     file.content = params.content;
                     file.lastModifiedBy = context.userId;
                     await file.save();
-                    
+
                     return {
                         success: true,
                         message: `Updated ${file.name}`
@@ -146,7 +178,14 @@ class AgentOrchestrator {
                 },
                 execute: async (params, context) => {
                     const CodeFile = require('../models/CodeFile');
-                    const file = await CodeFile.findByIdAndDelete(params.fileId);
+                    const file = await this._findOwnedFile(CodeFile, params.fileId, context);
+                    if (!file) {
+                        return {
+                            success: false,
+                            error: `File not found in this workspace: ${params.fileId}`
+                        };
+                    }
+                    await file.deleteOne();
                     return {
                         success: true,
                         message: `Deleted ${file.name}`
@@ -187,19 +226,32 @@ class AgentOrchestrator {
                 },
                 execute: async (params, context) => {
                     const CodeFile = require('../models/CodeFile');
+                    // The pattern is LLM-supplied and therefore attacker-
+                    // influenced. Escape it and cap its length: an unescaped
+                    // `$regex` lets a crafted pattern backtrack catastrophically
+                    // and pin the Mongo server CPU (ReDoS). Note that $options:
+                    // 'i' means an escaped string is still matched
+                    // case-insensitively, which is the intended behaviour.
+                    const raw = String(params.query || '').slice(0, 200);
+                    if (!raw) {
+                        return { success: false, error: 'Search query is required' };
+                    }
+                    const escaped = raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                     const query = {
                         company: context.workspaceId,
-                        content: { $regex: params.query, $options: 'i' }
+                        content: { $regex: escaped, $options: 'i' }
                     };
                     if (params.language) query.language = params.language;
-                    
-                    const files = await CodeFile.find(query).select('name path content');
+
+                    const files = await CodeFile.find(query)
+                        .select('name path content')
+                        .limit(50);
                     return {
                         success: true,
                         results: files.map(f => ({
                             file: f.name,
                             path: f.path,
-                            matches: this.extractMatches(f.content, params.query)
+                            matches: this.extractMatches(f.content, raw)
                         }))
                     };
                 }
@@ -214,8 +266,14 @@ class AgentOrchestrator {
                 },
                 execute: async (params, context) => {
                     const CodeFile = require('../models/CodeFile');
-                    const file = await CodeFile.findById(params.fileId);
-                    
+                    const file = await this._findOwnedFile(CodeFile, params.fileId, context);
+                    if (!file) {
+                        return {
+                            success: false,
+                            error: `File not found in this workspace: ${params.fileId}`
+                        };
+                    }
+
                     // Simple analysis (can be enhanced with actual linters)
                     const analysis = {
                         syntax: this.checkSyntax(file.content, file.language),

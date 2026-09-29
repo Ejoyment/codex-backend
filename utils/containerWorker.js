@@ -60,12 +60,19 @@ class ContainerWorkerService {
               Type: 'bind',
             },
           ],
-          NetworkMode: 'host',
+          // Was NetworkMode: 'host', which gave the container the full network
+          // stack of the host — it could reach MongoDB, the metadata endpoint
+          // and any internal service, and bind arbitrary host ports. An
+          // agent-run task is user-controlled code, so the container gets an
+          // isolated bridge network and no extra capabilities instead.
+          NetworkMode: 'bridge',
           Memory: options.memoryLimit || 512 * 1024 * 1024,
           NanoCpus: options.cpuLimit || 1000000000,
           Privileged: false,
           ReadonlyRootfs: true,
           NoNewPrivileges: true,
+          CapDrop: ['ALL'],
+          PidsLimit: 256,
         },
       });
 

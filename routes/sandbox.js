@@ -10,8 +10,9 @@ const path = require('path');
 const fs = require('fs').promises;
 const os = require('os');
 const CodeFile = require('../models/CodeFile');
-const Company = require('../models/Company');
+const mongoose = require('mongoose');
 const { authenticateToken } = require('../middleware/auth');
+const { assertWorkspaceAccess } = require('../utils/workspaceAuth');
 
 // Escape HTML special chars to prevent XSS when interpolating into preview HTML.
 function escapeHtml(s) {
@@ -70,7 +71,7 @@ const SANDBOX_KEY_PATTERN = /^sb_[0-9a-f]{16}$/;
 // Start a sandbox for live preview
 router.post('/start', authenticateToken, async (req, res) => {
     try {
-        const { fileId, file, name, path: filePath, language, content, files } = req.body;
+        const { fileId, file, name, path: filePath, language, content, files, companyId } = req.body;
 
         // Input caps: reject oversized / malformed inputs before doing any work.
         if (typeof content === 'string' && Buffer.byteLength(content, 'utf8') > MAX_CONTENT_BYTES) {
@@ -86,30 +87,20 @@ router.post('/start', authenticateToken, async (req, res) => {
         }
 
         let payloadFile = file || null;
-        let dbFile = null;
-        if (!payloadFile && fileId && /^[0-9a-f]{24}$/i.test(String(fileId))) {
-            try {
-                dbFile = await CodeFile.findById(fileId).lean();
-            } catch (_) {
-                dbFile = null;
-            }
-            payloadFile = dbFile;
-        }
-
-        if (fileId && !dbFile && !payloadFile && !name && !(Array.isArray(files) && files.length)) {
-            return res.status(404).json({ error: 'File not found' });
-        }
-
-        // Ownership check: a stored file scoped to a company (workspace) may only
-        // be previewed by members/owner of that company. Personal files without
-        // company scoping keep the previous behavior (allowed).
-        if (dbFile && (dbFile.company || dbFile.companyId)) {
-            const company = await Company.findById(dbFile.company || dbFile.companyId).select('members owner').lean();
-            const uid = String(req.userId);
-            const members = (company && company.members) || [];
-            const isMember = company && (members.some((m) => String(m.user || m.userId) === uid) || String(company.owner) === uid);
-            if (!isMember) {
-                return res.status(403).json({ error: 'Access denied' });
+        if (!payloadFile && fileId && mongoose.isValidObjectId(fileId)) {
+            // Scope the lookup to a workspace the caller actually belongs to.
+            // An unscoped findById(fileId) let any authenticated user render and
+            // read the source of any other tenant's file by guessing an id.
+            const wsId = companyId || req.user?.currentCompany || req.user?.userId;
+            const access = await assertWorkspaceAccess(wsId, req.user?.userId || req.user?._id);
+            if (access.ok) {
+                try {
+                    payloadFile = await CodeFile.findOne({ _id: fileId, company: wsId }).lean();
+                } catch (_) {
+                    payloadFile = null;
+                }
+            } else {
+                console.warn(`[sandbox/start] denied file read for user ${req.user?.userId}: ${access.reason}`);
             }
         }
 
