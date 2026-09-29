@@ -8,7 +8,34 @@ import { apiFetch, subscriptionApi, integrationApi } from '../lib/api';
 import { rateLimit, validate, createSubmitGuard } from '../lib/security';
 import { getAvatarUrl } from '../lib/utils';
 import { normalizeTier } from '../lib/tier';
-import { User, Shield, CreditCard, Plug, Camera, Save, ExternalLink, Unplug, Loader2, Zap, AlertTriangle, Trash2 } from 'lucide-react';
+import { PLANS, FREE_PLAN, planById, planName, planDirection, yearlySavingsPercent } from '../lib/plans';
+import {
+  statusMeta,
+  renewalCopy,
+  cancelCopy,
+  downgradeCopy,
+  trialProgress,
+  formatDate,
+} from '../lib/billingCopy';
+import {
+  User,
+  Shield,
+  CreditCard,
+  Plug,
+  Camera,
+  Save,
+  ExternalLink,
+  Unplug,
+  Loader2,
+  Zap,
+  AlertTriangle,
+  Trash2,
+  CalendarDays,
+  RotateCcw,
+  ArrowUpRight,
+  XCircle,
+  Check,
+} from 'lucide-react';
 import useToastStore from '../store/toastStore';
 
 const submitGuard = createSubmitGuard();
@@ -41,91 +68,512 @@ const TABS = [
   { id: 'integrations', label: 'Integrations', icon: Plug },
 ];
 
-function BillingTab({ subscription, setSubscription, router, toast }) {
-  const [canceling, setCanceling] = useState(false);
+const FREE_TIER = 'developer';
 
-  const isTrialing = subscription?.status === 'trialing';
-  const isActive = subscription?.status === 'active';
-  const isFree = !subscription || normalizeTier(subscription.tier) === 'developer';
-  const trialDaysLeft = subscription?.trialEnd
-    ? Math.max(0, Math.ceil((new Date(subscription.trialEnd) - Date.now()) / (1000 * 60 * 60 * 24)))
-    : null;
+const TIER_META = {
+  trial: { label: 'Free trial', tone: 'trial' },
+  active: { label: 'Active', tone: 'active' },
+  canceling: { label: 'Cancels at period end', tone: 'warning' },
+  changing: { label: 'Plan change scheduled', tone: 'warning' },
+  past_due: { label: 'Payment failed', tone: 'danger' },
+  expired: { label: 'Expired', tone: 'danger' },
+  free: { label: 'Free', tone: 'neutral' },
+};
 
-  const cancelSubscription = async () => {
-    if (!confirm("Cancel your subscription? You'll lose access at the end of the billing period.")) return;
-    setCanceling(true);
+const PROVIDER_LABELS = {
+  stripe: 'Card (Stripe)',
+  paystack: 'Card (Paystack)',
+  flutterwave: 'Card (Flutterwave)',
+  manual: 'Manual',
+};
+
+function providerLabel(id) {
+  return PROVIDER_LABELS[id] || id || 'Unknown provider';
+}
+
+/**
+ * Confirmation dialog for anything destructive about money. Replaces the old
+ * `window.confirm`, which could not state consequences: the tab used to promise
+ * "you'll lose access at the end of the billing period" while /cancel revoked
+ * access immediately.
+ */
+function BillingConfirmDialog({ copy, busy, onCancel, onConfirm }) {
+  if (!copy) return null;
+  return (
+    <div className="bill-modal-backdrop" role="presentation" onClick={busy ? undefined : onCancel}>
+      <div
+        className="bill-modal"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="bill-modal-title"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 id="bill-modal-title" className="bill-modal-title">{copy.title}</h3>
+        <p className="bill-modal-body">{copy.body}</p>
+
+        {copy.losses && copy.losses.length > 0 && (
+          <ul className="bill-loss-list">
+            {copy.losses.map((loss) => (
+              <li key={loss.label} className="bill-loss-item">
+                <AlertTriangle className="bill-loss-icon" aria-hidden="true" />
+                <span className="bill-loss-label">{loss.label}</span>
+                <span className="bill-loss-delta">
+                  {loss.from} <span aria-hidden="true">&rarr;</span> {loss.to}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {copy.effectiveLine && (
+          <p className="bill-effective">
+            <CalendarDays className="bill-effective-icon" aria-hidden="true" />
+            {copy.effectiveLine}
+          </p>
+        )}
+
+        <div className="bill-modal-actions">
+          <button type="button" className="btn-workspace btn-secondary" onClick={onCancel} disabled={busy}>
+            Keep my plan
+          </button>
+          <button
+            type="button"
+            className={`btn-workspace ${copy.destructive === false ? 'btn-primary' : 'btn-danger'}`}
+            onClick={onConfirm}
+            disabled={busy}
+          >
+            {busy && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
+            {busy ? 'Working…' : copy.confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BillingTab({ router, toast }) {
+  const subscription = useAuthStore((s) => s.subscription);
+  const setSubscription = useAuthStore((s) => s.setSubscription);
+
+  const [state, setState] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
+  const [busy, setBusy] = useState(null);
+  const [dialog, setDialog] = useState(null);
+  const [showPlans, setShowPlans] = useState(false);
+  const [interval, setInterval] = useState('yearly');
+
+  const load = useCallback(async () => {
+    setLoadError(null);
     try {
-      await apiFetch('/api/subscription/cancel', { method: 'POST' });
       const data = await subscriptionApi.getCurrent();
       if (data.subscription) setSubscription(data.subscription);
-      toast.success('Subscription canceled');
+      // `state` is derived server-side so this tab never re-derives billing
+      // rules, and can never disagree with them the way the old tab did.
+      setState(data.state || null);
     } catch (err) {
-      toast.error(err.message || 'Failed to cancel subscription');
+      setLoadError(err.message || 'Could not load your billing details');
     } finally {
-      setCanceling(false);
+      setLoading(false);
+    }
+  }, [setSubscription]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const runAction = async (key, fn, successMessage) => {
+    setBusy(key);
+    try {
+      const result = await fn();
+      setDialog(null);
+      setShowPlans(false);
+      if (result && result.state) setState(result.state);
+      else await load();
+      toast.success((result && result.message) || successMessage);
+    } catch (err) {
+      toast.error(err.message || 'Something went wrong');
+    } finally {
+      setBusy(null);
     }
   };
 
+  const confirmCancel = () => runAction('cancel', () => subscriptionApi.cancel(), 'Subscription cancelled');
+  const confirmDowngrade = () =>
+    runAction('downgrade', () => subscriptionApi.changePlan(dialog.tier), 'Plan change scheduled');
+  const resume = () => runAction('resume', () => subscriptionApi.resume(), 'Your plan will continue');
+
+  const goToCheckout = (tier) => router.push(`/checkout?plan=${tier}&interval=${interval}`);
+
+  if (loading) {
+    return (
+      <div className="bill-loading" role="status" aria-live="polite">
+        <Loader2 className="bill-spinner" aria-hidden="true" />
+        <span>Loading your billing details…</span>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="bill-error" role="alert">
+        <AlertTriangle className="bill-error-icon" aria-hidden="true" />
+        <div className="bill-error-text">
+          <p className="bill-error-title">Billing details unavailable</p>
+          <p className="bill-error-body">{loadError}</p>
+        </div>
+        <button
+          type="button"
+          className="btn-workspace btn-secondary"
+          onClick={() => {
+            setLoading(true);
+            load();
+          }}
+        >
+          <Loader2 className="w-4 h-4" aria-hidden="true" />
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  if (!state) return null;
+
+  const meta = TIER_META[state.phase] || TIER_META.free;
+  const plan = planById(state.tier) || FREE_PLAN;
+  const statusCopy = statusMeta(state);
+  const summary = renewalCopy(state);
+  const cancel = cancelCopy(state);
+  const isBusy = (key) => busy === key;
+
   return (
-    <div className="max-w-xl space-y-6">
-      {isTrialing && trialDaysLeft !== null && (
-        <div className="flex items-center gap-3 p-4 rounded-xl border border-[rgba(229,184,74,0.3)] bg-[rgba(229,184,74,0.05)]">
-          <Zap className="w-5 h-5 text-[#e5b84a] flex-shrink-0" />
-          <div className="flex-1">
-            <p className="text-sm font-medium text-white">
-              Trial · {trialDaysLeft} day{trialDaysLeft !== 1 ? 's' : ''} remaining
-            </p>
-            <p className="text-xs text-[#9aa1ae] mt-0.5">
-              Add a payment method to keep your workspace active after the trial.
-            </p>
+    <div className="bill-wrap">
+      <BillingConfirmDialog
+        copy={dialog && dialog.copy}
+        busy={isBusy('cancel') || isBusy('downgrade')}
+        onCancel={() => setDialog(null)}
+        onConfirm={dialog && dialog.kind === 'cancel' ? confirmCancel : confirmDowngrade}
+      />
+
+      {/* ------------------------------ current plan ----------------------------- */}
+      <section className="bill-card" aria-labelledby="bill-current-plan">
+        <header className="bill-card-head">
+          <div>
+            <h3 id="bill-current-plan" className="bill-card-title">Current plan</h3>
+            <p className="bill-card-sub">{summary}</p>
+          </div>
+          <span className={`bill-pill bill-pill-${meta.tone}`}>{statusCopy.label}</span>
+        </header>
+
+        <div className="bill-plan-row">
+          <div className="bill-plan-main">
+            <span className="bill-plan-title">{plan.name}</span>
+            {state.isFree ? (
+              <span className="bill-plan-price">
+                $0<span className="bill-plan-note">/mo</span>
+              </span>
+            ) : (
+              plan.monthlyPrice != null && (
+                <span className="bill-plan-price">
+                  ${interval === 'yearly' ? plan.yearlyPrice : plan.monthlyPrice}
+                  <span className="bill-plan-note">
+                    {plan.perSeat ? '/seat' : ''}/{interval === 'yearly' ? 'yr' : 'mo'}
+                  </span>
+                </span>
+              )
+            )}
+          </div>
+
+          {state.phase === 'trial' && (
+            <div className="bill-trial">
+              <div className="bill-trial-head">
+                <Zap className="bill-trial-icon" aria-hidden="true" />
+                <span>
+                  <strong>{state.trialDaysLeft}</strong> day{state.trialDaysLeft === 1 ? '' : 's'} of {plan.name} left
+                </span>
+              </div>
+              <div
+                className="bill-trial-bar"
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(trialProgress(state) * 100)}
+                aria-label="Trial used"
+              >
+                <span
+                  className="bill-trial-fill"
+                  style={{ width: `${Math.round(trialProgress(state) * 100)}%` }}
+                />
+              </div>
+              <p className="bill-trial-note">
+                On {formatDate(state.trialEndsAt)} your workspace drops to the Free plan unless you upgrade.
+              </p>
+            </div>
+          )}
+
+          {(state.phase === 'canceling' || state.phase === 'changing') && (
+            <div className="bill-pending" role="status">
+              <CalendarDays className="bill-pending-icon" aria-hidden="true" />
+              <div>
+                <p className="bill-pending-title">
+                  {state.phase === 'canceling'
+                    ? `Ends ${formatDate(state.changeEffectiveAt)}`
+                    : `Switches to ${planName(state.pendingTier)} on ${formatDate(state.changeEffectiveAt)}`}
+                </p>
+                <p className="bill-pending-body">
+                  You keep {plan.name} until then — nothing is lost early.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {state.phase === 'past_due' && (
+            <div className="bill-pending bill-pending-danger" role="alert">
+              <AlertTriangle className="bill-pending-icon" aria-hidden="true" />
+              <div>
+                <p className="bill-pending-title">We could not charge your payment method</p>
+                <p className="bill-pending-body">Update it to keep your {plan.name} access.</p>
+              </div>
+              <button
+                type="button"
+                className="btn-workspace btn-primary bill-pending-cta"
+                onClick={() => goToCheckout(state.tier)}
+              >
+                Update payment
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="bill-actions">
+          {state.canResume ? (
+            <button
+              type="button"
+              className="btn-workspace btn-primary"
+              onClick={resume}
+              disabled={isBusy('resume')}
+            >
+              {isBusy('resume') ? (
+                <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+              ) : (
+                <RotateCcw className="w-4 h-4" aria-hidden="true" />
+              )}
+              Keep my {plan.name} plan
+            </button>
+          ) : (
+            <>
+              {state.phase === 'trial' && (
+                <button
+                  type="button"
+                  className="btn-workspace btn-primary"
+                  onClick={() => setShowPlans((v) => !v)}
+                >
+                  <Zap className="w-4 h-4" aria-hidden="true" />
+                  {showPlans ? 'Hide plans' : 'Upgrade now'}
+                </button>
+              )}
+
+              {state.phase === 'active' && (
+                <button
+                  type="button"
+                  className="btn-workspace btn-secondary"
+                  onClick={() => setShowPlans((v) => !v)}
+                >
+                  <ArrowUpRight className="w-4 h-4" aria-hidden="true" />
+                  {showPlans ? 'Hide plans' : 'Change plan'}
+                </button>
+              )}
+
+              {state.canCancel && (
+                <button
+                  type="button"
+                  className="btn-workspace btn-secondary bill-btn-danger"
+                  onClick={() => setDialog({ kind: 'cancel', copy: cancel })}
+                  disabled={isBusy('cancel')}
+                >
+                  <XCircle className="w-4 h-4" aria-hidden="true" />
+                  {state.phase === 'trial' ? 'End trial' : 'Cancel plan'}
+                </button>
+              )}
+            </>
+          )}
+
+          {state.isFree && (
+            <button
+              type="button"
+              className="btn-workspace btn-secondary"
+              onClick={() => setShowPlans(true)}
+            >
+              <CreditCard className="w-4 h-4" aria-hidden="true" />
+              Browse plans
+            </button>
+          )}
+        </div>
+      </section>
+
+      {/* ----------------------------- plan picker ------------------------------ */}
+      {showPlans && (
+        <section className="bill-card" aria-labelledby="bill-change-plan">
+          <header className="bill-card-head">
+            <div>
+              <h3 id="bill-change-plan" className="bill-card-title">
+                {state.isFree ? 'Choose a plan' : 'Change your plan'}
+              </h3>
+              <p className="bill-card-sub">
+                {state.isTrialing
+                  ? 'Start a paid plan now and keep everything your trial unlocked.'
+                  : 'Upgrades start today. Downgrades apply at your next renewal, so you never lose what you paid for.'}
+              </p>
+            </div>
+            <div className="bill-interval" role="group" aria-label="Billing interval">
+              <button
+                type="button"
+                className={`bill-interval-btn ${interval === 'monthly' ? 'is-active' : ''}`}
+                onClick={() => setInterval('monthly')}
+                aria-pressed={interval === 'monthly'}
+              >
+                Monthly
+              </button>
+              <button
+                type="button"
+                className={`bill-interval-btn ${interval === 'yearly' ? 'is-active' : ''}`}
+                onClick={() => setInterval('yearly')}
+                aria-pressed={interval === 'yearly'}
+              >
+                Yearly
+                <span className="bill-interval-save">-{yearlySavingsPercent('pro')}%</span>
+              </button>
+            </div>
+          </header>
+
+          <ul className="bill-plan-grid">
+            {PLANS.map((option) => {
+              const direction = planDirection(state.tier, option.id);
+              const price = interval === 'yearly' ? option.yearlyPrice : option.monthlyPrice;
+              const isCurrent = direction === 'current';
+              return (
+                <li
+                  key={option.id}
+                  className={`bill-plan-option ${isCurrent ? 'is-current' : ''}`}
+                  aria-current={isCurrent ? 'true' : undefined}
+                >
+                  <div className="bill-plan-option-head">
+                    <h4 className="bill-plan-option-name">{option.name}</h4>
+                    {isCurrent && <span className="bill-tag bill-tag-current">Current</span>}
+                    {direction === 'upgrade' && <span className="bill-tag bill-tag-up">Upgrade</span>}
+                    {direction === 'downgrade' && <span className="bill-tag bill-tag-down">Downgrade</span>}
+                  </div>
+
+                  <p className="bill-plan-option-blurb">{option.blurb}</p>
+
+                  {option.contactSales ? (
+                    <p className="bill-plan-option-custom">Custom pricing</p>
+                  ) : (
+                    <p className="bill-plan-option-price">
+                      ${price}
+                      <span className="bill-plan-option-note">
+                        {option.perSeat ? '/seat' : ''}/{interval === 'yearly' ? 'yr' : 'mo'}
+                      </span>
+                    </p>
+                  )}
+
+                  <ul className="bill-plan-option-features">
+                    {option.features.map((feature) => (
+                      <li key={feature}>
+                        <Check className="bill-check" aria-hidden="true" />
+                        {feature}
+                      </li>
+                    ))}
+                  </ul>
+
+                  <button
+                    type="button"
+                    className={`btn-workspace ${
+                      direction === 'upgrade' ? 'btn-primary' : 'btn-secondary'
+                    } bill-plan-option-cta`}
+                    disabled={isCurrent || isBusy('downgrade')}
+                    onClick={() => {
+                      if (direction === 'upgrade') goToCheckout(option.id);
+                      else
+                        setDialog({
+                          kind: 'downgrade',
+                          tier: option.id,
+                          copy: downgradeCopy(state, option.id),
+                        });
+                    }}
+                  >
+                    {isCurrent
+                      ? 'Your current plan'
+                      : direction === 'upgrade'
+                      ? `Upgrade to ${option.name}`
+                      : `Move to ${option.name}`}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+
+          {state.isPaid && !state.isFree && (
+            <button
+              type="button"
+              className="btn-workspace btn-secondary bill-btn-danger bill-to-free"
+              onClick={() =>
+                setDialog({ kind: 'downgrade', tier: FREE_TIER, copy: downgradeCopy(state, FREE_TIER) })
+              }
+              disabled={isBusy('downgrade')}
+            >
+              <XCircle className="w-4 h-4" aria-hidden="true" />
+              Move to the Free plan
+            </button>
+          )}
+        </section>
+      )}
+
+      {/* --------------------------- free upgrade pitch -------------------------- */}
+      {state.isFree && !showPlans && (
+        <section className="bill-card bill-upgrade-cta">
+          <h3 className="bill-card-title">Unlock more of BuildrsHQ</h3>
+          <p className="bill-card-sub">
+            Free includes 1 project, 1 member and 5 tasks per project. Paid plans add AI pair programming, cloud
+            hours, and team collaboration.
+          </p>
+          <button type="button" className="btn-workspace btn-primary" onClick={() => setShowPlans(true)}>
+            See all plans
+          </button>
+        </section>
+      )}
+
+      {/* ------------------------------ payment --------------------------------- */}
+      <section className="bill-card" aria-labelledby="bill-payment">
+        <h3 id="bill-payment" className="bill-card-title">Payment method</h3>
+        <div className="bill-payment-row">
+          <div className="bill-payment-info">
+            <CreditCard className="bill-payment-icon" aria-hidden="true" />
+            <div>
+              <p className="bill-payment-name">
+                {state.paymentProvider ? providerLabel(state.paymentProvider) : 'No payment method'}
+              </p>
+              <p className="bill-payment-sub">
+                {state.paymentProvider
+                  ? state.phase === 'trial'
+                    ? 'Verified for this trial'
+                    : state.nextBillingDate
+                    ? `Next charge ${formatDate(state.nextBillingDate)}`
+                    : 'Charged automatically each period'
+                  : 'Add a card to keep your plan after the trial ends.'}
+              </p>
+            </div>
           </div>
           <button
             type="button"
-            onClick={() => router.push('/checkout')}
-            className="btn-workspace btn-primary text-xs"
+            className="btn-workspace btn-secondary"
+            onClick={() => goToCheckout(state.isFree ? 'pro' : state.tier)}
+            disabled={state.tier === 'enterprise'}
           >
-            <CreditCard className="w-3 h-3" />
-            Add Payment
+            {state.paymentProvider ? 'Update' : 'Add payment method'}
           </button>
         </div>
-      )}
-
-      <div className="set-plan">
-        <div>
-          <p className="set-plan-key">Current Plan</p>
-          <p className="set-plan-val">{subscription?.tier || 'Free'}</p>
-        </div>
-        <div>
-          <p className="set-plan-key">Status</p>
-          <p className="set-plan-val">
-            <span className={`${(!subscription || subscription.status === 'active') ? 'status-indicator status-online' : 'status-indicator'} mr-2`} />
-            {subscription?.status || 'Active'}
-          </p>
-        </div>
-      </div>
-
-      {isFree ? (
-        <button
-          type="button"
-          onClick={() => router.push('/checkout')}
-          className="btn-workspace btn-primary"
-        >
-          <CreditCard className="w-4 h-4" />
-          Upgrade Plan
-        </button>
-      ) : isActive || isTrialing ? (
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={cancelSubscription}
-            disabled={canceling}
-            className="btn-workspace btn-secondary text-[#f87171] border-[rgba(248,113,113,0.3)] hover:bg-[rgba(248,113,113,0.08)]"
-          >
-            {canceling ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-            {canceling ? 'Canceling...' : 'Cancel Subscription'}
-          </button>
-        </div>
-      ) : null}
+      </section>
     </div>
   );
 }
@@ -591,14 +1039,7 @@ export default function Settings() {
                   </div>
                 )}
 
-                {activeTab === 'billing' && (
-                  <BillingTab
-                    subscription={subscription}
-                    setSubscription={setSubscription}
-                    router={router}
-                    toast={toast}
-                  />
-                )}
+                {activeTab === 'billing' && <BillingTab router={router} toast={toast} />}
 
                 {activeTab === 'integrations' && (
                   <div className="space-y-3 max-w-2xl">

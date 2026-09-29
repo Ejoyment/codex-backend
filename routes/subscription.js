@@ -10,9 +10,33 @@ const paymentRouter = require('../utils/paymentRouter');
 const { authenticateToken } = require('../middleware/auth');
 const { TIERS, canonicalTier } = require('../utils/tierNames');
 const { getOrCreateSubscription } = require('../middleware/trial');
+const {
+    applyPendingChanges,
+    describeState,
+    currentPeriodEnd,
+    planDirection,
+    DAY_MS,
+    FREE_TIER,
+} = require('../utils/subscriptionLifecycle');
 
 // Tiers that can be purchased (everything except the free developer tier)
 const PAID_TIERS = TIERS.filter((t) => t !== 'developer');
+
+/**
+ * Load a user's subscription, applying any due scheduled change first.
+ *
+ * Every billing endpoint goes through here so a cancellation or downgrade
+ * scheduled for "end of period" takes effect the moment the period ends,
+ * without needing a background job to run on time.
+ */
+async function loadSubscription(userId) {
+    let subscription = await Subscription.findOne({ userId });
+    if (!subscription) return null;
+    if (applyPendingChanges(subscription)) {
+        await subscription.save();
+    }
+    return subscription;
+}
 
 /**
  * @swagger
@@ -42,6 +66,7 @@ const PAID_TIERS = TIERS.filter((t) => t !== 'developer');
 router.get('/current', authenticateToken, async (req, res) => {
     try {
         const subscription = await getOrCreateSubscription(req.userId);
+        if (applyPendingChanges(subscription)) await subscription.save();
 
         // Convert features object to array of enabled features
         const enabledFeatures = [];
@@ -55,6 +80,10 @@ router.get('/current', authenticateToken, async (req, res) => {
 
         res.json({
             success: true,
+            // `state` is the shape the billing UI renders. The legacy fields
+            // below are kept so existing consumers (auth store, dashboard)
+            // keep working during the transition.
+            state: describeState(subscription),
             subscription: {
                 tier: subscription.tier,
                 status: subscription.status,
@@ -62,8 +91,13 @@ router.get('/current', authenticateToken, async (req, res) => {
                 featuresObj: subscription.features, // Also return object for compatibility
                 pricing: `$${subscription.pricing.amount}/${subscription.pricing.interval}`,
                 startDate: subscription.startDate,
-                endDate: subscription.endDate,
-                trialEndsAt: subscription.trialEndsAt
+                endDate: currentPeriodEnd(subscription),
+                trialEndsAt: subscription.trialEndsAt,
+                cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+                pendingTier: subscription.pendingTier,
+                changeEffectiveAt: subscription.changeEffectiveAt,
+                cancelledAt: subscription.cancelledAt,
+                paymentProvider: subscription.paymentProvider
             }
         });
     } catch (error) {
@@ -382,13 +416,28 @@ router.post('/upgrade', authenticateToken, async (req, res) => {
  * /api/subscription/cancel:
  *   post:
  *     summary: Cancel current subscription
+ *     description: >
+ *       Defaults to a graceful period-end cancellation for paid plans: the user
+ *       keeps their entitlements until `changeEffectiveAt`, then drops to the
+ *       free developer tier automatically. Trialing and already-expired plans
+ *       are cancelled immediately, since there is no paid period to protect.
+ *       Pass `mode=immediate` to revoke access straight away.
  *     tags:
  *       - Subscription & Billing
  *     security:
  *       - bearerAuth: []
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               mode:
+ *                 type: string
+ *                 enum: [period_end, immediate]
  *     responses:
  *       200:
- *         description: Subscription cancelled and downgraded to developer
+ *         description: Cancellation scheduled or applied
  *       401:
  *         description: Unauthorized
  *       404:
@@ -397,8 +446,8 @@ router.post('/upgrade', authenticateToken, async (req, res) => {
 // Cancel subscription
 router.post('/cancel', authenticateToken, async (req, res) => {
     try {
-        const subscription = await Subscription.findOne({ userId: req.userId });
-        
+        const subscription = await loadSubscription(req.userId);
+
         if (!subscription) {
             return res.status(404).json({
                 success: false,
@@ -406,21 +455,51 @@ router.post('/cancel', authenticateToken, async (req, res) => {
             });
         }
 
-        subscription.status = 'cancelled';
-        subscription.cancelledAt = new Date();
-        
-        // Downgrade to developer (free) tier
-        subscription.upgradeTo('developer');
-        
+        const state = describeState(subscription);
+        const requestedMode = req.body && req.body.mode;
+
+        if (requestedMode === 'immediate') {
+            // Drop to Free right now and stop all future billing.
+            subscription.cancelAtPeriodEnd = false;
+            subscription.pendingTier = undefined;
+            subscription.changeEffectiveAt = undefined;
+            subscription.cancelledAt = new Date();
+            if (subscription.tier !== FREE_TIER) subscription.upgradeTo(FREE_TIER);
+            subscription.status = 'cancelled';
+        } else {
+            subscription.cancelledAt = new Date();
+            // Already on Free (or a trial that has ended): there is nothing to
+            // keep alive, so cancellation is immediate regardless of request.
+            if (state.cancelIsImmediate) {
+                subscription.cancelAtPeriodEnd = false;
+                subscription.pendingTier = undefined;
+                subscription.changeEffectiveAt = undefined;
+                if (subscription.tier !== FREE_TIER) subscription.upgradeTo(FREE_TIER);
+                subscription.status = 'cancelled';
+            } else {
+                // Keep paying-for entitlements until the period runs out.
+                subscription.cancelAtPeriodEnd = true;
+                subscription.pendingTier = undefined;
+                subscription.changeEffectiveAt = currentPeriodEnd(subscription);
+                subscription.status = 'active';
+            }
+        }
+
         await subscription.save();
 
+        const next = describeState(subscription);
         res.json({
             success: true,
-            message: 'Subscription cancelled successfully',
+            message: next.hasPendingChange
+                ? `Subscription will end on ${next.changeEffectiveAt.toISOString().slice(0, 10)}`
+                : 'Subscription cancelled',
+            state: next,
             subscription: {
                 tier: subscription.tier,
                 status: subscription.status,
-                cancelledAt: subscription.cancelledAt
+                cancelledAt: subscription.cancelledAt,
+                cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+                changeEffectiveAt: subscription.changeEffectiveAt
             }
         });
     } catch (error) {
@@ -429,6 +508,159 @@ router.post('/cancel', authenticateToken, async (req, res) => {
             success: false,
             message: 'Error cancelling subscription'
         });
+    }
+});
+
+/**
+ * @swagger
+ * /api/subscription/resume:
+ *   post:
+ *     summary: Undo a scheduled cancellation or downgrade
+ *     description: >
+ *       Clears `cancelAtPeriodEnd` and `pendingTier`, keeping the current plan
+ *       and its renewal date. No-op if nothing is scheduled.
+ *     tags:
+ *       - Subscription & Billing
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Scheduled change cleared
+ *       404:
+ *         description: No subscription found
+ */
+router.post('/resume', authenticateToken, async (req, res) => {
+    try {
+        const subscription = await loadSubscription(req.userId);
+        if (!subscription) {
+            return res.status(404).json({ success: false, message: 'No subscription found' });
+        }
+
+        const hadPending = Boolean(subscription.cancelAtPeriodEnd || subscription.pendingTier);
+        if (hadPending) {
+            subscription.cancelAtPeriodEnd = false;
+            subscription.pendingTier = undefined;
+            subscription.changeEffectiveAt = undefined;
+            // A cancelled-but-not-yet-ended plan resumes as a normal active plan.
+            if (subscription.status === 'cancelled' && subscription.tier !== FREE_TIER) {
+                subscription.status = 'active';
+            }
+            await subscription.save();
+        }
+
+        res.json({
+            success: true,
+            message: hadPending ? 'Your plan will continue as scheduled' : 'Nothing to resume',
+            state: describeState(subscription),
+        });
+    } catch (error) {
+        console.error('Resume subscription error:', error);
+        res.status(500).json({ success: false, message: 'Error resuming subscription' });
+    }
+});
+
+/**
+ * @swagger
+ * /api/subscription/change-plan:
+ *   post:
+ *     summary: Schedule a plan change
+ *     description: >
+ *       Upgrades are not applied here — they require payment and are redirected
+ *       to checkout. This endpoint handles downgrades and switching to the free
+ *       plan, which take effect at the end of the paid period so the user keeps
+ *       what they already paid for. Trialing users are downgraded immediately.
+ *     tags:
+ *       - Subscription & Billing
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [tier]
+ *             properties:
+ *               tier:
+ *                 type: string
+ *                 enum: [developer, pro, pro_plus, team_standard, team_premium]
+ *               timing:
+ *                 type: string
+ *                 enum: [now, period_end]
+ *     responses:
+ *       200:
+ *         description: Plan change applied or scheduled
+ *       400:
+ *         description: Invalid tier or not a downgrade
+ *       404:
+ *         description: No subscription found
+ */
+router.post('/change-plan', authenticateToken, async (req, res) => {
+    try {
+        const subscription = await loadSubscription(req.userId);
+        if (!subscription) {
+            return res.status(404).json({ success: false, message: 'No subscription found' });
+        }
+
+        const requestedTier = canonicalTier(req.body && req.body.tier);
+        if (!TIERS.includes(requestedTier)) {
+            return res.status(400).json({ success: false, message: 'Invalid tier' });
+        }
+        if (requestedTier === 'enterprise') {
+            return res.status(400).json({
+                success: false,
+                message: 'Enterprise plans are handled by sales',
+            });
+        }
+
+        const direction = planDirection(subscription.tier, requestedTier);
+        if (direction === 'current') {
+            return res.status(400).json({ success: false, message: 'You are already on this plan' });
+        }
+        if (direction === 'upgrade') {
+            // Never grant a paid tier here — that route would be a free upgrade.
+            return res.status(400).json({
+                success: false,
+                requiresCheckout: true,
+                message: 'Upgrades require payment. Continue to checkout.',
+                tier: requestedTier,
+            });
+        }
+
+        const state = describeState(subscription);
+        const timing = (req.body && req.body.timing) || 'period_end';
+        // A trial or an expired plan has no paid period left to protect, so the
+        // switch happens now. Anyone mid-period waits until the period ends.
+        const applyNow = timing === 'now' || state.cancelIsImmediate;
+
+        if (applyNow) {
+            subscription.upgradeTo(requestedTier);
+            subscription.cancelAtPeriodEnd = false;
+            subscription.pendingTier = undefined;
+            subscription.changeEffectiveAt = undefined;
+            subscription.cancelledAt = undefined;
+            subscription.status = 'active';
+        } else {
+            subscription.pendingTier = requestedTier;
+            subscription.changeEffectiveAt = currentPeriodEnd(subscription);
+            // Choosing a replacement plan supersedes a pending cancellation.
+            subscription.cancelAtPeriodEnd = false;
+            if (!subscription.cancelledAt) subscription.cancelledAt = new Date();
+        }
+
+        await subscription.save();
+
+        const next = describeState(subscription);
+        res.json({
+            success: true,
+            message: next.hasPendingChange
+                ? `Plan changes to ${next.pendingTier} on ${next.changeEffectiveAt.toISOString().slice(0, 10)}`
+                : `Plan changed to ${next.tier}`,
+            state: next,
+        });
+    } catch (error) {
+        console.error('Change plan error:', error);
+        res.status(500).json({ success: false, message: 'Error changing plan' });
     }
 });
 

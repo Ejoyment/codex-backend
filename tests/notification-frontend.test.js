@@ -298,10 +298,16 @@ describe('wiring', () => {
         expect((app.match(/<NotificationProvider>/g) || []).length).toBe(1);
     });
 
-    test('the bell is mounted in the app sidebar', () => {
-        const sidebar = read(SIDEBAR_PATH);
-        expect(sidebar).toContain("import NotificationBell from './NotificationBell'");
-        expect(sidebar).toContain('<NotificationBell />');
+    // The bell is mounted in the dashboard header. It is intentionally not in
+    // the shared Sidebar — it only appears on the dashboard.
+    test('the bell is mounted in the dashboard header', () => {
+        const dashboard = read(path.resolve(__dirname, '../buildrs-frontend/pages/dashboard.js'));
+        expect(dashboard).toMatch(/import NotificationBell from/);
+        expect(dashboard).toContain('<NotificationBell look="header" />');
+    });
+
+    test('the sidebar does not mount the bell', () => {
+        expect(read(SIDEBAR_PATH)).not.toContain('NotificationBell');
     });
 
     test('a history page exists and is reachable from the bell', () => {

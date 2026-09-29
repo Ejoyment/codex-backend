@@ -28,6 +28,19 @@ function transform(source) {
             .replace(/^export\s+(async\s+)?function\s+/gm, '$1function ')
             .replace(/^export\s+const\s+/gm, 'const ')
             .replace(/^export\s+let\s+/gm, 'let ')
+            // Re-export lists: `export { a, b as c };` — used by modules that
+            // define a helper and publish it under a public name.
+            .replace(/^export\s*\{([^}]*)\}\s*;?/gm, (_, names) => {
+                const bindings = names
+                    .split(',')
+                    .map((entry) => entry.trim())
+                    .filter(Boolean)
+                    .map((entry) => {
+                        const [local, alias] = entry.split(/\s+as\s+/).map((s) => s.trim());
+                        return alias ? `${local}: ${alias}` : local;
+                    });
+                return bindings.length ? `const __reexport = { ${bindings.join(', ')} };` : '';
+            })
             .replace(/^export\s+default\s+/gm, 'exports.default = ')
     );
 }
@@ -41,12 +54,29 @@ function transform(source) {
  * @param {string[]} [options.exports] extra export names to return
  * @param {object} [options.globals]   window/document/localStorage stand-ins
  */
-function loadEsmModule(file, { deps = {}, exports: extraExports = [], globals = {} } = {}) {
+function loadEsmModule(file, options = {}) {
+    // Be forgiving about the call shape: any option key that is not a known
+    // one is treated as an import specifier. Otherwise passing `{ './x': mock }`
+    // instead of `{ deps: { './x': mock } }` silently yields an empty dep map
+    // and a confusing "cannot destructure property of undefined".
+    const { deps: explicitDeps, exports: extraExports = [], globals = {} } = options;
+    const deps = { ...options, ...(explicitDeps || {}) };
+    ['deps', 'exports', 'globals'].forEach((key) => delete deps[key]);
+
     const source = fs.readFileSync(file, 'utf8');
 
     const declared = [...source.matchAll(/^export\s+(?:async\s+)?function\s+(\w+)/gm)].map((m) => m[1]);
     const constExports = [...source.matchAll(/^export\s+(?:const|let)\s+(\w+)/gm)].map((m) => m[1]);
-    const names = [...new Set([...declared, ...constExports, ...extraExports])];
+    // `export { a, b as c }` re-exports locals under possibly-aliased names.
+    const listedExports = [...source.matchAll(/^export\s*\{([^}]*)\}\s*;?/gm)]
+        .flatMap((m) =>
+            m[1]
+                .split(',')
+                .map((entry) => entry.trim())
+                .filter(Boolean)
+                .map((entry) => (entry.split(/\s+as\s+/)[1] || entry).trim())
+        );
+    const names = [...new Set([...declared, ...constExports, ...listedExports, ...extraExports])];
 
     // Only bind the globals this file actually references.
     const used = KNOWN_GLOBALS.filter((g) => new RegExp(`\\b${g}\\b`).test(source));

@@ -26,6 +26,21 @@ const subscriptionSchema = new mongoose.Schema({
     firstChargeAt: { type: Date },
     firstChargeCompleted: { type: Boolean, default: false },
     nextBillingDate: { type: Date },
+    // Current paid period. Historical writes to these were dropped by Mongoose
+    // strict mode (the fields were never declared), so lifecycle code must fall
+    // back to nextBillingDate/trialEndsAt for pre-existing documents.
+    startDate: { type: Date },
+    endDate: { type: Date },
+    // Cancellation: a paid plan is not revoked early. `cancelAtPeriodEnd` keeps
+    // the current tier live until `changeEffectiveAt`, then drops to developer.
+    cancelledAt: { type: Date },
+    cancelAtPeriodEnd: { type: Boolean, default: false },
+    // Downgrade/scheduled switch: the tier to move to once `changeEffectiveAt` hits.
+    pendingTier: {
+        type: String,
+        enum: ['developer', 'pro', 'pro_plus', 'team_standard', 'team_premium', 'enterprise']
+    },
+    changeEffectiveAt: { type: Date },
     billingCycle: { type: Number, default: 0 },
     metadata: { type: mongoose.Schema.Types.Mixed },
     // Team billing

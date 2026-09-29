@@ -168,6 +168,21 @@ export const companyApi = {
 
 export const subscriptionApi = {
   getCurrent: () => apiFetch('/api/subscription/current'),
+  // `mode` is 'period_end' (default, keeps access until the paid period runs
+  // out) or 'immediate' (revoke at once). The API decides the right default;
+  // only send it when the user explicitly asked to lose access now.
+  cancel: (mode) =>
+    apiFetch('/api/subscription/cancel', {
+      method: 'POST',
+      body: JSON.stringify(mode ? { mode } : {}),
+    }),
+  resume: () => apiFetch('/api/subscription/resume', { method: 'POST' }),
+  // Downgrades and moves to Free. Upgrades must go through checkout instead.
+  changePlan: (tier, timing) =>
+    apiFetch('/api/subscription/change-plan', {
+      method: 'POST',
+      body: JSON.stringify({ tier, timing }),
+    }),
 };
 
 export const billingApi = {
