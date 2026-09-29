@@ -5,7 +5,7 @@ const { enforceProjectLimit } = require('../middleware/trial');
 const LocalProject = require('../models/LocalProject');
 const LocalTask = require('../models/LocalTask');
 const CodeFile = require('../models/CodeFile');
-const SpecModel = require('../models/SpecModel');
+const { resolveAccessibleSpecs, getAccessibleProjects } = require('../utils/specAccess');
 
 /**
  * @swagger
@@ -26,10 +26,7 @@ const SpecModel = require('../models/SpecModel');
 router.get('/', authenticateToken, async (req, res) => {
     try {
         const userId = req.userId || req.user.userId || req.user.id;
-        const projects = await LocalProject.find({ 
-            userId, 
-            isArchived: false 
-        }).sort({ updatedAt: -1 });
+        const projects = await getAccessibleProjects(userId);
 
         res.json({
             success: true,
@@ -216,9 +213,9 @@ router.post('/tasks', authenticateToken, async (req, res) => {
         }
 
         if (specIds.length) {
-            const specs = await SpecModel.find({ _id: { $in: specIds }, workspaceId: companyId });
-            if (specs.length !== new Set(specIds.map(String)).size) {
-                return res.status(400).json({ success: false, message: 'One or more specs do not belong to this workspace' });
+            const resolved = await resolveAccessibleSpecs(specIds, { projectId, userId });
+            if (!resolved.ok) {
+                return res.status(400).json({ success: false, message: resolved.message });
             }
         }
 
@@ -306,9 +303,9 @@ router.put('/tasks/:taskId', authenticateToken, async (req, res) => {
             task.priority = priority;
         }
         if (specIds !== undefined) {
-            const specs = await SpecModel.find({ _id: { $in: specIds }, workspaceId: companyId || task.companyId });
-            if (specs.length !== new Set(specIds.map(String)).size) {
-                return res.status(400).json({ success: false, message: 'One or more specs do not belong to this workspace' });
+            const resolved = await resolveAccessibleSpecs(specIds, { projectId: task.projectId || null, userId });
+            if (!resolved.ok) {
+                return res.status(400).json({ success: false, message: resolved.message });
             }
             task.specIds = specIds;
             if (companyId) task.companyId = companyId;

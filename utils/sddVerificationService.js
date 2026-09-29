@@ -1,5 +1,7 @@
+const mongoose = require('mongoose');
 const SpecModel = require('../models/SpecModel');
 const LocalTask = require('../models/LocalTask');
+const LocalProject = require('../models/LocalProject');
 const CodeFile = require('../models/CodeFile');
 const { execFileSync } = require('child_process');
 const fs = require('fs');
@@ -97,7 +99,7 @@ class SDDVerificationService {
         }
       }
 
-      const codeFiles = await CodeFile.find({ company: spec.workspaceId }).select('path name language content').lean();
+      const codeFiles = await this.getSpecCodeFiles(spec);
       const structured = await this.verifySpecSnapshot(spec.toObject(), codeFiles);
       const blockingFailed = structured.requirements.some((result) => result.severity === 'blocking' && result.status === 'fail') || structured.forbiddenImports.some((result) => result.status === 'fail');
       const blockingPending = structured.requirements.some((result) => result.severity === 'blocking' && result.status === 'pending');
@@ -477,8 +479,12 @@ class SDDVerificationService {
     };
   }
 
-  async runSDDVerification(workspaceId, specId = null) {
-    const query = specId ? { _id: specId } : { workspaceId };
+  async runSDDVerification(scopeId, specId = null) {
+    // Accepts a project id (primary) or a workspace id (collaboration scope).
+    const scopeQuery = mongoose.Types.ObjectId.isValid(scopeId)
+      ? { $or: [{ projectId: scopeId }, { workspaceId: scopeId }] }
+      : { workspaceId: scopeId };
+    const query = specId ? { _id: specId } : scopeQuery;
     const specs = await SpecModel.find(query).populate('workspaceId');
     const results = [];
 
@@ -500,13 +506,69 @@ class SDDVerificationService {
     };
   }
 
-  async generateDriftReport(workspaceId) {
-    const specs = await SpecModel.find({ workspaceId });
+  /**
+   * The code a spec validates against.
+   *
+   * Specs are project-scoped. A project inside a workspace validates against
+   * that workspace's VFS (CodeFile.company). A solo project has no workspace,
+   * so we fall back to the files the project owner created — otherwise a solo
+   * spec would always verify against an empty file set and report everything
+   * as "pending".
+   */
+  async resolveSpecCodeScope(spec) {
+    const workspaceId = await this.resolveSpecWorkspaceId(spec);
+    if (workspaceId) return { company: workspaceId };
+
+    const project = await this.resolveSpecProject(spec);
+    if (project?.userId) return { createdBy: project.userId };
+
+    return null;
+  }
+
+  async getSpecCodeFiles(spec) {
+    const scope = await this.resolveSpecCodeScope(spec);
+    if (!scope) return [];
+    return CodeFile.find(scope).select('path name language content').lean();
+  }
+
+  /**
+   * A single target file, scoped the same way as getSpecCodeFiles so a drift
+   * check can never read a file belonging to someone else's workspace.
+   */
+  async findSpecCodeFile(spec, filePath) {
+    const scope = await this.resolveSpecCodeScope(spec);
+    if (!scope) return null;
+    return CodeFile.findOne({ ...scope, path: filePath }).select('path name language content');
+  }
+
+  /**
+   * Workspace backing a spec: its own, else the parent project's.
+   */
+  async resolveSpecWorkspaceId(spec) {
+    if (!spec) return null;
+    if (spec.workspaceId) return spec.workspaceId;
+
+    const project = await this.resolveSpecProject(spec);
+    return project?.workspaceId || null;
+  }
+
+  async resolveSpecProject(spec) {
+    if (!spec?.projectId) return null;
+    return LocalProject.findById(spec.projectId).select('userId workspaceId').lean();
+  }
+
+  async generateDriftReport(scopeId) {
+    // A project id scopes to that project; a workspace id expands to all of
+    // its projects (and anything still filed directly under the workspace).
+    const query = mongoose.Types.ObjectId.isValid(scopeId)
+      ? { $or: [{ projectId: scopeId }, { workspaceId: scopeId }] }
+      : { workspaceId: scopeId };
+    const specs = await SpecModel.find(query);
     const reports = [];
 
     for (const spec of specs) {
       for (const targetFile of spec.targetModules || spec.targetFiles || []) {
-        const codeFile = await CodeFile.findOne({ path: targetFile });
+        const codeFile = await this.findSpecCodeFile(spec, targetFile);
         if (!codeFile) continue;
 
         const language = path.extname(targetFile).replace('.', '') || 'javascript';
@@ -518,7 +580,7 @@ class SDDVerificationService {
     }
 
     return {
-      workspaceId,
+      scopeId,
       totalWarnings: reports.length,
       reports,
       timestamp: new Date(),
