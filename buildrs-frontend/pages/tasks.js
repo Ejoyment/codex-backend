@@ -3,7 +3,7 @@ import Head from 'next/head';
 import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
-import { apiFetch } from '../lib/api';
+import { apiFetch, projectApi } from '../lib/api';
 import {
   Plus,
   X,
@@ -107,14 +107,35 @@ export default function Tasks() {
   useEffect(() => { loadTasks(); }, [loadTasks]);
 
   useEffect(() => {
-    if (!selectedCompany?._id) {
-      setSpecs([]);
-      return;
-    }
-    apiFetch(`/api/v1/specs/workspace/${selectedCompany._id}`)
-      .then((data) => setSpecs(data.specs || []))
-      .catch(() => setSpecs([]));
-  }, [selectedCompany?._id]);
+    let active = true;
+    // Specs are project-level, so the picker is driven by the projects this
+    // user can reach — not by a workspace. Solo users still get their specs.
+    (async () => {
+      try {
+        const { projects = [] } = await projectApi.list();
+        const lists = await Promise.all(
+          projects.map((project) =>
+            apiFetch(`/api/v1/specs/project/${project.id || project._id}`)
+              .then((data) => data.specs || [])
+              .catch(() => [])
+          )
+        );
+        if (!active) return;
+        const seen = new Set();
+        setSpecs(
+          lists.flat().filter((spec) => {
+            const key = String(spec._id);
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          })
+        );
+      } catch {
+        if (active) setSpecs([]);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
 
   const filteredTasks = activeTab === 'all' ? tasks : tasks.filter((t) => t.status === activeTab);
 

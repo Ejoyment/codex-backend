@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
-import { AlertTriangle, Check, CheckCircle2, CircleHelp, FileCode2, Loader2, Plus, Play, ShieldAlert, X } from 'lucide-react';
+import { AlertTriangle, Check, CheckCircle2, CircleHelp, FileCode2, FolderGit2, Loader2, Plus, Play, ShieldAlert, X } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
-import { apiFetch } from '../lib/api';
-import { NoWorkspaceEmptyState, useCurrentCompany } from '../hooks/useCurrentCompany';
+import { apiFetch, projectApi } from '../lib/api';
 
 const CHECK_TYPES = ['code_pattern', 'test_name', 'file_exists', 'ai_review', 'manual'];
 const EMPTY_REQUIREMENT = { text: '', checkType: 'manual', checkValue: '', severity: 'blocking' };
@@ -49,8 +48,11 @@ export default function SpecsPage() {
   const user = useAuthStore((state) => state.user);
   const subscription = useAuthStore((state) => state.subscription);
   const router = useRouter();
-  const { companies, selectedCompany, loading: loadingCompanies } = useCurrentCompany();
-  const [companyId, setCompanyId] = useState('');
+  // Specs belong to a project. A workspace is optional collaboration context,
+  // so a solo project gets the full spec workflow with no workspace at all.
+  const [projects, setProjects] = useState([]);
+  const [projectId, setProjectId] = useState('');
+  const [loadingProjects, setLoadingProjects] = useState(true);
   const [specs, setSpecs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -61,22 +63,37 @@ export default function SpecsPage() {
   const [form, setForm] = useState(EMPTY_FORM);
 
   useEffect(() => {
-    if (selectedCompany?._id && !companyId) setCompanyId(selectedCompany._id);
-  }, [selectedCompany, companyId]);
+    let active = true;
+    (async () => {
+      setLoadingProjects(true);
+      try {
+        const result = await projectApi.list();
+        if (!active) return;
+        const list = result.projects || [];
+        setProjects(list);
+        setProjectId((current) => current || list[0]?.id || list[0]?._id || '');
+      } catch (error) {
+        if (active) setLoadError(error.message || 'Could not load projects');
+      } finally {
+        if (active) setLoadingProjects(false);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
 
   const loadSpecs = useCallback(async () => {
-    if (!companyId) return;
+    if (!projectId) { setSpecs([]); setLoading(false); return; }
     setLoading(true);
     setLoadError('');
     try {
-      const result = await apiFetch(`/api/v1/specs/workspace/${companyId}`);
+      const result = await apiFetch(`/api/v1/specs/project/${projectId}`);
       setSpecs(result.specs || []);
     } catch (error) {
       setLoadError(error.message || 'Could not load specs');
     } finally {
       setLoading(false);
     }
-  }, [companyId]);
+  }, [projectId]);
 
   useEffect(() => { loadSpecs(); }, [loadSpecs]);
 
@@ -101,7 +118,7 @@ export default function SpecsPage() {
 
   const saveSpec = async (event) => {
     event.preventDefault();
-    if (!form.title.trim() || !companyId) return;
+    if (!form.title.trim() || !projectId) return;
     setSaving(true);
     setNotice('');
     try {
@@ -125,7 +142,7 @@ export default function SpecsPage() {
       const result = await apiFetch('/api/v1/specs', {
         method: 'POST',
         body: JSON.stringify({
-          workspaceId: companyId,
+          projectId,
           title: form.title.trim(),
           description: form.description.trim(),
           content: form.description.trim() || form.title.trim(),
@@ -154,7 +171,7 @@ export default function SpecsPage() {
     try {
       const result = await apiFetch('/api/v1/specs/verify', {
         method: 'POST',
-        body: JSON.stringify({ specId: spec._id, workspaceId: companyId }),
+        body: JSON.stringify({ specId: spec._id, projectId }),
       });
       const validation = result.verification || result;
       setSpecs((current) => current.map((item) => item._id === spec._id ? {
@@ -193,16 +210,23 @@ export default function SpecsPage() {
               <div className="dash-statusline"><span className="status-indicator status-online" /><span>{specs.length} executable contract{specs.length === 1 ? '' : 's'}</span></div>
             </div>
             <div className="flex items-center gap-3">
-              {companies.length > 1 && (
-                <select className="ws-select" value={companyId} onChange={(event) => setCompanyId(event.target.value)} aria-label="Workspace">
-                  {companies.map((company) => <option key={company._id} value={company._id}>{company.name}</option>)}
+              {projects.length > 0 && (
+                <select className="ws-select" value={projectId} onChange={(event) => setProjectId(event.target.value)} aria-label="Project">
+                  {projects.map((project) => <option key={project.id || project._id} value={project.id || project._id}>{project.name}</option>)}
                 </select>
               )}
-              <button type="button" className="btn-workspace btn-primary" onClick={() => openEditor()}><Plus className="w-4 h-4" /> New Spec</button>
+              <button type="button" className="btn-workspace btn-primary" onClick={() => openEditor()} disabled={!projectId}><Plus className="w-4 h-4" /> New Spec</button>
             </div>
           </header>
           <div className="workspace-content">
-            {loadingCompanies ? <div className="dash-empty"><Loader2 className="w-5 h-5 animate-spin" /></div> : !companies.length ? <NoWorkspaceEmptyState onCreateClick={() => router.push('/teams')} /> : (
+            {loadingProjects ? <div className="dash-empty"><Loader2 className="w-5 h-5 animate-spin" /></div> : !projects.length ? (
+              <div className="workspace-card"><div className="workspace-card-body flex flex-col items-center py-16 text-center">
+                <FolderGit2 className="w-7 h-7 text-[#2fd6e6] mb-4" />
+                <p className="dash-empty-title">No projects yet</p>
+                <p className="dash-empty-sub mb-5">Specs belong to a project. Create a project to start writing executable contracts — no workspace needed.</p>
+                <button className="btn-workspace btn-primary" type="button" onClick={() => router.push('/workspace')}><Plus className="w-4 h-4" /> Create a project</button>
+              </div></div>
+            ) : (
               <>
                 {notice && <div className="std-alert std-alert-error mb-5">{notice}</div>}
                 {loadError && <div className="std-alert std-alert-error mb-5">{loadError}</div>}
@@ -212,7 +236,7 @@ export default function SpecsPage() {
                 </div>
                 {loading ? <div className="dash-empty"><Loader2 className="w-5 h-5 animate-spin" /><p className="dash-empty-title">Loading specs</p></div> : specs.length === 0 ? (
                   <div className="workspace-card"><div className="workspace-card-body flex flex-col items-center py-16 text-center">
-                    <FileCode2 className="w-7 h-7 text-[#2fd6e6] mb-4" /><p className="dash-empty-title">No specs in this workspace</p>
+                    <FileCode2 className="w-7 h-7 text-[#2fd6e6] mb-4" /><p className="dash-empty-title">No specs in this project</p>
                     <p className="dash-empty-sub mb-5">Create a scoped contract with requirements agents can check against code.</p>
                     <button className="btn-workspace btn-primary" type="button" onClick={() => openEditor()}><Plus className="w-4 h-4" /> Create first spec</button>
                   </div></div>

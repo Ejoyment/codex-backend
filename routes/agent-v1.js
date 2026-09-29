@@ -10,6 +10,7 @@ const Company = require('../models/Company');
 const CodeFile = require('../models/CodeFile');
 const gitService = require('../utils/gitService');
 const sddVerificationService = require('../utils/sddVerificationService');
+const { userCanAccessSpec, resolveAccessibleSpecs } = require('../utils/specAccess');
 const realtimeBus = require('../utils/realtimeBus');
 const { Worker } = require('worker_threads');
 const path = require('path');
@@ -86,12 +87,13 @@ router.post('/delegate', authenticateToken, enforceConcurrentJobs(), enforceTask
     }
 
     const requestedSpecIds = [...new Set([...(req.body.specIds || []), ...(req.body.specId ? [req.body.specId] : []), ...(task?.specIds || []).map(String)])];
-    const specs = requestedSpecIds.length
-      ? await SpecModel.find({ _id: { $in: requestedSpecIds }, workspaceId }).lean()
-      : [];
-    if (specs.length !== requestedSpecIds.length) {
-      return res.status(400).json({ success: false, message: 'One or more attached specs were not found in this workspace' });
+    // Specs belong to the task's project; the workspace check above only gates
+    // the git branch, not which specs may be attached.
+    const resolvedSpecs = await resolveAccessibleSpecs(requestedSpecIds, { projectId: task?.projectId || null, userId: req.userId });
+    if (!resolvedSpecs.ok) {
+      return res.status(400).json({ success: false, message: resolvedSpecs.message });
     }
+    const specs = resolvedSpecs.specs.map((spec) => (typeof spec.toObject === 'function' ? spec.toObject() : spec));
     const codeFiles = await CodeFile.find({ company: workspaceId }).select('path name language content').lean();
     const taskTitleValue = taskTitle || task?.title || 'Workspace task';
     const slug = taskTitleValue.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'task';
@@ -359,6 +361,10 @@ router.post('/verify', authenticateToken, async (req, res) => {
 
     if (!spec) {
       return res.status(404).json({ success: false, message: 'Spec not found' });
+    }
+
+    if (!await userCanAccessSpec(spec, req.userId)) {
+      return res.status(403).json({ success: false, message: 'Project access denied' });
     }
 
     const result = await sddVerificationService.verifySpec(spec._id, taskId);

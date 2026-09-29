@@ -1,10 +1,18 @@
 const mongoose = require('mongoose');
 
 const specSchema = new mongoose.Schema({
+  // Specs are a project-level construct. A spec always belongs to a project.
+  projectId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'LocalProject',
+    required: true,
+  },
+  // Optional collaboration context: the workspace the project belongs to.
+  // Solo projects have no workspace, so this stays null.
   workspaceId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Workspace',
-    required: true,
+    default: null,
   },
   title: {
     type: String,
@@ -60,8 +68,9 @@ specSchema.pre('save', function(next) {
   next();
 });
 
+specSchema.index({ projectId: 1, specId: 1 });
+specSchema.index({ projectId: 1, title: 1 });
 specSchema.index({ workspaceId: 1, specId: 1 });
-specSchema.index({ workspaceId: 1, title: 1 });
 specSchema.index({ specId: 1 });
 
 module.exports = mongoose.model('Spec', specSchema);
