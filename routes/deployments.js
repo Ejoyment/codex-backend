@@ -68,7 +68,8 @@ router.get('/', authenticateToken, async (req, res) => {
                 status: 'failed',
                 errorMessage: 'Deployment timed out. Please try again.',
                 fault: 'platform',
-                failureStage: 'platform'
+                failureStage: 'platform',
+                expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
             }
         );
 
@@ -352,6 +353,9 @@ router.post('/', authenticateToken, async (req, res) => {
                         failureStage: failureStage || 'platform',
                         steps: liveSteps,
                         buildLogs: depService.capLogTail(logTail),
+                        // Failed deployments expire via the TTL index so the
+                        // collection doesn't accumulate dead build records.
+                        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
                         ...(depErr.runtimeLogs ? { runtimeLogs: String(depErr.runtimeLogs).slice(-200000) } : {}),
                     });
                 } catch (saveErr) {
@@ -490,9 +494,10 @@ router.delete('/:id', authenticateToken, async (req, res) => {
             }
         }
 
-        // Mark as stopped in DB
+        // Mark as stopped in DB (expires in 30d via TTL index)
         deployment.status = 'stopped';
         deployment.deployedUrl = null;
+        deployment.expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
         await deployment.save();
 
         let stopCompanyId = null;

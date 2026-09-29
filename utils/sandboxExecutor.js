@@ -54,6 +54,8 @@ class SandboxExecutor {
      * Execute code safely in an isolated Docker container.
      */
     async execute(code, language = 'javascript', options = {}) {
+        if (typeof code === 'string' && code.length > 200000) throw new Error('Code too large');
+        if (typeof language !== 'string') throw new Error('Invalid language');
         if (!this.available) {
             return await this.childProcessExecute(code, language, options);
         }
@@ -72,6 +74,8 @@ class SandboxExecutor {
      * Containers are always cleaned up (finally block).
      */
     async executeInDocker(code, language, options) {
+        if (typeof code === 'string' && code.length > 200000) throw new Error('Code too large');
+        if (typeof language !== 'string') throw new Error('Invalid language');
         const userId = options.userId || 'system';
         const workspaceId = options.workspaceId || 'default';
         if (!/^[a-zA-Z0-9_-]{1,64}$/.test(String(userId)) || !/^[a-zA-Z0-9_-]{1,64}$/.test(String(workspaceId))) throw new Error('Invalid userId/workspaceId');
@@ -82,12 +86,43 @@ class SandboxExecutor {
             // Use exec form (no shell) to prevent shell injection.
             // Pass code directly to the language interpreter.
             const execCmd = this.getDockerExecCmd(language, code);
-            await container.update({ Cmd: execCmd });
             await container.start();
 
+            const exec = await container.exec({ Cmd: execCmd, AttachStdout: true, AttachStderr: true });
+            const stream = await exec.start({});
+
+            let output = '';
+            let outputBytes = 0;
+            const MAX_OUTPUT_BYTES = 1024 * 1024;
+            let truncated = false;
+            stream.on('data', (chunk) => {
+                if (truncated) return;
+                const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
+                if (outputBytes + buf.length > MAX_OUTPUT_BYTES) {
+                    const remaining = MAX_OUTPUT_BYTES - outputBytes;
+                    if (remaining > 0) {
+                        output += buf.slice(0, remaining).toString();
+                        outputBytes += remaining;
+                    }
+                    output += '[truncated]';
+                    truncated = true;
+                } else {
+                    output += buf.toString();
+                    outputBytes += buf.length;
+                }
+            });
+
             const startTime = Date.now();
+            const execPromise = (async () => {
+                await new Promise((resolve, reject) => {
+                    stream.on('end', resolve);
+                    stream.on('error', reject);
+                });
+                const info = await exec.inspect();
+                return { StatusCode: info.ExitCode };
+            })();
             const result = await Promise.race([
-                container.wait(),
+                execPromise,
                 new Promise((_, reject) =>
                     setTimeout(() => reject(new Error('Execution timeout')), options.timeout)
                 )
@@ -95,11 +130,9 @@ class SandboxExecutor {
 
             const executionTime = Date.now() - startTime;
 
-            const logs = await container.logs({ stdout: true, stderr: true });
-
             return {
                 success: result.StatusCode === 0,
-                output: logs.toString(),
+                output,
                 exitCode: result.StatusCode,
                 executionTime
             };
