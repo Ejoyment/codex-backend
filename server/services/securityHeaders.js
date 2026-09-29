@@ -18,9 +18,16 @@ function phase3SecurityHeaders(req, res, next) {
  * for payment webhook signature verification (Stripe/Paystack/Flutterwave).
  * express.json() consumes the request stream, so a later express.raw()
  * mount would see an empty body — this hook is the only reliable capture.
+ *
+ * The matched paths live in utils/webhookSecurity.js so this hook and the
+ * verifiers cannot drift apart. Do not re-serialize req.body for signature
+ * checks: key order or whitespace differences yield a different HMAC than the
+ * provider computed, which silently rejects legitimate webhooks.
  */
+const { isWebhookPath } = require('../../utils/webhookSecurity');
+
 function captureWebhookRawBody(req, res, buf) {
-  if (req.originalUrl && req.originalUrl.includes('/api/v1/billing/webhook')) {
+  if (isWebhookPath(req.originalUrl)) {
     req.rawBody = Buffer.from(buf);
   }
 }

@@ -7,9 +7,22 @@ const swaggerUi = require('swagger-ui-express');
 const swaggerSpecs = require('./config/swagger');
 require('dotenv').config();
 
-// Warn if JWT_SECRET is missing or weak — prevents token forgery
-if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
-    console.error('⚠️  WARNING: JWT_SECRET must be set and at least 32 characters. Tokens may be insecure.');
+// Refuse to boot without a strong JWT_SECRET. A missing or short secret makes
+// every issued token forgeable — anyone can mint an admin token and authenticate
+// as any account. Warning and starting anyway means a typo in a deploy variable
+// silently produces a fully compromised auth system.
+//
+// Guarded on require.main so that test suites (and any tool that imports the
+// app without listening) do not abort the process; the same guard is asserted
+// in the server listen path below.
+if (require.main === module && (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32)) {
+    const detail = process.env.JWT_SECRET
+        ? `is only ${process.env.JWT_SECRET.length} characters (minimum 32)`
+        : 'is not set';
+    console.error(`\n❌ FATAL: JWT_SECRET ${detail}.`);
+    console.error('   Generate one with:  node -e "console.log(require(\'crypto\').randomBytes(48).toString(\'hex\'))"');
+    console.error('   Set it in .env and restart. Refusing to start with a forgeable token signing key.\n');
+    process.exit(1);
 }
 
 const authRoutes = require('./routes/auth');
@@ -139,6 +152,15 @@ async function startServer(port = process.env.PORT || 3000) {
     roomService.startSweeper();
 
     return new Promise((resolve, reject) => {
+        // Belt-and-braces: the top-of-file check is guarded on require.main so
+        // tests can import this module. Assert again here, where the process is
+        // genuinely about to serve traffic.
+        if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
+            reject(new Error(
+                'JWT_SECRET must be set to at least 32 characters before the server can listen.'
+            ));
+            return;
+        }
         srv.listen(port, () => {
             console.log(`\n🚀 CODEX INC Server running on port ${port}`);
             console.log(`📧 Email service: Resend API (Production Ready)`);
@@ -196,12 +218,33 @@ app.use(express.urlencoded({ extended: true }));
 const { phase3SecurityHeaders } = require('./server/services/securityHeaders');
 app.use(phase3SecurityHeaders);
 
-// Serve uploaded files with proper headers
+// Tier/permission matrix — used by socket handlers that must authorize before
+// touching a resource (terminal creation, sandbox execution).
+const permissionMatrix = require('./middleware/permissionMatrix');
+
+// Serve uploaded files with proper headers.
+// Anything that a browser will treat as active content is refused outright, so
+// a file type missed by an individual upload route's fileFilter still cannot
+// execute script from the app's origin. Per-upload allowlists (e.g. the
+// company logo route) are the first line of defence; this is the backstop.
+const ACTIVE_CONTENT_EXT = /\.(svg|svgz|html?|xht(ml)?|xml|xsl|js|mjs|cjs|wasm|php|phtml|swf)$/i;
+const UPLOADS_DENY_TYPES = /^(text\/html|application\/xhtml|image\/svg\+xml|text\/xml|application\/xml|text\/javascript|application\/javascript)/i;
+
 app.use('/uploads', express.static('uploads', {
-    setHeaders: (res, path) => {
+    setHeaders: (res, filePath) => {
+        if (ACTIVE_CONTENT_EXT.test(filePath) || UPLOADS_DENY_TYPES.test(res.getHeader('Content-Type') || '')) {
+            // Send a 200 with an inert body rather than a 404 so the URL shape
+            // stays uniform, but never deliver attacker-controlled markup.
+            res.setHeader('Content-Type', 'application/octet-stream');
+            res.setHeader('X-Content-Type-Options', 'nosniff');
+            res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+        }
         res.set('Access-Control-Allow-Origin', '*');
         res.set('Cache-Control', 'public, max-age=31536000');
-    }
+    },
+    // Dotfiles in uploads are never legitimate and can hide credentials.
+    dotfiles: 'deny',
+    index: false
 }));
 
 // Serve the frontend SPA (editor, design-code split, sandbox viewer, etc.) so the
@@ -288,6 +331,13 @@ const specRoutes = require('./routes/specs');
 const roomsRoutes = require('./server/routes/rooms');
 const billingV1Routes = require('./server/routes/billing');
 
+// Security headers middleware.
+// MUST be registered before the route mounts below: Express runs middleware in
+// registration order, so a handler that ends the response (as nearly all of
+// them do) would otherwise never reach this and ship without CSP, nosniff,
+// X-Frame-Options or HSTS.
+app.use(enforceSecurityHeaders());
+
 // Apply global rate limiter to all API routes
 app.use('/api', globalLimiter);
 
@@ -337,7 +387,10 @@ app.use('/api/ide', ideRoutes);
 app.use('/api/sandbox', sandboxRoutes);
 app.use('/api/git', gitRoutes);
 app.use('/api/debug', debugRoutes);
-app.use('/api/deployments', deploymentRoutes);
+// checkTrialStatus populates req.subscription; the quota itself is applied on
+// the create route (routes/deployments.js) so that hitting the limit blocks
+// provisioning but still lets a user list, inspect and delete deployments.
+app.use('/api/deployments', checkTrialStatus, deploymentRoutes);
 app.use('/api/agent-confirmation', agentConfirmationRoutes);
 app.use('/api/v1/agent', checkTrialStatus, enforceCreditPool(), enforceCloudComputeLimit(), agentV1Routes);
 // Specs are project-level and part of the local project workflow, so the spec
@@ -349,8 +402,6 @@ app.use('/api/v1/billing', billingV1Routes);
 app.use('/api/projects', checkTrialStatus, enforceDeploymentLimit(), projectRoutes);
 app.use('/api/ai-context', figmaContextRoutes, teamMemoryRoutes, ticketBridgeRoutes);
 
-// Security headers middleware
-app.use(enforceSecurityHeaders());
 
 // TTL Sweeper for debug rooms — cleans up expired rooms every hour
 const TTL_SWEETER_INTERVAL = parseInt(process.env.DEBUG_ROOM_TTL_CLEANUP_INTERVAL) || 3600000;
@@ -769,6 +820,20 @@ terminalNamespace.on('connection', (socket) => {
     // Create terminal session
     socket.on('terminal:create', async ({ workspaceId, options }) => {
         try {
+            // Tier gate + workspace ownership. Previously this handler only
+            // checked that the JWT was valid, so any signed-up account could
+            // open a shell and read the host filesystem (.env, MONGODB_URI,
+            // every provider key) — full RCE for the price of a free signup.
+            const permission = await permissionMatrix.checkPermission(
+                socket.userId,
+                'create',
+                'terminal'
+            );
+            if (!permission.allowed) {
+                console.warn(`[terminal:create] denied for ${socket.userId}: ${permission.reason}`);
+                return socket.emit('terminal:error', { message: permission.reason || 'Permission denied' });
+            }
+
             const result = await terminalService.createTerminal(
                 socket.userId,
                 workspaceId,

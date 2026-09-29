@@ -55,24 +55,33 @@ class AIService {
         }
     }
 
-    getAvailableProvider() {
-        // If specific provider requested, use it
-        if (this.provider !== 'auto' && this.providers[this.provider]?.available) {
-            return this.provider;
+    /**
+     * Resolve which provider to use for a call.
+     *
+     * A per-request provider (passed by the caller, e.g. the user's selection
+     * or aiRouterService's routing decision) takes precedence over the
+     * process-wide default. Previously `chat()` read only `this.provider`,
+     * so aiRouterService's `provider` argument was silently discarded and
+     * every request went to whichever provider happened to be configured —
+     * users picking Anthropic or OpenAI were served Gemini with no error.
+     */
+    resolveProvider(requested) {
+        const candidates = [requested, this.provider];
+        for (const candidate of candidates) {
+            if (candidate && candidate !== 'auto' && this.providers[candidate]?.available) {
+                return candidate;
+            }
         }
-
-        // Auto-select first available provider
-        const available = Object.keys(this.providers).find(key => this.providers[key].available);
-        
+        const available = Object.keys(this.providers).find((key) => this.providers[key].available);
         if (!available) {
             throw new Error('No AI provider configured. Please add API keys to .env file.');
         }
-
         return available;
     }
 
     async chat(messages, codeContext = {}) {
-        const provider = this.getAvailableProvider();
+        // Per-request provider from the router/caller.
+        const provider = this.resolveProvider(codeContext.provider);
         console.log(`Using AI provider: ${this.providers[provider].name}`);
 
         try {
@@ -90,15 +99,20 @@ class AIService {
             }
         } catch (error) {
             console.error(`Error with ${provider}:`, error.message);
-            
-            // Try fallback to another provider
-            const fallback = this.getFallbackProvider(provider);
+
+            // Fall back to another provider for THIS request only. Mutating the
+            // module singleton (`this.provider = fallback`) re-pointed the AI
+            // backend for every subsequent request in the process, so one user's
+            // transient provider failure silently changed everyone else's model.
+            const fallback = this.getFallbackProvider(provider, codeContext._tried);
             if (fallback) {
                 console.log(`Falling back to: ${this.providers[fallback].name}`);
-                this.provider = fallback;
-                return await this.chat(messages, codeContext);
+                // Track tried providers so a cycle (A fails → B fails → A)
+                // terminates instead of recursing until the stack overflows.
+                const tried = [...(codeContext._tried || []), provider];
+                return await this.chat(messages, { ...codeContext, provider: fallback, _tried: tried });
             }
-            
+
             throw error;
         }
     }
@@ -149,9 +163,10 @@ Please:
         return await this.chat([{ role: 'user', content: prompt }], { ...context, agentMode: false });
     }
 
-    getFallbackProvider(currentProvider) {
+    getFallbackProvider(currentProvider, tried = []) {
         const providers = Object.keys(this.providers);
-        return providers.find(p => p !== currentProvider && this.providers[p].available);
+        const attempted = new Set([...(Array.isArray(tried) ? tried : []), currentProvider]);
+        return providers.find((p) => !attempted.has(p) && this.providers[p].available);
     }
 
     // Gemini Implementation

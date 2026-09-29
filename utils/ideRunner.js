@@ -502,11 +502,35 @@ function hasLocalDocker() {
   return dockerAvailable;
 }
 
+/**
+ * Host execution runs the submitted program directly on the Node process's
+ * host: same uid, same filesystem, same network as the database and every
+ * provider secret. It exists for local development with no Docker. In
+ * production it must never be reachable, so it is opt-in and off by default.
+ */
+function hostExecAllowed() {
+  if (process.env.IDE_ALLOW_HOST_EXEC === 'true') return true;
+  return process.env.NODE_ENV !== 'production';
+}
+
 function pickStrategy() {
   const forced = process.env.IDE_EXEC_STRATEGY;
-  if (forced === 'vps' || forced === 'docker' || forced === 'host') return forced;
+  if (forced === 'vps' || forced === 'docker') return forced;
+  if (forced === 'host') {
+    if (!hostExecAllowed()) {
+      console.error('✗ IDE_EXEC_STRATEGY=host is not permitted in production — refusing to execute user code unsandboxed.');
+      return 'none';
+    }
+    return 'host';
+  }
   if (hasVpsConfig()) return 'vps';
   if (hasLocalDocker()) return 'docker';
+  // No isolation available. Previously this silently fell through to
+  // runOnHost(), giving every user code execution on the application host.
+  if (!hostExecAllowed()) {
+    console.error('✗ No Docker or VPS sandbox available and host execution is disabled — the Run button will report unavailable.');
+    return 'none';
+  }
   return 'host';
 }
 
@@ -880,6 +904,21 @@ async function executeRun({ language, files, entry, args, stdin, timeoutMs, onOu
   const strategy = pickStrategy();
 
   let result;
+  if (strategy === 'none') {
+    // Fail closed: no isolation means no execution, rather than silently
+    // dropping privileges and running user code on the application host.
+    const msg = 'Code execution is unavailable: no sandbox is configured on this server.';
+    if (typeof onOutput === 'function') { try { onOutput(msg); } catch (_) {} }
+    return {
+      language,
+      strategy,
+      exitCode: -1,
+      output: msg,
+      timedOut: false,
+      problems: [{ file: entryRel, line: 1, column: 1, severity: 'error', message: msg }],
+      files: [],
+    };
+  }
   if (strategy === 'vps') {
     result = await runOnVps(vpsDockerCommand(def.image, script), {
       stdinData: typeof stdin === 'string' && stdin.length ? stdin.slice(0, 64 * 1024) : null,

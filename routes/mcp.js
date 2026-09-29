@@ -4,6 +4,7 @@ const { authenticateToken } = require('../middleware/auth');
 const McpServer = require('../models/McpServer');
 const Company = require('../models/Company');
 const { addAuditLog } = require('../utils/auditLogService');
+const { validateOutboundUrl } = require('../utils/urlSafety');
 
 const ensureCompanyMember = async (req, res, next) => {
     try {
@@ -44,6 +45,15 @@ router.post('/', authenticateToken, ensureCompanyMember, async (req, res) => {
         const { companyId, name, transport = 'sse', serverUrl, command, args, env, headers, enabled } = req.body;
         if (!name || (!serverUrl && !command)) {
             return res.status(400).json({ success: false, message: 'Name and either a server URL or command are required' });
+        }
+        // Reject internal/private destinations up front. Without this, any
+        // company member could point an MCP server at 169.254.169.254 or
+        // localhost:27017 and read the response back out of the probe route.
+        if (serverUrl) {
+            const urlCheck = await validateOutboundUrl(serverUrl);
+            if (!urlCheck.ok) {
+                return res.status(400).json({ success: false, message: `Invalid serverUrl: ${urlCheck.reason}` });
+            }
         }
         const server = await McpServer.create({
             company: companyId,
@@ -151,6 +161,13 @@ router.post('/:id/probe', authenticateToken, async (req, res) => {
             error = 'stdio servers are configured for local runners; connectivity is resolved at run time.';
         } else if (server.serverUrl) {
             try {
+                // Re-validate on every probe, not just at creation: the stored
+                // URL may predate this check, and a hostname's DNS can change
+                // to point at an internal address after registration.
+                const urlCheck = await validateOutboundUrl(server.serverUrl);
+                if (!urlCheck.ok) {
+                    throw new Error(`Blocked: ${urlCheck.reason}`);
+                }
                 const ctrl = new AbortController();
                 const timeout = setTimeout(() => ctrl.abort(), 5000);
                 const res = await fetch(server.serverUrl, {

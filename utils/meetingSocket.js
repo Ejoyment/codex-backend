@@ -36,8 +36,23 @@ module.exports = (io) => {
         socket.join(`user:${socket.userId}`);
         
         // Join room
-        socket.on('join-room', async ({ roomId, userId }) => {
+        socket.on('join-room', async ({ roomId }) => {
             try {
+                // Identity comes from the JWT verified at connection time, never
+                // from the client. Previously the handler read a client-supplied
+                // userId, so anyone could join a call impersonating another
+                // participant and have their profile attached to it.
+                const userId = socket.userId;
+                if (!userId) {
+                    socket.emit('error', { message: 'Authentication required' });
+                    return;
+                }
+
+                if (!roomId || typeof roomId !== 'string' || roomId.length > 128) {
+                    socket.emit('error', { message: 'Invalid room id' });
+                    return;
+                }
+
                 socket.join(roomId);
                 socket.roomId = roomId;
                 

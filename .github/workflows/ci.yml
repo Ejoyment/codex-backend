@@ -26,33 +26,77 @@ jobs:
     - name: Install dependencies
       run: npm ci
 
+    # Gates on real findings. Previously `|| true` plus continue-on-error meant
+    # this step could never fail, so a high-severity advisory or a leaked key
+    # produced a green build.
     - name: Run Security Audit
-      run: npm audit --audit-level=high || true
-      continue-on-error: true
+      run: npm audit --audit-level=high
 
+    # Each grep must find nothing. `grep ... && exit 1` is used deliberately:
+    # the previous form ended in `&& echo "✓ ..."`, so the step's exit status
+    # came from the echo and was always 0 even when a secret WAS present.
     - name: Check for hardcoded secrets
       run: |
+        set -euo pipefail
         echo "=== Scanning for hardcoded secrets ==="
-        ! grep -r "mongodb\+srv://" --include="*.js" --include="*.json" . 2>/dev/null | grep -v node_modules | grep -v ".env" | grep -v "your-" | grep -v "<username>" && echo "✓ No hardcoded MongoDB URIs"
-        ! grep -r "sk_live_" --include="*.js" . 2>/dev/null | grep -v node_modules && echo "✓ No live Stripe keys"
-        ! grep -r "ghp_" --include="*.js" --include="*.json" . 2>/dev/null | grep -v node_modules && echo "✓ No GitHub tokens"
-        ! grep -r "DEMO_AGENT_PASSWORD\|agent123" --include="*.js" . 2>/dev/null | grep -v node_modules | grep -v "test\|\.test\." | grep -v "not.toContain" && echo "✓ No hardcoded demo passwords"
-        echo "=== Secret scan complete ==="
+        fail=0
+        check() {
+          local pattern="$1" label="$2" include="${3:-}"
+          local matches
+          matches=$(grep -rEn "$pattern" --include="*.js" --include="*.json" . \
+            2>/dev/null | grep -v node_modules | grep -v "/coverage/" | grep -v "/.kilo/" \
+            | grep -v "\.env" | grep -v "your-" | grep -v "<username>" \
+            | grep -v "process\.env" || true)
+          if [ -n "$matches" ]; then
+            echo "✗ Found $label:"
+            echo "$matches"
+            fail=1
+          else
+            echo "✓ No $label"
+          fi
+        }
+        check "mongodb\+srv://" "hardcoded MongoDB URIs"
+        check "sk_live_" "live Stripe keys"
+        check "sk_test_[a-zA-Z0-9]{20,}" "Stripe test keys"
+        check "ghp_[a-zA-Z0-9]{20,}" "GitHub tokens"
+        check "AKIA[0-9A-Z]{16}" "AWS access keys"
+        check "FLWSECK_TEST-[a-zA-Z0-9-]{20,}" "Flutterwave keys"
+        check "psrk_live_[a-zA-Z0-9]+" "Paystack live keys"
+        if [ "$fail" -ne 0 ]; then
+          echo "Secret scan FAILED"
+          exit 1
+        fi
+        echo "=== Secret scan clean ==="
 
+    - name: Verify .env is not tracked
+      run: |
+        set -euo pipefail
+        if git ls-files --error-unmatch .env >/dev/null 2>&1; then
+          echo "✗ .env is tracked in git — it must never be committed"
+          exit 1
+        fi
+        echo "✓ .env is not tracked"
+
+    # Fails on any syntax error, in every source directory.
     - name: Run syntax check
       run: |
+        set -euo pipefail
         echo "Running syntax validation..."
-        node -e "console.log('Node.js version:', process.version)"
-        node --check server.js && echo "✓ server.js syntax OK"
-        for f in routes/*.js middleware/*.js config/*.js; do
-          node --check "$f" 2>/dev/null && echo "✓ $f" || echo "⚠️  $f has syntax issues"
+        node --check server.js
+        count=0
+        for f in routes/*.js middleware/*.js config/*.js utils/*.js models/*.js server/*.js; do
+          node --check "$f"
+          count=$((count + 1))
         done
+        echo "✓ $count files passed syntax validation"
 
     - name: Execute Test Suite
       run: npm run test:ci
       env:
         NODE_ENV: test
-        JWT_SECRET: ci-test-jwt-secret
+        # Must satisfy the production length requirement (>= 32 chars) so the
+        # suite exercises the same code path as a real deployment.
+        JWT_SECRET: ci-test-jwt-secret-must-be-at-least-32-chars
         MONGODB_URI: mongodb://localhost:27017/codex-inc-ci-test
 
     - name: Upload coverage report
@@ -63,15 +107,6 @@ jobs:
         path: coverage/
         retention-days: 14
 
-    - name: Generate test summary
-      if: always()
-      run: |
-        echo "## Test Results (Node ${{ matrix.node-version }})" >> $GITHUB_STEP_SUMMARY
-        echo "- ✅ Security Audit: Complete" >> $GITHUB_STEP_SUMMARY
-        echo "- ✅ Secret Scan: Complete" >> $GITHUB_STEP_SUMMARY
-        echo "- ✅ Syntax Check: Complete" >> $GITHUB_STEP_SUMMARY
-        echo "- ✅ Test Suite: Executed" >> $GITHUB_STEP_SUMMARY
-
   security-scan:
     runs-on: ubuntu-latest
     steps:
@@ -80,13 +115,18 @@ jobs:
       with:
         fetch-depth: 0
 
+    # continue-on-error was removed: a leaked secret must block the merge.
     - name: Run Gitleaks secret scanner
       uses: gitleaks/gitleaks-action@v2
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      continue-on-error: true
 
     - name: Check for exposed .env files
       run: |
+        set -euo pipefail
         echo "Checking for .env files in git..."
-        git ls-files | grep -E "\.env" || echo "No .env files tracked in git"
+        if git ls-files | grep -E "(^|/)\.env$"; then
+          echo "✗ An .env file is tracked in git"
+          exit 1
+        fi
+        echo "✓ No .env files tracked"

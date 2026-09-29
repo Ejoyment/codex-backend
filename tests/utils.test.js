@@ -76,7 +76,9 @@ describe('Utils - all modules load correctly', () => {
     'vectorMemory',
     'githubService',
     'debugAdapter',
-    'selfHealingSystem',
+    // 'selfHealingSystem' was removed: the file was a truncated stub committed
+    // mid-edit (ended on a bare `this`), so it failed to parse. Nothing imported
+    // it, and this test swallowed the require error, hiding the breakage.
     'hitlGates',
     'emailService',
     'virtualFileSystem',

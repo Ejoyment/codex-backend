@@ -6,6 +6,7 @@ const Subscription = require('../models/Subscription');
 const User = require('../models/User');
 const BillingScheduler = require('../utils/paystackScheduler');
 const { notifyPaymentEvent } = require('../utils/notificationTriggers');
+const { requireVerifiedWebhook } = require('../utils/webhookSecurity');
 
 /**
  * @swagger
@@ -372,54 +373,34 @@ router.post('/cancel', authenticateToken, async (req, res) => {
  *       400:
  *         description: Invalid webhook signature
  */
-router.post('/webhook', async (req, res) => {
-    try {
-        const crypto = require('crypto');
-        const secret = process.env.PAYSTACK_SECRET_KEY;
+router.post('/webhook', requireVerifiedWebhook('paystack', async (req, res) => {
+    const event = req.verifiedWebhookEvent;
+    console.log('Paystack webhook received:', event.event);
 
-        // Verify webhook signature
-        const hash = crypto
-            .createHmac('sha512', secret)
-            .update(JSON.stringify(req.body))
-            .digest('hex');
+    // Handle different event types
+    switch (event.event) {
+        case 'charge.success':
+            await handleChargeSuccess(event.data);
+            break;
 
-        if (hash !== req.headers['x-paystack-signature']) {
-            console.error('Invalid webhook signature');
-            return res.status(400).json({ success: false, message: 'Invalid signature' });
-        }
+        case 'charge.failed':
+            await handleChargeFailed(event.data);
+            break;
 
-        const event = req.body;
-        console.log('Paystack webhook received:', event.event);
+        case 'subscription.create':
+            console.log('Subscription created:', event.data.subscription_code);
+            break;
 
-        // Handle different event types
-        switch (event.event) {
-            case 'charge.success':
-                await handleChargeSuccess(event.data);
-                break;
+        case 'subscription.disable':
+            await handleSubscriptionDisabled(event.data);
+            break;
 
-            case 'charge.failed':
-                await handleChargeFailed(event.data);
-                break;
-
-            case 'subscription.create':
-                console.log('Subscription created:', event.data.subscription_code);
-                break;
-
-            case 'subscription.disable':
-                await handleSubscriptionDisabled(event.data);
-                break;
-
-            default:
-                console.log('Unhandled webhook event:', event.event);
-        }
-
-        res.status(200).json({ success: true });
-
-    } catch (error) {
-        console.error('Webhook error:', error);
-        res.status(500).json({ success: false, message: 'Webhook processing failed' });
+        default:
+            console.log('Unhandled webhook event:', event.event);
     }
-});
+
+    res.status(200).json({ success: true });
+}));
 
 /**
  * Handle successful charge webhook

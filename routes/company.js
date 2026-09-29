@@ -722,30 +722,40 @@ router.post('/:companyId/logo', authenticateToken, async (req, res) => {
     try {
         const multer = require('multer');
         const path = require('path');
-        
-        // Configure multer
+        // Raster-only. SVG was previously accepted, but an SVG is an XML
+        // document that can carry <script> and event handlers, and the uploads
+        // directory is served back over HTTP — so a "logo" could execute script
+        // in the app's origin (stored XSS). Logos do not need SVG.
+        const ALLOWED_LOGO_EXT = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp']);
+        const ALLOWED_LOGO_MIME = /^image\/(jpeg|png|gif|webp)$/i;
+
         const storage = multer.diskStorage({
             destination: (req, file, cb) => {
                 cb(null, 'uploads/logos/');
             },
             filename: (req, file, cb) => {
                 const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-                cb(null, 'logo-' + uniqueSuffix + path.extname(file.originalname));
+                // Derive the extension from the validated allowlist rather than
+                // from the client-supplied filename.
+                const ext = ALLOWED_LOGO_EXT.has(path.extname(file.originalname).toLowerCase())
+                    ? path.extname(file.originalname).toLowerCase()
+                    : '.bin';
+                cb(null, 'logo-' + uniqueSuffix + ext);
             }
         });
-        
+
         const upload = multer({
             storage: storage,
             limits: { fileSize: 5 * 1024 * 1024 },
             fileFilter: (req, file, cb) => {
-                const allowedTypes = /jpeg|jpg|png|gif|svg/;
-                const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-                const mimetype = allowedTypes.test(file.mimetype);
-                
-                if (extname && mimetype) {
+                const ext = path.extname(file.originalname).toLowerCase();
+                // Check the mimetype the client declared AND the extension, and
+                // both must be on the allowlist. Content sniffing is deliberately
+                // not trusted: the declared type is what express.static serves.
+                if (ALLOWED_LOGO_EXT.has(ext) && ALLOWED_LOGO_MIME.test(file.mimetype)) {
                     return cb(null, true);
                 }
-                cb(new Error('Only image files are allowed'));
+                cb(new Error('Only JPEG, PNG, GIF or WebP images are allowed'));
             }
         }).single('logo');
         
