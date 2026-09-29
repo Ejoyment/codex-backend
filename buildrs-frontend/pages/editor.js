@@ -21,7 +21,7 @@ import useToastStore from '../store/toastStore';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import DeploymentLogsModal from '../components/DeploymentLogsModal';
 import { useCurrentCompany } from '../hooks/useCurrentCompany';
-import { normalizeTier } from '../lib/tier';
+import { normalizeTier, tierDisplayLabel, tierDisplayDetail } from '../lib/tier';
 
 function tierBadgeLabel(t) {
   const n = normalizeTier(t);
@@ -3482,7 +3482,7 @@ export default function Editor() {
                   <div className="ed-sidebar-body">
                     <div className="ed-stat">
                       <span className="ed-badge-dot" style={{ background: blockCount ? '#e5b84a' : '#28c840' }} />
-                      Environment: <b>{tier || subscription?.tier || 'Free'}</b> · {extList.length}/{languages.length || '—'} languages active
+                      Environment: <b>{subscription ? tierDisplayLabel(subscription) : tierDisplayLabel({ tier })}</b> · {extList.length}/{languages.length || '—'} languages active
                     </div>
                     <div className="ed-sidebar-title" style={{ padding: '0.1rem 0.55rem' }}>Productivity</div>
                     {FEATURE_MODULES.map((m) => (
@@ -3862,7 +3862,7 @@ export default function Editor() {
                         </div>
                         <div className="ed-intel-card">
                           <span className="ed-intel-label">Environment</span>
-                          <strong>{tierBadgeLabel(subscription?.tier)}</strong>
+                          <strong>{subscription ? tierDisplayLabel(subscription) : tierBadgeLabel(subscription?.tier)}</strong>
                           <small>{blockCount ? `${blockCount} language(s) locked` : 'Full toolchain enabled'}</small>
                         </div>
                         <div className="ed-intel-card">
@@ -3969,8 +3969,8 @@ export default function Editor() {
               <span className="ed-status-item">{(selectedFile?.language || detectLanguage(selectedFile?.name) || 'text').toUpperCase()}</span>
               <span className="ed-status-item">UTF-8</span>
               <span className="ed-status-item">Spaces: 2</span>
-              <span className={`ed-tier-badge ${tierBadgeClass(subscription?.tier)}`}>
-                {tierBadgeLabel(subscription?.tier)}
+              <span className={`ed-tier-badge ${tierBadgeClass(subscription?.tier)}`} title={tierDisplayDetail(subscription)}>
+                {subscription ? tierDisplayLabel(subscription) : tierBadgeLabel(subscription?.tier)}
               </span>
             </div>
           </footer>

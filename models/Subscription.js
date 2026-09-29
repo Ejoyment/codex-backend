@@ -370,21 +370,36 @@ subscriptionSchema.methods.upgradeTo = function(tier) {
         this.pricing.interval = tierConfig.interval;
     }
 
-    const entitlements = subscriptionSchema.statics.tierConfigs?.[resolved];
-    if (entitlements) {
-        this.creditPool.monthlyLimit = entitlements.monthlyCreditLimit === undefined ? 0 : entitlements.monthlyCreditLimit;
-        this.cloudComputeHours.monthlyLimit = entitlements.cloudComputeHours === undefined ? 0 : entitlements.cloudComputeHours;
-        this.maxConcurrentAgentJobs = entitlements.maxConcurrentJobs === undefined ? 0 : entitlements.maxConcurrentJobs;
-        this.taskTimeoutMinutes = entitlements.taskTimeout === undefined ? 5 : entitlements.taskTimeout;
-        this.maxDebugHostRooms = entitlements.maxDebugHostRooms === undefined ? 0 : entitlements.maxDebugHostRooms;
-        this.maxDebugParticipants = entitlements.maxDebugParticipants === undefined ? 0 : entitlements.maxDebugParticipants;
-        this.maxActiveDeployments = entitlements.maxDeployments === undefined ? 1 : entitlements.maxDeployments;
-        this.specEngineLevel = entitlements.specEngineLevel || 'read_only';
-        this.webrtcVoiceEnabled = Boolean(entitlements.webrtcEnabled);
-        this.dataRetentionDays = entitlements.dataRetentionDays === undefined ? 7 : entitlements.dataRetentionDays;
-        this.teamSpecLibrary = Boolean(entitlements.features?.teamLibrary);
-        this.teamRBAC = Boolean(entitlements.features?.rbac);
-    }
+    this.syncTierRestrictions(resolved);
+};
+
+/**
+ * Apply a tier's restriction profile (credits, compute, agent jobs, spec
+ * engine, retention, team flags) to this subscription.
+ *
+ * Deliberately separate from upgradeTo: re-pricing a user is a billing event,
+ * but a tier's restrictions can drift when the profile changes or when a
+ * subscription was written before the profile existed. This only touches the
+ * limit fields, so usage counters (creditPool.usedThisMonth) and pricing are
+ * left alone.
+ */
+subscriptionSchema.methods.syncTierRestrictions = function(tier = this.tier) {
+    const entitlements = subscriptionSchema.statics.tierConfigs?.[tier];
+    if (!entitlements) return false;
+
+    this.creditPool.monthlyLimit = entitlements.monthlyCreditLimit === undefined ? 0 : entitlements.monthlyCreditLimit;
+    this.cloudComputeHours.monthlyLimit = entitlements.cloudComputeHours === undefined ? 0 : entitlements.cloudComputeHours;
+    this.maxConcurrentAgentJobs = entitlements.maxConcurrentJobs === undefined ? 0 : entitlements.maxConcurrentJobs;
+    this.taskTimeoutMinutes = entitlements.taskTimeout === undefined ? 5 : entitlements.taskTimeout;
+    this.maxDebugHostRooms = entitlements.maxDebugHostRooms === undefined ? 0 : entitlements.maxDebugHostRooms;
+    this.maxDebugParticipants = entitlements.maxDebugParticipants === undefined ? 0 : entitlements.maxDebugParticipants;
+    this.maxActiveDeployments = entitlements.maxDeployments === undefined ? 1 : entitlements.maxDeployments;
+    this.specEngineLevel = entitlements.specEngineLevel || 'read_only';
+    this.webrtcVoiceEnabled = Boolean(entitlements.webrtcEnabled);
+    this.dataRetentionDays = entitlements.dataRetentionDays === undefined ? 7 : entitlements.dataRetentionDays;
+    this.teamSpecLibrary = Boolean(entitlements.features?.teamLibrary);
+    this.teamRBAC = Boolean(entitlements.features?.rbac);
+    return true;
 };
 
 module.exports = mongoose.model('Subscription', subscriptionSchema);
@@ -433,3 +448,8 @@ subscriptionSchema.statics.tierConfigs = {
         features: { localModels: true, webcontainers: true, cloudAgents: true, debugRooms: true, teamLibrary: true, rbac: true, crossRepo: true, sso: true, audit: true, scim: true }
     }
 };
+
+// Statics assigned after mongoose.model() are not copied onto the compiled
+// model, so Model.tierConfigs would silently be undefined. Mirror them for
+// callers that read the profiles off the model.
+module.exports.tierConfigs = subscriptionSchema.statics.tierConfigs;

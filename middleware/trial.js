@@ -4,9 +4,16 @@ const jwt = require('jsonwebtoken');
 const emailService = require('../utils/emailServiceResend');
 const User = require('../models/User');
 
+// The tier a free trial grants. Trialing users get the Pro feature set, so the
+// tier recorded on the subscription must be Pro for the whole trial — a
+// trial recorded as 'developer' is what makes the UI report "Free" while the
+// backend is actually gating on trial entitlements.
+const TRIAL_TIER = 'pro';
+const TRIAL_DAYS = 14;
+
 function applyProTrial(subscription, startedAt = new Date()) {
-    const trialEndsAt = new Date(startedAt.getTime() + 14 * 24 * 60 * 60 * 1000);
-    subscription.upgradeTo('pro');
+    const trialEndsAt = new Date(startedAt.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
+    subscription.upgradeTo(TRIAL_TIER);
     subscription.status = 'trial';
     subscription.trialStartedAt = startedAt;
     subscription.trialEndsAt = trialEndsAt;
@@ -22,12 +29,38 @@ function createTrialSubscription(userId, startedAt = new Date()) {
     }), startedAt);
 }
 
+function isTrialExpired(subscription, now = new Date()) {
+    if (!subscription?.trialEndsAt) return false;
+    return subscription.trialEndsAt.getTime() < now.getTime();
+}
+
 function downgradeExpiredTrial(subscription, now = new Date()) {
-    if (subscription.status !== 'trial' || !subscription.trialEndsAt || subscription.trialEndsAt.getTime() >= now.getTime()) {
+    if (subscription.status !== 'trial' || !isTrialExpired(subscription, now)) {
         return false;
     }
     subscription.status = 'expired';
     subscription.upgradeTo('developer');
+    return true;
+}
+
+/**
+ * Repair a subscription whose recorded tier disagrees with its trial state.
+ *
+ * Older rows were written as developer+trial (or had their tier reset by the
+ * tier-name migration), so the user was treated as Free while still holding an
+ * active trial. A live trial is restored to the tier it grants; an elapsed one
+ * is expired. Returns true when something changed.
+ */
+function repairTrialTier(subscription, now = new Date()) {
+    if (subscription.status !== 'trial') return false;
+    if (isTrialExpired(subscription, now)) {
+        return downgradeExpiredTrial(subscription, now);
+    }
+    if (subscription.tier === TRIAL_TIER) return false;
+    // Keep the original trial window, just restore the tier it grants.
+    subscription.upgradeTo(TRIAL_TIER);
+    subscription.pricing.amount = 0;
+    subscription.pricing.interval = 'trial';
     return true;
 }
 
@@ -43,7 +76,11 @@ async function notifyTrialExpired(subscription, userId) {
 
 /**
  * Get or create a subscription for a user.
- * Missing subscriptions start with the standard 14-day Pro trial.
+ *
+ * Missing subscriptions start with the standard 14-day Pro trial. Existing rows
+ * are repaired rather than trusted: an active trial must be on the tier it
+ * grants, an elapsed trial must be expired, and a free user with no billing
+ * history gets the standard trial.
  */
 async function getOrCreateSubscription(userId) {
     let subscription = await Subscription.findOne({ userId });
@@ -59,7 +96,8 @@ async function getOrCreateSubscription(userId) {
             }
         }
     }
-    if (subscription.tier === 'developer' && subscription.status === 'active' && !subscription.paymentId && !subscription.firstChargeCompleted) {
+    const wasRepaired = repairTrialTier(subscription);
+    if (!wasRepaired && subscription.tier === 'developer' && subscription.status === 'active' && !subscription.paymentId && !subscription.firstChargeCompleted) {
         applyProTrial(subscription);
         await subscription.save();
     }
@@ -67,6 +105,9 @@ async function getOrCreateSubscription(userId) {
         await subscription.save();
         await notifyTrialExpired(subscription, userId);
         console.log(`User ${userId} trial expired and was downgraded to developer`);
+    } else if (wasRepaired) {
+        await subscription.save();
+        console.log(`User ${userId} subscription repaired: tier=${subscription.tier} status=${subscription.status}`);
     }
     await User.updateOne({ _id: userId, subscription: { $ne: subscription._id } }, { $set: { subscription: subscription._id } });
     return subscription;
@@ -229,5 +270,7 @@ module.exports = {
     applyProTrial,
     createTrialSubscription,
     downgradeExpiredTrial,
+    repairTrialTier,
     getOrCreateSubscription,
+    TRIAL_TIER,
 };
