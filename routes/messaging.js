@@ -4,35 +4,7 @@ const Message = require('../models/Message');
 const Channel = require('../models/Channel');
 const { authenticateToken } = require('../middleware/auth');
 const Company = require('../models/Company');
-
-// Stored channel vocabulary. Clients have historically sent 'group' for what
-// the API stores as 'public', and the messaging UI offers 'announcement', so
-// incoming values are normalized instead of failing schema validation.
-const CHANNEL_TYPES = ['public', 'private', 'direct', 'announcement'];
-const CHANNEL_TYPE_ALIASES = {
-    group: 'public',
-    channel: 'public',
-    public: 'public',
-    private: 'private',
-    direct: 'direct',
-    announcement: 'announcement'
-};
-
-function normalizeChannelType(type) {
-    if (type == null || type === '') return 'public';
-    const key = String(type).trim().toLowerCase();
-    return CHANNEL_TYPE_ALIASES[key] || null;
-}
-
-// Only admins post in announcement channels; everyone can read them.
-function canPostToChannel(channel, userId) {
-    const membership = (channel.members || []).find(m => String(m.user) === String(userId));
-    if (!membership) return { ok: false, reason: 'Access denied: not a channel member' };
-    if (channel.type === 'announcement' && membership.role !== 'admin') {
-        return { ok: false, reason: 'Only channel admins can post in announcement channels' };
-    }
-    return { ok: true };
-}
+const { CHANNEL_TYPES, normalizeChannelType, canPostToChannel } = require('../utils/channelPolicy');
 
 // Verify user is a member of the company before operating
 async function requireCompanyMember(req, res, next) {

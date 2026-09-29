@@ -18,6 +18,51 @@ import {
   Sparkles,
 } from 'lucide-react';
 
+/**
+ * Standups arrive in two shapes: server documents (createdAt, `user`,
+ * `channel`, populated `relatedTasks`) and locally cached ones (timestamp,
+ * `author`, `channelId`, task ids). Rendering the server shape directly is what
+ * produced "Invalid Date" in the history, so normalize both into one shape.
+ */
+function normalizeStandup(raw) {
+  if (!raw) return null;
+  const user = typeof raw.user === 'object' && raw.user ? raw.user : null;
+  const author = raw.author || user?.fullName || user?.name || 'Someone';
+  const timestamp = raw.timestamp || raw.createdAt || raw.updatedAt || null;
+  const relatedTasks = (raw.relatedTasks || [])
+    .map((t) => (typeof t === 'object' && t ? { id: String(t._id || t.id), title: t.title } : { id: String(t), title: '' }))
+    .filter((t) => t.id);
+
+  return {
+    _id: String(raw._id || raw.id || `${timestamp || 'local'}-${author}`),
+    timestamp,
+    author,
+    channelId: raw.channelId || (raw.channel ? String(raw.channel) : ''),
+    channelName: raw.channelName || '',
+    companyId: raw.companyId || (raw.company ? String(raw.company) : ''),
+    yesterday: raw.yesterday || '',
+    today: raw.today || '',
+    blockers: raw.blockers || '',
+    relatedTasks,
+  };
+}
+
+/** Dedupe a locally cached copy against its server twin, preferring the server record. */
+function dedupeStandups(items) {
+  const byKey = new Map();
+  for (const item of items) {
+    const s = normalizeStandup(item);
+    if (!s) continue;
+    const ms = s.timestamp ? new Date(s.timestamp).getTime() : NaN;
+    const key = isFinite(ms) ? `${Math.floor(ms / 1000)}|${s.author}` : `local|${s._id}`;
+    const existing = byKey.get(key);
+    if (!existing || (s.timestamp && !existing.timestamp)) byKey.set(key, s);
+  }
+  return [...byKey.values()].sort(
+    (a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime()
+  );
+}
+
 function groupStandups(items) {
   const groups = [];
   const now = new Date();
@@ -27,7 +72,12 @@ function groupStandups(items) {
 
   const buckets = { Today: [], Yesterday: [], 'This Week': [], Earlier: [] };
   for (const item of items) {
-    const date = new Date(item.timestamp);
+    const parsed = new Date(item.timestamp);
+    if (isNaN(parsed.getTime())) {
+      buckets.Earlier.push(item);
+      continue;
+    }
+    const date = parsed;
     const day = new Date(date.getFullYear(), date.getMonth(), date.getDate());
     if (day.getTime() === today.getTime()) buckets.Today.push(item);
     else if (day.getTime() === yesterday.getTime()) buckets.Yesterday.push(item);
@@ -110,23 +160,19 @@ export default function Standup() {
         }
 
         const stored = JSON.parse(localStorage.getItem('pastStandups') || '[]');
-        setPastStandups(stored);
 
-        if (normalizedCompanies.length > 0) {
+        if (normalizedCompanies.length === 0) {
+          setPastStandups(dedupeStandups(stored));
+        } else {
           try {
             const res = await apiFetch(`/api/standup?companyId=${normalizedCompanies[0]._id}&limit=50`);
             const serverStandups = res.success ? res.standups : [];
-            const merged = [...serverStandups, ...stored];
-            const seen = new Set();
-            const deduped = merged.filter((s) => {
-              const key = s._id || s.timestamp;
-              if (seen.has(key)) return false;
-              seen.add(key);
-              return true;
-            });
-            setPastStandups(deduped);
+            // The server is the source of truth; the cache only fills in
+            // standups that were saved while offline.
+            setPastStandups(dedupeStandups([...serverStandups, ...stored]));
           } catch (err) {
             console.error('Failed to load server standups:', err);
+            setPastStandups(dedupeStandups(stored));
           }
         }
       } catch (err) {
@@ -159,11 +205,32 @@ export default function Standup() {
   }
 
   const todayCount = useMemo(
-    () => pastStandups.filter((s) => new Date(s.timestamp).toDateString() === new Date().toDateString()).length,
+    () =>
+      pastStandups.filter((s) => {
+        const d = new Date(s.timestamp);
+        return !isNaN(d.getTime()) && d.toDateString() === new Date().toDateString();
+      }).length,
     [pastStandups]
   );
 
   const groupedStandups = useMemo(() => groupStandups(pastStandups), [pastStandups]);
+
+  // Submitting requires an anchored task, a delivery channel, and some content.
+  const canSubmit =
+    Boolean(selectedCompany) &&
+    selectedTasks.length > 0 &&
+    Boolean(selectedChannel) &&
+    Boolean(yesterday.trim() || today.trim() || blockers.trim());
+
+  const submitBlockedReason = !selectedCompany
+    ? 'Choose a workspace'
+    : selectedTasks.length === 0
+      ? 'Select at least one related task'
+      : !selectedChannel
+        ? 'Select a channel to post to'
+        : !yesterday.trim() && !today.trim() && !blockers.trim()
+          ? 'Fill in at least one field'
+          : null;
 
   async function handleAutoGenerate() {
     if (!selectedCompany) return;
@@ -207,6 +274,20 @@ export default function Standup() {
 
   async function handleSubmit(e) {
     e.preventDefault();
+    if (!selectedCompany) {
+      setError('Choose a workspace first');
+      return;
+    }
+    // A standup must reference the work it reports on.
+    if (selectedTasks.length === 0) {
+      setError('Select at least one related task');
+      return;
+    }
+    // "Post To" is a real destination; the API will not store an undeliverable standup.
+    if (!selectedChannel) {
+      setError('Select a channel to post the standup to');
+      return;
+    }
     if (!yesterday.trim() && !today.trim() && !blockers.trim()) {
       setError('Please fill in at least one field');
       return;
@@ -217,40 +298,29 @@ export default function Standup() {
     setSuccess(null);
 
     try {
-      const standup = {
-        _id: Date.now().toString(),
-        yesterday: yesterday.trim(),
-        today: today.trim(),
-        blockers: blockers.trim(),
-        relatedTasks: selectedTasks,
-        channelId: selectedChannel,
+      const res = await apiFetch('/api/standup', {
+        method: 'POST',
+        body: JSON.stringify({
+          companyId: selectedCompany,
+          channelId: selectedChannel,
+          yesterday: yesterday.trim(),
+          today: today.trim(),
+          blockers: blockers.trim(),
+          relatedTasks: selectedTasks,
+        }),
+      });
+
+      const channelName = channels.find((ch) => ch._id === selectedChannel)?.name || 'the channel';
+      const created = normalizeStandup({
+        ...res.standup,
+        timestamp: res.standup?.createdAt || new Date().toISOString(),
+        channelId: res.channelId || selectedChannel,
+        channelName,
         companyId: selectedCompany,
-        timestamp: new Date().toISOString(),
-        author: user?.fullName || user?.name || 'User',
-      };
+        author: res.standup?.user?.fullName || user?.fullName || user?.name || 'You',
+      });
 
-      let createdStandup = { ...standup };
-
-      try {
-        const res = await apiFetch('/api/standup', {
-          method: 'POST',
-          body: JSON.stringify({
-            companyId: selectedCompany,
-            channelId: selectedChannel,
-            yesterday: yesterday.trim(),
-            today: today.trim(),
-            blockers: blockers.trim(),
-            relatedTasks: selectedTasks,
-          }),
-        });
-        if (res.success && res.standup) {
-          createdStandup = res.standup;
-        }
-      } catch (err) {
-        console.error('Failed to save standup on server:', err);
-      }
-
-      const updated = [createdStandup, ...pastStandups];
+      const updated = dedupeStandups([created, ...pastStandups]);
       setPastStandups(updated);
       localStorage.setItem('pastStandups', JSON.stringify(updated));
 
@@ -259,9 +329,14 @@ export default function Standup() {
       setBlockers('');
       setSelectedTasks([]);
       setSelectedChannel('');
-      setSuccess('Standup submitted successfully!');
+
+      if (res.delivered === false) {
+        setError(res.message || 'Standup saved, but posting to the channel failed.');
+      } else {
+        setSuccess(`Standup posted to #${channelName}`);
+      }
     } catch (err) {
-      setError(err.message || 'Failed to submit standup');
+      setError(err?.message || 'Failed to submit standup');
     } finally {
       setSubmitting(false);
     }
@@ -393,6 +468,9 @@ export default function Standup() {
                           <span className="std-note">
                             <span className="std-kbd">⌘</span><span className="std-kbd">↵</span>&nbsp; to submit
                           </span>
+                          {submitBlockedReason && (
+                            <span className="text-xs text-muted">{submitBlockedReason}</span>
+                          )}
                           <button
                             type="button"
                             onClick={handleAutoGenerate}
@@ -406,8 +484,9 @@ export default function Standup() {
                         </div>
                         <button
                           type="submit"
-                          disabled={submitting}
+                          disabled={submitting || !canSubmit}
                           className="btn-workspace btn-primary"
+                          title={submitBlockedReason || 'Submit standup'}
                         >
                           <Send className="w-4 h-4" />
                           {submitting ? 'Submitting...' : 'Submit Standup'}
@@ -590,18 +669,25 @@ export default function Standup() {
                     {groupedStandups.map((group) => (
                       <div key={group.label}>
                         <div className="feed-group-label">{group.label}</div>
-                        {group.items.map((s) => {
-                          const channelName = channels.find((ch) => ch._id === s.channelId)?.name;
+                        {group.items.map((s, idx) => {
+                          const channelName =
+                            s.channelName || channels.find((ch) => ch._id === s.channelId)?.name;
+                          const parsedDate = new Date(s.timestamp);
+                          const timeLabel = isNaN(parsedDate.getTime())
+                            ? 'Unknown time'
+                            : parsedDate.toLocaleString(undefined, {
+                                hour: 'numeric',
+                                minute: '2-digit',
+                                hour12: true,
+                              });
                           return (
-                            <div key={s._id} className="std-entry">
+                            <div key={`${s._id}-${idx}`} className="std-entry">
                               <div className="std-entry-head">
                                 <div className="std-entry-host">
                                   <span className="std-avatar">{initials(s.author)}</span>
                                   <div className="min-w-0">
                                     <p className="std-entry-name">{s.author}</p>
-                                    <p className="std-entry-time">
-                                      {new Date(s.timestamp).toLocaleString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true })}
-                                    </p>
+                                    <p className="std-entry-time">{timeLabel}</p>
                                   </div>
                                 </div>
                                 {(s.channelId || s.companyId) && (
@@ -633,11 +719,14 @@ export default function Standup() {
                                 {s.relatedTasks?.length > 0 && (
                                   <div className="std-section">
                                     <div className="flex flex-wrap gap-1.5">
-                                      {s.relatedTasks.map((taskId) => {
-                                        const task = tasks.find((t) => (t.id || t._id) === taskId);
+                                      {s.relatedTasks.map((t) => {
+                                        // normalizeStandup always yields { id, title };
+                                        // older cached entries may only have the id.
+                                        const title =
+                                          t.title || tasks.find((task) => String(task.id || task._id) === t.id)?.title;
                                         return (
-                                          <span key={taskId} className="std-chip">
-                                            {task?.title || 'Task'}
+                                          <span key={t.id} className="std-chip">
+                                            {title || 'Task'}
                                           </span>
                                         );
                                       })}

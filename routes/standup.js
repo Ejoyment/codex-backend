@@ -4,9 +4,22 @@ const Standup = require('../models/Standup');
 const Company = require('../models/Company');
 const LocalTask = require('../models/LocalTask');
 const Meeting = require('../models/MeetingRoom');
+const Channel = require('../models/Channel');
+const Message = require('../models/Message');
 const { authenticateToken } = require('../middleware/auth');
+const { canPostToChannel } = require('../utils/channelPolicy');
 
 const DAY = 24 * 60 * 60 * 1000;
+
+/** Render a standup as the message body that lands in the channel. */
+function formatStandupMessage({ author, yesterday, today, blockers, taskTitles }) {
+    const lines = [`**Daily standup — ${author}**`];
+    if (yesterday) lines.push(`\n**Yesterday**\n${yesterday}`);
+    if (today) lines.push(`\n**Today**\n${today}`);
+    if (blockers) lines.push(`\n**Blockers**\n${blockers}`);
+    if (taskTitles.length) lines.push(`\n**Related tasks**\n${taskTitles.map(t => `- ${t}`).join('\n')}`);
+    return lines.join('\n');
+}
 
 // Auto-generate a draft standup from the user's recent activity
 router.post('/generate', authenticateToken, async (req, res) => {
@@ -100,6 +113,25 @@ router.post('/', authenticateToken, async (req, res) => {
             return res.status(400).json({ success: false, message: 'companyId is required' });
         }
 
+        // A standup has to be anchored to the work it reports on, otherwise it
+        // is a free-floating note nobody can trace back to a task.
+        const taskIds = [...new Set((relatedTasks || []).map(String).filter(Boolean))];
+        if (taskIds.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Select at least one related task'
+            });
+        }
+
+        // "Post To" is a real delivery target: without a channel there is
+        // nowhere to post, so fail loudly instead of saving an invisible record.
+        if (!channelId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Select a channel to post the standup to'
+            });
+        }
+
         const company = await Company.findById(companyId);
         if (!company) {
             return res.status(404).json({ success: false, message: 'Company not found' });
@@ -110,6 +142,30 @@ router.post('/', authenticateToken, async (req, res) => {
             return res.status(403).json({ success: false, message: 'Not a member of this company' });
         }
 
+        const channel = await Channel.findById(String(channelId)).select('company members type name');
+        if (!channel) {
+            return res.status(404).json({ success: false, message: 'Channel not found' });
+        }
+        if (String(channel.company) !== String(companyId)) {
+            return res.status(403).json({
+                success: false,
+                message: 'That channel belongs to a different workspace'
+            });
+        }
+        const post = canPostToChannel(channel, req.userId);
+        if (!post.ok) {
+            return res.status(403).json({ success: false, message: post.reason });
+        }
+
+        // Resolve titles up front so the channel message is useful and a bad
+        // task id cannot blow up after the standup is already stored.
+        const tasks = await LocalTask.find({ _id: { $in: taskIds } }).select('title status');
+        if (tasks.length === 0) {
+            return res.status(400).json({ success: false, message: 'None of the selected tasks could be found' });
+        }
+        const taskTitles = tasks.map(t => t.title).filter(Boolean);
+        const author = req.user?.fullName || req.user?.name || 'A teammate';
+
         const standup = await Standup.create({
             user: req.userId,
             company: companyId,
@@ -117,13 +173,52 @@ router.post('/', authenticateToken, async (req, res) => {
             yesterday: yesterday || '',
             today: today || '',
             blockers: blockers || '',
-            relatedTasks: relatedTasks || []
+            relatedTasks: tasks.map(t => t._id)
         });
 
         await standup.populate('user', 'fullName email profilePicture');
 
-        res.status(201).json({ success: true, standup });
+        // Deliver to the channel. If this fails the standup record still exists,
+        // so report the failure honestly rather than claiming it was posted.
+        let delivered = false;
+        let message = null;
+        try {
+            message = await Message.create({
+                content: formatStandupMessage({
+                    author,
+                    yesterday: standup.yesterday,
+                    today: standup.today,
+                    blockers: standup.blockers,
+                    taskTitles,
+                }),
+                sender: req.userId,
+                channel: channelId,
+                company: companyId,
+                type: 'text',
+            });
+            await Channel.findByIdAndUpdate(channelId, {
+                lastMessage: message._id,
+                lastMessageAt: new Date(),
+            });
+            delivered = true;
+        } catch (postError) {
+            console.error('Standup saved but failed to post to channel:', postError);
+        }
+
+        res.status(201).json({
+            success: true,
+            standup,
+            channelId: String(channelId),
+            channelMessage: message,
+            delivered,
+            ...(delivered ? {} : {
+                message: 'Standup saved, but posting to the channel failed. Please post it manually.'
+            })
+        });
     } catch (error) {
+        if (error.name === 'ValidationError' || error.name === 'CastError') {
+            return res.status(400).json({ success: false, message: error.message });
+        }
         res.status(500).json({ success: false, message: error.message });
     }
 });
@@ -144,11 +239,15 @@ router.get('/', authenticateToken, async (req, res) => {
 
         const standups = await Standup.find(query)
             .populate('user', 'fullName email profilePicture')
+            .populate('relatedTasks', 'title status')
             .sort({ createdAt: -1 })
             .limit(parseInt(limit));
 
         res.json({ success: true, standups });
     } catch (error) {
+        if (error.name === 'ValidationError' || error.name === 'CastError') {
+            return res.status(400).json({ success: false, message: error.message });
+        }
         res.status(500).json({ success: false, message: error.message });
     }
 });
