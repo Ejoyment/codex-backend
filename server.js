@@ -27,6 +27,7 @@ const trialBillingRoutes = require('./routes/trial-billing');
 const paystackBillingRoutes = require('./routes/paystack-billing');
 const supportRoutes = require('./routes/support');
 const notificationsRoutes = require('./routes/notifications');
+const waitlistRoutes = require('./routes/waitlist');
 
 const app = express();
 const http = require('http');
@@ -304,6 +305,8 @@ app.use('/api/paystack-billing', paystackBillingRoutes);
 app.use('/api/flutterwave-billing', flutterwaveBillingRoutes);
 app.use('/api/support', supportRoutes);
 app.use('/api/notifications', notificationsRoutes);
+// Public waitlist — signup, live counter and release blast (no auth)
+app.use('/api/waitlist', waitlistRoutes);
 
 // Integration API routes (OAuth callbacks and public endpoints remain unprotected)
 app.use('/api/github', githubApiRoutes);
