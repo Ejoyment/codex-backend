@@ -5,6 +5,35 @@ const Channel = require('../models/Channel');
 const { authenticateToken } = require('../middleware/auth');
 const Company = require('../models/Company');
 
+// Stored channel vocabulary. Clients have historically sent 'group' for what
+// the API stores as 'public', and the messaging UI offers 'announcement', so
+// incoming values are normalized instead of failing schema validation.
+const CHANNEL_TYPES = ['public', 'private', 'direct', 'announcement'];
+const CHANNEL_TYPE_ALIASES = {
+    group: 'public',
+    channel: 'public',
+    public: 'public',
+    private: 'private',
+    direct: 'direct',
+    announcement: 'announcement'
+};
+
+function normalizeChannelType(type) {
+    if (type == null || type === '') return 'public';
+    const key = String(type).trim().toLowerCase();
+    return CHANNEL_TYPE_ALIASES[key] || null;
+}
+
+// Only admins post in announcement channels; everyone can read them.
+function canPostToChannel(channel, userId) {
+    const membership = (channel.members || []).find(m => String(m.user) === String(userId));
+    if (!membership) return { ok: false, reason: 'Access denied: not a channel member' };
+    if (channel.type === 'announcement' && membership.role !== 'admin') {
+        return { ok: false, reason: 'Only channel admins can post in announcement channels' };
+    }
+    return { ok: true };
+}
+
 // Verify user is a member of the company before operating
 async function requireCompanyMember(req, res, next) {
     const companyId = req.body.companyId || req.query.companyId;
@@ -56,28 +85,65 @@ async function requireCompanyMember(req, res, next) {
 // Create channel
 router.post('/channels', authenticateToken, requireCompanyMember, async (req, res) => {
     try {
-        const { name, description, companyId, type, members } = req.body;
-        
+        const { description, companyId, type, members } = req.body;
+
+        if (!companyId) {
+            return res.status(400).json({ success: false, message: 'companyId is required' });
+        }
+
+        const name = String(req.body.name || '').trim();
+        if (!name) {
+            return res.status(400).json({ success: false, message: 'Channel name is required' });
+        }
+
+        const channelType = normalizeChannelType(type);
+        if (!channelType) {
+            return res.status(400).json({
+                success: false,
+                message: `Invalid channel type "${type}". Expected one of: ${CHANNEL_TYPES.join(', ')}`
+            });
+        }
+
+        const duplicate = await Channel.findOne({ company: companyId, name, archived: false })
+            .select('_id');
+        if (duplicate) {
+            return res.status(409).json({
+                success: false,
+                message: `A channel named "${name}" already exists`
+            });
+        }
+
+        const memberIds = [...new Set(
+            (members || [])
+                .map(String)
+                .filter(id => id && id !== String(req.userId))
+        )];
+
         const channel = await Channel.create({
             name,
-            description,
+            description: description ? String(description).trim() : undefined,
             company: companyId,
-            type: type || 'public',
+            type: channelType,
             createdBy: req.userId,
             members: [
                 { user: req.userId, role: 'admin' },
-                ...(members || []).map(userId => ({ user: userId, role: 'member' }))
+                ...memberIds.map(userId => ({ user: userId, role: 'member' }))
             ]
         });
         
         await channel.populate('members.user', 'fullName email profilePicture');
         await channel.populate('createdBy', 'fullName email profilePicture');
         
-        res.json({
+        res.status(201).json({
             success: true,
             channel
         });
     } catch (error) {
+        // Bad input is the client's fault; report it as such instead of an
+        // opaque 500 that the UI can only surface as "something went wrong".
+        if (error.name === 'ValidationError' || error.name === 'CastError') {
+            return res.status(400).json({ success: false, message: error.message });
+        }
         res.status(500).json({ success: false, message: error.message });
     }
 });
@@ -106,13 +172,13 @@ router.get('/channels', authenticateToken, requireCompanyMember, async (req, res
     try {
         const companyId = req.query.companyId != null ? String(req.query.companyId) : req.query.companyId;
         
-        // Public channels are visible to ALL company members;
+        // Public and announcement channels are visible to ALL company members;
         // private/direct channels are visible only to their members
         const channels = await Channel.find({
             company: companyId,
             archived: false,
             $or: [
-                { type: 'public' },
+                { type: { $in: ['public', 'announcement'] } },
                 { 'members.user': req.userId }
             ]
         })
@@ -270,20 +336,34 @@ router.get('/channels/:id', authenticateToken, requireCompanyMember, async (req,
 // Send message
 router.post('/messages', authenticateToken, requireCompanyMember, async (req, res) => {
     try {
-        const { content, channelId, recipientId, companyId, type, attachments, mentions } = req.body;
+        const { content, channelId, recipientId, type, attachments, mentions } = req.body;
+        let companyId = req.body.companyId;
+
+        if (!String(content || '').trim()) {
+            return res.status(400).json({ success: false, message: 'Message content is required' });
+        }
 
         if (channelId) {
-            const channel = await Channel.findById(String(channelId)).select('company members');
+            const channel = await Channel.findById(String(channelId)).select('company members type');
             if (!channel) {
                 return res.status(404).json({ success: false, message: 'Channel not found' });
             }
             if (companyId != null && channel.company != null && String(channel.company) !== String(companyId)) {
                 return res.status(403).json({ success: false, message: 'Channel does not belong to this company' });
             }
-            const isMember = (channel.members || []).some(m => String(m.user) === String(req.userId));
-            if (!isMember) {
-                return res.status(403).json({ success: false, message: 'Access denied: not a channel member' });
+            const post = canPostToChannel(channel, req.userId);
+            if (!post.ok) {
+                return res.status(403).json({ success: false, message: post.reason });
             }
+            // The channel is the authority on which company a message belongs
+            // to; clients that omit companyId still get a valid document.
+            if (companyId == null) {
+                companyId = channel.company;
+            }
+        }
+
+        if (!companyId) {
+            return res.status(400).json({ success: false, message: 'companyId is required' });
         }
         
         const message = await Message.create({

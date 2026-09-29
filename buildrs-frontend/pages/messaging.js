@@ -27,13 +27,23 @@ export default function Messaging() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newChannelName, setNewChannelName] = useState('');
   const [newChannelDesc, setNewChannelDesc] = useState('');
-  const [newChannelType, setNewChannelType] = useState('group');
+  // The API stores public/private/direct/announcement; 'group' was the old
+  // value here and never passed schema validation, so every create 500'd.
+  const [newChannelType, setNewChannelType] = useState('public');
+  const [creatingChannel, setCreatingChannel] = useState(false);
+  const [createChannelError, setCreateChannelError] = useState('');
+  const [sendError, setSendError] = useState('');
   const [clock, setClock] = useState('');
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
-    loadChannels();
-  }, []);
+    if (companyId) {
+      loadChannels(companyId);
+    } else if (companyResolved) {
+      setLoadingChannels(false);
+      setChannels([]);
+    }
+  }, [companyId, companyResolved]);
 
   useEffect(() => {
     if (selectedChannel) {
@@ -54,16 +64,37 @@ export default function Messaging() {
     return () => clearInterval(id);
   }, []);
 
-  async function loadChannels() {
+  // Both the channel list and channel creation are scoped to the caller's
+  // current company; resolve it once instead of re-fetching on every action.
+  const [companyId, setCompanyId] = useState('');
+  const [companyResolved, setCompanyResolved] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const companies = await apiFetch('/api/company/my-companies');
+        const id = companies.companies?.[0]?._id || '';
+        if (!cancelled) {
+          setCompanyId(id);
+          setCompanyResolved(true);
+        }
+      } catch (err) {
+        console.error('Failed to resolve company:', err);
+        if (!cancelled) setCompanyResolved(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  async function loadChannels(company) {
     try {
       setLoadingChannels(true);
-      const companies = await apiFetch('/api/company/my-companies');
-      const companyId = companies.companies?.[0]?._id;
-      if (!companyId) return;
-      const data = await apiFetch(`/api/messaging/channels?companyId=${companyId}`);
+      const data = await apiFetch(`/api/messaging/channels?companyId=${company}`);
       setChannels(data.channels || []);
     } catch (err) {
       console.error('Failed to load channels:', err);
+      setChannels([]);
     } finally {
       setLoadingChannels(false);
     }
@@ -81,28 +112,48 @@ export default function Messaging() {
     }
   }
 
+  // Announcement channels are read-only for everyone but channel admins.
+  const isReadOnlyChannel =
+    selectedChannel?.type === 'announcement' &&
+    !(selectedChannel.members || []).some(
+      (m) => String(m.user?._id || m.user) === String(user?._id || user?.id) && m.role === 'admin'
+    );
+
   async function handleSendMessage(e) {
     e.preventDefault();
     if (!newMessage.trim() || !selectedChannel) return;
+    if (isReadOnlyChannel) {
+      setSendError('Only channel admins can post in announcement channels.');
+      return;
+    }
     try {
+      setSendError('');
       const data = await apiFetch('/api/messaging/messages', {
         method: 'POST',
-        body: JSON.stringify({ content: newMessage.trim(), channelId: selectedChannel._id }),
+        body: JSON.stringify({
+          content: newMessage.trim(),
+          channelId: selectedChannel._id,
+          companyId,
+        }),
       });
       setMessages((prev) => [...prev, data.message]);
       setNewMessage('');
     } catch (err) {
       console.error('Failed to send message:', err);
+      setSendError(err?.message || 'Could not send message.');
     }
   }
 
   async function handleCreateChannel(e) {
     e.preventDefault();
-    if (!newChannelName.trim()) return;
+    if (!newChannelName.trim() || creatingChannel) return;
+    if (!companyId) {
+      setCreateChannelError('No workspace found. Create or join a workspace first.');
+      return;
+    }
     try {
-      const companies = await apiFetch('/api/company/my-companies');
-      const companyId = companies.companies?.[0]?._id;
-      if (!companyId) return;
+      setCreatingChannel(true);
+      setCreateChannelError('');
       const data = await apiFetch('/api/messaging/channels', {
         method: 'POST',
         body: JSON.stringify({
@@ -116,9 +167,14 @@ export default function Messaging() {
       setShowCreateModal(false);
       setNewChannelName('');
       setNewChannelDesc('');
-      setNewChannelType('group');
+      setNewChannelType('public');
     } catch (err) {
       console.error('Failed to create channel:', err);
+      // Surface it: previously the failure was console-only, so the modal sat
+      // there looking like the button did nothing.
+      setCreateChannelError(err?.message || 'Could not create channel.');
+    } finally {
+      setCreatingChannel(false);
     }
   }
 
@@ -312,16 +368,31 @@ export default function Messaging() {
 
                       {/* Composer */}
                       <form onSubmit={handleSendMessage} className="msg-composer">
+                        {isReadOnlyChannel && (
+                          <p className="text-xs mb-2" style={{ color: '#e5b84a' }}>
+                            Announcement channel — only admins can post.
+                          </p>
+                        )}
+                        {sendError && (
+                          <p role="alert" className="text-xs mb-2" style={{ color: '#f87171' }}>
+                            {sendError}
+                          </p>
+                        )}
                         <div className="msg-field">
                           <input
                             type="text"
                             value={newMessage}
                             onChange={(e) => setNewMessage(e.target.value)}
-                            placeholder={`Message #${selectedChannel.name}...`}
+                            placeholder={
+                              isReadOnlyChannel
+                                ? 'Read-only channel'
+                                : `Message #${selectedChannel.name}...`
+                            }
+                            disabled={isReadOnlyChannel}
                           />
                           <button
                             type="submit"
-                            disabled={!newMessage.trim()}
+                            disabled={!newMessage.trim() || isReadOnlyChannel}
                             className="btn-workspace btn-primary"
                             title="Send"
                             style={{ minHeight: '46px' }}
@@ -352,8 +423,12 @@ export default function Messaging() {
               </div>
               <button
                 type="button"
-                onClick={() => setShowCreateModal(false)}
+                onClick={() => {
+                  setShowCreateModal(true);
+                  setCreateChannelError('');
+                }}
                 className="text-muted hover:text-white"
+                title="Close"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -388,25 +463,41 @@ export default function Messaging() {
                   onChange={(e) => setNewChannelType(e.target.value)}
                   className="ws-select"
                 >
-                  <option value="group">Group</option>
-                  <option value="direct">Direct</option>
+                  <option value="public">Public</option>
+                  <option value="private">Private</option>
                   <option value="announcement">Announcement</option>
                 </select>
+                <p className="text-muted text-xs mt-1.5">
+                  {newChannelType === 'announcement'
+                    ? 'Everyone in the workspace can read it; only channel admins can post.'
+                    : newChannelType === 'private'
+                      ? 'Only invited members can see and post in this channel.'
+                      : 'Everyone in the workspace can see and post.'}
+                </p>
               </div>
+              {createChannelError && (
+                <p role="alert" className="text-xs" style={{ color: '#f87171' }}>
+                  {createChannelError}
+                </p>
+              )}
               <div className="flex gap-3 pt-2">
                 <button
                   type="button"
-                  onClick={() => setShowCreateModal(false)}
+                  onClick={() => {
+                    setShowCreateModal(false);
+                    setCreateChannelError('');
+                  }}
                   className="btn-workspace btn-secondary flex-1"
+                  disabled={creatingChannel}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={!newChannelName.trim()}
+                  disabled={!newChannelName.trim() || creatingChannel}
                   className="btn-workspace btn-primary flex-1"
                 >
-                  Create Channel
+                  {creatingChannel ? 'Creating…' : 'Create Channel'}
                 </button>
               </div>
             </form>
