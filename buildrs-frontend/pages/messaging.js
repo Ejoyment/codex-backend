@@ -34,6 +34,10 @@ export default function Messaging() {
   const [createChannelError, setCreateChannelError] = useState('');
   const [sendError, setSendError] = useState('');
   const [clock, setClock] = useState('');
+  // Both the channel list and channel creation are scoped to the caller's
+  // current company; resolve it once instead of re-fetching on every action.
+  const [companyId, setCompanyId] = useState('');
+  const [companyResolved, setCompanyResolved] = useState(false);
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
@@ -63,11 +67,6 @@ export default function Messaging() {
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, []);
-
-  // Both the channel list and channel creation are scoped to the caller's
-  // current company; resolve it once instead of re-fetching on every action.
-  const [companyId, setCompanyId] = useState('');
-  const [companyResolved, setCompanyResolved] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
