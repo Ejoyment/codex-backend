@@ -19,7 +19,6 @@ import {
   Server,
 } from 'lucide-react';
 import { getAvatarUrl } from '../lib/utils';
-import NotificationBell from './NotificationBell';
 
 const NAV_SECTIONS = [
   {
@@ -97,10 +96,6 @@ export default function Sidebar({ user, subscription }) {
           </div>
         ))}
       </nav>
-
-      <div className="sidebar-notif">
-        <NotificationBell />
-      </div>
 
       <div className="sidebar-user">
         <div className="sidebar-user-info">

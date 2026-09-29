@@ -6500,15 +6500,6 @@
 /* Notifications: sidebar bell, dropdown panel, history page            */
 /* ------------------------------------------------------------------ */
 
-.sidebar-notif {
-  display: flex;
-  justify-content: flex-end;
-  padding: 0.6rem 1.25rem 0;
-  border-top: 1px solid var(--ws-border);
-  padding-top: 0.75rem;
-  background: rgba(255, 255, 255, 0.015);
-}
-
 .notif-bell-wrap {
   position: relative;
 }
@@ -6554,9 +6545,24 @@
   box-shadow: 0 0 0 2px var(--ws-navy);
 }
 
+/* Header variant: keeps the dashboard's btn-workspace sizing so the bell lines
+   up with the refresh / new-project controls beside it. */
+.notif-bell-btn-header {
+  position: relative;
+  overflow: visible;
+}
+
+.notif-bell-btn-header .notif-badge {
+  top: -5px;
+  right: -5px;
+  /* The header is transparent, so ring the badge with the panel colour rather
+     than the sidebar navy. */
+  box-shadow: 0 0 0 2px var(--ws-lighter);
+}
+
 .notif-panel {
   position: absolute;
-  bottom: calc(100% + 8px);
+  top: calc(100% + 8px);
   right: 0;
   width: 340px;
   max-height: 60vh;
@@ -6568,6 +6574,13 @@
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.55);
   overflow: hidden;
   z-index: 60;
+}
+
+/* In the sidebar the bell sits at the very bottom, so the panel has to grow
+   upward. Everywhere else (e.g. the dashboard header) it drops downward. */
+.notif-bell-wrap-up .notif-panel {
+  top: auto;
+  bottom: calc(100% + 8px);
 }
 
 .notif-panel-head {
