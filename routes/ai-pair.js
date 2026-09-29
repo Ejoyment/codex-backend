@@ -11,12 +11,13 @@ const Subscription = require('../models/Subscription');
 const { createDiffPatch } = require('diff');
 const permissionMatrix = require('../middleware/permissionMatrix');
 const { authenticateToken } = require('../middleware/auth');
+const { canonicalTier } = require('../utils/tierNames');
 
 // Middleware to check AI usage limits
 const checkAILimits = async (req, res, next) => {
     try {
         const subscription = await Subscription.findOne({ userId: req.userId });
-        const tier = subscription?.tier || 'freebie';
+        const tier = canonicalTier(subscription?.tier);
         
         // Get today's message count
         const today = new Date();
@@ -30,12 +31,15 @@ const checkAILimits = async (req, res, next) => {
 
         // Define limits
         const limits = {
-            freebie: 10,
-            professional: 100,
+            developer: 10,
+            pro: 100,
+            pro_plus: 100,
+            team_standard: 100,
+            team_premium: 100,
             enterprise: Infinity
         };
 
-        const limit = limits[tier];
+        const limit = limits[tier] ?? 10;
         
         if (messageCount >= limit) {
             return res.status(429).json({
@@ -305,15 +309,16 @@ router.get('/file/:owner/:repo/*', authenticateToken, async (req, res) => {
 // Create new AI pair session
 router.post('/session', authenticateToken, async (req, res) => {
     try {
-        const { repositoryId, repositoryName, repositoryOwner, branch, sessionName } = req.body;
+        const { repositoryId, repositoryName, repositoryOwner, branch, sessionName, language } = req.body;
         
         const session = await AIPairSession.create({
             userId: req.userId,
             repositoryId,
             repositoryName,
-            repositoryOwner,
+            repositoryOwner: repositoryOwner || 'unknown',
             branch: branch || 'main',
             sessionName: sessionName || `Session ${new Date().toLocaleString()}`,
+            language,
             status: 'active'
         });
 
@@ -615,12 +620,12 @@ router.post('/chat', authenticateToken, checkAILimits, async (req, res) => {
 
         // If agent loop is requested, use orchestrator
         if (useAgentLoop) {
-            // Enforce agent permission scope — freebie tier cannot use agent loop
+            // Enforce agent permission scope — gated by permission matrix
             const agentPerm = await permissionMatrix.checkPermission(req.userId, 'basic', 'agent');
             if (!agentPerm.allowed) {
                 return res.status(403).json({
                     success: false,
-                    message: 'Agent loop requires professional or enterprise tier',
+                    message: 'Agent loop not permitted for your subscription tier',
                     reason: agentPerm.reason
                 });
             }

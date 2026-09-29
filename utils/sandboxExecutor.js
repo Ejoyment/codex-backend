@@ -9,6 +9,7 @@
  * Supported languages: JavaScript, Python, Java, Go, Rust, Ruby, PHP.
  */
 
+const { exec: childExec, spawn: childSpawn } = require('child_process');
 const sandboxSecurity = require('./sandboxSecurity');
 
 class SandboxExecutor {
@@ -24,8 +25,29 @@ class SandboxExecutor {
         if (this.available) {
             console.log('✓ Sandbox Executor initialized with Docker backend');
         } else {
-            console.warn('⚠ Docker not available — code execution is disabled');
+            console.warn('⚠ Docker not available — falling back to child_process execution');
         }
+    }
+
+    async childProcessExecute(code, language, options = {}) {
+        return new Promise((resolve) => {
+            const timeout = options.timeout || this.timeout;
+            const startTime = Date.now();
+            const cmd = this.getDockerExecCmd(language, code);
+            const proc = childSpawn(cmd[0], cmd.slice(1), { timeout, maxBuffer: 1024 * 1024 });
+            let stdout = '';
+            let stderr = '';
+            proc.stdout.on('data', d => { stdout += d.toString(); });
+            proc.stderr.on('data', d => { stderr += d.toString(); });
+            proc.on('close', (code) => {
+                const executionTime = Date.now() - startTime;
+                resolve({ success: code === 0, output: stdout + stderr, exitCode: code, executionTime });
+            });
+            proc.on('error', (err) => {
+                const executionTime = Date.now() - startTime;
+                resolve({ success: false, error: err.message, exitCode: 1, executionTime });
+            });
+        });
     }
 
     /**
@@ -35,10 +57,7 @@ class SandboxExecutor {
         if (typeof code === 'string' && code.length > 200000) throw new Error('Code too large');
         if (typeof language !== 'string') throw new Error('Invalid language');
         if (!this.available) {
-            return {
-                success: false,
-                error: 'Docker not available — code execution is disabled'
-            };
+            return await this.childProcessExecute(code, language, options);
         }
 
         const executionOptions = {

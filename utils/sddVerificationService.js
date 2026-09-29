@@ -1,7 +1,9 @@
+const mongoose = require('mongoose');
 const SpecModel = require('../models/SpecModel');
 const LocalTask = require('../models/LocalTask');
+const LocalProject = require('../models/LocalProject');
 const CodeFile = require('../models/CodeFile');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const acorn = require('acorn');
@@ -97,6 +99,22 @@ class SDDVerificationService {
         }
       }
 
+      const codeFiles = await this.getSpecCodeFiles(spec);
+      const structured = await this.verifySpecSnapshot(spec.toObject(), codeFiles);
+      const blockingFailed = structured.requirements.some((result) => result.severity === 'blocking' && result.status === 'fail') || structured.forbiddenImports.some((result) => result.status === 'fail');
+      const blockingPending = structured.requirements.some((result) => result.severity === 'blocking' && result.status === 'pending');
+      allPassed = allPassed && !blockingFailed && !blockingPending;
+      const hasWarnings = structured.requirements.some((result) => result.severity === 'warning' && result.status !== 'pass');
+      const status = blockingFailed ? 'failing' : (blockingPending || hasWarnings ? 'warning' : 'healthy');
+      spec.requirements = (spec.requirements || []).map((requirement) => {
+        const result = structured.requirements.find((item) => item.id === requirement.id);
+        return result ? { ...requirement.toObject?.() || requirement, status: result.status, evidence: result.evidence } : requirement;
+      });
+      spec.status = status;
+      spec.lastValidatedAt = new Date();
+      spec.lastValidationResult = { ...structured, results, passed: allPassed, status };
+      await spec.save();
+
       if (taskId) {
         await LocalTask.findByIdAndUpdate(taskId, {
           $set: {
@@ -116,12 +134,68 @@ class SDDVerificationService {
         passedAssertions: results.filter(r => r.passed).length,
         failedAssertions: results.filter(r => !r.passed).length,
         results,
+        requirements: structured.requirements,
+        forbiddenImports: structured.forbiddenImports,
+        status,
+        checkedAt: spec.lastValidatedAt,
         summary: allPassed ? 'All spec assertions passed' : 'One or more assertions failed',
       };
     } catch (error) {
       console.error('SDD verification error:', error);
       return { success: false, error: error.message };
     }
+  }
+
+  async verifySpecSnapshot(spec, codeFiles = []) {
+    const inScope = (filePath) => {
+      const patterns = [...(spec.targetModules || []), ...(spec.targetFiles || [])];
+      if (!patterns.length) return true;
+      return patterns.some((pattern) => {
+        const escaped = pattern.split('**')
+          .map((part) => part.split('*').map((segment) => segment.replace(/[.+^${}()|[\]\\]/g, '\\$&')).join('[^/]*'))
+          .join('.*');
+        return new RegExp(`^${escaped}$`).test(filePath);
+      });
+    };
+    const files = codeFiles.filter((file) => inScope(file.path || file.name || ''));
+    const results = (spec.requirements || []).map((requirement) => {
+      const config = requirement.checkConfig || {};
+      let status = 'pending';
+      let evidence = 'This check requires human or secondary-model review.';
+      if (requirement.checkType === 'file_exists') {
+        const path = config.path || config.file;
+        const passed = files.some((file) => (file.path || file.name) === path);
+        status = passed ? 'pass' : 'fail';
+        evidence = passed ? `Found ${path}` : `File not found: ${path || '(no path configured)'}`;
+      } else if (requirement.checkType === 'code_pattern') {
+        try {
+          if (!config.pattern) throw new Error('No pattern configured');
+          const pattern = new RegExp(config.pattern, config.flags || '');
+          const candidates = config.files?.length ? files.filter((file) => config.files.includes(file.path)) : files;
+          const match = candidates.find((file) => pattern.test(file.content || ''));
+          status = match ? 'pass' : 'fail';
+          evidence = match ? `Pattern found in ${match.path}` : 'Pattern not found in the scoped files';
+        } catch (error) {
+          status = 'fail';
+          evidence = `Invalid pattern: ${error.message}`;
+        }
+      }
+      return { id: requirement.id, text: requirement.text, severity: requirement.severity, status, evidence };
+    });
+    const forbiddenImportResults = (spec.forbiddenImports || []).map((forbidden) => {
+      const match = files.find((file) => (file.content || '').includes(forbidden));
+      return { forbidden, status: match ? 'fail' : 'pass', evidence: match ? `Found in ${match.path}` : 'Not found in scoped files' };
+    });
+    const blockingFailures = results.filter((result) => result.severity === 'blocking' && result.status !== 'pass').length + forbiddenImportResults.filter((result) => result.status !== 'pass').length;
+    return {
+      specId: spec._id,
+      title: spec.title,
+      passed: blockingFailures === 0,
+      requirements: results,
+      forbiddenImports: forbiddenImportResults,
+      verificationCommand: spec.verificationCommand ? { command: spec.verificationCommand, status: 'pending', reason: 'Requires an isolated workspace runner' } : null,
+      checkedAt: new Date(),
+    };
   }
 
   async evaluateAssertion(assertion, spec, taskId) {
@@ -211,7 +285,12 @@ class SDDVerificationService {
 
   async runTestAssertion(target, spec) {
     try {
-      const result = execSync(`npm run test:spec ${target || ''}`, {
+      if (target && !/^[A-Za-z0-9_./-]+$/.test(target)) {
+        return { rule: 'Test suite binding', passed: false, assertion: { rule: 'Test suite binding', target }, error: 'Test selector contains unsupported characters' };
+      }
+      const args = ['run', 'test:spec'];
+      if (target) args.push('--', target);
+      const result = execFileSync('npm', args, {
         cwd: process.cwd(),
         timeout: 30000,
         encoding: 'utf8'
@@ -400,8 +479,12 @@ class SDDVerificationService {
     };
   }
 
-  async runSDDVerification(workspaceId, specId = null) {
-    const query = specId ? { _id: specId } : { workspaceId };
+  async runSDDVerification(scopeId, specId = null) {
+    // Accepts a project id (primary) or a workspace id (collaboration scope).
+    const scopeQuery = mongoose.Types.ObjectId.isValid(scopeId)
+      ? { $or: [{ projectId: scopeId }, { workspaceId: scopeId }] }
+      : { workspaceId: scopeId };
+    const query = specId ? { _id: specId } : scopeQuery;
     const specs = await SpecModel.find(query).populate('workspaceId');
     const results = [];
 
@@ -423,13 +506,69 @@ class SDDVerificationService {
     };
   }
 
-  async generateDriftReport(workspaceId) {
-    const specs = await SpecModel.find({ workspaceId });
+  /**
+   * The code a spec validates against.
+   *
+   * Specs are project-scoped. A project inside a workspace validates against
+   * that workspace's VFS (CodeFile.company). A solo project has no workspace,
+   * so we fall back to the files the project owner created — otherwise a solo
+   * spec would always verify against an empty file set and report everything
+   * as "pending".
+   */
+  async resolveSpecCodeScope(spec) {
+    const workspaceId = await this.resolveSpecWorkspaceId(spec);
+    if (workspaceId) return { company: workspaceId };
+
+    const project = await this.resolveSpecProject(spec);
+    if (project?.userId) return { createdBy: project.userId };
+
+    return null;
+  }
+
+  async getSpecCodeFiles(spec) {
+    const scope = await this.resolveSpecCodeScope(spec);
+    if (!scope) return [];
+    return CodeFile.find(scope).select('path name language content').lean();
+  }
+
+  /**
+   * A single target file, scoped the same way as getSpecCodeFiles so a drift
+   * check can never read a file belonging to someone else's workspace.
+   */
+  async findSpecCodeFile(spec, filePath) {
+    const scope = await this.resolveSpecCodeScope(spec);
+    if (!scope) return null;
+    return CodeFile.findOne({ ...scope, path: filePath }).select('path name language content');
+  }
+
+  /**
+   * Workspace backing a spec: its own, else the parent project's.
+   */
+  async resolveSpecWorkspaceId(spec) {
+    if (!spec) return null;
+    if (spec.workspaceId) return spec.workspaceId;
+
+    const project = await this.resolveSpecProject(spec);
+    return project?.workspaceId || null;
+  }
+
+  async resolveSpecProject(spec) {
+    if (!spec?.projectId) return null;
+    return LocalProject.findById(spec.projectId).select('userId workspaceId').lean();
+  }
+
+  async generateDriftReport(scopeId) {
+    // A project id scopes to that project; a workspace id expands to all of
+    // its projects (and anything still filed directly under the workspace).
+    const query = mongoose.Types.ObjectId.isValid(scopeId)
+      ? { $or: [{ projectId: scopeId }, { workspaceId: scopeId }] }
+      : { workspaceId: scopeId };
+    const specs = await SpecModel.find(query);
     const reports = [];
 
     for (const spec of specs) {
       for (const targetFile of spec.targetModules || spec.targetFiles || []) {
-        const codeFile = await CodeFile.findOne({ path: targetFile });
+        const codeFile = await this.findSpecCodeFile(spec, targetFile);
         if (!codeFile) continue;
 
         const language = path.extname(targetFile).replace('.', '') || 'javascript';
@@ -441,7 +580,7 @@ class SDDVerificationService {
     }
 
     return {
-      workspaceId,
+      scopeId,
       totalWarnings: reports.length,
       reports,
       timestamp: new Date(),

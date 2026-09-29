@@ -552,12 +552,31 @@ router.delete('/files/:fileId', authenticateToken, permissionMatrix.requirePermi
  * Folders are virtual - represented by the path hierarchy.
  * This endpoint creates a placeholder file to establish the folder structure.
  */
-router.post('/folders', authenticateToken, permissionMatrix.requirePermission('vfs', 'write'), async (req, res) => {
+// Editor file/folder creation is authenticated-only by convention (the
+// code-editor routes that create and save files carry no tier gate either) —
+// gating folders on vfs:write made "New Folder" return 403 Permission denied
+// for developer-tier users while file creation worked fine.
+router.post('/folders', authenticateToken, async (req, res) => {
   try {
-    const { name, path, companyId, projectId } = req.body;
+    const { name, path, projectId } = req.body;
+    let { companyId } = req.body;
     
-    if (!name || !companyId) {
-      return res.status(400).json({ error: 'name and companyId are required' });
+    if (!name) {
+      return res.status(400).json({ error: 'name is required' });
+    }
+
+    // Same fallback as file creation: without an explicit workspace, use a
+    // company the user belongs to so folders can be created from the editor
+    // even when no workspace is selected.
+    if (!companyId) {
+      const Company = require('../models/Company');
+      const mine = await Company.findOne({
+        $or: [{ owner: req.userId }, { 'members.user': req.userId }]
+      }).select('_id').lean();
+      if (!mine) {
+        return res.status(400).json({ error: 'You must be in a workspace to create folders.' });
+      }
+      companyId = mine._id;
     }
     
     const folderPath = path === '/' ? `/${name}` : `${path}/${name}`;

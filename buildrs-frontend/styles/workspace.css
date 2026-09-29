@@ -2313,6 +2313,52 @@
   text-overflow: ellipsis;
 }
 
+/* Folder rows inside Workspace / repo / Other groups */
+.src-dir {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.42rem 0.5rem;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--ws-text-muted);
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, 'Cascadia Code', Menlo, Consolas, monospace;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  min-width: 0;
+}
+.src-dir:hover {
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--ws-text);
+}
+.src-dir span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.src-dir-chev {
+  flex-shrink: 0;
+  color: var(--ws-text-faint);
+  transition: transform 0.12s ease;
+}
+.src-dir-chev.is-open {
+  transform: rotate(90deg);
+}
+/* Muted hint lines under a group header (loading / error) */
+.src-group-note {
+  padding: 0.3rem 0.5rem 0.45rem 1.5rem;
+  font-size: 0.7rem;
+  color: var(--ws-text-faint);
+}
+.src-group-note.is-error {
+  color: #f87171;
+}
+
 .src-viewer {
   flex: 1;
   display: flex;
@@ -3669,12 +3715,6 @@
   background: rgba(248, 113, 113, 0.08);
   border: 1px solid rgba(248, 113, 113, 0.25);
   color: #f87171;
-}
-.ed-panel {
-  background: #0a0b10;
-  border: 1px solid var(--ws-border);
-  border-radius: 10px;
-  padding: 0.85rem;
 }
 .ed-invite-row {
   display: flex;
@@ -5196,6 +5236,105 @@
   font: inherit;
 }
 .ed-scm-file-btn:hover { background: rgba(255, 255, 255, 0.06); }
+
+/* SCM panel — VS Code-style source control */
+.ed-scm-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.6rem 0.7rem;
+}
+.ed-scm-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.74rem;
+  color: #c7d3df;
+  padding: 0.4rem 0.55rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 6px;
+  min-width: 0;
+}
+.ed-scm-summary b { color: #e6f1ff; font-weight: 600; }
+.ed-scm-remote {
+  margin-left: auto;
+  color: #6e6e6e;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.66rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 55%;
+}
+.ed-scm-commit-box { display: flex; flex-direction: column; gap: 0.4rem; }
+.ed-scm-commit-input {
+  width: 100%;
+  min-height: 3.4rem;
+  resize: vertical;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: #e6f1ff;
+  font-size: 0.76rem;
+  font-family: inherit;
+  line-height: 1.45;
+  padding: 0.45rem 0.55rem;
+  outline: none;
+  transition: border-color 0.12s ease;
+}
+.ed-scm-commit-input:focus { border-color: #2fd6e6; }
+.ed-scm-commit-input::placeholder { color: #5c6672; }
+.ed-scm-commit-btn { width: 100%; justify-content: center; }
+.ed-scm-commit-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.ed-scm-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #8a94a3;
+  padding: 0.3rem 0.3rem 0;
+}
+.ed-scm-clean { font-size: 0.72rem; color: #6e6e6e; padding: 0.15rem 0.3rem; }
+.ed-scm-files, .ed-scm-commits { display: flex; flex-direction: column; gap: 1px; }
+.ed-scm-status {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.68rem;
+  font-weight: 700;
+  width: 0.95rem;
+  text-align: center;
+  flex-shrink: 0;
+}
+.ed-scm-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ed-scm-file-btn { width: 100%; text-align: left; }
+.ed-scm-commit {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.35rem 0.55rem;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+.ed-scm-commit:hover { background: rgba(255, 255, 255, 0.06); }
+.ed-scm-commit-msg {
+  font-size: 0.74rem;
+  color: #c7d3df;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ed-scm-commit-meta {
+  font-size: 0.66rem;
+  color: #6e6e6e;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+}
+.ed-scm-actions { display: flex; gap: 0.4rem; padding-top: 0.2rem; }
+.ed-scm-actions .btn-workspace { flex: 1; }
+.ed-scm-wide { width: 100%; }
+.ed-scm-wide:disabled, .ed-scm-actions .btn-workspace:disabled { opacity: 0.45; cursor: not-allowed; }
 .ws-code-block {
   background: rgba(0, 0, 0, 0.35);
   border: 1px solid rgba(255, 255, 255, 0.09);
@@ -5460,29 +5599,30 @@
   font-size: 0.76rem;
   color: #bbbbbb;
 }
+/* VS Code-style terminal: flat surfaces, neutral greys, no gradients. */
 .ed-term-shell {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  background: linear-gradient(180deg, rgba(8, 12, 16, 0.96), rgba(12, 17, 23, 0.96));
-  border: 1px solid rgba(148, 163, 184, 0.14);
-  border-radius: 12px;
+  background: #1e1e1e;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
   overflow: hidden;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
 }
 .ed-term-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  height: 36px;
-  padding: 0 0.7rem;
-  background: rgba(15, 23, 32, 0.9);
-  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
-  font-size: 0.65rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  height: 30px;
+  padding: 0 0.6rem;
+  flex-shrink: 0;
+  background: #252526;
+  border-bottom: 1px solid #3c3c3c;
+  font-size: 0.7rem;
+  letter-spacing: 0.01em;
+  text-transform: none;
 }
 .ed-term-meta {
   display: flex;
@@ -5493,23 +5633,29 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0.18rem 0.45rem;
-  border-radius: 999px;
-  font-size: 0.56rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  font-size: 0.58rem;
   font-weight: 700;
-  border: 1px solid rgba(52, 211, 153, 0.28);
-  background: rgba(52, 211, 153, 0.12);
-  color: #6ee7b7;
+  letter-spacing: 0.06em;
+  border: 1px solid #3c3c3c;
+  background: #2d2d2d;
+  color: #a0a0a0;
 }
 .ed-term-capsule.is-live {
-  border-color: rgba(103, 232, 249, 0.28);
-  background: rgba(103, 232, 249, 0.12);
-  color: #67e8f9;
+  border-color: #3c3c3c;
+  background: #2d2d2d;
+  color: #4ec9b0;
 }
 .ed-term-label {
-  color: #d6e2ee;
-  font-weight: 700;
-  letter-spacing: 0.12em;
+  color: #cccccc;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.ed-term-scope {
+  color: #8c8c8c;
+  font-weight: 400;
+  letter-spacing: 0.01em;
 }
 .ed-term-actions {
   display: flex;
@@ -5520,21 +5666,20 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0.2rem 0.45rem;
-  border-radius: 999px;
-  background: rgba(148, 163, 184, 0.08);
-  border: 1px solid rgba(148, 163, 184, 0.12);
-  color: #b8c7d8;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  padding: 0.15rem 0.45rem;
+  border-radius: 3px;
+  background: #2d2d2d;
+  border: 1px solid #3c3c3c;
+  color: #cccccc;
+  font-size: 0.64rem;
+  letter-spacing: 0.02em;
+  text-transform: none;
 }
 .ed-term-root {
   flex: 1;
   min-height: 0;
-  padding: 0.6rem;
-  background:
-    radial-gradient(circle at top left, rgba(47, 214, 230, 0.06), transparent 24%),
-    linear-gradient(180deg, #071018 0%, #0a1117 100%);
+  padding: 4px 8px;
+  background: #1e1e1e;
 }
 .ed-term-root .xterm {
   height: 100%;
@@ -5543,12 +5688,6 @@
 .ed-term-root .xterm-viewport,
 .ed-term-root .xterm-screen {
   background: transparent !important;
-}
-.ed-term-root .xterm .xterm-helpers {
-  display: none;
-}
-.ed-term-root .xterm-cursor {
-  box-shadow: 0 0 0 1px rgba(103, 232, 249, 0.55);
 }
 
 /* ---- Status bar ----------------------------------------------------------------- */

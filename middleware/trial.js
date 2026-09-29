@@ -4,29 +4,88 @@ const jwt = require('jsonwebtoken');
 const emailService = require('../utils/emailServiceResend');
 const User = require('../models/User');
 
+// The tier a free trial grants. Trialing users get the Pro feature set, so the
+// tier recorded on the subscription must be Pro for the whole trial — a
+// trial recorded as 'developer' is what makes the UI report "Free" while the
+// backend is actually gating on trial entitlements.
+const TRIAL_TIER = 'pro';
+const TRIAL_DAYS = 14;
+
+function applyProTrial(subscription, startedAt = new Date()) {
+    const trialEndsAt = new Date(startedAt.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
+    subscription.upgradeTo(TRIAL_TIER);
+    subscription.status = 'trial';
+    subscription.trialStartedAt = startedAt;
+    subscription.trialEndsAt = trialEndsAt;
+    subscription.pricing.amount = 0;
+    subscription.pricing.interval = 'trial';
+    return subscription;
+}
+
+function createTrialSubscription(userId, startedAt = new Date()) {
+    return applyProTrial(new Subscription({
+        userId,
+        pricing: { amount: 0, currency: 'USD', interval: 'trial' },
+    }), startedAt);
+}
+
+function isTrialExpired(subscription, now = new Date()) {
+    if (!subscription?.trialEndsAt) return false;
+    return subscription.trialEndsAt.getTime() < now.getTime();
+}
+
+function downgradeExpiredTrial(subscription, now = new Date()) {
+    if (subscription.status !== 'trial' || !isTrialExpired(subscription, now)) {
+        return false;
+    }
+    subscription.status = 'expired';
+    subscription.upgradeTo('developer');
+    return true;
+}
+
+/**
+ * Repair a subscription whose recorded tier disagrees with its trial state.
+ *
+ * Older rows were written as developer+trial (or had their tier reset by the
+ * tier-name migration), so the user was treated as Free while still holding an
+ * active trial. A live trial is restored to the tier it grants; an elapsed one
+ * is expired. Returns true when something changed.
+ */
+function repairTrialTier(subscription, now = new Date()) {
+    if (subscription.status !== 'trial') return false;
+    if (isTrialExpired(subscription, now)) {
+        return downgradeExpiredTrial(subscription, now);
+    }
+    if (subscription.tier === TRIAL_TIER) return false;
+    // Keep the original trial window, just restore the tier it grants.
+    subscription.upgradeTo(TRIAL_TIER);
+    subscription.pricing.amount = 0;
+    subscription.pricing.interval = 'trial';
+    return true;
+}
+
+async function notifyTrialExpired(subscription, userId) {
+    const user = await User.findById(userId).select('email fullName');
+    if (!user) return;
+    try {
+        await emailService.sendTrialExpiredEmail(user.email, user.fullName);
+    } catch (emailError) {
+        console.error('Trial expired email error:', emailError);
+    }
+}
+
 /**
  * Get or create a subscription for a user.
- * Never blocks a user for having no subscription record — instead creates
- * a default freebie/starter subscription so the rest of the app keeps working.
+ *
+ * Missing subscriptions start with the standard 14-day Pro trial. Existing rows
+ * are repaired rather than trusted: an active trial must be on the tier it
+ * grants, an elapsed trial must be expired, and a free user with no billing
+ * history gets the standard trial.
  */
 async function getOrCreateSubscription(userId) {
     let subscription = await Subscription.findOne({ userId });
     if (!subscription) {
-        subscription = new Subscription({
-            userId,
-            tier: 'developer',
-            status: 'active',
-            creditPool: { monthlyLimit: 0, usedThisMonth: 0, resetAt: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1) },
-            cloudComputeHours: { monthlyLimit: 0, usedThisMonth: 0 },
-            maxConcurrentAgentJobs: 0,
-            taskTimeoutMinutes: 5,
-            maxDebugHostRooms: 0,
-            maxDebugParticipants: 0,
-            maxActiveDeployments: 1,
-            specEngineLevel: 'read_only',
-            webrtcVoiceEnabled: false,
-            dataRetentionDays: 7
-        });
+        subscription = createTrialSubscription(userId);
         try {
             await subscription.save();
         } catch (saveErr) {
@@ -37,6 +96,20 @@ async function getOrCreateSubscription(userId) {
             }
         }
     }
+    const wasRepaired = repairTrialTier(subscription);
+    if (!wasRepaired && subscription.tier === 'developer' && subscription.status === 'active' && !subscription.paymentId && !subscription.firstChargeCompleted) {
+        applyProTrial(subscription);
+        await subscription.save();
+    }
+    if (downgradeExpiredTrial(subscription)) {
+        await subscription.save();
+        await notifyTrialExpired(subscription, userId);
+        console.log(`User ${userId} trial expired and was downgraded to developer`);
+    } else if (wasRepaired) {
+        await subscription.save();
+        console.log(`User ${userId} subscription repaired: tier=${subscription.tier} status=${subscription.status}`);
+    }
+    await User.updateOne({ _id: userId, subscription: { $ne: subscription._id } }, { $set: { subscription: subscription._id } });
     return subscription;
 }
 
@@ -47,7 +120,7 @@ async function getOrCreateSubscription(userId) {
  * 1. Is the user currently on a free trial?
  * 2. How many days left?
  * 3. Is this the last day? → send email notification
- * 4. Is the trial expired? → auto-downgrade to freebie + notify via email
+ * 4. Is the trial expired? → auto-downgrade to developer (free) + notify via email
  * 5. Are the correct features enabled for the user's tier?
  */
 const checkTrialStatus = async (req, res, next) => {
@@ -75,35 +148,6 @@ const checkTrialStatus = async (req, res, next) => {
         if (subscription.status === 'trial') {
             const daysLeft = subscription.getTrialDaysLeft();
             const isLastDay = subscription.isLastTrialDay();
-            const isExpired = subscription.isTrialExpired();
-
-            // Trial expired -> auto downgrade to freebie
-            if (isExpired) {
-                const previousTier = subscription.tier;
-                subscription.status = 'expired';
-                subscription.upgradeTo('freebie');
-                await subscription.save();
-                
-                // Send trial expired email
-                try {
-                    await emailService.sendTrialExpiredEmail(user.email, user.fullName);
-                } catch (emailError) {
-                    console.error('Trial expired email error:', emailError);
-                }
-                
-                console.log(`User ${userId} trial expired, downgraded from ${previousTier} to freebie`);
-                
-                return res.status(403).json({
-                    success: false,
-                    message: 'Your free trial has ended. Please upgrade to continue.',
-                    code: 'TRIAL_EXPIRED',
-                    requiresUpgrade: true,
-                    subscription: {
-                        tier: subscription.tier,
-                        status: subscription.status
-                    }
-                });
-            }
 
             // Last day - send reminder email (once per day)
             if (isLastDay && !subscription.metadata?.trialEndReminderSent) {
@@ -116,23 +160,15 @@ const checkTrialStatus = async (req, res, next) => {
                 }
             }
 
-            // Attach trial info to request
-            req.trial = {
-                isOnTrial: true,
-                daysLeft,
-                isLastDay,
-                trialEndsAt: subscription.trialEndsAt,
-                tier: subscription.tier
-            };
-        } else {
-            req.trial = {
-                isOnTrial: false,
-                daysLeft: 0,
-                isLastDay: false,
-                trialEndsAt: null,
-                tier: subscription.tier
-            };
         }
+
+        req.trial = {
+            isOnTrial: subscription.status === 'trial',
+            daysLeft: subscription.status === 'trial' ? subscription.getTrialDaysLeft() : 0,
+            isLastDay: subscription.status === 'trial' ? subscription.isLastTrialDay() : false,
+            trialEndsAt: subscription.status === 'trial' ? subscription.trialEndsAt : null,
+            tier: subscription.tier,
+        };
 
         // Attach subscription to request
         req.subscription = subscription;
@@ -230,5 +266,11 @@ const enforceAIAccess = async (req, res, next) => {
 module.exports = {
     checkTrialStatus,
     enforceProjectLimit,
-    enforceAIAccess
+    enforceAIAccess,
+    applyProTrial,
+    createTrialSubscription,
+    downgradeExpiredTrial,
+    repairTrialTier,
+    getOrCreateSubscription,
+    TRIAL_TIER,
 };

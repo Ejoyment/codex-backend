@@ -4,7 +4,7 @@ import dynamic from 'next/dynamic';
 const MonacoEditor = dynamic(() => import('@monaco-editor/react'), { ssr: false, loading: () => <div>Loading editor...</div> });
 import { apiFetch } from '../lib/api';
 
-export default function SpecEditor({ specId, workspaceId, onDriftDetected }) {
+export default function SpecEditor({ specId, workspaceId, projectId: projectIdProp, onDriftDetected }) {
   const [spec, setSpec] = useState(null);
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(true);
@@ -14,7 +14,12 @@ export default function SpecEditor({ specId, workspaceId, onDriftDetected }) {
   const [codeContent, setCodeContent] = useState('');
   const [codePath, setCodePath] = useState('');
   const [targetFile, setTargetFile] = useState('');
+  const [projectId, setProjectId] = useState(projectIdProp || '');
   const editorRef = useRef(null);
+
+  useEffect(() => {
+    if (projectIdProp) setProjectId(projectIdProp);
+  }, [projectIdProp]);
 
   useEffect(() => {
     if (specId) {
@@ -28,6 +33,7 @@ export default function SpecEditor({ specId, workspaceId, onDriftDetected }) {
       if (result.success && result.spec) {
         setSpec(result.spec);
         setContent(result.spec.content);
+        if (result.spec.projectId) setProjectId(result.spec.projectId);
       }
     } catch (err) {
       console.error('Failed to load spec:', err);
@@ -42,12 +48,19 @@ export default function SpecEditor({ specId, workspaceId, onDriftDetected }) {
       await apiFetch('/api/v1/specs', {
         method: 'POST',
         body: JSON.stringify({
-          workspaceId,
+          projectId: projectId || spec?.projectId,
           title: spec?.title || 'New Spec',
           content,
           targetFiles: spec?.targetFiles || [],
           targetModules: spec?.targetModules || [],
           assertions: spec?.assertions || [],
+          description: spec?.description || '',
+          architecturalRules: spec?.architecturalRules || [],
+          requirements: spec?.requirements || [],
+          forbiddenImports: spec?.forbiddenImports || [],
+          constraints: spec?.constraints || [],
+          verificationCommand: spec?.verificationCommand || '',
+          coverageThreshold: spec?.coverageThreshold ?? null,
           specId,
         }),
       });
@@ -62,7 +75,7 @@ export default function SpecEditor({ specId, workspaceId, onDriftDetected }) {
     try {
       const result = await apiFetch('/api/v1/specs/verify', {
         method: 'POST',
-        body: JSON.stringify({ specId, workspaceId }),
+        body: JSON.stringify({ specId, projectId: projectId || spec?.projectId, workspaceId }),
       });
       if (result.success) {
         setDriftWarnings(result.failedAssertions > 0 ? result.results.filter(r => !r.passed) : []);
@@ -93,7 +106,7 @@ export default function SpecEditor({ specId, workspaceId, onDriftDetected }) {
     try {
       const report = await apiFetch('/api/v1/specs/drift-report', {
         method: 'POST',
-        body: JSON.stringify({ workspaceId }),
+        body: JSON.stringify({ projectId: projectId || spec?.projectId, workspaceId }),
       });
       if (report.success && report.report) {
         setDriftWarnings(report.report.reports || []);

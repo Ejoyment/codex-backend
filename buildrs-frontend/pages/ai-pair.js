@@ -17,6 +17,11 @@ import {
   X,
   Copy,
   Check,
+  GitBranch,
+  CheckCircle2,
+  XCircle,
+  Clock3,
+  RefreshCw,
 } from 'lucide-react';
 import { getTierLimits, normalizeTier } from '../lib/tier';
 import { useRouter } from 'next/router';
@@ -80,6 +85,74 @@ function renderCodeBlocks(text, keyPrefix = '') {
   });
 }
 
+function AgentRunsPanel({ sessions, selected, loading, error, followUp, setFollowUp, setError, onSelect, onRefresh, onAction, actionId }) {
+  const reviewable = selected && ['awaiting_review', 'awaiting_approval'].includes(selected.status);
+  const hasAppliedChanges = Boolean((selected?.filesChanged || []).length || selected?.diffSummary?.filesChanged > 0);
+  const validation = selected?.validationResult;
+  const statusColor = selected?.status === 'failed' ? '#f87171' : reviewable ? '#e5b84a' : selected?.status === 'running' ? '#2fd6e6' : '#9aa1ae';
+
+  return (
+    <div className="ail-content">
+      {error && <div className="std-alert std-alert-error mb-4"><AlertCircle className="w-4 h-4" /><span className="flex-1">{error}</span><button type="button" onClick={() => setError(null)}><X className="w-4 h-4" /></button></div>}
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div><h2 className="text-sm font-semibold text-white">Task agent sessions</h2><p className="mt-1 text-xs text-[#9aa1ae]">Execution logs, frozen inputs, validation, and human review</p></div>
+        <button type="button" className="btn-workspace btn-secondary" onClick={onRefresh} disabled={loading} title="Refresh sessions"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
+      </div>
+      <div className="grid min-h-[560px] overflow-hidden border border-white/10 lg:grid-cols-[290px_minmax(0,1fr)]">
+        <aside className="border-b border-white/10 lg:border-b-0 lg:border-r">
+          <div className="flex items-center justify-between border-b border-white/10 px-4 py-3"><span className="text-xs font-semibold uppercase text-[#9aa1ae]">Runs</span><span className="text-xs text-[#727987]">{sessions.length}</span></div>
+          <div className="max-h-[680px] overflow-y-auto">
+            {sessions.length ? sessions.map((session) => <button key={session._id} type="button" onClick={() => onSelect(session)} className={`block w-full border-b border-white/5 px-4 py-3 text-left hover:bg-white/5 ${selected?._id === session._id ? 'bg-white/5' : ''}`}>
+              <span className="block truncate text-sm font-medium text-white">{session.taskTitle || 'Agent run'}</span>
+              <span className="mt-1 flex items-center justify-between gap-2 text-xs"><span className="truncate text-[#9aa1ae]">{session.branch || session.model || 'No branch'}</span><span style={{ color: ['awaiting_review', 'awaiting_approval'].includes(session.status) ? '#e5b84a' : session.status === 'failed' ? '#f87171' : '#9aa1ae' }}>{session.status}</span></span>
+              <span className="mt-1 block text-[11px] text-[#727987]">{session.createdAt ? new Date(session.createdAt).toLocaleString() : ''}</span>
+            </button>) : <div className="px-4 py-10 text-center text-xs text-[#727987]">{loading ? 'Loading agent runs...' : 'No task agent runs yet'}</div>}
+          </div>
+        </aside>
+        <section className="flex min-w-0 flex-col">
+          {!selected ? <div className="flex flex-1 flex-col items-center justify-center p-8 text-center"><Bot className="mb-3 h-8 w-8 text-[#2fd6e6]" /><p className="text-sm font-semibold text-white">Select an agent run</p><p className="mt-1 max-w-sm text-xs text-[#9aa1ae]">Delegate a task from Tasks to inspect execution and review it here.</p></div> : <>
+            <header className="border-b border-white/10 px-4 py-4 sm:px-6">
+              <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs uppercase text-[#9aa1ae]">{selected.taskId ? 'Task execution' : 'Agent session'}</p><h2 className="mt-1 text-lg font-semibold text-white">{selected.taskTitle}</h2></div><span className="inline-flex items-center gap-2 text-xs" style={{ color: statusColor }}><span className="h-2 w-2 rounded-full" style={{ background: statusColor }} />{selected.status}</span></div>
+              <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs text-[#9aa1ae]">
+                <span className="inline-flex items-center gap-1.5"><GitBranch className="h-3.5 w-3.5 text-[#2fd6e6]" />{selected.branch || 'No branch'}</span>
+                <span>{selected.model || 'Default model'}</span>
+                <span>{selected.contextSnapshot?.specs?.length || 0} frozen specs</span>
+                {selected.retryCount > 0 && <span>Correction attempts: {selected.retryCount}</span>}
+              </div>
+            </header>
+            <div className="grid flex-1 gap-5 overflow-y-auto p-4 sm:p-6 xl:grid-cols-2">
+              <div className="space-y-5">
+                <section><h3 className="mb-2 text-xs font-semibold uppercase text-[#9aa1ae]">Plan</h3><pre className="max-h-60 overflow-auto whitespace-pre-wrap border border-white/10 bg-black/20 p-3 text-xs leading-relaxed text-[#c6cad2]">{selected.plan || 'The worker did not return a separate plan.'}</pre></section>
+                <section><h3 className="mb-2 text-xs font-semibold uppercase text-[#9aa1ae]">Agent output</h3><pre className="max-h-[420px] overflow-auto whitespace-pre-wrap border border-white/10 bg-black/20 p-3 text-xs leading-relaxed text-[#c6cad2]">{selected.summary || 'Waiting for worker output...'}</pre></section>
+              </div>
+              <div className="space-y-5">
+                <section><h3 className="mb-2 text-xs font-semibold uppercase text-[#9aa1ae]">Terminal log</h3><div className="max-h-60 overflow-auto border border-white/10 bg-[#08080b] p-3 font-mono text-[11px] leading-relaxed">
+                  {(selected.terminalLog || []).length ? selected.terminalLog.map((line, index) => <p key={`${line.timestamp}-${index}`} className="mb-1 text-[#c6cad2]"><span className="mr-2 text-[#727987]">{line.timestamp ? new Date(line.timestamp).toLocaleTimeString() : '—'}</span><span className="mr-2 text-[#2fd6e6]">{line.type || 'log'}</span>{line.message}</p>) : <p className="text-[#727987]">No execution events recorded.</p>}
+                </div></section>
+                <section><h3 className="mb-2 text-xs font-semibold uppercase text-[#9aa1ae]">Validation</h3>
+                  {validation?.specs?.length ? <div className="space-y-3">{validation.specs.map((spec, index) => <div key={spec.specId || index} className="border border-white/10 p-3"><div className="mb-2 flex items-center justify-between gap-2 text-xs"><span className="font-medium text-white">{spec.title || `Spec ${index + 1}`}</span><span style={{ color: spec.passed ? '#34d399' : '#e5b84a' }}>{spec.passed ? 'requirements passing' : 'review needed'}</span></div>{(spec.requirements || []).map((requirement, requirementIndex) => <p key={requirement.id || requirementIndex} className="mb-1 flex gap-2 text-xs text-[#c6cad2]"><span style={{ color: requirement.status === 'pass' ? '#34d399' : requirement.status === 'fail' ? '#f87171' : '#e5b84a' }}>{requirement.status}</span><span>{requirement.id}: {requirement.text} <span className="text-[#727987]">{requirement.evidence}</span></span></p>)}{spec.verificationCommand && <p className="mt-2 text-xs text-[#e5b84a]">Command pending: {spec.verificationCommand.command}</p>}</div>)}</div> : <p className="border border-white/10 p-3 text-xs text-[#9aa1ae]">{validation?.command?.reason || 'No automated validation result is attached.'}</p>}
+                </section>
+                {selected.contextSnapshot?.specs?.length > 0 && <section><h3 className="mb-2 text-xs font-semibold uppercase text-[#9aa1ae]">Frozen spec context</h3><div className="flex flex-wrap gap-2">{selected.contextSnapshot.specs.map((spec) => <span key={spec._id} className="border border-white/10 px-2 py-1 text-xs text-[#c6cad2]">{spec.title}</span>)}</div></section>}
+              </div>
+            </div>
+            <footer className="border-t border-white/10 p-4 sm:px-6">
+              {['awaiting_review', 'awaiting_approval', 'failed'].includes(selected.status) && <form className="mb-3 flex gap-2" onSubmit={(event) => { event.preventDefault(); if (followUp.trim()) onAction('tweak', selected, { instruction: followUp.trim() }); }}>
+                <input className="ws-input min-w-0 flex-1" value={followUp} onChange={(event) => setFollowUp(event.target.value)} placeholder="Add a follow-up instruction" />
+                <button type="submit" className="btn-workspace btn-secondary" disabled={!followUp.trim() || Boolean(actionId)}><Send className="h-4 w-4" /><span className="hidden sm:inline">Continue</span></button>
+              </form>}
+              <div className="flex flex-wrap items-center justify-between gap-3"><span className="text-xs text-[#727987]">Agent work always waits for a human decision.</span><div className="flex gap-2">
+                {reviewable && <><button type="button" className="btn-workspace btn-secondary" onClick={() => { const reason = window.prompt('Reason for rejecting this run?') || ''; onAction('reject', selected, { reason }); }} disabled={Boolean(actionId)}><XCircle className="h-4 w-4" />Reject &amp; Rollback</button><button type="button" className="btn-workspace btn-primary" onClick={() => onAction('approve', selected)} disabled={Boolean(actionId) || !hasAppliedChanges} title={!hasAppliedChanges ? 'The agent has not applied file changes to its branch' : 'Approve and merge the branch'}><CheckCircle2 className="h-4 w-4" />Approve &amp; Merge</button></>}
+                {actionId === selected._id && <Loader2 className="h-4 w-4 animate-spin text-[#2fd6e6]" />}
+              </div></div>
+              {reviewable && !hasAppliedChanges && <p className="mt-3 text-xs text-[#e5b84a]">This worker has returned a plan and response, but has not written files to the branch. Merge stays disabled until branch edits are supported.</p>}
+            </footer>
+          </>}
+        </section>
+      </div>
+    </div>
+  );
+}
+
 function ChangeBlock({ change }) {
   const tint = ACTION_TINTS[change.action] || ACTION_TINTS.edit;
   return (
@@ -122,6 +195,12 @@ export default function AiPair() {
   const [clock, setClock] = useState('');
   const [agentMode, setAgentMode] = useState(false);
   const [agentSteps, setAgentSteps] = useState([]);
+  const [activeView, setActiveView] = useState('chat');
+  const [agentSessions, setAgentSessions] = useState([]);
+  const [selectedExecution, setSelectedExecution] = useState(null);
+  const [loadingAgentSessions, setLoadingAgentSessions] = useState(false);
+  const [agentActionId, setAgentActionId] = useState('');
+  const [followUp, setFollowUp] = useState('');
   const agentSocketRef = useRef(null);
   const { selectedCompany, hasCompany } = useCurrentCompany();
   const messagesEndRef = useRef(null);
@@ -133,6 +212,19 @@ export default function AiPair() {
   useEffect(() => {
     fetchSessions();
   }, []);
+
+  useEffect(() => {
+    if (!router.isReady || !router.query.executionId) return;
+    setActiveView('runs');
+    fetchAgentSessions(router.query.executionId);
+  }, [router.isReady, router.query.executionId]);
+
+  useEffect(() => {
+    if (activeView !== 'runs') return undefined;
+    fetchAgentSessions();
+    const id = setInterval(() => fetchAgentSessions(), 5000);
+    return () => clearInterval(id);
+  }, [activeView]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -174,7 +266,7 @@ export default function AiPair() {
     setLoadingSessions(true);
     try {
       const data = await apiFetch('/api/ai-pair/sessions');
-      if (data.success) setSessions(data.sessions);
+      if (data.success) setSessions(data.sessions || []);
     } catch (err) {
       setError('Failed to load sessions');
     } finally {
@@ -182,10 +274,44 @@ export default function AiPair() {
     }
   }
 
+  async function fetchAgentSessions(preferredId) {
+    setLoadingAgentSessions(true);
+    try {
+      const data = await apiFetch('/api/v1/agent/sessions');
+      const loadedSessions = data.sessions || [];
+      setAgentSessions(loadedSessions);
+      const targetId = preferredId || router.query.executionId || selectedExecution?._id;
+      if (targetId) setSelectedExecution(loadedSessions.find((item) => item._id === targetId) || null);
+      else if (selectedExecution) setSelectedExecution(loadedSessions.find((item) => item._id === selectedExecution._id) || null);
+    } catch (err) {
+      setError(err.message || 'Failed to load agent runs');
+    } finally {
+      setLoadingAgentSessions(false);
+    }
+  }
+
+  async function submitAgentAction(action, execution, extra = {}) {
+    setAgentActionId(execution._id);
+    setError(null);
+    try {
+      const result = await apiFetch(`/api/v1/agent/${action}`, {
+        method: 'POST',
+        body: JSON.stringify({ executionId: execution._id, taskId: execution.taskId, ...extra }),
+      });
+      if (result.execution) setSelectedExecution(result.execution);
+      if (action === 'tweak') setFollowUp('');
+      await fetchAgentSessions(execution._id);
+    } catch (err) {
+      setError(err.message || `Could not ${action} this agent run`);
+    } finally {
+      setAgentActionId('');
+    }
+  }
+
   async function fetchRepos() {
     try {
       const data = await apiFetch('/api/ai-pair/repos');
-      if (data.success) setRepos(data.repos);
+      if (data.success) setRepos(data.repositories || data.repos || []);
     } catch (err) {
       setError('Failed to load repositories');
     }
@@ -196,17 +322,30 @@ export default function AiPair() {
     setCreatingSession(true);
     setError(null);
     try {
+      const repo = repos.find((r) =>
+        typeof r === 'string' ? r === selectedRepo : (r.fullName || r.name) === selectedRepo
+      );
+      const repoName = typeof repo === 'object' && repo ? repo.name : selectedRepo;
       const data = await apiFetch('/api/ai-pair/session', {
         method: 'POST',
-        body: JSON.stringify({ repoName: selectedRepo, language: selectedLang }),
+        body: JSON.stringify({
+          repositoryId: String((typeof repo === 'object' && repo && repo.id) || selectedRepo),
+          repositoryName: repoName,
+          repositoryOwner: (typeof repo === 'object' && repo && repo.owner) || '',
+          branch: (typeof repo === 'object' && repo && repo.defaultBranch) || 'main',
+          sessionName: `${repoName} · ${selectedLang}`,
+          language: selectedLang,
+        }),
       });
-      if (data.success) {
+      if (data.success && data.session) {
         const sess = data.session;
         setSessions((prev) => [sess, ...prev]);
         setActiveSession(sess);
         setMessages([]);
         setRemaining(aiLimit);
         setShowNewSession(false);
+      } else {
+        setError(data.message || 'Failed to create session');
       }
     } catch (err) {
       setError(err.message || 'Failed to create session');
@@ -289,6 +428,7 @@ export default function AiPair() {
     setShowNewSession(true);
     setSelectedRepo('');
     setSelectedLang('JavaScript');
+    setError(null);
     fetchRepos();
   }
 
@@ -318,7 +458,7 @@ export default function AiPair() {
               <h1 className="dash-title">AI Pair Programming</h1>
               <div className="dash-statusline">
                 <span className="status-indicator status-online" />
-                <span>{activeSession ? `${activeSession.repoName} · ${activeSession.language}` : 'No active session'}</span>
+                <span>{activeSession ? `${activeSession.repositoryName || activeSession.repoName || 'Session'}${activeSession.language ? ` · ${activeSession.language}` : ''}` : 'No active session'}</span>
                 <span className="dash-clock">· {clock || '—:——:——'}</span>
               </div>
             </div>
@@ -327,13 +467,13 @@ export default function AiPair() {
                 <span className="dot" style={{ background: remaining <= 0 ? '#f87171' : '#2fd6e6' }} />
                 {aiLimit === Infinity ? `${remaining} messages` : `${remaining}/${aiLimit} today`}
               </span>
-              {tier === 'freebie' && (
+              {tier === 'developer' && (
                 <button
                   type="button"
                   onClick={() => router.push('/pricing')}
                   className="dash-action"
                 >
-                  Upgrade to Professional
+                  Upgrade to Pro
                   <ChevronRight className="w-3.5 h-3.5" />
                 </button>
               )}
@@ -349,6 +489,25 @@ export default function AiPair() {
           </header>
 
           <div className="workspace-content">
+            <div className="mb-5 flex border-b border-white/10" role="tablist" aria-label="AI workspace mode">
+              <button type="button" role="tab" aria-selected={activeView === 'chat'} onClick={() => setActiveView('chat')} className={`border-b-2 px-4 py-2 text-sm ${activeView === 'chat' ? 'border-[#2fd6e6] text-white' : 'border-transparent text-[#9aa1ae]'}`}>Pair chat</button>
+              <button type="button" role="tab" aria-selected={activeView === 'runs'} onClick={() => setActiveView('runs')} className={`border-b-2 px-4 py-2 text-sm ${activeView === 'runs' ? 'border-[#2fd6e6] text-white' : 'border-transparent text-[#9aa1ae]'}`}>Agent runs</button>
+            </div>
+            {activeView === 'runs' ? (
+              <AgentRunsPanel
+                sessions={agentSessions}
+                selected={selectedExecution}
+                loading={loadingAgentSessions}
+                error={error}
+                followUp={followUp}
+                setFollowUp={setFollowUp}
+                setError={setError}
+                onSelect={setSelectedExecution}
+                onRefresh={() => fetchAgentSessions()}
+                onAction={(action, execution, extra) => submitAgentAction(action, execution, extra)}
+                actionId={agentActionId}
+              />
+            ) : (
             <div className="ail-content">
               <div className="ail-shell">
                 {/* Session rail */}
@@ -393,10 +552,10 @@ export default function AiPair() {
                             </span>
                             <span className="ail-sess-main">
                               <span className="ail-sess-top">
-                                <span className="ail-sess-name">{sess.repoName}</span>
+                                <span className="ail-sess-name">{sess.repositoryName || sess.repoName || 'Session'}</span>
                               </span>
                               <span className="ail-sess-meta">
-                                <span className="ail-sess-lang">{sess.language}</span>
+                                <span className="ail-sess-lang">{sess.language || '—'}</span>
                                 <span
                                   className="ail-sess-status"
                                   style={
@@ -586,6 +745,7 @@ export default function AiPair() {
                 </div>
               </div>
             </div>
+            )}
           </div>
         </main>
       </div>
@@ -610,6 +770,12 @@ export default function AiPair() {
             </div>
 
             <div className="p-5 space-y-4">
+              {error && (
+                <div className="std-alert std-alert-error">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  <p className="flex-1">{error}</p>
+                </div>
+              )}
               <div>
                 <label className="ws-label">Repository</label>
                 <select
@@ -619,8 +785,8 @@ export default function AiPair() {
                 >
                   <option value="">Select a repository...</option>
                   {repos.map((repo) => (
-                    <option key={repo.name || repo} value={repo.name || repo}>
-                      {repo.name || repo}
+                    <option key={repo.fullName || repo.name || repo} value={repo.fullName || repo.name || repo}>
+                      {repo.fullName || repo.name || repo}
                     </option>
                   ))}
                 </select>

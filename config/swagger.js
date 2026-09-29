@@ -57,7 +57,7 @@ const options = {
         Subscription: {
           type: 'object',
           properties: {
-            tier: { type: 'string', enum: ['freebie', 'professional', 'enterprise'] },
+            tier: { type: 'string', enum: ['developer', 'pro', 'pro_plus', 'team_standard', 'team_premium', 'enterprise'] },
             status: { type: 'string', enum: ['active', 'cancelled', 'expired', 'trial'] },
             features: { type: 'object' },
             pricing: { type: 'object' },

@@ -70,7 +70,7 @@ const SANDBOX_KEY_PATTERN = /^sb_[0-9a-f]{16}$/;
 // Start a sandbox for live preview
 router.post('/start', authenticateToken, async (req, res) => {
     try {
-        const { fileId, file, name, path: filePath, language, content } = req.body;
+        const { fileId, file, name, path: filePath, language, content, files } = req.body;
 
         // Input caps: reject oversized / malformed inputs before doing any work.
         if (typeof content === 'string' && Buffer.byteLength(content, 'utf8') > MAX_CONTENT_BYTES) {
@@ -85,10 +85,18 @@ router.post('/start', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: 'unsupported language' });
         }
 
-        const inlineFile = file || null;
-        const dbFile = fileId ? await CodeFile.findById(fileId).lean() : null;
+        let payloadFile = file || null;
+        let dbFile = null;
+        if (!payloadFile && fileId && /^[0-9a-f]{24}$/i.test(String(fileId))) {
+            try {
+                dbFile = await CodeFile.findById(fileId).lean();
+            } catch (_) {
+                dbFile = null;
+            }
+            payloadFile = dbFile;
+        }
 
-        if (fileId && !dbFile && !inlineFile && typeof content !== 'string') {
+        if (fileId && !dbFile && !payloadFile && !name && !(Array.isArray(files) && files.length)) {
             return res.status(404).json({ error: 'File not found' });
         }
 
@@ -105,9 +113,7 @@ router.post('/start', authenticateToken, async (req, res) => {
             }
         }
 
-        const payloadFile = inlineFile || dbFile;
-
-        if (!payloadFile && !name) {
+        if (!payloadFile && !name && !(Array.isArray(files) && files.length)) {
             return res.status(400).json({ error: 'fileId or file content is required' });
         }
 
@@ -118,13 +124,38 @@ router.post('/start', authenticateToken, async (req, res) => {
             resolvedLanguage = 'plaintext';
         }
         const resolvedContent = typeof content === 'string' ? content : (payloadFile?.content || '');
+        const isHtml = resolvedLanguage === 'html' || /\.(html?|xhtml)$/i.test(resolvedName);
 
         const sandboxKey = 'sb_' + crypto.randomBytes(8).toString('hex');
         const sandboxDir = path.join(os.tmpdir(), 'codex-sandboxes', sandboxKey);
         await fs.mkdir(sandboxDir, { recursive: true });
 
+        // Write every provided file (entry + css/js/assets) so relative
+        // references inside the preview actually resolve.
+        const written = new Set();
+        const safeRel = (p) => {
+            const rel = String(p || '').replace(/\\/g, '/').replace(/^\/+/, '');
+            if (!rel || rel.split('/').includes('..')) return null;
+            return rel;
+        };
+        const writeFileSafe = async (rel, data) => {
+            const abs = path.resolve(sandboxDir, rel);
+            if (!abs.startsWith(path.resolve(sandboxDir) + path.sep)) return;
+            await fs.mkdir(path.dirname(abs), { recursive: true });
+            await fs.writeFile(abs, data, 'utf8');
+            written.add(rel);
+        };
+
+        if (Array.isArray(files)) {
+            for (const f of files.slice(0, 200)) {
+                if (!f || typeof f.content !== 'string') continue;
+                const rel = safeRel(f.path);
+                if (rel) await writeFileSafe(rel, f.content);
+            }
+        }
+
         let previewHtml = '';
-        if (resolvedLanguage === 'html' || resolvedName.endsWith('.html') || resolvedName.endsWith('.htm')) {
+        if (isHtml) {
             previewHtml = resolvedContent || '<html><body><p>No content</p></body></html>';
         } else {
             previewHtml = `<!DOCTYPE html>
@@ -151,12 +182,23 @@ router.post('/start', authenticateToken, async (req, res) => {
 </html>`;
         }
 
+        // index.html = the entry page (served at the preview root so relative
+        // css/js links resolve inside the key directory).
         await fs.writeFile(path.join(sandboxDir, 'index.html'), previewHtml, 'utf8');
+        const entryRel = safeRel(resolvedPath.endsWith(`/${resolvedName}`) || resolvedPath === '/'
+            ? resolvedPath
+            : `${resolvedPath.replace(/\/+$/, '')}/${resolvedName}`);
+        if (entryRel && isHtml && entryRel !== 'index.html' && !written.has(entryRel)) {
+            await writeFileSafe(entryRel, previewHtml).catch(() => {});
+        }
 
-        const baseUrl = process.env.SANDBOX_PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
-
+        const basePath = '/api/sandbox/preview';
         res.json({
-            sandboxUrl: `${baseUrl}/api/sandbox/preview/${sandboxKey}`,
+            // Prefer building the URL client-side from API_BASE_URL — behind
+            // Render's proxy req.protocol is http, which produced mixed-content
+            // iframe URLs on the https editor.
+            sandboxPath: `${basePath}/${sandboxKey}/`,
+            sandboxUrl: `${process.env.SANDBOX_PUBLIC_URL || `${req.protocol}://${req.get('host')}`}${basePath}/${sandboxKey}/`,
             sandboxKey,
             source: resolvedPath,
             fileName: resolvedName,
@@ -186,37 +228,90 @@ router.post('/start', authenticateToken, async (req, res) => {
  *       404:
  *         description: Sandbox not found
  */
+// Serve a sandbox preview: /preview/key → index.html, plus its assets.
+// NOTE: the asset route must be registered BEFORE the bare-key redirect —
+// Express 4 treats trailing slashes as optional, so `/preview/key/` would
+// otherwise match the redirect route first and loop forever.
+const MIME = {
+    '.html': 'text/html; charset=utf-8',
+    '.htm': 'text/html; charset=utf-8',
+    '.css': 'text/css; charset=utf-8',
+    '.js': 'text/javascript; charset=utf-8',
+    '.mjs': 'text/javascript; charset=utf-8',
+    '.json': 'application/json; charset=utf-8',
+    '.svg': 'image/svg+xml',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.gif': 'image/gif',
+    '.webp': 'image/webp',
+    '.ico': 'image/x-icon',
+    '.woff': 'font/woff',
+    '.woff2': 'font/woff2',
+    '.txt': 'text/plain; charset=utf-8',
+    '.map': 'application/json; charset=utf-8',
+};
+
+function resolveSandboxFile(key, rel) {
+    const base = path.resolve(os.tmpdir(), 'codex-sandboxes');
+    const dir = path.resolve(base, String(key || ''));
+    if (dir !== base && !dir.startsWith(base + path.sep)) return null;
+    const abs = path.resolve(dir, String(rel || 'index.html'));
+    if (abs !== dir && !abs.startsWith(dir + path.sep)) return null;
+    return abs;
+}
+
 // Serve a sandbox preview
-router.get('/preview/:key', async (req, res) => {
+router.get('/preview/:key/*', async (req, res) => {
     try {
         const { key } = req.params;
         if (typeof key !== 'string' || !SANDBOX_KEY_PATTERN.test(key)) {
             return res.status(404).json({ error: 'Sandbox not found or expired' });
         }
-        const sandboxDir = path.join(os.tmpdir(), 'codex-sandboxes', key);
-        const indexPath = path.join(sandboxDir, 'index.html');
-
-        // Validate path to prevent directory traversal
-        const resolvedPath = path.resolve(indexPath);
-        if (!resolvedPath.startsWith(path.resolve(os.tmpdir(), 'codex-sandboxes') + path.sep)) {
+        const rel = req.params[0] ? String(req.params[0]) : 'index.html';
+        if (rel.split('/').includes('..')) {
             return res.status(403).json({ error: 'Invalid sandbox key' });
         }
 
+        const target = resolveSandboxFile(key, rel === '' ? 'index.html' : rel);
+        if (!target) return res.status(403).json({ error: 'Invalid sandbox key' });
+
+        let filePath = target;
         try {
-            await fs.access(indexPath);
+            const st = await fs.stat(filePath);
+            if (st.isDirectory()) filePath = path.join(filePath, 'index.html');
         } catch {
             return res.status(404).json({ error: 'Sandbox not found or expired' });
         }
 
-        const html = await fs.readFile(indexPath, 'utf8');
-        res.setHeader('Content-Type', 'text/html; charset=utf-8');
-        res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+        try {
+            await fs.access(filePath);
+        } catch {
+            return res.status(404).json({ error: 'Sandbox not found or expired' });
+        }
+
+        const html = await fs.readFile(filePath, 'utf8');
+        const ext = path.extname(filePath).toLowerCase();
+        res.setHeader('Content-Type', MIME[ext] || 'application/octet-stream');
         res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('Cache-Control', 'no-store');
+        // The editor page is served with COEP require-corp — cross-origin
+        // iframes only load if the framed response opts in via CORP.
+        res.setHeader('Cross-Origin-Resource-Policy', 'cross-site');
+        if (ext === '.html') {
+            res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+        }
         res.send(html);
     } catch (error) {
         console.error('Sandbox preview error:', error);
         res.status(500).json({ error: 'Failed to serve sandbox preview' });
     }
+});
+
+// Bare /preview/key → trailing slash so relative asset URLs (style.css)
+// resolve inside /key/. Registered after the asset route (see note above).
+router.get('/preview/:key', (req, res) => {
+    res.redirect(`${req.params.key}/`);
 });
 
 module.exports = router;

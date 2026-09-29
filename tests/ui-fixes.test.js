@@ -104,8 +104,8 @@ describe('Bug 3 — Monaco editor', () => {
 describe('Bug 4 — Tier / subscription centralization', () => {
   test('lib/tier.js mirrors backend TIER_LIMITS', () => {
     const tier = readFrontend('lib/tier.js');
-    expect(tier).toMatch(/freebie/);
-    expect(tier).toMatch(/professional/);
+    expect(tier).toMatch(/developer/);
+    expect(tier).toMatch(/pro/);
     expect(tier).toMatch(/enterprise/);
     expect(tier).toMatch(/maxMembers/);
     expect(tier).toMatch(/maxAiMessagesPerDay/);

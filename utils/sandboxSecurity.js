@@ -11,12 +11,13 @@ const Docker = require('dockerode');
 
 class SandboxSecurity {
   constructor() {
-    this.docker = new Docker();
-    this.containers = new Map(); // userId -> container
-
-    // Configurable resource limits (env vars, with sane defaults)
+    this.docker = null;
+    this.containers = new Map();
+    try {
+      this.docker = new Docker();
+    } catch (_) {}
     this.memoryLimitMB = parseInt(process.env.SANDBOX_MEMORY_MB) || 512;
-    this.cpuQuota = parseInt(process.env.SANDBOX_CPU_QUOTA) || 50000; // 50% of one core
+    this.cpuQuota = parseInt(process.env.SANDBOX_CPU_QUOTA) || 50000;
     this.cpuPeriod = 100000;
     this.pidsLimit = parseInt(process.env.SANDBOX_PIDS_LIMIT) || 100;
     this.timeoutMs = parseInt(process.env.SANDBOX_TIMEOUT) || 30000;
@@ -31,9 +32,10 @@ class SandboxSecurity {
    * - no-new-privileges security option
    * - CPU, memory, and PID limits
    */
-  async createIsolatedContainer(userId, workspaceId) {
-    if (!/^[a-zA-Z0-9_-]{1,64}$/.test(String(userId)) || !/^[a-zA-Z0-9_-]{1,64}$/.test(String(workspaceId))) throw new Error('Invalid userId/workspaceId');
-    try {
+async createIsolatedContainer(userId, workspaceId) {
+     if (!/^[a-zA-Z0-9_-]{1,64}$/.test(String(userId)) || !/^[a-zA-Z0-9_-]{1,64}$/.test(String(workspaceId))) throw new Error('Invalid userId/workspaceId');
+     if (!this.docker) throw new Error('Docker not available');
+     try {
       // Check if container already exists and is running
       if (this.containers.has(userId)) {
         const existing = this.containers.get(userId);
@@ -188,14 +190,15 @@ class SandboxSecurity {
   /**
    * Check if Docker is available.
    */
-  async isDockerAvailable() {
-    try {
-      await this.docker.ping();
-      return true;
-    } catch (_) {
-      return false;
-    }
-  }
+async isDockerAvailable() {
+     try {
+         if (!this.docker) return false;
+         await this.docker.ping();
+         return true;
+     } catch (_) {
+         return false;
+     }
+ }
 }
 
 module.exports = new SandboxSecurity();

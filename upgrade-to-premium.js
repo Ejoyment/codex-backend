@@ -3,6 +3,7 @@ require('dotenv').config();
 const mongoose = require('mongoose');
 const User = require('./models/User');
 const Subscription = require('./models/Subscription');
+const { TIERS } = require('./utils/tierNames');
 
 async function upgradeToPremium() {
     try {
@@ -10,17 +11,17 @@ async function upgradeToPremium() {
         console.log('Connected to MongoDB\n');
 
         const email = process.argv[2];
-        const tier = process.argv[3] || 'professional';
+        const tier = process.argv[3] || 'pro';
 
         if (!email) {
             console.log('Usage: node upgrade-to-premium.js <email> [tier]');
-            console.log('Example: node upgrade-to-premium.js user@example.com professional');
-            console.log('\nAvailable tiers: professional, enterprise');
+            console.log('Example: node upgrade-to-premium.js user@example.com pro');
+            console.log(`\nAvailable tiers: ${TIERS.join(', ')}`);
             process.exit(1);
         }
 
-        if (!['professional', 'enterprise'].includes(tier)) {
-            console.log('❌ Invalid tier. Must be: professional or enterprise');
+        if (!TIERS.includes(tier)) {
+            console.log(`❌ Invalid tier. Must be one of: ${TIERS.join(', ')}`);
             process.exit(1);
         }
 

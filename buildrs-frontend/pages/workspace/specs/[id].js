@@ -169,6 +169,7 @@ export default function SpecWorkspace() {
 
           <SpecEditor
             specId={specId}
+            projectId={spec?.projectId}
             workspaceId={spec?.workspaceId}
             onDriftDetected={handleDriftDetected}
           />

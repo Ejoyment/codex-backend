@@ -7,6 +7,11 @@ const User = require('../models/User');
 const { createCheckoutSession, createPortalSession, verifyWebhookSignature, stripe } = require('../config/stripe');
 const paymentRouter = require('../utils/paymentRouter');
 const { authenticateToken } = require('../middleware/auth');
+const { TIERS, canonicalTier } = require('../utils/tierNames');
+const { getOrCreateSubscription } = require('../middleware/trial');
+
+// Tiers that can be purchased (everything except the free developer tier)
+const PAID_TIERS = TIERS.filter((t) => t !== 'developer');
 
 /**
  * @swagger
@@ -35,17 +40,7 @@ const { authenticateToken } = require('../middleware/auth');
 // Get current subscription
 router.get('/current', authenticateToken, async (req, res) => {
     try {
-        let subscription = await Subscription.findOne({ userId: req.userId });
-        
-        // Create default subscription if none exists
-        if (!subscription) {
-            subscription = new Subscription({
-                userId: req.userId,
-                tier: 'freebie',
-                status: 'active'
-            });
-            await subscription.save();
-        }
+        const subscription = await getOrCreateSubscription(req.userId);
 
         // Convert features object to array of enabled features
         const enabledFeatures = [];
@@ -129,7 +124,7 @@ router.post('/create-checkout', authenticateToken, async (req, res) => {
     try {
         const { tier, interval } = req.body;
 
-        if (!['professional', 'enterprise'].includes(tier)) {
+        if (!PAID_TIERS.includes(tier)) {
             return res.status(400).json({
                 success: false,
                 message: 'Invalid tier'
@@ -331,10 +326,10 @@ router.post('/upgrade', authenticateToken, async (req, res) => {
     try {
         const { tier, paymentProvider, paymentId, customerId, metadata } = req.body;
 
-        if (!['professional', 'enterprise'].includes(tier)) {
+        if (!PAID_TIERS.includes(tier)) {
             return res.status(400).json({
                 success: false,
-                message: 'Invalid tier. Must be professional or enterprise'
+                message: `Invalid tier. Must be one of: ${PAID_TIERS.join(', ')}`
             });
         }
 
@@ -355,8 +350,8 @@ router.post('/upgrade', authenticateToken, async (req, res) => {
             subscription.metadata = { ...subscription.metadata, ...metadata };
         }
 
-        // Set end date (30 days from now for professional)
-        if (tier === 'professional') {
+        // Set end date (30 days from now for paid tiers; enterprise is custom)
+        if (tier !== 'enterprise') {
             subscription.endDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
         }
 
@@ -392,7 +387,7 @@ router.post('/upgrade', authenticateToken, async (req, res) => {
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: Subscription cancelled and downgraded to freebie
+ *         description: Subscription cancelled and downgraded to developer
  *       401:
  *         description: Unauthorized
  *       404:
@@ -413,8 +408,8 @@ router.post('/cancel', authenticateToken, async (req, res) => {
         subscription.status = 'cancelled';
         subscription.cancelledAt = new Date();
         
-        // Downgrade to freebie tier
-        subscription.upgradeTo('freebie');
+        // Downgrade to developer (free) tier
+        subscription.upgradeTo('developer');
         
         await subscription.save();
 
@@ -537,7 +532,7 @@ async function handleSubscriptionDeleted(stripeSubscription) {
     if (subscription) {
         subscription.status = 'cancelled';
         subscription.cancelledAt = new Date();
-        subscription.upgradeTo('freebie');
+        subscription.upgradeTo('developer');
         await subscription.save();
     }
 }
@@ -716,7 +711,7 @@ async function handleCancelledSubscription(customerId) {
         if (subscription) {
             subscription.status = 'cancelled';
             subscription.cancelledAt = new Date();
-            subscription.upgradeTo('freebie');
+            subscription.upgradeTo('developer');
             await subscription.save();
         }
     } catch (error) {

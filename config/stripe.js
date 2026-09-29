@@ -31,17 +31,25 @@ if (process.env.STRIPE_SECRET_KEY) {
 
 // Price IDs for each tier (you'll need to create these in Stripe Dashboard)
 const PRICE_IDS = {
-    professional_monthly: process.env.STRIPE_PROFESSIONAL_PRICE_ID,
-    professional_yearly: process.env.STRIPE_PROFESSIONAL_YEARLY_PRICE_ID,
+    pro_monthly: process.env.STRIPE_PRO_PRICE_ID || process.env.STRIPE_PROFESSIONAL_PRICE_ID,
+    pro_yearly: process.env.STRIPE_PRO_YEARLY_PRICE_ID || process.env.STRIPE_PROFESSIONAL_YEARLY_PRICE_ID,
+    pro_plus_monthly: process.env.STRIPE_PRO_PLUS_PRICE_ID,
+    pro_plus_yearly: process.env.STRIPE_PRO_PLUS_YEARLY_PRICE_ID,
+    team_standard_monthly: process.env.STRIPE_TEAM_STANDARD_PRICE_ID,
+    team_standard_yearly: process.env.STRIPE_TEAM_STANDARD_YEARLY_PRICE_ID,
+    team_premium_monthly: process.env.STRIPE_TEAM_PREMIUM_PRICE_ID,
+    team_premium_yearly: process.env.STRIPE_TEAM_PREMIUM_YEARLY_PRICE_ID,
     enterprise: process.env.STRIPE_ENTERPRISE_PRICE_ID
 };
 
 // Create a checkout session
 async function createCheckoutSession(userId, email, tier, interval = 'monthly') {
     try {
-        const priceId = interval === 'yearly' 
-            ? PRICE_IDS.professional_yearly 
-            : PRICE_IDS.professional_monthly;
+        const priceKey = tier === 'enterprise' ? 'enterprise' : `${tier}_${interval}`;
+        const priceId = PRICE_IDS[priceKey];
+        if (!priceId) {
+            return { success: false, error: `No Stripe price configured for ${tier} (${interval})` };
+        }
 
         const session = await stripe.checkout.sessions.create({
             customer_email: email,

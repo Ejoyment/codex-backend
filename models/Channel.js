@@ -13,7 +13,9 @@ const channelSchema = new mongoose.Schema({
     },
     type: {
         type: String,
-        enum: ['public', 'private', 'direct'],
+        // announcement: visible to the whole company like public, but only
+        // channel admins may post (enforced in routes/messaging.js)
+        enum: ['public', 'private', 'direct', 'announcement'],
         default: 'public'
     },
     members: [{

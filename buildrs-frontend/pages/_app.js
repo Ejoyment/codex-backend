@@ -1,3 +1,4 @@
+import 'xterm/css/xterm.css';
 import '../styles/globals.css';
 import '../styles/workspace.css';
 import '../styles/marketing.css';

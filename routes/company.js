@@ -7,6 +7,7 @@ const Subscription = require('../models/Subscription');
 const { checkMemberLimit, checkProjectLimit, requireTeamFeature, getCompanyLimits } = require('../middleware/teamRestrictions');
 const permissionMatrix = require('../middleware/permissionMatrix');
 const { authenticateToken } = require('../middleware/auth');
+const { canonicalTier } = require('../utils/tierNames');
 
 /**
  * @swagger
@@ -46,24 +47,25 @@ router.post('/create', authenticateToken, permissionMatrix.requirePermission('co
         
         // Check user's subscription
         const subscription = await Subscription.findOne({ userId: req.userId });
-        const tier = subscription?.tier || 'freebie';
-        const companyTier = tier === 'starter' ? 'freebie' : tier;
+        const companyTier = canonicalTier(subscription?.tier);
         
-        // Check if user already owns a company
-        const existingCompany = await Company.findOne({ owner: req.userId });
-        
-        // Tier-based restrictions
-        if (companyTier === 'freebie' && existingCompany) {
+        const workspaceLimits = {
+            developer: 1,
+            pro: 10,
+            pro_plus: 10,
+            team_standard: Infinity,
+            team_premium: Infinity,
+            enterprise: Infinity,
+        };
+        const workspaceLimit = workspaceLimits[companyTier] ?? 1;
+        const ownedWorkspaceCount = await Company.countDocuments({ owner: req.userId });
+        if (ownedWorkspaceCount >= workspaceLimit) {
             return res.status(403).json({
                 success: false,
-                message: 'Freebie tier allows only one company. Upgrade to Professional for more workspaces.'
-            });
-        }
-        
-        if (companyTier === 'professional' && existingCompany) {
-            return res.status(403).json({
-                success: false,
-                message: 'Professional tier allows only one company. Upgrade to Enterprise for multiple workspaces.'
+                message: `${companyTier} tier allows ${Number.isFinite(workspaceLimit) ? workspaceLimit : 'unlimited'} workspaces. Upgrade your plan to create more.`,
+                code: 'WORKSPACE_LIMIT_REACHED',
+                currentCount: ownedWorkspaceCount,
+                workspaceLimit: Number.isFinite(workspaceLimit) ? workspaceLimit : null,
             });
         }
         
@@ -80,7 +82,7 @@ router.post('/create', authenticateToken, permissionMatrix.requirePermission('co
         }
         
         // Set member limit based on tier
-        const memberLimit = companyTier === 'freebie' ? 3 : companyTier === 'professional' ? 10 : 999999;
+        const memberLimit = companyTier === 'developer' ? 1 : ['pro', 'pro_plus'].includes(companyTier) ? 10 : 999999;
         
         const company = new Company({
             name,
@@ -171,12 +173,11 @@ router.get('/my-companies', authenticateToken, async (req, res) => {
         const companiesData = await Promise.all(companies.map(async (company) => {
             // Get owner's subscription
             const ownerSubscription = await Subscription.findOne({ userId: company.owner._id });
-            let ownerTier = ownerSubscription?.tier || 'freebie';
-            if (ownerTier === 'starter') ownerTier = 'freebie';
+            const ownerTier = canonicalTier(ownerSubscription?.tier);
             
             // Update company tier if it doesn't match
             if (company.subscription.tier !== ownerTier) {
-                const memberLimit = ownerTier === 'freebie' ? 1 : ownerTier === 'professional' ? 10 : 999999;
+                const memberLimit = ownerTier === 'developer' ? 1 : ['pro', 'pro_plus'].includes(ownerTier) ? 10 : 999999;
                 company.subscription.tier = ownerTier;
                 company.subscription.memberLimit = memberLimit;
                 await company.save();
@@ -311,12 +312,11 @@ router.get('/:companyId', authenticateToken, permissionMatrix.requirePermission(
         
         // Sync company tier with owner's subscription
         const ownerSubscription = await Subscription.findOne({ userId: company.owner._id });
-        let ownerTier = ownerSubscription?.tier || 'freebie';
-        if (ownerTier === 'starter') ownerTier = 'freebie';
+        const ownerTier = canonicalTier(ownerSubscription?.tier);
         
         // Update company tier if it doesn't match owner's subscription
         if (company.subscription.tier !== ownerTier) {
-            const memberLimit = ownerTier === 'freebie' ? 1 : ownerTier === 'professional' ? 10 : 999999;
+            const memberLimit = ownerTier === 'developer' ? 1 : ['pro', 'pro_plus'].includes(ownerTier) ? 10 : 999999;
             company.subscription.tier = ownerTier;
             company.subscription.memberLimit = memberLimit;
             await company.save();

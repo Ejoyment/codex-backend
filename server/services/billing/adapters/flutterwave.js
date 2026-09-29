@@ -16,7 +16,7 @@ class FlutterwaveAdapter extends PaymentAdapter {
     return s;
   }
 
-  async createCheckout({ userId, email, plan = 'professional', amount, currency = 'NGN', redirectUrl }) {
+  async createCheckout({ userId, email, plan = 'pro', amount, currency = 'NGN', redirectUrl }) {
     const axios = require('axios');
     const txRef = `flw_${Date.now()}_${String(userId).slice(-6)}`;
     const res = await axios.post(
