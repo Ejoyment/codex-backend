@@ -73,7 +73,14 @@ function NotificationRow({ notification, onOpen }) {
   );
 }
 
-export default function NotificationBell() {
+/**
+ * @param {object} props
+ * @param {'down'|'up'} [props.placement] Which way the panel grows. 'up' for the
+ *   sidebar (bell pinned to the bottom edge), 'down' for a top header.
+ * @param {boolean} [props.look] 'header' swaps in the compact button styling used
+ *   by the dashboard header, so the two controls look identical.
+ */
+export default function NotificationBell({ placement = 'down', look } = {}) {
   const router = useRouter();
   const items = useNotificationStore((s) => s.items);
   const count = useNotificationStore((s) => s.count);
@@ -114,10 +121,13 @@ export default function NotificationBell() {
   };
 
   return (
-    <div className="notif-bell-wrap" ref={panelRef}>
+    <div
+      className={`notif-bell-wrap${placement === 'up' ? ' notif-bell-wrap-up' : ''}`}
+      ref={panelRef}
+    >
       <button
         type="button"
-        className="notif-bell-btn"
+        className={look === 'header' ? 'btn-workspace btn-secondary notif-bell-btn-header' : 'notif-bell-btn'}
         onClick={() => setOpen((v) => !v)}
         aria-label={count > 0 ? `Notifications, ${count} unread` : 'Notifications'}
         aria-expanded={open}

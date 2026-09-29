@@ -5,15 +5,8 @@ import { motion } from 'framer-motion';
 import { Loader2, CheckCircle } from 'lucide-react';
 import { apiFetch } from '../lib/api';
 
-const TARGET_LAUNCH_DATE = new Date('2027-01-01T00:00:00');
-// Shown until the live counter responds, then replaced by the real number.
-const FALLBACK_COUNT = 2427;
-
-const AVATARS = [
-  'https://i.pravatar.cc/40?img=11',
-  'https://i.pravatar.cc/40?img=5',
-  'https://i.pravatar.cc/40?img=47',
-];
+const TARGET_LAUNCH_DATE = new Date('2026-11-06T00:00:00');
+const LAUNCH_DATE_LABEL = 'Launching Nov 6th, 2026';
 
 export default function Waitlist() {
   const [email, setEmail] = useState('');
@@ -23,6 +16,7 @@ export default function Waitlist() {
   const [count, setCount] = useState(null);
   const [members, setMembers] = useState([]);
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+  const [launched, setLaunched] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -47,14 +41,19 @@ export default function Waitlist() {
   useEffect(() => {
     const tick = () => {
       const diff = TARGET_LAUNCH_DATE.getTime() - Date.now();
-      if (diff > 0) {
-        setTimeLeft({
-          days: Math.floor(diff / (1000 * 60 * 60 * 24)),
-          hours: Math.floor((diff / (1000 * 60 * 60)) % 24),
-          minutes: Math.floor((diff / 1000 / 60) % 60),
-          seconds: Math.floor((diff / 1000) % 60),
-        });
+      if (diff <= 0) {
+        // Launch day (or later): stop counting rather than freezing on 0d 00h.
+        setLaunched(true);
+        setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+        return;
       }
+      setLaunched(false);
+      setTimeLeft({
+        days: Math.floor(diff / (1000 * 60 * 60 * 24)),
+        hours: Math.floor((diff / (1000 * 60 * 60)) % 24),
+        minutes: Math.floor((diff / 1000 / 60) % 60),
+        seconds: Math.floor((diff / 1000) % 60),
+      });
     };
     tick();
     const id = setInterval(tick, 1000);
@@ -183,11 +182,13 @@ export default function Waitlist() {
                   background: 'rgba(255,255,255,0.04)',
                 }} className="wl-pill">
                   <span className="mkt-mono wl-pill-label" style={{ fontSize: '11px', letterSpacing: '0.14em', textTransform: 'uppercase', color: '#a8adba' }}>
-                    Launching Jan 1st, 2027
+                    {LAUNCH_DATE_LABEL}
                   </span>
                   <span className="wl-pill-sep" style={{ width: '1px', height: '12px', background: 'rgba(255,255,255,0.15)' }} />
                   <span className="mkt-num" style={{ fontSize: '11px', color: '#2fd6e6', letterSpacing: '0.04em', fontWeight: 600 }}>
-                    {timeLeft.days}d {pad(timeLeft.hours)}h {pad(timeLeft.minutes)}m {pad(timeLeft.seconds)}s
+                    {launched
+                      ? 'Live now'
+                      : `${timeLeft.days}d ${pad(timeLeft.hours)}h ${pad(timeLeft.minutes)}m ${pad(timeLeft.seconds)}s`}
                   </span>
                 </div>
               </div>
@@ -222,11 +223,13 @@ export default function Waitlist() {
                   background: 'rgba(255,255,255,0.04)',
                 }} className="wl-pill">
                   <span className="mkt-mono wl-pill-label" style={{ fontSize: '11px', letterSpacing: '0.14em', textTransform: 'uppercase', color: '#a8adba' }}>
-                    Launching Jan 1st, 2027
+                    {LAUNCH_DATE_LABEL}
                   </span>
                   <span className="wl-pill-sep" style={{ width: '1px', height: '12px', background: 'rgba(255,255,255,0.15)' }} />
                   <span className="mkt-num" style={{ fontSize: '11px', color: '#2fd6e6', letterSpacing: '0.04em', fontWeight: 600 }}>
-                    {timeLeft.days}d {pad(timeLeft.hours)}h {pad(timeLeft.minutes)}m {pad(timeLeft.seconds)}s
+                    {launched
+                      ? 'Live now'
+                      : `${timeLeft.days}d ${pad(timeLeft.hours)}h ${pad(timeLeft.minutes)}m ${pad(timeLeft.seconds)}s`}
                   </span>
                 </div>
               </div>
@@ -287,34 +290,38 @@ export default function Waitlist() {
         alignItems: 'center',
         justifyContent: 'center',
         gap: '16px',
+        // Reserved so the strip does not collapse and shift the page while the
+        // real counter is still loading.
+        minHeight: '108px',
+        flexWrap: 'wrap',
         position: 'relative',
         zIndex: 1,
       }}>
-        {/* Avatar stack — live joiners when loaded, placeholders until then */}
+        {/* Avatar stack — real joiners only. Nothing is rendered until the
+            live data arrives, so the footer never flashes a fake count. */}
         <div style={{ display: 'flex', alignItems: 'center' }}>
-          {(members.length > 0
-            ? members.map((m) => ({ src: m.avatar, label: m.name || m.maskedEmail }))
-            : AVATARS.map((src) => ({ src, label: 'member' }))
-          ).map((a, i) => (
+          {members.map((m, i) => (
             <img
-              key={`${a.src}-${i}`}
-              src={a.src}
-              alt={a.label}
-              title={a.label}
+              key={`${m.avatar}-${i}`}
+              src={m.avatar}
+              alt={m.name || m.maskedEmail}
+              title={m.name || m.maskedEmail}
               style={{
                 width: '44px', height: '44px', borderRadius: '50%',
                 border: '3px solid #0d0d12',
                 marginLeft: i === 0 ? 0 : '-14px',
                 objectFit: 'cover',
                 position: 'relative',
-                zIndex: AVATARS.length - i,
+                zIndex: members.length - i,
               }}
             />
           ))}
         </div>
-        <p style={{ fontSize: '16px', color: '#a8adba', margin: 0, letterSpacing: '-0.01em' }}>
-          <span style={{ color: '#eceef1', fontWeight: 600 }}>{(count ?? FALLBACK_COUNT).toLocaleString()}</span> have already joined
-        </p>
+        {count !== null ? (
+          <p style={{ fontSize: '16px', color: '#a8adba', margin: 0, letterSpacing: '-0.01em' }}>
+            <span style={{ color: '#eceef1', fontWeight: 600 }}>{count.toLocaleString()}</span> have already joined
+          </p>
+        ) : null}
       </footer>
     </div>
   );

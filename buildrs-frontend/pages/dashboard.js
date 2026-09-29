@@ -14,11 +14,11 @@ import MyQueue from '../components/MyQueue';
 import TeamPulse from '../components/TeamPulse';
 import UpcomingMeetings from '../components/UpcomingMeetings';
 import AIInsights from '../components/AIInsights';
+import NotificationBell from '../components/NotificationBell';
 import useAuthStore from '../store/authStore';
 import { useDashboard } from '../hooks/useDashboard';
 import { getAvatarUrl } from '../lib/utils';
 import {
-  Bell,
   Plus,
   RotateCw,
   ListTodo,
@@ -182,9 +182,7 @@ export default function Dashboard() {
               >
                 <RotateCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
               </button>
-              <button type="button" className="btn-workspace btn-secondary" title="Notifications">
-                <Bell className="w-4 h-4" />
-              </button>
+              <NotificationBell look="header" />
               <button
                 type="button"
                 className="btn-workspace btn-primary"
