@@ -10,6 +10,9 @@ const NAV = [
 
 export default function SiteHeader() {
   const [open, setOpen] = useState(false);
+  // Waitlist now lives in its own deployable app — set
+  // NEXT_PUBLIC_WAITLIST_URL to its deployed URL (falls back to home).
+  const waitlistUrl = process.env.NEXT_PUBLIC_WAITLIST_URL || '/';
 
   return (
     <header className="mkt-header">
@@ -44,7 +47,7 @@ export default function SiteHeader() {
             >
               Sign in
             </Link>
-            <Link href="/waitlist" className="mkt-btn mkt-btn-primary !py-1.5 !px-4 !text-[13px]">
+            <Link href={waitlistUrl} className="mkt-btn mkt-btn-primary !py-1.5 !px-4 !text-[13px]">
               Start free <span className="mkt-arrow">→</span>
             </Link>
           </div>
