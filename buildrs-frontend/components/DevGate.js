@@ -32,9 +32,9 @@ export default function DevGate({ title, children }) {
   if (!checked) return null;
   if (unlocked) return <>{children}</>;
 
-  const expected = process.env.NEXT_PUBLIC_DEV_PASSWORD || '';
+  const expected = process.env.NEXT_PUBLIC_DEV_PASSWORD || '@Davis234h';
   const configured = expected.length > 0;
-  const waitlistUrl = process.env.NEXT_PUBLIC_WAITLIST_URL || '/';
+  const waitlistUrl = process.env.NEXT_PUBLIC_WAITLIST_URL || 'https://waitlist.buildrshq.dev';
 
   const submit = (e) => {
     e.preventDefault();
