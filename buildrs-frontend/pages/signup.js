@@ -4,6 +4,7 @@ import { useState, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import { authApi } from '../lib/api';
 import { rateLimit, resetRateLimit, validate, getPasswordStrength, createSubmitGuard } from '../lib/security';
+import DevGate from '../components/DevGate';
 
 const submitGuard = createSubmitGuard();
 
@@ -80,6 +81,7 @@ export default function SignUp() {
 
   if (step === 'verify') {
     return (
+      <DevGate title="Sign up">
       <>
         <Head>
           <title>Verify your email - BuildrsHQ</title>
@@ -104,10 +106,12 @@ export default function SignUp() {
           </div>
         </div>
       </>
+      </DevGate>
     );
   }
 
   return (
+    <DevGate title="Sign up">
     <>
       <Head>
         <title>Create Account - BuildrsHQ</title>
@@ -284,5 +288,6 @@ export default function SignUp() {
         </div>
       </div>
     </>
+    </DevGate>
   );
 }

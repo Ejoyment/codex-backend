@@ -6,6 +6,7 @@ import { authApi } from '../lib/api';
 import useAuthStore from '../store/authStore';
 import { rateLimit, resetRateLimit, validate, createSubmitGuard } from '../lib/security';
 import useToastStore from '../store/toastStore';
+import DevGate from '../components/DevGate';
 
 const submitGuard = createSubmitGuard();
 
@@ -93,7 +94,8 @@ export default function SignIn() {
   };
 
   return (
-    <>
+    <DevGate title="Sign in">
+      <>
       <Head>
         <title>Sign In - BuildrsHQ</title>
         <link rel="icon" href="/buildrs.png" />
@@ -237,6 +239,7 @@ export default function SignIn() {
           </div>
         </div>
       </div>
-    </>
+      </>
+    </DevGate>
   );
 }
