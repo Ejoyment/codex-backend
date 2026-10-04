@@ -946,30 +946,9 @@ terminalNamespace.on('connection', (socket) => {
 
 console.log('✓ Socket.IO terminal server initialized');
 
-// Agent namespace for real-time agent execution streaming
-const agentNamespace = io.of('/agent');
-
-agentNamespace.use((socket, next) => {
-    const token = socket.handshake.auth.token;
-    if (!token) {
-        return next(new Error('Authentication error'));
-    }
-    try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        socket.userId = decoded.userId || decoded.id || decoded._id;
-        socket.user = decoded;
-        next();
-    } catch (error) {
-        next(new Error('Authentication error'));
-    }
-});
-
-agentNamespace.on('connection', (socket) => {
-    console.log(`Agent namespace connected: ${socket.userId}`);
-    socket.join(`agent:${socket.userId}`);
-});
-
-console.log('✓ Socket.IO agent server initialized');
+// Agent namespace (/agent) is set up entirely in utils/agentSocket.js
+// (AgentSocketHandler, constructed above) — do not register it a second time;
+// duplicate middleware/connection handlers on the same namespace stack up.
 
 // ============================================================
 // CRITICAL FIX: Start the HTTP server so it binds to a port.
