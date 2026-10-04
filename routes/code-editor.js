@@ -6,6 +6,11 @@ const { getAllowedLanguages, isLanguageAllowed, getAllLanguagesWithStatus } = re
 const { addAuditLog } = require('../utils/auditLogService');
 const vfs = require('../utils/virtualFileSystem');
 const { emitWorkspaceChange } = require('../utils/realTimeEvents');
+// Shared tenant-isolation primitive (audit rec 7) — single enforced version.
+const {
+    assertFileAccess,
+    assertCompanyMembership,
+} = require('../middleware/workspaceAccess');
 
 /**
  * @swagger
@@ -145,7 +150,10 @@ router.post('/files', authenticateToken, async (req, res) => {
                 });
             }
         }
-        
+
+        // Tenant isolation: a caller-supplied companyId must be one of theirs.
+        if (!(await assertCompanyMembership(effectiveCompanyId, req.userId, res))) return;
+
         const codeFile = await CodeFile.create({
             name,
             language: language.toLowerCase(),
@@ -260,7 +268,10 @@ router.post('/files/batch', authenticateToken, async (req, res) => {
         if (!Array.isArray(files) || files.length === 0) {
             return res.status(400).json({ success: false, message: 'Files array is required' });
         }
-        
+
+        // Tenant isolation: batch target must be one of the caller's companies.
+        if (companyId && !(await assertCompanyMembership(companyId, req.userId, res))) return;
+
         const user = await require('../models/User').findById(req.userId).populate('subscription');
         const tier = user.subscription?.tier || 'free';
         
@@ -382,6 +393,8 @@ router.get('/files', authenticateToken, async (req, res) => {
         // user's own companies or created by them — never the whole database
         // (an unscoped query used to make newly created files invisible in
         // the editor explorer whenever companyId was missing).
+        // Tenant isolation: an explicit companyId must be one of theirs.
+        if (companyId && !(await assertCompanyMembership(companyId, req.userId, res))) return;
         const query = {};
         if (companyId) {
             query.company = companyId;
@@ -497,11 +510,9 @@ router.get('/files/:id', authenticateToken, async (req, res) => {
             .populate('createdBy', 'fullName email profilePicture')
             .populate('lastModifiedBy', 'fullName email profilePicture')
             .populate('collaborators.user', 'fullName email profilePicture');
-        
-        if (!file) {
-            return res.status(404).json({ success: false, message: 'File not found' });
-        }
-        
+
+        if (!(await assertFileAccess(file, req.userId, res))) return;
+
         res.json({
             success: true,
             file
@@ -517,9 +528,7 @@ router.put('/files/:id', authenticateToken, async (req, res) => {
         const { content, name, language } = req.body;
         
         const file = await CodeFile.findById(req.params.id);
-        if (!file) {
-            return res.status(404).json({ success: false, message: 'File not found' });
-        }
+        if (!(await assertFileAccess(file, req.userId, res))) return;
         const oldFull = vfs.fullPathOf(file);
         
         // Save version if content changed
@@ -598,11 +607,9 @@ router.put('/files/:id', authenticateToken, async (req, res) => {
 router.delete('/files/:id', authenticateToken, async (req, res) => {
     try {
         const file = await CodeFile.findById(req.params.id);
-        
-        if (!file) {
-            return res.status(404).json({ success: false, message: 'File not found' });
-        }
-        
+
+        if (!(await assertFileAccess(file, req.userId, res))) return;
+
         const workspaceId = file.company.toString();
         const fileId = file._id.toString();
         const filePath = vfs.fullPathOf(file);
@@ -687,10 +694,8 @@ router.post('/files/:id/collaborators', authenticateToken, async (req, res) => {
         const { userId, permission } = req.body;
         
         const file = await CodeFile.findById(req.params.id);
-        if (!file) {
-            return res.status(404).json({ success: false, message: 'File not found' });
-        }
-        
+        if (!(await assertFileAccess(file, req.userId, res))) return;
+
         // Check if already a collaborator
         const existing = file.collaborators.find(c => c.user.toString() === userId);
         if (existing) {
@@ -739,11 +744,9 @@ router.get('/files/:id/versions', authenticateToken, async (req, res) => {
     try {
         const file = await CodeFile.findById(req.params.id)
             .populate('versions.modifiedBy', 'fullName email profilePicture');
-        
-        if (!file) {
-            return res.status(404).json({ success: false, message: 'File not found' });
-        }
-        
+
+        if (!(await assertFileAccess(file, req.userId, res))) return;
+
         res.json({
             success: true,
             versions: file.versions.reverse()

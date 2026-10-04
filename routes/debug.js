@@ -8,6 +8,24 @@ const router = express.Router();
 const { authenticateToken } = require('../middleware/auth');
 const debugAdapter = require('../utils/debugAdapter');
 const CodeFile = require('../models/CodeFile');
+// Tenant isolation (audit rec 7): debug sessions drive live processes and
+// expose memory/variables, so every sessionId below must belong to the caller.
+// Session IDs are guessable (debug_<counter>_<timestamp>), not secrets.
+const {
+    assertFileAccess,
+    assertCompanyMembership,
+} = require('../middleware/workspaceAccess');
+
+// 404 when the session doesn't exist, 403 when it exists but is foreign.
+async function assertSessionAccess(sessionId, userId, res) {
+    if (debugAdapter.getOwnedSession(sessionId, userId)) return true;
+    if (!debugAdapter.getSession(sessionId)) {
+        res.status(404).json({ success: false, error: 'Session not found' });
+    } else {
+        res.status(403).json({ success: false, error: 'Access denied' });
+    }
+    return false;
+}
 
 /**
  * @swagger
@@ -38,7 +56,9 @@ const CodeFile = require('../models/CodeFile');
 router.post('/session/create', authenticateToken, async (req, res) => {
     try {
         const { workspaceId, config } = req.body;
-        
+
+        if (workspaceId && !(await assertCompanyMembership(workspaceId, req.userId, res))) return;
+
         const session = await debugAdapter.createSession(
             req.user._id.toString(),
             workspaceId,
@@ -109,15 +129,12 @@ router.post('/launch', authenticateToken, async (req, res) => {
                 error: 'sessionId and fileId are required'
             });
         }
-        
+
+        if (!(await assertSessionAccess(sessionId, req.userId, res))) return;
+
         // Get file to debug
         const file = await CodeFile.findById(fileId);
-        if (!file) {
-            return res.status(404).json({
-                success: false,
-                error: 'File not found'
-            });
-        }
+        if (!(await assertFileAccess(file, req.userId, res))) return;
         
         // Create temporary file for debugging
         const fs = require('fs');
@@ -191,7 +208,9 @@ router.post('/breakpoints/set', authenticateToken, async (req, res) => {
                 error: 'sessionId, fileId, and breakpoints array are required'
             });
         }
-        
+
+        if (!(await assertSessionAccess(sessionId, req.userId, res))) return;
+
         const verified = await debugAdapter.setBreakpoints(sessionId, fileId, breakpoints);
         
         res.json({
@@ -243,7 +262,9 @@ router.post('/continue', authenticateToken, async (req, res) => {
                 error: 'sessionId is required'
             });
         }
-        
+
+        if (!(await assertSessionAccess(sessionId, req.userId, res))) return;
+
         const result = await debugAdapter.continue(sessionId);
         res.json(result);
     } catch (error) {
@@ -291,7 +312,9 @@ router.post('/step-over', authenticateToken, async (req, res) => {
                 error: 'sessionId is required'
             });
         }
-        
+
+        if (!(await assertSessionAccess(sessionId, req.userId, res))) return;
+
         const result = await debugAdapter.stepOver(sessionId);
         res.json(result);
     } catch (error) {
@@ -339,7 +362,9 @@ router.post('/step-into', authenticateToken, async (req, res) => {
                 error: 'sessionId is required'
             });
         }
-        
+
+        if (!(await assertSessionAccess(sessionId, req.userId, res))) return;
+
         const result = await debugAdapter.stepInto(sessionId);
         res.json(result);
     } catch (error) {
@@ -387,7 +412,9 @@ router.post('/step-out', authenticateToken, async (req, res) => {
                 error: 'sessionId is required'
             });
         }
-        
+
+        if (!(await assertSessionAccess(sessionId, req.userId, res))) return;
+
         const result = await debugAdapter.stepOut(sessionId);
         res.json(result);
     } catch (error) {
@@ -435,7 +462,9 @@ router.post('/pause', authenticateToken, async (req, res) => {
                 error: 'sessionId is required'
             });
         }
-        
+
+        if (!(await assertSessionAccess(sessionId, req.userId, res))) return;
+
         const result = await debugAdapter.pause(sessionId);
         res.json(result);
     } catch (error) {
@@ -471,7 +500,9 @@ router.post('/pause', authenticateToken, async (req, res) => {
 router.get('/stack-trace/:sessionId', authenticateToken, async (req, res) => {
     try {
         const { sessionId } = req.params;
-        
+
+        if (!(await assertSessionAccess(sessionId, req.userId, res))) return;
+
         const stackTrace = await debugAdapter.getStackTrace(sessionId);
         
         res.json({
@@ -516,7 +547,9 @@ router.get('/variables/:sessionId', authenticateToken, async (req, res) => {
     try {
         const { sessionId } = req.params;
         const { scopeId } = req.query;
-        
+
+        if (!(await assertSessionAccess(sessionId, req.userId, res))) return;
+
         const variables = await debugAdapter.getVariables(sessionId, scopeId);
         
         res.json({
@@ -572,7 +605,9 @@ router.post('/evaluate', authenticateToken, async (req, res) => {
                 error: 'sessionId and expression are required'
             });
         }
-        
+
+        if (!(await assertSessionAccess(sessionId, req.userId, res))) return;
+
         const result = await debugAdapter.evaluate(sessionId, expression, frameId);
         
         res.json({
@@ -624,7 +659,9 @@ router.post('/terminate', authenticateToken, async (req, res) => {
                 error: 'sessionId is required'
             });
         }
-        
+
+        if (!(await assertSessionAccess(sessionId, req.userId, res))) return;
+
         const result = await debugAdapter.terminate(sessionId);
         res.json(result);
     } catch (error) {
@@ -662,16 +699,12 @@ router.post('/terminate', authenticateToken, async (req, res) => {
 router.get('/session/:sessionId', authenticateToken, async (req, res) => {
     try {
         const { sessionId } = req.params;
-        
+
+        // 404 when missing, 403 when foreign (same helper as all other routes).
+        if (!(await assertSessionAccess(sessionId, req.userId, res))) return;
+
         const session = debugAdapter.getSession(sessionId);
-        
-        if (!session) {
-            return res.status(404).json({
-                success: false,
-                error: 'Session not found'
-            });
-        }
-        
+
         res.json({
             success: true,
             session
@@ -748,7 +781,16 @@ router.get('/sessions', authenticateToken, async (req, res) => {
 router.post('/test/breakpoint-hit', authenticateToken, async (req, res) => {
     try {
         const { sessionId, fileId, line } = req.body;
-        
+
+        if (!sessionId) {
+            return res.status(400).json({
+                success: false,
+                error: 'sessionId is required'
+            });
+        }
+
+        if (!(await assertSessionAccess(sessionId, req.userId, res))) return;
+
         debugAdapter.simulateBreakpointHit(sessionId, fileId, line);
         
         res.json({

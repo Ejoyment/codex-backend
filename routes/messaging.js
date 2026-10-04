@@ -5,6 +5,7 @@ const Channel = require('../models/Channel');
 const { authenticateToken } = require('../middleware/auth');
 const Company = require('../models/Company');
 const { CHANNEL_TYPES, normalizeChannelType, canPostToChannel } = require('../utils/channelPolicy');
+const { userIsCompanyMember } = require('../middleware/workspaceAccess');
 const { notifyNewMessage, notifyChannelCreated } = require('../utils/notificationTriggers');
 
 // Verify user is a member of the company before operating
@@ -150,7 +151,15 @@ router.post('/channels', authenticateToken, requireCompanyMember, async (req, re
 router.get('/channels', authenticateToken, requireCompanyMember, async (req, res) => {
     try {
         const companyId = req.query.companyId != null ? String(req.query.companyId) : req.query.companyId;
-        
+
+        // companyId is mandatory: without it the query below becomes
+        // { company: undefined } which mongoose strips, listing every
+        // tenant's public channels (requireCompanyMember passes on absent
+        // companyId by design, for the channel-inferred POST path).
+        if (!companyId) {
+            return res.status(400).json({ success: false, message: 'companyId is required' });
+        }
+
         // Public and announcement channels are visible to ALL company members;
         // private/direct channels are visible only to their members
         const channels = await Channel.find({
@@ -209,6 +218,12 @@ router.get('/channels/:id', authenticateToken, requireCompanyMember, async (req,
 
         const isChannelMember = (channel.members || []).some(m => String(m.user?._id || m.user) === String(req.userId));
         if (!isChannelMember) {
+            // Mirror the list policy: private/direct channels are member-only,
+            // even for company members (this endpoint previously opened them
+            // to the whole company, contradicting GET /channels).
+            if (channel.type === 'private' || channel.type === 'direct') {
+                return res.status(403).json({ success: false, message: 'Access denied: not a channel member' });
+            }
             const companyId = channel.company ? String(channel.company) : (req.query.companyId != null ? String(req.query.companyId) : null);
             if (companyId) {
                 try {
@@ -331,6 +346,13 @@ router.post('/messages', authenticateToken, requireCompanyMember, async (req, re
             if (companyId != null && channel.company != null && String(channel.company) !== String(companyId)) {
                 return res.status(403).json({ success: false, message: 'Channel does not belong to this company' });
             }
+            // requireCompanyMember bails when companyId is absent (the
+            // channel-inferred path). Always verify membership of the
+            // channel's own company so removed-from-company users still in
+            // channel.members cannot post.
+            if (channel.company && !(await userIsCompanyMember(channel.company, req.userId))) {
+                return res.status(403).json({ success: false, message: 'Access denied: not a company member' });
+            }
             const post = canPostToChannel(channel, req.userId);
             if (!post.ok) {
                 return res.status(403).json({ success: false, message: post.reason });
@@ -397,6 +419,11 @@ router.get('/messages', authenticateToken, requireCompanyMember, async (req, res
             if (queryCompanyId != null && channel.company != null && String(channel.company) !== String(queryCompanyId)) {
                 return res.status(403).json({ success: false, message: 'Channel does not belong to this company' });
             }
+        } else {
+            // channelId is mandatory: without it the query below becomes
+            // { channel: undefined } which mongoose strips, dumping every
+            // tenant's messages.
+            return res.status(400).json({ success: false, message: 'channelId is required' });
         }
         
         const query = {
@@ -584,6 +611,16 @@ router.post('/messages/:id/reactions', authenticateToken, async (req, res) => {
             if (!isMember) {
                 return res.status(403).json({ success: false, message: 'Access denied: not a channel member' });
             }
+        } else {
+            // Channel-less messages are DMs: only the two parties may touch
+            // them. Without this, any authenticated user could react (the
+            // response echoes the full message, disclosing DM content) by ID.
+            const uid = String(req.userId);
+            const isParty = (message.sender && String(message.sender) === uid) ||
+                (message.recipient && String(message.recipient) === uid);
+            if (!isParty) {
+                return res.status(403).json({ success: false, message: 'Permission denied' });
+            }
         }
         
         // Check if already reacted
@@ -651,6 +688,14 @@ router.post('/messages/:id/read', authenticateToken, async (req, res) => {
             if (!isMember) {
                 return res.status(403).json({ success: false, message: 'Access denied: not a channel member' });
             }
+        } else {
+            // DM: only sender or recipient may mark/read (see reactions route).
+            const uid = String(req.userId);
+            const isParty = (message.sender && String(message.sender) === uid) ||
+                (message.recipient && String(message.recipient) === uid);
+            if (!isParty) {
+                return res.status(403).json({ success: false, message: 'Permission denied' });
+            }
         }
         
         const existing = message.readBy.find(r => r.user.toString() === req.userId);
@@ -705,10 +750,21 @@ router.post('/channels/:id/members', authenticateToken, async (req, res) => {
     try {
         const { userId, role } = req.body;
         
+        if (!userId) {
+            return res.status(400).json({ success: false, message: 'userId is required' });
+        }
+
         const channel = await Channel.findById(req.params.id);
         
         if (!channel) {
             return res.status(404).json({ success: false, message: 'Channel not found' });
+        }
+
+        // The invitee must belong to the channel's company — otherwise users
+        // from other tenants could be pulled into a channel and receive its
+        // messages.
+        if (channel.company && !(await userIsCompanyMember(channel.company, userId))) {
+            return res.status(403).json({ success: false, message: 'Access denied: user is not a company member' });
         }
 
         const requester = (channel.members || []).find(m => String(m.user) === String(req.userId));

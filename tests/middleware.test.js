@@ -136,3 +136,75 @@ describe('Middleware - permissionMatrix', () => {
     jest.restoreAllMocks();
   });
 });
+
+describe('Middleware - permissionMatrix field names (audit rec 7)', () => {
+  let permissionMatrix;
+  // NOTE: require models lazily here, not at describe-body time. This file
+  // calls jest.resetModules() in earlier blocks, so describe-body requires
+  // would bind stale pre-reset instances while the code under test holds
+  // post-reset ones (spyOn would silently miss). The pre-existing test
+  // above works for the same reason: it requires inside the test body.
+  let User, CodeFile, Company;
+  const models = () => {
+    User = require('../models/User');
+    CodeFile = require('../models/CodeFile');
+    Company = require('../models/Company');
+  };
+
+  beforeAll(() => {
+    models();
+    permissionMatrix = require('../middleware/permissionMatrix');
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  test("file check uses real fields: creator allowed, stranger denied, missing 404s", async () => {
+    const file = { _id: 'f', company: 'c1', createdBy: 'userA', collaborators: [] };
+    jest.spyOn(CodeFile, 'findById').mockResolvedValue(file);
+    // Stranger path consults Company; creator path returns before any lookup.
+    jest.spyOn(Company, 'findOne').mockResolvedValue(null);
+
+    expect((await permissionMatrix.checkResourceAccess({ _id: 'userA' }, 'file', 'f')).allowed).toBe(true);
+    const denied = await permissionMatrix.checkResourceAccess({ _id: 'userB' }, 'file', 'f');
+    expect(denied.allowed).toBe(false);
+
+    CodeFile.findById.mockResolvedValue(null);
+    const missing = await permissionMatrix.checkResourceAccess({ _id: 'userA' }, 'file', 'f');
+    expect(missing.allowed).toBe(false);
+    expect(missing.reason).toMatch(/not found/i);
+  });
+
+  test('workspace check lets owners in (was 403) and keeps strangers out', async () => {
+    const company = { _id: 'c1', owner: 'userA', members: [{ user: 'userM' }] };
+    jest.spyOn(Company, 'findById').mockResolvedValue(company);
+
+    expect((await permissionMatrix.checkResourceAccess({ _id: 'userA' }, 'workspace', 'c1')).allowed).toBe(true);
+    expect((await permissionMatrix.checkResourceAccess({ _id: 'userM' }, 'workspace', 'c1')).allowed).toBe(true);
+    const denied = await permissionMatrix.checkResourceAccess({ _id: 'userB' }, 'workspace', 'c1');
+    expect(denied.allowed).toBe(false);
+
+    Company.findById.mockResolvedValue(null);
+    const missing = await permissionMatrix.checkResourceAccess({ _id: 'userA' }, 'workspace', 'c1');
+    expect(missing.allowed).toBe(false);
+  });
+
+  test('maxFiles counts by `company`, never by nonexistent `companyId`', async () => {
+    const Subscription = require('../models/Subscription');
+    jest.spyOn(User, 'findById').mockResolvedValue({ _id: 'userA' });
+    jest.spyOn(User, 'updateOne').mockResolvedValue({ acknowledged: true });
+    jest.spyOn(Subscription, 'findOne').mockResolvedValue({ userId: 'userA', tier: 'pro', status: 'active' });
+    jest.spyOn(Company, 'find').mockImplementation(() => ({
+      select: () => ({ lean: async () => [{ _id: 'c1' }] }),
+    }));
+    const countSpy = jest.spyOn(CodeFile, 'countDocuments').mockResolvedValue(7);
+
+    await permissionMatrix.checkLimit('userA', 'maxFiles');
+
+    expect(countSpy).toHaveBeenCalledTimes(1);
+    const query = countSpy.mock.calls[0][0];
+    expect(JSON.stringify(query)).not.toContain('companyId');
+    expect(JSON.stringify(query)).toContain('company');
+  });
+});

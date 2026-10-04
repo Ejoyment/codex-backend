@@ -67,6 +67,11 @@ module.exports = (io) => {
   });
 
   ns.on('connection', (socket) => {
+    // Rooms this socket actually joined (room:join is the authorized join;
+    // every other handler additionally re-checks roomService.getRole).
+    // Used to stop non-participants from broadcasting presence via room:leave.
+    const joinedRooms = new Set();
+
     socket.on('room:join', async ({ roomId } = {}) => {
       try {
         if (!roomId) return socket.emit('room:error', { message: 'roomId required' });
@@ -77,6 +82,7 @@ module.exports = (io) => {
         const role = roomService.getRole(room, socket.userId);
         if (!role) return socket.emit('room:error', { message: 'Not a participant' });
         socket.join(`room:${roomId}`);
+        joinedRooms.add(roomId);
         await roomService.touchActivity(room);
         const { seq } = chunksFrom(roomId, 0);
         socket.emit('room:joined', { roomId, role, terminalSeq: seq });
@@ -166,7 +172,13 @@ module.exports = (io) => {
     socket.on('room:leave', ({ roomId } = {}) => {
       if (roomId) {
         socket.leave(`room:${roomId}`);
-        socket.to(`room:${roomId}`).emit('room:presence', { userId: socket.userId, joined: false });
+        // Only announce the departure for rooms this socket actually joined —
+        // otherwise any authenticated socket could inject presence events
+        // ("user left") into arbitrary rooms.
+        if (joinedRooms.has(roomId)) {
+          joinedRooms.delete(roomId);
+          socket.to(`room:${roomId}`).emit('room:presence', { userId: socket.userId, joined: false });
+        }
       }
     });
   });

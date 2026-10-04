@@ -27,10 +27,13 @@ export default function CreateProjectModal({ onClose, onCreated }) {
         priority,
       });
       if (result.success !== false) {
-        // Try to auto-create a company workspace for the project
+        // Best-effort: auto-create a company workspace for the project.
+        // Must not block project creation, but failures are logged, not swallowed.
         try {
           await companyApi.create({ name: trimmedName });
-        } catch {}
+        } catch (workspaceErr) {
+          console.warn('[CreateProjectModal] auto-create workspace failed:', workspaceErr?.message || workspaceErr);
+        }
         onCreated?.(result.project);
         onClose();
       } else {
