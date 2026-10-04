@@ -2,7 +2,7 @@ const jwt = require('jsonwebtoken');
 const AgentExecution = require('../models/AgentExecution');
 const LocalTask = require('../models/LocalTask');
 const SpecModel = require('../models/SpecModel');
-const { userCanAccessSpec } = require('./specAccess');
+const { userCanAccessSpec, userCanAccessWorkspace } = require('./specAccess');
 const aiRouterService = require('./aiRouterService');
 const sddVerificationService = require('./sddVerificationService');
 const realtimeBus = require('./realtimeBus');
@@ -23,7 +23,7 @@ class AgentSocketHandler {
     const agentNamespace = this.io.of('/agent');
 
     agentNamespace.use((socket, next) => {
-      const token = socket.handshake.auth.token;
+      const token = socket.handshake.auth?.token;
       if (!token) {
         return next(new Error('Authentication error'));
       }
@@ -83,10 +83,28 @@ class AgentSocketHandler {
     });
   }
 
-  async handleDelegate(socket, data) {
+  async handleDelegate(socket, data = {}) {
     const { taskId, taskTitle, sessionId, workspaceId, summary = '', specId, provider = 'gemini', localPrivacyMode = false } = data;
 
     try {
+      // Access checks BEFORE any mutation (execution creation, task updates):
+      // a client-supplied taskId/specId/workspaceId must belong to the caller.
+      if (taskId) {
+        const task = await LocalTask.findOne({ _id: taskId, userId: socket.userId });
+        if (!task) {
+          return socket.emit('agent:error', { message: 'Task not found' });
+        }
+      }
+      if (specId) {
+        const spec = await SpecModel.findById(specId);
+        if (!spec || !await userCanAccessSpec(spec, socket.userId)) {
+          return socket.emit('agent:error', { message: 'Spec not found or project access denied' });
+        }
+      }
+      if (workspaceId && !await userCanAccessWorkspace(workspaceId, socket.userId)) {
+        return socket.emit('agent:error', { message: 'Workspace access denied' });
+      }
+
       const execution = await AgentExecution.create({
         userId: socket.userId,
         sessionId: sessionId || 'standalone-task',
@@ -115,10 +133,6 @@ class AgentSocketHandler {
       }
 
       if (specId) {
-        const spec = await SpecModel.findById(specId);
-        if (!spec || !await userCanAccessSpec(spec, socket.userId)) {
-          return socket.emit('agent:error', { message: 'Spec not found or project access denied' });
-        }
         await SpecModel.findByIdAndUpdate(specId, { updatedAt: new Date() });
       }
 
@@ -266,8 +280,11 @@ class AgentSocketHandler {
     }
   }
 
-  async handleCancel(socket, data) {
+  async handleCancel(socket, data = {}) {
     const { executionId } = data;
+    if (!executionId) {
+      return socket.emit('agent:error', { message: 'executionId required' });
+    }
     const execution = await AgentExecution.findById(executionId);
 
     if (!execution || execution.userId !== socket.userId) {
@@ -289,20 +306,23 @@ class AgentSocketHandler {
     });
   }
 
-  async handleApprove(socket, data) {
+  async handleApprove(socket, data = {}) {
     const { executionId, taskId } = data;
+    if (!executionId) {
+      return socket.emit('agent:error', { message: 'executionId required' });
+    }
     const execution = await AgentExecution.findById(executionId);
 
     if (!execution || execution.userId !== socket.userId) {
       return socket.emit('agent:error', { message: 'Execution not found' });
     }
 
-    execution.status = 'completed';
-    execution.approvalRequired = false;
-    execution.logs.push({ timestamp: new Date(), message: 'Agent changes approved and merged' });
-    await execution.save();
-
+    // The taskId is client-supplied — only allow it to move the caller's own task.
     if (taskId) {
+      const task = await LocalTask.findOne({ _id: taskId, userId: socket.userId });
+      if (!task) {
+        return socket.emit('agent:error', { message: 'Task not found' });
+      }
       await LocalTask.findByIdAndUpdate(taskId, {
         status: 'completed',
         completedAt: new Date(),
@@ -311,20 +331,26 @@ class AgentSocketHandler {
       });
     }
 
-try {
-        if (execution.metadata?.agentBranch) {
-          await gitService.merge(execution.metadata.workspaceId || 'default', execution.metadata.agentBranch);
-        }
+    execution.status = 'completed';
+    execution.approvalRequired = false;
+    execution.logs.push({ timestamp: new Date(), message: 'Agent changes approved and merged' });
+    await execution.save();
+
+    if (execution.metadata?.agentBranch) {
+      try {
+        await gitService.merge(execution.metadata.workspaceId || 'default', execution.metadata.agentBranch);
       } catch (error) {
         console.error('Git merge error:', error);
+        execution.logs.push({ timestamp: new Date(), message: `Merge warning: ${error.message}` });
+        await execution.save();
       }
-      execution.logs.push({ timestamp: new Date(), message: `Merge warning: ${error.message}` });
+    }
 
-      if (execution.metadata?.containerId) {
-        try { await containerWorker.teardownWorker(taskId); } catch {}
-      }
+    if (execution.metadata?.containerId) {
+      try { await containerWorker.teardownWorker(taskId); } catch {}
+    }
 
-      socket.emit('agent:approved', { execution, taskId, message: 'Changes approved and merged' });
+    socket.emit('agent:approved', { execution, taskId, message: 'Changes approved and merged' });
 
     realtimeBus.emitAgentProgress(socket.userId, {
       type: 'approve',
@@ -333,20 +359,23 @@ try {
     });
   }
 
-  async handleReject(socket, data) {
+  async handleReject(socket, data = {}) {
     const { executionId, taskId } = data;
+    if (!executionId) {
+      return socket.emit('agent:error', { message: 'executionId required' });
+    }
     const execution = await AgentExecution.findById(executionId);
 
     if (!execution || execution.userId !== socket.userId) {
       return socket.emit('agent:error', { message: 'Execution not found' });
     }
 
-    execution.status = 'rejected';
-    execution.approvalRequired = false;
-    execution.logs.push({ timestamp: new Date(), message: 'Agent work rejected and task rolled back' });
-    await execution.save();
-
+    // Client-supplied taskId must belong to the caller.
     if (taskId) {
+      const task = await LocalTask.findOne({ _id: taskId, userId: socket.userId });
+      if (!task) {
+        return socket.emit('agent:error', { message: 'Task not found' });
+      }
       await LocalTask.findByIdAndUpdate(taskId, {
         status: 'in-progress',
         'agentExecution.status': 'rejected',
@@ -354,19 +383,24 @@ try {
       });
     }
 
-try {
-        if (execution.metadata?.agentBranch) {
-          await gitService.reset(execution.metadata.workspaceId || 'default', [execution.metadata.agentBranch]);
-        }
+    execution.status = 'rejected';
+    execution.approvalRequired = false;
+    execution.logs.push({ timestamp: new Date(), message: 'Agent work rejected and task rolled back' });
+    await execution.save();
+
+    if (execution.metadata?.agentBranch) {
+      try {
+        await gitService.reset(execution.metadata.workspaceId || 'default', [execution.metadata.agentBranch]);
       } catch (error) {
         console.error('Git reset error:', error);
       }
+    }
 
-      if (execution.metadata?.containerId) {
-        try { await containerWorker.teardownWorker(taskId); } catch {}
-      }
+    if (execution.metadata?.containerId) {
+      try { await containerWorker.teardownWorker(taskId); } catch {}
+    }
 
-      socket.emit('agent:rejected', { execution, taskId, message: 'Changes rejected and rolled back' });
+    socket.emit('agent:rejected', { execution, taskId, message: 'Changes rejected and rolled back' });
 
     realtimeBus.emitAgentProgress(socket.userId, {
       type: 'reject',
@@ -375,12 +409,22 @@ try {
     });
   }
 
-  async handleTweak(socket, data) {
+  async handleTweak(socket, data = {}) {
     const { executionId, taskId, feedback } = data;
+    if (!executionId) {
+      return socket.emit('agent:error', { message: 'executionId required' });
+    }
     const execution = await AgentExecution.findById(executionId);
 
     if (!execution || execution.userId !== socket.userId) {
       return socket.emit('agent:error', { message: 'Execution not found' });
+    }
+
+    if (taskId) {
+      const task = await LocalTask.findOne({ _id: taskId, userId: socket.userId });
+      if (!task) {
+        return socket.emit('agent:error', { message: 'Task not found' });
+      }
     }
 
     execution.status = 'running';
@@ -402,7 +446,7 @@ try {
     }
   }
 
-  async handleGetStatus(socket, data) {
+  async handleGetStatus(socket, data = {}) {
     const { taskId } = data;
     const execution = await AgentExecution.findOne({
       userId: socket.userId,
@@ -416,10 +460,29 @@ try {
     socket.emit('agent:status', { execution });
   }
 
-  async handleVerifySpec(socket, data) {
+  async handleVerifySpec(socket, data = {}) {
     const { specId, taskId } = data;
-    const result = await sddVerificationService.verifySpec(specId, taskId);
-    socket.emit('agent:spec-verification', result);
+    if (!specId) {
+      return socket.emit('agent:error', { message: 'specId required' });
+    }
+    try {
+      // verifySpec() loads AND saves the spec (writes validation results) and
+      // can write to the task — both must belong to the caller first.
+      const spec = await SpecModel.findById(specId);
+      if (!spec || !await userCanAccessSpec(spec, socket.userId)) {
+        return socket.emit('agent:error', { message: 'Spec not found or project access denied' });
+      }
+      if (taskId) {
+        const task = await LocalTask.findOne({ _id: taskId, userId: socket.userId });
+        if (!task) {
+          return socket.emit('agent:error', { message: 'Task not found' });
+        }
+      }
+      const result = await sddVerificationService.verifySpec(specId, taskId);
+      socket.emit('agent:spec-verification', result);
+    } catch (error) {
+      socket.emit('agent:error', { message: error.message });
+    }
   }
 }
 
