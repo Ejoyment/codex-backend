@@ -8,6 +8,14 @@ const router = express.Router();
 const vfs = require('../utils/virtualFileSystem');
 const codeSearchService = require('../utils/codeSearchService');
 const CodeFile = require('../models/CodeFile');
+const { emitWorkspaceChange } = require('../utils/realTimeEvents');
+// Tenant isolation (audit rec 7): every workspaceId/fileId below is verified.
+// requirePermission('vfs', …) only gates tiers — its resource check has no
+// 'vfs' case, so without these guards any user could read/mutate any workspace.
+const {
+    assertFileAccess,
+    assertCompanyMembership,
+} = require('../middleware/workspaceAccess');
 const { authenticateToken } = require('../middleware/auth');
 const permissionMatrix = require('../middleware/permissionMatrix');
 
@@ -48,7 +56,9 @@ const permissionMatrix = require('../middleware/permissionMatrix');
 router.get('/tree/:workspaceId', authenticateToken, permissionMatrix.requirePermission('vfs', 'read'), async (req, res) => {
   try {
     const { workspaceId } = req.params;
-    
+
+    if (!(await assertCompanyMembership(workspaceId, req.userId, res))) return;
+
     const tree = await vfs.getTree(workspaceId);
     
     res.json({ 
@@ -98,6 +108,8 @@ router.get('/file/:fileId', authenticateToken, permissionMatrix.requirePermissio
       return res.status(400).json({ error: 'workspaceId is required' });
     }
 
+    if (!(await assertCompanyMembership(workspaceId, req.userId, res))) return;
+
     const file = await vfs.readFile(fileId, workspaceId);
     
     res.json({ 
@@ -145,6 +157,8 @@ router.get('/file-by-path', authenticateToken, async (req, res) => {
     if (!path || !workspaceId) {
       return res.status(400).json({ error: 'path and workspaceId are required' });
     }
+
+    if (!(await assertCompanyMembership(workspaceId, req.userId, res))) return;
 
     const file = await vfs.readFileByPath(path, workspaceId);
     
@@ -198,6 +212,8 @@ router.get('/file-chunked/:fileId', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'workspaceId is required' });
     }
 
+    if (!(await assertCompanyMembership(workspaceId, req.userId, res))) return;
+
     const chunks = await vfs.readFileChunked(
       fileId, 
       workspaceId, 
@@ -228,6 +244,8 @@ router.get('/metadata/:fileId', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'workspaceId is required' });
     }
 
+    if (!(await assertCompanyMembership(workspaceId, req.userId, res))) return;
+
     const metadata = await vfs.getMetadata(fileId, workspaceId);
     
     if (!metadata) {
@@ -256,6 +274,8 @@ router.get('/search-name', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'query and workspaceId are required' });
     }
 
+    if (!(await assertCompanyMembership(workspaceId, req.userId, res))) return;
+
     const results = vfs.searchByName(query, workspaceId);
     
     res.json({ 
@@ -280,6 +300,8 @@ router.get('/search', authenticateToken, permissionMatrix.requirePermission('vfs
     if (!query || !workspaceId) {
       return res.status(400).json({ error: 'query and workspaceId are required' });
     }
+
+    if (!(await assertCompanyMembership(workspaceId, req.userId, res))) return;
 
     const results = await codeSearchService.search(query, workspaceId, {
       limit: parseInt(limit) || 50,
@@ -308,6 +330,8 @@ router.get('/search-language', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'language and workspaceId are required' });
     }
 
+    if (!(await assertCompanyMembership(workspaceId, req.userId, res))) return;
+
     const results = await codeSearchService.searchByLanguage(language, workspaceId, {
       limit: parseInt(limit) || 100
     });
@@ -329,7 +353,9 @@ router.get('/search-language', authenticateToken, async (req, res) => {
 router.get('/stats/:workspaceId', authenticateToken, async (req, res) => {
   try {
     const { workspaceId } = req.params;
-    
+
+    if (!(await assertCompanyMembership(workspaceId, req.userId, res))) return;
+
     const stats = await vfs.getStats(workspaceId);
     
     res.json({ 
@@ -349,7 +375,9 @@ router.get('/stats/:workspaceId', authenticateToken, async (req, res) => {
 router.post('/rebuild-index/:workspaceId', authenticateToken, permissionMatrix.requirePermission('vfs', 'index'), async (req, res) => {
   try {
     const { workspaceId } = req.params;
-    
+
+    if (!(await assertCompanyMembership(workspaceId, req.userId, res))) return;
+
     const result = await vfs.buildIndex(workspaceId);
     
     res.json({ 
@@ -370,7 +398,9 @@ router.post('/rebuild-index/:workspaceId', authenticateToken, permissionMatrix.r
 router.post('/rebuild-search/:workspaceId', authenticateToken, async (req, res) => {
   try {
     const { workspaceId } = req.params;
-    
+
+    if (!(await assertCompanyMembership(workspaceId, req.userId, res))) return;
+
     const result = await codeSearchService.rebuildIndex(workspaceId);
     
     res.json({ 
@@ -391,7 +421,9 @@ router.post('/rebuild-search/:workspaceId', authenticateToken, async (req, res) 
 router.post('/clear-cache/:workspaceId', authenticateToken, async (req, res) => {
   try {
     const { workspaceId } = req.params;
-    
+
+    if (!(await assertCompanyMembership(workspaceId, req.userId, res))) return;
+
     vfs.clearCache(workspaceId);
     
     res.json({ 
@@ -433,7 +465,9 @@ router.post('/files', authenticateToken, permissionMatrix.requirePermission('vfs
     if (!name || !companyId) {
       return res.status(400).json({ error: 'name and companyId are required' });
     }
-    
+
+    if (!(await assertCompanyMembership(companyId, req.userId, res))) return;
+
     const file = await vfs.createFile({
       name,
       language: (language || 'text').toLowerCase(),
@@ -475,10 +509,8 @@ router.put('/files/:fileId', authenticateToken, permissionMatrix.requirePermissi
     const { content, name, language } = req.body;
     
     const file = await CodeFile.findById(fileId);
-    if (!file) {
-      return res.status(404).json({ error: 'File not found' });
-    }
-    
+    if (!(await assertFileAccess(file, req.userId, res))) return;
+
     if (content !== undefined) file.content = content;
     if (name) file.name = name;
     if (language) file.language = language.toLowerCase();
@@ -521,10 +553,8 @@ router.delete('/files/:fileId', authenticateToken, permissionMatrix.requirePermi
     const { fileId } = req.params;
     
     const file = await CodeFile.findById(fileId);
-    if (!file) {
-      return res.status(404).json({ error: 'File not found' });
-    }
-    
+    if (!(await assertFileAccess(file, req.userId, res))) return;
+
     const workspaceId = file.company.toString();
     
     await CodeFile.findByIdAndDelete(fileId);
@@ -578,7 +608,11 @@ router.post('/folders', authenticateToken, async (req, res) => {
       }
       companyId = mine._id;
     }
-    
+
+    // An explicit companyId must be one of the caller's (the fallback above
+    // already is, and passes this check trivially).
+    if (!(await assertCompanyMembership(companyId, req.userId, res))) return;
+
     const folderPath = path === '/' ? `/${name}` : `${path}/${name}`;
     
     // Create a .gitkeep placeholder file to establish the folder in the tree

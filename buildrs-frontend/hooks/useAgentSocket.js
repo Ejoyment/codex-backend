@@ -22,8 +22,6 @@ export function useAgentSocket(executionId, taskId, isActive = false) {
 
     socket.on('connect', () => {
       socket.emit('agent:delegate', { executionId, taskId });
-      socket.join(`task:${taskId}`);
-      socket.join(`task:${taskId}:logs`);
     });
 
     socket.on('agent:progress', (data) => {
@@ -113,7 +111,9 @@ export function useAgentSocketNamespace(roomId) {
     });
 
     socket.on('connect', () => {
-      socket.join(`agent:${roomId}`);
+      // NOTE: socket.io-client has no .join (rooms are server-side only).
+      // The server auto-joins agent rooms on connection + on agent:delegate.
+      socket.emit('agent:join', { roomId });
     });
 
     socket.on('agent:progress', (data) => {

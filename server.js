@@ -247,13 +247,9 @@ app.use('/uploads', express.static('uploads', {
     index: false
 }));
 
-// Serve the frontend SPA (editor, design-code split, sandbox viewer, etc.) so the
-// real-time collaboration features are viewable directly from this server at /app
-app.use('/app', express.static('frontend', {
-    setHeaders: (res) => {
-        res.set('Access-Control-Allow-Origin', '*');
-    }
-}));
+// NOTE (audit rec 4): the legacy static app formerly served here at /app
+// (express.static('frontend') with wildcard CORS, no auth) has been unmounted.
+// The folder still exists on disk but is no longer reachable over HTTP.
 
 // Session configuration
 app.use(session({

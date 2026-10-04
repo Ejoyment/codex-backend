@@ -28,9 +28,10 @@ jobs:
 
     # Gates on real findings. Previously `|| true` plus continue-on-error meant
     # this step could never fail, so a high-severity advisory or a leaked key
-    # produced a green build.
+    # produced a green build. scripts/audit-ci.js fails on any high/critical
+    # finding except explicitly accepted advisories (documented in the script).
     - name: Run Security Audit
-      run: npm audit --audit-level=high
+      run: node scripts/audit-ci.js
 
     # Each grep must find nothing. `grep ... && exit 1` is used deliberately:
     # the previous form ended in `&& echo "✓ ..."`, so the step's exit status

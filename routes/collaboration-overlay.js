@@ -8,7 +8,14 @@ const crypto = require('crypto');
 
 const ensureCompanyMember = async (req, res, next) => {
     try {
-        const company = await Company.findById(req.params.companyId);
+        // The route path carries no :companyId (it arrives in the body per
+        // the swagger contract) — without this fallback the check ran
+        // against undefined and meetings were created company-less.
+        const companyId = req.params.companyId || req.body.companyId;
+        if (!companyId) {
+            return res.status(400).json({ success: false, message: 'companyId is required' });
+        }
+        const company = await Company.findById(companyId);
         if (!company) {
             return res.status(404).json({ success: false, message: 'Company not found' });
         }
@@ -82,7 +89,7 @@ router.post('/overlay/start', authenticateToken, ensureCompanyMember, async (req
         const meeting = await MeetingRoom.create({
             title: title || 'Quick Overlay Call',
             description: `Embedded ${context || 'general'} overlay`,
-            company: req.params.companyId,
+            company: req.company._id,
             host: req.userId,
             roomId,
             status: 'ongoing',
@@ -102,7 +109,7 @@ router.post('/overlay/start', authenticateToken, ensureCompanyMember, async (req
         const joinToken = crypto.randomBytes(24).toString('hex');
         const overlay = await MeetingOverlay.create({
             meetingId: meeting._id,
-            companyId: req.params.companyId,
+            companyId: req.company._id,
             hostUserId: req.userId,
             context: {
                 type: context || 'general',
@@ -168,7 +175,31 @@ router.post('/overlay/:overlayId/join', authenticateToken, async (req, res) => {
         if (!meeting) {
             return res.status(404).json({ success: false, message: 'Meeting not found' });
         }
-        
+
+        // Tenant isolation (audit rec 7): anyone could join any overlay,
+        // including invited-mode ones. Host always; company mode requires
+        // company membership; invited mode requires an invite; public is open.
+        if (overlay.hostUserId?.toString() !== req.userId) {
+            const mode = overlay.access?.mode || 'company';
+            if (mode === 'company') {
+                const Company = require('../models/Company');
+                const company = await Company.findOne({
+                    _id: overlay.companyId,
+                    $or: [{ owner: req.userId }, { 'members.user': req.userId }]
+                }).select('_id').lean();
+                if (!company) {
+                    return res.status(403).json({ success: false, message: 'Access denied' });
+                }
+            } else if (mode === 'invited') {
+                const invited = (overlay.access?.invitedUserIds || []).some(
+                    id => id.toString() === req.userId
+                );
+                if (!invited) {
+                    return res.status(403).json({ success: false, message: 'Access denied' });
+                }
+            }
+        }
+
         const participant = meeting.participants.find(p => p.user.toString() === req.userId);
         if (!participant) {
             meeting.participants.push({

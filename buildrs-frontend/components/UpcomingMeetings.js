@@ -84,7 +84,9 @@ export default function UpcomingMeetings({ meetings = [] }) {
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  router.push(`/meeting-room/${meeting.roomId || meeting._id}`);
+                  // meeting-room.js reads roomId from the query string
+                  // (no /meeting-room/[id] dynamic route exists).
+                  router.push(`/meeting-room?roomId=${meeting.roomId || meeting._id}`);
                 }}
                 className="join-btn"
               >
