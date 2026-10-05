@@ -58,7 +58,15 @@ const agentDelegateLimiter = makeLimiter({
     message: 'Too many agent requests, please try again shortly.',
 });
 
+// 5 dev-gate password attempts per 15 minutes per IP — password guessing.
+const devGateLimiter = makeLimiter({
+    windowMs: 15 * 60 * 1000,
+    max: 5,
+    message: 'Too many attempts, please try again later.',
+});
+
 module.exports = {
+    devGateLimiter,
     messageSendLimiter,
     supportTicketLimiter,
     supportReplyLimiter,

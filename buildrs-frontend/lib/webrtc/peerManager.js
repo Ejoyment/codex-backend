@@ -1,12 +1,37 @@
 /**
  * Phase 3 — peerManager: mesh WebRTC topology (up to 4 peers), Opus audio with
- * echo cancellation / noise suppression, STUN + TURN (relay URL via env),
- * automatic fallback to the Socket.IO relay if the data channel fails.
+ * echo cancellation / noise suppression, STUN + TURN (short-lived credentials
+ * from /api/rtc/ice-servers, env fallback), automatic fallback to the
+ * Socket.IO relay if the data channel fails.
  */
+import { API_BASE_URL } from '../api';
 
 export const MAX_MESH_PEERS = 4;
 
+// Server-issued ICE config (short-lived TURN credentials, rec 9). Populated
+// by fetchIceServers(); getIceServers() prefers it and falls back to the
+// legacy env-based static config.
+let cachedIceServers = null;
+
+export async function fetchIceServers() {
+  try {
+    const token = typeof window !== 'undefined' ? window.localStorage.getItem('authToken') : null;
+    const res = await fetch(`${API_BASE_URL}/api/rtc/ice-servers`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && Array.isArray(data.iceServers) && data.iceServers.length > 0) {
+      cachedIceServers = data.iceServers;
+      return cachedIceServers;
+    }
+  } catch {
+    // fall through to static config
+  }
+  return getIceServers();
+}
+
 export function getIceServers() {
+  if (cachedIceServers) return cachedIceServers;
   const servers = [{ urls: 'stun:stun.l.google.com:19302' }];
   const turnUrl = process.env.NEXT_PUBLIC_TURN_URL || (typeof window !== 'undefined' && window.__TURN_URL__);
   const turnUser = process.env.NEXT_PUBLIC_TURN_USERNAME;
