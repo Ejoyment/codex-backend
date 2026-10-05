@@ -30,6 +30,11 @@ jest.mock('bcryptjs', () => ({
 
 jest.mock('dotenv', () => ({ config: jest.fn() }));
 
+// Liveness is fail-closed: the probe must resolve live for next() to run.
+jest.mock('../models/User', () => ({
+  exists: jest.fn(async () => ({ _id: 'mock-user-id' })),
+}));
+
 describe('Authentication - Auth Middleware', () => {
   let authenticateToken;
 

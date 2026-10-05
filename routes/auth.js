@@ -402,19 +402,9 @@ router.get('/google/callback',
  *         description: User not found
  */
 // Get current user (protected route)
-router.get('/me', async (req, res) => {
+router.get('/me', authenticateToken, async (req, res) => {
     try {
-        const token = req.headers.authorization?.split(' ')[1];
-        
-        if (!token) {
-            return res.status(401).json({ 
-                success: false, 
-                message: 'No token provided' 
-            });
-        }
-
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const userId = decoded.userId || decoded.id;
+        const userId = req.userId;
         const user = await User.findById(userId).select('-password');
 
         if (!user) {
@@ -618,19 +608,9 @@ router.post('/upload-photo', authenticateToken, upload.single('profilePhoto'), a
  *         description: Unauthorized
  */
 // Update profile
-router.put('/update-profile', async (req, res) => {
+router.put('/update-profile', authenticateToken, async (req, res) => {
     try {
-        const token = req.headers.authorization?.split(' ')[1];
-        
-        if (!token) {
-            return res.status(401).json({ 
-                success: false, 
-                message: 'No token provided' 
-            });
-        }
-
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const user = await User.findById(decoded.userId || decoded.id);
+        const user = await User.findById(req.userId);
 
         if (!user) {
             return res.status(404).json({ 
@@ -704,19 +684,9 @@ router.put('/update-profile', async (req, res) => {
  *         description: Current password incorrect
  */
 // Change password
-router.post('/change-password', authLimiter, async (req, res) => {
+router.post('/change-password', authLimiter, authenticateToken, async (req, res) => {
     try {
-        const token = req.headers.authorization?.split(' ')[1];
-        
-        if (!token) {
-            return res.status(401).json({ 
-                success: false, 
-                message: 'No token provided' 
-            });
-        }
-
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const user = await User.findById(decoded.userId || decoded.id);
+        const user = await User.findById(req.userId);
 
         if (!user) {
             return res.status(404).json({ 
@@ -797,19 +767,9 @@ router.post('/change-password', authLimiter, async (req, res) => {
 // Delete account — removes the user and everything owned by the account.
 // Integration data (Integration connections + IntegrationData synced content such as
 // GitHub repos) is explicitly preserved.
-router.delete('/delete-account', async (req, res) => {
+router.delete('/delete-account', authenticateToken, async (req, res) => {
     try {
-        const token = req.headers.authorization?.split(' ')[1];
-
-        if (!token) {
-            return res.status(401).json({
-                success: false,
-                message: 'No token provided'
-            });
-        }
-
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const user = await User.findById(decoded.userId || decoded.id);
+        const user = await User.findById(req.userId);
 
         if (!user) {
             return res.status(404).json({
@@ -1022,20 +982,9 @@ router.delete('/delete-account', async (req, res) => {
  *         description: Unauthorized
  */
 // Complete onboarding
-router.post('/complete-onboarding', async (req, res) => {
+router.post('/complete-onboarding', authenticateToken, async (req, res) => {
     try {
-        const token = req.headers.authorization?.split(' ')[1];
-        
-        if (!token) {
-            return res.status(401).json({ 
-                success: false, 
-                message: 'No token provided' 
-            });
-        }
-
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        // Support both 'id' and 'userId' for backwards compatibility
-        const userId = decoded.userId || decoded.id;
+        const userId = req.userId;
         const user = await User.findById(userId);
 
         if (!user) {

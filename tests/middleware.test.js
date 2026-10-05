@@ -22,6 +22,12 @@ describe('Middleware - Auth', () => {
         }
       }),
     }));
+    // Liveness is fail-closed: the probe must resolve live for next() to run.
+    // spyOn (not jest.mock) so the other describes in this file keep the real
+    // User model; both resolves here hit the post-reset registry that the
+    // freshly-required authenticateToken also uses.
+    const User = require('../models/User');
+    jest.spyOn(User, 'exists').mockResolvedValue({ _id: 'mock-user-id' });
     authenticateToken = require('../middleware/auth').authenticateToken;
   });
 

@@ -1,4 +1,5 @@
 const express = require('express');
+const { agentDelegateLimiter } = require('../middleware/rateLimits');
 const router = express.Router();
 const { authenticateToken } = require('../middleware/auth');
 const { enforceConcurrentJobs, enforceTaskTimeout, enforceCreditPool, enforceCloudComputeLimit } = require('../middleware/tierEnforcement');
@@ -42,7 +43,7 @@ function spawnAgentWorker(executionId, taskId, workspaceId, specIds, provider, l
   });
 }
 
-router.post('/delegate', authenticateToken, enforceConcurrentJobs(), enforceTaskTimeout(), enforceCreditPool(), enforceCloudComputeLimit(), async (req, res) => {
+router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurrentJobs(), enforceTaskTimeout(), enforceCreditPool(), enforceCloudComputeLimit(), async (req, res) => {
   try {
     const { taskId, taskTitle, sessionId, summary = '', provider = 'gemini', localPrivacyMode = false } = req.body;
 

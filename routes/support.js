@@ -4,6 +4,7 @@ const SupportTicket = require('../models/SupportTicket');
 const SupportAgent = require('../models/SupportAgent');
 const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
+const { supportTicketLimiter, supportReplyLimiter } = require('../middleware/rateLimits');
 
 // Rate limiting for support agent login (same as main auth)
 const supportLoginLimiter = rateLimit({
@@ -212,7 +213,7 @@ router.get('/tickets', async (req, res) => {
 
 // Add message to ticket (user or agent) — sender is derived ONLY from a
 // verified token. Body `sender` is ignored to prevent impersonation.
-router.post('/tickets/:ticketId/messages', async (req, res) => {
+router.post('/tickets/:ticketId/messages', supportReplyLimiter, async (req, res) => {
     try {
         const { content, message, guestEmail } = req.body;
         const text = content || message;
@@ -294,7 +295,7 @@ router.post('/tickets/:ticketId/messages', async (req, res) => {
 });
 
 // Create Support Ticket (Public) — now handles both backend and frontend field names
-router.post('/tickets', async (req, res) => {
+router.post('/tickets', supportTicketLimiter, async (req, res) => {
     try {
         const { subject, guestName, guestEmail, message, description, content, userId, priority } = req.body;
         const ticketMessage = message || description || content;
