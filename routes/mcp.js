@@ -6,6 +6,54 @@ const Company = require('../models/Company');
 const { addAuditLog } = require('../utils/auditLogService');
 const { validateOutboundUrl } = require('../utils/urlSafety');
 
+// Sentinel shown to clients in place of secret values. env/headers carry
+// Authorization tokens and API keys, which must never round-trip to the
+// browser; the edit form re-submits the sentinel for unchanged keys and the
+// PUT handler below keeps the stored value in that case.
+const REDACTED = '__REDACTED__';
+
+function redactSecrets(obj) {
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
+    const out = {};
+    for (const key of Object.keys(obj)) out[key] = REDACTED;
+    return out;
+}
+
+function restoreRedacted(submitted, current) {
+    if (!submitted || typeof submitted !== 'object' || Array.isArray(submitted)) return submitted;
+    const base = current && typeof current === 'object' && !Array.isArray(current) ? current : {};
+    const out = {};
+    for (const [key, value] of Object.entries(submitted)) {
+        out[key] = value === REDACTED && base[key] !== undefined ? base[key] : value;
+    }
+    return out;
+}
+
+// Public shape: everything the UI needs, with secret VALUES stripped (keys
+// preserved so the edit form still lists them).
+function publicServer(s) {
+    return {
+        _id: s._id,
+        id: s._id,
+        company: s.company,
+        createdBy: s.createdBy,
+        name: s.name,
+        transport: s.transport,
+        serverUrl: s.serverUrl,
+        command: s.command,
+        args: s.args,
+        env: redactSecrets(s.env),
+        headers: redactSecrets(s.headers),
+        enabled: s.enabled,
+        tools: s.tools,
+        lastStatus: s.lastStatus,
+        lastProbedAt: s.lastProbedAt,
+        lastError: s.lastError,
+        createdAt: s.createdAt,
+        updatedAt: s.updatedAt,
+    };
+}
+
 const ensureCompanyMember = async (req, res, next) => {
     try {
         const companyId = req.params.companyId || req.query.companyId || req.body.companyId;
@@ -30,10 +78,7 @@ router.get('/company/:companyId', authenticateToken, ensureCompanyMember, async 
         const servers = await McpServer.find({ company: req.params.companyId }).sort({ updatedAt: -1 });
         res.json({
             success: true,
-            servers: servers.map(s => ({
-                ...s.toObject(),
-                headers: Object.keys(s.headers || {}).length ? s.headers : undefined,
-            })),
+            servers: servers.map(publicServer),
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -77,7 +122,7 @@ router.post('/', authenticateToken, ensureCompanyMember, async (req, res) => {
             details: { serverId: server._id.toString(), transport: server.transport },
             req
         });
-        res.json({ success: true, server });
+        res.json({ success: true, server: publicServer(server) });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -98,8 +143,9 @@ router.put('/:id', authenticateToken, async (req, res) => {
         if (serverUrl !== undefined) server.serverUrl = serverUrl;
         if (command !== undefined) server.command = command;
         if (Array.isArray(args)) server.args = args;
-        if (env) server.env = env;
-        if (headers) server.headers = headers;
+        // REDACTED values mean "keep the stored secret for this key".
+        if (env) server.env = restoreRedacted(env, server.env);
+        if (headers) server.headers = restoreRedacted(headers, server.headers);
         if (enabled !== undefined) server.enabled = enabled;
         await server.save();
 
@@ -112,7 +158,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
             details: { serverId: server._id.toString() },
             req
         });
-        res.json({ success: true, server });
+        res.json({ success: true, server: publicServer(server) });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }

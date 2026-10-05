@@ -25,6 +25,24 @@ if (require.main === module && (!process.env.JWT_SECRET || process.env.JWT_SECRE
     process.exit(1);
 }
 
+// Fail fast on the rest of the boot config (rec 9): a missing database, a
+// malformed encryption key, or a half-moved secret would otherwise surface as
+// cryptic runtime failures. JWT_SECRET keeps its dedicated check above.
+if (require.main === module) {
+    const { validateBootConfig } = require('./utils/bootConfig');
+    const { fatals, warnings } = validateBootConfig({ includeJwtSecret: false });
+    for (const warning of warnings) {
+        console.warn(`⚠️  Boot config: ${warning}`);
+    }
+    if (fatals.length > 0) {
+        for (const fatal of fatals) {
+            console.error(`\n❌ FATAL: ${fatal}`);
+        }
+        console.error('');
+        process.exit(1);
+    }
+}
+
 const authRoutes = require('./routes/auth');
 const otpRoutes = require('./routes/otp');
 const subscriptionRoutes = require('./routes/subscription');
@@ -155,10 +173,13 @@ async function startServer(port = process.env.PORT || 3000) {
         // Belt-and-braces: the top-of-file check is guarded on require.main so
         // tests can import this module. Assert again here, where the process is
         // genuinely about to serve traffic.
-        if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
-            reject(new Error(
-                'JWT_SECRET must be set to at least 32 characters before the server can listen.'
-            ));
+        const { validateBootConfig } = require('./utils/bootConfig');
+        const { fatals, warnings } = validateBootConfig({ includeJwtSecret: true });
+        for (const warning of warnings) {
+            console.warn(`⚠️  Boot config: ${warning}`);
+        }
+        if (fatals.length > 0) {
+            reject(new Error(fatals.join(' ')));
             return;
         }
         srv.listen(port, () => {
@@ -303,6 +324,8 @@ const designCodeRoutes = require('./routes/design-code');
 const auditLogRoutes = require('./routes/audit-logs');
 const pipelineRoutes = require('./routes/pipelines');
 const mcpRoutes = require('./routes/mcp');
+const devGateRoutes = require('./routes/dev-gate');
+const rtcRoutes = require('./routes/rtc');
 const lspRoutes = require('./routes/lsp');
 const vfsRoutes = require('./routes/vfs');
 const terminalRoutes = require('./routes/terminal');
@@ -376,6 +399,8 @@ app.use('/api/design-code', designCodeRoutes);
 app.use('/api/audit-logs', auditLogRoutes);
 app.use('/api/pipelines', pipelineRoutes);
 app.use('/api/mcp', mcpRoutes);
+app.use('/api/dev-gate', devGateRoutes);
+app.use('/api/rtc', rtcRoutes);
 app.use('/api/lsp', lspRoutes);
 app.use('/api/vfs', vfsRoutes);
 app.use('/api/terminal', terminalRoutes);

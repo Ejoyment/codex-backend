@@ -604,7 +604,9 @@ describe('code execution isolation', () => {
 
 describe('JWT secret requirements', () => {
     it('refuses to listen without a strong secret', () => {
-        const src = readSource('server.js');
+        // Message lives in utils/bootConfig.js (used by the server listen
+        // path); server.js must still reject instead of warning-and-continuing.
+        const src = readSource('server.js') + readSource('utils/bootConfig.js');
         expect(src).toMatch(/JWT_SECRET must be set to at least 32 characters/);
         expect(src).not.toMatch(/WARNING: JWT_SECRET must be set/);
     });
