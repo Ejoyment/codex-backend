@@ -5,6 +5,7 @@ const SupportAgent = require('../models/SupportAgent');
 const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
 const { supportTicketLimiter, supportReplyLimiter } = require('../middleware/rateLimits');
+const { MAX_TICKET_MESSAGES } = require('../utils/retention');
 
 // Rate limiting for support agent login (same as main auth)
 const supportLoginLimiter = rateLimit({
@@ -278,6 +279,9 @@ router.post('/tickets/:ticketId/messages', supportReplyLimiter, async (req, res)
                 }
                 senderName = ticket.guestName || senderName;
             }
+        }
+        if (ticket.messages.length >= MAX_TICKET_MESSAGES) {
+            return res.status(400).json({ error: 'Ticket thread is full — please open a follow-up ticket' });
         }
         ticket.messages.push({
             sender: senderType,

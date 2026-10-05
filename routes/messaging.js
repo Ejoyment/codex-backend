@@ -7,6 +7,7 @@ const Company = require('../models/Company');
 const { CHANNEL_TYPES, normalizeChannelType, canPostToChannel } = require('../utils/channelPolicy');
 const { userIsCompanyMember } = require('../middleware/workspaceAccess');
 const { notifyNewMessage, notifyChannelCreated } = require('../utils/notificationTriggers');
+const { MAX_REACTIONS, MAX_CHANNEL_MEMBERS } = require('../utils/retention');
 const { messageSendLimiter } = require('../middleware/rateLimits');
 
 // Verify user is a member of the company before operating
@@ -635,7 +636,10 @@ router.post('/messages/:id/reactions', authenticateToken, async (req, res) => {
                 !(r.user.toString() === req.userId && r.emoji === emoji)
             );
         } else {
-            // Add reaction
+            // Cap reactions per message (each user can toggle many emoji).
+            if (message.reactions.length >= MAX_REACTIONS) {
+                return res.status(400).json({ success: false, message: 'Reaction limit reached for this message' });
+            }
             message.reactions.push({ emoji, user: req.userId });
         }
         
@@ -780,6 +784,9 @@ router.post('/channels/:id/members', authenticateToken, async (req, res) => {
         const existing = channel.members.find(m => m.user.toString() === userId);
         
         if (!existing) {
+            if (channel.members.length >= MAX_CHANNEL_MEMBERS) {
+                return res.status(400).json({ success: false, message: 'Channel member limit reached' });
+            }
             channel.members.push({ user: userId, role: roleToGrant });
             await channel.save();
         }

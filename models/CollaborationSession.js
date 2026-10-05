@@ -51,11 +51,19 @@ const collaborationSessionSchema = new mongoose.Schema({
         default: 'active'
     },
     startedAt: { type: Date, default: Date.now },
-    endedAt: Date
+    endedAt: Date,
+    // Retention: presence sessions are ephemeral (default 7d). Active editors
+    // refresh lastSeen, not expiresAt — a session idle past its TTL is gone.
+    expiresAt: {
+        type: Date,
+        default: () => new Date(Date.now() + (parseInt(process.env.COLLAB_SESSION_TTL_DAYS || '7', 10) * 24 * 60 * 60 * 1000))
+    }
 }, {
     timestamps: true
 });
 
 collaborationSessionSchema.index({ type: 1, status: 1 });
+// TTL: rows die when expiresAt passes.
+collaborationSessionSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 module.exports = mongoose.model('CollaborationSession', collaborationSessionSchema);

@@ -75,13 +75,22 @@ const debugHandoffSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
         default: null
+    },
+    // Retention: shareable handoff links expire (default 30d).
+    expiresAt: {
+        type: Date,
+        default: () => new Date(Date.now() + (parseInt(process.env.DEBUG_HANDOFF_TTL_DAYS || '30', 10) * 24 * 60 * 60 * 1000))
     }
 }, {
     timestamps: true
 });
 
 debugHandoffSchema.index({ handoffId: 1 });
-debugHandoffSchema.index({ createdBy: 1, status: 1 });
+// There is no top-level `status` field (only sandbox.status) — the old
+// { createdBy, status } index could never match a query. Index recency instead.
+debugHandoffSchema.index({ createdBy: 1, createdAt: -1 });
 debugHandoffSchema.index({ companyId: 1, createdAt: -1 });
+// TTL: rows die when expiresAt passes.
+debugHandoffSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 module.exports = mongoose.model('DebugHandoff', debugHandoffSchema);

@@ -4,6 +4,7 @@ const CodeFile = require('../models/CodeFile');
 const { authenticateToken } = require('../middleware/auth');
 const { getAllowedLanguages, isLanguageAllowed, getAllLanguagesWithStatus } = require('../utils/languageRestrictions');
 const { addAuditLog } = require('../utils/auditLogService');
+const { trimToLast, MAX_VERSIONS } = require('../utils/retention');
 const vfs = require('../utils/virtualFileSystem');
 const { emitWorkspaceChange } = require('../utils/realTimeEvents');
 // Shared tenant-isolation primitive (audit rec 7) — single enforced version.
@@ -539,6 +540,8 @@ router.put('/files/:id', authenticateToken, async (req, res) => {
                 modifiedAt: file.updatedAt,
                 comment: req.body.comment || 'Auto-saved version'
             });
+            // Cap version history (each entry is a full content copy).
+            trimToLast(file.versions, MAX_VERSIONS);
         }
         
         if (content !== undefined) file.content = content;

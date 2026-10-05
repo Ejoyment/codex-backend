@@ -81,4 +81,9 @@ supportTicketSchema.pre('save', function(next) {
     next();
 });
 
+// Indexes: the agent queue and owner lookups scanned the whole collection.
+supportTicketSchema.index({ userId: 1, status: 1, updatedAt: -1 });
+supportTicketSchema.index({ status: 1, updatedAt: -1 });
+supportTicketSchema.index({ assignedTo: 1, status: 1 });
+
 module.exports = mongoose.model('SupportTicket', supportTicketSchema);

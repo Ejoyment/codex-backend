@@ -290,3 +290,22 @@ describe('agent-only operations', () => {
     agent.disconnect();
   });
 });
+
+describe('retention (rec 11): thread cap', () => {
+  test('send-message on a 1000-message thread is rejected (REST parity)', async () => {
+    tickets['TKT-FULL'] = ticketDoc({
+      _id: 'tfull',
+      ticketId: 'TKT-FULL',
+      messages: Array.from({ length: 1000 }, (_, i) => ({ sender: 'user', message: `m${i}` })),
+    });
+    const s = await userSocket(USER_A);
+    s.emit('join-ticket', { ticketId: 'TKT-FULL' });
+    await once(s, 'ticket:joined');
+    const err = once(s, 'ticket:error');
+    s.emit('send-message', { ticketId: 'TKT-FULL', message: 'one too many' });
+    const payload = await err;
+    expect(payload.message).toMatch(/follow-up ticket/i);
+    expect(tickets['TKT-FULL'].messages.length).toBe(1000);
+    s.disconnect();
+  });
+});
