@@ -12,6 +12,7 @@ const CodeFile = require('../models/CodeFile');
 const TerminalLog = require('../models/TerminalLog');
 const vfs = require('./virtualFileSystem');
 const { emitWorkspaceChange } = require('./realTimeEvents');
+const { slicedPush, MAX_TERMINAL_ENTRIES } = require('./retention');
 const unifiedStateGraph = require('./unifiedStateGraph');
 const { VpsShell, terminalTransportEnabled } = require('./vpsShell');
 
@@ -65,7 +66,8 @@ class TerminalService {
       await TerminalLog.updateOne(
         { _id: terminal.logId },
         {
-          $push: { entries: entry },
+          // Cap the per-session stream (terminal output is unbounded).
+          $push: { entries: slicedPush(entry, MAX_TERMINAL_ENTRIES) },
           $inc: { commandCount: type === 'input' ? 1 : 0 }
         }
       );

@@ -61,5 +61,7 @@ const ephemeralSandboxSchema = new mongoose.Schema({
 });
 
 ephemeralSandboxSchema.index({ status: 1, expiresAt: 1 });
+// TTL: rows die when expiresAt (default +24h) passes.
+ephemeralSandboxSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 module.exports = mongoose.model('EphemeralSandbox', ephemeralSandboxSchema);

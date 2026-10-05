@@ -14,6 +14,7 @@ const ChatMessage = require('../models/ChatMessage');
 const mongoose = require('mongoose');
 const vectorMemory = require('./vectorMemory');
 const HITLGates = require('./hitlGates');
+const { trimToLast, MAX_VERSIONS } = require('./retention');
 
 class AgentOrchestrator {
     constructor(io = null) {
@@ -151,13 +152,14 @@ class AgentOrchestrator {
                         };
                     }
 
-                    // Save version history
+                    // Save version history (capped: each entry is a full copy).
                     file.versions.push({
                         content: file.content,
                         modifiedBy: file.lastModifiedBy,
                         modifiedAt: file.updatedAt,
                         comment: 'AI Agent Update'
                     });
+                    trimToLast(file.versions, MAX_VERSIONS);
 
                     file.content = params.content;
                     file.lastModifiedBy = context.userId;

@@ -55,5 +55,7 @@ const terminalLogSchema = new mongoose.Schema({
 
 terminalLogSchema.index({ sessionId: 1, createdAt: -1 });
 terminalLogSchema.index({ status: 1, expiresAt: 1 });
+// TTL: rows die when expiresAt (default +7d) passes.
+terminalLogSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 module.exports = mongoose.model('TerminalLog', terminalLogSchema);

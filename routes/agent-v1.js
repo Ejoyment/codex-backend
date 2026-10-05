@@ -1,4 +1,5 @@
 const express = require('express');
+const { trimToLast, MAX_TWEAKS, MAX_AGENT_LOG } = require('../utils/retention');
 const { agentDelegateLimiter } = require('../middleware/rateLimits');
 const router = express.Router();
 const { authenticateToken } = require('../middleware/auth');
@@ -328,10 +329,12 @@ router.post('/tweak', authenticateToken, async (req, res) => {
     if (!execution) return res.status(404).json({ success: false, message: 'Session not found' });
     if (!['awaiting_review', 'awaiting_approval', 'failed'].includes(execution.status)) return res.status(409).json({ success: false, message: 'Session cannot be resumed in its current state' });
     execution.tweaks.push({ instruction: instruction.trim(), addedAt: new Date() });
+    trimToLast(execution.tweaks, MAX_TWEAKS);
     execution.status = 'running';
     execution.startedAt = new Date();
     execution.completedAt = null;
     execution.terminalLog.push({ timestamp: new Date(), type: 'follow_up', message: instruction.trim() });
+    trimToLast(execution.terminalLog, MAX_AGENT_LOG);
     await execution.save();
     const workspaceId = execution.metadata?.get?.('workspaceId') || execution.metadata?.workspaceId;
     const specIds = execution.metadata?.get?.('specIds') || execution.metadata?.specIds || [];

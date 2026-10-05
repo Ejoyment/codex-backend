@@ -10,6 +10,7 @@ const jwt = require('jsonwebtoken');
 const SupportTicket = require('../models/SupportTicket');
 const SupportAgent = require('../models/SupportAgent');
 const User = require('../models/User');
+const { MAX_TICKET_MESSAGES } = require('./retention');
 
 const STATUSES = ['open', 'in-progress', 'resolved', 'closed'];
 
@@ -180,7 +181,10 @@ module.exports = (io) => {
                 const senderType = socket.isAgent ? 'agent' : 'user';
                 const senderName = await resolveSenderName(ticket);
 
-                // Add message to ticket
+                // Add message to ticket (capped thread — REST parity).
+                if (ticket.messages.length >= MAX_TICKET_MESSAGES) {
+                    return socket.emit('ticket:error', { message: 'Ticket thread is full — please open a follow-up ticket.' });
+                }
                 ticket.messages.push({
                     sender: senderType,
                     senderName,
