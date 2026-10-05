@@ -47,6 +47,13 @@ const useAuthStore = create(
           localStorage.removeItem('subscription');
         }
         set({ token: null, user: null, subscription: null, error: null });
+        // The zustand persist key MUST go too: persist() rehydrates
+        // token/user from 'auth-storage' on the next load, so without this
+        // logout → reload (or a shared device) resurrects the session.
+        // Removed after set() so even the persist re-write is gone.
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('auth-storage');
+        }
       },
 
       setLoading: (isLoading) => set({ isLoading }),

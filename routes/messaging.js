@@ -7,6 +7,7 @@ const Company = require('../models/Company');
 const { CHANNEL_TYPES, normalizeChannelType, canPostToChannel } = require('../utils/channelPolicy');
 const { userIsCompanyMember } = require('../middleware/workspaceAccess');
 const { notifyNewMessage, notifyChannelCreated } = require('../utils/notificationTriggers');
+const { messageSendLimiter } = require('../middleware/rateLimits');
 
 // Verify user is a member of the company before operating
 async function requireCompanyMember(req, res, next) {
@@ -328,7 +329,7 @@ router.get('/channels/:id', authenticateToken, requireCompanyMember, async (req,
  *         description: Unauthorized
  */
 // Send message
-router.post('/messages', authenticateToken, requireCompanyMember, async (req, res) => {
+router.post('/messages', authenticateToken, messageSendLimiter, requireCompanyMember, async (req, res) => {
     try {
         const { content, channelId, recipientId, type, attachments, mentions } = req.body;
         let companyId = req.body.companyId;

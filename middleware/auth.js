@@ -33,9 +33,13 @@ async function userExists(userId) {
         });
         exists = Boolean(doc);
     } catch (error) {
-        // Never lock users out because the liveness probe itself failed.
-        console.error('Auth liveness check failed:', error.message);
-        return true;
+        // Fail closed: if the account cannot be confirmed as live (DB error),
+        // do not authenticate — otherwise a DB outage silently disables the
+        // deleted/banned-account check. Cache the rejection for a few seconds
+        // so a struggling database is not hammered by every request.
+        console.error('Auth liveness check failed (failing closed):', error.message);
+        livenessCache.set(String(userId), { exists: false, expiresAt: Date.now() + 5000 });
+        return false;
     }
 
     livenessCache.set(String(userId), { exists, expiresAt: Date.now() + LIVENESS_TTL_MS });
