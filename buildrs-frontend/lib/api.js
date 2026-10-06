@@ -4,18 +4,6 @@ export const API_BASE_URL = 'https://codex-backend-7utu.onrender.com';
 const DEFAULT_TIMEOUT_MS = 15000;
 const MAX_RETRIES = 2;
 
-// Dev-gate proof (rec 9): while the prelaunch gate is enabled, registration
-// and login surfaces require the time-boxed token issued by
-// POST /api/dev-gate/verify. Stored client-side; the password itself is never
-// in the bundle anymore.
-export const GATE_TOKEN_KEY = 'buildrs-dev-gate';
-const devGateToken = () =>
-  typeof window !== 'undefined' ? window.localStorage.getItem(GATE_TOKEN_KEY) : null;
-const withGateHeaders = () => {
-  const t = devGateToken();
-  return t ? { headers: { 'x-dev-gate': t } } : {};
-};
-
 export async function apiFetch(path, options = {}) {
   const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
 
@@ -134,7 +122,6 @@ export const authApi = {
       method: 'POST',
       body: JSON.stringify({ fullName, email, password }),
       returnErrorData: true,
-      ...withGateHeaders(),
     }),
 
   signin: (email, password) =>
@@ -142,7 +129,6 @@ export const authApi = {
       method: 'POST',
       body: JSON.stringify({ email, password }),
       returnErrorData: true,
-      ...withGateHeaders(),
     }),
 
   getMe: () => apiFetch('/api/auth/me'),
@@ -152,7 +138,6 @@ export const authApi = {
       method: 'POST',
       body: JSON.stringify({ email }),
       returnErrorData: true,
-      ...withGateHeaders(),
     }),
 
   verifyOTP: (email, otp) =>
@@ -160,7 +145,6 @@ export const authApi = {
       method: 'POST',
       body: JSON.stringify({ email, otp }),
       returnErrorData: true,
-      ...withGateHeaders(),
     }),
 
   resendOTP: (email) =>
@@ -168,14 +152,9 @@ export const authApi = {
       method: 'POST',
       body: JSON.stringify({ email }),
       returnErrorData: true,
-      ...withGateHeaders(),
     }),
 
-  google: () => {
-    const t = devGateToken();
-    const base = `${API_BASE_URL}/api/auth/google`;
-    return t ? `${base}?gate_token=${encodeURIComponent(t)}` : base;
-  },
+  google: () => `${API_BASE_URL}/api/auth/google`,
 };
 
 export const companyApi = {

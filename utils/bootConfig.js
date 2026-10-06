@@ -36,15 +36,6 @@ function validateBootConfig({ includeJwtSecret = true } = {}) {
         warnings.push('TURN_URL is set but TURN_STATIC_SECRET is not — only STUN will be served to WebRTC clients.');
     }
 
-    if (process.env.NEXT_PUBLIC_DEV_PASSWORD) {
-        warnings.push(
-            'NEXT_PUBLIC_DEV_PASSWORD is obsolete and ships the gate password in the JS bundle — ' +
-            'unset it and use server-side DEV_GATE_PASSWORD instead.'
-        );
-    }
-    if (process.env.DEV_GATE_PASSWORD && process.env.DEV_GATE_PASSWORD.length < 12) {
-        warnings.push('DEV_GATE_PASSWORD is set but short — use a long random value.');
-    }
     if ((process.env.NEXT_PUBLIC_TURN_CREDENTIAL || process.env.NEXT_PUBLIC_TURN_USERNAME) && !process.env.TURN_STATIC_SECRET) {
         warnings.push(
             'NEXT_PUBLIC_TURN_* credentials ship in the JS bundle — move to TURN_URL + TURN_STATIC_SECRET ' +

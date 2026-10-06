@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
-import { API_BASE_URL, GATE_TOKEN_KEY } from '../lib/api';
 
-// Very simple dev lock for the auth pages. The typed password is verified
-// SERVER-side (POST /api/dev-gate/verify) and, on match, a time-boxed gate
-// token is stored alongside the local unlock flag. The token — not the
-// password — travels with signup/signin/OTP/Google requests while the gate
-// is enabled; registration surfaces enforce it (403 without it). Nothing
-// secret ships in the JS bundle.
+// Very simple dev lock for the auth pages. No backend involved: the typed
+// password is compared client-side against NEXT_PUBLIC_DEV_PASSWORD and,
+// on match, a flag in localStorage unlocks the real page.
+//
+// NOTE: this is obfuscation, not security — the expected value ships in the
+// JS bundle. It keeps casual visitors out during dev; the real backend auth
+// is untouched. For real protection, gate in middleware instead.
+
 const FLAG = 'buildrs-dev-unlocked';
 
 export default function DevGate({ title, children }) {
@@ -31,32 +32,27 @@ export default function DevGate({ title, children }) {
   if (!checked) return null;
   if (unlocked) return <>{children}</>;
 
+  const expected = process.env.NEXT_PUBLIC_DEV_PASSWORD || '';
+  const configured = expected.length > 0;
   const waitlistUrl = process.env.NEXT_PUBLIC_WAITLIST_URL || '/';
 
-  const submit = async (e) => {
+  const submit = (e) => {
     e.preventDefault();
     setError('');
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/dev-gate/verify`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: pass }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data.success && data.gateToken) {
-        try {
-          window.localStorage.setItem(FLAG, '1');
-          window.localStorage.setItem(GATE_TOKEN_KEY, data.gateToken);
-        } catch {
-          // storage unavailable — unlock for this tab only
-        }
-        setPass('');
-        setUnlocked(true);
-      } else {
-        setError(data.message || 'Wrong password. Try again.');
+    if (!configured) {
+      setError('Dev access is not configured on this deployment yet.');
+      return;
+    }
+    if (pass === expected) {
+      try {
+        window.localStorage.setItem(FLAG, '1');
+      } catch {
+        // storage unavailable — unlock for this tab only
       }
-    } catch {
-      setError('Could not reach the server. Try again.');
+      setPass('');
+      setUnlocked(true);
+    } else {
+      setError('Wrong password. Try again.');
     }
   };
 
