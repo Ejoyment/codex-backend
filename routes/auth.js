@@ -10,7 +10,6 @@ const Subscription = require('../models/Subscription');
 const rateLimit = require('express-rate-limit');
 const emailService = require('../utils/emailServiceResend');
 const { authenticateToken } = require('../middleware/auth');
-const { requireDevGate, devGateEnabled, isValidGateToken, tokenFromRequest } = require('../middleware/devGate');
 const { isLockedOut, recordFailure, clearLockout } = require('../models/AuthLockout');
 const { createTrialSubscription, getOrCreateSubscription } = require('../middleware/trial');
 
@@ -107,7 +106,7 @@ const generateToken = (userId) => {
  *         description: Invalid input or email already exists
  */
 // Sign Up
-router.post('/signup', authLimiter, requireDevGate, async (req, res) => {
+router.post('/signup', authLimiter, async (req, res) => {
     try {
         const { fullName, email, password } = req.body;
 
@@ -210,7 +209,7 @@ router.post('/signup', authLimiter, requireDevGate, async (req, res) => {
  *         description: Invalid credentials
  */
 // Sign In
-router.post('/signin', authLimiter, requireDevGate, async (req, res) => {
+router.post('/signin', authLimiter, async (req, res) => {
     try {
         const { email, password } = req.body;
 
@@ -335,15 +334,8 @@ router.post('/signin', authLimiter, requireDevGate, async (req, res) => {
  *         description: Redirect to Google OAuth
  */
 // Google OAuth
-router.get('/google', oauthLimiter, requireDevGate,
-    (req, res, next) => {
-        // Carry the gate proof through Google via OAuth state — plain query
-        // params do not survive the round trip.
-        const gateToken = tokenFromRequest(req);
-        const options = { scope: ['profile', 'email'] };
-        if (gateToken) options.state = gateToken;
-        passport.authenticate('google', options)(req, res, next);
-    }
+router.get('/google', oauthLimiter,
+    passport.authenticate('google', { scope: ['profile', 'email'] })
 );
 
 /**
@@ -364,14 +356,6 @@ router.get('/google', oauthLimiter, requireDevGate,
  *         description: Redirect to frontend with token
  */
 router.get('/google/callback',
-    (req, res, next) => {
-        // The /google initiation was already gated; re-check the proof here
-        // because the callback is directly reachable.
-        if (devGateEnabled() && !isValidGateToken(req.query.state)) {
-            return res.redirect(`${process.env.FRONTEND_URL || ''}/sign_in?error=dev-gate`);
-        }
-        next();
-    },
     passport.authenticate('google', { failureRedirect: '/sign_in' }),
     (req, res) => {
         // Generate token

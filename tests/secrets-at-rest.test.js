@@ -1,5 +1,5 @@
 /**
- * Rec 9 — secrets at rest + server-side TURN/dev-gate + boot validation.
+ * Rec 9 — secrets at rest + server-side TURN + boot validation.
  *
  * 1. secretCrypto: AES-256-GCM round trip, legacy passthrough, tamper
  *    rejection, explicit-key and derived-key modes.
@@ -25,7 +25,6 @@ const crypto = require('crypto');
 const mongoose = require('mongoose');
 
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret-for-automated-testing-32chars';
-delete process.env.DEV_GATE_PASSWORD;
 
 // Never wait on a database connection in this file.
 mongoose.set('bufferCommands', false);
@@ -55,15 +54,10 @@ const Company = require('../models/Company');
 const OTP = require('../models/OTP');
 const User = require('../models/User');
 const { validateBootConfig } = require('../utils/bootConfig');
-const devGate = require('../middleware/devGate');
-const { requireDevGate } = require('../middleware/devGate');
-const { devGateLimiter } = require('../middleware/rateLimits');
 
 const mcpRouter = require('../routes/mcp');
 const otpRouter = require('../routes/otp');
 const rtcRouter = require('../routes/rtc');
-const devGateRouter = require('../routes/dev-gate');
-const authRouter = require('../routes/auth');
 
 const OWNER_ID = '607f1f77bcf86cd799439011';
 const COMPANY_ID = '607f1f77bcf86cd799439022';
@@ -73,8 +67,6 @@ app.use(express.json());
 app.use('/api/mcp', mcpRouter);
 app.use('/api/otp', otpRouter);
 app.use('/api/rtc', rtcRouter);
-app.use('/api/dev-gate', devGateRouter);
-app.use('/api/auth', authRouter);
 
 const savedEnv = { ...process.env };
 afterEach(() => {
@@ -411,108 +403,6 @@ describe('/api/rtc/ice-servers', () => {
   });
 });
 
-describe('dev gate', () => {
-  test('disabled gate passes everything through', async () => {
-    delete process.env.DEV_GATE_PASSWORD;
-    const req = { headers: {}, query: {}, body: {} };
-    let nexted = false;
-    devGate.requireDevGate(req, {}, () => { nexted = true; });
-    expect(nexted).toBe(true);
-  });
-
-  test('minted tokens validate; expired/tampered/rotated do not', async () => {
-    process.env.DEV_GATE_PASSWORD = 'correct-horse-12345';
-    const good = devGate.mintGateToken();
-    expect(devGate.isValidGateToken(good)).toBe(true);
-    expect(devGate.isValidGateToken(devGate.mintGateToken(-1000))).toBe(false);
-    const flipped = good.slice(0, -1) + (good.endsWith('0') ? '1' : '0');
-    expect(flipped).not.toBe(good);
-    expect(devGate.isValidGateToken(flipped)).toBe(false);
-    expect(devGate.isValidGateToken('no-dot')).toBe(false);
-    process.env.DEV_GATE_PASSWORD = 'a-different-password';
-    expect(devGate.isValidGateToken(good)).toBe(false);
-  });
-
-  test('requireDevGate accepts header, cookie, and query proofs', async () => {
-    process.env.DEV_GATE_PASSWORD = 'correct-horse-12345';
-    const token = devGate.mintGateToken();
-    for (const req of [
-      { headers: { 'x-dev-gate': token }, query: {}, body: {} },
-      { headers: { cookie: `dev_gate=${token}` }, query: {}, body: {} },
-      { headers: {}, query: { gate_token: token }, body: {} },
-    ]) {
-      let nexted = false;
-      let status = null;
-      devGate.requireDevGate(req, { status: (s) => ({ json: () => { status = s; } }) }, () => { nexted = true; });
-      expect(nexted).toBe(true);
-      expect(status).toBe(null);
-    }
-    let nexted = false;
-    let status = null;
-    devGate.requireDevGate(
-      { headers: {}, query: {}, body: {} },
-      { status: (s) => ({ json: () => { status = s; } }) },
-      () => { nexted = true; }
-    );
-    expect(nexted).toBe(false);
-    expect(status).toBe(403);
-  });
-
-  test('POST /verify: 404 when unconfigured, 401 on wrong password, token on success', async () => {
-    delete process.env.DEV_GATE_PASSWORD;
-    let res = await request(app).post('/api/dev-gate/verify').send({ password: 'x' });
-    expect(res.status).toBe(404);
-
-    process.env.DEV_GATE_PASSWORD = 'correct-horse-12345';
-    res = await request(app).post('/api/dev-gate/verify').send({ password: 'nope' });
-    expect(res.status).toBe(401);
-
-    res = await request(app).post('/api/dev-gate/verify').send({ password: 'correct-horse-12345' });
-    expect(res.status).toBe(200);
-    expect(devGate.isValidGateToken(res.body.gateToken)).toBe(true);
-    expect(res.headers['set-cookie'].join(';')).toMatch(/dev_gate=/);
-  });
-
-  test('verify limiter is wired on the route', () => {
-    const layer = devGateRouter.stack.find((l) => l.route && l.route.path === '/verify');
-    expect(layer.route.stack.map((s) => s.handle)).toContain(devGateLimiter);
-  });
-
-  test('auth surfaces carry requireDevGate', () => {
-    const handlers = (router, method, path) => {
-      const layer = router.stack.find((l) => l.route && l.route.path === path && l.route.methods[method]);
-      expect(layer).toBeDefined();
-      return layer.route.stack.map((s) => s.handle);
-    };
-    expect(handlers(authRouter, 'post', '/signup')).toContain(requireDevGate);
-    expect(handlers(authRouter, 'post', '/signin')).toContain(requireDevGate);
-    expect(handlers(authRouter, 'get', '/google')).toContain(requireDevGate);
-  });
-
-  test('gated signup rejects without proof, passes with proof (gate on)', async () => {
-    process.env.DEV_GATE_PASSWORD = 'correct-horse-12345';
-    // No User stubbing needed: requireDevGate rejects before the handler runs.
-    const denied = await request(app).post('/api/auth/signup').send({
-      fullName: 'Gated', email: 'gated@example.com', password: 'long-enough-password',
-    });
-    expect(denied.status).toBe(403);
-
-    // NOTE: a full happy-path signup needs the User model + trial + email;
-    // the middleware composition (unit-tested above) plus this 403 proves
-    // the gate is enforced ahead of the handler.
-    const UserModel = require('../models/User');
-    jest.spyOn(UserModel, 'findOne').mockResolvedValue({ email: 'gated@example.com' });
-    const token = devGate.mintGateToken();
-    const dupe = await request(app)
-      .post('/api/auth/signup')
-      .set('x-dev-gate', token)
-      .send({ fullName: 'Gated', email: 'gated@example.com', password: 'long-enough-password' });
-    // Gate passed (existing-email branch proves the handler ran).
-    expect(dupe.status).toBe(400);
-    expect(dupe.body.message).toMatch(/already registered/i);
-  });
-});
-
 describe('validateBootConfig', () => {
   test('clean config passes', () => {
     process.env.MONGODB_URI = 'mongodb://localhost:27017/x';
@@ -538,13 +428,11 @@ describe('validateBootConfig', () => {
     expect(validateBootConfig().fatals.join(' ')).toMatch(/SECRET_ENCRYPTION_KEY/);
   });
 
-  test('half-moved secrets warn', () => {
+  test('half-moved TURN secrets warn', () => {
     process.env.MONGODB_URI = 'mongodb://localhost:27017/x';
     process.env.TURN_STATIC_SECRET = 's';
-    process.env.NEXT_PUBLIC_DEV_PASSWORD = 'hunter2';
     const { warnings, fatals } = validateBootConfig();
     expect(fatals).toEqual([]);
     expect(warnings.join(' ')).toMatch(/TURN_URL/);
-    expect(warnings.join(' ')).toMatch(/NEXT_PUBLIC_DEV_PASSWORD/);
   });
 });

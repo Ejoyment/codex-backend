@@ -6,7 +6,6 @@ const User = require('../models/User');
 const { sendOTPEmail, sendWelcomeEmail } = require('../utils/emailServiceResend');
 const rateLimit = require('express-rate-limit');
 const { isLockedOut: isLockedOutStore, recordFailure, clearLockout: clearLockoutStore } = require('../models/AuthLockout');
-const { requireDevGate } = require('../middleware/devGate');
 
 // Rate limiting for OTP requests
 const otpLimiter = rateLimit({
@@ -90,7 +89,7 @@ function hashesEqual(a, b) {
  *         description: Email already verified or rate limit exceeded
  */
 // Send OTP
-router.post('/send', otpLimiter, requireDevGate, async (req, res) => {
+router.post('/send', otpLimiter, async (req, res) => {
     try {
         const { email } = req.body;
 
@@ -185,7 +184,7 @@ router.post('/send', otpLimiter, requireDevGate, async (req, res) => {
  *         description: OTP not found
  */
 // Verify OTP
-router.post('/verify', requireDevGate, async (req, res) => {
+router.post('/verify', async (req, res) => {
     try {
         const { email, otp } = req.body;
 
@@ -332,7 +331,7 @@ router.post('/verify', requireDevGate, async (req, res) => {
  *         description: User not found
  */
 // Resend OTP
-router.post('/resend', otpLimiter, requireDevGate, async (req, res) => {
+router.post('/resend', otpLimiter, async (req, res) => {
     try {
         const { email } = req.body;
 
