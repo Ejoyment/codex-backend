@@ -154,10 +154,6 @@ async function startServer(port = process.env.PORT || 3000) {
       console.log('✓ Container Worker Service: Active');
     }
 
-    // Real-time event broadcaster for REST routes (profile updates, etc.)
-    const realTimeEvents = require('./utils/realTimeEvents');
-    realTimeEvents.setIO(socket);
-
     // Ephemeral sandbox provisioner (Instant Bug Handoff)
     const sandboxProvisioner = require('./utils/sandboxProvisioner');
     sandboxProvisioner.init(socket);

@@ -18,13 +18,13 @@ jest.mock('../models/Waitlist', () => ({
   find: jest.fn()
 }));
 
-jest.mock('../utils/emailService', () => ({
+jest.mock('../utils/emailServiceResend', () => ({
   sendWaitlistWelcomeEmail: jest.fn(),
   sendWaitlistReleaseEmail: jest.fn()
 }));
 
 const Waitlist = require('../models/Waitlist');
-const { sendWaitlistWelcomeEmail, sendWaitlistReleaseEmail } = require('../utils/emailService');
+const { sendWaitlistWelcomeEmail, sendWaitlistReleaseEmail } = require('../utils/emailServiceResend');
 const waitlistRoutes = require('../routes/waitlist');
 
 const app = express();

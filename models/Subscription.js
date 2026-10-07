@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { TIER_LIMITS, limitFor } = require('../utils/tierLimits');
 
 const subscriptionSchema = new mongoose.Schema({
     userId: {
@@ -133,87 +134,34 @@ subscriptionSchema.pre('save', function(next) {
 });
 
 subscriptionSchema.methods.getMonthlyCreditLimit = function() {
-    const limits = {
-        developer: 0,
-        pro: 20,
-        pro_plus: 70,
-        team_standard: 40,
-        team_premium: 200,
-        enterprise: null // custom
-    };
-    return limits[this.tier] ?? null;
+    return limitFor(this.tier, 'monthlyCredits');
 };
 
 subscriptionSchema.methods.getCloudComputeHours = function() {
-    const hours = {
-        developer: 0,
-        pro: 10,
-        pro_plus: 50,
-        team_standard: 25,
-        team_premium: 120,
-        enterprise: null // custom
-    };
-    return hours[this.tier] ?? null;
+    return limitFor(this.tier, 'cloudComputeHours');
 };
 
 subscriptionSchema.methods.getMaxConcurrentAgentJobs = function() {
-    const jobs = {
-        developer: 0,
-        pro: 1,
-        pro_plus: 3,
-        team_standard: 2,
-        team_premium: 5,
-        enterprise: null // custom / dedicated queue
-    };
-    return jobs[this.tier] ?? null;
+    return limitFor(this.tier, 'maxConcurrentAgentJobs');
 };
 
 subscriptionSchema.methods.getTaskTimeoutMinutes = function() {
-    const timeouts = {
-        developer: 5,
-        pro: 15,
-        pro_plus: 30,
-        team_standard: 30,
-        team_premium: 60,
-        enterprise: null // custom / no timeout
-    };
-    return timeouts[this.tier] ?? null;
+    return limitFor(this.tier, 'taskTimeoutMinutes');
 };
 
 subscriptionSchema.methods.getMaxDebugHostRooms = function() {
-    const rooms = {
-        developer: 0, // viewer only
-        pro: 1,
-        pro_plus: 3,
-        team_standard: Infinity,
-        team_premium: Infinity,
-        enterprise: Infinity // custom
-    };
-    return rooms[this.tier] ?? 0;
+    if (!TIER_LIMITS[this.tier]) return 0;
+    return limitFor(this.tier, 'maxDebugHostRooms');
 };
 
 subscriptionSchema.methods.getMaxDebugParticipants = function() {
-    const participants = {
-        developer: 0, // viewer only
-        pro: 2,
-        pro_plus: 4,
-        team_standard: 4,
-        team_premium: 8,
-        enterprise: Infinity // custom
-    };
-    return participants[this.tier] ?? 0;
+    if (!TIER_LIMITS[this.tier]) return 0;
+    return limitFor(this.tier, 'maxDebugParticipants');
 };
 
 subscriptionSchema.methods.getMaxActiveDeployments = function() {
-    const deployments = {
-        developer: 1,
-        pro: 3,
-        pro_plus: 10,
-        team_standard: 20,
-        team_premium: Infinity,
-        enterprise: Infinity // custom
-    };
-    return deployments[this.tier] ?? 1;
+    if (!TIER_LIMITS[this.tier]) return 1;
+    return limitFor(this.tier, 'maxActiveDeployments');
 };
 
 subscriptionSchema.methods.getSpecEngineLevel = function() {
@@ -253,33 +201,18 @@ subscriptionSchema.methods.hasFeature = function(featureName) {
 };
 
 subscriptionSchema.methods.canUseFeature = function(feature, context = {}) {
-    const tier = this.tier;
-    const limits = {
-        // Agent delegation limits
-        concurrentAgentJobs: {
-            developer: 0, pro: 1, pro_plus: 3, team_standard: 2, team_premium: 5, enterprise: null
-        },
-        taskTimeout: {
-            developer: 5, pro: 15, pro_plus: 30, team_standard: 30, team_premium: 60, enterprise: null
-        },
-        debugHostRooms: {
-            developer: 0, pro: 1, pro_plus: 3, team_standard: Infinity, team_premium: Infinity, enterprise: Infinity
-        },
-        debugParticipants: {
-            developer: 0, pro: 2, pro_plus: 4, team_standard: 4, team_premium: 8, enterprise: Infinity
-        },
-        activeDeployments: {
-            developer: 1, pro: 3, pro_plus: 10, team_standard: 20, team_premium: Infinity, enterprise: Infinity
-        },
-        cloudComputeHours: {
-            developer: 0, pro: 10, pro_plus: 50, team_standard: 25, team_premium: 120, enterprise: null
-        },
-        monthlyCredits: {
-            developer: 0, pro: 20, pro_plus: 70, team_standard: 40, team_premium: 200, enterprise: null
-        }
+    const featureKeys = {
+        concurrentAgentJobs: 'maxConcurrentAgentJobs',
+        taskTimeout: 'taskTimeoutMinutes',
+        debugHostRooms: 'maxDebugHostRooms',
+        debugParticipants: 'maxDebugParticipants',
+        activeDeployments: 'maxActiveDeployments',
+        cloudComputeHours: 'cloudComputeHours',
+        monthlyCredits: 'monthlyCredits',
     };
-
-    const limit = limits[feature]?.[tier];
+    const key = featureKeys[feature];
+    if (!key || !TIER_LIMITS[this.tier]) return false;
+    const limit = limitFor(this.tier, key);
     if (limit === null) return true; // unlimited/custom
     if (limit === 0) return false;
     return limit;

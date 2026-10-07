@@ -7,13 +7,14 @@ const crypto = require('crypto');
 const FLUTTERWAVE_SECRET = process.env.FLUTTERWAVE_SECRET_KEY;
 
 async function createCheckout({ userId, tier, amount, currency, interval }) {
+    // NOT IMPLEMENTED — full Flutterwave REST integration is rec 15 (needs
+    // sandbox testing before swap). Fail loudly instead of returning a dead
+    // paymentUrl (previously a typo'd frontend path that 404'd).
     return {
-        success: true,
+        success: false,
         provider: 'flutterwave',
-        message: 'Redirect user to Flutterwave payment page',
-        paymentUrl: `${process.env.FRONTEND_URL}/billing/fluterwave-checkout`,
-        amount,
-        currency: currency || 'NGN'
+        message: 'Flutterwave checkout is not available yet — please use card checkout',
+        code: 'PROVIDER_UNAVAILABLE',
     };
 }
 

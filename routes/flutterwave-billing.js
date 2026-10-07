@@ -324,7 +324,7 @@ router.post('/cancel', authenticateToken, async (req, res) => {
 
         res.json({
             success: true,
-            message: 'Subscription canceled successfully'
+            message: 'Subscription cancelled successfully'
         });
 
     } catch (error) {

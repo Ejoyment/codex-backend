@@ -208,7 +208,7 @@ class BillingScheduler {
     static async cancelUserCharges(userId) {
         const result = await BillingSchedule.updateMany(
             { userId, status: 'pending' },
-            { status: 'canceled' }
+            { status: 'cancelled' }
         );
         
         console.log(`Canceled ${result.modifiedCount} pending charges for user ${userId}`);

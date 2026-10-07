@@ -853,7 +853,6 @@ router.delete('/delete-account', authenticateToken, async (req, res) => {
             ['Standup', () => require('../models/Standup').deleteMany({ user: userId })],
             ['TeamActivity', () => require('../models/TeamActivity').deleteMany({ user: userId })],
             ['Message', () => require('../models/Message').deleteMany({ sender: userId })],
-            ['TeamChat', () => require('../models/TeamChat').deleteMany({ sender: userId })],
             ['DebugHandoff', () => require('../models/DebugHandoff').deleteMany({ createdBy: userId })],
             ['EphemeralSandbox', () => require('../models/EphemeralSandbox').deleteMany({ createdBy: userId })],
             ['DesignSyncSession', () => require('../models/DesignSyncSession').deleteMany({ createdBy: userId })]

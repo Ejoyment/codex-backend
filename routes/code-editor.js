@@ -6,7 +6,7 @@ const { getAllowedLanguages, isLanguageAllowed, getAllLanguagesWithStatus } = re
 const { addAuditLog } = require('../utils/auditLogService');
 const { trimToLast, MAX_VERSIONS } = require('../utils/retention');
 const vfs = require('../utils/virtualFileSystem');
-const { emitWorkspaceChange } = require('../utils/realTimeEvents');
+const { emitWorkspaceChange } = require('../utils/realtimeBus');
 // Shared tenant-isolation primitive (audit rec 7) — single enforced version.
 const {
     assertFileAccess,
