@@ -158,6 +158,11 @@ export const authApi = {
 };
 
 export const companyApi = {
+  create: (data) =>
+    apiFetch('/api/company/create', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
   getMyCompanies: async () => {
     const data = await apiFetch('/api/company/my-companies');
     return { ...data, companies: normalizeCompanies(data.companies) };

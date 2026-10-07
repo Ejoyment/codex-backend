@@ -1,4 +1,20 @@
 const mongoose = require('mongoose');
+const { encryptSecret, decryptSecret, isEncryptedSecret } = require('../utils/secretCrypto');
+
+// env/headers routinely carry Authorization tokens and API keys, so the whole
+// object is encrypted at rest (AES-256-GCM over its JSON). set encrypts on
+// write, get decrypts on read; legacy plaintext objects pass through until
+// their next write.
+function encryptSecretObject(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+    if (Object.keys(value).length === 0) return value;
+    return encryptSecret(JSON.stringify(value));
+}
+
+function decryptSecretObject(value) {
+    if (typeof value !== 'string' || !isEncryptedSecret(value)) return value;
+    return JSON.parse(decryptSecret(value));
+}
 
 const mcpServerSchema = new mongoose.Schema({
     company: {
@@ -34,11 +50,15 @@ const mcpServerSchema = new mongoose.Schema({
     }],
     env: {
         type: mongoose.Schema.Types.Mixed,
-        default: {}
+        default: {},
+        set: encryptSecretObject,
+        get: decryptSecretObject,
     },
     headers: {
         type: mongoose.Schema.Types.Mixed,
-        default: {}
+        default: {},
+        set: encryptSecretObject,
+        get: decryptSecretObject,
     },
     enabled: {
         type: Boolean,
@@ -63,6 +83,24 @@ const mcpServerSchema = new mongoose.Schema({
 }, {
     timestamps: true
 });
+
+// findOneAndUpdate-style writes bypass document setters — encrypt env/headers
+// centrally so no write path can store them in plaintext.
+function encryptSecretsInUpdate() {
+    const update = this.getUpdate();
+    if (!update) return;
+    for (const section of [update, update.$set, update.$setOnInsert]) {
+        if (!section || typeof section !== 'object') continue;
+        if (section.env !== undefined) section.env = encryptSecretObject(section.env);
+        if (section.headers !== undefined) section.headers = encryptSecretObject(section.headers);
+    }
+}
+for (const hook of ['findOneAndUpdate', 'updateOne', 'updateMany']) {
+    mcpServerSchema.pre(hook, function (next) {
+        encryptSecretsInUpdate.call(this);
+        next();
+    });
+}
 
 mcpServerSchema.index({ company: 1, createdAt: -1 });
 

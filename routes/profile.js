@@ -5,7 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const User = require('../models/User');
 const { authenticateToken } = require('../middleware/auth');
-const realTimeEvents = require('../utils/realTimeEvents');
+const realtimeBus = require('../utils/realtimeBus');
 
 // Configure multer for file upload
 const storage = multer.diskStorage({
@@ -91,7 +91,7 @@ router.post('/picture', authenticateToken, upload.single('profilePicture'), asyn
         user.profilePicture = '/uploads/profiles/' + req.file.filename;
         await user.save();
         
-        realTimeEvents.emitProfileUpdate(user._id.toString(), {
+        realtimeBus.emitProfileUpdate(user._id.toString(), {
             profilePicture: user.profilePicture
         });
         
@@ -189,7 +189,7 @@ router.put('/', authenticateToken, async (req, res) => {
             onboardingCompleted: user.onboardingCompleted
         };
         
-        realTimeEvents.emitProfileUpdate(user._id.toString(), profileData);
+        realtimeBus.emitProfileUpdate(user._id.toString(), profileData);
         
         res.json({
             success: true,

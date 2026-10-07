@@ -84,3 +84,9 @@ QUICK_ADD_RESEND_KEY.txt
 # Temporary Node 24 bump — do not push to main (see TEMP_NEXT_BUMP.txt)
 TEMP_NEXT_BUMP.txt
 buildrs-frontend/NEXT_BUMP_NOTE.txt
+
+# Local debug artifacts (may contain captured secrets)
+temp/
+
+# Audit workbench (5MB+ reports/graphs, local only — see PR #27)
+docs/audit/

@@ -3,6 +3,7 @@ const aiRouterService = require('./aiRouterService');
 const sddVerificationService = require('./sddVerificationService');
 const realtimeBus = require('./realtimeBus');
 const AgentExecution = require('../models/AgentExecution');
+const { slicedPush, MAX_AGENT_LOG } = require('./retention');
 const { executionId, taskId, workspaceId, specIds = [], provider, localPrivacyMode } = workerData;
 
 async function runAgent() {
@@ -84,27 +85,27 @@ async function runAgent() {
         plan: planMatch?.[0] || '',
         validationResult: sddResult,
         completedAt: new Date(),
-        logs: [...execution.logs, { timestamp: new Date(), message: 'Agent execution completed, awaiting approval' }],
-        $push: { terminalLog: { timestamp: new Date(), type: 'complete', message: 'Agent response and spec checks completed' } },
+        logs: [...execution.logs, { timestamp: new Date(), message: 'Agent execution completed, awaiting approval' }].slice(-MAX_AGENT_LOG),
+        $push: { terminalLog: slicedPush({ timestamp: new Date(), type: 'complete', message: 'Agent response and spec checks completed' }, MAX_AGENT_LOG) },
       });
 
       parentPort.postMessage({ type: 'complete', result });
     } else {
       await AgentExecution.findByIdAndUpdate(executionId, {
         status: 'failed',
-        logs: [...execution.logs, { timestamp: new Date(), message: `Agent execution failed: ${result.error}` }],
+        logs: [...execution.logs, { timestamp: new Date(), message: `Agent execution failed: ${result.error}` }].slice(-MAX_AGENT_LOG),
       });
       parentPort.postMessage({ type: 'error', error: result.error });
     }
   } catch (error) {
-    await AgentExecution.findByIdAndUpdate(executionId, {
-      status: 'failed',
-      completedAt: new Date(),
-      $push: {
-        logs: { timestamp: new Date(), message: `Agent worker error: ${error.message}` },
-        terminalLog: { timestamp: new Date(), type: 'error', message: error.message },
-      },
-    });
+      await AgentExecution.findByIdAndUpdate(executionId, {
+        status: 'failed',
+        completedAt: new Date(),
+        $push: {
+          logs: slicedPush({ timestamp: new Date(), message: `Agent worker error: ${error.message}` }, MAX_AGENT_LOG),
+          terminalLog: slicedPush({ timestamp: new Date(), type: 'error', message: error.message }, MAX_AGENT_LOG),
+        },
+      });
     parentPort.postMessage({ type: 'error', error: error.message });
   }
 }

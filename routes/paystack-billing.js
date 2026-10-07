@@ -342,7 +342,7 @@ router.post('/cancel', authenticateToken, async (req, res) => {
 
         res.json({
             success: true,
-            message: 'Subscription canceled successfully. You have been downgraded to the Free tier.',
+            message: 'Subscription cancelled successfully. You have been downgraded to the Free tier.',
             subscription: {
                 tier: subscription.tier,
                 status: subscription.status,

@@ -113,19 +113,21 @@ function verifyPaystack(req, { secret = process.env.PAYSTACK_SECRET_KEY } = {}) 
 }
 
 /**
- * Verify a Flutterwave webhook using the FLW- signature header, which is a
- * simple secret comparison rather than an HMAC.
+ * Verify a Flutterwave webhook, which is a simple secret comparison rather
+ * than an HMAC. Flutterwave's current header is `verif-hash`; older
+ * integrations used `flw-signature` — accept either (the sweep-3 header
+ * disagreement meant webhooks on the other header failed closed).
  */
 function verifyFlutterwave(req, { secret = process.env.FLUTTERWAVE_WEBHOOK_HASH } = {}) {
     if (!secret) {
         return { verified: false, reason: 'FLUTTERWAVE_WEBHOOK_HASH is not configured' };
     }
-    const signature = req.headers['flw-signature'];
+    const signature = req.headers['verif-hash'] || req.headers['flw-signature'];
     if (!signature) {
-        return { verified: false, reason: 'Missing flw-signature header' };
+        return { verified: false, reason: 'Missing verif-hash header' };
     }
     if (!safeEquals(secret, signature)) {
-        return { verified: false, reason: 'Invalid flw-signature' };
+        return { verified: false, reason: 'Invalid webhook signature' };
     }
     return { verified: true, event: req.body };
 }

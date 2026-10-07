@@ -215,7 +215,7 @@ class PaystackScheduler {
     static async cancelUserCharges(userId) {
         await BillingSchedule.updateMany(
             { userId, status: 'pending' },
-            { status: 'canceled', canceledAt: new Date() }
+            { status: 'cancelled', cancelledAt: new Date() }
         );
         console.log(`✓ Canceled all pending charges for user ${userId}`);
     }

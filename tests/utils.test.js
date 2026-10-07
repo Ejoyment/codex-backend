@@ -80,7 +80,7 @@ describe('Utils - all modules load correctly', () => {
     // mid-edit (ended on a bare `this`), so it failed to parse. Nothing imported
     // it, and this test swallowed the require error, hiding the breakage.
     'hitlGates',
-    'emailService',
+    'emailServiceResend',
     'virtualFileSystem',
     'sandboxSecurity',
     'terminalService',

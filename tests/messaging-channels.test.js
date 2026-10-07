@@ -28,6 +28,11 @@ jest.doMock('../models/Company', () => ({
     findById: jest.fn(() => ({
         select: () => Promise.resolve({ members: [{ user: { toString: () => USER } }] }),
     })),
+    // userIsCompanyMember (rec 7: channel-company check on POST /messages)
+    // chains .select('_id').lean()
+    findOne: jest.fn(() => ({
+        select: () => ({ lean: async () => ({ _id: COMPANY }) }),
+    })),
 }));
 
 const app = express();

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { X, Terminal, CheckCircle, Loader2, AlertTriangle } from 'lucide-react';
+import { X, Terminal, CheckCircle, Loader2, AlertTriangle, FileDiff } from 'lucide-react';
 import { useXterm } from '../hooks/useXterm';
 
 let io;
@@ -81,7 +81,7 @@ export default function LiveExecutionDrawer({ taskId, isOpen, onClose, execution
 
   const tabs = [
     { id: 'terminal', label: 'Terminal', icon: Terminal },
-    { id: 'diff', label: 'Diff', icon: CodeDiff },
+    { id: 'diff', label: 'Diff', icon: FileDiff },
     { id: 'validation', label: 'Validation', icon: CheckCircle },
   ];
 

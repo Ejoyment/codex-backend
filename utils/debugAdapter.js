@@ -447,6 +447,20 @@ class DebugAdapter extends EventEmitter {
     }
 
     /**
+     * Get a session only if it belongs to the caller (audit rec 7).
+     * Returns the raw session, or null when missing OR foreign — every
+     * route must gate on this, since session IDs are guessable
+     * (`debug_<counter>_<timestamp>`) and drive live processes.
+     */
+    getOwnedSession(sessionId, userId) {
+        const session = this.sessions.get(sessionId);
+        if (!session || String(session.userId) !== String(userId)) {
+            return null;
+        }
+        return session;
+    }
+
+    /**
      * Get all active sessions for a user
      */
     getUserSessions(userId) {
