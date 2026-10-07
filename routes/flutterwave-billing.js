@@ -27,12 +27,12 @@ const FlutterwaveScheduler = require('../utils/flutterwaveScheduler');
  */
 router.post('/initialize', authenticateToken, async (req, res) => {
     try {
-        // Check if Flutterwave is configured
-        if (!process.env.FLUTTERWAVE_PUBLIC_KEY || !process.env.FLUTTERWAVE_SECRET_KEY) {
+        // Check if Flutterwave is configured (direct REST needs only the secret key)
+        if (!process.env.FLUTTERWAVE_SECRET_KEY) {
             return res.status(503).json({
                 success: false,
                 message: 'Flutterwave payment service is not configured',
-                error: 'Please set FLUTTERWAVE_PUBLIC_KEY and FLUTTERWAVE_SECRET_KEY environment variables'
+                error: 'Please set FLUTTERWAVE_SECRET_KEY environment variable'
             });
         }
 
@@ -116,12 +116,12 @@ router.post('/initialize', authenticateToken, async (req, res) => {
  */
 router.post('/verify', authenticateToken, async (req, res) => {
     try {
-        // Check if Flutterwave is configured
-        if (!process.env.FLUTTERWAVE_PUBLIC_KEY || !process.env.FLUTTERWAVE_SECRET_KEY) {
+        // Check if Flutterwave is configured (direct REST needs only the secret key)
+        if (!process.env.FLUTTERWAVE_SECRET_KEY) {
             return res.status(503).json({
                 success: false,
                 message: 'Flutterwave payment service is not configured',
-                error: 'Please set FLUTTERWAVE_PUBLIC_KEY and FLUTTERWAVE_SECRET_KEY environment variables'
+                error: 'Please set FLUTTERWAVE_SECRET_KEY environment variable'
             });
         }
 

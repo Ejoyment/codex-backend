@@ -4,14 +4,9 @@
  * Replaces `npm audit --audit-level=high` so a single unfixable advisory
  * can't permanently red the build while still failing on everything else.
  *
- * ACCEPTED (does NOT fail the build):
- * - GHSA-86w9-cpqp-85rv (node-forge RSA PKCS#1 v1.5 verify, via
- *   flutterwave-node-v3): "No fix available" — installed 1.4.0 IS the latest
- *   published version and flutterwave-node-v3@latest still pins node-forge.
- *   The dep is live (routes/flutterwave-billing.js + checkout provider), so
- *   removal is not an option. Planned end-state: replace the SDK with direct
- *   Flutterwave REST calls (see docs/audit/recommendations.md). Revisit this
- *   exception when that rewrite lands or an upstream fix is published.
+ * ACCEPTED (does NOT fail the build): none currently. The former
+ * GHSA-86w9-cpqp-85rv exception (node-forge via flutterwave-node-v3) was
+ * retired when rec 15 replaced the SDK with direct Flutterwave REST calls.
  *
  * Everything else at high/critical severity fails the build.
  *
@@ -20,7 +15,7 @@
 const { execFileSync } = require('child_process');
 
 const ACCEPTED = new Set([
-  'GHSA-86W9-CPQP-85RV', // compare upper-cased (advisory IDs are case-insensitive)
+  // empty: add advisory IDs here only with a dated reason + planned end-state
 ]);
 
 function runAudit() {
