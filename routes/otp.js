@@ -32,8 +32,21 @@ const generateOTP = () => {
     return crypto.randomInt(100000, 1000000).toString();
 };
 
-// Store/compare only the sha256 hex of the OTP code
+// Store/compare only the HMAC of the OTP code. A plain unsalted hash of a
+// 6-digit code falls to brute force in milliseconds once the DB leaks, so the
+// digest is keyed with a server-side pepper (dedicated OTP_PEPPER, falling
+// back to JWT_SECRET which is fail-fast required at boot).
+function otpPepper() {
+    return process.env.OTP_PEPPER || process.env.JWT_SECRET || '';
+}
+
 function hashOTP(code) {
+    return crypto.createHmac('sha256', otpPepper()).update(String(code)).digest('hex');
+}
+
+// Pre-pepper rows (plain sha256) are still accepted until their 10-minute TTL
+// expires — see the verify handler below.
+function hashOTPLegacy(code) {
     return crypto.createHash('sha256').update(String(code)).digest('hex');
 }
 
@@ -229,7 +242,7 @@ router.post('/verify', async (req, res) => {
         }
 
         // Verify OTP (constant-time comparison of sha256 hashes)
-        if (!hashesEqual(otpRecord.otp, hashOTP(otp))) {
+        if (!hashesEqual(otpRecord.otp, hashOTP(otp)) && !hashesEqual(otpRecord.otp, hashOTPLegacy(otp))) {
             otpRecord.attempts += 1;
             await otpRecord.save();
             await recordFailedAttempt(email.toLowerCase());
@@ -385,3 +398,7 @@ router.post('/resend', otpLimiter, async (req, res) => {
 });
 
 module.exports = router;
+// Exported for unit tests (pepper determinism, legacy fallback).
+module.exports.hashOTP = hashOTP;
+module.exports.hashOTPLegacy = hashOTPLegacy;
+module.exports.hashesEqual = hashesEqual;

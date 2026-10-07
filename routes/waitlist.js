@@ -6,7 +6,7 @@ const Waitlist = require('../models/Waitlist');
 const {
     sendWaitlistWelcomeEmail,
     sendWaitlistReleaseEmail
-} = require('../utils/emailService');
+} = require('../utils/emailServiceResend');
 
 // Basic shape check; full RFC 5322 is not worth the false negatives here.
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;

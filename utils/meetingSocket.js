@@ -1,7 +1,40 @@
 // Meeting Socket.IO Handler - WebRTC Signaling Server
 const jwt = require('jsonwebtoken');
 const MeetingRoom = require('../models/MeetingRoom');
+const MeetingOverlay = require('../models/MeetingOverlay');
 const User = require('../models/User');
+// Tenant isolation (audit rec 7): joining is the choke point — receivers get
+// peer lists + all room broadcasts, so roomId must be authorized, not just
+// well-formed. Mirrors the REST overlay-join access modes.
+const { userIsCompanyMember } = require('../middleware/workspaceAccess');
+
+// True when userId may join the call for roomId (host, invited participant,
+// company member, or overlay access-mode grant). False otherwise.
+async function canJoinRoom(roomId, userId) {
+    const meeting = await MeetingRoom.findOne({ roomId });
+    if (!meeting) return { allowed: false, reason: 'Meeting not found' };
+    const uid = String(userId);
+    if (meeting.host && String(meeting.host) === uid) return { allowed: true, meeting };
+    if ((meeting.participants || []).some(p => p.user && String(p.user) === uid)) {
+        return { allowed: true, meeting };
+    }
+    if (meeting.company && await userIsCompanyMember(meeting.company, userId)) {
+        return { allowed: true, meeting };
+    }
+    const overlay = await MeetingOverlay.findOne({ meetingId: meeting._id, status: 'active' });
+    if (overlay) {
+        const mode = overlay.access?.mode || 'company';
+        if (overlay.hostUserId && String(overlay.hostUserId) === uid) return { allowed: true, meeting };
+        if (mode === 'public') return { allowed: true, meeting };
+        if (mode === 'invited' && (overlay.access?.invitedUserIds || []).some(id => String(id) === uid)) {
+            return { allowed: true, meeting };
+        }
+        if (mode === 'company' && overlay.companyId && await userIsCompanyMember(overlay.companyId, userId)) {
+            return { allowed: true, meeting };
+        }
+    }
+    return { allowed: false, reason: 'Access denied' };
+}
 
 module.exports = (io) => {
     const meetingNamespace = io.of('/meeting');
@@ -34,6 +67,27 @@ module.exports = (io) => {
         
         // Join user-specific room for targeted real-time updates (profile changes, etc.)
         socket.join(`user:${socket.userId}`);
+
+        // Cross-room spoof guard: every signaling/chat/whiteboard event trusts
+        // a client-supplied roomId. A socket that never joined a room could
+        // inject chat, signals, and reactions into any call (and impersonate
+        // presence). Drop any packet whose roomId isn't the joined room.
+        // join-room itself is exempt — it establishes socket.roomId.
+        // NOTE: packet-middleware errors do NOT reach the client, so notify
+        // explicitly and drop by returning without next().
+        socket.use(([event, payload], next) => {
+            try {
+                const rid = payload && payload.roomId;
+                if (event !== 'join-room' && typeof rid === 'string' && rid !== socket.roomId) {
+                    socket.emit('error', { message: 'Not in this room' });
+                    return;
+                }
+            } catch (e) {
+                socket.emit('error', { message: 'Invalid packet' });
+                return;
+            }
+            next();
+        });
         
         // Join room
         socket.on('join-room', async ({ roomId }) => {
@@ -50,6 +104,16 @@ module.exports = (io) => {
 
                 if (!roomId || typeof roomId !== 'string' || roomId.length > 128) {
                     socket.emit('error', { message: 'Invalid room id' });
+                    return;
+                }
+
+                // Tenant isolation: anyone authenticated could join any call
+                // and receive peer lists + all broadcasts. Unknown rooms are
+                // denied too — the page loads the meeting over REST first, so
+                // a joinable call always has a DB row.
+                const access = await canJoinRoom(roomId, userId);
+                if (!access.allowed) {
+                    socket.emit('error', { message: access.reason || 'Access denied' });
                     return;
                 }
 
@@ -335,11 +399,26 @@ module.exports = (io) => {
         socket.on('meeting-ended', async ({ roomId }) => {
             try {
                 const meeting = await MeetingRoom.findOne({ roomId });
-                if (meeting) {
-                    meeting.status = 'completed';
-                    meeting.endedAt = new Date();
-                    await meeting.save();
+                if (!meeting) {
+                    socket.emit('error', { message: 'Meeting not found' });
+                    return;
                 }
+                // Previously anyone could end anyone's meeting. Hosts only
+                // (meeting host or fronting overlay host).
+                const isHost = meeting.host && String(meeting.host) === String(socket.userId);
+                let isOverlayHost = false;
+                if (!isHost) {
+                    const overlay = await MeetingOverlay.findOne({ meetingId: meeting._id, status: 'active' });
+                    isOverlayHost = !!overlay && !!overlay.hostUserId &&
+                        String(overlay.hostUserId) === String(socket.userId);
+                }
+                if (!isHost && !isOverlayHost) {
+                    socket.emit('error', { message: 'Only host can end meeting' });
+                    return;
+                }
+                meeting.status = 'completed';
+                meeting.endedAt = new Date();
+                await meeting.save();
                 meetingNamespace.to(roomId).emit('meeting-ended');
                 console.log(`Meeting ended for room: ${roomId}`);
             } catch (error) {

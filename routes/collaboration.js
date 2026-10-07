@@ -12,6 +12,8 @@ const TeamProject = require('../models/TeamProject');
 const TeamTask = require('../models/TeamTask');
 const collaborationService = require('../utils/collaborationService');
 const { notifyTaskAssigned } = require('../utils/notificationTriggers');
+// Tenant isolation (audit rec 7): file collab leaks presence + live edit ops.
+const { assertFileAccess } = require('../middleware/workspaceAccess');
 
 const ensureCompanyMember = async (req, res, next) => {
     try {
@@ -62,10 +64,8 @@ router.get('/file/:fileId/users', authenticateToken, async (req, res) => {
         
         // Verify user has access to file
         const file = await CodeFile.findById(fileId);
-        if (!file) {
-            return res.status(404).json({ success: false, message: 'File not found' });
-        }
-        
+        if (!(await assertFileAccess(file, req.userId, res))) return;
+
         const users = collaborationService.getActiveUsers(fileId);
         
         res.json({
@@ -109,10 +109,8 @@ router.post('/file/:fileId/join', authenticateToken, async (req, res) => {
         
         // Verify user has access to file
         const file = await CodeFile.findById(fileId);
-        if (!file) {
-            return res.status(404).json({ success: false, message: 'File not found' });
-        }
-        
+        if (!(await assertFileAccess(file, req.userId, res))) return;
+
         // Load document
         await collaborationService.loadDocument(fileId);
         

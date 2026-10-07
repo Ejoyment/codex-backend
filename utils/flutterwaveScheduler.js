@@ -206,7 +206,7 @@ async function cancelUserCharges(userId) {
     try {
         const result = await BillingSchedule.updateMany(
             { userId, status: 'pending' },
-            { status: 'canceled' }
+            { status: 'cancelled' }
         );
 
         console.log(`✓ Canceled ${result.modifiedCount} pending charges for user ${userId}`);

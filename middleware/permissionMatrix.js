@@ -10,6 +10,10 @@ const CodeFile = require('../models/CodeFile');
 const Company = require('../models/Company');
 const { getOrCreateSubscription } = require('./trial');
 const { TIERS, LEGACY_TIER_MAP, canonicalTier } = require('../utils/tierNames');
+// Shared tenant-isolation primitive (audit rec 7) — the resource checks
+// below previously hand-rolled field names that don't exist on the models
+// (file.companyId, user.currentCompany), silently mis-deciding.
+const { userCanAccessFile } = require('./workspaceAccess');
 
 const ALL_TIERS = [...TIERS];
 const PAID_TIERS = TIERS.filter((t) => t !== 'developer');
@@ -194,11 +198,11 @@ class PermissionMatrix {
           if (!file) {
             return { allowed: false, reason: 'File not found' };
           }
-          
-          // Check if file belongs to user's workspace
-          const fc = file.companyId ? String(file.companyId) : null;
-          const uc = user.currentCompany ? String(user.currentCompany) : null;
-          if (!fc || !uc || fc !== uc) {
+
+          // Canonical check: creator, collaborator, or company owner/member.
+          // (Was: file.companyId vs user.currentCompany — neither field
+          // exists, so this branch could never allow anyone.)
+          if (!(await userCanAccessFile(file, user._id))) {
             return {
               allowed: false,
               reason: 'Access denied: File not in your workspace'
@@ -212,7 +216,10 @@ class PermissionMatrix {
             return { allowed: false, reason: 'Workspace not found' };
           }
           
-          // Check if user is member (Company schema uses members[].user; handle legacy members[].userId defensively)
+          // Check membership (Company schema uses members[].user; handle legacy
+          // members[].userId defensively). Owners are always members — omitting
+          // them 403'd owners on their own workspaces.
+          const isOwner = company.owner && String(company.owner) === String(user._id);
           const isMember = company.members.some(m => {
             try {
               const id = m?.user || m?.userId;
@@ -222,7 +229,7 @@ class PermissionMatrix {
             }
           });
           
-          if (!isMember) {
+          if (!isOwner && !isMember) {
             return {
               allowed: false,
               reason: 'Access denied: Not a workspace member'
@@ -278,8 +285,18 @@ class PermissionMatrix {
 
       switch (limitType) {
         case 'maxFiles':
+          // Was: countDocuments({ companyId: user.currentCompany }) — neither
+          // the field (CodeFile uses `company`) nor user.currentCompany exist,
+          // so usage was always 0 and file-count limits never enforced.
+          // Count files in all of the user's workspaces plus self-created ones.
+          const owned = await Company.find({
+            $or: [{ owner: userId }, { 'members.user': userId }]
+          }).select('_id').lean();
           currentUsage = await CodeFile.countDocuments({
-            companyId: user.currentCompany
+            $or: [
+              { company: { $in: owned.map(c => c._id) } },
+              { createdBy: userId }
+            ]
           });
           break;
 

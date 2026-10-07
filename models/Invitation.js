@@ -68,16 +68,19 @@ const invitationSchema = new mongoose.Schema({
 invitationSchema.index({ email: 1, company: 1 });
 
 invitationSchema.index({ status: 1 });
-invitationSchema.index({ expiresAt: 1 });
+// TTL: rows die when expiresAt (default +7d) passes. Membership itself
+// lives on Company.members, so reaping old invitations loses no access.
+invitationSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 // Check if invitation is expired
 invitationSchema.methods.isExpired = function() {
     return this.expiresAt < new Date() || this.status === 'expired';
 };
 
-// Mark as expired
+// Mark as expired (also pulls expiresAt forward so the TTL reaps promptly).
 invitationSchema.methods.markExpired = function() {
     this.status = 'expired';
+    this.expiresAt = new Date();
     return this.save();
 };
 

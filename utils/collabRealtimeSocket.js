@@ -7,6 +7,11 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const CollaborationSession = require('../models/CollaborationSession');
 const DesignSyncSession = require('../models/DesignSyncSession');
+const EphemeralSandbox = require('../models/EphemeralSandbox');
+// Tenant isolation (audit rec 7): join is the choke point — joiners receive
+// peer lists, cursors, and live design-code sync, so an existing sessionId
+// must be authorized, not merely known.
+const { userIsCompanyMember } = require('../middleware/workspaceAccess');
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
 let colorIndex = 0;
@@ -41,22 +46,64 @@ module.exports = (io) => {
         socket.on('agent:join', () => socket.join(`agent:${socket.userId}`));
         socket.on('agent:leave', () => socket.leave(`agent:${socket.userId}`));
 
+        // Cross-session spoof guard: awareness/audio/design events trust a
+        // client-supplied sessionId and `socket.to(room)` / `ns.to(room)`
+        // deliver without the sender having joined. Require every
+        // sessionId-scoped packet to target a session this socket joined
+        // (join is where access is authorized). session:join establishes
+        // membership, so it is exempt. Errors must be emitted explicitly —
+        // packet-middleware errors never reach the client.
+        socket.use(([event, payload], next) => {
+            try {
+                const sid = payload && payload.sessionId;
+                if (event !== 'session:join' && typeof sid === 'string' && !joinedSessions.has(sid)) {
+                    socket.emit('error', { message: 'Not in this session' });
+                    return;
+                }
+            } catch (e) {
+                socket.emit('error', { message: 'Invalid packet' });
+                return;
+            }
+            next();
+        });
+
         async function upsertSession(sessionId, type, contextRef, companyId) {
             let session;
             if (sessionId) {
                 session = await CollaborationSession.findOne({ sessionId });
             }
-            if (!session) {
-                sessionId = sessionId || `col_${crypto.randomBytes(8).toString('hex')}`;
-                session = await CollaborationSession.create({
-                    sessionId,
-                    type: type || 'editor',
-                    contextRef: contextRef || null,
-                    companyId: companyId || null,
-                    createdBy: socket.userId,
-                    audioChannelId: `audio_${sessionId}`
-                });
+            if (session) {
+                // Existing session: only the creator, a current participant,
+                // or a member of its company may (re)join. Everyone else is
+                // 'Access denied' — knowing a sessionId grants nothing.
+                const uid = String(socket.userId);
+                const isCreator = session.createdBy && String(session.createdBy) === uid;
+                const isParticipant = (session.participants || [])
+                    .some(p => p.userId?.toString?.() === uid);
+                if (isCreator || isParticipant) return session;
+                if (session.companyId && await userIsCompanyMember(session.companyId, socket.userId)) {
+                    return session;
+                }
+                const denied = new Error('Access denied');
+                denied.code = 'FORBIDDEN';
+                throw denied;
             }
+            // New session: if it claims a company, the creator must belong to it
+            // (prevents stamping foreign companyIds onto attacker-owned rows).
+            if (companyId && !(await userIsCompanyMember(companyId, socket.userId))) {
+                const denied = new Error('Access denied');
+                denied.code = 'FORBIDDEN';
+                throw denied;
+            }
+            sessionId = sessionId || `col_${crypto.randomBytes(8).toString('hex')}`;
+            session = await CollaborationSession.create({
+                sessionId,
+                type: type || 'editor',
+                contextRef: contextRef || null,
+                companyId: companyId || null,
+                createdBy: socket.userId,
+                audioChannelId: `audio_${sessionId}`
+            });
             return session;
         }
 
@@ -158,14 +205,15 @@ module.exports = (io) => {
             if (session) await broadcastPresence(session);
         });
 
-        // Inline audio WebRTC signaling scoped to a session.
-        socket.on('audio:signal', ({ sessionId, to, data }) => {
+        // Inline audio WebRTC signaling scoped to a session. The packet guard
+        // requires sessionId membership. The former unscoped `{ to }` fallback
+        // (signal any user directly) was removed — undocumented, unconsumed by
+        // any client, and a cross-user injection vector.
+        socket.on('audio:signal', ({ sessionId, data }) => {
             if (sessionId) {
                 socket.to(`session:${sessionId}`).emit('audio:signal', {
                     from: socket.userId, sessionId, data
                 });
-            } else if (to) {
-                ns.to(`user:${to}`).emit('audio:signal', { from: socket.userId, data });
             }
         });
 
@@ -193,12 +241,43 @@ module.exports = (io) => {
             } catch (err) { console.error('session:leave error', err.message); }
         });
 
-        // Generic room join (used by ephemeral sandbox viewers to receive status).
-        socket.on('room:join', ({ room }) => {
-            if (room) socket.join(room);
+        // Ephemeral sandbox viewers join `sandbox:<key>` to receive status.
+        // This used to accept ANY room string — including `agent:<userId>`
+        // (live agent progress goes there via realtimeBus) and `session:*`.
+        // Only sandbox rooms are joinable, and only with DB-backed access
+        // (owner or company member of the sandbox).
+        socket.on('room:join', async ({ room } = {}) => {
+            try {
+                if (typeof room !== 'string' || !room || room.length > 160) return;
+                if (!room.startsWith('sandbox:')) {
+                    socket.emit('error', { message: 'Access denied' });
+                    return;
+                }
+                const key = room.slice('sandbox:'.length);
+                const sandbox = await EphemeralSandbox.findOne({ sandboxKey: key });
+                if (!sandbox) {
+                    socket.emit('error', { message: 'Sandbox not found' });
+                    return;
+                }
+                if (sandbox.status === 'expired') {
+                    socket.emit('error', { message: 'Sandbox expired' });
+                    return;
+                }
+                const uid = String(socket.userId);
+                const isOwner = sandbox.createdBy && String(sandbox.createdBy) === uid;
+                if (!isOwner && !(sandbox.companyId && await userIsCompanyMember(sandbox.companyId, socket.userId))) {
+                    socket.emit('error', { message: 'Access denied' });
+                    return;
+                }
+                socket.join(room);
+                socket.emit('room:joined', { room });
+            } catch (err) {
+                console.error('room:join error', err.message);
+                socket.emit('error', { message: 'Access denied' });
+            }
         });
-        socket.on('room:leave', ({ room }) => {
-            if (room) socket.leave(room);
+        socket.on('room:leave', ({ room } = {}) => {
+            if (typeof room === 'string' && room.startsWith('sandbox:')) socket.leave(room);
         });
 
         socket.on('disconnect', async () => {

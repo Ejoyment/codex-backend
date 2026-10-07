@@ -69,6 +69,11 @@ export function useAuth() {
     setError(null);
     try {
       const data = await authApi.getMe();
+      // The user may have logged out (or logged in as someone else) while
+      // this request was in flight — never persist a stale user afterwards.
+      if (useAuthStore.getState().token !== token) {
+        return null;
+      }
       if (data.user) {
         useAuthStore.setState({ user: data.user });
         if (typeof window !== 'undefined') {

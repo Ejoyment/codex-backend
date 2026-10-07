@@ -1,4 +1,5 @@
 const express = require('express');
+const { aiChatLimiter } = require('../middleware/rateLimits');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const aiService = require('../utils/aiService');
@@ -593,7 +594,7 @@ router.get('/session/:sessionId', authenticateToken, async (req, res) => {
  *                   type: object
  */
 // Chat with AI (Enhanced with ReAct Agent Loop)
-router.post('/chat', authenticateToken, checkAILimits, async (req, res) => {
+router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req, res) => {
     try {
         const { sessionId, message, codeContext, enableActions = false, useAgentLoop = false, companyId } = req.body;
         

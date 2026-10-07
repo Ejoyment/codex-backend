@@ -34,7 +34,7 @@ async function createCheckout({ userId, tier, amount, currency, interval, custom
             quantity: 1
         }],
         metadata: { tier, userId, interval: interval || 'monthly', ...(metadata || {}) },
-        success_url: `${process.env.FRONTEND_URL}/payment/success`,
+        success_url: `${process.env.FRONTEND_URL}/payment-success`,
         cancel_url: `${process.env.FRONTEND_URL}/pricing`
     });
 
@@ -90,7 +90,7 @@ async function getCustomerPortal(customerId) {
     }
     const portalSession = await requireStripe().billingPortal.sessions.create({
         customer: customerId,
-        return_url: `${process.env.FRONTEND_URL}/settings/billing`
+        return_url: `${process.env.FRONTEND_URL}/settings?tab=billing`
     });
     return { success: true, url: portalSession.url };
 }

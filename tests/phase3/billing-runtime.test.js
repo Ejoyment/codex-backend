@@ -187,7 +187,8 @@ describe('edgeRouter — nearest PoP for global hubs', () => {
 });
 
 describe('bootManager — Tier 1 vs Tier 2 routing', () => {
-  const bm = require('../../client/lib/runtime/bootManager');
+  // bootManager moved to the buildrs-frontend runtime (client/ removed, rec 12).
+  const bm = require('../../buildrs-frontend/lib/runtime/bootManager');
 
   test('capable device picks Tier 1 (in-browser WebContainer)', () => {
     const { tier } = bm.pickTier({ deviceMemory: 8, hardwareConcurrency: 8, effectiveType: '4g', saveData: false });
