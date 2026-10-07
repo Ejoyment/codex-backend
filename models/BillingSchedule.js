@@ -26,7 +26,7 @@ const billingScheduleSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ['pending', 'processing', 'completed', 'failed', 'canceled'],
+        enum: ['pending', 'processing', 'completed', 'failed', 'cancelled'],
         default: 'pending'
     },
     stripePaymentIntentId: String,
@@ -36,7 +36,10 @@ const billingScheduleSchema = new mongoose.Schema({
     },
     lastAttempt: Date,
     error: String,
-    completedAt: Date
+    completedAt: Date,
+    // Cancel timestamp (previously written schema-less as `canceledAt` and
+    // silently dropped by strict mode — see paystackScheduler).
+    cancelledAt: Date
 }, {
     timestamps: true
 });

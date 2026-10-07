@@ -586,7 +586,13 @@ export default function Settings() {
   const setSubscription = useAuthStore((s) => s.setSubscription);
   const clearAuth = useAuthStore((s) => s.clearAuth);
 
-  const [activeTab, setActiveTab] = useState('profile');
+  const [activeTab, setActiveTab] = useState(() => {
+    // Deep-linkable tabs (e.g. Stripe billing-portal return_url ?tab=billing).
+    const initial = typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('tab')
+      : null;
+    return TABS.some((t) => t.id === initial) ? initial : 'profile';
+  });
   const [name, setName] = useState('');
   const [role, setRole] = useState('');
   const [saving, setSaving] = useState(false);

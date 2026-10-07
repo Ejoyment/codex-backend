@@ -8,7 +8,7 @@ const router = express.Router();
 const vfs = require('../utils/virtualFileSystem');
 const codeSearchService = require('../utils/codeSearchService');
 const CodeFile = require('../models/CodeFile');
-const { emitWorkspaceChange } = require('../utils/realTimeEvents');
+const { emitWorkspaceChange } = require('../utils/realtimeBus');
 // Tenant isolation (audit rec 7): every workspaceId/fileId below is verified.
 // requirePermission('vfs', …) only gates tiers — its resource check has no
 // 'vfs' case, so without these guards any user could read/mutate any workspace.

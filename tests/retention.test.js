@@ -261,7 +261,7 @@ describe('support ticket thread cap (loud 400)', () => {
       .set('Authorization', `Bearer ${signUser()}`)
       .send({ message: 'one too many' });
     expect(res.status).toBe(400);
-    expect(res.body.error).toMatch(/follow-up ticket/i);
+    expect(res.body.message).toMatch(/follow-up ticket/i);
   });
 
   test('1000th message still lands', async () => {

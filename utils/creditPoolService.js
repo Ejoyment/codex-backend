@@ -6,6 +6,7 @@
  */
 
 const Subscription = require('../models/Subscription');
+const { remainingFor } = require('./tierLimits');
 
 class CreditPoolService {
     constructor() {
@@ -60,7 +61,7 @@ class CreditPoolService {
 
         const monthlyLimit = subscription.getMonthlyCreditLimit();
         const used = subscription.creditPool?.usedThisMonth || 0;
-        const remaining = monthlyLimit ? monthlyLimit - used : Infinity;
+        const remaining = remainingFor(monthlyLimit, used);
 
         if (remaining === Infinity) {
             return { success: true, overage: false, remaining: Infinity, message: 'Unlimited credits' };

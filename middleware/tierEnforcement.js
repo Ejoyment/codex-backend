@@ -10,6 +10,7 @@
 const Subscription = require('../models/Subscription');
 const AgentExecution = require('../models/AgentExecution');
 const jwt = require('jsonwebtoken');
+const { limitAllows, remainingFor } = require('../utils/tierLimits');
 
 // Lazy require — DebugRoom and Deployment may not exist on all deploys
 let DebugRoom = null;
@@ -134,7 +135,11 @@ function enforceDebugRoomLimit() {
             hostId: req.userId,
             status: 'active'
         });
-        if (activeRooms >= maxHostRooms && maxHostRooms !== Infinity) {
+        // NOTE (rec 12): the `maxHostRooms === 0` early pass above is preserved
+        // verbatim. It means developer tier skips this enforcement entirely
+        // (unlimited hosting), which contradicts the "viewer only" entitlement
+        // — flagged as a policy question for the team, not changed here.
+        if (!limitAllows(maxHostRooms, activeRooms)) {
             return res.status(403).json({
                 success: false,
                 message: `You have reached the limit of ${maxHostRooms} active debug rooms. Upgrade for more.`,
@@ -157,7 +162,7 @@ function enforceDeploymentLimit() {
             userId: req.userId,
             status: 'active'
         });
-        if (activeDeployments >= maxDeployments && maxDeployments !== Infinity) {
+        if (!limitAllows(maxDeployments, activeDeployments)) {
             return res.status(403).json({
                 success: false,
                 message: `You have reached the limit of ${maxDeployments} active deployments. Upgrade for more.`,
@@ -259,7 +264,7 @@ async function deductCredits(userId, amount = 1) {
 
     const monthlyLimit = subscription.getMonthlyCreditLimit();
     const used = subscription.creditPool?.usedThisMonth || 0;
-    const remaining = monthlyLimit ? monthlyLimit - used : Infinity;
+    const remaining = remainingFor(monthlyLimit, used);
 
     if (remaining === Infinity) {
         return { success: true, overage: false, remaining: Infinity };
@@ -284,7 +289,7 @@ async function deductComputeHours(userId, hours = 1) {
     if (!subscription) return { success: false };
     const monthlyLimit = subscription.getCloudComputeHours();
     const used = subscription.cloudComputeHours?.usedThisMonth || 0;
-    const remaining = monthlyLimit ? monthlyLimit - used : Infinity;
+    const remaining = remainingFor(monthlyLimit, used);
     if (hours > remaining) return { success: false, remaining };
     subscription.cloudComputeHours.usedThisMonth += hours;
     await subscription.save();

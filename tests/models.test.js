@@ -2,9 +2,10 @@
  * Tests for all Mongoose Model schemas
  * Covers: AIPairSession, BillingSchedule, Channel, ChatMessage, CodeChange,
  * CodeFile, Company, FileUpload, Integration, IntegrationData, Invitation,
- * Meeting, MeetingRoom, Message, Notification, OTP, Subscription,
- * SupportAgent, SupportTicket, TeamActivity, TeamChat, TeamProject,
+ * MeetingRoom, Message, Notification, OTP, Subscription,
+ * SupportAgent, SupportTicket, TeamActivity, TeamProject,
  * TeamTask, User
+ * (Meeting + TeamChat deleted as write-dead duplicates, rec 12.)
  */
 
 const path = require('path');
@@ -24,7 +25,6 @@ describe('Model Schemas', () => {
     'Integration',
     'IntegrationData',
     'Invitation',
-    'Meeting',
     'MeetingRoom',
     'Message',
     'Notification',
@@ -34,7 +34,6 @@ describe('Model Schemas', () => {
     'SupportAgent',
     'SupportTicket',
     'TeamActivity',
-    'TeamChat',
     'TeamProject',
     'TeamTask',
     'User'

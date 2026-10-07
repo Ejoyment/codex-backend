@@ -19,20 +19,20 @@ const verifySupportAgent = async (req, res, next) => {
     try {
         const token = req.headers.authorization?.split(' ')[1];
         if (!token) {
-            return res.status(401).json({ error: 'No token provided' });
+            return res.status(401).json({ success: false, message: 'No token provided' });
         }
 
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         const agent = await SupportAgent.findById(decoded.agentId);
         
         if (!agent) {
-            return res.status(401).json({ error: 'Invalid token' });
+            return res.status(401).json({ success: false, message: 'Invalid token' });
         }
 
         req.agent = agent;
         next();
     } catch (error) {
-        res.status(401).json({ error: 'Invalid token' });
+        res.status(401).json({ success: false, message: 'Invalid token' });
     }
 };
 
@@ -67,12 +67,12 @@ router.post('/agent/login', supportLoginLimiter, async (req, res) => {
 
         const agent = await SupportAgent.findOne({ email });
         if (!agent) {
-            return res.status(401).json({ error: 'Invalid credentials' });
+            return res.status(401).json({ success: false, message: 'Invalid credentials' });
         }
 
         const isMatch = await agent.comparePassword(password);
         if (!isMatch) {
-            return res.status(401).json({ error: 'Invalid credentials' });
+            return res.status(401).json({ success: false, message: 'Invalid credentials' });
         }
 
         // Update status to online
@@ -98,7 +98,7 @@ router.post('/agent/login', supportLoginLimiter, async (req, res) => {
         });
     } catch (error) {
         console.error('Agent login error:', error);
-        res.status(500).json({ error: 'Login failed' });
+        res.status(500).json({ success: false, message: 'Login failed' });
     }
 });
 
@@ -124,7 +124,7 @@ router.post('/agent/logout', verifySupportAgent, async (req, res) => {
         await req.agent.save();
         res.json({ message: 'Logged out successfully' });
     } catch (error) {
-        res.status(500).json({ error: 'Logout failed' });
+        res.status(500).json({ success: false, message: 'Logout failed' });
     }
 });
 
@@ -170,17 +170,17 @@ const verifyUser = async (req, res, next) => {
     try {
         const token = req.headers.authorization?.split(' ')[1];
         if (!token) {
-            return res.status(401).json({ error: 'No token provided' });
+            return res.status(401).json({ success: false, message: 'No token provided' });
         }
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         const userId = decoded.id || decoded.userId;
         if (!userId) {
-            return res.status(401).json({ error: 'Invalid token' });
+            return res.status(401).json({ success: false, message: 'Invalid token' });
         }
         req.userId = userId;
         next();
     } catch (error) {
-        res.status(401).json({ error: 'Invalid token' });
+        res.status(401).json({ success: false, message: 'Invalid token' });
     }
 };
 
@@ -208,7 +208,7 @@ router.get('/tickets', async (req, res) => {
         res.json({ success: true, tickets });
     } catch (error) {
         console.error('Get tickets error:', error);
-        res.status(500).json({ error: 'Failed to fetch tickets' });
+        res.status(500).json({ success: false, message: 'Failed to fetch tickets' });
     }
 });
 
@@ -219,7 +219,7 @@ router.post('/tickets/:ticketId/messages', supportReplyLimiter, async (req, res)
         const { content, message, guestEmail } = req.body;
         const text = content || message;
         if (!text || typeof text !== 'string' || !text.trim()) {
-            return res.status(400).json({ error: 'Message content is required' });
+            return res.status(400).json({ success: false, message: 'Message content is required' });
         }
         // Authenticate: agent token first, then user token. No anonymous posts.
         let senderType = null;
@@ -228,7 +228,7 @@ router.post('/tickets/:ticketId/messages', supportReplyLimiter, async (req, res)
         let isAgent = false;
         const authHeader = req.headers.authorization;
         if (!authHeader) {
-            return res.status(401).json({ error: 'Authentication required' });
+            return res.status(401).json({ success: false, message: 'Authentication required' });
         }
         try {
             const token = authHeader.split(' ')[1];
@@ -236,7 +236,7 @@ router.post('/tickets/:ticketId/messages', supportReplyLimiter, async (req, res)
             if (decoded.agentId) {
                 const agent = await SupportAgent.findById(decoded.agentId);
                 if (!agent) {
-                    return res.status(401).json({ error: 'Invalid token' });
+                    return res.status(401).json({ success: false, message: 'Invalid token' });
                 }
                 isAgent = true;
                 senderType = 'agent';
@@ -250,10 +250,10 @@ router.post('/tickets/:ticketId/messages', supportReplyLimiter, async (req, res)
                     if (user) senderName = user.fullName || 'User';
                 } catch {}
             } else {
-                return res.status(401).json({ error: 'Invalid token' });
+                return res.status(401).json({ success: false, message: 'Invalid token' });
             }
         } catch (e) {
-            return res.status(401).json({ error: 'Invalid token' });
+            return res.status(401).json({ success: false, message: 'Invalid token' });
         }
         const mongoose = require('mongoose');
         let ticket = await SupportTicket.findOne({ ticketId: req.params.ticketId });
@@ -262,26 +262,26 @@ router.post('/tickets/:ticketId/messages', supportReplyLimiter, async (req, res)
             ticket = await SupportTicket.findById(req.params.ticketId);
         }
         if (!ticket) {
-            return res.status(404).json({ error: 'Ticket not found' });
+            return res.status(404).json({ success: false, message: 'Ticket not found' });
         }
         // Ownership: agents may reply to any ticket; users only to their own.
         // Guest tickets (no userId) require the matching guestEmail.
         if (!isAgent) {
             if (ticket.userId) {
                 if (String(ticket.userId) !== String(requesterUserId)) {
-                    return res.status(403).json({ error: 'Access denied' });
+                    return res.status(403).json({ success: false, message: 'Access denied' });
                 }
             } else {
                 const ticketEmail = (ticket.guestEmail || '').toLowerCase();
                 const providedEmail = typeof guestEmail === 'string' ? guestEmail.toLowerCase() : '';
                 if (!ticketEmail || !providedEmail || ticketEmail !== providedEmail) {
-                    return res.status(403).json({ error: 'Access denied' });
+                    return res.status(403).json({ success: false, message: 'Access denied' });
                 }
                 senderName = ticket.guestName || senderName;
             }
         }
         if (ticket.messages.length >= MAX_TICKET_MESSAGES) {
-            return res.status(400).json({ error: 'Ticket thread is full — please open a follow-up ticket' });
+            return res.status(400).json({ success: false, message: 'Ticket thread is full — please open a follow-up ticket' });
         }
         ticket.messages.push({
             sender: senderType,
@@ -294,7 +294,7 @@ router.post('/tickets/:ticketId/messages', supportReplyLimiter, async (req, res)
         res.json({ success: true, message: lastMessage });
     } catch (error) {
         console.error('Add message error:', error);
-        res.status(500).json({ error: 'Failed to add message' });
+        res.status(500).json({ success: false, message: 'Failed to add message' });
     }
 });
 
@@ -305,7 +305,7 @@ router.post('/tickets', supportTicketLimiter, async (req, res) => {
         const ticketMessage = message || description || content;
 
         if (!subject || !ticketMessage) {
-            return res.status(400).json({ error: 'Subject and message are required' });
+            return res.status(400).json({ success: false, message: 'Subject and message are required' });
         }
 
         const ticket = new SupportTicket({
@@ -331,7 +331,7 @@ router.post('/tickets', supportTicketLimiter, async (req, res) => {
         });
     } catch (error) {
         console.error('Create ticket error:', error);
-        res.status(500).json({ error: 'Failed to create ticket' });
+        res.status(500).json({ success: false, message: 'Failed to create ticket' });
     }
 });
 
@@ -362,12 +362,12 @@ router.get('/tickets/:ticketId', async (req, res) => {
     try {
         const ticket = await SupportTicket.findOne({ ticketId: req.params.ticketId });
         if (!ticket) {
-            return res.status(404).json({ error: 'Ticket not found' });
+            return res.status(404).json({ success: false, message: 'Ticket not found' });
         }
         if (ticket.userId) {
             const authHeader = req.headers.authorization;
             if (!authHeader) {
-                return res.status(401).json({ error: 'Authentication required' });
+                return res.status(401).json({ success: false, message: 'Authentication required' });
             }
             try {
                 const token = authHeader.split(' ')[1];
@@ -375,21 +375,21 @@ router.get('/tickets/:ticketId', async (req, res) => {
                 const requesterUserId = decoded.id || decoded.userId;
                 const isAgent = !!decoded.agentId;
                 if (!isAgent && (!requesterUserId || String(requesterUserId) !== String(ticket.userId))) {
-                    return res.status(403).json({ error: 'Access denied' });
+                    return res.status(403).json({ success: false, message: 'Access denied' });
                 }
                 if (isAgent) {
                     const agent = await SupportAgent.findById(decoded.agentId);
                     if (!agent) {
-                        return res.status(401).json({ error: 'Invalid token' });
+                        return res.status(401).json({ success: false, message: 'Invalid token' });
                     }
                 }
             } catch (e) {
-                return res.status(401).json({ error: 'Invalid token' });
+                return res.status(401).json({ success: false, message: 'Invalid token' });
             }
         }
         res.json(ticket);
     } catch (error) {
-        res.status(500).json({ error: 'Failed to fetch ticket' });
+        res.status(500).json({ success: false, message: 'Failed to fetch ticket' });
     }
 });
 
@@ -440,7 +440,7 @@ router.get('/agent/tickets', verifySupportAgent, async (req, res) => {
 
         res.json(tickets);
     } catch (error) {
-        res.status(500).json({ error: 'Failed to fetch tickets' });
+        res.status(500).json({ success: false, message: 'Failed to fetch tickets' });
     }
 });
 
@@ -472,7 +472,7 @@ router.put('/agent/tickets/:ticketId/assign', verifySupportAgent, async (req, re
     try {
         const ticket = await SupportTicket.findOne({ ticketId: req.params.ticketId });
         if (!ticket) {
-            return res.status(404).json({ error: 'Ticket not found' });
+            return res.status(404).json({ success: false, message: 'Ticket not found' });
         }
 
         ticket.assignedTo = req.agent._id;
@@ -481,7 +481,7 @@ router.put('/agent/tickets/:ticketId/assign', verifySupportAgent, async (req, re
 
         res.json(ticket);
     } catch (error) {
-        res.status(500).json({ error: 'Failed to assign ticket' });
+        res.status(500).json({ success: false, message: 'Failed to assign ticket' });
     }
 });
 
@@ -525,7 +525,7 @@ router.put('/agent/tickets/:ticketId/status', verifySupportAgent, async (req, re
         const ticket = await SupportTicket.findOne({ ticketId: req.params.ticketId });
         
         if (!ticket) {
-            return res.status(404).json({ error: 'Ticket not found' });
+            return res.status(404).json({ success: false, message: 'Ticket not found' });
         }
 
         ticket.status = status;
@@ -536,7 +536,7 @@ router.put('/agent/tickets/:ticketId/status', verifySupportAgent, async (req, re
 
         res.json(ticket);
     } catch (error) {
-        res.status(500).json({ error: 'Failed to update ticket' });
+        res.status(500).json({ success: false, message: 'Failed to update ticket' });
     }
 });
 
@@ -575,7 +575,7 @@ router.get('/agent/stats', verifySupportAgent, async (req, res) => {
             averageRating: req.agent.averageRating
         });
     } catch (error) {
-        res.status(500).json({ error: 'Failed to fetch stats' });
+        res.status(500).json({ success: false, message: 'Failed to fetch stats' });
     }
 });
 
@@ -598,7 +598,7 @@ router.get('/agents/online', async (req, res) => {
         }).select('name status');
         res.json(agents);
     } catch (error) {
-        res.status(500).json({ error: 'Failed to fetch agents' });
+        res.status(500).json({ success: false, message: 'Failed to fetch agents' });
     }
 });
 
@@ -656,7 +656,7 @@ router.get('/agents/online', async (req, res) => {
 router.post('/agent/register', verifySupportAgent, async (req, res) => {
     // Only admin agents can register new agents
     if (req.agent.role !== 'admin') {
-        return res.status(403).json({ success: false, error: 'Only admin agents can register new agents' });
+        return res.status(403).json({ success: false, message: 'Only admin agents can register new agents' });
     }
     try {
         const { name, password } = req.body;
@@ -665,14 +665,14 @@ router.post('/agent/register', verifySupportAgent, async (req, res) => {
         if (!name || !password) {
             return res.status(400).json({ 
                 success: false, 
-                error: 'Please provide your name and password' 
+                message: 'Please provide your name and password'
             });
         }
 
         if (password.length < 6) {
             return res.status(400).json({ 
                 success: false, 
-                error: 'Password must be at least 6 characters long' 
+                message: 'Password must be at least 6 characters long'
             });
         }
 
@@ -684,7 +684,7 @@ router.post('/agent/register', verifySupportAgent, async (req, res) => {
         if (!firstName) {
             return res.status(400).json({ 
                 success: false, 
-                error: 'Invalid name provided' 
+                message: 'Invalid name provided'
             });
         }
 
@@ -695,7 +695,7 @@ router.post('/agent/register', verifySupportAgent, async (req, res) => {
         if (existingAgent) {
             return res.status(400).json({ 
                 success: false, 
-                error: 'An agent account with this email already exists. Please contact admin if this is your account.' 
+                message: 'An agent account with this email already exists. Please contact admin if this is your account.'
             });
         }
 
@@ -725,7 +725,7 @@ router.post('/agent/register', verifySupportAgent, async (req, res) => {
         console.error('Agent registration error:', error);
         res.status(500).json({ 
             success: false, 
-            error: 'Failed to create agent account' 
+            message: 'Failed to create agent account'
         });
     }
 });
@@ -745,7 +745,7 @@ router.post('/agent/register', verifySupportAgent, async (req, res) => {
 router.post('/setup/demo-agent', verifySupportAgent, async (req, res) => {
     // Only admin agents can set up demo agents
     if (req.agent.role !== 'admin') {
-        return res.status(403).json({ success: false, error: 'Only admin agents can set up demo agents' });
+        return res.status(403).json({ success: false, message: 'Only admin agents can set up demo agents' });
     }
     try {
         const demoEmail = process.env.DEMO_AGENT_EMAIL || 'agent@buildershq.com';
@@ -753,7 +753,7 @@ router.post('/setup/demo-agent', verifySupportAgent, async (req, res) => {
 
         if (!demoPassword) {
             return res.status(500).json({ 
-                error: 'DEMO_AGENT_PASSWORD environment variable not set. Please configure it before setting up a demo agent.' 
+                message: 'DEMO_AGENT_PASSWORD environment variable not set. Please configure it before setting up a demo agent.'
             });
         }
 
@@ -787,7 +787,7 @@ router.post('/setup/demo-agent', verifySupportAgent, async (req, res) => {
         });
     } catch (error) {
         console.error('Setup demo agent error:', error);
-        res.status(500).json({ error: 'Failed to create demo agent' });
+        res.status(500).json({ success: false, message: 'Failed to create demo agent' });
     }
 });
 
