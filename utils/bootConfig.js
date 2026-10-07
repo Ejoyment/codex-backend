@@ -36,6 +36,12 @@ function validateBootConfig({ includeJwtSecret = true } = {}) {
         warnings.push('TURN_URL is set but TURN_STATIC_SECRET is not — only STUN will be served to WebRTC clients.');
     }
 
+    if (!process.env.FRONTEND_URL) {
+        warnings.push(
+            'FRONTEND_URL is not set — Stripe/portal URLs will contain "undefined" ' +
+            'and emailed links will be broken. Set it to the public frontend origin.'
+        );
+    }
     if ((process.env.NEXT_PUBLIC_TURN_CREDENTIAL || process.env.NEXT_PUBLIC_TURN_USERNAME) && !process.env.TURN_STATIC_SECRET) {
         warnings.push(
             'NEXT_PUBLIC_TURN_* credentials ship in the JS bundle — move to TURN_URL + TURN_STATIC_SECRET ' +

@@ -406,6 +406,7 @@ describe('/api/rtc/ice-servers', () => {
 describe('validateBootConfig', () => {
   test('clean config passes', () => {
     process.env.MONGODB_URI = 'mongodb://localhost:27017/x';
+    process.env.FRONTEND_URL = 'https://app.example.com';
     expect(validateBootConfig()).toEqual({ fatals: [], warnings: [] });
   });
 
@@ -434,5 +435,13 @@ describe('validateBootConfig', () => {
     const { warnings, fatals } = validateBootConfig();
     expect(fatals).toEqual([]);
     expect(warnings.join(' ')).toMatch(/TURN_URL/);
+  });
+
+  test('missing FRONTEND_URL warns (emitted links would contain undefined)', () => {
+    process.env.MONGODB_URI = 'mongodb://localhost:27017/x';
+    delete process.env.FRONTEND_URL;
+    const { warnings, fatals } = validateBootConfig();
+    expect(fatals).toEqual([]);
+    expect(warnings.join(' ')).toMatch(/FRONTEND_URL/);
   });
 });
