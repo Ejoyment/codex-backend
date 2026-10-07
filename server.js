@@ -422,25 +422,6 @@ app.use('/api/projects', checkTrialStatus, enforceDeploymentLimit(), projectRout
 app.use('/api/ai-context', figmaContextRoutes, teamMemoryRoutes, ticketBridgeRoutes);
 
 
-// TTL Sweeper for debug rooms — cleans up expired rooms every hour
-const TTL_SWEETER_INTERVAL = parseInt(process.env.DEBUG_ROOM_TTL_CLEANUP_INTERVAL) || 3600000;
-setInterval(async () => {
-    try {
-        let DebugRoom;
-        try { DebugRoom = require('./models/DebugRoom'); } catch { DebugRoom = null; }
-        if (!DebugRoom) return;
-        const expiredRooms = await DebugRoom.deleteMany({
-            expiresAt: { $lte: new Date() },
-            status: { $in: ['active', 'pending'] }
-        });
-        if (expiredRooms.deletedCount > 0) {
-            console.log(`TTL Sweeper: Cleaned up ${expiredRooms.deletedCount} expired debug rooms`);
-        }
-    } catch (error) {
-        console.error('TTL Sweeper error:', error);
-    }
-}, TTL_SWEETER_INTERVAL);
-
 // Credit pool reset check
 CreditPoolService.resetMonthlyCredits();
 

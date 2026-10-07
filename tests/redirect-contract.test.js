@@ -58,6 +58,12 @@ describe('backend-issued frontend URLs resolve to real pages', () => {
       if (!found.has(route)) found.set(route, []);
       found.get(route).push(path.relative(ROOT, file));
     }
+    // Local FRONTEND const (server/routes/billing.js) — same contract.
+    for (const m of src.matchAll(/\$\{FRONTEND\}\/([a-zA-Z0-9/_?=\-&#.]+)/g)) {
+      const route = `/${m[1]}`.split('?')[0].split('#')[0];
+      if (!found.has(route)) found.set(route, []);
+      found.get(route).push(path.relative(ROOT, file));
+    }
     for (const m of src.matchAll(/failureRedirect:\s*'(\/[^']*)'/g)) {
       if (!found.has(m[1])) found.set(m[1], []);
       found.get(m[1]).push(path.relative(ROOT, file));
@@ -87,6 +93,15 @@ describe('backend-issued frontend URLs resolve to real pages', () => {
     for (const file of sources) {
       const src = fs.readFileSync(file, 'utf8');
       expect(src).not.toMatch(/payment\/success/);
+    }
+  });
+
+  test('no emitted URL uses a .html page (Next.js routes have no extension)', () => {
+    for (const file of sources) {
+      const src = fs.readFileSync(file, 'utf8');
+      for (const m of src.matchAll(/FRONTEND(?:_URL)?\}\/([a-zA-Z0-9/_?=\-&#.]+)/g)) {
+        expect(m[1].split('?')[0]).not.toMatch(/\.html$/);
+      }
     }
   });
 

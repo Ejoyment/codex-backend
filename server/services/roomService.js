@@ -124,6 +124,9 @@ async function createRoom({ hostId, workspaceId = null, taskRef = null, ttlMs = 
 }
 
 async function getRoom(id) {
+  // Malformed IDs (not ObjectIds, wrong type) are "not found", not 500s —
+  // every rooms route maps a null room to 404.
+  if (!id || !/^[a-fA-F0-9]{24}$/.test(String(id))) return null;
   return DebugRoom.findById(id);
 }
 
