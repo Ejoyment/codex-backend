@@ -53,6 +53,11 @@ const companySchema = new mongoose.Schema({
             type: Boolean,
             default: true
         },
+        // Render-style auto-deploy: save republishes. ON by default.
+        autoDeploy: {
+            type: Boolean,
+            default: true
+        },
         defaultRole: {
             type: String,
             enum: ['member', 'viewer'],

@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
-import { apiFetch, projectApi, API_BASE_URL, SOCKET_URL, agentApi } from '../lib/api';
+import { apiFetch, projectApi, API_BASE_URL, SOCKET_URL, agentApi, companyApi } from '../lib/api';
 import * as editorDrafts from '../lib/editorDrafts';
 import { registerEditorSnippets } from '../lib/monacoExtras';
 import { normalizeMarkers, countProblems, setRunProblems } from '../lib/monacoDiagnostics';
@@ -493,29 +493,45 @@ export default function Editor() {
   const [showSubdomainInput, setShowSubdomainInput] = useState(false);
   const [deploySubdomain, setDeploySubdomain] = useState('');
   // Render-style auto-deploy: republish on every explicit save. ON by
-  // default (current behavior), per workspace, persisted locally.
-  const autoDeployKeyFor = (ws) => `buildrs-autodeploy:${ws || 'global'}`;
+  // default, stored server-side per workspace (company settings, owner/admin
+  // only — the API 403s everyone else and the toggle reverts).
+  const deployScopeId = workspaceId || selectedProject?.workspaceId || null;
   const [autoDeployOn, setAutoDeployOn] = useState(true);
+  const autoDeployRef = useRef(true);
   useEffect(() => {
-    try {
-      const v = window.localStorage.getItem(autoDeployKeyFor(workspaceId || selectedProject?._id));
-      setAutoDeployOn(v !== 'off');
-    } catch {
-      setAutoDeployOn(true);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceId, selectedProject?._id]);
-  const setAutoDeploy = (on) => {
-    try {
-      window.localStorage.setItem(autoDeployKeyFor(workspaceId || selectedProject?._id), on ? 'on' : 'off');
-    } catch {}
+    let cancelled = false;
+    (async () => {
+      if (!deployScopeId) {
+        setAutoDeployOn(true);
+        autoDeployRef.current = true;
+        return;
+      }
+      try {
+        const data = await companyApi.getDetails(deployScopeId);
+        const on = data?.company?.settings?.autoDeploy !== false;
+        if (!cancelled) {
+          setAutoDeployOn(on);
+          autoDeployRef.current = on;
+        }
+      } catch {
+        if (!cancelled) {
+          setAutoDeployOn(true);
+          autoDeployRef.current = true;
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [deployScopeId]);
+  const setAutoDeploy = async (on) => {
+    if (!deployScopeId) return;
     setAutoDeployOn(on);
-  };
-  const isAutoDeployOn = (ws) => {
+    autoDeployRef.current = on;
     try {
-      return window.localStorage.getItem(autoDeployKeyFor(ws)) !== 'off';
-    } catch {
-      return true;
+      await companyApi.updateSettings(deployScopeId, { autoDeploy: on });
+    } catch (err) {
+      setAutoDeployOn(!on);
+      autoDeployRef.current = !on;
+      toastError(err?.data?.message || err?.message || 'Could not change auto-deploy');
     }
   };
   const [deploying, setDeploying] = useState(false);
@@ -2548,8 +2564,7 @@ export default function Editor() {
   }
 
   function maybeAutoRedeploy() {
-    const wsId = workspaceId || selectedProject?._id || selectedProject?.id || null;
-    if (!isAutoDeployOn(wsId)) return;
+    if (!autoDeployRef.current) return;
     const dep = findOwnDeployment();
     if (!dep || !dep.subdomain) return;
     if (['pending', 'building', 'deploying'].includes(dep.status)) {
@@ -4167,6 +4182,7 @@ export default function Editor() {
                         <button type="button" className="btn-workspace btn-secondary" onClick={loadDeployments}>
                           <RefreshCw className="w-3.5 h-3.5" /> Refresh
                         </button>
+                        {deployScopeId && (
                         <button
                           type="button"
                           className="btn-workspace btn-secondary"
@@ -4179,6 +4195,7 @@ export default function Editor() {
                             {autoDeployOn ? 'ON' : 'OFF'}
                           </span>
                         </button>
+                        )}
                         <span className="text-xs" style={{ color: '#6e6e6e' }}>One-click static deploy → .buildrshq.dev</span>
                       </div>
 
