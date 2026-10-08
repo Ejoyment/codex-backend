@@ -177,6 +177,11 @@ export const companyApi = {
   },
   getDetails: (companyId) => apiFetch(`/api/company/${companyId}`),
   getMembers: (companyId) => apiFetch(`/api/company/${companyId}/members`),
+  updateSettings: (companyId, settings) =>
+    apiFetch(`/api/company/${companyId}/settings`, {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    }),
 };
 
 export const subscriptionApi = {
