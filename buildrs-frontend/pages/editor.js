@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
-import { apiFetch, projectApi, API_BASE_URL, SOCKET_URL } from '../lib/api';
+import { apiFetch, projectApi, API_BASE_URL, SOCKET_URL, agentApi } from '../lib/api';
 import * as editorDrafts from '../lib/editorDrafts';
 import { registerEditorSnippets } from '../lib/monacoExtras';
 import { normalizeMarkers, countProblems, setRunProblems } from '../lib/monacoDiagnostics';
@@ -388,6 +388,73 @@ export default function Editor() {
   const [aiLoading, setAiLoading] = useState(false);
   const [pendingConfirmations, setPendingConfirmations] = useState([]);
   const [agentExecution, setAgentExecution] = useState(null);
+  const agentExecutionRef = useRef(null);
+  agentExecutionRef.current = agentExecution;
+  const [tweaking, setTweaking] = useState(false);
+  const [tweakFeedback, setTweakFeedback] = useState('');
+  const agentPollRef = useRef(null);
+
+  const clearAgentPoll = useCallback(() => {
+    if (agentPollRef.current) {
+      clearTimeout(agentPollRef.current);
+      agentPollRef.current = null;
+    }
+  }, []);
+
+  // Backend status vocabulary -> panel vocabulary.
+  const BACKEND_TO_PANEL = useMemo(() => ({
+    queued: 'running',
+    running: 'running',
+    awaiting_review: 'awaiting_approval',
+    awaiting_approval: 'awaiting_approval',
+    approved: 'completed',
+    completed: 'completed',
+    rejected: 'rejected',
+    failed: 'failed',
+  }), []);
+  const TERMINAL_PANEL = useMemo(() => new Set(['completed', 'rejected', 'failed']), []);
+
+  const pollAgentExecution = useCallback((backendId, taskId) => {
+    clearAgentPoll();
+    const poll = async () => {
+      try {
+        let exec = null;
+        if (taskId) {
+          const data = await agentApi.status(taskId);
+          exec = data?.execution || null;
+        } else {
+          const data = await agentApi.sessions();
+          exec = (data?.sessions || []).find((s) => String(s._id) === String(backendId)) || null;
+        }
+        if (exec) {
+          const mapped = BACKEND_TO_PANEL[exec.status] || 'running';
+          setAgentExecution((prev) => {
+            if (!prev || String(prev.backendId) !== String(backendId)) return prev;
+            const serverLogs = Array.isArray(exec.logs)
+              ? exec.logs.map((l) => (typeof l === 'string' ? l : l?.message || '')).filter(Boolean)
+              : [];
+            return {
+              ...prev,
+              status: mapped,
+              approvalRequired: mapped === 'awaiting_approval',
+              completed: TERMINAL_PANEL.has(mapped),
+              logs: [prev.logs[0], ...serverLogs.slice(-6)].filter(Boolean).slice(-8),
+              diffSummary: exec.diffSummary || prev.diffSummary,
+            };
+          });
+          if (!TERMINAL_PANEL.has(mapped)) {
+            agentPollRef.current = setTimeout(poll, 5000);
+            return;
+          }
+        } else {
+          agentPollRef.current = setTimeout(poll, 5000);
+        }
+      } catch (_) {
+        agentPollRef.current = setTimeout(poll, 10000);
+      }
+    };
+    agentPollRef.current = setTimeout(poll, 3000);
+  }, [BACKEND_TO_PANEL, TERMINAL_PANEL, clearAgentPoll]);
   const [taskCards, setTaskCards] = useState([
     { id: 'task-1', title: 'Ship bug fix', owner: 'AI pair', status: 'ready', priority: 'high', summary: 'Patch the current issue and validate the result.' },
     { id: 'task-2', title: 'Refactor module', owner: 'Design system', status: 'review', priority: 'medium', summary: 'Improve maintainability while keeping the public behavior unchanged.' },
@@ -425,6 +492,32 @@ export default function Editor() {
   const [termInfo, setTermInfo] = useState(null); // { type: 'pty'|'simulated', sessionId }
   const [showSubdomainInput, setShowSubdomainInput] = useState(false);
   const [deploySubdomain, setDeploySubdomain] = useState('');
+  // Render-style auto-deploy: republish on every explicit save. ON by
+  // default (current behavior), per workspace, persisted locally.
+  const autoDeployKeyFor = (ws) => `buildrs-autodeploy:${ws || 'global'}`;
+  const [autoDeployOn, setAutoDeployOn] = useState(true);
+  useEffect(() => {
+    try {
+      const v = window.localStorage.getItem(autoDeployKeyFor(workspaceId || selectedProject?._id));
+      setAutoDeployOn(v !== 'off');
+    } catch {
+      setAutoDeployOn(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceId, selectedProject?._id]);
+  const setAutoDeploy = (on) => {
+    try {
+      window.localStorage.setItem(autoDeployKeyFor(workspaceId || selectedProject?._id), on ? 'on' : 'off');
+    } catch {}
+    setAutoDeployOn(on);
+  };
+  const isAutoDeployOn = (ws) => {
+    try {
+      return window.localStorage.getItem(autoDeployKeyFor(ws)) !== 'off';
+    } catch {
+      return true;
+    }
+  };
   const [deploying, setDeploying] = useState(false);
   const [logDeployId, setLogDeployId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -435,6 +528,19 @@ export default function Editor() {
   const [confirmClose, setConfirmClose] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [confirmStop, setConfirmStop] = useState(null);
+  // Switching workspace/project/repo destroys the live PTY (running builds
+  // die with scrollback) — stage the switch behind a confirm while a
+  // terminal session is active.
+  const [confirmScopeSwitch, setConfirmScopeSwitch] = useState(null);
+  function requestScopeSwitch(fn) {
+    if (termSessionRef.current) setConfirmScopeSwitch(() => fn);
+    else fn();
+  }
+  const handleConfirmScopeSwitch = () => {
+    const fn = confirmScopeSwitch;
+    setConfirmScopeSwitch(null);
+    if (fn) fn();
+  };
   const [menuOpen, setMenuOpen] = useState(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState('');
@@ -589,6 +695,10 @@ export default function Editor() {
     fontSize: 12,
     minimap: { enabled: false },
     automaticLayout: true,
+    // Preview shares the main buffer state — always read-only, or keystrokes
+    // land in the real file with a divergent undo stack.
+    readOnly: true,
+    domReadOnly: true,
   }), []);
 
   // Restore the previous editor session (tabs, buffers, drafts, repo/project)
@@ -640,7 +750,6 @@ export default function Editor() {
   useEffect(() => {
     loadFiles(workspaceId);
     loadLanguages();
-    loadCollaborators();
     loadDeployments();
     loadProjects();
     loadGithubRepos();
@@ -769,7 +878,8 @@ export default function Editor() {
   useEffect(() => () => {
     Object.values(pollTimersRef.current).forEach((t) => clearInterval(t));
     pollTimersRef.current = {};
-  }, []);
+    clearAgentPoll();
+  }, [clearAgentPoll]);
 
   // Real-time explorer: join the workspace room and refresh the file tree
   // when the backend watcher (e.g. `mkdir`/`touch` inside the terminal)
@@ -1284,13 +1394,6 @@ export default function Editor() {
     } catch {}
   }
 
-  async function loadCollaborators() {
-    try {
-      const data = await apiFetch('/api/collaboration/file/placeholder/users').catch(() => ({ users: [] }));
-      setCollaborators(data.users || []);
-    } catch {}
-  }
-
   async function loadGitStatus() {
     if (!workspaceId) return;
     try {
@@ -1372,80 +1475,119 @@ export default function Editor() {
     return data.session;
   }
 
-  const startAgentExecution = useCallback((taskLabel) => {
+  const startAgentExecution = useCallback(async (taskLabel) => {
     const goal = taskLabel || (selectedFile ? `Fix ${selectedFile.name}` : 'Review workspace');
     const title = selectedFile ? `Fix ${selectedFile.name}` : 'Review workspace';
-    const steps = [
-      'Scanning relevant files and context...',
-      'Drafting the minimal patch...',
-      'Running validation checks...',
-      'Preparing final review for approval...'
-    ];
 
-    const initialExecution = {
+    clearAgentPoll();
+    setAgentExecution({
       id: `agent-${Date.now()}`,
       title,
       goal,
       status: 'running',
-      logs: ['Starting agent execution...'],
-      diffSummary: { filesChanged: 1, insertions: 0, deletions: 0 },
+      backendId: null,
+      taskId: null,
+      logs: ['Delegating to the backend agent…'],
+      diffSummary: { filesChanged: 0, insertions: 0, deletions: 0 },
       stepIndex: 0,
       completed: false,
       approvalRequired: false,
       outcome: null,
-    };
-
-    setAgentExecution(initialExecution);
-
-    let tick = 0;
-    const timer = setInterval(() => {
-      tick += 1;
-      setAgentExecution((prev) => {
-        if (!prev) return prev;
-
-        const nextStepIndex = Math.min((prev.stepIndex || 0) + 1, steps.length - 1);
-        const nextLogs = [...prev.logs, steps[Math.min(prev.stepIndex || 0, steps.length - 1)]];
-        const nextStatus = tick >= steps.length ? 'awaiting_approval' : 'running';
-
-        return {
-          ...prev,
-          status: nextStatus,
-          logs: nextLogs,
-          stepIndex: nextStepIndex,
-          approvalRequired: nextStatus === 'awaiting_approval',
-          diffSummary: {
-            filesChanged: 1,
-            insertions: 6 + tick * 4,
-            deletions: 1 + tick,
-          },
-          completed: nextStatus === 'awaiting_approval',
-        };
-      });
-
-      if (tick >= steps.length) {
-        clearInterval(timer);
-      }
-    }, 1200);
-  }, [selectedFile]);
-
-  const settleAgentExecution = useCallback((approved) => {
-    setAgentExecution((prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        status: approved ? 'completed' : 'rejected',
-        completed: true,
-        approvalRequired: false,
-        outcome: approved ? 'approved' : 'rejected',
-        logs: [
-          ...prev.logs,
-          approved ? 'Approved and merged into the working branch.' : 'Rejected and rolled back the agent patch.'
-        ],
-      };
     });
-  }, []);
 
-  const hydrateAgentExecutionFromResult = useCallback((taskTitle, result) => {
+    try {
+      const wsId = workspaceId || selectedProject?._id || selectedProject?.id || null;
+      const data = await agentApi.delegate({ taskTitle: title, summary: goal, workspaceId: wsId });
+      const exec = data?.execution;
+      if (!data?.success || !exec?._id) throw new Error(data?.message || 'Delegation failed');
+      const backendId = exec._id;
+      const taskId = data.taskId || null;
+      setAgentExecution((prev) => (prev
+        ? { ...prev, backendId, taskId, logs: [...prev.logs, `Running${data.agentBranch ? ` on ${data.agentBranch}` : ''}…`] }
+        : prev));
+      pollAgentExecution(backendId, taskId);
+    } catch (err) {
+      const msg = err?.data?.message || err?.message || 'Delegation failed';
+      toastError(msg);
+      setAgentExecution((prev) => (prev
+        ? { ...prev, status: 'failed', completed: true, logs: [...prev.logs, `Failed: ${msg}`] }
+        : prev));
+    }
+  }, [selectedFile, workspaceId, selectedProject, pollAgentExecution]);
+
+  const approveAgentExecution = async () => {
+    const ex = agentExecutionRef.current;
+    if (!ex?.backendId) {
+      toastError('No backend run to approve yet — wait for delegation to finish.');
+      return;
+    }
+    try {
+      const data = await agentApi.approve(ex.backendId, ex.taskId || undefined);
+      clearAgentPoll();
+      setAgentExecution((prev) => (prev
+        ? {
+          ...prev,
+          status: 'completed',
+          completed: true,
+          approvalRequired: false,
+          outcome: 'approved',
+          logs: [...prev.logs, data?.message || 'Approved and merged.'],
+        }
+        : prev));
+    } catch (err) {
+      toastError(err?.data?.message || err?.message || 'Approve failed');
+    }
+  };
+
+  const rejectAgentExecution = async () => {
+    const ex = agentExecutionRef.current;
+    if (!ex?.backendId) {
+      toastError('No backend run to reject yet — wait for delegation to finish.');
+      return;
+    }
+    try {
+      const data = await agentApi.reject(ex.backendId, ex.taskId || undefined);
+      clearAgentPoll();
+      setAgentExecution((prev) => (prev
+        ? {
+          ...prev,
+          status: 'rejected',
+          completed: true,
+          approvalRequired: false,
+          outcome: 'rejected',
+          logs: [...prev.logs, data?.message || 'Rejected and rolled back.'],
+        }
+        : prev));
+    } catch (err) {
+      toastError(err?.data?.message || err?.message || 'Reject failed');
+    }
+  };
+
+  const tweakAgentExecution = async () => {
+    const ex = agentExecutionRef.current;
+    const feedback = (tweakFeedback || '').trim();
+    if (!ex?.backendId) {
+      toastError('No backend run to tweak yet — wait for delegation to finish.');
+      return;
+    }
+    if (!feedback) {
+      toastError('Describe the change you want first.');
+      return;
+    }
+    try {
+      await agentApi.tweak(ex.backendId, ex.taskId || undefined, feedback);
+      setTweakFeedback('');
+      setTweaking(false);
+      setAgentExecution((prev) => (prev
+        ? { ...prev, status: 'running', completed: false, approvalRequired: false, logs: [...prev.logs, `Re-running with feedback…`] }
+        : prev));
+      pollAgentExecution(ex.backendId, ex.taskId || null);
+    } catch (err) {
+      toastError(err?.data?.message || err?.message || 'Tweak failed');
+    }
+  };
+
+  const hydrateAgentExecutionFromResult = useCallback((taskTitle, result, executionId) => {
     if (!result) return;
 
     const summary = result.summary || {};
@@ -1457,6 +1599,8 @@ export default function Editor() {
       title: taskTitle || 'Workspace task',
       goal: taskTitle || 'Workspace task',
       status: finalStatus,
+      backendId: executionId || null,
+      taskId: null,
       logs: [
         'Agent loop started on the selected workspace...',
         ...(Array.isArray(result.iterations) ? result.iterations.map((iteration) => iteration?.reasoning?.thought || iteration?.result?.message || 'Agent iteration complete.') : []),
@@ -1472,7 +1616,8 @@ export default function Editor() {
       approvalRequired: result.success,
       outcome: result.success ? 'awaiting_approval' : 'failed',
     });
-  }, []);
+    if (executionId) pollAgentExecution(executionId, null);
+  }, [pollAgentExecution]);
 
   const selectedTask = useMemo(
     () => taskCards.find((task) => task.id === selectedTaskId) || taskCards[0] || null,
@@ -1506,6 +1651,26 @@ export default function Editor() {
       const session = await ensureAiSession();
       const companyId = selectedCompany?._id;
       const shouldUseAgentLoop = /fix|refactor|review|debug|ship|patch|build|deploy/i.test(input);
+      // Never ship secrets to the model: .env* files are stripped from AI
+      // context (paste values explicitly if the question needs them).
+      const ENV_FILE_RE = /(^|\/)\.env(\.|$)/i;
+      const skippedEnv = [];
+      const envName = (f) => `${f?.path || ''}/${f?.name || ''}`;
+      const safeFiles = files.slice(0, 25).filter((file) => {
+        if (ENV_FILE_RE.test(envName(file))) {
+          skippedEnv.push(file.name || file.path);
+          return false;
+        }
+        return true;
+      });
+      let safeCurrent = undefined;
+      if (selectedFile) {
+        if (ENV_FILE_RE.test(envName(selectedFile))) {
+          skippedEnv.push(selectedFile.name);
+        } else {
+          safeCurrent = { name: selectedFile.name, path: selectedFile.path, content: content.slice(0, 2000) };
+        }
+      }
       const data = await apiFetch('/api/ai-pair/chat', {
         method: 'POST',
         body: JSON.stringify({
@@ -1519,8 +1684,8 @@ export default function Editor() {
               id: workspaceId || selectedProject?._id || selectedRepo?._id || 'local-workspace',
               name: selectedProject?.name || selectedRepo?.name || 'workspace',
             },
-            files: files.slice(0, 25).map((file) => ({ id: file._id || file.id, name: file.name, path: file.path, language: file.language })),
-            currentFile: selectedFile ? { name: selectedFile.name, path: selectedFile.path, content: content.slice(0, 2000) } : undefined,
+            files: safeFiles.map((file) => ({ id: file._id || file.id, name: file.name, path: file.path, language: file.language })),
+            currentFile: safeCurrent,
             repository: selectedRepo ? {
               id: selectedRepo._id || selectedRepo.id,
               name: selectedRepo.name,
@@ -1530,10 +1695,13 @@ export default function Editor() {
           },
         }),
       });
-      const reply = data.message?.content || data.message || data.result?.summary?.message || 'No response';
+      let reply = data.message?.content || data.message || data.result?.summary?.message || 'No response';
+      if (skippedEnv.length) {
+        reply += `\n\n_Skipped ${skippedEnv.length} .env file(s) for privacy — paste values explicitly if needed._`;
+      }
       setAiMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
       if (shouldUseAgentLoop && data.result) {
-        hydrateAgentExecutionFromResult(input.trim(), data.result);
+        hydrateAgentExecutionFromResult(input.trim(), data.result, data.executionId);
       } else if (shouldUseAgentLoop) {
         startAgentExecution(input.trim());
       }
@@ -2380,6 +2548,8 @@ export default function Editor() {
   }
 
   function maybeAutoRedeploy() {
+    const wsId = workspaceId || selectedProject?._id || selectedProject?.id || null;
+    if (!isAutoDeployOn(wsId)) return;
     const dep = findOwnDeployment();
     if (!dep || !dep.subdomain) return;
     if (['pending', 'building', 'deploying'].includes(dep.status)) {
@@ -3060,7 +3230,7 @@ export default function Editor() {
                       </button>
                       {showProjectSelector && (
                         <div className="ed-drop">
-                          <button type="button" className="ed-drop-item" onClick={() => { setSelectedProject(null); setSelectedRepo(null); setShowProjectSelector(false); }}>
+                          <button type="button" className="ed-drop-item" onClick={() => requestScopeSwitch(() => { setSelectedProject(null); setSelectedRepo(null); setShowProjectSelector(false); })}>
                             <FolderOpen className="w-3.5 h-3.5" /> Workspace Files
                           </button>
                           {(workspaceId || selectedProject) && (
@@ -3070,13 +3240,13 @@ export default function Editor() {
                           )}
                           {projects.length > 0 && <div className="ed-drop-section">Projects</div>}
                           {projects.map((p) => (
-                            <button key={p._id || p.id} type="button" className="ed-drop-item" onClick={() => { setSelectedProject(p); setSelectedRepo(null); setShowProjectSelector(false); }}>
+                            <button key={p._id || p.id} type="button" className="ed-drop-item" onClick={() => requestScopeSwitch(() => { setSelectedProject(p); setSelectedRepo(null); setShowProjectSelector(false); })}>
                               <Folder className="w-3.5 h-3.5" /> {p.name}
                             </button>
                           ))}
                           {githubRepos.length > 0 && <div className="ed-drop-section">GitHub Repos</div>}
                           {githubRepos.map((r) => (
-                            <button key={r.id || r.fullName} type="button" className="ed-drop-item" onClick={() => { setSelectedRepo(r); setSelectedProject(null); setShowProjectSelector(false); }}>
+                            <button key={r.id || r.fullName} type="button" className="ed-drop-item" onClick={() => requestScopeSwitch(() => { setSelectedRepo(r); setSelectedProject(null); setShowProjectSelector(false); })}>
                               <GitBranch className="w-3.5 h-3.5" /> {r.fullName || r.name}
                             </button>
                           ))}
@@ -3516,16 +3686,34 @@ export default function Editor() {
                           ))}
                         </div>
                         <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.65rem' }}>
-                          <button type="button" className="btn-workspace btn-primary" style={{ flex: 1, minHeight: 0, padding: '0.38rem 0.6rem' }} onClick={() => settleAgentExecution(true)} disabled={agentExecution.status === 'completed' || agentExecution.status === 'rejected'}>
+                          <button type="button" className="btn-workspace btn-primary" style={{ flex: 1, minHeight: 0, padding: '0.38rem 0.6rem' }} onClick={approveAgentExecution} disabled={agentExecution.status === 'completed' || agentExecution.status === 'rejected'}>
                             {agentExecution.status === 'awaiting_approval' ? 'Approve' : 'Apply'}
                           </button>
-                          <button type="button" className="btn-workspace btn-secondary" style={{ flex: 1, minHeight: 0, padding: '0.38rem 0.6rem' }} onClick={() => settleAgentExecution(false)} disabled={agentExecution.status === 'completed' || agentExecution.status === 'rejected'}>
+                          <button type="button" className="btn-workspace btn-secondary" style={{ flex: 1, minHeight: 0, padding: '0.38rem 0.6rem' }} onClick={() => setTweaking((v) => !v)} disabled={agentExecution.status === 'completed' || agentExecution.status === 'rejected'}>
                             Tweak
                           </button>
-                          <button type="button" className="btn-workspace btn-secondary" style={{ flex: 1, minHeight: 0, padding: '0.38rem 0.6rem', color: '#fca5a5' }} onClick={() => settleAgentExecution(false)} disabled={agentExecution.status === 'completed' || agentExecution.status === 'rejected'}>
+                          <button type="button" className="btn-workspace btn-secondary" style={{ flex: 1, minHeight: 0, padding: '0.38rem 0.6rem', color: '#fca5a5' }} onClick={rejectAgentExecution} disabled={agentExecution.status === 'completed' || agentExecution.status === 'rejected'}>
                             Reject
                           </button>
                         </div>
+                        {tweaking && agentExecution.status !== 'completed' && agentExecution.status !== 'rejected' && (
+                          <form
+                            style={{ display: 'flex', gap: '0.4rem', marginTop: '0.4rem' }}
+                            onSubmit={(e) => { e.preventDefault(); tweakAgentExecution(); }}
+                          >
+                            <input
+                              type="text"
+                              value={tweakFeedback}
+                              onChange={(e) => setTweakFeedback(e.target.value)}
+                              placeholder="What should the agent change?"
+                              autoComplete="off"
+                              style={{ flex: 1, minWidth: 0, padding: '0.35rem 0.5rem', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.05)', color: '#eceef1', fontSize: '0.7rem', outline: 'none' }}
+                            />
+                            <button type="submit" className="btn-workspace btn-primary" style={{ padding: '0.35rem 0.7rem' }}>
+                              Send
+                            </button>
+                          </form>
+                        )}
                       </div>
                     )}
 
@@ -3979,6 +4167,18 @@ export default function Editor() {
                         <button type="button" className="btn-workspace btn-secondary" onClick={loadDeployments}>
                           <RefreshCw className="w-3.5 h-3.5" /> Refresh
                         </button>
+                        <button
+                          type="button"
+                          className="btn-workspace btn-secondary"
+                          onClick={() => setAutoDeploy(!autoDeployOn)}
+                          title={autoDeployOn ? 'Auto-deploy is ON: saving republishes this workspace' : 'Auto-deploy is OFF: save without republishing'}
+                          aria-pressed={autoDeployOn}
+                        >
+                          Auto-Deploy
+                          <span className={`mkt-mono`} style={{ fontSize: '10px', marginLeft: '6px', padding: '1px 7px', borderRadius: 999, background: autoDeployOn ? 'rgba(47,214,100,0.15)' : 'rgba(255,255,255,0.08)', color: autoDeployOn ? '#4ade80' : '#8c8c8c' }}>
+                            {autoDeployOn ? 'ON' : 'OFF'}
+                          </span>
+                        </button>
                         <span className="text-xs" style={{ color: '#6e6e6e' }}>One-click static deploy → .buildrshq.dev</span>
                       </div>
 
@@ -4303,6 +4503,15 @@ export default function Editor() {
         message={`Stop deployment "${confirmStop?.subdomain || ''}.buildrshq.dev"?`}
         confirmText="Stop"
         variant="danger"
+      />
+      <ConfirmDialog
+        isOpen={!!confirmScopeSwitch}
+        onClose={() => setConfirmScopeSwitch(null)}
+        onConfirm={handleConfirmScopeSwitch}
+        title="Switch workspace?"
+        message="A terminal session is running — switching will kill it along with any running builds and scrollback."
+        confirmText="Switch anyway"
+        variant="warning"
       />
 
       {logDeployId && (

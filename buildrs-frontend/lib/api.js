@@ -344,6 +344,7 @@ export const agentApi = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+  sessions: () => apiFetch('/api/v1/agent/sessions'),
   status: (taskId) => apiFetch(`/api/v1/agent/status/${taskId}`),
   approve: (executionId, taskId) =>
     apiFetch('/api/v1/agent/approve', {
@@ -358,7 +359,8 @@ export const agentApi = {
   tweak: (executionId, taskId, feedback) =>
     apiFetch('/api/v1/agent/tweak', {
       method: 'POST',
-      body: JSON.stringify({ executionId, taskId, feedback }),
+      // Route requires `instruction`; taskId is accepted but unused there.
+      body: JSON.stringify({ executionId, taskId, instruction: feedback }),
     }),
   cancel: (executionId) =>
     apiFetch('/api/v1/agent/cancel', {

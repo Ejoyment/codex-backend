@@ -34,8 +34,12 @@ export default function AuthSuccess() {
         return;
       }
 
+      // Consume the fragment immediately: tokens must not linger in history.
+      try {
+        window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      } catch {}
+
       localStorage.setItem('authToken', urlToken);
-      setAuth(urlToken, null);
 
       try {
         const res = await authApi.getMe();
@@ -47,9 +51,11 @@ export default function AuthSuccess() {
             router.replace('/onboarding');
           }
         } else {
+          localStorage.removeItem('authToken');
           router.replace('/sign_in');
         }
       } catch {
+        localStorage.removeItem('authToken');
         router.replace('/sign_in');
       }
     };
