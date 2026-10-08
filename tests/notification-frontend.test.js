@@ -288,7 +288,9 @@ describe('wiring', () => {
     test('the socket namespace authenticates and joins the user room', () => {
         const socket = read(SOCKET_PATH);
         expect(socket).toContain("io.of('/notifications')");
-        expect(socket).toContain('jwt.verify(token, process.env.JWT_SECRET)');
+        // Auth + liveness via the shared helper (signature + deleted/banned
+        // account check), not an inline verify.
+        expect(socket).toContain('resolveSocketUser');
         expect(socket).toContain('socket.join(`user:${socket.userId}`)');
     });
 

@@ -10,7 +10,13 @@ const { remainingFor } = require('./tierLimits');
 
 class CreditPoolService {
     constructor() {
-        this.resetInterval = setInterval(() => this.resetMonthlyCredits(), 60 * 60 * 1000); // Check hourly
+        // No hourly timer in tests: it keeps the jest event loop alive and
+        // the reset query has no database to hit. Production boots it.
+        if (process.env.NODE_ENV !== 'test') {
+            this.resetInterval = setInterval(() => this.resetMonthlyCredits(), 60 * 60 * 1000); // Check hourly
+        } else {
+            this.resetInterval = null;
+        }
     }
 
     /**
@@ -235,7 +241,8 @@ class CreditPoolService {
     }
 
     stop() {
-        clearInterval(this.resetInterval);
+        if (this.resetInterval) clearInterval(this.resetInterval);
+        this.resetInterval = null;
     }
 }
 

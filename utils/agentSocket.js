@@ -1,4 +1,4 @@
-const jwt = require('jsonwebtoken');
+const { resolveSocketUser } = require('./socketAuth');
 const AgentExecution = require('../models/AgentExecution');
 const LocalTask = require('../models/LocalTask');
 const SpecModel = require('../models/SpecModel');
@@ -22,18 +22,14 @@ class AgentSocketHandler {
   setupAgentNamespace() {
     const agentNamespace = this.io.of('/agent');
 
-    agentNamespace.use((socket, next) => {
-      const token = socket.handshake.auth?.token;
-      if (!token) {
-        return next(new Error('Authentication error'));
-      }
+    agentNamespace.use(async (socket, next) => {
       try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        socket.userId = decoded.userId || decoded.id || decoded._id;
+        const { userId, decoded } = await resolveSocketUser(socket);
+        socket.userId = userId;
         socket.user = decoded;
         next();
       } catch (error) {
-        next(new Error('Authentication error'));
+        next(error);
       }
     });
 

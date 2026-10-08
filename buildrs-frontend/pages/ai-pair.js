@@ -3,7 +3,7 @@ import Head from 'next/head';
 import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
-import { apiFetch } from '../lib/api';
+import { apiFetch, SOCKET_URL } from '../lib/api';
 import {
   Bot,
   Send,
@@ -242,7 +242,7 @@ export default function AiPair() {
   useEffect(() => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
     if (!token) return;
-    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3000';
+    const socketUrl = SOCKET_URL;
     const sock = io(`${socketUrl}/collab`, { auth: { token }, transports: ['websocket', 'polling'] });
     agentSocketRef.current = sock;
     sock.on('connect', () => sock.emit('agent:join'));

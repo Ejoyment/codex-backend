@@ -24,6 +24,8 @@ const CollaborationSession = require('../models/CollaborationSession');
 const EphemeralSandbox = require('../models/EphemeralSandbox');
 const Company = require('../models/Company');
 const collabRealtimeSocket = require('../utils/collabRealtimeSocket');
+const User = require('../models/User');
+const { clearLivenessCache } = require('../middleware/auth');
 
 let server;
 let io;
@@ -100,6 +102,9 @@ afterAll(async () => {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  clearLivenessCache();
+  // Socket liveness: accounts resolve as live unless a test says otherwise.
+  jest.spyOn(User, 'exists').mockResolvedValue({ _id: 'live' });
   currentMember = null;
   sessions = { sessA: sessionDoc() };
   sandboxes = { sb_0123456789abcdef0123: sandboxDoc() };
@@ -121,6 +126,14 @@ beforeEach(() => {
 
 afterEach(() => {
   io.of('/collab').sockets.forEach((s) => s.disconnect(true));
+});
+
+describe('connection liveness', () => {
+  test('deleted/banned account cannot connect', async () => {
+    clearLivenessCache();
+    User.exists.mockResolvedValueOnce(null);
+    await expect(connect('dead-user-9')).rejects.toThrow(/no longer active/i);
+  });
 });
 
 describe('session:join access', () => {

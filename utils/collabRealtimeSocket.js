@@ -3,7 +3,7 @@
 //  - hover cursors + caret positions + typing indicators
 //  - inline audio channels (WebRTC signaling scoped to a session)
 //  - live design-code sync + parity broadcasts
-const jwt = require('jsonwebtoken');
+const { resolveSocketUser } = require('./socketAuth');
 const crypto = require('crypto');
 const CollaborationSession = require('../models/CollaborationSession');
 const DesignSyncSession = require('../models/DesignSyncSession');
@@ -25,16 +25,14 @@ function pickColor() {
 module.exports = (io) => {
     const ns = io.of('/collab');
 
-    ns.use((socket, next) => {
-        const token = socket.handshake.auth?.token;
-        if (!token) return next(new Error('Authentication error'));
+    ns.use(async (socket, next) => {
         try {
-            const decoded = jwt.verify(token, process.env.JWT_SECRET);
-            socket.userId = decoded.userId || decoded.id || decoded._id;
-            socket.user = { ...decoded, id: socket.userId };
+            const { userId, decoded } = await resolveSocketUser(socket);
+            socket.userId = userId;
+            socket.user = { ...decoded, id: userId };
             next();
         } catch (e) {
-            next(new Error('Authentication error'));
+            next(e);
         }
     });
 

@@ -44,19 +44,38 @@ async function isLockedOut(key) {
 
 // Increments the failure count, arms lockedUntil when the max is reached.
 // Returns { locked } for the caller's convenience.
+//
+// Atomicity: the count moves via a single upsert ($inc), so concurrent
+// failures can neither double-create (E11000 crash, lockout never arms) nor
+// lose increments (read-modify-write race delaying the lockout). A residual
+// duplicate-key on concurrent upsert-inserts retries once.
 async function recordFailure(key) {
     const normalized = normalizeKey(key);
-    let record = await AuthLockout.findOne({ key: normalized });
-    if (!record) {
-        record = new AuthLockout({ key: normalized });
+    let record;
+    try {
+        record = await AuthLockout.findOneAndUpdate(
+            { key: normalized },
+            {
+                $inc: { failures: 1 },
+                $set: { updatedAt: new Date() },
+                $setOnInsert: { lockedUntil: null },
+            },
+            { upsert: true, new: true }
+        );
+    } catch (error) {
+        if (error.code !== 11000) throw error;
+        record = await AuthLockout.findOneAndUpdate(
+            { key: normalized },
+            { $inc: { failures: 1 }, $set: { updatedAt: new Date() } },
+            { upsert: true, new: true }
+        );
     }
     // A previous lockout has expired: start a fresh count.
     if (record.lockedUntil && Date.now() > new Date(record.lockedUntil).getTime()) {
-        record.failures = 0;
+        record.failures = 1;
         record.lockedUntil = null;
     }
-    record.failures += 1;
-    if (record.failures >= MAX_FAILURES) {
+    if (record.failures >= MAX_FAILURES && !record.lockedUntil) {
         record.lockedUntil = new Date(Date.now() + LOCKOUT_MS);
     }
     record.updatedAt = new Date();

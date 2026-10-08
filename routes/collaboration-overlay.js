@@ -93,6 +93,7 @@ router.post('/overlay/start', authenticateToken, ensureCompanyMember, async (req
             host: req.userId,
             roomId,
             status: 'ongoing',
+            scheduledAt: new Date(),
             startedAt: new Date(),
             settings: {
                 videoEnabled: true,

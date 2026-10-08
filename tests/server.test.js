@@ -252,4 +252,26 @@ describe('Server', () => {
     const res = await request(app).get('/api-docs/swagger.json');
     expect([200, 301, 302, 404]).toContain(res.status);
   });
+
+  test('unknown API route returns a JSON 404 envelope, not HTML', async () => {
+    const res = await request(app).get('/api/no-such-route-xyz');
+    expect(res.status).toBe(404);
+    expect(res.body.success).toBe(false);
+    expect(typeof res.body.message).toBe('string');
+  });
+
+  test('malformed JSON body returns 400, not 500', async () => {
+    const res = await request(app)
+      .post('/api/auth/signin')
+      .set('Content-Type', 'application/json')
+      .send('{"broken": json');
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+  });
+
+  test('disallowed Origin is rejected, not served', async () => {
+    const res = await request(app).get('/api/health').set('Origin', 'https://evil.example');
+    expect(res.status).toBe(403);
+    expect(res.body.success).toBe(false);
+  });
 });

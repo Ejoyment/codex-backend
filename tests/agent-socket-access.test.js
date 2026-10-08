@@ -41,6 +41,8 @@ const aiRouterService = require('../utils/aiRouterService');
 const sddVerificationService = require('../utils/sddVerificationService');
 const realtimeBus = require('../utils/realtimeBus');
 const AgentSocketHandler = require('../utils/agentSocket');
+const User = require('../models/User');
+const { clearLivenessCache } = require('../middleware/auth');
 
 const USER_A = 'a'.repeat(24);
 const USER_B = 'b'.repeat(24);
@@ -106,7 +108,10 @@ afterAll(async () => {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  clearLivenessCache();
   sockets = [];
+  // Socket liveness: accounts resolve as live unless a test says otherwise.
+  jest.spyOn(User, 'exists').mockResolvedValue({ _id: 'live' });
   aiRouterService.routeChat.mockResolvedValue({ success: false, error: 'disabled in tests' });
   sddVerificationService.verifySpec.mockResolvedValue({ success: true, passed: true });
   LocalTask.findOne.mockResolvedValue(null);
@@ -123,6 +128,12 @@ afterEach(() => {
 describe('auth', () => {
   test('connection without a token is rejected', async () => {
     await expect(connect(null)).rejects.toThrow(/Authentication/);
+  });
+
+  test('deleted/banned account cannot connect', async () => {
+    clearLivenessCache();
+    User.exists.mockResolvedValueOnce(null);
+    await expect(connect('c'.repeat(24))).rejects.toThrow(/no longer active/i);
   });
 });
 

@@ -11,6 +11,16 @@ const useAuthStore = create(
       error: null,
 
       setAuth: (token, user) => {
+        // Never persist a nullish token: setItem would store the literal
+        // string "null" and rehydrate a broken session on reload.
+        if (!token) {
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('auth-storage');
+          }
+          set({ token: null, user: user || null, subscription: null, error: null });
+          return;
+        }
         const current = get();
         const subscription = user && Object.prototype.hasOwnProperty.call(user, 'subscription')
           ? user.subscription
@@ -45,6 +55,10 @@ const useAuthStore = create(
           localStorage.removeItem('authToken');
           localStorage.removeItem('user');
           localStorage.removeItem('subscription');
+          // Support-agent sessions live beside the user session — a shared
+          // device logout must end both.
+          localStorage.removeItem('supportAgent');
+          localStorage.removeItem('supportAgentToken');
         }
         set({ token: null, user: null, subscription: null, error: null });
         // The zustand persist key MUST go too: persist() rehydrates

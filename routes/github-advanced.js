@@ -116,14 +116,20 @@ router.post('/push', authenticateToken, async (req, res) => {
 
             res.json({
                 success: true,
-                message: `Pushed ${entries.length} file(s) in commit ${String(result.commit.sha).slice(0, 7)}`,
-                results: entries.map((e) => ({ path: e.path, success: true, commitSha: result.commit.sha })),
-                commitSha: result.commit.sha,
-                commitUrl: result.commit.url || `https://github.com/${owner}/${repo}/commit/${result.commit.sha}`,
+                message: result.noop
+                    ? 'No changes to push — remote already matches.'
+                    : `Pushed ${entries.length} file(s) in commit ${String(result.commit.sha).slice(0, 7)}`,
+                results: entries.map((e) => ({ path: e.path, success: true, commitSha: result.commit?.sha || null })),
+                commitSha: result.commit?.sha || null,
+                commitUrl: result.commit?.url || (result.commit ? `https://github.com/${owner}/${repo}/commit/${result.commit.sha}` : null),
                 branch: result.branch,
+                noop: !!result.noop,
             });
         } catch (pushErr) {
             console.error('Push error:', pushErr);
+            if (pushErr.code === 'NON_FAST_FORWARD') {
+                return res.status(409).json({ success: false, message: pushErr.message, code: 'NON_FAST_FORWARD' });
+            }
             res.status(502).json({
                 success: false,
                 message: `Push to ${owner}/${repo} failed: ${pushErr.message}`,
@@ -132,6 +138,27 @@ router.post('/push', authenticateToken, async (req, res) => {
     } catch (error) {
         console.error('Push error:', error);
         res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// Delete a single file from GitHub (the editor's Delete button previously sent
+// GitHub pseudo-ids to /api/code-editor/files/:id, which 404'd always).
+router.post('/delete', authenticateToken, async (req, res) => {
+    try {
+        const { owner, repo, branch, path, message } = req.body || {};
+        if (!owner || !repo || !path) {
+            return res.status(400).json({ success: false, message: 'owner, repo and path are required' });
+        }
+        const cleanPath = String(path).replace(/^\/+/, '');
+        const result = await githubService.deleteFile(
+            req.userId, owner, repo, cleanPath,
+            message || `Delete ${cleanPath} via Buildrs HQ`,
+            branch || 'main'
+        );
+        res.json({ success: true, commitSha: result.commit.sha });
+    } catch (error) {
+        console.error('Delete file error:', error);
+        res.status(502).json({ success: false, message: error.message });
     }
 });
 

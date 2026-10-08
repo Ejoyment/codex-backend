@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { io } from 'socket.io-client';
-import { apiFetch } from '../lib/api';
+import { apiFetch, SOCKET_URL } from '../lib/api';
 import useToastStore from '../store/toastStore';
 import {
   playNotificationSound,
@@ -9,7 +9,6 @@ import {
   setSoundMuted,
 } from '../lib/notificationSound';
 
-const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3000';
 const MAX_VISIBLE = 30;
 const CLIENT_SEEN_KEY = 'buildrs:notification-seen';
 

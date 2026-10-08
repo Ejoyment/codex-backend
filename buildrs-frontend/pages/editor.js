@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
-import { apiFetch, projectApi, API_BASE_URL } from '../lib/api';
+import { apiFetch, projectApi, API_BASE_URL, SOCKET_URL } from '../lib/api';
 import * as editorDrafts from '../lib/editorDrafts';
 import { registerEditorSnippets } from '../lib/monacoExtras';
 import { normalizeMarkers, countProblems, setRunProblems } from '../lib/monacoDiagnostics';
@@ -37,8 +37,6 @@ function tierBadgeClass(t) {
   if (n === 'developer') return 'is-free';
   return 'is-pro';
 }
-
-const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3000';
 
 // --- ANSI output handling (run output can carry terminal color codes) -------
 const ANSI_SGR_RE = /\x1b\[([0-9;]*)m/g;
@@ -436,6 +434,7 @@ export default function Editor() {
   const [confirmDiscard, setConfirmDiscard] = useState(null);
   const [confirmClose, setConfirmClose] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [confirmStop, setConfirmStop] = useState(null);
   const [menuOpen, setMenuOpen] = useState(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState('');
@@ -445,6 +444,9 @@ export default function Editor() {
   const menuRef = useRef(null);
   const terminalRef = useRef(null);
   const editorRef = useRef(null);
+  const decorationsRef = useRef(null);
+  const fileKeyCacheRef = useRef(new WeakMap());
+  const tmpKeySeqRef = useRef(0);
   const runRef = useRef(null);
   const runAbortRef = useRef(null);
   const runLineBufRef = useRef('');
@@ -474,6 +476,11 @@ export default function Editor() {
 
   const selectedFileRef = useRef(null);
   selectedFileRef.current = selectedFile;
+  // Mirrors for the socket reconnect handler (runs outside render).
+  const workspaceIdRef = useRef(null);
+  workspaceIdRef.current = workspaceId;
+  const userRef = useRef(null);
+  userRef.current = user;
 
   const tree = useMemo(() => buildFileTree(
     selectedRepo && !selectedProject && repoPending.length
@@ -493,7 +500,15 @@ export default function Editor() {
       : 'none';
     if (file.path) return `github:${repoScope}:${file.path}`;
     if (file.name) return `github:${repoScope}:${file.name}`;
-    return `tmp:${Math.random().toString(36).slice(2)}`;
+    // No stable identity at all: assign one per object (WeakMap, no leaks).
+    // Math.random() here used to mint a NEW key on every render, orphaning
+    // buffers/dirty state for the same file.
+    let key = fileKeyCacheRef.current.get(file);
+    if (!key) {
+      key = `tmp:${tmpKeySeqRef.current++}`;
+      fileKeyCacheRef.current.set(file, key);
+    }
+    return key;
   }, [selectedRepo]);
 
   function buildSession() {
@@ -723,10 +738,37 @@ export default function Editor() {
       setTimeout(() => setStatus(null), 2500);
     });
 
+    // Transport reconnects do NOT restore server-side room membership —
+    // without this the UI shows LIVE while the server forgot every join.
+    socket.on('reconnect', () => {
+      const wsId = workspaceIdRef.current;
+      if (wsId) socket.emit('workspace:join', { workspaceId: wsId });
+      const file = selectedFileRef.current;
+      const u = userRef.current;
+      if (file?._id) {
+        socket.emit('collab:join', {
+          fileId: file._id,
+          user: { userId: u?.id || u?._id, name: u?.fullName || u?.name || 'You', email: u?.email },
+        });
+      }
+      setStatus({ type: 'success', msg: 'Reconnected — rejoined live session' });
+      setTimeout(() => setStatus(null), 2000);
+    });
+    socket.on('disconnect', () => {
+      setStatus({ type: 'warning', msg: 'Connection lost — retrying…' });
+    });
+
     return () => {
       socket.disconnect();
       socketRef.current = null;
     };
+  }, []);
+
+  // Unmount: stop deploy polling (pollers self-terminate, but not before up
+  // to 200 tries against an unmounted component).
+  useEffect(() => () => {
+    Object.values(pollTimersRef.current).forEach((t) => clearInterval(t));
+    pollTimersRef.current = {};
   }, []);
 
   // Real-time explorer: join the workspace room and refresh the file tree
@@ -861,6 +903,30 @@ export default function Editor() {
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Remote cursors: re-render decorations whenever presence state changes.
+  // (The mount callback above only renders once with a stale closure.)
+  useEffect(() => {
+    const entry = decorationsRef.current;
+    const monaco = monacoRef.current;
+    if (!entry || !monaco) return;
+    const decos = [];
+    Object.values(remoteCursors).forEach(({ userName, cursor }) => {
+      if (!cursor) return;
+      const pos = { lineNumber: cursor.line, column: cursor.column || 1 };
+      const range = new monaco.Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column);
+      decos.push({
+        range,
+        options: {
+          className: 'remote-cursor-widget',
+          hoverMessage: { value: `${userName} is here` },
+          stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
+          zIndex: 1000,
+        },
+      });
+    });
+    entry.collection.set(decos);
+  }, [remoteCursors]);
 
   // Terminal xterm init — real PTY shell via the /terminal socket.io namespace
   useEffect(() => {
@@ -1976,11 +2042,16 @@ export default function Editor() {
     editor.onDidChangeModelContent(() => {
       if (lspChangeTimer) clearTimeout(lspChangeTimer);
       lspChangeTimer = setTimeout(() => {
-        const model = editor.getModel();
-        if (!model || model.getLanguageId() !== 'python') return;
-        const uri = activeUri();
-        if (!uri) return;
-        lspApi.change({ documentUri: uri, content: model.getValue(), language: 'python' }).catch(() => {});
+        try {
+          if (editor.isDisposed?.()) return;
+          const model = editor.getModel();
+          if (!model || model.getLanguageId() !== 'python') return;
+          const uri = activeUri();
+          if (!uri) return;
+          lspApi.change({ documentUri: uri, content: model.getValue(), language: 'python' }).catch(() => {});
+        } catch (_) {
+          // Editor remounted/disposed mid-debounce — stale timer, ignore.
+        }
       }, 700);
     });
   }
@@ -2003,6 +2074,9 @@ export default function Editor() {
     }
     refreshProblems();
     const decorationsCollection = editor.createDecorationsCollection([]);
+    // Kept in a ref so remote-cursor updates re-render below (the mount
+    // callback runs once; a closure here would freeze the initial state).
+    decorationsRef.current = { collection: decorationsCollection, monaco };
     const currentUserName = user?.fullName || user?.name || 'You';
 
     editor.onDidChangeCursorPosition((e) => {
@@ -2586,7 +2660,6 @@ export default function Editor() {
   }
 
   async function stopDeployment(deploymentId, subdomain) {
-    if (!confirm(`Stop deployment "${subdomain}.buildrshq.dev"?`)) return;
     try {
       await apiFetch(`/api/deployments/${deploymentId}`, { method: 'DELETE' });
       setDeployments((prev) => prev.map((d) =>
@@ -2596,6 +2669,17 @@ export default function Editor() {
     } catch (err) {
       setStatus({ type: 'error', msg: err?.data?.message || err?.data?.error || err?.message || 'Failed to stop' });
     }
+  }
+
+  function handleStop(deploymentId, subdomain) {
+    setConfirmStop({ deploymentId, subdomain });
+  }
+
+  const handleConfirmStop = async () => {
+    const target = confirmStop;
+    if (!target) return;
+    setConfirmStop(null);
+    await stopDeployment(target.deploymentId, target.subdomain);
   }
 
   // Patch the list entry when the log modal polls a newer status (keeps the
@@ -2680,7 +2764,24 @@ export default function Editor() {
     if (!file) return;
     setConfirmDelete(null);
     try {
-      await apiFetch(`/api/code-editor/files/${file._id}`, { method: 'DELETE' });
+      // GitHub pseudo-ids (github:...) are not CodeFile documents — delete
+      // through the GitHub API instead of 404ing on /api/code-editor.
+      const isGithub = String(file._id || '').startsWith('github:');
+      if (isGithub) {
+        if (!selectedRepo) throw new Error('Select the repository first to delete remote files');
+        const repoOwner = selectedRepo.owner?.login || selectedRepo.owner || selectedRepo.ownerName;
+        await apiFetch('/api/github-advanced/delete', {
+          method: 'POST',
+          body: JSON.stringify({
+            owner: repoOwner,
+            repo: selectedRepo.name,
+            branch: selectedRepo.default_branch || selectedRepo.defaultBranch || 'main',
+            path: (file.fullPath || fileFullPath(file)).replace(/^\/+/, ''),
+          }),
+        });
+      } else {
+        await apiFetch(`/api/code-editor/files/${file._id}`, { method: 'DELETE' });
+      }
       setFiles((prev) => prev.filter((f) => f._id !== file._id));
       const delKey = getFileKey(file);
       delete openContentsRef.current[delKey];
@@ -3930,7 +4031,7 @@ export default function Editor() {
                                 Logs
                               </button>
                               {(d.status === 'success' || d.status === 'failed') && (
-                                <button type="button" onClick={() => stopDeployment(d._id, d.subdomain)} className="text-xs" style={{ color: '#f87171' }}>Stop</button>
+                                <button type="button" onClick={() => handleStop(d._id, d.subdomain)} className="text-xs" style={{ color: '#f87171' }}>Stop</button>
                               )}
                             </div>
                           </div>
@@ -4192,6 +4293,15 @@ export default function Editor() {
         title="Delete File"
         message={`Are you sure you want to delete "${confirmDelete?.name || 'this file'}"?`}
         confirmText="Delete"
+        variant="danger"
+      />
+      <ConfirmDialog
+        isOpen={!!confirmStop}
+        onClose={() => setConfirmStop(null)}
+        onConfirm={handleConfirmStop}
+        title="Stop Deployment"
+        message={`Stop deployment "${confirmStop?.subdomain || ''}.buildrshq.dev"?`}
+        confirmText="Stop"
         variant="danger"
       />
 
