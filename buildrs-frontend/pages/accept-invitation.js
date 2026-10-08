@@ -21,7 +21,7 @@ export default function AcceptInvitation() {
 
     const accept = async () => {
       if (!token) {
-        router.replace(`/sign_in?redirect=/accept-invitation?token=${invitationToken}`);
+        router.replace(`/sign_in?redirect=${encodeURIComponent(`/accept-invitation?token=${invitationToken}`)}`);
         return;
       }
 
