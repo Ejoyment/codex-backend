@@ -68,6 +68,13 @@ const invitationSchema = new mongoose.Schema({
 invitationSchema.index({ email: 1, company: 1 });
 
 invitationSchema.index({ status: 1 });
+// Race guard: concurrent invites could create two pending rows for the same
+// email+company (resend/accept becomes ambiguous). Pending uniqueness only —
+// accepted/declined history is untouched.
+invitationSchema.index(
+    { email: 1, company: 1 },
+    { unique: true, partialFilterExpression: { status: { $eq: 'pending' } } }
+);
 // TTL: rows die when expiresAt (default +7d) passes. Membership itself
 // lives on Company.members, so reaping old invitations loses no access.
 invitationSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });

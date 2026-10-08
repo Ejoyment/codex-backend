@@ -25,6 +25,8 @@ jest.mock('../server/services/roomService', () => ({
 
 const roomService = require('../server/services/roomService');
 const roomSocket = require('../server/sockets/roomSocket');
+const User = require('../models/User');
+const { clearLivenessCache } = require('../middleware/auth');
 
 let server;
 let io;
@@ -95,7 +97,10 @@ afterAll(async () => {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  clearLivenessCache();
   sockets = [];
+  // Socket liveness: accounts resolve as live unless a test says otherwise.
+  jest.spyOn(User, 'exists').mockResolvedValue({ _id: 'live' });
   rooms = { 'ROOM-1': roomDoc() };
   roomService.getRoom.mockImplementation(async (id) => rooms[id] || null);
   // Same logic as the real roomService.getRole: participant lookup by userId.
@@ -107,6 +112,14 @@ beforeEach(() => {
 
 afterEach(() => {
   sockets.forEach((s) => s.disconnect(true));
+});
+
+describe('connection liveness', () => {
+  test('deleted/banned account cannot connect', async () => {
+    clearLivenessCache();
+    User.exists.mockResolvedValueOnce(null);
+    await expect(connect('507f1f77bcf86cd799439099')).rejects.toThrow(/no longer active/i);
+  });
 });
 
 describe('join authorization', () => {

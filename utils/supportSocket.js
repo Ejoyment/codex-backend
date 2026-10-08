@@ -7,6 +7,7 @@
 // accepted client-claimed userType/agentId — anyone could read any ticket and
 // resolve/assign it.
 const jwt = require('jsonwebtoken');
+const { assertSocketUserLive } = require('./socketAuth');
 const SupportTicket = require('../models/SupportTicket');
 const SupportAgent = require('../models/SupportAgent');
 const User = require('../models/User');
@@ -30,6 +31,9 @@ module.exports = (io) => {
                 socket.agentName = agent.name || 'Support Agent';
                 socket.userId = null;
             } else if (decoded.id || decoded.userId) {
+                // Same liveness gate as every other namespace: deleted or
+                // banned accounts cannot hold support sockets either.
+                await assertSocketUserLive(decoded.id || decoded.userId);
                 socket.isAgent = false;
                 socket.userId = String(decoded.id || decoded.userId);
             } else {
@@ -37,7 +41,9 @@ module.exports = (io) => {
             }
             next();
         } catch (error) {
-            next(new Error('Authentication error'));
+            next(error instanceof Error && error.message === 'Account is no longer active'
+                ? error
+                : new Error('Authentication error'));
         }
     });
 

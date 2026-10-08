@@ -15,7 +15,7 @@
  * Guests are read-only by default; only controller/host may publish input.
  */
 
-const jwt = require('jsonwebtoken');
+const { resolveSocketUser } = require('../../utils/socketAuth');
 const roomService = require('../services/roomService');
 
 // Per-chunk cap: the ring buffer caps chunk COUNT (500), so without a byte
@@ -57,18 +57,16 @@ function clearBuffer(roomId) {
 module.exports = (io) => {
   const ns = io.of('/rooms');
 
-  ns.use((socket, next) => {
-    const token = socket.handshake.auth?.token;
-    if (!token) return next(new Error('Authentication error'));
-    try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      socket.userId = decoded.userId || decoded.id || decoded._id;
-      socket.user = { ...decoded, id: socket.userId };
-      next();
-    } catch (e) {
-      next(new Error('Authentication error'));
-    }
-  });
+    ns.use(async (socket, next) => {
+      try {
+        const { userId, decoded } = await resolveSocketUser(socket);
+        socket.userId = userId;
+        socket.user = { ...decoded, id: userId };
+        next();
+      } catch (e) {
+        next(e);
+      }
+    });
 
   ns.on('connection', (socket) => {
     // Rooms this socket actually joined (room:join is the authorized join;

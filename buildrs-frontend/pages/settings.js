@@ -345,6 +345,17 @@ function BillingTab({ router, toast }) {
           )}
         </div>
 
+        {subscription?.usage && (
+          <div className="bill-usage" aria-label="Current period usage">
+            <span className="bill-usage-item">
+              AI credits: <strong>{subscription.usage.credits.used}{subscription.usage.credits.limit == null ? ' (unlimited)' : ` / ${subscription.usage.credits.limit}`}</strong>
+            </span>
+            <span className="bill-usage-item">
+              Cloud hours: <strong>{subscription.usage.computeHours.used}{subscription.usage.computeHours.limit == null ? ' (unlimited)' : ` / ${subscription.usage.computeHours.limit}`}</strong>
+            </span>
+          </div>
+        )}
+
         <div className="bill-actions">
           {state.canResume ? (
             <button
@@ -569,6 +580,7 @@ function BillingTab({ router, toast }) {
             className="btn-workspace btn-secondary"
             onClick={() => goToCheckout(state.isFree ? 'pro' : state.tier)}
             disabled={state.tier === 'enterprise'}
+            title={state.tier === 'enterprise' ? 'Enterprise plans are managed via custom contract — contact support to change payment details' : undefined}
           >
             {state.paymentProvider ? 'Update' : 'Add payment method'}
           </button>

@@ -48,7 +48,6 @@ export default function VerifyEmail() {
     try {
       const result = await authApi.verifyOTP(sessionStorage.getItem('userEmail'), otp);
       if (result.success) {
-        sessionStorage.setItem('otp', otp);
         if (result.token) {
           localStorage.setItem('authToken', result.token);
           setAuth(result.token, result.user || null);

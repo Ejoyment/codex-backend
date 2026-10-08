@@ -352,47 +352,83 @@ subscriptionSchema.methods.syncTierRestrictions = function(tier = this.tier) {
 
 module.exports = mongoose.model('Subscription', subscriptionSchema);
 
+// Indexes for the hot cron paths (billingCron per-minute trial scan,
+// creditPoolService hourly reset scan) — the schema previously had none
+// (only the userId unique index).
+subscriptionSchema.index({ status: 1, trialEndsAt: 1 });
+subscriptionSchema.index({ status: 1, 'creditPool.resetAt': 1 });
+
 subscriptionSchema.statics.tierConfigs = {
     developer: {
         amount: 0, interval: 'monthly', currency: 'USD',
-        monthlyCreditLimit: 0, cloudComputeHours: 0, maxConcurrentJobs: 0, taskTimeout: 5,
-        maxDebugHostRooms: 0, maxDebugParticipants: 0, maxDeployments: 1,
+        monthlyCreditLimit: TIER_LIMITS.developer.monthlyCredits,
+        cloudComputeHours: TIER_LIMITS.developer.cloudComputeHours,
+        maxConcurrentJobs: TIER_LIMITS.developer.maxConcurrentAgentJobs,
+        taskTimeout: TIER_LIMITS.developer.taskTimeoutMinutes,
+        maxDebugHostRooms: TIER_LIMITS.developer.maxDebugHostRooms,
+        maxDebugParticipants: TIER_LIMITS.developer.maxDebugParticipants,
+        maxDeployments: TIER_LIMITS.developer.maxActiveDeployments,
         specEngineLevel: 'read_only', webrtcEnabled: false, dataRetentionDays: 7,
         features: { localModels: true, webcontainers: true, cloudAgents: false }
     },
     pro: {
         amount: 20, interval: 'monthly', currency: 'USD',
-        monthlyCreditLimit: 20, cloudComputeHours: 10, maxConcurrentJobs: 1, taskTimeout: 15,
-        maxDebugHostRooms: 1, maxDebugParticipants: 2, maxDeployments: 3,
+        monthlyCreditLimit: TIER_LIMITS.pro.monthlyCredits,
+        cloudComputeHours: TIER_LIMITS.pro.cloudComputeHours,
+        maxConcurrentJobs: TIER_LIMITS.pro.maxConcurrentAgentJobs,
+        taskTimeout: TIER_LIMITS.pro.taskTimeoutMinutes,
+        maxDebugHostRooms: TIER_LIMITS.pro.maxDebugHostRooms,
+        maxDebugParticipants: TIER_LIMITS.pro.maxDebugParticipants,
+        maxDeployments: TIER_LIMITS.pro.maxActiveDeployments,
         specEngineLevel: 'full_sdd', webrtcEnabled: true, dataRetentionDays: 14,
         features: { localModels: true, webcontainers: true, cloudAgents: true, debugRooms: true }
     },
     pro_plus: {
         amount: 60, interval: 'monthly', currency: 'USD',
-        monthlyCreditLimit: 70, cloudComputeHours: 50, maxConcurrentJobs: 3, taskTimeout: 30,
-        maxDebugHostRooms: 3, maxDebugParticipants: 4, maxDeployments: 10,
+        monthlyCreditLimit: TIER_LIMITS.pro_plus.monthlyCredits,
+        cloudComputeHours: TIER_LIMITS.pro_plus.cloudComputeHours,
+        maxConcurrentJobs: TIER_LIMITS.pro_plus.maxConcurrentAgentJobs,
+        taskTimeout: TIER_LIMITS.pro_plus.taskTimeoutMinutes,
+        maxDebugHostRooms: TIER_LIMITS.pro_plus.maxDebugHostRooms,
+        maxDebugParticipants: TIER_LIMITS.pro_plus.maxDebugParticipants,
+        maxDeployments: TIER_LIMITS.pro_plus.maxActiveDeployments,
         specEngineLevel: 'realtime_drift', webrtcEnabled: true, dataRetentionDays: 30,
         features: { localModels: true, webcontainers: true, cloudAgents: true, debugRooms: true, realtimeDrift: true }
     },
     team_standard: {
         amount: 40, interval: 'monthly', currency: 'USD',
-        monthlyCreditLimit: 40, cloudComputeHours: 25, maxConcurrentJobs: 2, taskTimeout: 30,
-        maxDebugHostRooms: Infinity, maxDebugParticipants: 4, maxDeployments: 20,
+        monthlyCreditLimit: TIER_LIMITS.team_standard.monthlyCredits,
+        cloudComputeHours: TIER_LIMITS.team_standard.cloudComputeHours,
+        maxConcurrentJobs: TIER_LIMITS.team_standard.maxConcurrentAgentJobs,
+        taskTimeout: TIER_LIMITS.team_standard.taskTimeoutMinutes,
+        maxDebugHostRooms: TIER_LIMITS.team_standard.maxDebugHostRooms,
+        maxDebugParticipants: TIER_LIMITS.team_standard.maxDebugParticipants,
+        maxDeployments: TIER_LIMITS.team_standard.maxActiveDeployments,
         specEngineLevel: 'team_library', webrtcEnabled: true, dataRetentionDays: 30,
         features: { localModels: true, webcontainers: true, cloudAgents: true, debugRooms: true, teamLibrary: true, rbac: true }
     },
     team_premium: {
         amount: 120, interval: 'monthly', currency: 'USD',
-        monthlyCreditLimit: 200, cloudComputeHours: 120, maxConcurrentJobs: 5, taskTimeout: 60,
-        maxDebugHostRooms: Infinity, maxDebugParticipants: 8, maxDeployments: Infinity,
+        monthlyCreditLimit: TIER_LIMITS.team_premium.monthlyCredits,
+        cloudComputeHours: TIER_LIMITS.team_premium.cloudComputeHours,
+        maxConcurrentJobs: TIER_LIMITS.team_premium.maxConcurrentAgentJobs,
+        taskTimeout: TIER_LIMITS.team_premium.taskTimeoutMinutes,
+        maxDebugHostRooms: TIER_LIMITS.team_premium.maxDebugHostRooms,
+        maxDebugParticipants: TIER_LIMITS.team_premium.maxDebugParticipants,
+        maxDeployments: TIER_LIMITS.team_premium.maxActiveDeployments,
         specEngineLevel: 'cross_repo', webrtcEnabled: true, dataRetentionDays: 90,
         features: { localModels: true, webcontainers: true, cloudAgents: true, debugRooms: true, teamLibrary: true, rbac: true, crossRepo: true, sso: false }
     },
     enterprise: {
         amount: null, interval: 'custom', currency: 'USD',
-        monthlyCreditLimit: null, cloudComputeHours: null, maxConcurrentJobs: null, taskTimeout: null,
-        maxDebugHostRooms: Infinity, maxDebugParticipants: Infinity, maxDeployments: Infinity,
-        specEngineLevel: 'custom', webrtcEnabled: true, dataRetentionDays: Infinity,
+        monthlyCreditLimit: TIER_LIMITS.enterprise.monthlyCredits,
+        cloudComputeHours: TIER_LIMITS.enterprise.cloudComputeHours,
+        maxConcurrentJobs: TIER_LIMITS.enterprise.maxConcurrentAgentJobs,
+        taskTimeout: TIER_LIMITS.enterprise.taskTimeoutMinutes,
+        maxDebugHostRooms: TIER_LIMITS.enterprise.maxDebugHostRooms,
+        maxDebugParticipants: TIER_LIMITS.enterprise.maxDebugParticipants,
+        maxDeployments: TIER_LIMITS.enterprise.maxActiveDeployments,
+        specEngineLevel: 'custom', webrtcEnabled: true, dataRetentionDays: null,
         features: { localModels: true, webcontainers: true, cloudAgents: true, debugRooms: true, teamLibrary: true, rbac: true, crossRepo: true, sso: true, audit: true, scim: true }
     }
 };

@@ -61,7 +61,6 @@ export default function SignUp() {
       if (result.success) {
         resetRateLimit('signup');
         sessionStorage.setItem('userEmail', email);
-        sessionStorage.setItem('userName', fullName);
         const otpResult = await authApi.sendOTP(email);
         if (otpResult.success) {
           setStep('verify');

@@ -18,12 +18,13 @@ process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret-for-automated-te
 
 jest.mock('../models/SupportTicket', () => ({ findOne: jest.fn() }));
 jest.mock('../models/SupportAgent', () => ({ findById: jest.fn() }));
-jest.mock('../models/User', () => ({ findById: jest.fn() }));
+jest.mock('../models/User', () => ({ findById: jest.fn(), exists: jest.fn() }));
 
 const SupportTicket = require('../models/SupportTicket');
 const SupportAgent = require('../models/SupportAgent');
 const User = require('../models/User');
 const supportSocket = require('../utils/supportSocket');
+const { clearLivenessCache } = require('../middleware/auth');
 
 let server;
 let io;
@@ -96,6 +97,7 @@ beforeEach(() => {
   SupportAgent.findById.mockImplementation(async (id) =>
     String(id) === 'ag1' ? { _id: 'ag1', name: 'Alice A.' } : null
   );
+  User.exists.mockResolvedValue({ _id: 'live' });
   User.findById.mockImplementation(async (id) =>
     String(id) === USER_A ? { fullName: 'Real User A' } : { fullName: 'Real User B' }
   );
@@ -112,6 +114,12 @@ describe('authentication', () => {
 
   test('agent token with unknown agent is rejected', async () => {
     await expect(agentSocket('ag-ghost')).rejects.toThrow(/auth/i);
+  });
+
+  test('deleted/banned user cannot connect (liveness)', async () => {
+    clearLivenessCache();
+    User.exists.mockResolvedValueOnce(null);
+    await expect(userSocket('507f1f77bcf86cd799439099')).rejects.toThrow(/no longer active/i);
   });
 
   test('token with neither userId nor agentId is rejected', async () => {

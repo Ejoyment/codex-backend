@@ -32,6 +32,12 @@ const agentExecutionSchema = new mongoose.Schema({
   contextSnapshot: { type: mongoose.Schema.Types.Mixed, default: null },
   plan: { type: String, default: '' },
   terminalLog: [{ timestamp: Date, type: { type: String }, message: String, metadata: mongoose.Schema.Types.Mixed }],
+  // Plain execution history. Every writer (agentSocket, agent-v1, agentWorker)
+  // uses `logs`, which was missing from the schema — strict mode silently
+  // dropped it on save while in-memory pushes kept working, so history never
+  // persisted. (terminalLog is the richer twin; unify on a quiet day.)
+  logs: [{ timestamp: Date, message: String }],
+  specRef: { type: String, default: null },
   filesChanged: [{ path: String, action: String, diff: String }],
   validationResult: { type: mongoose.Schema.Types.Mixed, default: null },
   tweaks: [{ instruction: String, addedAt: Date, resultingDiff: String }],
@@ -73,5 +79,7 @@ const agentExecutionSchema = new mongoose.Schema({
 
 agentExecutionSchema.index({ userId: 1, sessionId: 1, status: 1 });
 agentExecutionSchema.index({ createdAt: -1 });
+// Status polling filters on the metadata copy (agent-v1 + agentSocket).
+agentExecutionSchema.index({ 'metadata.taskId': 1 });
 
 module.exports = mongoose.model('AgentExecution', agentExecutionSchema);

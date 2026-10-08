@@ -254,6 +254,14 @@ class GitHubService {
             owner, repo, base_tree: baseTreeSha, tree: treeEntries,
         });
 
+        // No-op guard: identical blobs produce the base tree — minting a
+        // commit would pollute history with an empty change.
+        if (baseTreeSha && tree.sha === baseTreeSha) {
+            return {
+                commit: null, branch: targetBranch, noop: true,
+            };
+        }
+
         const { data: commit } = await octokit.git.createCommit({
             owner, repo,
             message: message || `Update ${files.length} file(s) from Buildrs`,
@@ -266,19 +274,14 @@ class GitHubService {
                 owner, repo, ref: `heads/${targetBranch}`, sha: commit.sha,
             });
         } catch (err) {
-            // Non-fast-forward: someone pushed meanwhile — retry once on top.
-            const { data: freshRef } = await octokit.git.getRef({ owner, repo, ref: `heads/${targetBranch}` });
-            const { data: freshCommit } = await octokit.git.createCommit({
-                owner, repo,
-                message: message || `Update ${files.length} file(s) from Buildrs`,
-                tree: tree.sha,
-                parents: [freshRef.object.sha],
-            });
-            await octokit.git.updateRef({ owner, repo, ref: `heads/${targetBranch}`, sha: freshCommit.sha });
-            return {
-                commit: { sha: freshCommit.sha, message: freshCommit.message, url: freshCommit.html_url },
-                branch: targetBranch,
-            };
+            // Non-fast-forward: someone pushed meanwhile. DO NOT retry on top:
+            // the tree was built on the old base, so rebasing it would silently
+            // drop the concurrent changes. Surface a conflict instead.
+            const conflict = new Error(
+                'Branch moved while pushing — pull the latest changes and push again.'
+            );
+            conflict.code = 'NON_FAST_FORWARD';
+            throw conflict;
         }
 
         return {

@@ -40,7 +40,7 @@ const localTaskSchema = new mongoose.Schema({
     agentExecution: {
         status: {
             type: String,
-            enum: ['idle', 'running', 'awaiting_approval', 'completed', 'failed'],
+            enum: ['idle', 'running', 'awaiting_approval', 'completed', 'failed', 'rejected'],
             default: 'idle'
         },
         agentBranch: String,
