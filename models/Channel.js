@@ -58,5 +58,12 @@ const channelSchema = new mongoose.Schema({
 
 channelSchema.index({ company: 1, name: 1 });
 channelSchema.index({ members: 1 });
+// Race guard: the create route checks-then-creates, so concurrent creates
+// could double-insert the same name. Uniqueness applies to live channels
+// only (archived names may be reused).
+channelSchema.index(
+    { company: 1, name: 1 },
+    { unique: true, partialFilterExpression: { archived: { $eq: false } } }
+);
 
 module.exports = mongoose.model('Channel', channelSchema);

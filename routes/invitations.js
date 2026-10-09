@@ -133,6 +133,10 @@ router.post('/', authenticateToken, async (req, res) => {
             invitation
         });
     } catch (error) {
+        // Lost the create race (partial unique index on pending invites).
+        if (error.code === 11000) {
+            return res.status(400).json({ success: false, message: 'User already invited' });
+        }
         res.status(500).json({ success: false, message: error.message });
     }
 });

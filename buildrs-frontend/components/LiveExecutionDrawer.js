@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { X, Terminal, CheckCircle, Loader2, AlertTriangle, FileDiff } from 'lucide-react';
 import { useXterm } from '../hooks/useXterm';
+import { SOCKET_URL } from '../lib/api';
 
 let io;
 if (typeof window !== 'undefined') {
   io = require('socket.io-client').io;
 }
-
-const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3000';
 
 export default function LiveExecutionDrawer({ taskId, isOpen, onClose, executionId }) {
   const [isOpen_state, setIsOpen] = useState(isOpen);

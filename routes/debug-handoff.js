@@ -101,15 +101,17 @@ router.post('/handoff', authenticateToken, async (req, res) => {
         
         const token = crypto.randomBytes(32).toString('hex');
         const handoffId = `HOF-${Date.now()}-${crypto.randomBytes(6).toString('hex').toUpperCase()}`;
-        
+
+        // source is a sub-document { type, sourceId } — a bare string cannot
+        // cast and a top-level sourceId is strict-dropped, losing provenance.
+        const sourceTypes = ['manual', 'debug-session', 'support-ticket', 'error-alert', 'ai-suggestion'];
         const handoff = await DebugHandoff.create({
             handoffId,
             createdBy: req.userId,
             companyId: companyId || null,
             title: title || 'Debug Handoff',
             description: description || '',
-            source: source || 'manual',
-            sourceId: sourceId || null,
+            source: { type: sourceTypes.includes(source) ? source : 'manual', sourceId: sourceId || null },
             codeSnapshot,
             runtimeState,
             sandbox: {
@@ -477,8 +479,7 @@ router.post('/handoff/from-chat', authenticateToken, async (req, res) => {
             companyId: companyId || null,
             title: title || 'Bug Handoff',
             description: description || '',
-            source: { type: 'support-ticket' },
-            sourceId: channelId || ticketId || null,
+            source: { type: 'support-ticket', sourceId: channelId || ticketId || null },
             codeSnapshot,
             runtimeState,
             sandbox: { url: `/sandbox.html?key=pending`, expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), branch: codeSnapshot.branch, commitSha: 'pending', status: 'provisioning' },

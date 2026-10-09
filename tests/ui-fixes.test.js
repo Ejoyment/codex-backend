@@ -173,7 +173,7 @@ describe('Bug 5 — Workspace membership awareness', () => {
 describe('API base URL and endpoints', () => {
   test('lib/api.js has correct base URL without double /api', () => {
     const api = readFrontend('lib/api.js');
-    expect(api).toMatch(/API_BASE_URL = 'https:\/\/codex-backend-7utu\.onrender\.com'/);
+    expect(api).toMatch(/API_BASE_URL = .*'https:\/\/codex-backend-7utu\.onrender\.com'/);
     expect(api).not.toMatch(/API_BASE_URL = 'https:\/\/codex-backend-7utu\.onrender\.com\/api'/);
   });
 

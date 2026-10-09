@@ -18,6 +18,7 @@ export function useCurrentCompany() {
       setLoading(true);
       setError(null);
       const res = await apiFetch('/api/company/my-companies');
+      if (res.success === false) throw new Error(res.message || 'Failed to load workspace');
       setCompanies(res.companies || []);
     } catch (err) {
       setError(err.message || 'Failed to load workspace');

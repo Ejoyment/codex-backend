@@ -55,7 +55,12 @@ export default function SignIn() {
       if (result.success && result.token) {
         resetRateLimit('signin');
         setAuth(result.token, result.user);
-        if (result.user?.onboardingCompleted) {
+        // Invitation links bounce here first (?redirect=...): honor relative
+        // redirects only, never absolute URLs (open-redirect guard).
+        const redirect = router.query.redirect;
+        if (typeof redirect === 'string' && redirect.startsWith('/') && !redirect.startsWith('//')) {
+          router.push(redirect);
+        } else if (result.user?.onboardingCompleted) {
           router.push('/dashboard');
         } else {
           router.push('/onboarding');

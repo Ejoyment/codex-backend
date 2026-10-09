@@ -4,14 +4,12 @@ import { useRouter } from 'next/router';
 import { io } from 'socket.io-client';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
-import { apiFetch } from '../lib/api';
+import { apiFetch, SOCKET_URL } from '../lib/api';
 import { getAvatarUrl } from '../lib/utils';
 import {
   Mic, MicOff, Video, VideoOff, Monitor, PhoneOff, Send, Users, MessageSquare,
   Clock, Copy, Check, ShieldCheck, Minus, ArrowLeft, Loader2, MonitorDown,
 } from 'lucide-react';
-
-const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3000';
 
 // STUN alone cannot connect two participants on different networks (symmetric NAT /
 // CGNAT / corporate firewalls). The real ICE servers are fetched from the backend

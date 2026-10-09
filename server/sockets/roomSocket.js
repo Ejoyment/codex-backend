@@ -15,8 +15,12 @@
  * Guests are read-only by default; only controller/host may publish input.
  */
 
-const jwt = require('jsonwebtoken');
+const { resolveSocketUser } = require('../../utils/socketAuth');
 const roomService = require('../services/roomService');
+
+// Per-chunk cap: the ring buffer caps chunk COUNT (500), so without a byte
+// cap one client could park ~500MB in memory with 1MB chunks.
+const MAX_CHUNK_BYTES = 64 * 1024;
 
 // In-memory terminal ring buffers: roomId -> { seq, chunks: [{ seq, chunk, ts }] }
 const terminalBuffers = new Map();
@@ -53,18 +57,16 @@ function clearBuffer(roomId) {
 module.exports = (io) => {
   const ns = io.of('/rooms');
 
-  ns.use((socket, next) => {
-    const token = socket.handshake.auth?.token;
-    if (!token) return next(new Error('Authentication error'));
-    try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      socket.userId = decoded.userId || decoded.id || decoded._id;
-      socket.user = { ...decoded, id: socket.userId };
-      next();
-    } catch (e) {
-      next(new Error('Authentication error'));
-    }
-  });
+    ns.use(async (socket, next) => {
+      try {
+        const { userId, decoded } = await resolveSocketUser(socket);
+        socket.userId = userId;
+        socket.user = { ...decoded, id: userId };
+        next();
+      } catch (e) {
+        next(e);
+      }
+    });
 
   ns.on('connection', (socket) => {
     // Rooms this socket actually joined (room:join is the authorized join;
@@ -97,7 +99,7 @@ module.exports = (io) => {
       try {
         if (!roomId) return;
         const room = await roomService.getRoom(roomId);
-        if (!room) return;
+        if (!room || room.status === 'closed') return;
         const role = roomService.getRole(room, socket.userId);
         if (!role) return;
         await roomService.touchActivity(room);
@@ -117,8 +119,11 @@ module.exports = (io) => {
     socket.on('room:terminal-chunk', async ({ roomId, chunk } = {}) => {
       try {
         if (!roomId || typeof chunk !== 'string') return;
+        if (Buffer.byteLength(chunk, 'utf8') > MAX_CHUNK_BYTES) {
+          return socket.emit('room:error', { message: 'Chunk too large (max 64KB)' });
+        }
         const room = await roomService.getRoom(roomId);
-        if (!room) return;
+        if (!room || room.status === 'closed') return;
         const role = roomService.getRole(room, socket.userId);
         // Only host or controller may publish terminal output/input.
         if (role !== 'host' && role !== 'controller') {
@@ -141,7 +146,7 @@ module.exports = (io) => {
       try {
         if (!roomId) return;
         const room = await roomService.getRoom(roomId);
-        if (!room) return;
+        if (!room || room.status === 'closed') return;
         const role = roomService.getRole(room, socket.userId);
         if (!role) return;
         const { seq, chunks } = chunksFrom(roomId, fromSeq || 0);
@@ -155,7 +160,7 @@ module.exports = (io) => {
       try {
         if (!roomId) return;
         const room = await roomService.getRoom(roomId);
-        if (!room) return;
+        if (!room || room.status === 'closed') return;
         const role = roomService.getRole(room, socket.userId);
         if (!role) return;
         // Notify host for consent.

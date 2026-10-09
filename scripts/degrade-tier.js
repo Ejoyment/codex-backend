@@ -12,6 +12,7 @@ Options:
   --tier <tier>   Target tier (default: developer)
   --list          Show every tier and its restrictions, then exit
   --dry-run       Show before/after without writing anything
+  --yes, -y       Skip the write confirmation prompt (required for non-TTY use)
   --force         Allow setting a tier that is not actually lower
   --help          Show this help
 

@@ -105,6 +105,7 @@ function parseArgs(argv) {
   const opts = {
     dryRun: false,
     force: false,
+    yes: false,
     help: false,
     list: false,
     email: null,
@@ -116,6 +117,7 @@ function parseArgs(argv) {
     const a = argv[i];
     if (a === '--help' || a === '-h') opts.help = true;
     else if (a === '--dry-run') opts.dryRun = true;
+    else if (a === '--yes' || a === '-y') opts.yes = true;
     else if (a === '--force') opts.force = true;
     else if (a === '--list') opts.list = true;
     else if (a === '--email') opts.email = argv[++i];
@@ -204,7 +206,7 @@ function directionAllowed(direction, currentTier, targetTier) {
   return target.rank < current.rank;
 }
 
-async function applyTier({ user, subscription, tier, direction, dryRun, force }) {
+async function applyTier({ user, subscription, tier, direction, dryRun, force, yes }) {
   const target = String(tier || '').trim().toLowerCase();
   if (!VALID_TIERS.includes(target)) {
     throw new Error(`Invalid tier "${tier}". Valid tiers: ${VALID_TIERS.join(', ')}`);
@@ -248,6 +250,22 @@ async function applyTier({ user, subscription, tier, direction, dryRun, force })
     return { changed: false, created: false, dryRun: true };
   }
 
+  // These scripts connect to whatever MONGODB_URI points at — which may be
+  // production. Require explicit confirmation (or --yes) showing the actual
+  // database name, so a wrong env can't silently rewrite live tiers.
+  // Non-TTY stdin fails safe (abort) unless --yes was passed.
+  if (direction === 'upgrade') {
+    console.log('  ⚠️  UPGRADE sets status=active WITHOUT a payment check — complimentary grants only.');
+  }
+  if (!yes) {
+    const dbName = mongoose.connection?.name || '(unknown database)';
+    const ok = await confirmWrite(`\nWrite these changes to database "${dbName}" for ${user.email}? Type YES to continue: `);
+    if (!ok) {
+      console.log('Aborted — no changes written. Re-run with --dry-run to preview or --yes to skip this prompt.');
+      return { changed: false, created: false, aborted: true };
+    }
+  }
+
   if (!subscription) {
     subscription = new Subscription({ userId: user._id, status: 'active' });
   }
@@ -286,6 +304,21 @@ async function applyTier({ user, subscription, tier, direction, dryRun, force })
   return { changed: true, created: isNewRecord };
 }
 
+// Interactive write confirmation for tier mutations. Non-TTY stdin fails
+// safe (returns false) unless the caller passed --yes (handled by skipping
+// this prompt entirely).
+function confirmWrite(prompt) {
+  if (!process.stdin.isTTY) return Promise.resolve(false);
+  const readline = require('readline');
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => {
+    rl.question(prompt, (answer) => {
+      rl.close();
+      resolve(String(answer).trim().toUpperCase() === 'YES');
+    });
+  });
+}
+
 async function runTierScript({ direction, defaultTier, argv, usage }) {
   const opts = parseArgs(argv);
   if (opts.list) {
@@ -310,7 +343,8 @@ async function runTierScript({ direction, defaultTier, argv, usage }) {
       tier,
       direction,
       dryRun: opts.dryRun,
-      force: opts.force
+      force: opts.force,
+      yes: opts.yes
     });
   } finally {
     await mongoose.connection.close(false);

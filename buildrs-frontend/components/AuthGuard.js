@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import { io } from 'socket.io-client';
 import useAuthStore from '../store/authStore';
 import { useAuth } from '../hooks/useAuth';
-import { subscriptionApi } from '../lib/api';
+import { subscriptionApi, SOCKET_URL } from '../lib/api';
 
 export default function AuthGuard({ children }) {
   const router = useRouter();
@@ -57,7 +57,7 @@ export default function AuthGuard({ children }) {
   useEffect(() => {
     if (!token || typeof window === 'undefined') return;
 
-    const socket = io(process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3000', {
+    const socket = io(SOCKET_URL, {
       auth: { token },
       transports: ['websocket', 'polling'],
     });

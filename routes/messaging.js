@@ -126,6 +126,10 @@ router.post('/channels', authenticateToken, requireCompanyMember, async (req, re
         if (error.name === 'ValidationError' || error.name === 'CastError') {
             return res.status(400).json({ success: false, message: error.message });
         }
+        // Lost the create race (partial unique index on live names).
+        if (error.code === 11000) {
+            return res.status(409).json({ success: false, message: `A channel named "${name}" already exists` });
+        }
         res.status(500).json({ success: false, message: error.message });
     }
 });
