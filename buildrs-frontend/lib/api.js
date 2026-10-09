@@ -1,10 +1,21 @@
 import { isTokenExpired, rateLimit, sanitizeInput } from './security';
 
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://codex-backend-7utu.onrender.com';
+// Normalize the API origin: strip trailing slashes and a trailing `/api` so an
+// env value like `https://host/api` never doubles the prefix when combined with
+// request paths that already start with `/api` (guarding against `/api/api/...`).
+export function normalizeApiBaseUrl(raw) {
+  return String(raw || '')
+    .trim()
+    .replace(/\/+$/, '')
+    .replace(/\/api$/i, '')
+    .replace(/\/+$/, '');
+}
+
+export const API_BASE_URL = normalizeApiBaseUrl(process.env.NEXT_PUBLIC_API_URL || 'https://codex-backend-7utu.onrender.com');
 // Realtime endpoints share the backend origin unless overridden — never fall
 // back to localhost in production (REST-on-render + socket-on-localhost is a
 // guaranteed split failure).
-export const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || API_BASE_URL;
+export const SOCKET_URL = normalizeApiBaseUrl(process.env.NEXT_PUBLIC_SOCKET_URL || API_BASE_URL);
 const DEFAULT_TIMEOUT_MS = 15000;
 const MAX_RETRIES = 2;
 
