@@ -6,6 +6,17 @@ const axios = require('axios');
 const { authenticateToken } = require('../middleware/auth');
 const { createStateToken, verifyStateToken } = require('../utils/oauthState');
 
+// Normalize the backend origin: strip trailing slashes and a trailing `/api`
+// so an env value like `https://host/api` never doubles the `/api/...` paths
+// used for OAuth callbacks below (guarding against `/api/api/...`).
+function backendBaseUrl() {
+    return String(process.env.BACKEND_URL || '')
+        .trim()
+        .replace(/\/+$/, '')
+        .replace(/\/api$/i, '')
+        .replace(/\/+$/, '');
+}
+
 /**
  * @swagger
  * /api/integrations:
@@ -84,7 +95,7 @@ router.get('/', authenticateToken, async (req, res) => {
  */
 // GitHub OAuth
 router.get('/github/auth', authenticateToken, (req, res) => {
-    const redirectUri = `${process.env.BACKEND_URL}/api/integrations/github/callback`;
+    const redirectUri = `${backendBaseUrl()}/api/integrations/github/callback`;
     const scope = 'repo,user,read:org';
     const state = createStateToken(req.userId); // Pass userId as state
     
@@ -193,7 +204,7 @@ router.get('/github/callback', async (req, res) => {
  */
 // Slack OAuth
 router.get('/slack/auth', authenticateToken, (req, res) => {
-    const redirectUri = `${process.env.BACKEND_URL}/api/integrations/slack/callback`;
+    const redirectUri = `${backendBaseUrl()}/api/integrations/slack/callback`;
     const scope = 'channels:read,chat:write,users:read';
     const state = createStateToken(req.userId);
     
@@ -298,7 +309,7 @@ router.get('/slack/callback', async (req, res) => {
  */
 // Discord OAuth
 router.get('/discord/auth', authenticateToken, (req, res) => {
-    const redirectUri = `${process.env.BACKEND_URL}/api/integrations/discord/callback`;
+    const redirectUri = `${backendBaseUrl()}/api/integrations/discord/callback`;
     const scope = 'identify email guilds';
     const state = createStateToken(req.userId);
     
@@ -351,7 +362,7 @@ router.get('/discord/callback', async (req, res) => {
                 client_secret: process.env.DISCORD_CLIENT_SECRET,
                 grant_type: 'authorization_code',
                 code: code,
-                redirect_uri: `${process.env.BACKEND_URL}/api/integrations/discord/callback`
+                redirect_uri: `${backendBaseUrl()}/api/integrations/discord/callback`
             }),
             {
                 headers: {
@@ -421,7 +432,7 @@ router.get('/discord/callback', async (req, res) => {
  */
 // Notion OAuth
 router.get('/notion/auth', authenticateToken, (req, res) => {
-    const redirectUri = `${process.env.BACKEND_URL}/api/integrations/notion/callback`;
+    const redirectUri = `${backendBaseUrl()}/api/integrations/notion/callback`;
     const state = createStateToken(req.userId);
     
     const notionAuthUrl = `https://api.notion.com/v1/oauth/authorize?client_id=${process.env.NOTION_CLIENT_ID}&redirect_uri=${redirectUri}&response_type=code&owner=user&state=${state}`;
@@ -471,7 +482,7 @@ router.get('/notion/callback', async (req, res) => {
         const tokenResponse = await axios.post('https://api.notion.com/v1/oauth/token', {
             grant_type: 'authorization_code',
             code: code,
-            redirect_uri: `${process.env.BACKEND_URL}/api/integrations/notion/callback`
+            redirect_uri: `${backendBaseUrl()}/api/integrations/notion/callback`
         }, {
             headers: {
                 'Authorization': `Basic ${auth}`,
@@ -526,7 +537,7 @@ router.get('/notion/callback', async (req, res) => {
  */
 // Figma OAuth
 router.get('/figma/auth', authenticateToken, (req, res) => {
-    const redirectUri = `${process.env.BACKEND_URL}/api/integrations/figma/callback`;
+    const redirectUri = `${backendBaseUrl()}/api/integrations/figma/callback`;
     const scope = 'file_read';
     const state = createStateToken(req.userId);
     
@@ -575,7 +586,7 @@ router.get('/figma/callback', async (req, res) => {
         const tokenResponse = await axios.post('https://www.figma.com/api/oauth/token', {
             client_id: process.env.FIGMA_CLIENT_ID,
             client_secret: process.env.FIGMA_CLIENT_SECRET,
-            redirect_uri: `${process.env.BACKEND_URL}/api/integrations/figma/callback`,
+            redirect_uri: `${backendBaseUrl()}/api/integrations/figma/callback`,
             code: code,
             grant_type: 'authorization_code'
         });
