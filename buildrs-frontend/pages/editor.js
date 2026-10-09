@@ -348,7 +348,6 @@ export default function Editor() {
   const [selectedFile, setSelectedFile] = useState(null);
   const [openFiles, setOpenFiles] = useState([]);
   const openContentsRef = useRef({});
-  const openDirtyRef = useRef({});
   const openOriginalsRef = useRef({});     // last locally-saved content per file (dirty = buffer !== this)
   const remoteBaselineRef = useRef({});     // last-known GitHub remote content (for SCM changes)
   const parkedRef = useRef({});             // saved-but-closed GitHub drafts (still deploy/push-able)
@@ -372,7 +371,9 @@ export default function Editor() {
   const [newFolderPath, setNewFolderPath] = useState('/');
   const [creating, setCreating] = useState(false);
   const [status, setStatus] = useState(null);
-  const [dirty, setDirty] = useState(false);
+  // Selected-file dirty state is DERIVED (buffer vs per-file baseline), never
+  // cached: cached flags desynced on rapid switches and resurrected stale
+  // values from the boot restore.
   const [problemList, setProblemList] = useState([]);
   const [externalProblems, setExternalProblems] = useState([]); // compiler/run diagnostics with explicit file names
   const [outputLines, setOutputLines] = useState([]);
@@ -576,7 +577,6 @@ export default function Editor() {
   const termSocketRef = useRef(null);
   const termSessionRef = useRef(null);
   const termRef = useRef(null);
-  const originalContentRef = useRef('');
   const aiSessionRef = useRef(null);
   const { selectedCompany } = useCurrentCompany();
   const workspaceId = selectedCompany?._id;
@@ -632,6 +632,20 @@ export default function Editor() {
     }
     return key;
   }, [selectedRepo]);
+
+  // Single source of truth for dirty state: current buffer vs the file's own
+  // last-saved baseline. Read at render/interaction time; never stored, so a
+  // slow async load for file B can never corrupt file A's flag.
+  const isDirtyKey = useCallback((key) => {
+    if (!key) return false;
+    const buf = openContentsRef.current[key];
+    if (typeof buf !== 'string') return false;
+    const baseline = openOriginalsRef.current[key];
+    if (baseline === undefined) return buf.length > 0;
+    return buf !== baseline;
+  }, []);
+
+  const dirty = selectedFile ? isDirtyKey(getFileKey(selectedFile)) : false;
 
   function buildSession() {
     const contents = {};
@@ -726,7 +740,6 @@ export default function Editor() {
       if (!e || typeof e.c !== 'string') return;
       openContentsRef.current[k] = e.c;
       openOriginalsRef.current[k] = typeof e.o === 'string' ? e.o : e.c;
-      openDirtyRef.current[k] = e.c !== openOriginalsRef.current[k];
       if (typeof e.g === 'string') remoteBaselineRef.current[k] = e.g;
     });
     Object.entries(boot.parked || {}).forEach(([k, e]) => {
@@ -1189,8 +1202,18 @@ export default function Editor() {
       if (resizeObserver) { try { resizeObserver.disconnect(); } catch (_) { /* ignore */ } }
       const sess = termSessionRef.current;
       if (socket) {
-        if (sess) socket.emit('terminal:destroy', { sessionId: sess });
-        setTimeout(() => { try { socket.disconnect(); } catch (_) { /* ignore */ } }, 50);
+        if (sess) {
+          socket.emit('terminal:destroy', { sessionId: sess });
+          // Wait for the server's destroyed ack so buffered output flushes
+          // before the transport drops (a fixed 50ms guess raced it).
+          const fallback = setTimeout(() => { try { socket.disconnect(); } catch (_) { /* ignore */ } }, 2000);
+          socket.once('terminal:destroyed', () => {
+            clearTimeout(fallback);
+            try { socket.disconnect(); } catch (_) { /* ignore */ }
+          });
+        } else {
+          try { socket.disconnect(); } catch (_) { /* ignore */ }
+        }
       }
       termSessionRef.current = null;
       termSocketRef.current = null;
@@ -1451,7 +1474,7 @@ export default function Editor() {
     const push = (label, k) => { if (!seen.has(k)) { seen.add(k); out.push(label); } };
     openFiles.forEach((f) => {
       const k = getFileKey(f);
-      const dirtyBuffer = !!openDirtyRef.current[k];
+      const dirtyBuffer = isDirtyKey(k);
       const buf = openContentsRef.current[k];
       const remote = remoteBaselineRef.current[k];
       const unpushed = repoFull && typeof buf === 'string' && typeof remote === 'string' && buf !== remote;
@@ -1779,12 +1802,8 @@ export default function Editor() {
     }
     setSelectedFile(sourceFile || file);
     setContent(val);
-    originalContentRef.current = baseline;
     openContentsRef.current[fileKey] = val;
     openOriginalsRef.current[fileKey] = baseline;
-    const initDirty = openDirtyRef.current[fileKey] ?? (val !== baseline);
-    openDirtyRef.current[fileKey] = initDirty;
-    setDirty(initDirty);
     schedulePersist();
     refreshProblems();
     setShowProjectSelector(false);
@@ -1821,7 +1840,7 @@ export default function Editor() {
     const fileKey = getFileKey(file);
     const i = openFiles.findIndex((o) => getFileKey(o) === fileKey);
     if (i === -1) return;
-    if (openDirtyRef.current[fileKey] || (getFileKey(selectedFile) === fileKey && dirty)) {
+    if (isDirtyKey(fileKey)) {
       setConfirmClose(file);
       return;
     }
@@ -1851,7 +1870,6 @@ export default function Editor() {
       }
     }
     delete openContentsRef.current[fileKey];
-    delete openDirtyRef.current[fileKey];
     delete openOriginalsRef.current[fileKey];
     delete remoteBaselineRef.current[fileKey];
     if (getFileKey(selectedFile) === fileKey) {
@@ -1863,13 +1881,9 @@ export default function Editor() {
         const val = saved !== undefined ? saved : (baseline ?? neighbour.content ?? '');
         setSelectedFile(neighbour);
         setContent(val);
-        originalContentRef.current = baseline ?? val;
-        setDirty(!!openDirtyRef.current[neighbourKey]);
       } else {
         setSelectedFile(null);
         setContent('');
-        originalContentRef.current = '';
-        setDirty(false);
       }
     }
     schedulePersist();
@@ -1894,9 +1908,7 @@ export default function Editor() {
     const fileKey = getFileKey(selectedFile);
     if (fileKey) {
       openContentsRef.current[fileKey] = val;
-      openDirtyRef.current[fileKey] = val !== originalContentRef.current;
     }
-    setDirty(val !== originalContentRef.current);
     schedulePersist();
     refreshGitModified();
   }, [getFileKey, selectedFile]);
@@ -1913,8 +1925,6 @@ export default function Editor() {
         // deploys; Push in Source Control is what writes changes to GitHub.
         openContentsRef.current[fileKey] = content;
         openOriginalsRef.current[fileKey] = content;
-        openDirtyRef.current[fileKey] = false;
-        setDirty(false);
         schedulePersist();
         refreshGitModified();
         setStatus({ type: 'success', msg: 'Saved locally — Deploy republishes it, Push commits it to GitHub' });
@@ -1931,9 +1941,6 @@ export default function Editor() {
       });
       openContentsRef.current[fileKey] = content;
       openOriginalsRef.current[fileKey] = content;
-      openDirtyRef.current[fileKey] = false;
-      originalContentRef.current = content;
-      setDirty(false);
       setFiles((prev) => prev.map((f) => (getFileKey(f) === fileKey ? { ...f, ...data.file } : f)));
       schedulePersist();
       setStatus({ type: 'success', msg: 'File saved' });
@@ -2639,7 +2646,7 @@ export default function Editor() {
           });
           openFiles.forEach((f) => {
             const k = getFileKey(f);
-            if (String(k).startsWith('github:')) openDirtyRef.current[k] = false;
+            if (String(k).startsWith('github:')) openOriginalsRef.current[k] = openContentsRef.current[k];
           });
           schedulePersist();
           refreshGitModified();
@@ -2970,7 +2977,6 @@ export default function Editor() {
       setFiles((prev) => prev.filter((f) => f._id !== file._id));
       const delKey = getFileKey(file);
       delete openContentsRef.current[delKey];
-      delete openDirtyRef.current[delKey];
       delete openOriginalsRef.current[delKey];
       delete remoteBaselineRef.current[delKey];
       delete parkedRef.current[delKey];
@@ -2978,8 +2984,6 @@ export default function Editor() {
       if (selectedFile?._id === file._id) {
         setSelectedFile(null);
         setContent('');
-        originalContentRef.current = '';
-        setDirty(false);
       }
       schedulePersist();
       toastSuccess('File deleted');
@@ -3834,7 +3838,7 @@ export default function Editor() {
               {openFiles.map((f) => {
                 const fileKey = getFileKey(f);
                 const isActive = getFileKey(selectedFile) === fileKey;
-                const fDirty = openDirtyRef.current[fileKey] || (isActive && dirty);
+                const fDirty = isDirtyKey(fileKey);
                 return (
                   <div key={fileKey} className={`ed-tabhead ${isActive ? 'is-active' : ''}`} onClick={() => selectFile(f)} role="button">
                     {getLanguageGlyph(f.name)}
@@ -4202,7 +4206,16 @@ export default function Editor() {
                       {showSubdomainInput && (
                         <form onSubmit={confirmDeploy} className="ed-stat" style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
                           <label className="ws-label" style={{ color: '#8c8c8c' }}>Choose a subdomain</label>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          {(() => {
+                            const secretFiles = gatherDeploymentFiles().filter((f) =>
+                              /(^|\/)\.env(\.|$)/i.test(`${f.path || ''}/${f.name || ''}`));
+                            return secretFiles.length > 0 ? (
+                              <p className="text-xs" style={{ color: '#e5b84a' }}>
+                                Includes {secretFiles.length} secret file{secretFiles.length === 1 ? '' : 's'}
+                                {secretFiles[0]?.name ? ` (${secretFiles.slice(0, 3).map((f) => f.name).join(', ')})` : ''} — values ship with this deploy.
+                              </p>
+                            ) : null;
+                          })()}                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                             <input type="text" value={deploySubdomain} onChange={(e) => setDeploySubdomain(e.target.value.replace(/[^a-z0-9-]/g, '-').toLowerCase())}
                               placeholder="my-app" className="ws-input"
                               style={{ fontFamily: 'ui-monospace, Menlo, Consolas, monospace', background: '#1e1e1e', borderColor: '#3c3c3c' }}
