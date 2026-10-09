@@ -493,48 +493,6 @@ export default function Editor() {
   const [termInfo, setTermInfo] = useState(null); // { type: 'pty'|'simulated', sessionId }
   const [showSubdomainInput, setShowSubdomainInput] = useState(false);
   const [deploySubdomain, setDeploySubdomain] = useState('');
-  // Render-style auto-deploy: republish on every explicit save. ON by
-  // default, stored server-side per workspace (company settings, owner/admin
-  // only — the API 403s everyone else and the toggle reverts).
-  const deployScopeId = workspaceId || selectedProject?.workspaceId || null;
-  const [autoDeployOn, setAutoDeployOn] = useState(true);
-  const autoDeployRef = useRef(true);
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      if (!deployScopeId) {
-        setAutoDeployOn(true);
-        autoDeployRef.current = true;
-        return;
-      }
-      try {
-        const data = await companyApi.getDetails(deployScopeId);
-        const on = data?.company?.settings?.autoDeploy !== false;
-        if (!cancelled) {
-          setAutoDeployOn(on);
-          autoDeployRef.current = on;
-        }
-      } catch {
-        if (!cancelled) {
-          setAutoDeployOn(true);
-          autoDeployRef.current = true;
-        }
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [deployScopeId]);
-  const setAutoDeploy = async (on) => {
-    if (!deployScopeId) return;
-    setAutoDeployOn(on);
-    autoDeployRef.current = on;
-    try {
-      await companyApi.updateSettings(deployScopeId, { autoDeploy: on });
-    } catch (err) {
-      setAutoDeployOn(!on);
-      autoDeployRef.current = !on;
-      toastError(err?.data?.message || err?.message || 'Could not change auto-deploy');
-    }
-  };
   const [deploying, setDeploying] = useState(false);
   const [logDeployId, setLogDeployId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -603,6 +561,49 @@ export default function Editor() {
   workspaceIdRef.current = workspaceId;
   const userRef = useRef(null);
   userRef.current = user;
+
+  // Render-style auto-deploy: republish on every explicit save. ON by
+  // default, stored server-side per workspace (company settings, owner/admin
+  // only — the API 403s everyone else and the toggle reverts).
+  const deployScopeId = workspaceId || selectedProject?.workspaceId || null;
+  const [autoDeployOn, setAutoDeployOn] = useState(true);
+  const autoDeployRef = useRef(true);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!deployScopeId) {
+        setAutoDeployOn(true);
+        autoDeployRef.current = true;
+        return;
+      }
+      try {
+        const data = await companyApi.getDetails(deployScopeId);
+        const on = data?.company?.settings?.autoDeploy !== false;
+        if (!cancelled) {
+          setAutoDeployOn(on);
+          autoDeployRef.current = on;
+        }
+      } catch {
+        if (!cancelled) {
+          setAutoDeployOn(true);
+          autoDeployRef.current = true;
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [deployScopeId]);
+  const setAutoDeploy = async (on) => {
+    if (!deployScopeId) return;
+    setAutoDeployOn(on);
+    autoDeployRef.current = on;
+    try {
+      await companyApi.updateSettings(deployScopeId, { autoDeploy: on });
+    } catch (err) {
+      setAutoDeployOn(!on);
+      autoDeployRef.current = !on;
+      toastError(err?.data?.message || err?.message || 'Could not change auto-deploy');
+    }
+  };
 
   const tree = useMemo(() => buildFileTree(
     selectedRepo && !selectedProject && repoPending.length
