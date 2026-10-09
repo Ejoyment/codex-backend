@@ -1,5 +1,5 @@
 // Meeting Socket.IO Handler - WebRTC Signaling Server
-const jwt = require('jsonwebtoken');
+const { resolveSocketUser } = require('./socketAuth');
 const MeetingRoom = require('../models/MeetingRoom');
 const MeetingOverlay = require('../models/MeetingOverlay');
 const User = require('../models/User');
@@ -40,20 +40,14 @@ module.exports = (io) => {
     const meetingNamespace = io.of('/meeting');
     
     // Authentication middleware
-    meetingNamespace.use((socket, next) => {
-        const token = socket.handshake.auth.token;
-        
-        if (!token) {
-            return next(new Error('Authentication error'));
-        }
-        
+    meetingNamespace.use(async (socket, next) => {
         try {
-            const decoded = jwt.verify(token, process.env.JWT_SECRET);
-            socket.userId = decoded.userId || decoded.id;
+            const { userId, decoded } = await resolveSocketUser(socket);
+            socket.userId = userId;
             socket.user = decoded;
             next();
         } catch (error) {
-            next(new Error('Authentication error'));
+            next(error);
         }
     });
     

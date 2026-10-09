@@ -1,5 +1,5 @@
 // Messaging Socket.IO Handler - Real-time team chat
-const jwt = require('jsonwebtoken');
+const { resolveSocketUser } = require('./socketAuth');
 const Message = require('../models/Message');
 const Channel = require('../models/Channel');
 const User = require('../models/User');
@@ -10,19 +10,13 @@ module.exports = (io) => {
     const messagingNamespace = io.of('/messaging');
 
     // Authentication middleware
-    messagingNamespace.use((socket, next) => {
-        const token = socket.handshake.auth.token;
-
-        if (!token) {
-            return next(new Error('Authentication error'));
-        }
-
+    messagingNamespace.use(async (socket, next) => {
         try {
-            const decoded = jwt.verify(token, process.env.JWT_SECRET);
-            socket.userId = decoded.userId || decoded.id;
+            const { userId } = await resolveSocketUser(socket);
+            socket.userId = userId;
             next();
         } catch (error) {
-            next(new Error('Authentication error'));
+            next(error);
         }
     });
 

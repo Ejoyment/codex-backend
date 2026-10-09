@@ -90,6 +90,7 @@ export default function Messaging() {
     try {
       setLoadingChannels(true);
       const data = await apiFetch(`/api/messaging/channels?companyId=${company}`);
+      if (data.success === false) throw new Error(data.message || 'Failed to load channels');
       setChannels(data.channels || []);
     } catch (err) {
       console.error('Failed to load channels:', err);
@@ -103,6 +104,7 @@ export default function Messaging() {
     try {
       setLoadingMessages(true);
       const data = await apiFetch(`/api/messaging/messages?channelId=${channelId}&limit=50`);
+      if (data.success === false) throw new Error(data.message || 'Failed to load messages');
       setMessages(data.messages || []);
     } catch (err) {
       console.error('Failed to load messages:', err);

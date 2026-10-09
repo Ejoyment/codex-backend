@@ -1,6 +1,10 @@
 import { isTokenExpired, rateLimit, sanitizeInput } from './security';
 
-export const API_BASE_URL = 'https://codex-backend-7utu.onrender.com';
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://codex-backend-7utu.onrender.com';
+// Realtime endpoints share the backend origin unless overridden — never fall
+// back to localhost in production (REST-on-render + socket-on-localhost is a
+// guaranteed split failure).
+export const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || API_BASE_URL;
 const DEFAULT_TIMEOUT_MS = 15000;
 const MAX_RETRIES = 2;
 
@@ -13,6 +17,8 @@ export async function apiFetch(path, options = {}) {
       localStorage.removeItem('user');
       localStorage.removeItem('subscription');
       localStorage.removeItem('auth-storage');
+      localStorage.removeItem('supportAgent');
+      localStorage.removeItem('supportAgentToken');
       window.location.href = '/sign_in';
     }
     throw new Error('Session expired');
@@ -68,6 +74,8 @@ export async function apiFetch(path, options = {}) {
           localStorage.removeItem('user');
           localStorage.removeItem('subscription');
           localStorage.removeItem('auth-storage');
+          localStorage.removeItem('supportAgent');
+          localStorage.removeItem('supportAgentToken');
           window.location.href = '/sign_in';
         }
         const error = new Error(data.message || 'Unauthorized');
@@ -169,6 +177,11 @@ export const companyApi = {
   },
   getDetails: (companyId) => apiFetch(`/api/company/${companyId}`),
   getMembers: (companyId) => apiFetch(`/api/company/${companyId}/members`),
+  updateSettings: (companyId, settings) =>
+    apiFetch(`/api/company/${companyId}/settings`, {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    }),
 };
 
 export const subscriptionApi = {
@@ -336,6 +349,7 @@ export const agentApi = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+  sessions: () => apiFetch('/api/v1/agent/sessions'),
   status: (taskId) => apiFetch(`/api/v1/agent/status/${taskId}`),
   approve: (executionId, taskId) =>
     apiFetch('/api/v1/agent/approve', {
@@ -350,7 +364,8 @@ export const agentApi = {
   tweak: (executionId, taskId, feedback) =>
     apiFetch('/api/v1/agent/tweak', {
       method: 'POST',
-      body: JSON.stringify({ executionId, taskId, feedback }),
+      // Route requires `instruction`; taskId is accepted but unused there.
+      body: JSON.stringify({ executionId, taskId, instruction: feedback }),
     }),
   cancel: (executionId) =>
     apiFetch('/api/v1/agent/cancel', {

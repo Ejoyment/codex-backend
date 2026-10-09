@@ -3,24 +3,19 @@
 // Kept on its own /notifications namespace so notification traffic is isolated
 // from the collab/messaging sockets and the client can hold a single dedicated
 // connection for the lifetime of the session.
-const jwt = require('jsonwebtoken');
+const { resolveSocketUser } = require('./socketAuth');
 const NotificationService = require('./notificationService');
 
 module.exports = (io) => {
     const ns = io.of('/notifications');
 
-    ns.use((socket, next) => {
-        const token = socket.handshake.auth?.token;
-        if (!token) return next(new Error('Authentication error'));
-
+    ns.use(async (socket, next) => {
         try {
-            const decoded = jwt.verify(token, process.env.JWT_SECRET);
-            const userId = decoded.userId || decoded.id || decoded._id;
-            if (!userId) return next(new Error('Authentication error'));
+            const { userId } = await resolveSocketUser(socket);
             socket.userId = String(userId);
             next();
         } catch (error) {
-            next(new Error('Authentication error'));
+            next(error);
         }
     });
 

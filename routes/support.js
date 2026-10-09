@@ -522,6 +522,11 @@ router.put('/agent/tickets/:ticketId/assign', verifySupportAgent, async (req, re
 router.put('/agent/tickets/:ticketId/status', verifySupportAgent, async (req, res) => {
     try {
         const { status } = req.body;
+        // Same allowlist as the socket path — otherwise a typo (e.g.
+        // in_progress) throws an opaque 500 from schema validation.
+        if (!['open', 'in-progress', 'resolved', 'closed'].includes(status)) {
+            return res.status(400).json({ success: false, message: 'Invalid status' });
+        }
         const ticket = await SupportTicket.findOne({ ticketId: req.params.ticketId });
         
         if (!ticket) {

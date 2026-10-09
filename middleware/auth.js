@@ -88,4 +88,4 @@ const authenticateToken = async (req, res, next) => {
     next();
 };
 
-module.exports = { authenticateToken, clearLivenessCache };
+module.exports = { authenticateToken, clearLivenessCache, userExists };

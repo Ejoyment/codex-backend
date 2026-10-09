@@ -25,6 +25,8 @@ jest.mock('../server/services/roomService', () => ({
 
 const roomService = require('../server/services/roomService');
 const roomSocket = require('../server/sockets/roomSocket');
+const User = require('../models/User');
+const { clearLivenessCache } = require('../middleware/auth');
 
 let server;
 let io;
@@ -95,7 +97,10 @@ afterAll(async () => {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  clearLivenessCache();
   sockets = [];
+  // Socket liveness: accounts resolve as live unless a test says otherwise.
+  jest.spyOn(User, 'exists').mockResolvedValue({ _id: 'live' });
   rooms = { 'ROOM-1': roomDoc() };
   roomService.getRoom.mockImplementation(async (id) => rooms[id] || null);
   // Same logic as the real roomService.getRole: participant lookup by userId.
@@ -107,6 +112,14 @@ beforeEach(() => {
 
 afterEach(() => {
   sockets.forEach((s) => s.disconnect(true));
+});
+
+describe('connection liveness', () => {
+  test('deleted/banned account cannot connect', async () => {
+    clearLivenessCache();
+    User.exists.mockResolvedValueOnce(null);
+    await expect(connect('507f1f77bcf86cd799439099')).rejects.toThrow(/no longer active/i);
+  });
 });
 
 describe('join authorization', () => {
@@ -230,5 +243,39 @@ describe('room:leave presence guard', () => {
     expect(await received(host, 'room:presence')).toBe(false);
     host.disconnect();
     stranger.disconnect();
+  });
+});
+
+describe('closed rooms and chunk limits', () => {
+  test('signals into a closed room are dropped', async () => {
+    const host = await connect(USER_A);
+    host.emit('room:join', { roomId: 'ROOM-1' });
+    await once(host, 'room:joined');
+    rooms['ROOM-1'].status = 'closed';
+    host.emit('room:signal', { roomId: 'ROOM-1', data: { sdp: 'late-offer' } });
+    expect(await received(host, 'room:signal')).toBe(false);
+    host.disconnect();
+  });
+
+  test('terminal chunks into a closed room are dropped (no save)', async () => {
+    const host = await connect(USER_A);
+    host.emit('room:join', { roomId: 'ROOM-1' });
+    await once(host, 'room:joined');
+    rooms['ROOM-1'].status = 'closed';
+    host.emit('room:terminal-chunk', { roomId: 'ROOM-1', chunk: 'after close' });
+    expect(await received(host, 'room:terminal-chunk')).toBe(false);
+    expect(rooms['ROOM-1'].save).not.toHaveBeenCalled();
+    host.disconnect();
+  });
+
+  test('oversize chunks are rejected with room:error', async () => {
+    const host = await connect(USER_A);
+    host.emit('room:join', { roomId: 'ROOM-1' });
+    await once(host, 'room:joined');
+    const err = once(host, 'room:error');
+    host.emit('room:terminal-chunk', { roomId: 'ROOM-1', chunk: 'x'.repeat(100 * 1024) });
+    expect((await err).message).toMatch(/too large/i);
+    expect(rooms['ROOM-1'].save).not.toHaveBeenCalled();
+    host.disconnect();
   });
 });

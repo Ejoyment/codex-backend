@@ -3,7 +3,7 @@ import Head from 'next/head';
 import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
-import { apiFetch } from '../lib/api';
+import { apiFetch, API_BASE_URL } from '../lib/api';
 import useToastStore from '../store/toastStore';
 import { MessageSquare, User, RefreshCw, Send } from 'lucide-react';
 
@@ -91,7 +91,7 @@ export default function SupportAdmin() {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers,
     };
-    const res = await fetch(`https://codex-backend-7utu.onrender.com${path}`, {
+    const res = await fetch(`${API_BASE_URL}${path}`, {
       ...options,
       headers,
     });

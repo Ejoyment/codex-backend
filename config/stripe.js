@@ -62,8 +62,8 @@ async function createCheckoutSession(userId, email, tier, interval = 'monthly') 
                 },
             ],
             mode: 'subscription',
-            success_url: `${process.env.FRONTEND_URL}/payment-success.html?session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url: `${process.env.FRONTEND_URL}/pricing.html?canceled=true`,
+            success_url: `${process.env.FRONTEND_URL}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+            cancel_url: `${process.env.FRONTEND_URL}/pricing?canceled=true`,
             metadata: {
                 userId: userId,
                 tier: tier,
@@ -83,7 +83,7 @@ async function createPortalSession(customerId) {
     try {
         const session = await stripe.billingPortal.sessions.create({
             customer: customerId,
-            return_url: `${process.env.FRONTEND_URL}/settings.html`,
+            return_url: `${process.env.FRONTEND_URL}/settings?tab=billing`,
         });
 
         return { success: true, url: session.url };

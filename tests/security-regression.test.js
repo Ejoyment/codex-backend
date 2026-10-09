@@ -702,8 +702,12 @@ describe('identity binding in realtime sessions', () => {
 
     it('still verifies the JWT during the meeting socket handshake', () => {
         const src = readSource('utils/meetingSocket.js');
-        const handshake = src.slice(src.indexOf('.use((socket, next)'), src.indexOf("'connection'"));
-        expect(handshake).toMatch(/jwt\.verify/);
+        const useIdx = src.search(/\.use\(\s*async\s*\(socket,\s*next\)/);
+        expect(useIdx).toBeGreaterThanOrEqual(0);
+        const handshake = src.slice(useIdx, src.indexOf("'connection'"));
+        // Auth + liveness via the shared helper (signature + deleted/banned
+        // account check), not an inline verify.
+        expect(handshake).toMatch(/resolveSocketUser/);
     });
 });
 

@@ -90,6 +90,7 @@ function createServer() {
     io = socketIO(server, {
         cors: {
             origin: function (origin, callback) {
+                const extraOrigins = (process.env.CORS_EXTRA_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
                 const allowed = [
                     process.env.FRONTEND_URL,
                     'https://buildrshq.dev',
@@ -106,7 +107,7 @@ function createServer() {
                     'http://127.0.0.1:3001',
                 ].filter(Boolean);
 
-                if (!origin || allowed.includes(origin) || origin.endsWith('.onrender.com') || /^http:\/\/localhost:\d+$/.test(origin) || /^http:\/\/127\.0\.0\.1:\d+$/.test(origin)) {
+                if (!origin || allowed.includes(origin) || extraOrigins.includes(origin) || /^http:\/\/localhost:\d+$/.test(origin) || /^http:\/\/127\.0\.0\.1:\d+$/.test(origin)) {
                     callback(null, true);
                 } else {
                     callback(null, false);
@@ -119,8 +120,24 @@ function createServer() {
     return { server, io };
 }
 
+let _socketsWired = false;
+
 async function startServer(port = process.env.PORT || 3000) {
     const { server: srv, io: socket } = createServer();
+
+    // No database, no traffic: a listening server with no DB serves 500s on
+    // every route. Wait for the connection (bounded) instead.
+    if (mongoose.connection.readyState !== 1) {
+        await mongoose.connect(process.env.MONGODB_URI, mongooseOptions);
+    }
+
+    // createServer() is idempotent but the namespace wiring below is not
+    // (io.of() returns the same namespace, so a second call would stack
+    // duplicate middleware + connection handlers). Guard it.
+    if (_socketsWired) {
+        console.log('Socket namespaces already wired — skipping duplicate setup.');
+    } else {
+        _socketsWired = true;
 
     // Initialize Socket.IO endpoints now that server is created
     const supportSocket = require('./utils/supportSocket');
@@ -166,6 +183,7 @@ async function startServer(port = process.env.PORT || 3000) {
     // Phase 3 — idle/TTL sweeper for debug rooms
     const roomService = require('./server/services/roomService');
     roomService.startSweeper();
+    } // end socket-wiring guard
 
     return new Promise((resolve, reject) => {
         // Belt-and-braces: the top-of-file check is guarded on require.main so
@@ -197,6 +215,10 @@ app.set('trust proxy', 1);
 // Middleware
 app.use(cors({
     origin: function (origin, callback) {
+        // Extra origins (preview deploys) come from CORS_EXTRA_ORIGINS only.
+        // Never wildcard a public suffix (*.onrender.com): anyone can host
+        // there, and credentials:true would expose sessions to them.
+        const extraOrigins = (process.env.CORS_EXTRA_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
         const allowed = [
             process.env.FRONTEND_URL,
             'https://buildrshq.dev',
@@ -213,7 +235,7 @@ app.use(cors({
             'http://127.0.0.1:3001',
         ].filter(Boolean);
 
-        if (!origin || allowed.includes(origin) || origin.endsWith('.onrender.com') || origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
+        if (!origin || allowed.includes(origin) || extraOrigins.includes(origin) || origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
             callback(null, true);
         } else {
             callback(new Error('Not allowed by CORS'));
@@ -242,31 +264,6 @@ app.use(phase3SecurityHeaders);
 // Tier/permission matrix — used by socket handlers that must authorize before
 // touching a resource (terminal creation, sandbox execution).
 const permissionMatrix = require('./middleware/permissionMatrix');
-
-// Serve uploaded files with proper headers.
-// Anything that a browser will treat as active content is refused outright, so
-// a file type missed by an individual upload route's fileFilter still cannot
-// execute script from the app's origin. Per-upload allowlists (e.g. the
-// company logo route) are the first line of defence; this is the backstop.
-const ACTIVE_CONTENT_EXT = /\.(svg|svgz|html?|xht(ml)?|xml|xsl|js|mjs|cjs|wasm|php|phtml|swf)$/i;
-const UPLOADS_DENY_TYPES = /^(text\/html|application\/xhtml|image\/svg\+xml|text\/xml|application\/xml|text\/javascript|application\/javascript)/i;
-
-app.use('/uploads', express.static('uploads', {
-    setHeaders: (res, filePath) => {
-        if (ACTIVE_CONTENT_EXT.test(filePath) || UPLOADS_DENY_TYPES.test(res.getHeader('Content-Type') || '')) {
-            // Send a 200 with an inert body rather than a 404 so the URL shape
-            // stays uniform, but never deliver attacker-controlled markup.
-            res.setHeader('Content-Type', 'application/octet-stream');
-            res.setHeader('X-Content-Type-Options', 'nosniff');
-            res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
-        }
-        res.set('Access-Control-Allow-Origin', '*');
-        res.set('Cache-Control', 'public, max-age=31536000');
-    },
-    // Dotfiles in uploads are never legitimate and can hide credentials.
-    dotfiles: 'deny',
-    index: false
-}));
 
 // NOTE (audit rec 4): the legacy static app formerly served here at /app
 // (express.static('frontend') with wildcard CORS, no auth) has been unmounted.
@@ -359,6 +356,32 @@ app.use(enforceSecurityHeaders());
 // Apply global rate limiter to all API routes
 app.use('/api', globalLimiter);
 
+// Serve uploaded files with proper headers. Mounted AFTER the security
+// headers above so uploads ship with CSP/nosniff/HSTS like everything else.
+// Anything that a browser will treat as active content is refused outright, so
+// a file type missed by an individual upload route's fileFilter still cannot
+// execute script from the app's origin. Per-upload allowlists (e.g. the
+// company logo route) are the first line of defence; this is the backstop.
+// CORS is governed by the main allowlist above — no wildcard here.
+const ACTIVE_CONTENT_EXT = /\.(svg|svgz|html?|xht(ml)?|xml|xsl|js|mjs|cjs|wasm|php|phtml|swf)$/i;
+const UPLOADS_DENY_TYPES = /^(text\/html|application\/xhtml|image\/svg\+xml|text\/xml|application\/xml|text\/javascript|application\/javascript)/i;
+
+app.use('/uploads', express.static(require('path').join(__dirname, 'uploads'), {
+    setHeaders: (res, filePath) => {
+        if (ACTIVE_CONTENT_EXT.test(filePath) || UPLOADS_DENY_TYPES.test(res.getHeader('Content-Type') || '')) {
+            // Send a 200 with an inert body rather than a 404 so the URL shape
+            // stays uniform, but never deliver attacker-controlled markup.
+            res.setHeader('Content-Type', 'application/octet-stream');
+            res.setHeader('X-Content-Type-Options', 'nosniff');
+            res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+        }
+        res.set('Cache-Control', 'public, max-age=31536000');
+    },
+    // Dotfiles in uploads are never legitimate and can hide credentials.
+    dotfiles: 'deny',
+    index: false
+}));
+
 app.use('/api/auth', authRoutes);
 app.use('/api/otp', otpRoutes);
 app.use('/api/subscription', subscriptionRoutes);
@@ -422,27 +445,10 @@ app.use('/api/projects', checkTrialStatus, enforceDeploymentLimit(), projectRout
 app.use('/api/ai-context', figmaContextRoutes, teamMemoryRoutes, ticketBridgeRoutes);
 
 
-// TTL Sweeper for debug rooms — cleans up expired rooms every hour
-const TTL_SWEETER_INTERVAL = parseInt(process.env.DEBUG_ROOM_TTL_CLEANUP_INTERVAL) || 3600000;
-setInterval(async () => {
-    try {
-        let DebugRoom;
-        try { DebugRoom = require('./models/DebugRoom'); } catch { DebugRoom = null; }
-        if (!DebugRoom) return;
-        const expiredRooms = await DebugRoom.deleteMany({
-            expiresAt: { $lte: new Date() },
-            status: { $in: ['active', 'pending'] }
-        });
-        if (expiredRooms.deletedCount > 0) {
-            console.log(`TTL Sweeper: Cleaned up ${expiredRooms.deletedCount} expired debug rooms`);
-        }
-    } catch (error) {
-        console.error('TTL Sweeper error:', error);
-    }
-}, TTL_SWEETER_INTERVAL);
-
-// Credit pool reset check
-CreditPoolService.resetMonthlyCredits();
+// Credit pool reset check (skipped in tests: no database to scan).
+if (process.env.NODE_ENV !== 'test') {
+    CreditPoolService.resetMonthlyCredits();
+}
 
 // Swagger API Documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs, {
@@ -561,9 +567,24 @@ app.get('/api/health', (req, res) => {
     });
 });
 
+// Unknown routes (incl. typo'd/removed /api/* paths) answer JSON, not
+// Express's default HTML page, so API clients always see the envelope.
+app.use((req, res) => {
+    res.status(404).json({ success: false, message: `Not found: ${req.method} ${req.path}` });
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
+    if (res.headersSent) return next(err);
     console.error(err.stack);
+    // Client/origin problems are not server errors: CORS rejections and
+    // malformed JSON bodies used to collapse into 500s.
+    if (err.message === 'Not allowed by CORS') {
+        return res.status(403).json({ success: false, message: 'Origin not allowed' });
+    }
+    if (err.type === 'entity.parse.failed' || (err instanceof SyntaxError && err.status === 400)) {
+        return res.status(400).json({ success: false, message: 'Malformed JSON body' });
+    }
     res.status(500).json({ 
         success: false, 
         message: 'Something went wrong!',
@@ -578,6 +599,8 @@ const stopServer = async () => {
     try {
         const BillingCron = require('./utils/billingCron');
         if (BillingCron && BillingCron.stop) BillingCron.stop();
+
+        if (CreditPoolService && CreditPoolService.stop) CreditPoolService.stop();
 
         const collaboration = require('./utils/collaborationService');
         if (collaboration && collaboration.stopPersistenceWorker) collaboration.stopPersistenceWorker();
@@ -601,10 +624,13 @@ const stopServer = async () => {
                 server.close(err => {
                     if (err) return reject(err);
                     server = null;
-                    io = null;
                     resolve();
                 });
             });
+        }
+        if (io) {
+            await new Promise((resolve) => io.close(() => resolve()));
+            io = null;
         }
     } catch (error) {
         console.error('Error during stopServer:', error);
@@ -991,14 +1017,17 @@ if (process.env.NODE_ENV !== 'test') {
 }
 
 // === Resilience: uncaught exception handler ===
+// Exit so the process manager (Render) restarts clean. Continuing after an
+// uncaught exception serves traffic with undefined state (half-written
+// billing rows, torn subscriptions, leaked sockets) that looks healthy.
 process.on('uncaughtException', (err) => {
     console.error('🚨 Uncaught Exception:', err.message, err.stack);
-    // Don't exit — log and continue serving
+    process.exit(1);
 });
 
 process.on('unhandledRejection', (reason) => {
     console.error('🚨 Unhandled Promise Rejection:', reason);
-    // Don't exit — log and continue serving
+    process.exit(1);
 });
 
 // === Graceful shutdown ===
@@ -1007,13 +1036,16 @@ function gracefulShutdown(signal) {
     if (shuttingDown) return;
     shuttingDown = true;
     console.log(`\n🛑 Received ${signal}. Graceful shutdown initiated...`);
-    server?.close(() => {
-        console.log('✓ HTTP server closed');
-        mongoose.connection.close(false).then(() => {
-            console.log('✓ MongoDB connection closed');
-            process.exit(0);
+    // Reuse the full teardown (io, crons, sweepers, sockets) so deploys
+    // don't cut billing/sweeper work that stopServer knows about.
+    stopServer()
+        .catch((err) => console.error('Shutdown cleanup error:', err.message))
+        .finally(() => {
+            mongoose.connection.close(false).then(() => {
+                console.log('✓ MongoDB connection closed');
+                process.exit(0);
+            });
         });
-    });
     // Force exit after 10 seconds
     setTimeout(() => {
         console.error('⚠️  Forced exit after timeout');

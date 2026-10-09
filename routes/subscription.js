@@ -97,7 +97,18 @@ router.get('/current', authenticateToken, async (req, res) => {
                 pendingTier: subscription.pendingTier,
                 changeEffectiveAt: subscription.changeEffectiveAt,
                 cancelledAt: subscription.cancelledAt,
-                paymentProvider: subscription.paymentProvider
+                paymentProvider: subscription.paymentProvider,
+                // Usage meters for the settings billing tab (additive).
+                usage: {
+                    credits: {
+                        used: subscription.creditPool?.usedThisMonth || 0,
+                        limit: subscription.getMonthlyCreditLimit(),
+                    },
+                    computeHours: {
+                        used: subscription.cloudComputeHours?.usedThisMonth || 0,
+                        limit: subscription.getCloudComputeHours(),
+                    },
+                },
             }
         });
     } catch (error) {
@@ -684,11 +695,14 @@ router.post('/change-plan', authenticateToken, async (req, res) => {
  *       400:
  *         description: Signature verification failed
  */
-// Stripe webhook handler (MUST be before express.json() middleware)
-router.post('/webhook/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
+// Stripe webhook handler. The raw body is preserved by the global
+// express.json verify hook (see WEBHOOK_PATH_MARKERS) — do NOT mount
+// express.raw() here: the stream is already consumed and raw() would see an
+// empty body, breaking verification while looking correct.
+router.post('/webhook/stripe', async (req, res) => {
     const signature = req.headers['stripe-signature'];
-    
-    const verification = verifyWebhookSignature(req.body, signature);
+
+    const verification = verifyWebhookSignature(req.rawBody || req.body, signature);
     
     if (!verification.success) {
         return res.status(400).json({ error: 'Webhook signature verification failed' });

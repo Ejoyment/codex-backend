@@ -93,6 +93,13 @@ async function createCheckout(userId, tier, interval, country, currency) {
         currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
     });
 
+    // One redirect shape for every rail: adapters historically returned
+    // provider-specific keys (authorizationUrl, paymentUrl, link) and the
+    // checkout page only reads `url`, so non-Stripe checkouts silently died.
+    if (result && !result.url) {
+        result.url = result.authorizationUrl || result.link || result.paymentUrl || null;
+    }
+
     return result;
 }
 

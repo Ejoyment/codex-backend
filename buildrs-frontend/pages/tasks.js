@@ -96,6 +96,7 @@ export default function Tasks() {
       setLoading(true);
       setError(null);
       const data = await apiFetch('/api/projects/tasks');
+      if (data.success === false) throw new Error(data.message || 'Failed to load tasks');
       setTasks((data.tasks || []).map(normalizeTask));
     } catch (err) {
       setError(err.message || 'Failed to load tasks');

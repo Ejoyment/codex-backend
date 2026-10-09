@@ -20,6 +20,12 @@ const entitlementSchema = new mongoose.Schema(
       default: 'stripe',
     },
     providerRef: String,
+    // Written by applyWebhookEvent (cancel flow reads providerSubscriptionId
+    // to cancel at the provider). Missing these, strict mode silently dropped
+    // them and provider-cancel could never fire.
+    providerCustomerId: { type: String, default: null },
+    providerSubscriptionId: { type: String, default: null },
+    cancelAtPeriodEnd: { type: Boolean, default: false },
     currency: { type: String, default: 'USD' },
     country: { type: String, default: '' },
     currentPeriodEnd: { type: Date, default: null },
