@@ -100,48 +100,6 @@ router.get('/data', authenticateToken, async (req, res) => {
         const Company = require('../models/Company');
         const TeamProject = require('../models/TeamProject');
         const TeamTask = require('../models/TeamTask');
-        const DashboardState = require('../models/DashboardState');
-
-        let dashState = await DashboardState.findOne({ userId: req.userId });
-        if (!dashState) {
-            dashState = await DashboardState.create({
-                userId: req.userId,
-                workspaceName: 'buildr-web',
-                workspaceStatus: 'Healthy',
-                activeBranch: 'Main',
-                openTasksCount: 7,
-                agentsRunningCount: 2,
-                validationPercent: 94,
-                needsAttention: [
-                    { id: '1', type: 'ai_agent', title: 'Implement OAuth callback and session refresh', subtitle: 'auth/session-hardening • 6 files changed • Validation passed', badge: 'AI AGENT • AWAITING APPROVAL' },
-                    { id: '2', type: 'validation', title: 'Checkout contract violates payment isolation spec', subtitle: 'SPEC-042 • services/billing/checkout.ts • 4m ago', badge: 'VALIDATION • 2 FAILURES' },
-                    { id: '3', type: 'deployment', title: 'Preview build is waiting for environment approval', subtitle: 'feat/command-menu • Vercel Preview • 12m ago', badge: 'DEPLOYMENT • ACTION REQUIRED' }
-                ],
-                activeDevelopment: {
-                    title: 'Atlas is implementing',
-                    taskCode: 'CMD-128',
-                    taskTitle: 'Global command menu',
-                    progressPercent: 68,
-                    stepText: 'Step 4 of 6 • Running tests',
-                    status: 'RUNNING',
-                    terminalLog: '$ pnpm test command-menu\nRUN v2.1.3 /workspace/buildr-web\n✓ src/components/CommandMenu.test.tsx (8)\n✓ src/hooks/useCommands.test.ts (4)\n● Checking TypeScript contracts...'
-                },
-                sprints: {
-                    inProgressCount: 4,
-                    inReviewCount: 3,
-                    completedCount: 12,
-                    items: [
-                        { id: '1', code: 'CMD-128', title: 'Global command menu', status: 'in_progress', assignee: 'AT' },
-                        { id: '2', code: 'AUTH-89', title: 'OAuth session hardening', status: 'review', assignee: 'MK' },
-                        { id: '3', code: 'UI-214', title: 'Billing plan comparison', status: 'in_progress', assignee: 'JS' }
-                    ]
-                },
-                shipReadinessPercent: 94,
-                debugRooms: [
-                    { id: '1', title: 'Debug Room: Auth callback', participants: ['JP', 'PK'], status: 'LIVE' }
-                ]
-            });
-        }
 
         // Count local projects
         const localProjectCount = await LocalProject.countDocuments({ 
@@ -237,7 +195,6 @@ router.get('/data', authenticateToken, async (req, res) => {
                 stats,
                 trial: trialInfo,
                 hasData: Object.keys(integrationData).length > 0 || (stats.activeProjects > 0),
-                dashboardState: dashState
             }
         });
 
@@ -246,6 +203,37 @@ router.get('/data', authenticateToken, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Error fetching dashboard data'
+        });
+    }
+});
+
+/**
+ * @swagger
+ * /api/dashboard/overview:
+ *   get:
+ *     summary: Get the real-time development command center overview
+ *     tags:
+ *       - Dashboard
+ *     security:
+ *       - bearerAuth: []
+ *     description: Aggregates real workspace data (projects, tasks, agent executions, deployments, sessions, activity) for the dashboard.
+ *     responses:
+ *       200:
+ *         description: Dashboard overview
+ *       401:
+ *         description: Unauthorized
+ */
+// Real aggregated dashboard overview (no mock data)
+router.get('/overview', authenticateToken, async (req, res) => {
+    try {
+        const { computeOverview } = require('../utils/dashboardOverview');
+        const overview = await computeOverview(req.userId);
+        res.json({ success: true, data: overview });
+    } catch (error) {
+        console.error('Dashboard overview error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching dashboard overview'
         });
     }
 });

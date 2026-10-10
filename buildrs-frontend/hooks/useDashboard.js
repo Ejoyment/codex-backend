@@ -126,6 +126,7 @@ async function fetchSlackActivity() {
 export function useDashboard() {
   const [stats, setStats] = useState(null);
   const [trial, setTrial] = useState(null);
+  const [overview, setOverview] = useState(null);
   const [integrations, setIntegrations] = useState(null); // null = loading, [] = empty
   const [activity, setActivity] = useState(null);
   const [projects, setProjects] = useState(null);
@@ -149,6 +150,16 @@ export function useDashboard() {
       if (mounted.current) {
         setStats({ activeProjects: 0, totalCompleted: 0, teamMembers: 0, integrations: 0 });
       }
+    }
+  }, []);
+
+  const loadOverview = useCallback(async () => {
+    try {
+      const result = await dashboardApi.getOverview();
+      if (!mounted.current) return;
+      setOverview(result.success && result.data ? result.data : null);
+    } catch {
+      if (mounted.current) setOverview(null);
     }
   }, []);
 
@@ -318,8 +329,8 @@ export function useDashboard() {
   }, []);
 
   const refreshAll = useCallback(async () => {
-    await Promise.all([loadStats(), loadIntegrationsHub(), loadActivity(), loadProjects(), loadTasks(), loadCompanies(), loadMeetings()]);
-  }, [loadStats, loadIntegrationsHub, loadActivity, loadProjects, loadTasks, loadCompanies, loadMeetings]);
+    await Promise.all([loadStats(), loadOverview(), loadIntegrationsHub(), loadActivity(), loadProjects(), loadTasks(), loadCompanies(), loadMeetings()]);
+  }, [loadStats, loadOverview, loadIntegrationsHub, loadActivity, loadProjects, loadTasks, loadCompanies, loadMeetings]);
 
   useEffect(() => {
     mounted.current = true;
@@ -341,5 +352,5 @@ export function useDashboard() {
     };
   }, [refreshAll]);
 
-  return { stats, trial, integrations, activity, projects, tasks, companies, meetings, loading, refreshAll, loadStats, loadProjects, loadTasks, loadMeetings };
+  return { stats, trial, overview, integrations, activity, projects, tasks, companies, meetings, loading, refreshAll, loadStats, loadOverview, loadProjects, loadTasks, loadMeetings };
 }
