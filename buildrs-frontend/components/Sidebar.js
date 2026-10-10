@@ -5,21 +5,16 @@ import {
   LayoutDashboard,
   CheckSquare,
   Users,
-  CalendarClock,
   FileCode2,
   Sparkles,
   Database,
-  MessageSquare,
   Plug2,
   Settings,
-  LifeBuoy,
-  Video,
   ShieldCheck,
   Rocket,
   Server,
   FolderKanban,
   Edit3,
-  Terminal,
   FileText,
   Radio,
 } from 'lucide-react';
@@ -74,12 +69,13 @@ export default function Sidebar({ user, subscription }) {
   return (
     <aside className="workspace-sidebar">
       <div className="sidebar-logo">
-        <div className="sidebar-logo-content">
-          <div className="sidebar-icon">
-            <img src="/buildrs.png" alt="BuildrsHQ" className="w-full h-full object-contain" />
-          </div>
-          <span className="sidebar-logo-text">BuildrsHQ</span>
-        </div>
+        <Link href="/dashboard" className="sidebar-logo-content no-underline" style={{ textDecoration: 'none' }}>
+          <img src="/buildrs.png" alt="BuildrsHQ" className="w-7 h-7 rounded" />
+          <span className="sidebar-logo-text text-[17px] font-semibold tracking-tight text-white">
+            Buildrs
+          </span>
+          <span className="mkt-mono text-[10px] uppercase tracking-[0.18em] text-[#686e7c]">· hq</span>
+        </Link>
       </div>
 
       <nav className="sidebar-nav">
@@ -119,13 +115,15 @@ export default function Sidebar({ user, subscription }) {
               {user?.fullName || user?.name || 'Loading...'}
             </div>
             <div id="sidebarRole" className="sidebar-user-role text-zinc-400 text-xs">
-              Designer
+              {Array.isArray(user?.role) ? user.role.join(', ') : (user?.role || 'Member')}
             </div>
           </div>
         </div>
-        <div id="subscriptionBadge" className="sidebar-badge mt-2" title={tierDisplayDetail(subscription, user?.subscription?.tier)}>
-          <span className="text-[#34d399] bg-[#34d399]/10 px-2 py-0.5 rounded text-[11px] font-medium">{tierDisplayLabel(subscription, user?.subscription?.tier) || 'PRO Plan'}</span>
-        </div>
+        {tierDisplayLabel(subscription, user?.subscription?.tier) && (
+          <div id="subscriptionBadge" className="sidebar-badge mt-2" title={tierDisplayDetail(subscription, user?.subscription?.tier)}>
+            <span className="text-[#34d399] bg-[#34d399]/10 px-2 py-0.5 rounded text-[11px] font-medium">{tierDisplayLabel(subscription, user?.subscription?.tier)}</span>
+          </div>
+        )}
       </div>
     </aside>
   );

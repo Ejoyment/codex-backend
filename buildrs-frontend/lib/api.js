@@ -229,6 +229,7 @@ export const integrationApi = {
 
 export const dashboardApi = {
   getData: () => apiFetch('/api/dashboard/data'),
+  getOverview: () => apiFetch('/api/dashboard/overview'),
   getPlatformData: (platform) => apiFetch(`/api/dashboard/data/${platform}`),
   sync: (platform) => apiFetch(`/api/dashboard/sync/${platform}`, { method: 'POST' }),
 };
