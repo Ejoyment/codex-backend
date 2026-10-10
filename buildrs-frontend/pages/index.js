@@ -39,7 +39,7 @@ const STACK = [
   },
   {
     name: 'Meetings',
-    status: 'beta',
+    status: 'live',
     badge: 'standups · review',
     desc: 'Standups and live code review, inside the workspace.',
   },
@@ -57,7 +57,7 @@ const STACK = [
   },
   {
     name: 'Support agents',
-    status: 'beta',
+    status: 'live',
     badge: 'ai · tickets',
     desc: 'Tickets answered by AI with full project context.',
   },
