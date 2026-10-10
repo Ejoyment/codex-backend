@@ -26,6 +26,7 @@ import {
   Users,
   ShieldCheck,
   ExternalLink,
+  Server,
 } from 'lucide-react';
 
 function formatGreeting() {
