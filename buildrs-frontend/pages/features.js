@@ -38,7 +38,7 @@ const LAYERS = [
   {
     num: '03',
     name: 'Communication',
-    status: 'beta',
+    status: 'live',
     blurb: 'Async and live talk, anchored to the code.',
     features: [
       ['Threaded chat', 'Persistent threads that anchor to files and lines, indexed and searchable.', 'search'],
@@ -75,7 +75,7 @@ const LAYERS = [
   {
     num: '06',
     name: 'Security & billing',
-    status: 'beta',
+    status: 'live',
     blurb: 'Priced honestly, built to ship anywhere.',
     features: [
       ['Authentication', 'JWT sessions plus Google and GitHub OAuth.', 'JWT · OAuth'],
