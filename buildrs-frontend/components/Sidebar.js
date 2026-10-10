@@ -17,44 +17,53 @@ import {
   ShieldCheck,
   Rocket,
   Server,
+  FolderKanban,
+  Edit3,
+  Terminal,
+  FileText,
+  Radio,
 } from 'lucide-react';
 import { getAvatarUrl } from '../lib/utils';
 
 const NAV_SECTIONS = [
   {
-    label: 'Workspace',
+    label: 'WORK',
     items: [
-      { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+      { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
+      { href: '/tasks', label: 'Projects', icon: FolderKanban },
       { href: '/tasks', label: 'Tasks', icon: CheckSquare },
-      { href: '/teams', label: 'Teams', icon: Users },
-      { href: '/meetings', label: 'Meetings', icon: CalendarClock },
-      { href: '/standup', label: 'Standup', icon: Video },
     ],
   },
   {
-    label: 'Code & AI',
+    label: 'BUILD',
     items: [
-      { href: '/editor', label: 'Editor', icon: FileCode2 },
-      { href: '/source-code', label: 'Source', icon: Database },
-      { href: '/ai-pair', label: 'AI Pair', icon: Sparkles },
-      { href: '/specs', label: 'Specs', icon: FileCode2 },
-      { href: '/mcp', label: 'MCP Servers', icon: Server },
+      { href: '/editor', label: 'Editor', icon: Edit3 },
+      { href: '/specs', label: 'Figma', icon: FileCode2 },
+      { href: '/ai-pair', label: 'AI Agent', icon: Sparkles },
+      { href: '/specs', label: 'Specs', icon: FileText },
+      { href: '/mcp', label: 'MCP Server', icon: Server },
     ],
   },
   {
-    label: 'Connect',
+    label: 'COLLABORATE',
     items: [
-      { href: '/messaging', label: 'Messaging', icon: MessageSquare },
-      { href: '/integrations', label: 'Integrations', icon: Plug2 },
+      { href: '/meeting-room', label: 'Debug Room', icon: Radio },
+      { href: '/teams', label: 'Team', icon: Users },
     ],
   },
   {
-    label: 'Manage',
+    label: 'SHIP',
     items: [
+      { href: '/source-code', label: 'Git & PRs', icon: Database },
+      { href: '/ci-cd', label: 'Deploy', icon: Rocket },
+    ],
+  },
+  {
+    label: 'MANAGE',
+    items: [
+      { href: '/billing', label: 'Billing & Plans', icon: Plug2 },
+      { href: '/audit', label: 'Audit Report', icon: ShieldCheck },
       { href: '/settings', label: 'Settings', icon: Settings },
-      { href: '/ci-cd', label: 'CI/CD', icon: Rocket },
-      { href: '/audit', label: 'Audit Log', icon: ShieldCheck },
-      { href: '/support', label: 'Support', icon: LifeBuoy },
     ],
   },
 ];
@@ -75,15 +84,15 @@ export default function Sidebar({ user, subscription }) {
 
       <nav className="sidebar-nav">
         {NAV_SECTIONS.map((section) => (
-          <div key={section.label}>
-            <div className="sidebar-nav-section">{section.label}</div>
+          <div key={section.label} className="mb-4">
+            <div className="sidebar-nav-section text-[10px] tracking-wider text-zinc-500 font-semibold px-3 mb-1.5">{section.label}</div>
             <div className="flex flex-col gap-0.5">
               {section.items.map((item) => {
                 const Icon = item.icon;
-                const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+                const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href + '/'));
                 return (
                   <Link
-                    key={item.href}
+                    key={item.href + item.label}
                     href={item.href}
                     className={`sidebar-nav-item ${isActive ? 'active' : ''}`}
                   >
@@ -97,7 +106,7 @@ export default function Sidebar({ user, subscription }) {
         ))}
       </nav>
 
-      <div className="sidebar-user">
+      <div className="sidebar-user border-t border-white/5 pt-3 mt-auto">
         <div className="sidebar-user-info">
           <img
             id="sidebarAvatar"
@@ -109,13 +118,13 @@ export default function Sidebar({ user, subscription }) {
             <div id="sidebarName" className="sidebar-user-name">
               {user?.fullName || user?.name || 'Loading...'}
             </div>
-            <div id="sidebarRole" className="sidebar-user-role">
-              {user?.role?.join(', ') || 'Member'}
+            <div id="sidebarRole" className="sidebar-user-role text-zinc-400 text-xs">
+              Designer
             </div>
           </div>
         </div>
-        <div id="subscriptionBadge" className="sidebar-badge" title={tierDisplayDetail(subscription, user?.subscription?.tier)}>
-          <span>{tierDisplayLabel(subscription, user?.subscription?.tier)}</span>
+        <div id="subscriptionBadge" className="sidebar-badge mt-2" title={tierDisplayDetail(subscription, user?.subscription?.tier)}>
+          <span className="text-[#34d399] bg-[#34d399]/10 px-2 py-0.5 rounded text-[11px] font-medium">{tierDisplayLabel(subscription, user?.subscription?.tier) || 'PRO Plan'}</span>
         </div>
       </div>
     </aside>
