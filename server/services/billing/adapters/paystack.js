@@ -39,12 +39,16 @@ class PaystackAdapter extends PaymentAdapter {
     if (hash !== signature) throw new Error('Invalid Paystack signature');
     const event = JSON.parse(rawBody.toString());
     const d = event.data || {};
+    // Money-back-out events deactivate via the dunning state (recoverable;
+    // exact policy wording is a team decision — see 3.2).
+    const refunded = event.event === 'refund.processed' || event.event === 'refund.failed';
+    const disputed = event.event === 'charge.dispute.create' || event.event === 'charge.dispute.reminder';
     return {
       eventId: `paystack:${event.id || d.reference}`,
       type: event.event,
       userId: d.metadata?.userId || null,
       plan: d.metadata?.plan || null,
-      status: event.event === 'charge.success' ? 'active' : null,
+      status: event.event === 'charge.success' ? 'active' : (refunded || disputed ? 'past_due' : null),
       customerId: d.customer?.customer_code || d.customer?.email || null,
       subscriptionId: d.reference || null,
       currency: (d.currency || 'NGN').toUpperCase(),

@@ -73,18 +73,20 @@ class BillingScheduler {
      * Process a scheduled charge
      */
     static async processCharge(scheduleId) {
-        const schedule = await BillingSchedule.findById(scheduleId);
-        
-        if (!schedule || schedule.status !== 'pending') {
+        // Atomic claim: two ticks (or two instances) racing the same pending
+        // row must not both charge the provider. Loser sees non-pending and
+        // stands down. Stuck `processing` rows never auto-reclaim — reaping
+        // them could double-charge if the first attempt actually went through.
+        const schedule = await BillingSchedule.findOneAndUpdate(
+            { _id: scheduleId, status: 'pending' },
+            { status: 'processing', $inc: { attempts: 1 }, $set: { lastAttempt: new Date() } },
+            { new: true }
+        );
+
+        if (!schedule) {
             console.log(`Schedule ${scheduleId} not found or not pending`);
             return { success: false, message: 'Schedule not found or not pending' };
         }
-
-        // Update status to processing
-        schedule.status = 'processing';
-        schedule.attempts += 1;
-        schedule.lastAttempt = new Date();
-        await schedule.save();
 
         try {
             const subscription = await Subscription.findById(schedule.subscriptionId);

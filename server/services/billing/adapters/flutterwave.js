@@ -38,16 +38,23 @@ class FlutterwaveAdapter extends PaymentAdapter {
   async verifyWebhook({ rawBody, signature }) {
     // Flutterwave signs with `verif-hash` == FLWSECK hash configured in dashboard.
     const expected = process.env.FLUTTERWAVE_WEBHOOK_HASH || this._secret();
-    if (signature !== expected) throw new Error('Invalid Flutterwave signature');
+    const a = Buffer.from(String(signature || ''));
+    const b = Buffer.from(String(expected));
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+      throw new Error('Invalid Flutterwave signature');
+    }
     const event = JSON.parse(rawBody.toString());
     const d = event.data || {};
     const ok = event.event === 'charge.completed' && d.status === 'successful';
+    // Failed charges enter dunning (recoverable); exact refund policy wording
+    // is a team decision — see 3.2.
+    const failedCharge = event.event === 'charge.completed' && !ok;
     return {
       eventId: `flutterwave:${event.id || d.tx_ref || d.id}`,
       type: event.event,
       userId: d.meta?.userId || d.meta?.user_id || null,
       plan: d.meta?.plan || null,
-      status: ok ? 'active' : null,
+      status: ok ? 'active' : (failedCharge ? 'past_due' : null),
       customerId: d.customer?.email || d.customer?.id || null,
       subscriptionId: d.tx_ref || String(d.id) || null,
       currency: (d.currency || 'NGN').toUpperCase(),

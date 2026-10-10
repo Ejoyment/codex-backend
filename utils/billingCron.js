@@ -20,6 +20,11 @@ class BillingCron {
         }
 
         this._task = cron.schedule('* * * * *', async () => {
+            // Single-leader: with N instances only one processes charges per
+            // minute (plus atomic per-charge claims as the second line).
+            // Without Redis this instance is the leader (current behavior).
+            const { withLeadership } = require('./redis');
+            const outcome = await withLeadership('billing-cron', 55000, async () => {
             try {
                 // Don't run if MongoDB isn't connected yet
                 if (mongoose.connection.readyState !== 1) {
@@ -60,6 +65,10 @@ class BillingCron {
             } catch (error) {
                 // Never let the cron job crash the server
                 console.error('Billing cron error (non-fatal):', error.message);
+            }
+            });
+            if (outcome && outcome.skipped) {
+                console.log('⏭️ Billing cron: another instance holds leadership, skipping this run');
             }
         });
 
