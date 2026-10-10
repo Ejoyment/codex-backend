@@ -13,25 +13,43 @@ const { nearestEdge } = require('../services/billing/edgeRouter');
 
 const router = express.Router();
 
+// Canonical monthly prices (USD). Mirrors Subscription.upgradeTo amounts —
+// the single server-side price table. Client-supplied `amount` is NEVER
+// trusted (pay-$0.01-for-pro), and redirect URLs are fixed (client URLs are
+// open redirect). Non-USD pricing needs the regional table (decision 3.5);
+// yearly off-Stripe needs a multiple (decision 3.6) — both 400 for now.
+const MONTHLY_USD = { pro: 20, pro_plus: 60, team_standard: 40, team_premium: 120 };
+
 // Checkout needs auth; webhook must NOT (providers call it without a JWT).
 router.post('/checkout', authenticateToken, async (req, res) => {
   try {
-    const { plan = 'pro', interval = 'monthly', country, currency, provider: hint, amount, email, successUrl, cancelUrl, callbackUrl, redirectUrl, lat, lng } = req.body || {};
+    const { plan = 'pro', interval = 'monthly', country, currency, provider: hint, email, lat, lng } = req.body || {};
     const provider = hint || routeProvider({ country, currency });
     const adapter = getAdapter(provider);
     const FRONTEND = process.env.FRONTEND_URL || 'http://localhost:5500';
-    const result = await adapter.createCheckout({
+    const params = {
       userId: req.userId,
       email: email || req.user?.email,
       plan,
       interval,
-      amount,
-      currency,
-      successUrl: successUrl || `${FRONTEND}/payment-success?provider=${provider}`,
-      cancelUrl: cancelUrl || `${FRONTEND}/pricing`,
-      callbackUrl: callbackUrl || `${FRONTEND}/payment-success?provider=${provider}`,
-      redirectUrl: redirectUrl || `${FRONTEND}/payment-success?provider=${provider}`,
-    });
+      currency: 'USD',
+      successUrl: `${FRONTEND}/payment-success?provider=${provider}`,
+      cancelUrl: `${FRONTEND}/pricing`,
+      callbackUrl: `${FRONTEND}/payment-success?provider=${provider}`,
+      redirectUrl: `${FRONTEND}/payment-success?provider=${provider}`,
+    };
+    if (provider !== 'stripe') {
+      // Stripe prices via env price IDs (immune); other rails take amounts.
+      const monthly = MONTHLY_USD[plan];
+      if (!monthly) {
+        return res.status(400).json({ success: false, message: 'Unknown plan (enterprise is custom pricing)' });
+      }
+      if (interval !== 'monthly') {
+        return res.status(400).json({ success: false, message: 'Yearly billing on this rail is not available yet' });
+      }
+      params.amount = monthly;
+    }
+    const result = await adapter.createCheckout(params);
     res.json({ success: true, data: { provider, ...result, edge: nearestEdge({ country, currency, lat, lng }) } });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
@@ -49,12 +67,24 @@ router.post('/webhook/:provider', async (req, res) => {
       req.headers['stripe-signature'] || req.headers['x-paystack-signature'] || req.headers['verif-hash'];
     const normalized = await adapter.verifyWebhook({ rawBody, signature, headers: req.headers });
     normalized.provider = provider;
-    const { entitlement } = await entitlementService.applyWebhookEvent(normalized);
+    const outcome = await entitlementService.applyWebhookEvent(normalized);
+    if (!outcome.applied) {
+      // Idempotent replay or unmapped type: answer 200 with current state.
+      // Providers retry non-2xx, so neither 409 nor a fake success is right.
+      return res.json({
+        success: true,
+        data: {
+          eventId: normalized.eventId,
+          status: outcome.entitlement?.status,
+          plan: outcome.entitlement?.plan,
+          applied: false,
+          reason: outcome.reason,
+        },
+      });
+    }
+    const { entitlement } = outcome;
     res.json({ success: true, data: { eventId: normalized.eventId, status: entitlement.status, plan: entitlement.plan } });
   } catch (err) {
-    if (err.code === 'DUPLICATE_EVENT') {
-      return res.status(409).json({ success: false, message: 'Duplicate event — already applied' });
-    }
     res.status(400).json({ success: false, message: err.message });
   }
 });

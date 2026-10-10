@@ -11,6 +11,8 @@ const { MAX_TICKET_MESSAGES } = require('../utils/retention');
 const supportLoginLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 5,
+    store: require('../utils/redis').getRateLimitStore(),
+    passOnStoreError: true,
     message: { success: false, message: 'Too many login attempts, please try again later.' }
 });
 

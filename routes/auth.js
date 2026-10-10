@@ -50,6 +50,8 @@ const upload = multer({
 const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 5, // 5 requests per window
+    store: require('../utils/redis').getRateLimitStore(),
+    passOnStoreError: true,
     message: { success: false, message: 'Too many attempts, please try again later.' }
 });
 
@@ -57,6 +59,8 @@ const authLimiter = rateLimit({
 const oauthLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 20, // 20 OAuth initiations per window
+    store: require('../utils/redis').getRateLimitStore(),
+    passOnStoreError: true,
     message: { success: false, message: 'Too many OAuth attempts. Please try again later.' }
 });
 

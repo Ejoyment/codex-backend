@@ -24,6 +24,21 @@ const userSchema = new mongoose.Schema({
         type: Boolean,
         default: false
     },
+    // Platform moderation (decision 3.10): banned accounts fail liveness
+    // (same as deleted) on REST and every socket namespace. The ToS
+    // termination clause text lives in the ToS draft, not here.
+    isBanned: {
+        type: Boolean,
+        default: false
+    },
+    bannedAt: {
+        type: Date,
+        default: null
+    },
+    banReason: {
+        type: String,
+        default: ''
+    },
     googleId: {
         type: String,
         sparse: true

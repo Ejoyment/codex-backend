@@ -407,6 +407,7 @@ describe('validateBootConfig', () => {
   test('clean config passes', () => {
     process.env.MONGODB_URI = 'mongodb://localhost:27017/x';
     process.env.FRONTEND_URL = 'https://app.example.com';
+    process.env.ADMIN_API_KEY = 'test-admin-key';
     expect(validateBootConfig()).toEqual({ fatals: [], warnings: [] });
   });
 

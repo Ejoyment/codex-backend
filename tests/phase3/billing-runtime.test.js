@@ -64,6 +64,33 @@ describe('entitlementService — idempotent webhooks', () => {
       store.set(String(doc.userId), e);
       return e;
     });
+    // Atomic paths used by applyWebhookEvent (updateOne upsert + guarded
+    // findOneAndUpdate), emulated against the same in-memory store.
+    jest.spyOn(Entitlement, 'updateOne').mockImplementation(async (filter, update, opts) => {
+      const key = String(filter.userId);
+      if (!store.has(key) && opts && opts.upsert) {
+        store.set(key, { userId: filter.userId, appliedEventIds: [], save: async function () { return this; } });
+      }
+      return { acknowledged: true };
+    });
+    jest.spyOn(Entitlement, 'findOneAndUpdate').mockImplementation(async (filter, update) => {
+      const doc = [...store.values()].find((e) => String(e.userId) === String(filter.userId));
+      if (!doc) return null;
+      if (filter.appliedEventIds && filter.appliedEventIds.$ne) {
+        if ((doc.appliedEventIds || []).includes(filter.appliedEventIds.$ne)) return null;
+      }
+      if (update.$set) Object.assign(doc, update.$set);
+      if (update.$addToSet) {
+        for (const [k, v] of Object.entries(update.$addToSet)) {
+          doc[k] = doc[k] || [];
+          if (!doc[k].includes(v)) doc[k].push(v);
+        }
+      }
+      return doc;
+    });
+    // Write-through bridge target (asserted separately in billing-rec6).
+    const Subscription = require('../../models/Subscription');
+    jest.spyOn(Subscription, 'findOneAndUpdate').mockResolvedValue({});
   });
   afterEach(() => jest.restoreAllMocks());
 
@@ -89,7 +116,9 @@ describe('entitlementService — idempotent webhooks', () => {
     const first = await svc.applyWebhookEvent(evt);
     expect(first.applied).toBe(true);
     expect(first.entitlement.status).toBe('active');
-    await expect(svc.applyWebhookEvent(evt)).rejects.toMatchObject({ code: 'DUPLICATE_EVENT' });
+    const replay = await svc.applyWebhookEvent(evt);
+    expect(replay.applied).toBe(false);
+    expect(replay.reason).toMatch(/duplicate/i);
   });
 
   test('paystack webhook activates; replay rejected; bad signature rejected', async () => {
@@ -104,7 +133,8 @@ describe('entitlementService — idempotent webhooks', () => {
     const applied = await svc.applyWebhookEvent({ ...evt, userId });
     expect(applied.entitlement.status).toBe('active');
     expect(applied.entitlement.currency).toBe('NGN');
-    await expect(svc.applyWebhookEvent({ ...evt, userId })).rejects.toMatchObject({ code: 'DUPLICATE_EVENT' });
+    const replayed = await svc.applyWebhookEvent({ ...evt, userId });
+    expect(replayed.applied).toBe(false);
     await expect(paystack.verifyWebhook({ rawBody: Buffer.from(body), signature: 'bad' })).rejects.toThrow('Invalid Paystack signature');
   });
 
@@ -118,7 +148,8 @@ describe('entitlementService — idempotent webhooks', () => {
     const applied = await svc.applyWebhookEvent({ ...evt, userId });
     expect(applied.entitlement.status).toBe('active');
     expect(applied.entitlement.plan).toBe('enterprise');
-    await expect(svc.applyWebhookEvent({ ...evt, userId })).rejects.toMatchObject({ code: 'DUPLICATE_EVENT' });
+    const replayed = await svc.applyWebhookEvent({ ...evt, userId });
+    expect(replayed.applied).toBe(false);
   });
 
   test('app reads entitlement only (isActive), never provider state', async () => {

@@ -36,6 +36,11 @@ function validateBootConfig({ includeJwtSecret = true } = {}) {
         warnings.push('TURN_URL is set but TURN_STATIC_SECRET is not — only STUN will be served to WebRTC clients.');
     }
 
+    if (!process.env.ADMIN_API_KEY) {
+        warnings.push(
+            'ADMIN_API_KEY is not set — platform admin endpoints (ban/unban) are disabled.'
+        );
+    }
     if (!process.env.FRONTEND_URL) {
         warnings.push(
             'FRONTEND_URL is not set — Stripe/portal URLs will contain "undefined" ' +
