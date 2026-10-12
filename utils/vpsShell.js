@@ -28,9 +28,33 @@ function hasVpsSshConfig() {
   return false;
 }
 
+// Dedicated terminal VPS (greyed out until configured): when TERMINAL_SSH_HOST
+// is set, terminal shells land on that separate host instead of the deploy
+// VPS. Until the founder provisions it, every lookup below falls back to the
+// DEPLOY_SSH_* values, so current behavior is byte-identical.
+function hasTerminalVpsConfig() {
+  if (!process.env.TERMINAL_SSH_HOST) return false;
+  if (process.env.TERMINAL_SSH_KEY) return true;
+  try {
+    if (process.env.TERMINAL_SSH_KEY_FILE && fs.existsSync(process.env.TERMINAL_SSH_KEY_FILE)) return true;
+  } catch (_) { /* ignore */ }
+  return false;
+}
+
+// Per-option resolution: TERMINAL_SSH_* wins when the dedicated host exists,
+// otherwise the legacy DEPLOY_SSH_* value (or the given default).
+function terminalSshOpt(name, def = undefined) {
+  if (process.env.TERMINAL_SSH_HOST && process.env[`TERMINAL_SSH_${name}`] !== undefined) {
+    return process.env[`TERMINAL_SSH_${name}`];
+  }
+  const legacy = process.env[`DEPLOY_SSH_${name}`];
+  return legacy !== undefined ? legacy : def;
+}
+
 function getRawKey() {
-  if (process.env.DEPLOY_SSH_KEY) return process.env.DEPLOY_SSH_KEY.replace(/\\n/g, '\n');
-  const p = process.env.DEPLOY_SSH_KEY_FILE;
+  const direct = terminalSshOpt('KEY');
+  if (direct) return direct.replace(/\\n/g, '\n');
+  const p = terminalSshOpt('KEY_FILE');
   if (p) {
     try { return fs.readFileSync(p, 'utf8'); } catch (_) { /* ignore */ }
   }
@@ -38,7 +62,8 @@ function getRawKey() {
 }
 
 function terminalTransportEnabled() {
-  return process.env.IDE_TERMINAL_TRANSPORT !== 'local' && hasVpsSshConfig();
+  if (process.env.IDE_TERMINAL_TRANSPORT === 'local') return false;
+  return hasTerminalVpsConfig() || hasVpsSshConfig();
 }
 
 function shq(s) {
@@ -110,9 +135,9 @@ class VpsShell {
         })
         .on('error', (err) => done(reject, new Error(`VPS ssh failed: ${err.message}`)))
         .connect({
-          host: process.env.DEPLOY_SSH_HOST,
-          port: parseInt(process.env.DEPLOY_SSH_PORT || '22', 10),
-          username: process.env.DEPLOY_SSH_USER || 'deployer',
+          host: terminalSshOpt('HOST'),
+          port: parseInt(terminalSshOpt('PORT', '22'), 10),
+          username: terminalSshOpt('USER', 'deployer'),
           privateKey: key,
           readyTimeout: 20000,
           keepaliveInterval: 15000,
@@ -288,5 +313,7 @@ module.exports = {
   VpsShell,
   terminalTransportEnabled,
   hasVpsSshConfig,
+  hasTerminalVpsConfig,
+  terminalSshOpt,
   TOOLBOX_IMAGE,
 };

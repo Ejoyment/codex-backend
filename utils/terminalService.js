@@ -16,6 +16,21 @@ const { slicedPush, MAX_TERMINAL_ENTRIES } = require('./retention');
 const unifiedStateGraph = require('./unifiedStateGraph');
 const { VpsShell, terminalTransportEnabled } = require('./vpsShell');
 
+/**
+ * Terminal execution mode (S1 host-isolation kill-switch).
+ * - 'auto' (default): VPS/docker-remote transport when configured, otherwise
+ *   a local node-pty shell jailed to a tmpdir workspace (current behavior).
+ * - 'container': fail closed — refuse local PTY shells with 503. Use in
+ *   production once an isolated backend (VPS transport) is configured;
+ *   without one, terminal creation is unavailable rather than silently
+ *   executing on the application host.
+ */
+function terminalExecMode() {
+    return String(process.env.TERMINAL_EXEC_MODE || 'auto').toLowerCase() === 'container'
+        ? 'container'
+        : 'auto';
+}
+
 // VFS extension → language id (shared by per-file and bulk workspace sync).
 const EXT_LANG_MAP = {
   '.js': 'javascript', '.ts': 'typescript', '.py': 'python', '.java': 'java',
@@ -431,8 +446,16 @@ class TerminalService {
         });
         console.log(`✓ VPS terminal queued: ${sessionId}`);
       } else {
-      // Real PTY terminal
-      const shell = os.platform() === 'win32' ? 'powershell.exe' : 'bash';
+        if (terminalExecMode() === 'container') {
+          const err = new Error(
+            'Terminal execution requires an isolated backend: configure VPS transport ' +
+            '(DEPLOY_SSH_HOST + DEPLOY_SSH_KEY) instead of spawning shells on the application host.'
+          );
+          err.statusCode = 503;
+          throw err;
+        }
+        // Real PTY terminal
+        const shell = os.platform() === 'win32' ? 'powershell.exe' : 'bash';
       
       const ptyProcess = this.pty.spawn(shell, [], {
         name: 'xterm-color',
@@ -1142,3 +1165,4 @@ terminalService.stopCleanup = function() {
 };
 
 module.exports = terminalService;
+module.exports.terminalExecMode = terminalExecMode;
