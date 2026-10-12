@@ -41,6 +41,24 @@ function validateBootConfig({ includeJwtSecret = true } = {}) {
             'ADMIN_API_KEY is not set — platform admin endpoints (ban/unban) are disabled.'
         );
     }
+    if (process.env.NODE_ENV === 'production' && process.env.IDE_ALLOW_HOST_EXEC === 'true') {
+        warnings.push(
+            'IDE_ALLOW_HOST_EXEC=true in production: the Run button executes user code ' +
+            'on the application host. Only for locked-down dev machines.'
+        );
+    }
+    if (process.env.NODE_ENV === 'production' && String(process.env.TERMINAL_EXEC_MODE || 'auto').toLowerCase() !== 'container') {
+        warnings.push(
+            'Terminal sessions spawn host shells (TERMINAL_EXEC_MODE!=container). ' +
+            'Set TERMINAL_EXEC_MODE=container with VPS transport to isolate execution.'
+        );
+    }
+    if (process.env.TERMINAL_SSH_HOST && !process.env.TERMINAL_SSH_KEY && !process.env.TERMINAL_SSH_KEY_FILE) {
+        warnings.push(
+            'TERMINAL_SSH_HOST is set without a key (TERMINAL_SSH_KEY or TERMINAL_SSH_KEY_FILE) — ' +
+            'dedicated terminal VPS is half-configured; shells fall back to the deploy VPS or host PTY.'
+        );
+    }
     if (!process.env.FRONTEND_URL) {
         warnings.push(
             'FRONTEND_URL is not set — Stripe/portal URLs will contain "undefined" ' +
