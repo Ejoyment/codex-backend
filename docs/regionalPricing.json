@@ -1,0 +1,45 @@
+{
+  "_comment": "Regional pricing + gateway routing (decisions 3.5/3.6). Amounts are MAJOR units (adapters convert to minor at the provider boundary). base_usd is the monthly-billed USD price. Only pro/pro_plus carry regional rates; team tiers bill in standard USD (decision D1).",
+  "pricing_tiers": {
+    "pro": {
+      "base_usd": 20,
+      "interval": "monthly",
+      "regional_rates": {
+        "NGN": { "currency_symbol": "₦", "amount": 21500, "display_text": "₦21,500/mo" },
+        "ZAR": { "currency_symbol": "R", "amount": 265, "display_text": "R265/mo" },
+        "KES": { "currency_symbol": "KSh", "amount": 2100, "display_text": "KSh 2,100/mo" },
+        "GHS": { "currency_symbol": "GH₵", "amount": 190, "display_text": "GH₵190/mo" }
+      }
+    },
+    "pro_plus": {
+      "base_usd": 60,
+      "interval": "monthly",
+      "regional_rates": {
+        "NGN": { "currency_symbol": "₦", "amount": 64000, "display_text": "₦64,000/mo" },
+        "ZAR": { "currency_symbol": "R", "amount": 795, "display_text": "R795/mo" },
+        "KES": { "currency_symbol": "KSh", "amount": 6250, "display_text": "KSh 6,250/mo" },
+        "GHS": { "currency_symbol": "GH₵", "amount": 565, "display_text": "GH₵565/mo" }
+      }
+    }
+  },
+  "gateways": {
+    "NGN": "paystack",
+    "ZAR": "flutterwave",
+    "GHS": "flutterwave",
+    "KES": "flutterwave",
+    "UGX": "flutterwave",
+    "TZS": "flutterwave",
+    "RWF": "flutterwave",
+    "XOF": "flutterwave",
+    "XAF": "flutterwave",
+    "EGP": "flutterwave",
+    "ZMW": "flutterwave",
+    "USD": "flutterwave_global"
+  },
+  "fallback_rail": "paystack",
+  "unlisted_fallback": {
+    "currency": "USD",
+    "rail": "flutterwave_global",
+    "note": "MAD, ETB and any unlisted currency fall back to USD via the international processor — never a 400."
+  }
+}

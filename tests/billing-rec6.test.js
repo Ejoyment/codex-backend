@@ -200,7 +200,8 @@ describe('v1 checkout server pricing', () => {
       .post('/api/v1/billing/checkout')
       .send({ plan: 'pro', interval: 'monthly', country: 'NG', currency: 'NGN', amount: 1 });
     expect(res.status).toBe(200);
-    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ amount: 20, currency: 'USD' }));
+    // Regional row wins over the client amount (1) and the USD table (20):
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ amount: 21500, currency: 'NGN' }));
   });
 
   test('unknown plan and off-rail yearly are 400', async () => {
