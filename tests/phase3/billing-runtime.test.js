@@ -17,9 +17,12 @@ const { routeProvider, getAdapter } = require('../../server/services/billing/pay
 describe('paymentRouter — route by country/currency', () => {
   test('African currencies route to Paystack', () => {
     expect(routeProvider({ currency: 'NGN' })).toBe('paystack');
-    expect(routeProvider({ currency: 'GHS' })).toBe('paystack');
-    expect(routeProvider({ currency: 'KES' })).toBe('paystack');
-    expect(routeProvider({ currency: 'ZAR' })).toBe('paystack');
+  });
+
+  test('file map overrides per currency (decisions 3.5/3.6)', () => {
+    expect(routeProvider({ currency: 'GHS' })).toBe('flutterwave');
+    expect(routeProvider({ currency: 'KES' })).toBe('flutterwave');
+    expect(routeProvider({ currency: 'ZAR' })).toBe('flutterwave');
   });
 
   test('African countries route to Paystack', () => {
@@ -28,11 +31,11 @@ describe('paymentRouter — route by country/currency', () => {
     expect(routeProvider({ country: 'KE' })).toBe('paystack');
   });
 
-  test('USD/international routes to Stripe', () => {
-    expect(routeProvider({ currency: 'USD' })).toBe('stripe');
-    expect(routeProvider({ currency: 'EUR' })).toBe('stripe');
-    expect(routeProvider({ country: 'US' })).toBe('stripe');
-    expect(routeProvider({})).toBe('stripe');
+  test('USD/international routes to Flutterwave global (Stripe retired, decisions 3.6)', () => {
+    expect(routeProvider({ currency: 'USD' })).toBe('flutterwave');
+    expect(routeProvider({ currency: 'EUR' })).toBe('flutterwave');
+    expect(routeProvider({ country: 'US' })).toBe('flutterwave');
+    expect(routeProvider({})).toBe('flutterwave');
   });
 
   test('adapters share the interface', async () => {

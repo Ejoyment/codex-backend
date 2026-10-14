@@ -10,42 +10,48 @@ const { authenticateToken } = require('../../middleware/auth');
 const { routeProvider, getAdapter } = require('../services/billing/paymentRouter');
 const entitlementService = require('../services/billing/entitlementService');
 const { nearestEdge } = require('../services/billing/edgeRouter');
+const { resolvePrice } = require('../../config/regionalPricing');
 
 const router = express.Router();
 
-// Canonical monthly prices (USD). Mirrors Subscription.upgradeTo amounts —
-// the single server-side price table. Client-supplied `amount` is NEVER
-// trusted (pay-$0.01-for-pro), and redirect URLs are fixed (client URLs are
-// open redirect). Non-USD pricing needs the regional table (decision 3.5);
-// yearly off-Stripe needs a multiple (decision 3.6) — both 400 for now.
+// Server-side pricing (decisions 3.5/3.6): amounts and currencies come from
+// docs/regionalPricing.json via resolvePrice — client-supplied `amount` is
+// NEVER trusted (pay-$0.01-for-pro), redirect URLs are fixed (client URLs are
+// open redirect), and team tiers bill in standard USD. Yearly off-Stripe
+// rails are still 400 (no multiple decided).
 const MONTHLY_USD = { pro: 20, pro_plus: 60, team_standard: 40, team_premium: 120 };
 
 // Checkout needs auth; webhook must NOT (providers call it without a JWT).
 router.post('/checkout', authenticateToken, async (req, res) => {
   try {
     const { plan = 'pro', interval = 'monthly', country, currency, provider: hint, email, lat, lng } = req.body || {};
+    if (hint === 'stripe') {
+      return res.status(400).json({ success: false, message: 'Stripe rail retired — see regional gateway map' });
+    }
     const provider = hint || routeProvider({ country, currency });
     const adapter = getAdapter(provider);
     const FRONTEND = process.env.FRONTEND_URL || 'http://localhost:5500';
+    const priced = resolvePrice(plan, currency);
     const params = {
       userId: req.userId,
       email: email || req.user?.email,
       plan,
       interval,
-      currency: 'USD',
+      currency: priced.currency,
       successUrl: `${FRONTEND}/payment-success?provider=${provider}`,
       cancelUrl: `${FRONTEND}/pricing`,
       callbackUrl: `${FRONTEND}/payment-success?provider=${provider}`,
       redirectUrl: `${FRONTEND}/payment-success?provider=${provider}`,
     };
     if (provider !== 'stripe') {
-      // Stripe prices via env price IDs (immune); other rails take amounts.
-      const monthly = MONTHLY_USD[plan];
-      if (!monthly) {
-        return res.status(400).json({ success: false, message: 'Unknown plan (enterprise is custom pricing)' });
-      }
+      // Stripe prices via env price IDs (immune while the rail exists);
+      // other rails take amounts computed above — never the client's.
       if (interval !== 'monthly') {
         return res.status(400).json({ success: false, message: 'Yearly billing on this rail is not available yet' });
+      }
+      const monthly = priced.amount != null ? priced.amount : MONTHLY_USD[plan];
+      if (!monthly) {
+        return res.status(400).json({ success: false, message: 'Unknown plan (enterprise is custom pricing)' });
       }
       params.amount = monthly;
     }
