@@ -204,7 +204,7 @@ describe('v1 checkout server pricing', () => {
     expect(spy).toHaveBeenCalledWith(expect.objectContaining({ amount: 21500, currency: 'NGN' }));
   });
 
-  test('unknown plan and off-rail yearly are 400', async () => {
+  test('unknown plan is 400; yearly multiplies by annual_multiple', async () => {
     const { app, PaystackAdapter } = buildApp();
     const spy = jest.spyOn(PaystackAdapter.prototype, 'createCheckout').mockResolvedValue({ url: 'x' });
     const badPlan = await request(app)
@@ -213,9 +213,10 @@ describe('v1 checkout server pricing', () => {
     expect(badPlan.status).toBe(400);
     const yearly = await request(app)
       .post('/api/v1/billing/checkout')
-      .send({ plan: 'pro', interval: 'yearly', country: 'NG' });
-    expect(yearly.status).toBe(400);
-    expect(spy).not.toHaveBeenCalled();
+      .send({ plan: 'pro', interval: 'yearly', country: 'NG', currency: 'NGN' });
+    expect(yearly.status).toBe(200);
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ amount: 215000 }));
+    expect(spy).not.toHaveBeenCalledWith(expect.objectContaining({ amount: 21500 }));
   });
 
   test('webhook replay answers 200 with current state', async () => {

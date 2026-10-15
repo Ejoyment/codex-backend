@@ -66,6 +66,9 @@ function loadTable() {
       throw new Error(`Regional pricing: gateway '${rail}' for '${cur}' maps to no known adapter.`);
     }
   }
+  if (table.annual_multiple !== undefined && !(typeof table.annual_multiple === 'number' && table.annual_multiple > 0)) {
+    throw new Error('Regional pricing: annual_multiple must be a positive number.');
+  }
   cached = table;
   return cached;
 }

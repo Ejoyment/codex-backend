@@ -41,7 +41,7 @@ const invitationSchema = new mongoose.Schema({
         required: true,
         default: function() {
             // Default expiry: 7 days
-            return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+            return new Date(Date.now() + (parseInt(process.env.INVITATION_TTL_DAYS || '7', 10) * 24 * 60 * 60 * 1000));
         }
     },
     acceptedAt: Date,

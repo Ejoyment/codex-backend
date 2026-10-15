@@ -596,6 +596,10 @@ app.use((req, res) => {
 app.use((err, req, res, next) => {
     if (res.headersSent) return next(err);
     console.error(err.stack);
+    require('./utils/sentry').captureError(err, {
+        route: `${req.method} ${req.path}`,
+        userId: req.user && (req.user._id || req.user.id),
+    });
     // Client/origin problems are not server errors: CORS rejections and
     // malformed JSON bodies used to collapse into 500s.
     if (err.message === 'Not allowed by CORS') {
