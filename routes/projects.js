@@ -6,6 +6,7 @@ const LocalProject = require('../models/LocalProject');
 const LocalTask = require('../models/LocalTask');
 const CodeFile = require('../models/CodeFile');
 const { resolveAccessibleSpecs, getAccessibleProjects } = require('../utils/specAccess');
+const { normalizeMembers } = require('../utils/members');
 
 /**
  * @swagger
@@ -42,7 +43,7 @@ router.get('/', authenticateToken, async (req, res) => {
                 pushedToGitHub: p.pushedToGitHub,
                 githubRepoUrl: p.githubRepoUrl,
                 workspaceId: p.workspaceId,
-                members: p.members,
+                members: normalizeMembers(p.members),
                 createdAt: p.createdAt,
                 updatedAt: p.updatedAt
             }))

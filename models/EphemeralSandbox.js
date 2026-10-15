@@ -55,7 +55,7 @@ const ephemeralSandboxSchema = new mongoose.Schema({
     startedAt: { type: Date, default: Date.now },
     readyAt: Date,
     failedAt: Date,
-    expiresAt: { type: Date, default: () => new Date(Date.now() + 24 * 60 * 60 * 1000) }
+    expiresAt: { type: Date, default: () => new Date(Date.now() + (parseInt(process.env.SANDBOX_TTL_HOURS || '24', 10) * 60 * 60 * 1000)) }
 }, {
     timestamps: true
 });

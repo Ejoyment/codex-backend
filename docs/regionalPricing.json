@@ -37,6 +37,7 @@
     "USD": "flutterwave_global"
   },
   "fallback_rail": "paystack",
+  "annual_multiple": 10,
   "unlisted_fallback": {
     "currency": "USD",
     "rail": "flutterwave_global",

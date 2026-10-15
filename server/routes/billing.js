@@ -46,12 +46,17 @@ router.post('/checkout', authenticateToken, async (req, res) => {
     if (provider !== 'stripe') {
       // Stripe prices via env price IDs (immune while the rail exists);
       // other rails take amounts computed above — never the client's.
-      if (interval !== 'monthly') {
-        return res.status(400).json({ success: false, message: 'Yearly billing on this rail is not available yet' });
+      // Yearly = monthly × annual_multiple (10 ≈ 2 months free).
+      if (interval !== 'monthly' && interval !== 'yearly') {
+        return res.status(400).json({ success: false, message: 'Unknown billing interval' });
       }
-      const monthly = priced.amount != null ? priced.amount : MONTHLY_USD[plan];
+      let monthly = priced.amount != null ? priced.amount : MONTHLY_USD[plan];
       if (!monthly) {
         return res.status(400).json({ success: false, message: 'Unknown plan (enterprise is custom pricing)' });
+      }
+      if (interval === 'yearly') {
+        const { loadTable } = require('../../config/regionalPricing');
+        monthly = monthly * (loadTable().annual_multiple || 10);
       }
       params.amount = monthly;
     }

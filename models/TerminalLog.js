@@ -47,7 +47,7 @@ const terminalLogSchema = new mongoose.Schema({
     },
     expiresAt: {
         type: Date,
-        default: () => new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
+        default: () => new Date(Date.now() + (parseInt(process.env.TERMINAL_LOG_TTL_DAYS || '7', 10) * 24 * 60 * 60 * 1000)) // 7 days
     }
 }, {
     timestamps: true
