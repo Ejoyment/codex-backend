@@ -39,7 +39,10 @@ function selectProvider(country, currency) {
         if (['NG', 'GH', 'KE', 'ZA'].includes(country)) return 'paystack';
         return 'flutterwave';
     }
-    return 'stripe';
+    // Stripe rail retired (decision 3.6): international defaults to the
+    // Flutterwave global wrapper. Legacy Stripe code paths remain until the
+    // sandbox proof lands — they are simply never routed to from here.
+    return 'flutterwave';
 }
 
 /**
