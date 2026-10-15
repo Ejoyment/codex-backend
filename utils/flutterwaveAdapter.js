@@ -6,16 +6,36 @@ const crypto = require('crypto');
 
 const FLUTTERWAVE_SECRET = process.env.FLUTTERWAVE_SECRET_KEY;
 
-async function createCheckout({ userId, tier, amount, currency, interval }) {
-    // NOT IMPLEMENTED — full Flutterwave REST integration is rec 15 (needs
-    // sandbox testing before swap). Fail loudly instead of returning a dead
-    // paymentUrl (previously a typo'd frontend path that 404'd).
-    return {
-        success: false,
-        provider: 'flutterwave',
-        message: 'Flutterwave checkout is not available yet — please use card checkout',
-        code: 'PROVIDER_UNAVAILABLE',
-    };
+async function createCheckout({ userId, tier, amount, currency, interval, email, redirectUrl }) {
+    const secret = process.env.FLUTTERWAVE_SECRET_KEY;
+    if (!secret) {
+        return {
+            success: false,
+            provider: 'flutterwave',
+            message: 'Flutterwave checkout is not configured — set FLUTTERWAVE_SECRET_KEY',
+            code: 'PROVIDER_UNAVAILABLE',
+        };
+    }
+    try {
+        const axios = require('axios');
+        const txRef = `flw_${Date.now()}_${String(userId).slice(-6)}`;
+        const res = await axios.post(
+            'https://api.flutterwave.com/v3/payments',
+            {
+                tx_ref: txRef,
+                amount: Number(amount),
+                currency: currency || 'USD',
+                redirect_url: redirectUrl,
+                customer: { email },
+                meta: { userId: String(userId), tier, interval },
+            },
+            { headers: { Authorization: `Bearer ${secret}` } }
+        );
+        const data = res.data?.data || {};
+        return { success: true, provider: 'flutterwave', sessionId: txRef, url: data.link, txRef };
+    } catch (error) {
+        return { success: false, provider: 'flutterwave', message: error.response?.data?.message || error.message };
+    }
 }
 
 async function verifyWebhook(rawBody, signature) {
