@@ -143,6 +143,35 @@ describe('routes', () => {
     expect(res.body.reference).toMatch(/^txref_/);
   });
 
+  test('initialize honours the requested amount/plan and returns data.link', async () => {
+    process.env.FLUTTERWAVE_SECRET_KEY = 'sk-test';
+    const { app, post, User } = loadStack();
+    post.mockResolvedValue({ data: { status: 'success', data: { link: 'https://pay.link' } } });
+    jest.spyOn(User, 'findById').mockResolvedValue({ _id: 'u', email: 'a@b.c', fullName: 'A' });
+    const res = await request(app)
+      .post('/api/flutterwave-billing/initialize')
+      .send({ amount: 60, plan: 'pro_plus', currency: 'USD' });
+    expect(res.status).toBe(200);
+    expect(res.body.data.link).toBe('https://pay.link');
+    expect(post).toHaveBeenCalledWith(
+      '/payments',
+      expect.objectContaining({
+        amount: 60,
+        currency: 'USD',
+        meta: expect.objectContaining({ plan: 'pro_plus' }),
+      })
+    );
+  });
+
+  test('initialize falls back to the plan price when no amount is sent', async () => {
+    process.env.FLUTTERWAVE_SECRET_KEY = 'sk-test';
+    const { app, post, User } = loadStack();
+    post.mockResolvedValue({ data: { status: 'success', data: { link: 'https://pay.link' } } });
+    jest.spyOn(User, 'findById').mockResolvedValue({ _id: 'u', email: 'a@b.c', fullName: 'A' });
+    await request(app).post('/api/flutterwave-billing/initialize').send({ plan: 'team_premium' });
+    expect(post).toHaveBeenCalledWith('/payments', expect.objectContaining({ amount: 120 }));
+  });
+
   test('verify happy path activates the trial and schedules the charge', async () => {
     process.env.FLUTTERWAVE_SECRET_KEY = 'sk-test';
     const { app, get, User, Subscription, scheduler } = loadStack();
@@ -170,6 +199,60 @@ describe('routes', () => {
     get.mockResolvedValue({ data: { status: 'success', data: { status: 'failed', amount: 0 } } });
     const res = await request(app).post('/api/flutterwave-billing/verify').send({ transaction_id: 'tx-1' });
     expect(res.status).toBe(400);
+  });
+
+  test('webhook rejects an invalid verif-hash', async () => {
+    process.env.FLUTTERWAVE_SECRET_KEY = 'sk-test';
+    process.env.FLUTTERWAVE_WEBHOOK_HASH = 'the-hash';
+    const { app } = loadStack();
+    const res = await request(app)
+      .post('/api/flutterwave-billing/webhook')
+      .set('verif-hash', 'wrong')
+      .send({ event: 'charge.completed', data: { status: 'successful' } });
+    expect(res.status).toBe(400);
+  });
+
+  test('webhook activates the trial and schedules the first charge', async () => {
+    process.env.FLUTTERWAVE_SECRET_KEY = 'sk-test';
+    process.env.FLUTTERWAVE_WEBHOOK_HASH = 'the-hash';
+    const { app, User, Subscription, scheduler } = loadStack();
+    jest.spyOn(User, 'findById')
+      .mockResolvedValue({ _id: '507f1f77bcf86cd799439011', email: 'a@b.c', fullName: 'A' });
+    const subDoc = { save: jest.fn(async function () { return this; }), upgradeTo: jest.fn() };
+    jest.spyOn(Subscription, 'findOne').mockResolvedValue(subDoc);
+    const res = await request(app)
+      .post('/api/flutterwave-billing/webhook')
+      .set('verif-hash', 'the-hash')
+      .send({
+        event: 'charge.completed',
+        data: {
+          status: 'successful',
+          amount: 50,
+          currency: 'USD',
+          tx_ref: 'txref_1_507f1f77bcf86cd799439011',
+          card: { token: 'ct' },
+          customer: { id: 'cu' },
+        },
+      });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(subDoc.status).toBe('trial');
+    expect(scheduler.scheduleFirstCharge).toHaveBeenCalled();
+  });
+
+  test('webhook ignores non-successful events without touching the DB', async () => {
+    process.env.FLUTTERWAVE_SECRET_KEY = 'sk-test';
+    process.env.FLUTTERWAVE_WEBHOOK_HASH = 'the-hash';
+    const { app, User, scheduler } = loadStack();
+    const findById = jest.spyOn(User, 'findById');
+    const res = await request(app)
+      .post('/api/flutterwave-billing/webhook')
+      .set('verif-hash', 'the-hash')
+      .send({ event: 'charge.completed', data: { status: 'failed' } });
+    expect(res.status).toBe(200);
+    expect(res.body.ignored).toBe(true);
+    expect(findById).not.toHaveBeenCalled();
+    expect(scheduler.scheduleFirstCharge).not.toHaveBeenCalled();
   });
 
   test('cancel marks the subscription cancelled', async () => {

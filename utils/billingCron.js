@@ -2,6 +2,7 @@ const cron = require('node-cron');
 const mongoose = require('mongoose');
 const PaystackScheduler = require('./paystackScheduler');
 const StripeBillingScheduler = require('./billingScheduler');
+const FlutterwaveScheduler = require('./flutterwaveScheduler');
 
 /**
  * Billing Cron Jobs
@@ -37,6 +38,19 @@ class BillingCron {
                         }
                     } catch (error) {
                         console.error('Paystack cron error (non-fatal):', error.message);
+                    }
+                }
+
+                // Process Flutterwave charges if configured
+                if (process.env.FLUTTERWAVE_SECRET_KEY) {
+                    console.log('Running billing cron job (Flutterwave)...');
+                    try {
+                        const result = await FlutterwaveScheduler.processScheduledCharges();
+                        if (result.processed > 0) {
+                            console.log(`✓ Processed ${result.processed} Flutterwave charges`);
+                        }
+                    } catch (error) {
+                        console.error('Flutterwave cron error (non-fatal):', error.message);
                     }
                 }
 
@@ -134,6 +148,13 @@ class BillingCron {
             console.log('Processing Paystack charges...');
             const paystackResult = await PaystackScheduler.processScheduledCharges();
             results.push({ provider: 'paystack', ...paystackResult });
+        }
+        
+        // Process Flutterwave
+        if (process.env.FLUTTERWAVE_SECRET_KEY) {
+            console.log('Processing Flutterwave charges...');
+            const flutterwaveResult = await FlutterwaveScheduler.processScheduledCharges();
+            results.push({ provider: 'flutterwave', ...flutterwaveResult });
         }
         
         // Process Stripe
