@@ -24,11 +24,20 @@ process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret-for-automated-te
 jest.mock('../models/AgentExecution', () => ({ create: jest.fn(), findById: jest.fn(), findOne: jest.fn() }));
 jest.mock('../models/LocalTask', () => ({ findOne: jest.fn(), findById: jest.fn(), findByIdAndUpdate: jest.fn() }));
 jest.mock('../models/SpecModel', () => ({ findById: jest.fn(), findByIdAndUpdate: jest.fn() }));
+jest.mock('../models/CodeFile', () => ({ find: jest.fn(), findOne: jest.fn(), create: jest.fn() }));
 jest.mock('../utils/specAccess', () => ({ userCanAccessSpec: jest.fn(), userCanAccessWorkspace: jest.fn() }));
 jest.mock('../utils/aiRouterService', () => ({ routeChat: jest.fn() }));
 jest.mock('../utils/sddVerificationService', () => ({ verifySpec: jest.fn() }));
 jest.mock('../utils/containerWorker', () => ({ provisionWorker: jest.fn(), teardownWorker: jest.fn() }));
-jest.mock('../utils/gitService', () => ({ merge: jest.fn(), reset: jest.fn() }));
+jest.mock('../utils/gitService', () => ({
+  merge: jest.fn(),
+  reset: jest.fn(),
+  init: jest.fn(),
+  ensureBaseCommit: jest.fn(),
+  createBranch: jest.fn(),
+  writeWorkingTree: jest.fn(),
+  commitWorkingTree: jest.fn(),
+}));
 jest.mock('../utils/notificationTriggers', () => ({ notifyAgentEvent: jest.fn() }));
 jest.mock('../utils/realtimeBus', () => ({ emitAgentProgress: jest.fn() }));
 jest.mock('../utils/terminalService', () => ({}));
@@ -36,9 +45,11 @@ jest.mock('../utils/terminalService', () => ({}));
 const AgentExecution = require('../models/AgentExecution');
 const LocalTask = require('../models/LocalTask');
 const SpecModel = require('../models/SpecModel');
+const CodeFile = require('../models/CodeFile');
 const specAccess = require('../utils/specAccess');
 const aiRouterService = require('../utils/aiRouterService');
 const sddVerificationService = require('../utils/sddVerificationService');
+const gitService = require('../utils/gitService');
 const realtimeBus = require('../utils/realtimeBus');
 const AgentSocketHandler = require('../utils/agentSocket');
 const User = require('../models/User');
@@ -52,6 +63,7 @@ const SPEC_A = '3'.repeat(24);
 const SPEC_B = '4'.repeat(24);
 const EXEC_A = '5'.repeat(24);
 const EXEC_B = '6'.repeat(24);
+const WORKSPACE_A = '7'.repeat(24);
 
 let server;
 let io;
@@ -119,6 +131,10 @@ beforeEach(() => {
   specAccess.userCanAccessSpec.mockResolvedValue(false);
   specAccess.userCanAccessWorkspace.mockResolvedValue(false);
   AgentExecution.create.mockResolvedValue(execFixture(USER_A, { metadata: {} }));
+  CodeFile.find.mockResolvedValue([]);
+  gitService.init.mockResolvedValue({ success: true });
+  gitService.ensureBaseCommit.mockResolvedValue({ success: true });
+  gitService.createBranch.mockResolvedValue({ success: true });
 });
 
 afterEach(() => {
@@ -182,6 +198,19 @@ describe('agent:delegate ownership', () => {
     expect(LocalTask.findByIdAndUpdate).toHaveBeenCalledWith(TASK_A, expect.anything());
     s.disconnect();
   });
+
+  test('workspace delegate seeds a base commit and creates an isolated branch', async () => {
+    specAccess.userCanAccessWorkspace.mockResolvedValue(true);
+    const s = await connect(USER_A);
+    const result = once(s, 'agent:delegate-result');
+    s.emit('agent:delegate', { workspaceId: WORKSPACE_A, taskTitle: 'branch me' });
+    const payload = await result;
+    expect(payload.success).toBe(true);
+    expect(gitService.init).toHaveBeenCalledWith(WORKSPACE_A);
+    expect(gitService.ensureBaseCommit).toHaveBeenCalledWith(WORKSPACE_A, 'main');
+    expect(gitService.createBranch).toHaveBeenCalledWith(WORKSPACE_A, expect.stringMatching(/^feature\//));
+    s.disconnect();
+  });
 });
 
 describe('approve / reject ownership', () => {
@@ -218,6 +247,25 @@ describe('approve / reject ownership', () => {
     const payload = await done;
     expect(payload.message).toMatch(/approved/i);
     expect(execution.status).toBe('completed');
+    s.disconnect();
+  });
+
+  test('approve applies proposed changes to the workspace files', async () => {
+    const execution = execFixture(USER_A, {
+      metadata: { workspaceId: WORKSPACE_A },
+      proposedChanges: [{ path: 'src/a.js', action: 'update', language: 'javascript', content: 'new body' }],
+    });
+    AgentExecution.findById.mockResolvedValue(execution);
+    const doc = { _id: 'f1', name: 'a.js', path: '/src', content: 'old', save: jest.fn(async function () { return this; }) };
+    CodeFile.findOne.mockResolvedValue(doc);
+    const s = await connect(USER_A);
+    const done = once(s, 'agent:approved');
+    s.emit('agent:approve', { executionId: EXEC_A });
+    const payload = await done;
+    expect(payload.message).toMatch(/approved/i);
+    expect(CodeFile.findOne).toHaveBeenCalledWith({ company: WORKSPACE_A, name: 'a.js', path: '/src' });
+    expect(doc.save).toHaveBeenCalled();
+    expect(doc.content).toBe('new body');
     s.disconnect();
   });
 

@@ -39,6 +39,9 @@ const agentExecutionSchema = new mongoose.Schema({
   logs: [{ timestamp: Date, message: String }],
   specRef: { type: String, default: null },
   filesChanged: [{ path: String, action: String, diff: String }],
+  // Full proposed file bodies, staged on the agent branch. Applied to the VFS
+  // (CodeFile) only when a human approves the execution.
+  proposedChanges: [{ path: String, action: String, language: String, content: String }],
   validationResult: { type: mongoose.Schema.Types.Mixed, default: null },
   tweaks: [{ instruction: String, addedAt: Date, resultingDiff: String }],
   approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },

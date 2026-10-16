@@ -5,12 +5,22 @@ const SpecModel = require('../models/SpecModel');
 const { userCanAccessSpec, userCanAccessWorkspace } = require('./specAccess');
 const aiRouterService = require('./aiRouterService');
 const sddVerificationService = require('./sddVerificationService');
+const agentChangeSet = require('./agentChangeSet');
 const realtimeBus = require('./realtimeBus');
 const gitService = require('./gitService');
+const CodeFile = require('../models/CodeFile');
 const terminalService = require('./terminalService');
 const containerWorker = require('./containerWorker');
 const { execSync } = require('child_process');
 const { notifyAgentEvent } = require('./notificationTriggers');
+
+// `metadata` is a Mongoose Map: prefer .get(), but tolerate plain objects too.
+function metaValue(execution, key) {
+  const meta = execution?.metadata;
+  if (!meta) return undefined;
+  if (typeof meta.get === 'function') return meta.get(key);
+  return meta[key];
+}
 
 class AgentSocketHandler {
   constructor(io) {
@@ -118,6 +128,28 @@ class AgentSocketHandler {
         },
       });
 
+      // Create the isolated agent branch so every execution has a real base to
+      // merge back into. Without a workspace there is nowhere to branch.
+      if (workspaceId) {
+        try {
+          const slug = String(taskTitle || 'task').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'task';
+          const agentBranch = `feature/${execution._id}-${slug}`;
+          await gitService.init(workspaceId);
+          await gitService.ensureBaseCommit(workspaceId, 'main');
+          const branchResult = await gitService.createBranch(workspaceId, agentBranch);
+          if (branchResult.success) {
+            execution.branch = agentBranch;
+            execution.baseBranch = 'main';
+            if (typeof execution.metadata?.set === 'function') execution.metadata.set('agentBranch', agentBranch);
+            await execution.save();
+          } else {
+            console.error('Agent branch creation failed:', branchResult.error);
+          }
+        } catch (error) {
+          console.error('Agent branch setup error:', error.message);
+        }
+      }
+
       if (taskId) {
         await LocalTask.findByIdAndUpdate(taskId, {
           status: 'in-progress',
@@ -196,8 +228,12 @@ class AgentSocketHandler {
         return socket.emit('agent:error', { message: 'Spec not found or project access denied' });
       }
 
+      const codeFiles = workspaceId
+        ? await CodeFile.find({ company: workspaceId }).select('path name language content').lean()
+        : [];
+
       const messages = [
-        { role: 'system', content: `You are an autonomous AI agent executing a task. Task: ${execution.taskTitle}` },
+        { role: 'system', content: `You are an autonomous AI agent executing a task. Task: ${execution.taskTitle}\n\n${agentChangeSet.CHANGE_FORMAT_INSTRUCTIONS}` },
       ];
       if (spec && spec.content) {
         messages.push({ role: 'system', content: `Spec contract: ${spec.content}` });
@@ -208,7 +244,7 @@ class AgentSocketHandler {
 
       const codeContext = {
         workspaceId,
-        files: [],
+        files: codeFiles,
         agentMode: true,
         instructions: spec ? `Follow the spec contract: ${spec.specId}` : undefined,
       };
@@ -216,13 +252,27 @@ class AgentSocketHandler {
       const result = await aiRouterService.routeChat(messages, codeContext, { provider, localPrivacyMode });
 
       if (result.success) {
+        // Stage the proposal on the isolated agent branch; VFS stays untouched
+        // until the user approves.
+        const changes = agentChangeSet.buildChangeset(result.content || '', codeFiles);
+        const { filesChanged, diffSummary } = agentChangeSet.summarize(changes, codeFiles);
+        if (changes.length && workspaceId) {
+          await agentChangeSet.stageChanges(workspaceId, changes, {
+            message: `Agent: ${execution.taskTitle}`.slice(0, 200),
+            branch: metaValue(execution, 'agentBranch') || execution.branch,
+          }).catch((error) => console.error('Agent stage error:', error));
+        }
+
         execution.status = 'awaiting_approval';
-        execution.logs.push({ timestamp: new Date(), message: 'Agent completed execution, awaiting approval' });
-        execution.diffSummary = {
-          filesChanged: result.codeBlocks ? result.codeBlocks.length : 0,
-          insertions: result.codeBlocks ? result.codeBlocks.reduce((acc, c) => acc + c.code.split('\n').length, 0) : 0,
-          deletions: 0,
-        };
+        execution.logs.push({ timestamp: new Date(), message: `Agent completed execution (${changes.length} file(s) staged), awaiting approval` });
+        execution.filesChanged = filesChanged;
+        execution.proposedChanges = changes.map((change) => ({
+          path: change.path,
+          action: change.action,
+          language: change.language,
+          content: change.content,
+        }));
+        execution.diffSummary = diffSummary;
 
         realtimeBus.emitAgentProgress(socket.userId, {
           type: 'complete',
@@ -329,12 +379,21 @@ class AgentSocketHandler {
 
     execution.status = 'completed';
     execution.approvalRequired = false;
-    execution.logs.push({ timestamp: new Date(), message: 'Agent changes approved and merged' });
+    // Apply the staged proposal to the VFS only now that a human approved it.
+    const applied = await agentChangeSet.applyExecutionChanges(execution);
+    execution.logs.push({
+      timestamp: new Date(),
+      message: applied.applied
+        ? `Agent changes approved and merged (${applied.applied} file(s) applied)`
+        : 'Agent changes approved and merged',
+    });
     await execution.save();
 
-    if (execution.metadata?.agentBranch) {
+    const agentBranch = metaValue(execution, 'agentBranch') || execution.branch;
+    const workspaceId = metaValue(execution, 'workspaceId');
+    if (agentBranch) {
       try {
-        await gitService.merge(execution.metadata.workspaceId || 'default', execution.metadata.agentBranch);
+        await gitService.merge(workspaceId || 'default', agentBranch);
       } catch (error) {
         console.error('Git merge error:', error);
         execution.logs.push({ timestamp: new Date(), message: `Merge warning: ${error.message}` });
@@ -381,12 +440,16 @@ class AgentSocketHandler {
 
     execution.status = 'rejected';
     execution.approvalRequired = false;
+    execution.proposedChanges = [];
+    execution.filesChanged = [];
     execution.logs.push({ timestamp: new Date(), message: 'Agent work rejected and task rolled back' });
     await execution.save();
 
-    if (execution.metadata?.agentBranch) {
+    const agentBranch = metaValue(execution, 'agentBranch') || execution.branch;
+    const workspaceId = metaValue(execution, 'workspaceId');
+    if (agentBranch) {
       try {
-        await gitService.reset(execution.metadata.workspaceId || 'default', [execution.metadata.agentBranch]);
+        await gitService.reset(workspaceId || 'default', [agentBranch]);
       } catch (error) {
         console.error('Git reset error:', error);
       }
