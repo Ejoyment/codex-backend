@@ -27,7 +27,7 @@ const NAV_SECTIONS = [
     label: 'WORK',
     items: [
       { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
-      { href: '/tasks', label: 'Projects', icon: FolderKanban },
+      { href: '/projects', label: 'Projects', icon: FolderKanban },
       { href: '/tasks', label: 'Tasks', icon: CheckSquare },
     ],
   },

@@ -5,7 +5,7 @@ const { enforceProjectLimit } = require('../middleware/trial');
 const LocalProject = require('../models/LocalProject');
 const LocalTask = require('../models/LocalTask');
 const CodeFile = require('../models/CodeFile');
-const { resolveAccessibleSpecs, getAccessibleProjects } = require('../utils/specAccess');
+const { resolveAccessibleSpecs, getAccessibleProjects, userCanAccessProject } = require('../utils/specAccess');
 const { normalizeMembers } = require('../utils/members');
 
 /**
@@ -42,6 +42,13 @@ router.get('/', authenticateToken, async (req, res) => {
                 isGitEnabled: p.isGitEnabled,
                 pushedToGitHub: p.pushedToGitHub,
                 githubRepoUrl: p.githubRepoUrl,
+                githubRepoName: p.githubRepoName,
+                visibility: p.visibility,
+                sourceType: p.sourceType,
+                defaultBranch: p.defaultBranch,
+                template: p.template,
+                technologies: p.technologies,
+                intelligence: p.intelligence,
                 workspaceId: p.workspaceId,
                 members: normalizeMembers(p.members),
                 createdAt: p.createdAt,
@@ -81,6 +88,31 @@ router.get('/', authenticateToken, async (req, res) => {
  *                 type: array
  *                 items:
  *                   type: string
+ *               visibility:
+ *                 type: string
+ *                 enum: [private, public]
+ *               sourceType:
+ *                 type: string
+ *                 enum: [scratch, github, template]
+ *               githubRepoUrl:
+ *                 type: string
+ *               defaultBranch:
+ *                 type: string
+ *               template:
+ *                 type: string
+ *               technologies:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               intelligence:
+ *                 type: object
+ *                 properties:
+ *                   figma:
+ *                     type: boolean
+ *                   starterSpec:
+ *                     type: boolean
+ *                   aiAgents:
+ *                     type: boolean
  *     responses:
  *       201:
  *         description: Project created successfully
@@ -91,19 +123,89 @@ router.get('/', authenticateToken, async (req, res) => {
 router.post('/', authenticateToken, enforceProjectLimit, async (req, res) => {
     try {
         const userId = req.userId || req.user.userId || req.user.id;
-        const { name, description, priority, tags } = req.body;
+        const {
+            name, description, priority, tags, visibility = 'private',
+            sourceType = 'scratch', githubRepoUrl, defaultBranch = 'main',
+            template = '', technologies = [], intelligence = {}
+        } = req.body;
 
-        if (!name) {
+        if (typeof name !== 'string' || !name.trim()) {
             return res.status(400).json({ success: false, message: 'Project name is required' });
+        }
+
+        if (!['private', 'public'].includes(visibility)) {
+            return res.status(400).json({ success: false, message: 'Visibility must be private or public' });
+        }
+        if (!['scratch', 'github', 'template'].includes(sourceType)) {
+            return res.status(400).json({ success: false, message: 'Source type must be scratch, github, or template' });
+        }
+        if (typeof description !== 'undefined' && typeof description !== 'string') {
+            return res.status(400).json({ success: false, message: 'Description must be a string' });
+        }
+        if (typeof defaultBranch !== 'string' || typeof template !== 'string') {
+            return res.status(400).json({ success: false, message: 'Branch and template must be strings' });
+        }
+        if (!Array.isArray(technologies) || technologies.some((technology) => typeof technology !== 'string')) {
+            return res.status(400).json({ success: false, message: 'Technologies must be an array of strings' });
+        }
+        if (typeof tags !== 'undefined' && (!Array.isArray(tags) || tags.some((tag) => typeof tag !== 'string'))) {
+            return res.status(400).json({ success: false, message: 'Tags must be an array of strings' });
+        }
+        if (!intelligence || typeof intelligence !== 'object' || Array.isArray(intelligence)) {
+            return res.status(400).json({ success: false, message: 'Intelligence settings must be an object' });
+        }
+        const intelligenceSettings = {};
+        for (const setting of ['figma', 'starterSpec', 'aiAgents']) {
+            if (typeof intelligence[setting] !== 'undefined' && typeof intelligence[setting] !== 'boolean') {
+                return res.status(400).json({ success: false, message: `${setting} must be a boolean` });
+            }
+            if (typeof intelligence[setting] !== 'undefined') {
+                intelligenceSettings[setting] = intelligence[setting];
+            }
+        }
+
+        let repositoryUrl;
+        let repositoryName;
+        if (sourceType === 'github') {
+            try {
+                const parsedUrl = new URL(githubRepoUrl);
+                const pathParts = parsedUrl.pathname.split('/').filter(Boolean);
+                if (
+                    parsedUrl.protocol !== 'https:' ||
+                    parsedUrl.hostname !== 'github.com' ||
+                    pathParts.length !== 2 ||
+                    parsedUrl.username ||
+                    parsedUrl.password
+                ) {
+                    throw new Error('Invalid repository URL');
+                }
+                const repo = pathParts[1].replace(/\.git$/i, '');
+                if (!repo) throw new Error('Invalid repository URL');
+                repositoryName = `${pathParts[0]}/${repo}`;
+                repositoryUrl = `https://github.com/${repositoryName}`;
+            } catch {
+                return res.status(400).json({
+                    success: false,
+                    message: 'A valid GitHub repository URL is required when using a GitHub source'
+                });
+            }
         }
 
         const project = await LocalProject.create({
             userId,
-            name,
-            description: description || '',
+            name: name.trim(),
+            description: (description || '').trim(),
             priority: priority || 'medium',
             tags: tags || [],
-            status: 'active'
+            status: 'active',
+            visibility,
+            sourceType,
+            githubRepoUrl: repositoryUrl,
+            githubRepoName: repositoryName,
+            defaultBranch: defaultBranch.trim() || 'main',
+            template: template.trim(),
+            technologies: [...new Set(technologies.map((technology) => technology.trim()).filter(Boolean))],
+            intelligence: intelligenceSettings
         });
 
         res.status(201).json({
@@ -360,14 +462,13 @@ router.put('/tasks/:taskId', authenticateToken, async (req, res) => {
 router.get('/:projectId', authenticateToken, async (req, res) => {
     try {
         const userId = req.userId || req.user.userId || req.user.id;
-        const project = await LocalProject.findOne({ _id: req.params.projectId, userId });
+        const project = await LocalProject.findById(req.params.projectId);
 
-        if (!project) {
+        if (!project || !await userCanAccessProject(project._id, userId)) {
             return res.status(404).json({ success: false, message: 'Project not found' });
         }
 
-        // Get project tasks
-        const tasks = await LocalTask.find({ projectId: project._id, userId }).sort({ createdAt: -1 });
+        const tasks = await LocalTask.find({ projectId: project._id }).sort({ createdAt: -1 });
 
         res.json({
             success: true,

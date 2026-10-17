@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const Subscription = require('../models/Subscription');
 const Entitlement = require('../server/models/EntitlementModel');
@@ -21,6 +22,25 @@ const {
 
 // Tiers that can be purchased (everything except the free developer tier)
 const PAID_TIERS = TIERS.filter((t) => t !== 'developer');
+
+/**
+ * Operator gate for manually granting entitlements without a payment flow.
+ *
+ * `/upgrade` used to grant any paid tier to any authenticated caller — a free
+ * upgrade. Normal users must now buy through checkout (payment verified by the
+ * provider webhook / verify route); only an operator holding a shared secret
+ * may grant a tier directly (support, sales, migrations). Fails closed when the
+ * token is unset.
+ */
+function isBillingOperator(req) {
+    const configured = process.env.BILLING_ADMIN_TOKEN;
+    if (!configured) return false;
+    const provided = req.headers['x-billing-admin-token'];
+    if (!provided) return false;
+    const a = Buffer.from(String(provided));
+    const b = Buffer.from(String(configured));
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
 
 /**
  * Load a user's subscription, applying any due scheduled change first.
@@ -298,7 +318,7 @@ router.post('/tier-checkout', authenticateToken, async (req, res) => {
 router.get('/entitlement', authenticateToken, async (req, res) => {
     try {
         const entitlement = await Entitlement.findOne({ userId: req.userId });
-        const subscription = await Subscription.findOne({ userId: req.userId });
+        const subscription = await loadSubscription(req.userId);
         if (!subscription) {
             return res.status(404).json({ success: false, message: 'No subscription found' });
         }
@@ -334,6 +354,10 @@ router.get('/entitlement', authenticateToken, async (req, res) => {
  * /api/subscription/upgrade:
  *   post:
  *     summary: Upgrade subscription tier
+ *     description: >
+ *       Grants a paid tier. Requires the internal `x-billing-admin-token`
+ *       (operator-only) because a paid tier must be backed by a verified
+ *       payment; normal users are redirected to checkout (402).
  *     tags:
  *       - Subscription & Billing
  *     security:
@@ -376,6 +400,17 @@ router.post('/upgrade', authenticateToken, async (req, res) => {
             return res.status(400).json({
                 success: false,
                 message: `Invalid tier. Must be one of: ${PAID_TIERS.join(', ')}`
+            });
+        }
+
+        // A paid tier must be backed by a verified payment. Without the operator
+        // token this endpoint refuses and tells the client to check out.
+        if (!isBillingOperator(req)) {
+            return res.status(402).json({
+                success: false,
+                requiresCheckout: true,
+                tier,
+                message: 'Upgrades require a completed payment. Continue to checkout.'
             });
         }
 

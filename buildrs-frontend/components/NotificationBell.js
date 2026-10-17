@@ -125,7 +125,7 @@ export default function NotificationBell({ placement = 'down', look } = {}) {
       className={`notif-bell-wrap${placement === 'up' ? ' notif-bell-wrap-up' : ''}`}
       ref={panelRef}
     >
-      <button
+      {/* <button
         type="button"
         className={look === 'header' ? 'btn-workspace btn-secondary notif-bell-btn-header' : 'notif-bell-btn'}
         onClick={() => setOpen((v) => !v)}
@@ -135,6 +135,32 @@ export default function NotificationBell({ placement = 'down', look } = {}) {
       >
         <Bell size={18} />
         {count > 0 && <span className="notif-badge">{count > 99 ? '99+' : count}</span>}
+      </button> */}
+
+      <button
+        type="button"
+        className={
+          look === 'header'
+            ? 'relative w-11 h-11 rounded-full bg-[#0f1523] border border-white/15 flex items-center justify-center hover:border-white/30 transition'
+            : 'notif-bell-btn'
+        }
+        onClick={() => setOpen((v) => !v)}
+        aria-label={count > 0 ? `Notifications, ${count} unread` : 'Notifications'}
+        aria-expanded={open}
+        title={connected ? 'Notifications (live)' : 'Notifications (reconnecting…)'}
+      >
+        <Bell size={18} className={look === 'header' ? 'text-zinc-200' : undefined} />
+        {count > 0 && (
+          <span
+            className={
+              look === 'header'
+                ? 'absolute -top-1 -right-1 min-w-[20px] h-5 px-1 rounded-full bg-red-500 text-white text-[10px] font-semibold flex items-center justify-center'
+                : 'notif-badge'
+            }
+          >
+            {count > 99 ? '99+' : count}
+          </span>
+        )}
       </button>
 
       {open && (

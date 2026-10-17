@@ -390,6 +390,117 @@ class GitService {
   }
 
   /**
+   * Write agent-proposed files directly into the workspace working tree.
+   *
+   * Deliberately does NOT call hydrateFromVFS: the VFS is the pre-approval
+   * source of truth and must not be mirrored over the agent's staged files.
+   * Paths are validated and confined to the workspace directory.
+   */
+  async writeWorkingTree(workspaceId, changes) {
+    try {
+      assertValidWorkspaceId(workspaceId);
+      const workspacePath =
+        this.workspacePaths.get(workspaceId) ||
+        path.join(os.tmpdir(), 'codex-git', workspaceId);
+      await fs.mkdir(workspacePath, { recursive: true });
+
+      let written = 0;
+      for (const change of changes || []) {
+        assertSafePath(change.path);
+        const rel = String(change.path).replace(/^\/+/, '');
+        const target = path.normalize(path.join(workspacePath, rel));
+        if (target === workspacePath || !target.startsWith(workspacePath + path.sep)) {
+          throw new Error(`Refusing to write outside workspace: ${change.path}`);
+        }
+        if (change.action === 'delete') {
+          await fs.unlink(target).catch(() => {});
+          continue;
+        }
+        await fs.mkdir(path.dirname(target), { recursive: true });
+        await fs.writeFile(target, change.content || '');
+        written += 1;
+      }
+      return { success: true, written };
+    } catch (error) {
+      console.error('Git writeWorkingTree error:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Stage and commit the working tree WITHOUT hydrating from the VFS, so the
+   * agent's staged files survive. Used on the isolated agent branch.
+   */
+  async commitWorkingTree(workspaceId, message = 'Agent changes', branch = null) {
+    try {
+      assertSafeMessage(message);
+      const git = await this.getGit(workspaceId);
+      await git.add(['-A']);
+      const status = await git.status();
+      if (!(status.staged || []).length) {
+        return { success: false, reason: 'nothing to commit', branch: branch || status.current };
+      }
+      const result = await git.commit(message);
+      return { success: true, commit: result.commit, branch: result.branch };
+    } catch (error) {
+      console.error('Git commitWorkingTree error:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Unified diff between two branches (base...head).
+   */
+  async branchDiff(workspaceId, baseBranch, branch) {
+    try {
+      assertSafeBranch(baseBranch, 'baseBranch');
+      assertSafeBranch(branch, 'branch');
+      const git = await this.getGit(workspaceId);
+      const diffText = await git.diff([`${baseBranch}...${branch}`]);
+      return { success: true, diff: diffText };
+    } catch (error) {
+      console.error('Git branchDiff error:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Ensure the base branch exists and has an initial commit mirroring the VFS,
+   * so a fresh feature branch has a real parent to merge back into. Without
+   * this the tmpdir repo is unborn and `merge` has no base.
+   */
+  async ensureBaseCommit(workspaceId, baseBranch = 'main', message = 'Initialize workspace from VFS') {
+    try {
+      assertValidWorkspaceId(workspaceId);
+      assertSafeBranch(baseBranch, 'baseBranch');
+      const git = await this.getGit(workspaceId);
+      const branches = await git.branchLocal();
+
+      if (!branches.all.length) {
+        // Unborn repo: name the initial branch so baseBranch is deterministic.
+        await git.raw(['checkout', '-B', baseBranch]).catch(() => {});
+      } else if (!branches.all.includes(baseBranch)) {
+        await git.checkoutLocalBranch(baseBranch).catch(() => {});
+      } else if (branches.current !== baseBranch) {
+        await git.checkout(baseBranch);
+      }
+
+      await this.hydrateFromVFS(workspaceId).catch(() => {});
+      await git.add(['-A']);
+      const status = await git.status();
+      if ((status.staged || []).length === 0) {
+        await git.raw(['commit', '--allow-empty', '-m', message]);
+      } else {
+        await git.commit(message);
+      }
+      return { success: true, branch: baseBranch };
+    } catch (error) {
+      console.error('Git ensureBaseCommit error:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
    * Pull from remote
    */
   async pull(workspaceId, remote = 'origin', branch = null) {
