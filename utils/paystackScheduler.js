@@ -195,14 +195,22 @@ class PaystackScheduler {
 
             console.log(`Found ${dueCharges.length} charges to process`);
 
+            let claimedCount = 0;
             for (const charge of dueCharges) {
-                charge.status = 'processing';
-                await charge.save();
+                // Atomic claim (see billingScheduler.processCharge): concurrent
+                // ticks must not both charge. Loser skips silently.
+                const claimed = await BillingSchedule.findOneAndUpdate(
+                    { _id: charge._id, status: 'pending' },
+                    { status: 'processing', lastAttempt: new Date() },
+                    { new: true }
+                );
+                if (!claimed) continue;
+                claimedCount += 1;
 
-                await this.processCharge(charge);
+                await this.processCharge(claimed);
             }
 
-            return { processed: dueCharges.length };
+            return { processed: claimedCount };
         } catch (error) {
             console.error('Error processing scheduled charges:', error);
             throw error;

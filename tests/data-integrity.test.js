@@ -177,10 +177,13 @@ describe('webhook + checkout contracts', () => {
     expect(isWebhookPath('/api/subscription/webhook/stripe')).toBe(true);
   });
 
-  test('paymentRouter normalizes every rail to url', async () => {
+  test('paymentRouter normalizes every rail to url (Stripe retired, 3.6)', async () => {
     jest.resetModules();
     jest.doMock('../utils/paystackAdapter', () => ({
       createCheckout: jest.fn(async () => ({ provider: 'paystack', authorizationUrl: 'https://pay' })),
+    }));
+    jest.doMock('../utils/flutterwaveAdapter', () => ({
+      createCheckout: jest.fn(async () => ({ provider: 'flutterwave', url: 'https://flw-global' })),
     }));
     jest.doMock('../utils/stripeAdapter', () => ({
       createCheckout: jest.fn(async () => ({ provider: 'stripe', url: 'https://stripe' })),
@@ -190,8 +193,8 @@ describe('webhook + checkout contracts', () => {
     const Entitlement = require('../server/models/EntitlementModel');
     jest.spyOn(Entitlement, 'create').mockResolvedValue({});
     const paymentRouter = require('../utils/paymentRouter');
-    const stripeRes = await paymentRouter.createCheckout('u', 'pro', 'monthly', 'US', 'USD');
-    expect(stripeRes.url).toBe('https://stripe');
+    const usRes = await paymentRouter.createCheckout('u', 'pro', 'monthly', 'US', 'USD');
+    expect(usRes.url).toBe('https://flw-global');
     const paystackRes = await paymentRouter.createCheckout('u', 'pro', 'monthly', 'NG', 'NGN');
     expect(paystackRes.authorizationUrl).toBe('https://pay');
     expect(paystackRes.url).toBe('https://pay');

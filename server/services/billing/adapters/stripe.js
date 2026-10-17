@@ -81,6 +81,10 @@ function mapStripeStatus(type, obj) {
   }
   if (type === 'customer.subscription.deleted') return 'cancelled';
   if (type === 'invoice.payment_failed') return 'past_due';
+  // Money-back-out events deactivate via the dunning state (recoverable if
+  // reversed; exact policy wording is a team decision — see 3.2).
+  if (type === 'charge.refunded') return 'past_due';
+  if (type === 'charge.dispute.created') return 'past_due';
   return null;
 }
 

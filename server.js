@@ -54,6 +54,7 @@ const standupRoutes = require('./routes/standup');
 const messagingRoutes = require('./routes/messaging');
 const meetingsRoutes = require('./routes/meetings');
 const profileRoutes = require('./routes/profile');
+const adminRoutes = require('./routes/admin');
 const trialBillingRoutes = require('./routes/trial-billing');
 const paystackBillingRoutes = require('./routes/paystack-billing');
 const supportRoutes = require('./routes/support');
@@ -71,6 +72,8 @@ const globalLimiter = rateLimit({
     max: 200,
     standardHeaders: true,
     legacyHeaders: false,
+    store: require('./utils/redis').getRateLimitStore(),
+    passOnStoreError: true,
     message: { success: false, message: 'Too many requests, please try again later.' }
 });
 
@@ -185,6 +188,20 @@ async function startServer(port = process.env.PORT || 3000) {
     roomService.startSweeper();
     } // end socket-wiring guard
 
+    // Multi-instance pub/sub so emits reach sockets on every instance.
+    // Without REDIS_URL this is a no-op (default in-process adapter).
+    try {
+        const { getRedisClients } = require('./utils/redis');
+        const redis = await getRedisClients();
+        if (redis) {
+            const { createAdapter } = require('@socket.io/redis-adapter');
+            socket.adapter(createAdapter(redis.pub, redis.sub));
+            console.log('✓ Socket.IO Redis adapter active');
+        }
+    } catch (error) {
+        console.warn('Socket.IO Redis adapter unavailable, using local adapter:', error.message);
+    }
+
     return new Promise((resolve, reject) => {
         // Belt-and-braces: the top-of-file check is guarded on require.main so
         // tests can import this module. Assert again here, where the process is
@@ -269,11 +286,12 @@ const permissionMatrix = require('./middleware/permissionMatrix');
 // (express.static('frontend') with wildcard CORS, no auth) has been unmounted.
 // The folder still exists on disk but is no longer reachable over HTTP.
 
-// Session configuration
+// Session configuration (Redis-backed when REDIS_URL is set, memory otherwise)
 app.use(session({
     secret: process.env.JWT_SECRET,
     resave: false,
     saveUninitialized: false,
+    store: require('./utils/redisSessionStore').createSessionStore(),
     cookie: {
         secure: process.env.NODE_ENV === 'production',
         sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
@@ -402,6 +420,7 @@ app.use('/api/standup', standupRoutes);
 app.use('/api/messaging', messagingRoutes);
 app.use('/api/meetings', meetingsRoutes);
 app.use('/api/profile', profileRoutes);
+app.use('/api/admin', adminRoutes);
 app.use('/api/trial-billing', trialBillingRoutes);
 app.use('/api/paystack-billing', paystackBillingRoutes);
 app.use('/api/flutterwave-billing', flutterwaveBillingRoutes);
@@ -577,6 +596,10 @@ app.use((req, res) => {
 app.use((err, req, res, next) => {
     if (res.headersSent) return next(err);
     console.error(err.stack);
+    require('./utils/sentry').captureError(err, {
+        route: `${req.method} ${req.path}`,
+        userId: req.user && (req.user._id || req.user.id),
+    });
     // Client/origin problems are not server errors: CORS rejections and
     // malformed JSON bodies used to collapse into 500s.
     if (err.message === 'Not allowed by CORS') {

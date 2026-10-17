@@ -11,6 +11,7 @@ const Company = require('../models/Company');
 const TeamProject = require('../models/TeamProject');
 const TeamTask = require('../models/TeamTask');
 const collaborationService = require('../utils/collaborationService');
+const { normalizeMembers } = require('../utils/members');
 const { notifyTaskAssigned } = require('../utils/notificationTriggers');
 // Tenant isolation (audit rec 7): file collab leaks presence + live edit ops.
 const { assertFileAccess } = require('../middleware/workspaceAccess');
@@ -202,7 +203,7 @@ router.get('/:companyId/projects', authenticateToken, ensureCompanyMember, async
                 progress: p.progress,
                 tags: p.tags,
                 owner: p.owner,
-                members: p.members,
+                members: normalizeMembers(p.members),
                 createdAt: p.createdAt,
                 updatedAt: p.updatedAt
             }))

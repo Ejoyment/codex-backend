@@ -10,28 +10,57 @@ const { authenticateToken } = require('../../middleware/auth');
 const { routeProvider, getAdapter } = require('../services/billing/paymentRouter');
 const entitlementService = require('../services/billing/entitlementService');
 const { nearestEdge } = require('../services/billing/edgeRouter');
+const { resolvePrice } = require('../../config/regionalPricing');
 
 const router = express.Router();
+
+// Server-side pricing (decisions 3.5/3.6): amounts and currencies come from
+// docs/regionalPricing.json via resolvePrice — client-supplied `amount` is
+// NEVER trusted (pay-$0.01-for-pro), redirect URLs are fixed (client URLs are
+// open redirect), and team tiers bill in standard USD. Yearly off-Stripe
+// rails are still 400 (no multiple decided).
+const MONTHLY_USD = { pro: 20, pro_plus: 60, team_standard: 40, team_premium: 120 };
 
 // Checkout needs auth; webhook must NOT (providers call it without a JWT).
 router.post('/checkout', authenticateToken, async (req, res) => {
   try {
-    const { plan = 'pro', interval = 'monthly', country, currency, provider: hint, amount, email, successUrl, cancelUrl, callbackUrl, redirectUrl, lat, lng } = req.body || {};
+    const { plan = 'pro', interval = 'monthly', country, currency, provider: hint, email, lat, lng } = req.body || {};
+    if (hint === 'stripe') {
+      return res.status(400).json({ success: false, message: 'Stripe rail retired — see regional gateway map' });
+    }
     const provider = hint || routeProvider({ country, currency });
     const adapter = getAdapter(provider);
     const FRONTEND = process.env.FRONTEND_URL || 'http://localhost:5500';
-    const result = await adapter.createCheckout({
+    const priced = resolvePrice(plan, currency);
+    const params = {
       userId: req.userId,
       email: email || req.user?.email,
       plan,
       interval,
-      amount,
-      currency,
-      successUrl: successUrl || `${FRONTEND}/payment-success?provider=${provider}`,
-      cancelUrl: cancelUrl || `${FRONTEND}/pricing`,
-      callbackUrl: callbackUrl || `${FRONTEND}/payment-success?provider=${provider}`,
-      redirectUrl: redirectUrl || `${FRONTEND}/payment-success?provider=${provider}`,
-    });
+      currency: priced.currency,
+      successUrl: `${FRONTEND}/payment-success?provider=${provider}`,
+      cancelUrl: `${FRONTEND}/pricing`,
+      callbackUrl: `${FRONTEND}/payment-success?provider=${provider}`,
+      redirectUrl: `${FRONTEND}/payment-success?provider=${provider}`,
+    };
+    if (provider !== 'stripe') {
+      // Stripe prices via env price IDs (immune while the rail exists);
+      // other rails take amounts computed above — never the client's.
+      // Yearly = monthly × annual_multiple (10 ≈ 2 months free).
+      if (interval !== 'monthly' && interval !== 'yearly') {
+        return res.status(400).json({ success: false, message: 'Unknown billing interval' });
+      }
+      let monthly = priced.amount != null ? priced.amount : MONTHLY_USD[plan];
+      if (!monthly) {
+        return res.status(400).json({ success: false, message: 'Unknown plan (enterprise is custom pricing)' });
+      }
+      if (interval === 'yearly') {
+        const { loadTable } = require('../../config/regionalPricing');
+        monthly = monthly * (loadTable().annual_multiple || 10);
+      }
+      params.amount = monthly;
+    }
+    const result = await adapter.createCheckout(params);
     res.json({ success: true, data: { provider, ...result, edge: nearestEdge({ country, currency, lat, lng }) } });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
@@ -49,12 +78,24 @@ router.post('/webhook/:provider', async (req, res) => {
       req.headers['stripe-signature'] || req.headers['x-paystack-signature'] || req.headers['verif-hash'];
     const normalized = await adapter.verifyWebhook({ rawBody, signature, headers: req.headers });
     normalized.provider = provider;
-    const { entitlement } = await entitlementService.applyWebhookEvent(normalized);
+    const outcome = await entitlementService.applyWebhookEvent(normalized);
+    if (!outcome.applied) {
+      // Idempotent replay or unmapped type: answer 200 with current state.
+      // Providers retry non-2xx, so neither 409 nor a fake success is right.
+      return res.json({
+        success: true,
+        data: {
+          eventId: normalized.eventId,
+          status: outcome.entitlement?.status,
+          plan: outcome.entitlement?.plan,
+          applied: false,
+          reason: outcome.reason,
+        },
+      });
+    }
+    const { entitlement } = outcome;
     res.json({ success: true, data: { eventId: normalized.eventId, status: entitlement.status, plan: entitlement.plan } });
   } catch (err) {
-    if (err.code === 'DUPLICATE_EVENT') {
-      return res.status(409).json({ success: false, message: 'Duplicate event — already applied' });
-    }
     res.status(400).json({ success: false, message: err.message });
   }
 });
