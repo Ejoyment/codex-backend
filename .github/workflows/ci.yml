@@ -86,6 +86,7 @@ jobs:
         node --check server.js
         count=0
         for f in routes/*.js middleware/*.js config/*.js utils/*.js models/*.js server/*.js; do
+          [ -f "$f" ] || continue
           node --check "$f"
           count=$((count + 1))
         done
