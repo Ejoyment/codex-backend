@@ -6,6 +6,7 @@
  */
 
 const Subscription = require('../models/Subscription');
+const AgentExecution = require('../models/AgentExecution');
 const { remainingFor } = require('./tierLimits');
 
 class CreditPoolService {
@@ -152,18 +153,7 @@ class CreditPoolService {
     async getRemainingCredits(userId) {
         const subscription = await Subscription.findOne({ userId });
         if (!subscription) return { tier: 'developer', remaining: 0, limit: 0 };
-
-        const limit = subscription.getMonthlyCreditLimit();
-        const used = subscription.creditPool?.usedThisMonth || 0;
-        const remaining = limit !== null ? limit - used : null;
-
-        return {
-            tier: subscription.tier,
-            remaining,
-            limit,
-            used,
-            resetAt: subscription.creditPool?.resetAt
-        };
+        return subscription.getRemainingCredits();
     }
 
     /**
@@ -172,17 +162,7 @@ class CreditPoolService {
     async getRemainingCompute(userId) {
         const subscription = await Subscription.findOne({ userId });
         if (!subscription) return { tier: 'developer', remaining: 0, limit: 0 };
-
-        const limit = subscription.getCloudComputeHours();
-        const used = subscription.cloudComputeHours?.usedThisMonth || 0;
-        const remaining = limit !== null ? limit - used : null;
-
-        return {
-            tier: subscription.tier,
-            remaining,
-            limit,
-            used
-        };
+        return subscription.getRemainingCompute();
     }
 
     /**

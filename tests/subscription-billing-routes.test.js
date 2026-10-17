@@ -118,12 +118,43 @@ describe('GET /current', () => {
     });
 });
 
-describe('POST /cancel', () => {
-    test('schedules a paid cancellation instead of revoking access', async () => {
-        const endDate = new Date(Date.now() + 20 * DAY);
-        seed({ tier: 'pro', status: 'active', endDate });
+describe('GET /entitlement', () => {
+  test('returns credit pool and compute usage without erroring', async () => {
+    seed({ tier: 'pro', status: 'active' });
+    store.doc.creditPool.usedThisMonth = 5;
+    store.doc.cloudComputeHours.usedThisMonth = 2;
 
-        const res = await post('/cancel');
+    const res = await request(app).get('/api/subscription/entitlement').set('x-user-id', USER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.tier).toBe('pro');
+    expect(res.body.creditPool).toMatchObject({ tier: 'pro', limit: 20, used: 5, remaining: 15 });
+    expect(res.body.compute).toMatchObject({ limit: 10, used: 2, remaining: 8 });
+    expect(res.body.maxConcurrentJobs).toBe(1);
+    expect(res.body.specEngineLevel).toBe('full_sdd');
+    expect(res.body.webrtcEnabled).toBe(true);
+  });
+
+  test('reports unlimited credits/compute as null for enterprise', async () => {
+    seed({ tier: 'enterprise', status: 'active' });
+    const res = await request(app).get('/api/subscription/entitlement').set('x-user-id', USER);
+    expect(res.status).toBe(200);
+    expect(res.body.creditPool.remaining).toBeNull();
+    expect(res.body.compute.remaining).toBeNull();
+  });
+
+  test('404s when there is no subscription', async () => {
+    const res = await request(app).get('/api/subscription/entitlement').set('x-user-id', USER);
+    expect(res.status).toBe(404);
+  });
+});
+
+describe('POST /cancel', () => {
+  test('schedules a paid cancellation instead of revoking access', async () => {
+    const endDate = new Date(Date.now() + 20 * DAY);
+    seed({ tier: 'pro', status: 'active', endDate });
+
+    const res = await post('/cancel');
 
         expect(res.status).toBe(200);
         expect(res.body.state.phase).toBe('canceling');
@@ -218,8 +249,54 @@ describe('POST /resume', () => {
     });
 });
 
+describe('POST /upgrade (self-serve grant hole)', () => {
+  afterEach(() => {
+    delete process.env.BILLING_ADMIN_TOKEN;
+  });
+
+  test('refuses to grant a paid tier to a normal user', async () => {
+    seed({ tier: 'developer', status: 'active' });
+    const res = await post('/upgrade', { tier: 'pro' });
+    expect(res.status).toBe(402);
+    expect(res.body.requiresCheckout).toBe(true);
+    expect(res.body.tier).toBe('pro');
+    // The tier must not have been applied.
+    expect(store.doc.tier).toBe('developer');
+  });
+
+  test('fails closed when no operator token is configured', async () => {
+    delete process.env.BILLING_ADMIN_TOKEN;
+    seed({ tier: 'developer', status: 'active' });
+    const res = await request(app)
+      .post('/api/subscription/upgrade')
+      .set('x-user-id', USER)
+      .set('x-billing-admin-token', 'anything')
+      .send({ tier: 'pro' });
+    expect(res.status).toBe(402);
+    expect(store.doc.tier).toBe('developer');
+  });
+
+  test('allows an operator holding the billing token to grant a tier', async () => {
+    process.env.BILLING_ADMIN_TOKEN = 'operator-secret';
+    seed({ tier: 'developer', status: 'active' });
+    const res = await request(app)
+      .post('/api/subscription/upgrade')
+      .set('x-user-id', USER)
+      .set('x-billing-admin-token', 'operator-secret')
+      .send({ tier: 'pro' });
+    expect(res.status).toBe(200);
+    expect(store.doc.tier).toBe('pro');
+  });
+
+  test('rejects an invalid tier before the operator check', async () => {
+    seed({ tier: 'developer', status: 'active' });
+    const res = await post('/upgrade', { tier: 'not-a-tier' });
+    expect(res.status).toBe(400);
+  });
+});
+
 describe('POST /change-plan', () => {
-    test('schedules a downgrade for the end of the paid period', async () => {
+  test('schedules a downgrade for the end of the paid period', async () => {
         const endDate = new Date(Date.now() + 20 * DAY);
         seed({ tier: 'team_premium', status: 'active', endDate });
 

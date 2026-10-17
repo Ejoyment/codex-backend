@@ -141,6 +141,31 @@ subscriptionSchema.methods.getCloudComputeHours = function() {
     return limitFor(this.tier, 'cloudComputeHours');
 };
 
+// Remaining-credit snapshot. `limit`/`remaining` are null on unlimited tiers
+// (enterprise), matching the tierLimits convention used everywhere else.
+subscriptionSchema.methods.getRemainingCredits = function() {
+    const limit = this.getMonthlyCreditLimit();
+    const used = this.creditPool?.usedThisMonth || 0;
+    return {
+        tier: this.tier,
+        limit: limit === undefined ? null : limit,
+        used,
+        remaining: limit === null || limit === undefined ? null : limit - used,
+        resetAt: this.creditPool?.resetAt,
+    };
+};
+
+subscriptionSchema.methods.getRemainingCompute = function() {
+    const limit = this.getCloudComputeHours();
+    const used = this.cloudComputeHours?.usedThisMonth || 0;
+    return {
+        tier: this.tier,
+        limit: limit === undefined ? null : limit,
+        used,
+        remaining: limit === null || limit === undefined ? null : limit - used,
+    };
+};
+
 subscriptionSchema.methods.getMaxConcurrentAgentJobs = function() {
     return limitFor(this.tier, 'maxConcurrentAgentJobs');
 };

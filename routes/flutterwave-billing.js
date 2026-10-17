@@ -5,6 +5,78 @@ const { authenticateToken } = require('../middleware/auth');
 const Subscription = require('../models/Subscription');
 const User = require('../models/User');
 const FlutterwaveScheduler = require('../utils/flutterwaveScheduler');
+const { requireVerifiedWebhook } = require('../utils/webhookSecurity');
+
+// Monthly prices in USD for each self-serve tier. Used to resolve a checkout
+// amount when the client sends a plan id but no explicit amount.
+const PLAN_PRICES = {
+    developer: 0,
+    pro: 20,
+    pro_plus: 60,
+    team_standard: 40,
+    team_premium: 120,
+};
+const PAID_TIERS = new Set(['pro', 'pro_plus', 'team_standard', 'team_premium']);
+
+function resolveAmount(body) {
+    const requested = Number(body && body.amount);
+    if (Number.isFinite(requested) && requested > 0) return requested;
+    const planPrice = PLAN_PRICES[body && body.plan];
+    if (Number.isFinite(planPrice) && planPrice > 0) return planPrice;
+    return 50;
+}
+
+/**
+ * Activate a 14-day card-backed trial for a paid Flutterwave charge and
+ * schedule the first tokenized charge. Shared by /verify (client redirect) and
+ * /webhook (server-to-server), which previously could drift apart.
+ */
+async function activateTrialSubscription({ userId, user, cardToken, customerId, amount, currency, plan }) {
+    const cardAddedAt = new Date();
+    const tier = PAID_TIERS.has(plan) ? plan : 'pro';
+    const priceAmount = Number.isFinite(Number(amount)) && Number(amount) > 0 ? Number(amount) : 50;
+
+    let subscription = await Subscription.findOne({ userId });
+
+    if (!subscription) {
+        subscription = new Subscription({
+            userId,
+            tier,
+            status: 'trial',
+            isTrialWithCard: true,
+            cardAddedAt,
+            trialEndsAt: new Date(Date.now() + (14 * 24 * 60 * 60 * 1000)), // 14 days
+            customerId,
+            paymentId: cardToken,
+            paymentProvider: 'flutterwave',
+            email: user.email,
+            pricing: {
+                amount: priceAmount,
+                currency: currency || 'USD',
+                interval: 'monthly'
+            }
+        });
+    } else {
+        subscription.isTrialWithCard = true;
+        subscription.cardAddedAt = cardAddedAt;
+        subscription.customerId = customerId;
+        subscription.paymentId = cardToken;
+        subscription.status = 'trial';
+        subscription.tier = tier;
+        subscription.email = user.email;
+        subscription.paymentProvider = 'flutterwave';
+        subscription.trialEndsAt = new Date(Date.now() + (14 * 24 * 60 * 60 * 1000));
+    }
+
+    // Enable paid features during the trial
+    subscription.upgradeTo(tier);
+    await subscription.save();
+
+    // Schedule first charge (10 seconds from now — demo charge)
+    await FlutterwaveScheduler.scheduleFirstCharge(userId, subscription._id, cardAddedAt);
+
+    return subscription;
+}
 
 /**
  * @swagger
@@ -43,11 +115,15 @@ router.post('/initialize', authenticateToken, async (req, res) => {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
 
+        const amount = resolveAmount(req.body);
+        const currency = (req.body && req.body.currency) || 'USD';
+        const plan = req.body && req.body.plan;
+
         // Create payment payload
         const payload = {
             tx_ref: `txref_${Date.now()}_${userId}`,
-            amount: 50, // $50.00 USD (Starter plan)
-            currency: 'USD',
+            amount,
+            currency,
             redirect_url: `${process.env.FRONTEND_URL || 'http://localhost:5500'}/payment-success`,
             customer: {
                 email: user.email,
@@ -55,18 +131,26 @@ router.post('/initialize', authenticateToken, async (req, res) => {
             },
             customizations: {
                 title: 'BuildrsHQ Subscription',
-                description: '14-day trial with card - First charge in 10 seconds',
+                description: '14-day trial with card',
                 logo: 'https://your-logo-url.com/logo.png',
             },
             payment_options: 'card,banktransfer,ussd',
+            meta: {
+                userId: String(userId),
+                plan: plan || 'pro',
+            },
         };
 
         const response = await flw.Payment.initialize(payload);
 
         if (response.status === 'success') {
+            const link = response.data.link;
+            // `data.link` matches the checkout page contract; `paymentLink` is
+            // kept for existing clients/tests.
             res.json({
                 success: true,
-                paymentLink: response.data.link,
+                data: { link },
+                paymentLink: link,
                 reference: payload.tx_ref
             });
         } else {
@@ -137,50 +221,23 @@ router.post('/verify', authenticateToken, async (req, res) => {
 
         if (response.data.status === 'successful' && response.data.amount >= 50) {
             const user = await User.findById(userId);
-            const cardAddedAt = new Date();
+            if (!user) {
+                return res.status(404).json({ success: false, message: 'User not found' });
+            }
 
             // Get card token for future charges
             const cardToken = response.data.card.token;
             const customerId = response.data.customer.id;
 
-            // Create or update subscription
-            let subscription = await Subscription.findOne({ userId });
-
-            if (!subscription) {
-                subscription = new Subscription({
-                    userId,
-                    tier: 'pro',
-                    status: 'trial',
-                    isTrialWithCard: true,
-                    cardAddedAt,
-                    trialEndsAt: new Date(Date.now() + (14 * 24 * 60 * 60 * 1000)), // 14 days
-                    customerId,
-                    paymentId: cardToken,
-                    paymentProvider: 'flutterwave',
-                    email: user.email,
-                    pricing: {
-                        amount: 50,
-                        currency: 'USD',
-                        interval: 'monthly'
-                    }
-                });
-            } else {
-                subscription.isTrialWithCard = true;
-                subscription.cardAddedAt = cardAddedAt;
-                subscription.customerId = customerId;
-                subscription.paymentId = cardToken;
-                subscription.status = 'trial';
-                subscription.tier = 'pro';
-                subscription.email = user.email;
-                subscription.trialEndsAt = new Date(Date.now() + (14 * 24 * 60 * 60 * 1000));
-            }
-
-            // Enable pro-tier features during trial
-            subscription.upgradeTo('pro');
-            await subscription.save();
-
-            // Schedule first charge (10 seconds from now)
-            await FlutterwaveScheduler.scheduleFirstCharge(userId, subscription._id, cardAddedAt);
+            const subscription = await activateTrialSubscription({
+                userId,
+                user,
+                cardToken,
+                customerId,
+                amount: response.data.amount,
+                currency: response.data.currency,
+                plan: (req.body && req.body.plan) || 'pro',
+            });
 
             res.json({
                 success: true,
@@ -189,7 +246,7 @@ router.post('/verify', authenticateToken, async (req, res) => {
                     status: subscription.status,
                     tier: subscription.tier,
                     trialEndsAt: subscription.trialEndsAt,
-                    firstChargeAt: new Date(cardAddedAt.getTime() + (10 * 1000))
+                    firstChargeAt: new Date(Date.now() + (10 * 1000))
                 }
             });
 
@@ -209,6 +266,71 @@ router.post('/verify', authenticateToken, async (req, res) => {
         });
     }
 });
+
+/**
+ * @swagger
+ * /api/flutterwave-billing/webhook:
+ *   post:
+ *     summary: Flutterwave server-to-server webhook (verif-hash verified)
+ *     tags:
+ *       - Flutterwave Billing
+ *     responses:
+ *       200:
+ *         description: Event acknowledged
+ *       400:
+ *         description: Invalid signature
+ */
+// Server-to-server webhook: this is the only activation path that fires
+// without the user returning to the app. Raw bytes are captured by the
+// express.json verify hook (see utils/webhookSecurity WEBHOOK_PATH_MARKERS).
+router.post('/webhook', requireVerifiedWebhook('flutterwave', async (req, res) => {
+    const event = req.body || {};
+    const data = event.data || {};
+
+    // Only completed, successful charges activate a subscription.
+    if (data.status !== 'successful') {
+        return res.json({ success: true, ignored: true, reason: `status:${data.status || 'unknown'}` });
+    }
+
+    // Resolve the user from meta (preferred) or the tx_ref format
+    // `txref_<timestamp>_<userId>`.
+    let userId = data.meta && data.meta.userId;
+    if (!userId && data.tx_ref) {
+        const parts = String(data.tx_ref).split('_');
+        userId = parts[2];
+    }
+    if (!userId) {
+        return res.json({ success: true, ignored: true, reason: 'no user reference' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+        return res.json({ success: true, ignored: true, reason: 'user not found' });
+    }
+
+    const cardToken = data.card && data.card.token;
+    const customerId = (data.customer && data.customer.id) || user.flutterwaveCustomerId;
+
+    // Idempotency: Flutterwave retries webhooks. If this exact charge was
+    // already applied, acknowledge without duplicating the schedule.
+    const existing = await Subscription.findOne({ userId });
+    if (existing && cardToken && existing.paymentId === cardToken &&
+        ['active', 'trial'].includes(existing.status)) {
+        return res.json({ success: true, message: 'Already processed' });
+    }
+
+    await activateTrialSubscription({
+        userId,
+        user,
+        cardToken,
+        customerId,
+        amount: data.amount,
+        currency: data.currency,
+        plan: data.meta && data.meta.plan,
+    });
+
+    res.json({ success: true, message: 'Webhook processed' });
+}));
 
 /**
  * @swagger

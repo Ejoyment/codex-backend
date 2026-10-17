@@ -11,6 +11,7 @@ const SpecModel = require('../models/SpecModel');
 const Company = require('../models/Company');
 const CodeFile = require('../models/CodeFile');
 const gitService = require('../utils/gitService');
+const agentChangeSet = require('../utils/agentChangeSet');
 const sddVerificationService = require('../utils/sddVerificationService');
 const { userCanAccessSpec, resolveAccessibleSpecs } = require('../utils/specAccess');
 const realtimeBus = require('../utils/realtimeBus');
@@ -101,9 +102,10 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
     const slug = taskTitleValue.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'task';
     const branch = `feature/${task?._id || Date.now()}-${slug}`;
     await gitService.init(workspaceId);
-    const branchList = await gitService.branches(workspaceId);
-    const baseBranch = branchList.success && branchList.branches.includes('main') ? 'main' : (branchList.current || 'main');
-    if (branchList.success && branchList.branches.includes(baseBranch)) await gitService.checkout(workspaceId, baseBranch);
+    const baseBranch = 'main';
+    // Seed the base branch with the current VFS so the feature branch has a real
+    // parent to merge back into (a fresh tmpdir repo is otherwise unborn).
+    await gitService.ensureBaseCommit(workspaceId, baseBranch);
     const branchResult = await gitService.createBranch(workspaceId, branch);
     if (!branchResult.success) {
       return res.status(409).json({ success: false, message: `Could not create isolated branch: ${branchResult.error}` });
@@ -262,8 +264,12 @@ router.post('/approve', authenticateToken, async (req, res) => {
       await execution.save();
       return res.status(409).json({ success: false, message: 'Blocking spec requirements failed; the branch was not merged', execution, sddVerification: specResults });
     }
-    if (!(execution.filesChanged || []).length && !(execution.diffSummary?.filesChanged > 0)) {
-      return res.status(409).json({ success: false, message: 'This run has no applied file changes to merge. The current worker returns a proposal but does not write to the branch.' });
+    if (!(execution.proposedChanges || []).length && !(execution.filesChanged || []).length) {
+      return res.status(409).json({ success: false, message: 'This run produced no file changes to merge.' });
+    }
+    const applied = await agentChangeSet.applyExecutionChanges(execution);
+    if (applied.applied) {
+      execution.logs.push({ timestamp: new Date(), message: `Applied ${applied.applied} change(s) to workspace files (${applied.created || 0} created, ${applied.updated || 0} updated, ${applied.deleted || 0} deleted)` });
     }
     const branchList = await gitService.branches(workspaceId);
     const baseBranch = execution.baseBranch || 'main';
@@ -306,6 +312,8 @@ router.post('/reject', authenticateToken, async (req, res) => {
     execution.rejectedAt = new Date();
     execution.rejectionReason = req.body.reason || '';
     execution.updatedAt = new Date();
+    execution.proposedChanges = [];
+    execution.filesChanged = [];
     execution.logs.push({ timestamp: new Date(), message: 'Agent work rejected and task rolled back' });
     await execution.save();
 

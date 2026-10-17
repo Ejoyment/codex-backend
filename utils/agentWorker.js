@@ -1,6 +1,7 @@
 const { parentPort, workerData } = require('worker_threads');
 const aiRouterService = require('./aiRouterService');
 const sddVerificationService = require('./sddVerificationService');
+const agentChangeSet = require('./agentChangeSet');
 const realtimeBus = require('./realtimeBus');
 const AgentExecution = require('../models/AgentExecution');
 const { slicedPush, MAX_AGENT_LOG } = require('./retention');
@@ -19,7 +20,7 @@ async function runAgent() {
     const specs = snapshot.specs || [];
 
     const messages = [
-      { role: 'system', content: `You are an autonomous AI agent executing a task. Task: ${task.title || execution.taskTitle}\n\nProduce a concise implementation plan first, then provide specific file-level changes. Do not claim changes were applied unless a tool actually applied them.` },
+      { role: 'system', content: `You are an autonomous AI agent executing a task. Task: ${task.title || execution.taskTitle}\n\nProduce a concise implementation plan first, then provide specific file-level changes. Do not claim changes were applied unless a tool actually applied them.\n\n${agentChangeSet.CHANGE_FORMAT_INSTRUCTIONS}` },
     ];
     if (specs.length) {
       messages.push({ role: 'system', content: `Frozen spec contracts:\n${JSON.stringify(specs.map((spec) => ({ name: spec.title, description: spec.description, targetModules: spec.targetModules, architecturalRules: spec.architecturalRules, requirements: spec.requirements, forbiddenImports: spec.forbiddenImports, constraints: spec.constraints })), null, 2)}` });
@@ -63,7 +64,21 @@ async function runAgent() {
         },
       });
 
-      const specResults = await Promise.all(specs.map((spec) => sddVerificationService.verifySpecSnapshot(spec, codeFiles)));
+      // Turn the model's textual proposal into a real, reviewable change set
+      // and stage it on the isolated agent branch. The VFS is untouched until a
+      // human approves, so no unverified change is ever visible in the editor.
+      const changes = agentChangeSet.buildChangeset(result.content || '', codeFiles);
+      const { filesChanged, diffSummary } = agentChangeSet.summarize(changes, codeFiles);
+      let staged = { success: true, committed: false, reason: 'no changes parsed' };
+      if (changes.length) {
+        staged = await agentChangeSet.stageChanges(workspaceId, changes, {
+          message: `Agent: ${task.title || execution.taskTitle}`.slice(0, 200),
+          branch: execution.branch,
+        });
+      }
+      const proposedFiles = agentChangeSet.applyChangesToFileList(changes, codeFiles);
+
+      const specResults = await Promise.all(specs.map((spec) => sddVerificationService.verifySpecSnapshot(spec, proposedFiles)));
       const sddResult = { specs: specResults, command: { status: 'pending', reason: 'Verification commands require an isolated workspace runner' } };
       const planMatch = result.content?.match(/(?:plan|implementation plan)[\s\S]{0,1200}/i);
 
@@ -80,16 +95,23 @@ async function runAgent() {
 
       await AgentExecution.findByIdAndUpdate(executionId, {
         status: 'awaiting_review',
-        diffSummary: result.diffSummary || { filesChanged: 0, insertions: 0, deletions: 0 },
+        filesChanged,
+        proposedChanges: changes.map((change) => ({
+          path: change.path,
+          action: change.action,
+          language: change.language,
+          content: change.content,
+        })),
+        diffSummary,
         summary: result.content || result.summary || '',
         plan: planMatch?.[0] || '',
         validationResult: sddResult,
         completedAt: new Date(),
-        logs: [...execution.logs, { timestamp: new Date(), message: 'Agent execution completed, awaiting approval' }].slice(-MAX_AGENT_LOG),
+        logs: [...execution.logs, { timestamp: new Date(), message: `Agent execution completed (${changes.length} file(s) staged on ${execution.branch || 'branch'}), awaiting approval` }].slice(-MAX_AGENT_LOG),
         $push: { terminalLog: slicedPush({ timestamp: new Date(), type: 'complete', message: 'Agent response and spec checks completed' }, MAX_AGENT_LOG) },
       });
 
-      parentPort.postMessage({ type: 'complete', result });
+      parentPort.postMessage({ type: 'complete', result: { ...result, filesChanged, diffSummary, staged } });
     } else {
       await AgentExecution.findByIdAndUpdate(executionId, {
         status: 'failed',
