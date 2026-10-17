@@ -33,6 +33,33 @@ const localProjectSchema = new mongoose.Schema({
     },
     githubRepoUrl: String,
     githubRepoName: String,
+    visibility: {
+        type: String,
+        enum: ['private', 'public'],
+        default: 'private'
+    },
+    sourceType: {
+        type: String,
+        enum: ['scratch', 'github', 'template'],
+        default: 'scratch'
+    },
+    defaultBranch: {
+        type: String,
+        default: 'main'
+    },
+    template: {
+        type: String,
+        default: ''
+    },
+    technologies: {
+        type: [String],
+        default: []
+    },
+    intelligence: {
+        figma: { type: Boolean, default: false },
+        starterSpec: { type: Boolean, default: true },
+        aiAgents: { type: Boolean, default: true }
+    },
     // Workbench / VFS workspace ID if created in code editor
     workspaceId: String,
     // Project settings
