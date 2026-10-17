@@ -237,6 +237,77 @@ router.put('/', authenticateToken, async (req, res) => {
  *       404:
  *         description: User not found
  */
+/**
+ * @swagger
+ * /api/profile/export:
+ *   get:
+ *     summary: Export the caller's own data (portability, decision 3.10)
+ *     tags:
+ *       - Profile
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Per-user JSON dump (secrets and other users' PII excluded)
+ */
+router.get('/export', authenticateToken, async (req, res) => {
+    try {
+        const userId = req.userId;
+        const Subscription = require('../models/Subscription');
+        const Company = require('../models/Company');
+        const LocalProject = require('../models/LocalProject');
+        const TeamProject = require('../models/TeamProject');
+        const LocalTask = require('../models/LocalTask');
+        const CodeFile = require('../models/CodeFile');
+        const Message = require('../models/Message');
+        const SupportTicket = require('../models/SupportTicket');
+
+        const [user, subscription, companies, localProjects, teamProjects, tasks, files, messages, tickets] =
+            await Promise.all([
+                User.findById(userId).select('-password -__v').lean(),
+                Subscription.findOne({ userId }).select('-paymentId -__v').lean(),
+                Company.find({ $or: [{ owner: userId }, { 'members.user': userId }] })
+                    .select('_id name owner members.user members.role')
+                    .lean(),
+                LocalProject.find({ userId }).lean(),
+                TeamProject.find({ owner: userId }).lean(),
+                LocalTask.find({ userId }).lean(),
+                CodeFile.find({ createdBy: userId }).select('-versions -__v').lean(),
+                Message.find({ sender: userId }).lean(),
+                SupportTicket.find({ userId }).lean(),
+            ]);
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+        // Other members' identities stay out of the dump: only id/name + the
+        // caller's own role per company.
+        const safeCompanies = (companies || []).map((c) => ({
+            _id: c._id,
+            name: c.name,
+            owner: c.owner,
+            myRole: (c.members || []).find(
+                (m) => String(m.user?._id || m.user) === String(userId)
+            )?.role || null,
+        }));
+
+        res.json({
+            success: true,
+            exportedAt: new Date().toISOString(),
+            user,
+            subscription,
+            companies: safeCompanies,
+            projects: { local: localProjects || [], team: teamProjects || [] },
+            tasks: tasks || [],
+            files: files || [],
+            messages: messages || [],
+            supportTickets: tickets || [],
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 // Get profile
 router.get('/:userId?', authenticateToken, async (req, res) => {
     try {

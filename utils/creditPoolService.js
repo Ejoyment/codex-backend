@@ -13,8 +13,12 @@ class CreditPoolService {
     constructor() {
         // No hourly timer in tests: it keeps the jest event loop alive and
         // the reset query has no database to hit. Production boots it.
+        // Ticks run under cron leadership (single instance across deploys).
         if (process.env.NODE_ENV !== 'test') {
-            this.resetInterval = setInterval(() => this.resetMonthlyCredits(), 60 * 60 * 1000); // Check hourly
+            this.resetInterval = setInterval(() => {
+                const { withLeadership } = require('./redis');
+                withLeadership('creditpool-reset', 55 * 60 * 1000, () => this.resetMonthlyCredits());
+            }, 60 * 60 * 1000); // Check hourly
         } else {
             this.resetInterval = null;
         }

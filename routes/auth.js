@@ -50,6 +50,8 @@ const upload = multer({
 const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 5, // 5 requests per window
+    store: require('../utils/redis').getRateLimitStore(),
+    passOnStoreError: true,
     message: { success: false, message: 'Too many attempts, please try again later.' }
 });
 
@@ -57,6 +59,8 @@ const authLimiter = rateLimit({
 const oauthLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 20, // 20 OAuth initiations per window
+    store: require('../utils/redis').getRateLimitStore(),
+    passOnStoreError: true,
     message: { success: false, message: 'Too many OAuth attempts. Please try again later.' }
 });
 
@@ -884,13 +888,31 @@ router.delete('/delete-account', authenticateToken, async (req, res) => {
         await safely('TeamTask.unassign', async () => {
             track('TeamTask.unassigned', await require('../models/TeamTask').updateMany({ assignedTo: userId }, { $unset: { assignedTo: '' } }));
         });
-        await safely('Channel.members', () => require('../models/Channel').updateMany({ members: userId }, { $pull: { members: userId } }));
-        await safely('TeamProject.members', () => require('../models/TeamProject').updateMany({ members: userId }, { $pull: { members: userId } }));
+        // Pull both member shapes (bare ObjectIds pre-backfill, { user }
+        // subdocs after): a plain $pull only matches bare ids, never subdocs.
+        const pullMemberBothShapes = {
+            $set: { members: { $filter: {
+                input: '$members',
+                cond: { $and: [
+                    { $ne: ['$$this', userId] },
+                    { $ne: ['$$this.user', userId] },
+                ] },
+            } } },
+        };
+        await safely('Channel.members', () => require('../models/Channel').updateMany(
+            { $or: [{ members: userId }, { 'members.user': userId }] },
+            [pullMemberBothShapes]
+        ));
+        await safely('TeamProject.members', () => require('../models/TeamProject').updateMany(
+            { $or: [{ members: userId }, { 'members.user': userId }] },
+            [pullMemberBothShapes]
+        ));
         await safely('TeamProject.owner', async () => {
             const ownedProjects = await require('../models/TeamProject').find({ owner: userId });
+            const { memberUserId } = require('../utils/members');
             for (const project of ownedProjects) {
                 if (project.members && project.members.length > 0) {
-                    project.owner = project.members[0];
+                    project.owner = memberUserId(project.members[0]);
                     await project.save();
                 }
             }

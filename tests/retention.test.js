@@ -106,6 +106,30 @@ describe('TTL indexes', () => {
     delete process.env.AUDIT_LOG_RETENTION_DAYS;
   });
 
+  test.each([
+    ['TerminalLog', TerminalLog, 'TERMINAL_LOG_TTL_DAYS', 3,
+      () => ({ terminalId: 't', userId: new mongoose.Types.ObjectId() })],
+    ['EphemeralSandbox', EphemeralSandbox, 'SANDBOX_TTL_HOURS', null,
+      () => ({ sandboxKey: 'k', createdBy: new mongoose.Types.ObjectId() })],
+    ['Invitation', Invitation, 'INVITATION_TTL_DAYS', 3,
+      () => ({ email: 'a@b.c', company: new mongoose.Types.ObjectId(), invitedBy: new mongoose.Types.ObjectId() })],
+  ])('%s honors %s', (_name, model, envVar, daysVal, makeDoc) => {
+    if (daysVal === null) {
+      process.env[envVar] = '48';
+      const doc = new model(makeDoc());
+      const hours = (doc.expiresAt - Date.now()) / (60 * 60 * 1000);
+      expect(hours).toBeGreaterThan(47);
+      expect(hours).toBeLessThan(49);
+    } else {
+      process.env[envVar] = String(daysVal);
+      const doc = new model(makeDoc());
+      const days = (doc.expiresAt - Date.now()) / (24 * 60 * 60 * 1000);
+      expect(days).toBeGreaterThan(daysVal - 0.1);
+      expect(days).toBeLessThan(daysVal + 0.1);
+    }
+    delete process.env[envVar];
+  });
+
   test('markExpired pulls expiresAt forward for prompt reaping', async () => {
     const doc = new Invitation({ email: 'a@b.c', company: new mongoose.Types.ObjectId(), invitedBy: new mongoose.Types.ObjectId() });
     doc.save = jest.fn(async function () { return this; });

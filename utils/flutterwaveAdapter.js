@@ -13,6 +13,17 @@ const flw = require('../config/flutterwave');
 const FLUTTERWAVE_SECRET = process.env.FLUTTERWAVE_SECRET_KEY;
 
 async function createCheckout({ userId, tier, amount, currency, interval, metadata }) {
+    // Fail closed and deterministically when the rail is unconfigured: check
+    // the env at call time (module capture can be stale) so no network or
+    // stub-throw ever reaches the caller.
+    if (!process.env.FLUTTERWAVE_SECRET_KEY) {
+        return {
+            success: false,
+            provider: 'flutterwave',
+            message: 'Flutterwave checkout is not configured — set FLUTTERWAVE_SECRET_KEY',
+            code: 'PROVIDER_UNAVAILABLE',
+        };
+    }
     // Flutterwave requires a customer email. paymentRouter does not pass one,
     // so resolve it from the user record; fall back to a placeholder rather
     // than failing the checkout outright.

@@ -29,7 +29,10 @@ async function userExists(userId) {
             _id: userId,
             // Honour an optional isActive flag if/when one is introduced, so
             // suspending a user takes effect without another code change.
-            $or: [{ isActive: { $ne: false } }]
+            $or: [{ isActive: { $ne: false } }],
+            // Banned accounts fail liveness exactly like deleted ones (same
+            // 403, no distinction leaked to the client).
+            isBanned: { $ne: true }
         });
         exists = Boolean(doc);
     } catch (error) {

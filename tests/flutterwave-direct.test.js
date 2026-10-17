@@ -339,3 +339,13 @@ describe('webhook verification headers', () => {
     expect(res.verified).toBe(true);
   });
 });
+
+describe('legacy utils adapter (global rail)', () => {
+  test('unconfigured key fails closed without network', async () => {
+    delete process.env.FLUTTERWAVE_SECRET_KEY;
+    const fwAdapter = require('../utils/flutterwaveAdapter');
+    const res = await fwAdapter.createCheckout({ userId: 'u', amount: 20, currency: 'USD' });
+    expect(res.success).toBe(false);
+    expect(res.code).toBe('PROVIDER_UNAVAILABLE');
+  });
+});

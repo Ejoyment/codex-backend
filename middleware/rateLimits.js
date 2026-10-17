@@ -19,6 +19,10 @@ function makeLimiter({ windowMs, max, message }) {
         standardHeaders: true,
         legacyHeaders: false,
         skip: skipInTest,
+        // Shared Redis store when configured (single limits across instances);
+        // a dead Redis fails OPEN instead of 500ing every limited route.
+        store: require('../utils/redis').getRateLimitStore(),
+        passOnStoreError: true,
         message: { success: false, message },
     });
 }
