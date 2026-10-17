@@ -25,6 +25,7 @@ describe('Model Schemas', () => {
     'Integration',
     'IntegrationData',
     'Invitation',
+    'LocalProject',
     'MeetingRoom',
     'Message',
     'Notification',
@@ -80,6 +81,32 @@ describe('Model Schemas', () => {
       const SupportAgent = require('../models/SupportAgent');
       expect(SupportAgent).toBeDefined();
       expect(typeof SupportAgent.findOne).toBe('function');
+    });
+  });
+
+  describe('LocalProject creation settings', () => {
+    test('should validate and retain the project wizard configuration', () => {
+      const LocalProject = require('../models/LocalProject');
+      const project = new LocalProject({
+        userId: '507f1f77bcf86cd799439011',
+        name: 'Workspace project',
+        visibility: 'public',
+        sourceType: 'github',
+        githubRepoUrl: 'https://github.com/acme/workspace-project',
+        githubRepoName: 'acme/workspace-project',
+        defaultBranch: 'develop',
+        technologies: ['TypeScript', 'React'],
+        intelligence: { figma: true, starterSpec: false, aiAgents: true },
+      });
+
+      expect(project.validateSync()).toBeUndefined();
+      expect(project.toObject()).toMatchObject({
+        visibility: 'public',
+        sourceType: 'github',
+        defaultBranch: 'develop',
+        technologies: ['TypeScript', 'React'],
+        intelligence: { figma: true, starterSpec: false, aiAgents: true },
+      });
     });
   });
 });

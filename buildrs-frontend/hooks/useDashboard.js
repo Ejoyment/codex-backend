@@ -211,9 +211,11 @@ export function useDashboard() {
 
       try {
         const localData = await projectApi.list();
+        console.log('[Dashboard] GET /api/projects response:', localData);
         if (localData.success && localData.projects) {
           collected.push(
             ...localData.projects.map((project) => ({
+              id: project.id,
               name: project.name,
               description: project.description || 'No description',
               status: project.status || 'active',
@@ -236,6 +238,7 @@ export function useDashboard() {
         if (githubData.success && githubData.repositories) {
           collected.push(
             ...githubData.repositories.map((repo) => ({
+              id: repo.id,
               name: repo.name,
               description: repo.description || 'No description',
               status: 'active',
@@ -257,6 +260,7 @@ export function useDashboard() {
           if (projectsData.success && projectsData.projects) {
             collected.push(
               ...projectsData.projects.map((project) => ({
+                id: project.id || project._id,
                 name: project.name,
                 description: project.description || 'No description',
                 status: project.status,

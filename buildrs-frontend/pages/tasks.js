@@ -1,9 +1,11 @@
 import { Fragment, useState, useEffect, useCallback } from 'react';
 import Head from 'next/head';
+import { useRouter } from 'next/router';
 import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch, projectApi } from '../lib/api';
+import CreateTaskWizard from '../components/CreateTaskWizard';
 import {
   Plus,
   X,
@@ -63,6 +65,7 @@ function normalizeTask(task) {
 }
 
 export default function Tasks() {
+  const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const subscription = useAuthStore((s) => s.subscription);
   const { selectedCompany } = useCurrentCompany();
@@ -71,18 +74,21 @@ export default function Tasks() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('all');
-  const [showModal, setShowModal] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState({ title: '', description: '', priority: 'medium' });
+  const [showWizard, setShowWizard] = useState(false);
   const [cyclingId, setCyclingId] = useState(null);
   const [expandedTaskId, setExpandedTaskId] = useState(null);
   const [specs, setSpecs] = useState([]);
+  const [projects, setProjects] = useState([]);
+  const [projectsLoading, setProjectsLoading] = useState(true);
+  const [projectsError, setProjectsError] = useState('');
   const [contextSavingId, setContextSavingId] = useState(null);
   const [delegatingId, setDelegatingId] = useState(null);
   const [actionError, setActionError] = useState('');
   const [clock, setClock] = useState('');
+  const [hasHydrated, setHasHydrated] = useState(false);
 
   useEffect(() => {
+    setHasHydrated(true);
     const tick = () => {
       setClock(new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }));
     };
@@ -108,18 +114,32 @@ export default function Tasks() {
   useEffect(() => { loadTasks(); }, [loadTasks]);
 
   useEffect(() => {
+    if (router.isReady && router.query.action === 'new') {
+      setShowWizard(true);
+    }
+  }, [router.isReady, router.query.action]);
+
+  useEffect(() => {
     let active = true;
+    setProjectsLoading(true);
     // Specs are project-level, so the picker is driven by the projects this
     // user can reach — not by a workspace. Solo users still get their specs.
     (async () => {
       try {
         const { projects = [] } = await projectApi.list();
+        if (!active) return;
+        setProjects(projects);
+        setProjectsError('');
         const lists = await Promise.all(
-          projects.map((project) =>
-            apiFetch(`/api/v1/specs/project/${project.id || project._id}`)
-              .then((data) => data.specs || [])
-              .catch(() => [])
-          )
+          projects.map(async (project) => {
+            try {
+              const data = await apiFetch(`/api/v1/specs/project/${project.id || project._id}`);
+              const projectId = String(project.id || project._id);
+              return (data.specs || []).map((spec) => ({ ...spec, projectId }));
+            } catch {
+              return [];
+            }
+          })
         );
         if (!active) return;
         const seen = new Set();
@@ -131,8 +151,13 @@ export default function Tasks() {
             return true;
           })
         );
-      } catch {
-        if (active) setSpecs([]);
+      } catch (loadError) {
+        if (active) {
+          setSpecs([]);
+          setProjectsError(loadError.message || 'Could not load projects. You can still create an unlinked task.');
+        }
+      } finally {
+        if (active) setProjectsLoading(false);
       }
     })();
     return () => { active = false; };
@@ -201,23 +226,9 @@ export default function Tasks() {
     }
   };
 
-  const createTask = async (e) => {
-    e.preventDefault();
-    if (!form.title.trim()) return;
-    try {
-      setCreating(true);
-      const data = await apiFetch('/api/projects/tasks', {
-        method: 'POST',
-        body: JSON.stringify({ ...form, companyId: selectedCompany?._id }),
-      });
-      setTasks((prev) => [normalizeTask(data.task), ...prev]);
-      setForm({ title: '', description: '', priority: 'medium' });
-      setShowModal(false);
-    } catch (err) {
-      console.error('Failed to create task:', err);
-    } finally {
-      setCreating(false);
-    }
+  const handleTaskCreated = (task) => {
+    setTasks((previous) => [normalizeTask(task), ...previous]);
+    setShowWizard(false);
   };
 
   const formatDate = (d) => {
@@ -239,6 +250,14 @@ export default function Tasks() {
     { key: 'done', label: 'Done', value: tabCount('done'), sub: `${pct(tabCount('done'))}% shipped`, color: 'purple', Icon: CheckCircle2 },
   ];
 
+  if (!hasHydrated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#0b0f17] text-white">
+        <p>Loading...</p>
+      </div>
+    );
+  }
+
   return (
     <AuthGuard>
       <Head>
@@ -250,6 +269,19 @@ export default function Tasks() {
         <Sidebar user={user} subscription={subscription} />
 
         <main className="workspace-main">
+          {showWizard ? (
+            <CreateTaskWizard
+              onClose={() => setShowWizard(false)}
+              onCreated={handleTaskCreated}
+              companyId={selectedCompany?._id || selectedCompany?.id}
+              projects={projects}
+              projectsLoading={projectsLoading}
+              specs={specs}
+              projectsError={projectsError}
+              defaultProjectId={typeof router.query.projectId === 'string' ? router.query.projectId : ''}
+            />
+          ) : (
+            <>
           <header className="workspace-header dash-header">
             <div>
               <p className="dash-crumb">
@@ -276,7 +308,7 @@ export default function Tasks() {
               >
                 <RotateCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
               </button>
-              <button type="button" className="btn-workspace btn-primary" onClick={() => setShowModal(true)}>
+              <button type="button" className="btn-workspace btn-primary" onClick={() => setShowWizard(true)}>
                 <Plus className="w-4 h-4" />
                 <span className="hidden sm:inline">New Task</span>
               </button>
@@ -373,7 +405,7 @@ export default function Tasks() {
                         <button
                           type="button"
                           className="btn-workspace btn-primary mt-4"
-                          onClick={() => setShowModal(true)}
+                          onClick={() => setShowWizard(true)}
                         >
                           <Plus className="w-4 h-4" /> New Task
                         </button>
@@ -483,92 +515,10 @@ export default function Tasks() {
               )}
             </div>
           </div>
+            </>
+          )}
         </main>
       </div>
-
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/60" onClick={() => !creating && setShowModal(false)} />
-          <div className="relative ws-modal w-full max-w-lg mx-4">
-            <div className="flex items-center justify-between p-5 border-b border-[rgba(255,255,255,0.09)]">
-              <div className="flex items-center gap-2.5">
-                <span className="card-ico">
-                  <Plus className="w-4 h-4" />
-                </span>
-                <h2 className="ws-modal-title">Create Task</h2>
-              </div>
-              <button
-                type="button"
-                className="text-muted hover:text-white transition-colors"
-                onClick={() => !creating && setShowModal(false)}
-                disabled={creating}
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={createTask} className="p-5 space-y-4">
-              <div>
-                <label className="ws-label">Title</label>
-                <input
-                  type="text"
-                  className="ws-input"
-                  placeholder="Enter task title"
-                  value={form.title}
-                  onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-                  required
-                  autoFocus
-                />
-              </div>
-
-              <div>
-                <label className="ws-label">Description</label>
-                <textarea
-                  className="ws-textarea"
-                  rows={3}
-                  placeholder="Optional description"
-                  value={form.description}
-                  onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="ws-label">Priority</label>
-                  <select
-                    className="ws-select"
-                    value={form.priority}
-                    onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value }))}
-                  >
-                    {Object.entries({ critical: 'Critical', high: 'High', medium: 'Medium', low: 'Low' }).map(([val, label]) => (
-                      <option key={val} value={val}>{label}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  className="btn-workspace btn-secondary"
-                  onClick={() => setShowModal(false)}
-                  disabled={creating}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn-workspace btn-primary"
-                  disabled={creating || !form.title.trim()}
-                >
-                  {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                  {creating ? 'Creating...' : 'Create Task'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </AuthGuard>
   );
 }
