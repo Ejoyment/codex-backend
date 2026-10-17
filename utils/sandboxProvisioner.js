@@ -7,8 +7,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
-const { exec } = require('child_process');
-const simpleGit = require('simple-git');
+const sandboxSecurity = require('./sandboxSecurity');
 const EphemeralSandbox = require('../models/EphemeralSandbox');
 
 let io = null;
@@ -61,13 +60,22 @@ function getFreePort() {
     return port;
 }
 
-function run(cmd, cwd, timeoutMs = 120000) {
-    return new Promise((resolve, reject) => {
-        exec(cmd, { cwd, maxBuffer: 20 * 1024 * 1024, timeout: timeoutMs }, (err, stdout, stderr) => {
-            if (err) return reject(Object.assign(err, { stdout, stderr }));
-            resolve({ stdout: stdout.toString(), stderr: stderr.toString() });
-        });
-    });
+// Repo clone/checkout and dependency install run inside an ephemeral Docker
+// container with the workdir bind-mounted at /workspace — never on the API
+// host. There is no host-execution fallback: if Docker is unavailable the
+// steps are skipped and the preview serves the captured snapshot only.
+function runInContainer(cmd, workdir, timeoutMs) {
+    return sandboxSecurity.runEphemeral({ hostDir: workdir, cmd, network: 'bridge', timeoutMs });
+}
+
+let dockerWarned = false;
+async function dockerAvailable() {
+    const ok = await sandboxSecurity.isDockerAvailable();
+    if (!ok && !dockerWarned) {
+        dockerWarned = true;
+        console.warn('Sandbox provisioner: Docker unavailable — clone/install steps will be skipped (no host execution fallback).');
+    }
+    return ok;
 }
 
 // Build a self-contained, viewable preview server for a provisioned sandbox.
@@ -263,7 +271,6 @@ async function provision(handoff) {
 async function provisionPipeline(sandbox, workdir) {
     try {
         fs.mkdirSync(workdir, { recursive: true });
-        await writeSnapshot(sandbox, workdir);
 
         if (sandbox.repository) {
             // Validate repository URL before cloning — prevents RCE via ext:: or shell metacharacters
@@ -281,31 +288,44 @@ async function provisionPipeline(sandbox, workdir) {
             sandbox.status = 'cloning';
             await sandbox.save();
             emit(sandbox.sandboxKey, 'sandbox:status', { sandboxKey: sandbox.sandboxKey, status: 'cloning' });
-            try {
-                const git = simpleGit();
-                const branchArg = sandbox.branch && sandbox.branch !== 'main' ? ['-b', sandbox.branch] : [];
-                await git.clone(sandbox.repository, workdir, { '--depth': 1, ...(branchArg.length ? { '--branch': sandbox.branch } : {}) });
-                if (sandbox.commitSha) {
-                    await simpleGit(workdir).checkout(sandbox.commitSha);
-                }
-                // Overlay the buggy file on top of the clone.
-                await writeSnapshot(sandbox, workdir);
-            } catch (cloneErr) {
-                sandbox.logs = (sandbox.logs || '') + `\n[clone] ${cloneErr.message}`;
-                console.warn('Sandbox clone skipped:', cloneErr.message);
-            }
 
-            // Best-effort dependency install + dev start so the preview is live.
-            if (fs.existsSync(path.join(workdir, 'package.json'))) {
-                sandbox.status = 'installing';
-                await sandbox.save();
-                emit(sandbox.sandboxKey, 'sandbox:status', { sandboxKey: sandbox.sandboxKey, status: 'installing' });
+            if (!(await dockerAvailable())) {
+                sandbox.logs = (sandbox.logs || '') + '\n[docker] Docker unavailable — clone and install skipped; preview serves the captured snapshot only';
+                await writeSnapshot(sandbox, workdir);
+            } else {
                 try {
-                    await run('npm install --no-audit --no-fund', workdir, 180000);
-                } catch (installErr) {
-                    sandbox.logs = (sandbox.logs || '') + `\n[install] ${installErr.message}`;
+                    // Clone into the still-empty workdir via an ephemeral
+                    // container; the host filesystem never executes the command.
+                    const cloneArgs = ['git', 'clone', '--depth', '1'];
+                    if (sandbox.branch && sandbox.branch !== 'main') cloneArgs.push('--branch', sandbox.branch);
+                    cloneArgs.push(sandbox.repository, '/workspace');
+                    await runInContainer(cloneArgs, workdir, 120000);
+                    if (sandbox.commitSha) {
+                        await runInContainer(['git', '-C', '/workspace', 'checkout', sandbox.commitSha], workdir, 60000);
+                    }
+                    // Overlay the buggy file on top of the clone.
+                    await writeSnapshot(sandbox, workdir);
+                } catch (cloneErr) {
+                    sandbox.logs = (sandbox.logs || '') + `\n[clone] ${cloneErr.message}`;
+                    console.warn('Sandbox clone skipped:', cloneErr.message);
+                    // Still produce a viewable snapshot so the handoff preview works.
+                    await writeSnapshot(sandbox, workdir);
+                }
+
+                // Best-effort dependency install so the preview is live.
+                if (fs.existsSync(path.join(workdir, 'package.json'))) {
+                    sandbox.status = 'installing';
+                    await sandbox.save();
+                    emit(sandbox.sandboxKey, 'sandbox:status', { sandboxKey: sandbox.sandboxKey, status: 'installing' });
+                    try {
+                        await runInContainer(['npm', 'install', '--no-audit', '--no-fund'], workdir, 180000);
+                    } catch (installErr) {
+                        sandbox.logs = (sandbox.logs || '') + `\n[install] ${installErr.message}`;
+                    }
                 }
             }
+        } else {
+            await writeSnapshot(sandbox, workdir);
         }
 
         sandbox.status = 'starting';
@@ -405,4 +425,4 @@ async function stopAll() {
     activeServers.clear();
 }
 
-module.exports = { init, provision, getStatus, stopSandbox, stopAll };
+module.exports = { init, provision, getStatus, stopSandbox, stopAll, provisionPipeline };
