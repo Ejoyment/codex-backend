@@ -26,6 +26,9 @@ jobs:
     - name: Install dependencies
       run: npm ci
 
+    - name: Install frontend dependencies used by socket tests
+      run: npm ci --prefix buildrs-frontend
+
     # Gates on real findings. Previously `|| true` plus continue-on-error meant
     # this step could never fail, so a high-severity advisory or a leaked key
     # produced a green build. scripts/audit-ci.js fails on any high/critical
