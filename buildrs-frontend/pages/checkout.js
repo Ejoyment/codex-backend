@@ -146,8 +146,8 @@ export default function Checkout() {
           plan: selectedPlan,
         }),
       });
-      if (data.authorization_url) {
-        window.location.href = data.authorization_url;
+      if (data.authorization_url || data.authorizationUrl || data.data?.authorization_url) {
+        window.location.href = data.authorization_url || data.authorizationUrl || data.data?.authorization_url;
       } else {
         toast.error('Failed to initialize Paystack payment');
       }
