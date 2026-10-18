@@ -134,13 +134,13 @@ const RUN = [
 const WHY = [
   {
     num: '01',
-    title: 'Kill the switch-tax',
-    desc: 'Developers lose up to 40% of their week to context-switching across a scattered toolchain. Buildrs keeps code, chat, and AI in one place.',
+    title: 'Spec-driven, approval-gated agents',
+    desc: 'Agents run from a spec in an isolated branch and stage a changeset you review. Nothing touches your files until you approve — and every diff, check and decision is logged.',
   },
   {
     num: '02',
-    title: 'AI with your context',
-    desc: 'The pair programmer indexes your repo and your workflows — so a suggestion arrives already knowing the codebase.',
+    title: 'Kill the switch-tax',
+    desc: 'Developers lose up to 40% of their week to context-switching across a scattered toolchain. Buildrs keeps code, chat, and AI in one place.',
   },
   {
     num: '03',
@@ -150,7 +150,7 @@ const WHY = [
   {
     num: '04',
     title: 'Global and secure',
-    desc: 'Stripe, Paystack, Flutterwave. SSO, audit logs, SOC 2-ready. Priced honestly, built to ship anywhere.',
+    desc: 'Stripe, Paystack, Flutterwave with verified webhooks. SSO, audit logs, SOC 2-ready. Priced honestly, built to ship anywhere.',
   },
 ];
 
@@ -244,10 +244,10 @@ export default function Index() {
   return (
     <>
       <Head>
-        <title>BuildrsHQ — The Unified Development Command Center</title>
+        <title>BuildrsHQ — Spec-driven Agents with Approval Gate</title>
         <meta
           name="description"
-          content="AI pair programming, live co-editing, tasks, and meetings — your entire dev stack in one workspace. Free to start, no credit card."
+          content="Spec-driven AI agents that run in isolated branches. Review proposed changes, approve or reject before they merge. Built for technical founders and devs who need verifiable automation."
         />
         <link rel="icon" href="/buildrs.png" />
         <meta name="google-site-verification" content="NInX_C65m0qT6XHwkGnzhfNT-uR1ZbkUdm6BhFJNTVc" />
@@ -264,21 +264,22 @@ export default function Index() {
             <div className="mx-auto max-w-[680px] text-center">
               <ScrollReveal>
                 <p className="mkt-eyebrow mb-7">
-                  <span className="dot">●</span> buildrs · unified dev command center
+                  <span className="dot">●</span> buildrs · spec-driven agents with approval gate
                 </p>
               </ScrollReveal>
               <ScrollReveal delay={0.1}>
                 <h1 className="mkt-h1">
-                  Your whole dev stack.
+                  Spec-driven agents.
                   <br />
-                  One <span className="accent">command center</span>.
+                  <span className="accent">Your approval</span> before they touch main.
                 </h1>
               </ScrollReveal>
               <ScrollReveal delay={0.2}>
-                <p className="mkt-sub mt-7 max-w-[520px] mx-auto">
-                  Buildrs collapses the eleven-tool ritual — GitHub, Slack, ChatGPT, Figma,
-                  Notion — into a single workspace. AI pair programming, live co-editing, tasks,
-                  and standups, side by side with your code.
+                <p className="mkt-sub mt-7 max-w-[560px] mx-auto">
+                  Buildrs runs AI agents in isolated branches from your spec. They propose changes
+                  you review and approve — nothing merges without checks and your sign-off. Editor,
+                  terminal, git, meetings and billing live in one workspace, so the whole dev stack
+                  stays beside your code.
                 </p>
               </ScrollReveal>
               <ScrollReveal delay={0.3}>
@@ -682,6 +683,35 @@ export default function Index() {
             </ScrollReveal>
           </div>
         </section>
+      <section className="mx-auto max-w-[1200px] px-5 sm:px-8 py-14">
+        <p className="mkt-eyebrow mb-3"><span className="dot">●</span> platform · full feature set</p>
+        <h2 className="mkt-h2 text-2xl sm:text-3xl md:text-4xl">All features</h2>
+        <p className="mt-3 max-w-2xl text-[14px] sm:text-[15px] text-[#a8adba]">Straight from our codebase — everything we have built, complete or in progress. <span className="mkt-pill live">live</span> is ready today; <span className="mkt-pill partial">partial</span> ships but is still being hardened. Nothing hidden.</p>
+        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Spec-driven agents (proposed changes + approvals)</p><span className="mkt-pill partial">Partial</span></div></div>
+          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Branch-isolated execution (agent branches)</p><span className="mkt-pill partial">Partial</span></div></div>
+          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">SDD/spec verification (AST)</p><span className="mkt-pill partial">Partial</span></div></div>
+          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">VFS + editor integration</p><span className="mkt-pill partial">Partial</span></div></div>
+          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Real-time co-editing (Yjs)</p><span className="mkt-pill live">Live</span></div></div>
+          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Terminal (node-pty)</p><span className="mkt-pill live">Live</span></div></div>
+          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Git operations (branches/commits/diff)</p><span className="mkt-pill live">Live</span></div></div>
+          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Meetings / RTC</p><span className="mkt-pill live">Live</span></div></div>
+          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">AI Pair (chat/session)</p><span className="mkt-pill live">Live</span></div></div>
+          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">AI providers (Groq/Gemini/etc)</p><span className="mkt-pill live">Live</span></div></div>
+          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Multi-rail billing (Stripe/Paystack/Flutterwave)</p><span className="mkt-pill partial">Partial</span></div></div>
+          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Verified webhooks (3 rails)</p><span className="mkt-pill live">Live</span></div></div>
+          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Entitlements & credit pool</p><span className="mkt-pill partial">Partial</span></div></div>
+          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Authentication (JWT/OAuth)</p><span className="mkt-pill live">Live</span></div></div>
+          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Projects / Tasks / Teams / Companies</p><span className="mkt-pill live">Live</span></div></div>
+          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Notifications</p><span className="mkt-pill live">Live</span></div></div>
+          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Deployments + VPS/SSH + Docker sandbox</p><span className="mkt-pill partial">Partial</span></div></div>
+          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Pipelines / CI</p><span className="mkt-pill partial">Partial</span></div></div>
+          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Specs CRUD</p><span className="mkt-pill partial">Partial</span></div></div>
+          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Support tickets + dashboard</p><span className="mkt-pill partial">Partial</span></div></div>
+          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">GitHub / Slack / Discord / Figma / Notion / MCP</p><span className="mkt-pill partial">Partial</span></div></div>
+        </div>
+      </section>
+
       </SiteShell>
     </>
   );

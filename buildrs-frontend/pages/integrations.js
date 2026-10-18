@@ -363,4 +363,12 @@ export default function Integrations() {
       />
     </AuthGuard>
   );
+  return (
+    <>
+      {page}
+      <section className="mx-auto max-w-[1200px] px-5 sm:px-8 py-10">
+        <p className="text-[12px] text-[#686e7c]">Connectors listed reflect implemented routes in codebase (Partial where WIP). See features page for maturity.</p>
+      </section>
+    </>
+  );
 }

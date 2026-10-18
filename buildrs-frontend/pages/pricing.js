@@ -12,21 +12,21 @@ import {
 } from '../components/AnimationKit';
 
 const TIER_BADGE = {
-  developer: 'Free',
+  // developer: 'Free',
   pro: 'Popular',
   pro_plus: 'Power',
-  team_standard: 'Team',
-  team_premium: 'Enterprise',
-  enterprise: 'Custom',
+  // team_standard: 'Team',
+  // team_premium: 'Enterprise',
+  // enterprise: 'Custom',
 };
 
 const TIER_BADGE_COLORS = {
-  developer: 'bg-[#525764]',
+  // developer: '',
   pro: 'bg-[#2fd6e6] text-[#08080b]',
-  pro_plus: 'bg-[#a78bfa]',
-  team_standard: 'bg-[#34d399]',
-  team_premium: 'bg-[#e5b84a] text-[#08080b]',
-  enterprise: 'bg-[#f87171]',
+  pro_plus: 'bg-[#525764]',
+  // team_standard: 'bg-[#34d399]',
+  // team_premium: 'bg-[#e5b84a] text-[#08080b]',
+  // enterprise: 'bg-[#f87171]',
 };
 
 const PLANS = [
@@ -39,8 +39,8 @@ const PLANS = [
     blurb: 'For open-source contributors, students, and evaluation.',
     cta: 'Start free',
     href: '/signup',
-    badge: TIER_BADGE.developer,
-    badgeColor: TIER_BADGE_COLORS.developer,
+    // badge: TIER_BADGE.developer,
+    // badgeColor: TIER_BADGE_COLORS.developer,
     features: [
       ['Local models via Ollama / LM Studio', true],
       ['In-browser WebContainers', true],
@@ -116,8 +116,8 @@ const PLANS = [
     blurb: 'For small-to-mid engineering teams.',
     cta: 'Contact sales',
     href: '/contact',
-    badge: TIER_BADGE.team_standard,
-    badgeColor: TIER_BADGE_COLORS.team_standard,
+    // badge: TIER_BADGE.team_standard,
+    // badgeColor: TIER_BADGE_COLORS.team_standard,
     features: [
       ['Everything in Pro+', true],
       ['$40/seat/month pooled credits', true],
@@ -142,8 +142,8 @@ const PLANS = [
     blurb: 'For high-throughput engineering orgs.',
     cta: 'Contact sales',
     href: '/contact',
-    badge: TIER_BADGE.team_premium,
-    badgeColor: TIER_BADGE_COLORS.team_premium,
+    // badge: TIER_BADGE.team_premium,
+    // badgeColor: TIER_BADGE_COLORS.team_premium,
     features: [
       ['Everything in Team Standard', true],
       ['$200/seat/month pooled credits', true],
@@ -166,8 +166,8 @@ const PLANS = [
     blurb: 'For large regulated enterprises.',
     cta: 'Contact sales',
     href: '/contact',
-    badge: TIER_BADGE.enterprise,
-    badgeColor: TIER_BADGE_COLORS.enterprise,
+    // badge: TIER_BADGE.enterprise,
+    // badgeColor: TIER_BADGE_COLORS.enterprise,
     features: [
       ['Everything in Team Premium', true],
       ['Custom pooled credits & volume discounts', true],
@@ -362,7 +362,7 @@ export default function Pricing() {
           </StaggerChildren>
 
           <p className="mkt-mono mt-6 text-center text-[11px] text-[#525764]">
-            all prices in USD · billed via stripe · paystack · flutterwave · enterprise has custom terms
+            all prices in USD · billed via Stripe · Paystack · Flutterwave (Partial; multi-rail coverage per region) · enterprise has custom terms
           </p>
         </section>
 

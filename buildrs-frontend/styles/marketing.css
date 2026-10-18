@@ -194,6 +194,12 @@
   border-style: dashed;
 }
 
+.mkt-pill.partial {
+  color: var(--amber);
+  border-color: rgba(229, 184, 74, 0.55);
+  background: rgba(229, 184, 74, 0.1);
+}
+
 /* grid with hairline separators */
 .mkt-grid {
   display: grid;

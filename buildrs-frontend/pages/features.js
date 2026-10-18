@@ -12,9 +12,21 @@ import {
 
 const LAYERS = [
   {
+    num: '00',
+    name: 'Spec-driven agents',
+    status: 'partial',
+    blurb: 'Our standout: agents that propose, you approve.',
+    features: [
+      ['Spec to branch', 'Each agent run works in its own isolated branch from your spec — never straight on main.', 'agent-v1 · git'],
+      ['Proposed changes + approval gate', 'Agents stage changes as a changeset you review line-by-line before anything merges.', 'agentChangeSet · VFS'],
+      ['Spec verification (AST)', 'Specs are checked against the code with AST-level verification, not a text match.', 'sdd · ast'],
+      ['Checks & audit trail', 'Approvals, rejections, diffs and spec results are logged end-to-end for every run.', 'diff · logs'],
+    ],
+  },
+  {
     num: '01',
     name: 'AI development',
-    status: 'live',
+    status: 'partial',
     blurb: 'An assistant with the context of a teammate.',
     features: [
       ['AI pair programmer', 'Refactors, explains, and writes tests against your real repository context.', 'Groq · Gemini'],
@@ -62,7 +74,7 @@ const LAYERS = [
   {
     num: '05',
     name: 'Integrations',
-    status: 'live',
+    status: 'partial',
     blurb: 'Bring the stack you already run.',
     features: [
       ['GitHub', 'Full repository, pull request, and review access without leaving Buildrs.', 'repos · PRs'],
@@ -70,18 +82,19 @@ const LAYERS = [
       ['Discord', 'Community and team connectivity where your people already talk.', 'webhooks'],
       ['Figma', 'Design-to-code workflows and asset handoff in context.', 'design-tokens'],
       ['Notion', 'Documentation and knowledge-base sync.', 'sync'],
+      ['MCP', 'Model Context Protocol servers wired into the workspace agent surface.', 'mcp'],
     ],
   },
   {
     num: '06',
     name: 'Security & billing',
-    status: 'live',
+    status: 'partial',
     blurb: 'Priced honestly, built to ship anywhere.',
     features: [
       ['Authentication', 'JWT sessions plus Google and GitHub OAuth.', 'JWT · OAuth'],
       ['Audit logs', 'Every impactful action recorded and reviewable.', 'compliance'],
       ['SSO', 'Single sign-on for the enterprise tier.', 'SOC 2-ready'],
-      ['Global payments', 'Stripe, Paystack, and Flutterwave for teams everywhere.', '3 rails'],
+      ['Global payments', 'Stripe, Paystack, and Flutterwave for teams everywhere — with verified webhooks.', '3 rails · webhook'],
     ],
   },
 ];
@@ -93,7 +106,7 @@ export default function Features() {
         <title>Features — BuildrsHQ</title>
         <meta
           name="description"
-          content="AI pair programming, real-time co-editing, communication, project management, integrations, and enterprise-grade security in one workspace."
+          content="Spec-driven agents with an approval gate, AI pair programming, real-time co-editing, terminal, git, meetings, billing and every integration — the complete BuildrsHQ feature catalog with honest maturity labels."
         />
         <link rel="icon" href="/buildrs.png" />
       </Head>
@@ -112,15 +125,16 @@ export default function Features() {
             </ScrollReveal>
             <ScrollReveal delay={0.1}>
               <h1 className="mkt-h1">
-                Six layers.
+                Seven layers.
                 <br />
                 One <span className="accent">workspace</span>.
               </h1>
             </ScrollReveal>
             <ScrollReveal delay={0.2}>
               <p className="mkt-sub mt-6 max-w-[560px]">
-                Everything your team needs to plan, build, review, and ship is engineered
-                into one surface — so context survives the handoff, and the tab-switching stops.
+                From spec-driven agents with an approval gate to real-time collaboration, billing
+                and integrations — everything your team needs to plan, build, review, and ship lives
+                in one surface, so context survives the handoff and the tab-switching stops.
               </p>
             </ScrollReveal>
           </div>
@@ -159,6 +173,212 @@ export default function Features() {
           </StaggerChildren>
         </section>
 
+        {/* ── Complete catalog ─────────────────────────── */}
+        <section className="mx-auto max-w-[1200px] px-5 sm:px-8 pt-24">
+          <ScrollReveal>
+            <div className="mb-8">
+              <p className="mkt-eyebrow mb-4">
+                <span className="dot">●</span> complete catalog · from the codebase
+              </p>
+              <h2 className="mkt-h2">Every feature we ship — nothing hidden.</h2>
+              <p className="mkt-sub mt-4 max-w-[620px]">
+                Straight from the repository. <span className="mkt-pill partial">partial</span> means it
+                exists and runs but is still being hardened; <span className="mkt-pill live">live</span>{' '}
+                means it is ready for daily use today.
+              </p>
+            </div>
+          </ScrollReveal>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-[13.5px] font-medium leading-snug text-white">Spec-driven agents (proposed changes + approvals)</p>
+                <span className="mkt-pill partial">Partial</span>
+              </div>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">agent-v1 · agentSocket · agentChangeSet</p>
+            </div>
+            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-[13.5px] font-medium leading-snug text-white">Branch-isolated execution (agent branches)</p>
+                <span className="mkt-pill partial">Partial</span>
+              </div>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">gitService · agentChangeSet</p>
+            </div>
+            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-[13.5px] font-medium leading-snug text-white">SDD/spec verification (AST)</p>
+                <span className="mkt-pill partial">Partial</span>
+              </div>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">sddVerificationService</p>
+            </div>
+            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-[13.5px] font-medium leading-snug text-white">Specs CRUD</p>
+                <span className="mkt-pill partial">Partial</span>
+              </div>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">routes/specs.js</p>
+            </div>
+            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-[13.5px] font-medium leading-snug text-white">VFS + editor integration</p>
+                <span className="mkt-pill partial">Partial</span>
+              </div>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">CodeFile · editor routes</p>
+            </div>
+            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-[13.5px] font-medium leading-snug text-white">Real-time co-editing (Yjs)</p>
+                <span className="mkt-pill live">Live</span>
+              </div>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">yjs CRDT</p>
+            </div>
+            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-[13.5px] font-medium leading-snug text-white">Terminal (node-pty)</p>
+                <span className="mkt-pill live">Live</span>
+              </div>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">terminal routes · pty</p>
+            </div>
+            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-[13.5px] font-medium leading-snug text-white">Git operations (branches/commits/diff)</p>
+                <span className="mkt-pill live">Live</span>
+              </div>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">git routes · simple-git</p>
+            </div>
+            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-[13.5px] font-medium leading-snug text-white">LSP + smart completions</p>
+                <span className="mkt-pill live">Live</span>
+              </div>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">lspManager</p>
+            </div>
+            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-[13.5px] font-medium leading-snug text-white">Debug adapter (DAP)</p>
+                <span className="mkt-pill partial">Partial</span>
+              </div>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">debugAdapter</p>
+            </div>
+            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-[13.5px] font-medium leading-snug text-white">IDE runner + sandbox execution</p>
+                <span className="mkt-pill live">Live</span>
+              </div>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">sandboxSecurity · docker</p>
+            </div>
+            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-[13.5px] font-medium leading-snug text-white">Meetings / RTC (WebRTC)</p>
+                <span className="mkt-pill live">Live</span>
+              </div>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">rtc routes · meetings</p>
+            </div>
+            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-[13.5px] font-medium leading-snug text-white">AI Pair (chat/session)</p>
+                <span className="mkt-pill live">Live</span>
+              </div>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">ai-pair routes</p>
+            </div>
+            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-[13.5px] font-medium leading-snug text-white">AI providers (Groq/Gemini/etc)</p>
+                <span className="mkt-pill live">Live</span>
+              </div>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">aiService</p>
+            </div>
+            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-[13.5px] font-medium leading-snug text-white">Multi-rail billing (Stripe/Paystack/Flutterwave)</p>
+                <span className="mkt-pill partial">Partial</span>
+              </div>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">paymentRouter · billingCron</p>
+            </div>
+            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-[13.5px] font-medium leading-snug text-white">Verified webhooks (3 rails, raw-body + timing-safe)</p>
+                <span className="mkt-pill live">Live</span>
+              </div>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">webhookSecurity</p>
+            </div>
+            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-[13.5px] font-medium leading-snug text-white">Entitlements & credit pool</p>
+                <span className="mkt-pill partial">Partial</span>
+              </div>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">subscription routes · creditPoolService</p>
+            </div>
+            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-[13.5px] font-medium leading-snug text-white">Authentication (JWT/OAuth)</p>
+                <span className="mkt-pill live">Live</span>
+              </div>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">auth routes · middleware</p>
+            </div>
+            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-[13.5px] font-medium leading-snug text-white">Projects / Tasks / Teams / Companies</p>
+                <span className="mkt-pill live">Live</span>
+              </div>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">projects · tasks · teams routes</p>
+            </div>
+            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-[13.5px] font-medium leading-snug text-white">Notifications</p>
+                <span className="mkt-pill live">Live</span>
+              </div>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">notificationService</p>
+            </div>
+            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-[13.5px] font-medium leading-snug text-white">Deployments + VPS/SSH + Docker sandbox</p>
+                <span className="mkt-pill partial">Partial</span>
+              </div>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">deployments · vps routes</p>
+            </div>
+            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-[13.5px] font-medium leading-snug text-white">Pipelines / CI</p>
+                <span className="mkt-pill partial">Partial</span>
+              </div>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">routes/pipelines.js</p>
+            </div>
+            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-[13.5px] font-medium leading-snug text-white">Support tickets + dashboard</p>
+                <span className="mkt-pill partial">Partial</span>
+              </div>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">support routes · dashboard</p>
+            </div>
+            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-[13.5px] font-medium leading-snug text-white">GitHub / Slack / Discord / Figma / Notion / MCP</p>
+                <span className="mkt-pill partial">Partial</span>
+              </div>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">integration routes</p>
+            </div>
+          </div>
+        </section>
+
+      <section className="mx-auto max-w-[1200px] px-5 sm:px-8 py-14">
+        <p className="mkt-eyebrow mb-3"><span className="dot">●</span> comparison</p>
+        <h2 className="mkt-h2 text-2xl sm:text-3xl md:text-4xl">vs Cursor · Continue · Aider · Cline</h2>
+        <p className="mt-3 max-w-2xl text-[14px] sm:text-[15px] text-[#a8adba]">Fact-based comparison of key differentiators. Maturity reflects BuildrsHQ implementation.</p>
+        <div className="mt-6 overflow-x-auto">
+          <table className="w-full min-w-[800px] text-left text-[13px]">
+            <thead><tr className="border-b border-[#ffffff12] text-[#686e7c]"><th className="py-2">Capability</th><th className="py-2">BuildrsHQ</th><th className="py-2">Cursor</th><th className="py-2">Continue</th><th className="py-2">Aider</th><th className="py-2">Cline</th></tr></thead>
+            <tbody>
+              <tr className="border-b border-[#ffffff12]"><td className="py-2 text-[#a8adba]">Spec-driven agents (isolated branch + approval gate)</td><td className="py-2 text-[#2fd6e6]">Partial</td><td className="py-2 text-[#686e7c]">Varies</td><td className="py-2 text-[#686e7c]">Varies</td><td className="py-2 text-[#686e7c]">CLI-focused</td><td className="py-2 text-[#686e7c]">Varies</td></tr>
+              <tr className="border-b border-[#ffffff12]"><td className="py-2 text-[#a8adba]">Proposed changes review before merge (VFS)</td><td className="py-2 text-[#2fd6e6]">Partial</td><td className="py-2 text-[#686e7c]">Inline edits</td><td className="py-2 text-[#686e7c]">Editor-based</td><td className="py-2 text-[#686e7c]">Diff-based</td><td className="py-2 text-[#686e7c]">Plan/act</td></tr>
+              <tr className="border-b border-[#ffffff12]"><td className="py-2 text-[#a8adba]">SDD/spec verification (AST)</td><td className="py-2 text-[#2fd6e6]">Partial</td><td className="py-2 text-[#686e7c]">N/A</td><td className="py-2 text-[#686e7c]">N/A</td><td className="py-2 text-[#686e7c]">N/A</td><td className="py-2 text-[#686e7c]">N/A</td></tr>
+              <tr className="border-b border-[#ffffff12]"><td className="py-2 text-[#a8adba]">All-in-one workspace (editor+terminal+meetings+git)</td><td className="py-2 text-[#2fd6e6]">Partial</td><td className="py-2 text-[#686e7c]">IDE-focused</td><td className="py-2 text-[#686e7c]">IDE extension</td><td className="py-2 text-[#686e7c]">CLI</td><td className="py-2 text-[#686e7c]">IDE extension</td></tr>
+              <tr className="border-b border-[#ffffff12]"><td className="py-2 text-[#a8adba]">Multi-rail billing for emerging markets</td><td className="py-2 text-[#2fd6e6]">Partial</td><td className="py-2 text-[#686e7c]">Stripe-centric</td><td className="py-2 text-[#686e7c]">Varies</td><td className="py-2 text-[#686e7c]">Self-host</td><td className="py-2 text-[#686e7c]">Varies</td></tr>
+              <tr className="border-b border-[#ffffff12]"><td className="py-2 text-[#a8adba]">Verified webhooks + operator safety</td><td className="py-2 text-[#2fd6e6]">Partial</td><td className="py-2 text-[#686e7c]">N/A</td><td className="py-2 text-[#686e7c]">N/A</td><td className="py-2 text-[#686e7c]">N/A</td><td className="py-2 text-[#686e7c]">N/A</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
         {/* CTA */}
         <section className="relative overflow-hidden mt-24 border-t border-[#ffffff0d]">
           <div className="mkt-hero-bg" />
@@ -187,6 +407,7 @@ export default function Features() {
             </ScrollReveal>
           </div>
         </section>
+
       </SiteShell>
     </>
   );
