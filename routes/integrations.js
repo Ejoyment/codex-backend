@@ -147,14 +147,16 @@ router.get('/github/callback', async (req, res) => {
             client_secret: process.env.GITHUB_CLIENT_SECRET,
             code: code
         }, {
-            headers: { Accept: 'application/json' }
+            headers: { Accept: 'application/json' },
+            timeout: 15000
         });
 
         const accessToken = tokenResponse.data.access_token;
 
         // Get user info
         const userResponse = await axios.get('https://api.github.com/user', {
-            headers: { Authorization: `Bearer ${accessToken}` }
+            headers: { Authorization: `Bearer ${accessToken}` },
+            timeout: 15000
         });
 
         // Save integration
@@ -255,7 +257,8 @@ router.get('/slack/callback', async (req, res) => {
                 client_id: process.env.SLACK_CLIENT_ID,
                 client_secret: process.env.SLACK_CLIENT_SECRET,
                 code: code
-            }
+            },
+            timeout: 15000
         });
 
         const data = tokenResponse.data;
@@ -367,7 +370,8 @@ router.get('/discord/callback', async (req, res) => {
             {
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded'
-                }
+                },
+                timeout: 15000
             }
         );
 
@@ -375,7 +379,8 @@ router.get('/discord/callback', async (req, res) => {
 
         // Get user info
         const userResponse = await axios.get('https://discord.com/api/users/@me', {
-            headers: { Authorization: `Bearer ${data.access_token}` }
+            headers: { Authorization: `Bearer ${data.access_token}` },
+            timeout: 15000
         });
 
         const user = userResponse.data;
@@ -487,7 +492,8 @@ router.get('/notion/callback', async (req, res) => {
             headers: {
                 'Authorization': `Basic ${auth}`,
                 'Content-Type': 'application/json'
-            }
+            },
+            timeout: 15000
         });
 
         const data = tokenResponse.data;
@@ -589,13 +595,14 @@ router.get('/figma/callback', async (req, res) => {
             redirect_uri: `${backendBaseUrl()}/api/integrations/figma/callback`,
             code: code,
             grant_type: 'authorization_code'
-        });
+        }, { timeout: 15000 });
 
         const data = tokenResponse.data;
 
         // Get user info
         const userResponse = await axios.get('https://api.figma.com/v1/me', {
-            headers: { Authorization: `Bearer ${data.access_token}` }
+            headers: { Authorization: `Bearer ${data.access_token}` },
+            timeout: 15000
         });
 
         await Integration.findOneAndUpdate(

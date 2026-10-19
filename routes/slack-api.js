@@ -15,7 +15,8 @@ async function getSlackIntegration(userId) {
 async function slackAPI(accessToken, method, params = {}) {
     try {
         const response = await axios.post(`https://slack.com/api/${method}`, params, {
-            headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' }
+            headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+            timeout: 20000
         });
         if (!response.data.ok) {
             throw new Error(response.data.error || 'Slack API error');
@@ -244,7 +245,8 @@ router.get('/callback', async (req, res) => {
                 redirect_uri: process.env.SLACK_CALLBACK_URL
             }),
             {
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                timeout: 15000
             }
         );
 

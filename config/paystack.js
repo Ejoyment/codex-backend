@@ -16,7 +16,8 @@ if (PAYSTACK_SECRET_KEY) {
         headers: {
             'Authorization': `Bearer ${PAYSTACK_SECRET_KEY}`,
             'Content-Type': 'application/json'
-        }
+        },
+        timeout: 15000
     });
 
     // Paystack SDK wrapper

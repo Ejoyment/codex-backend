@@ -43,7 +43,8 @@ async function refreshDiscordToken(integration) {
                 refresh_token: integration.refreshToken
             }),
             {
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                timeout: 15000
             }
         );
         
@@ -72,7 +73,8 @@ async function discordAPI(accessToken, endpoint, method = 'GET', data = null) {
                 'Authorization': `Bearer ${accessToken}`,
                 'Content-Type': 'application/json'
             },
-            data
+            data,
+            timeout: 20000
         });
         return response.data;
     } catch (error) {
@@ -619,7 +621,8 @@ router.get('/callback', async (req, res) => {
                 redirect_uri: process.env.DISCORD_REDIRECT_URI
             }),
             {
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                timeout: 15000
             }
         );
 

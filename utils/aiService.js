@@ -6,6 +6,11 @@
 
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
+// Outbound LLM calls carry no default timeout: a stalled provider would hold
+// the request open indefinitely (audit finding #5). 60s covers long
+// generations; override with AI_REQUEST_TIMEOUT_MS.
+const AI_REQUEST_TIMEOUT_MS = parseInt(process.env.AI_REQUEST_TIMEOUT_MS, 10) || 60000;
+
 class AIService {
     constructor() {
         this.provider = process.env.AI_PROVIDER || 'auto'; // auto, gemini, mistral, groq
@@ -221,7 +226,8 @@ Please:
                 messages: formattedMessages,
                 max_tokens: parseInt(process.env.AI_MAX_TOKENS) || 8192,
                 temperature: parseFloat(process.env.AI_TEMPERATURE) || 0.7
-            })
+            }),
+            signal: AbortSignal.timeout(AI_REQUEST_TIMEOUT_MS)
         });
 
         if (!response.ok) {
@@ -266,7 +272,8 @@ Please:
                 max_tokens: parseInt(process.env.AI_MAX_TOKENS) || 8192,
                 temperature: parseFloat(process.env.AI_TEMPERATURE) || 0.7,
                 ...(String(config.model).includes('gpt-oss') ? { reasoning_effort: 'low' } : {})
-            })
+            }),
+            signal: AbortSignal.timeout(AI_REQUEST_TIMEOUT_MS)
         });
 
         if (!response.ok) {
@@ -308,7 +315,8 @@ Please:
                     temperature: parseFloat(process.env.AI_TEMPERATURE) || 0.7,
                     return_full_text: false
                 }
-            })
+            }),
+            signal: AbortSignal.timeout(AI_REQUEST_TIMEOUT_MS)
         });
 
         if (!response.ok) {
