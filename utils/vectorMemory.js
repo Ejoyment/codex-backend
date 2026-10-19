@@ -136,7 +136,8 @@ class VectorMemory {
             body: JSON.stringify({
                 model: this.embeddingModel,
                 input: text
-            })
+            }),
+            signal: AbortSignal.timeout(30000)
         });
 
         const data = await response.json();
