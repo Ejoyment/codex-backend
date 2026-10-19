@@ -37,6 +37,12 @@ const sendOTPEmail = async (email, otp, fullName = 'User') => {
 
     if (!RESEND_API_KEY) {
         console.error('❌ RESEND_API_KEY not configured');
+        if (process.env.NODE_ENV === 'production') {
+            // Never fake OTP delivery in production: the console mock prints
+            // the real code to the logs and reports success, so a missing key
+            // would silently leak verifiable codes to anyone reading logs.
+            return { success: false, error: 'RESEND_API_KEY not configured' };
+        }
         return sendMockOTP(email, otp, fullName);
     }
 
@@ -82,6 +88,11 @@ const sendOTPEmail = async (email, otp, fullName = 'User') => {
         }
     } catch (error) {
         console.error('❌ Email sending failed:', error.message);
+        if (process.env.NODE_ENV === 'production') {
+            // Delivery failures must surface to the caller, not degrade into a
+            // log-printed OTP that the user will never receive.
+            return { success: false, error: error.message };
+        }
         console.warn('⚠️  Falling back to console output');
         return sendMockOTP(email, otp, fullName);
     }
