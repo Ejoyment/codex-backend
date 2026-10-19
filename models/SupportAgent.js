@@ -21,6 +21,10 @@ const supportAgentSchema = new mongoose.Schema({
         enum: ['agent', 'supervisor', 'admin'],
         default: 'agent'
     },
+    isActive: {
+        type: Boolean,
+        default: true
+    },
     status: {
         type: String,
         enum: ['online', 'offline', 'away', 'busy'],
