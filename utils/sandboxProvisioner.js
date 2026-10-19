@@ -118,7 +118,13 @@ function startPreviewServer(sandbox, workdir) {
     });
 
     return new Promise((resolve, reject) => {
-        server.on('error', reject);
+        server.on('error', (err) => {
+            // Release the reservation made by getFreePort(): a failed bind must
+            // not permanently shrink the pool (leaked ports surface much later
+            // as "No free sandbox ports available" until the next restart).
+            usedPorts.delete(port);
+            reject(err);
+        });
         server.listen(port, '127.0.0.1', () => {
             activeServers.set(sandbox.sandboxKey, server);
             resolve(port);
