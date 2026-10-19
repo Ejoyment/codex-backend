@@ -35,6 +35,7 @@ const COLUMNS = [
       { href: '/careers', label: 'Careers' },
       { href: '/contact', label: 'Contact' },
       { href: '/privacy', label: 'Privacy' },
+      { href: '/cookies', label: 'Cookies' },
     ],
   },
 ];
