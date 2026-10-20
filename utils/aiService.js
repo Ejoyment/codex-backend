@@ -6,6 +6,11 @@
 
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
+// Outbound LLM calls carry no default timeout: a stalled provider would hold
+// the request open indefinitely (audit finding #5). 60s covers long
+// generations; override with AI_REQUEST_TIMEOUT_MS.
+const AI_REQUEST_TIMEOUT_MS = parseInt(process.env.AI_REQUEST_TIMEOUT_MS, 10) || 60000;
+
 class AIService {
     constructor() {
         this.provider = process.env.AI_PROVIDER || 'auto'; // auto, gemini, mistral, groq
@@ -67,16 +72,28 @@ class AIService {
      */
     resolveProvider(requested) {
         const candidates = [requested, this.provider];
+        let resolved = null;
         for (const candidate of candidates) {
             if (candidate && candidate !== 'auto' && this.providers[candidate]?.available) {
-                return candidate;
+                resolved = candidate;
+                break;
             }
         }
-        const available = Object.keys(this.providers).find((key) => this.providers[key].available);
-        if (!available) {
+        if (!resolved) {
+            resolved = Object.keys(this.providers).find((key) => this.providers[key].available);
+        }
+        if (!resolved) {
             throw new Error('No AI provider configured. Please add API keys to .env file.');
         }
-        return available;
+        // A provider the caller asked for that this service cannot serve must
+        // never be substituted silently: clients (agent sockets read the name
+        // from user payloads) otherwise believe they got the model they picked.
+        if (requested && requested !== 'auto' && requested !== resolved) {
+            console.warn(
+                `[ai] provider "${requested}" is not implemented or not configured — using "${resolved}" instead`
+            );
+        }
+        return resolved;
     }
 
     async chat(messages, codeContext = {}) {
@@ -221,7 +238,8 @@ Please:
                 messages: formattedMessages,
                 max_tokens: parseInt(process.env.AI_MAX_TOKENS) || 8192,
                 temperature: parseFloat(process.env.AI_TEMPERATURE) || 0.7
-            })
+            }),
+            signal: AbortSignal.timeout(AI_REQUEST_TIMEOUT_MS)
         });
 
         if (!response.ok) {
@@ -266,7 +284,8 @@ Please:
                 max_tokens: parseInt(process.env.AI_MAX_TOKENS) || 8192,
                 temperature: parseFloat(process.env.AI_TEMPERATURE) || 0.7,
                 ...(String(config.model).includes('gpt-oss') ? { reasoning_effort: 'low' } : {})
-            })
+            }),
+            signal: AbortSignal.timeout(AI_REQUEST_TIMEOUT_MS)
         });
 
         if (!response.ok) {
@@ -308,7 +327,8 @@ Please:
                     temperature: parseFloat(process.env.AI_TEMPERATURE) || 0.7,
                     return_full_text: false
                 }
-            })
+            }),
+            signal: AbortSignal.timeout(AI_REQUEST_TIMEOUT_MS)
         });
 
         if (!response.ok) {

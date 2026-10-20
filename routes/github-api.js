@@ -32,7 +32,8 @@ async function githubAPI(accessToken, endpoint, method = 'GET', data = null) {
                 'Accept': 'application/vnd.github.v3+json',
                 'User-Agent': 'CODEX-INC-App'
             },
-            data
+            data,
+            timeout: 20000
         });
         return response.data;
     } catch (error) {
@@ -1080,7 +1081,8 @@ router.get('/callback', async (req, res) => {
                 redirect_uri: process.env.GITHUB_REDIRECT_URI
             },
             {
-                headers: { Accept: 'application/json' }
+                headers: { Accept: 'application/json' },
+                timeout: 15000
             }
         );
 

@@ -306,13 +306,9 @@ app.use(passport.session());
 // Passport configuration
 require('./config/passport')(passport);
 
-// MongoDB connection with better error handling and timeout settings
+// MongoDB connection with fail-fast settings (see config/mongoOptions.js)
 // Note: useNewUrlParser and useUnifiedTopology are deprecated in Mongoose 8+
-const mongooseOptions = {
-    serverSelectionTimeoutMS: 30000, // Increase timeout to 30 seconds
-    socketTimeoutMS: 45000, // Socket timeout
-    family: 4 // Use IPv4, skip trying IPv6
-};
+const mongooseOptions = require('./config/mongoOptions');
 
 mongoose.connect(process.env.MONGODB_URI, mongooseOptions)
 .then(() => {
@@ -674,22 +670,18 @@ const BillingCron = require('./utils/billingCron');
 // Socket.IO for real-time collaboration
 const collaborationService = require('./utils/collaborationService');
 const terminalService = require('./utils/terminalService');
-const jwt = require('jsonwebtoken');
+const { resolveSocketUser } = require('./utils/socketAuth');
 
 // Ensure io is initialized for module import (backwards compatibility)
 createServer();
 
 // Socket.IO authentication middleware
-io.use((socket, next) => {
-    const token = socket.handshake.auth.token;
-    
-    if (!token) {
-        return next(new Error('Authentication error'));
-    }
-    
+// Uses the shared handshake helper so sockets get the same liveness check as
+// REST — previously a deleted or banned account kept its sockets (including
+// terminal control) until the JWT expired.
+io.use(async (socket, next) => {
     try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
-        const userId = decoded.userId || decoded.id || decoded._id;
+        const { userId, decoded } = await resolveSocketUser(socket);
         socket.userId = userId;
         socket.user = { ...decoded, id: userId, userId };
         next();
@@ -862,16 +854,11 @@ console.log('✓ Socket.IO collaboration server initialized');
 // Terminal namespace
 const terminalNamespace = io.of('/terminal');
 
-terminalNamespace.use((socket, next) => {
-    const token = socket.handshake.auth.token;
-    
-    if (!token) {
-        return next(new Error('Authentication error'));
-    }
-    
+// Same shared handshake helper as the default namespace: signature + account
+// liveness, so a deleted/banned user cannot keep a terminal socket open.
+terminalNamespace.use(async (socket, next) => {
     try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
-        const userId = decoded.userId || decoded.id || decoded._id;
+        const { userId, decoded } = await resolveSocketUser(socket);
         socket.userId = userId;
         socket.user = { ...decoded, id: userId, userId };
         next();

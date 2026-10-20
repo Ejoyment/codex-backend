@@ -8,6 +8,20 @@ const { renderEmail, BRAND_NAME, FRONTEND_URL } = require('./emailLayout');
 
 const DEFAULT_FROM = 'BuildrsHQ <onboarding@resend.dev>';
 
+// Single bounded transport for every Resend call: a stalled API call used to
+// hold the request (or cron worker) open indefinitely (audit finding #5).
+// Timeout is env-tunable so tests can exercise the abort path.
+const RESEND_REQUEST_TIMEOUT_MS = parseInt(process.env.RESEND_REQUEST_TIMEOUT_MS, 10) || 10000;
+const resendFetch = (emailData, apiKey) => fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(emailData),
+    signal: AbortSignal.timeout(RESEND_REQUEST_TIMEOUT_MS)
+});
+
 // Mock email sender (console fallback when the API key is not configured)
 const sendMockOTP = (email, otp, fullName) => {
     console.log('\n========================================');
@@ -37,6 +51,12 @@ const sendOTPEmail = async (email, otp, fullName = 'User') => {
 
     if (!RESEND_API_KEY) {
         console.error('❌ RESEND_API_KEY not configured');
+        if (process.env.NODE_ENV === 'production') {
+            // Never fake OTP delivery in production: the console mock prints
+            // the real code to the logs and reports success, so a missing key
+            // would silently leak verifiable codes to anyone reading logs.
+            return { success: false, error: 'RESEND_API_KEY not configured' };
+        }
         return sendMockOTP(email, otp, fullName);
     }
 
@@ -62,14 +82,7 @@ const sendOTPEmail = async (email, otp, fullName = 'User') => {
     };
 
     try {
-        const response = await fetch('https://api.resend.com/emails', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${RESEND_API_KEY}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(emailData)
-        });
+        const response = await resendFetch(emailData, RESEND_API_KEY);
 
         const result = await response.json();
 
@@ -82,6 +95,11 @@ const sendOTPEmail = async (email, otp, fullName = 'User') => {
         }
     } catch (error) {
         console.error('❌ Email sending failed:', error.message);
+        if (process.env.NODE_ENV === 'production') {
+            // Delivery failures must surface to the caller, not degrade into a
+            // log-printed OTP that the user will never receive.
+            return { success: false, error: error.message };
+        }
         console.warn('⚠️  Falling back to console output');
         return sendMockOTP(email, otp, fullName);
     }
@@ -122,14 +140,7 @@ const sendWelcomeEmail = async (email, fullName) => {
     };
 
     try {
-        const response = await fetch('https://api.resend.com/emails', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${RESEND_API_KEY}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(emailData)
-        });
+        const response = await resendFetch(emailData, RESEND_API_KEY);
 
         const result = await response.json();
 
@@ -182,14 +193,7 @@ const sendInvitationEmail = async (invitation) => {
     };
 
     try {
-        const response = await fetch('https://api.resend.com/emails', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${RESEND_API_KEY}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(emailData)
-        });
+        const response = await resendFetch(emailData, RESEND_API_KEY);
 
         const result = await response.json();
 
@@ -255,14 +259,7 @@ const sendTrialWelcomeEmail = async (email, fullName, trialEndsAt) => {
     };
 
     try {
-        const response = await fetch('https://api.resend.com/emails', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${RESEND_API_KEY}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(emailData)
-        });
+        const response = await resendFetch(emailData, RESEND_API_KEY);
 
         const result = await response.json();
 
@@ -314,14 +311,7 @@ const sendTrialReminderEmail = async (email, fullName, daysLeft) => {
     };
 
     try {
-        const response = await fetch('https://api.resend.com/emails', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${RESEND_API_KEY}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(emailData)
-        });
+        const response = await resendFetch(emailData, RESEND_API_KEY);
 
         const result = await response.json();
 
@@ -369,14 +359,7 @@ const sendTrialExpiredEmail = async (email, fullName) => {
     };
 
     try {
-        const response = await fetch('https://api.resend.com/emails', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${RESEND_API_KEY}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(emailData)
-        });
+        const response = await resendFetch(emailData, RESEND_API_KEY);
 
         const result = await response.json();
 
@@ -405,14 +388,7 @@ const postToResend = async (emailData) => {
     }
 
     try {
-        const response = await fetch('https://api.resend.com/emails', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${RESEND_API_KEY}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(emailData)
-        });
+        const response = await resendFetch(emailData, RESEND_API_KEY);
 
         const result = await response.json();
 

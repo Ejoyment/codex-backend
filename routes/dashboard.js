@@ -307,7 +307,8 @@ router.get('/data/:platform', authenticateToken, async (req, res) => {
                     params: {
                         sort: 'updated',
                         per_page: 20
-                    }
+                    },
+                    timeout: 15000
                 });
                 
                 realData.repositories = reposResponse.data.map(repo => ({
@@ -327,7 +328,8 @@ router.get('/data/:platform', authenticateToken, async (req, res) => {
                 const guildsResponse = await axios.get('https://discord.com/api/users/@me/guilds', {
                     headers: {
                         'Authorization': `Bearer ${integration.accessToken}`
-                    }
+                    },
+                    timeout: 15000
                 });
                 
                 realData.servers = guildsResponse.data.map(guild => ({
@@ -349,7 +351,8 @@ router.get('/data/:platform', authenticateToken, async (req, res) => {
                 const filesResponse = await axios.get('https://api.figma.com/v1/me', {
                     headers: {
                         'Authorization': `Bearer ${integration.accessToken}`
-                    }
+                    },
+                    timeout: 15000
                 });
                 
                 // Mock projects for now - Figma API structure is complex
