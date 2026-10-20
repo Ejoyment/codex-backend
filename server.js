@@ -688,7 +688,7 @@ io.use((socket, next) => {
     }
     
     try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
         const userId = decoded.userId || decoded.id || decoded._id;
         socket.userId = userId;
         socket.user = { ...decoded, id: userId, userId };
@@ -870,7 +870,7 @@ terminalNamespace.use((socket, next) => {
     }
     
     try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
         const userId = decoded.userId || decoded.id || decoded._id;
         socket.userId = userId;
         socket.user = { ...decoded, id: userId, userId };

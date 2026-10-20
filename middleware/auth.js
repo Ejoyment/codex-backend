@@ -61,7 +61,7 @@ const authenticateToken = async (req, res, next) => {
     let user;
     try {
         user = await new Promise((resolve, reject) => {
-            jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+            jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] }, (err, decoded) => {
                 if (err) return reject(err);
                 resolve(decoded);
             });

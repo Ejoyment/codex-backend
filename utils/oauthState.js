@@ -24,7 +24,7 @@ function createStateToken(userId) {
  */
 function verifyStateToken(token) {
     if (!SECRET) throw new Error('JWT_SECRET required for OAuth state tokens');
-    const decoded = jwt.verify(token, SECRET);
+    const decoded = jwt.verify(token, SECRET, { algorithms: ['HS256'] });
     if (decoded.purpose !== 'oauth_state') throw new Error('Invalid state token purpose');
     return decoded.userId;
 }

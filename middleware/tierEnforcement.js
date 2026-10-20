@@ -31,7 +31,7 @@ function getDeployment() {
 }
 
 function jwtVerify(token) {
-    return jwt.verify(token, process.env.JWT_SECRET);
+    return jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
 }
 
 // === Individual tier checks ===
