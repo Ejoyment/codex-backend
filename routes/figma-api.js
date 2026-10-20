@@ -29,7 +29,7 @@ async function refreshFigmaToken(integration) {
             client_id: process.env.FIGMA_CLIENT_ID,
             client_secret: process.env.FIGMA_CLIENT_SECRET,
             refresh_token: integration.refreshToken
-        });
+        }, { timeout: 15000 });
         
         const data = response.data;
         integration.accessToken = data.access_token;
@@ -52,7 +52,8 @@ async function figmaAPI(accessToken, endpoint, method = 'GET', data = null) {
                 'Authorization': `Bearer ${accessToken}`,
                 'Content-Type': 'application/json'
             },
-            data
+            data,
+            timeout: 20000
         });
         return response.data;
     } catch (error) {
@@ -400,7 +401,8 @@ router.get('/callback', async (req, res) => {
                 headers: {
                     'Authorization': `Basic ${basicAuth}`,
                     'Content-Type': 'application/x-www-form-urlencoded'
-                }
+                },
+                timeout: 15000
             }
         );
 
@@ -412,7 +414,8 @@ router.get('/callback', async (req, res) => {
 
         // Fetch Figma user info to store alongside the integration
         const meResponse = await axios.get('https://api.figma.com/v1/me', {
-            headers: { 'Authorization': `Bearer ${access_token}` }
+            headers: { 'Authorization': `Bearer ${access_token}` },
+            timeout: 15000
         });
 
         await Integration.findOneAndUpdate(
