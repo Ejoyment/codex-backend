@@ -4,6 +4,14 @@ const PaystackScheduler = require('./paystackScheduler');
 const StripeBillingScheduler = require('./billingScheduler');
 const FlutterwaveScheduler = require('./flutterwaveScheduler');
 
+// Trial lifecycle scan bounds (audit finding: unbounded trial scan).
+// Reminders only start 3 days out, so trials ending later need no work this
+// minute; the batch cap bounds the worst-case per-tick work. Anything left
+// over is picked up by the next minute's run (leader-locked, so ticks never
+// scan in parallel). Sorted by trialEndsAt so the most urgent rows go first.
+const TRIAL_REMINDER_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
+const TRIAL_LIFECYCLE_BATCH = parseInt(process.env.TRIAL_LIFECYCLE_BATCH, 10) || 200;
+
 /**
  * Billing Cron Jobs
  * Processes scheduled charges every minute
@@ -97,8 +105,21 @@ class BillingCron {
         const User = require('../models/User');
         const emailService = require('./emailServiceResend');
 
-        // Find active trials
-        const activeTrials = await Subscription.find({ status: 'trial' });
+        // Only trials that can need action this tick: expired, or inside the
+        // 3-day reminder window. Unbounded status-only scans loaded every
+        // active trial into memory here once a minute.
+        const activeTrials = await Subscription.find({
+            status: 'trial',
+            trialEndsAt: { $lte: new Date(Date.now() + TRIAL_REMINDER_WINDOW_MS) }
+        })
+            .sort({ trialEndsAt: 1 })
+            .limit(TRIAL_LIFECYCLE_BATCH);
+
+        if (activeTrials.length === TRIAL_LIFECYCLE_BATCH) {
+            console.warn(
+                `Trial lifecycle scan hit its ${TRIAL_LIFECYCLE_BATCH}-row batch cap; remaining trials will be handled next tick`
+            );
+        }
 
         for (const subscription of activeTrials) {
             try {
