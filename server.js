@@ -306,13 +306,9 @@ app.use(passport.session());
 // Passport configuration
 require('./config/passport')(passport);
 
-// MongoDB connection with better error handling and timeout settings
+// MongoDB connection with fail-fast settings (see config/mongoOptions.js)
 // Note: useNewUrlParser and useUnifiedTopology are deprecated in Mongoose 8+
-const mongooseOptions = {
-    serverSelectionTimeoutMS: 30000, // Increase timeout to 30 seconds
-    socketTimeoutMS: 45000, // Socket timeout
-    family: 4 // Use IPv4, skip trying IPv6
-};
+const mongooseOptions = require('./config/mongoOptions');
 
 mongoose.connect(process.env.MONGODB_URI, mongooseOptions)
 .then(() => {
