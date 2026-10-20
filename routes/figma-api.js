@@ -285,10 +285,7 @@ router.get('/styles/:key', authenticateToken, async (req, res) => {
 });
 
 const crypto = require('crypto');
-
-// In-memory store for PKCE code verifiers, keyed by state (userId).
-// For production with multiple server instances, move this to Redis or your DB instead.
-const pkceStore = new Map();
+const pkceStore = require('../utils/pkceStore');
 
 // ===== OAUTH / CONFIGURATION =====
 
