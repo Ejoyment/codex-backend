@@ -17,7 +17,8 @@ async function figmaAPI(accessToken, endpoint, method = 'GET', data = null) {
                 'Authorization': `Bearer ${accessToken}`,
                 'Content-Type': 'application/json'
             },
-            data
+            data,
+            timeout: 20000
         });
         return response.data;
     } catch (error) {

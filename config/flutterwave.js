@@ -23,7 +23,8 @@ if (FLUTTERWAVE_SECRET_KEY) {
         headers: {
             'Authorization': `Bearer ${FLUTTERWAVE_SECRET_KEY}`,
             'Content-Type': 'application/json'
-        }
+        },
+        timeout: 15000
     });
 
     flw = {

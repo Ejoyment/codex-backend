@@ -22,7 +22,8 @@ async function notionAPI(accessToken, endpoint, method = 'GET', data = null) {
                 'Notion-Version': '2022-06-28',
                 'Content-Type': 'application/json'
             },
-            data
+            data,
+            timeout: 20000
         });
         return response.data;
     } catch (error) {
@@ -302,7 +303,8 @@ router.get('/callback', async (req, res) => {
                 headers: {
                     'Authorization': `Basic ${basicAuth}`,
                     'Content-Type': 'application/json'
-                }
+                },
+                timeout: 15000
             }
         );
 
