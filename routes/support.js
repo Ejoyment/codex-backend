@@ -25,7 +25,7 @@ const verifySupportAgent = async (req, res, next) => {
             return res.status(401).json({ success: false, message: 'No token provided' });
         }
 
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
         const agent = await SupportAgent.findById(decoded.agentId);
 
         // Deactivated agents keep a valid JWT for up to 8h otherwise.
@@ -188,7 +188,7 @@ const verifyUser = async (req, res, next) => {
         if (!token) {
             return res.status(401).json({ success: false, message: 'No token provided' });
         }
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
         const userId = decoded.id || decoded.userId;
         if (!userId) {
             return res.status(401).json({ success: false, message: 'Invalid token' });
@@ -209,7 +209,7 @@ router.get('/tickets', async (req, res) => {
         }
         let filter;
         try {
-            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+            const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
             const userId = decoded.id || decoded.userId;
             // Never fall through to an empty filter: a valid token without a
             // user claim (e.g. an agent token) must not list other users' tickets.
@@ -248,7 +248,7 @@ router.post('/tickets/:ticketId/messages', supportReplyLimiter, async (req, res)
         }
         try {
             const token = authHeader.split(' ')[1];
-            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+            const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
             if (decoded.agentId) {
                 const agent = await SupportAgent.findById(decoded.agentId);
                 if (!agent) {
@@ -387,7 +387,7 @@ router.get('/tickets/:ticketId', async (req, res) => {
             }
             try {
                 const token = authHeader.split(' ')[1];
-                const decoded = jwt.verify(token, process.env.JWT_SECRET);
+                const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
                 const requesterUserId = decoded.id || decoded.userId;
                 const isAgent = !!decoded.agentId;
                 if (!isAgent && (!requesterUserId || String(requesterUserId) !== String(ticket.userId))) {

@@ -134,7 +134,7 @@ const checkTrialStatus = async (req, res, next) => {
             });
         }
 
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
         const userId = decoded.userId || decoded.id;
         
         const subscription = await getOrCreateSubscription(userId);
@@ -199,7 +199,7 @@ const enforceProjectLimit = async (req, res, next) => {
             return res.status(401).json({ success: false, message: 'Authentication required' });
         }
 
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
         const userId = decoded.userId || decoded.id;
         
         const subscription = await getOrCreateSubscription(userId);
@@ -239,7 +239,7 @@ const enforceAIAccess = async (req, res, next) => {
             return res.status(401).json({ success: false, message: 'Authentication required' });
         }
 
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
         const userId = decoded.userId || decoded.id;
         
         const subscription = await getOrCreateSubscription(userId);

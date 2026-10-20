@@ -17,7 +17,7 @@ const { userExists } = require('../middleware/auth');
 function decodeSocketToken(token) {
     if (!token) throw new Error('Authentication error');
     try {
-        return jwt.verify(token, process.env.JWT_SECRET);
+        return jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
     } catch {
         throw new Error('Authentication error');
     }
