@@ -72,16 +72,28 @@ class AIService {
      */
     resolveProvider(requested) {
         const candidates = [requested, this.provider];
+        let resolved = null;
         for (const candidate of candidates) {
             if (candidate && candidate !== 'auto' && this.providers[candidate]?.available) {
-                return candidate;
+                resolved = candidate;
+                break;
             }
         }
-        const available = Object.keys(this.providers).find((key) => this.providers[key].available);
-        if (!available) {
+        if (!resolved) {
+            resolved = Object.keys(this.providers).find((key) => this.providers[key].available);
+        }
+        if (!resolved) {
             throw new Error('No AI provider configured. Please add API keys to .env file.');
         }
-        return available;
+        // A provider the caller asked for that this service cannot serve must
+        // never be substituted silently: clients (agent sockets read the name
+        // from user payloads) otherwise believe they got the model they picked.
+        if (requested && requested !== 'auto' && requested !== resolved) {
+            console.warn(
+                `[ai] provider "${requested}" is not implemented or not configured — using "${resolved}" instead`
+            );
+        }
+        return resolved;
     }
 
     async chat(messages, codeContext = {}) {
