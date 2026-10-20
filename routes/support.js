@@ -6,6 +6,7 @@ const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
 const { supportTicketLimiter, supportReplyLimiter } = require('../middleware/rateLimits');
 const { MAX_TICKET_MESSAGES } = require('../utils/retention');
+const { isLockedOut, recordFailure, clearLockout } = require('../models/AuthLockout');
 
 // Rate limiting for support agent login (same as main auth)
 const supportLoginLimiter = rateLimit({
@@ -26,8 +27,9 @@ const verifySupportAgent = async (req, res, next) => {
 
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         const agent = await SupportAgent.findById(decoded.agentId);
-        
-        if (!agent) {
+
+        // Deactivated agents keep a valid JWT for up to 8h otherwise.
+        if (!agent || agent.isActive === false) {
             return res.status(401).json({ success: false, message: 'Invalid token' });
         }
 
@@ -66,16 +68,28 @@ const verifySupportAgent = async (req, res, next) => {
 router.post('/agent/login', supportLoginLimiter, async (req, res) => {
     try {
         const { email, password } = req.body;
+        const lockoutKey = `support-agent:${String(email || '').toLowerCase()}`;
 
-        const agent = await SupportAgent.findOne({ email });
-        if (!agent) {
+        // Per-account lockout, independent of the IP limiter above (which
+        // fails open when its store is unreachable). Namespaced so a locked
+        // user account never locks the same-address support account.
+        if (await isLockedOut(lockoutKey)) {
+            return res.status(429).json({ success: false, message: 'Too many failed attempts, please try again later.' });
+        }
+
+        const agent = await SupportAgent.findOne({ email: String(email || '').toLowerCase() });
+        if (!agent || agent.isActive === false) {
+            await recordFailure(lockoutKey);
             return res.status(401).json({ success: false, message: 'Invalid credentials' });
         }
 
         const isMatch = await agent.comparePassword(password);
         if (!isMatch) {
+            await recordFailure(lockoutKey);
             return res.status(401).json({ success: false, message: 'Invalid credentials' });
         }
+
+        await clearLockout(lockoutKey);
 
         // Update status to online
         agent.status = 'online';
