@@ -2,24 +2,29 @@ class AIRouterService {
   constructor() {
     this.defaultProvider = process.env.AI_PROVIDER || 'gemini';
     this.localPrivacyMode = !!process.env.LOCAL_PRIVACY_MODE;
+    // Only providers utils/aiService can actually serve are listed here.
+    // The previous registry also advertised claude-sonnet/gpt-4o/ollama/
+    // lm-studio, none of which aiService implements — every selection of one
+    // of those names was silently rerouted to the first configured provider
+    // (agent sockets and agent-v1 read `provider` from client payloads, so
+    // this was reachable by any signed-up account). Legacy names now resolve
+    // through resolveProviderName() and degrade with an explicit warning.
     this.providers = {
-      'claude-sonnet': {
-        name: 'Claude 3.5 Sonnet',
+      gemini: {
+        name: 'Google Gemini',
         type: 'cloud',
-        model: 'claude-3-5-sonnet-20241022',
-        endpoint: 'https://api.anthropic.com/v1/messages',
-        available: !!process.env.ANTHROPIC_API_KEY,
-        apiKey: process.env.ANTHROPIC_API_KEY,
+        model: process.env.AI_MODEL || 'gemini-1.5-flash',
+        available: !!process.env.GEMINI_API_KEY,
       },
-      'gpt-4o': {
-        name: 'GPT-4o',
+      mistral: {
+        name: 'Mistral AI',
         type: 'cloud',
-        model: 'gpt-4o',
-        endpoint: 'https://api.openai.com/v1/chat/completions',
-        available: !!process.env.OPENAI_API_KEY,
-        apiKey: process.env.OPENAI_API_KEY,
+        model: process.env.MISTRAL_MODEL || 'mistral-tiny',
+        endpoint: 'https://api.mistral.ai/v1/chat/completions',
+        available: !!process.env.MISTRAL_API_KEY,
+        apiKey: process.env.MISTRAL_API_KEY,
       },
-      'groq': {
+      groq: {
         name: 'Groq (Fast Completion)',
         type: 'cloud',
         model: process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
@@ -27,25 +32,13 @@ class AIRouterService {
         available: !!process.env.GROQ_API_KEY,
         apiKey: process.env.GROQ_API_KEY,
       },
-      'gemini': {
-        name: 'Google Gemini',
+      huggingface: {
+        name: 'Hugging Face',
         type: 'cloud',
-        model: process.env.AI_MODEL || 'gemini-1.5-flash',
-        available: !!process.env.GEMINI_API_KEY,
-      },
-      'ollama': {
-        name: 'Ollama (Local Privacy)',
-        type: 'local',
-        model: process.env.OLLAMA_MODEL || 'llama3',
-        endpoint: process.env.OLLAMA_URL || 'http://localhost:11434',
-        available: !!process.env.OLLAMA_ENABLED,
-      },
-      'lm-studio': {
-        name: 'LM Studio (Local Privacy)',
-        type: 'local',
-        model: process.env.LM_STUDIO_MODEL || 'local-model',
-        endpoint: process.env.LM_STUDIO_URL || 'http://localhost:1234',
-        available: !!process.env.LM_STUDIO_ENABLED,
+        model: process.env.HUGGINGFACE_MODEL || 'mistralai/Mistral-7B-Instruct-v0.2',
+        endpoint: 'https://api-inference.huggingface.co/models/',
+        available: !!process.env.HUGGINGFACE_API_KEY,
+        apiKey: process.env.HUGGINGFACE_API_KEY,
       },
     };
     this.tokenUsage = { totalInput: 0, totalOutput: 0 };
@@ -57,8 +50,29 @@ class AIRouterService {
     return this.localPrivacyMode;
   }
 
+  /**
+   * Resolve a possibly-legacy or unknown provider name to one this service can
+   * serve. Never reroutes silently: when the request cannot be honored the
+   * substitution is logged and reported via substitutedFrom.
+   */
+  resolveProviderName(requested) {
+    if (!requested || requested === 'auto') {
+      return { provider: this.defaultProvider, substitutedFrom: null };
+    }
+    if (this.providers[requested]) {
+      return { provider: requested, substitutedFrom: null };
+    }
+    const fallback =
+      this.providers[this.defaultProvider] ? this.defaultProvider
+        : Object.keys(this.providers).find((key) => this.providers[key].available) || null;
+    console.warn(
+      `[ai] requested provider "${requested}" is not implemented by this service — using "${fallback || 'default'}" instead`
+    );
+    return { provider: fallback, substitutedFrom: requested };
+  }
+
   async routeChat(messages, codeContext = {}, options = {}) {
-    const provider = options.provider || this.defaultProvider;
+    const { provider } = this.resolveProviderName(options.provider);
     const localMode = options.localPrivacyMode ?? this.localPrivacyMode;
 
     if (localMode) {
@@ -83,16 +97,16 @@ class AIRouterService {
   }
 
   async routeToProvider(messages, codeContext, providerName) {
-    const provider = this.providers[providerName];
+    const { provider } = this.resolveProviderName(providerName);
     if (!provider) {
-      throw new Error(`Unknown provider: ${providerName}`);
+      throw new Error('No AI provider configured. Please add API keys to .env file.');
     }
 
-    if (provider.type === 'local' || this.localPrivacyMode) {
-      return this.routeLocal(messages, codeContext, providerName);
+    if (this.localPrivacyMode) {
+      return this.routeLocal(messages, codeContext, provider);
     }
 
-    return this.routeCloud(messages, codeContext, providerName);
+    return this.routeCloud(messages, codeContext, provider);
   }
 
   checkRateLimit(provider) {
@@ -125,13 +139,16 @@ class AIRouterService {
   }
 
   getAvailableProviders() {
-    return Object.entries(this.providers).map(([key, p]) => ({
-      key,
-      name: p.name,
-      type: p.type,
-      available: p.available,
-      model: p.model,
-    }));
+    // Only configured providers: advertising an option the service cannot
+    // serve is what produced the silent-reroute bug this registry just fixed.
+    return Object.entries(this.providers)
+      .filter(([, p]) => p.available)
+      .map(([key, p]) => ({
+        key,
+        name: p.name,
+        type: p.type,
+        model: p.model,
+      }));
   }
 
   getProvider(name) {
