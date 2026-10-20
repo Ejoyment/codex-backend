@@ -13,7 +13,7 @@ async function getFigmaNode(userId, fileKey, nodeId) {
     if (!integration) return null;
     const resp = await axios.get(
         `https://api.figma.com/v1/files/${fileKey}/nodes?ids=${encodeURIComponent(nodeId)}`,
-        { headers: { Authorization: `Bearer ${integration.accessToken}` } }
+        { headers: { Authorization: `Bearer ${integration.accessToken}` }, timeout: 20000 }
     );
     return resp.data.nodes?.[nodeId] || null;
 }

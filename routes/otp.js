@@ -139,7 +139,10 @@ router.post('/send', otpLimiter, async (req, res) => {
         });
 
         // Send OTP email
-        await sendOTPEmail(email, otpCode, user.fullName);
+        const emailResult = await sendOTPEmail(email, otpCode, user.fullName);
+        if (emailResult && emailResult.success === false) {
+            return res.status(502).json({ success: false, message: 'Unable to send verification email right now. Please try again shortly.' });
+        }
 
         res.json({
             success: true,
@@ -381,7 +384,10 @@ router.post('/resend', otpLimiter, async (req, res) => {
         });
 
         // Send OTP email
-        await sendOTPEmail(email, otpCode, user.fullName);
+        const emailResult = await sendOTPEmail(email, otpCode, user.fullName);
+        if (emailResult && emailResult.success === false) {
+            return res.status(502).json({ success: false, message: 'Unable to send verification email right now. Please try again shortly.' });
+        }
 
         res.json({
             success: true,
