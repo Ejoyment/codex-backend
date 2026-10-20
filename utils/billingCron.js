@@ -78,6 +78,19 @@ class BillingCron {
                     console.error('Stripe cron error (non-fatal):', error.message);
                 }
 
+                // Reap rows stuck in `processing` (crashed mid-charge). Never
+                // retried blindly — reconciled against the provider first.
+                try {
+                    const reaped = await StripeBillingScheduler.reapStuckCharges();
+                    if (reaped.scanned > 0) {
+                        console.log(
+                            `✓ Billing reaper: ${reaped.completed} completed, ${reaped.failed} failed, ${reaped.pending} unresolved`
+                        );
+                    }
+                } catch (error) {
+                    console.error('Billing reaper error (non-fatal):', error.message);
+                }
+
                 // Trial lifecycle checks: find trials that have expired or are in last day
                 try {
                     await this.checkTrialLifecycle();
