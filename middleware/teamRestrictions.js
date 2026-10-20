@@ -321,7 +321,7 @@ async function checkUserSubscription(req, res, next) {
             });
         }
 
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
         const subscription = await Subscription.findOne({ userId: decoded.id });
         
         if (!subscription || canonicalTier(subscription.tier) === 'developer') {

@@ -16,7 +16,7 @@ const requireFeature = (featureName) => {
             }
 
             // Verify token
-            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+            const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
             
             // Get user's subscription
             const subscription = await Subscription.findOne({ userId: decoded.id });
@@ -104,7 +104,7 @@ const requireTier = (minTier) => {
                 });
             }
 
-            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+            const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
             const subscription = await Subscription.findOne({ userId: decoded.id });
             
             if (!subscription) {
