@@ -6,6 +6,35 @@ const jwt = require('jsonwebtoken');
 const LIVENESS_TTL_MS = parseInt(process.env.AUTH_LIVENESS_TTL_MS, 10) || 30000;
 const livenessCache = new Map(); // userId -> { exists, expiresAt }
 
+// Entries used only to be pruned when the same user was looked up again, so
+// every distinct account ever seen stayed in memory for the process lifetime.
+// A periodic sweep plus a hard cap bound the cache (audit finding: unpruned caches).
+const LIVENESS_MAX_ENTRIES = parseInt(process.env.AUTH_LIVENESS_MAX_ENTRIES, 10) || 50000;
+const LIVENESS_SWEEP_MS = parseInt(process.env.AUTH_LIVENESS_SWEEP_MS, 10) || 60000;
+
+function setLivenessEntry(userId, exists, ttlMs = LIVENESS_TTL_MS) {
+    const key = String(userId);
+    if (!livenessCache.has(key) && livenessCache.size >= LIVENESS_MAX_ENTRIES) {
+        // Map preserves insertion order; drop the oldest entry. A brief
+        // overshoot under concurrency is harmless.
+        const oldest = livenessCache.keys().next().value;
+        if (oldest !== undefined) livenessCache.delete(oldest);
+    }
+    livenessCache.set(key, { exists, expiresAt: Date.now() + ttlMs });
+}
+
+function pruneExpiredLivenessEntries(now = Date.now()) {
+    for (const [key, entry] of livenessCache) {
+        if (!entry || !entry.expiresAt || entry.expiresAt <= now) {
+            livenessCache.delete(key);
+        }
+    }
+    return livenessCache.size;
+}
+
+const livenessSweepTimer = setInterval(() => pruneExpiredLivenessEntries(), LIVENESS_SWEEP_MS);
+if (typeof livenessSweepTimer.unref === 'function') livenessSweepTimer.unref();
+
 // Test helper: drop cached liveness decisions.
 function clearLivenessCache() {
     livenessCache.clear();
@@ -41,11 +70,11 @@ async function userExists(userId) {
         // deleted/banned-account check. Cache the rejection for a few seconds
         // so a struggling database is not hammered by every request.
         console.error('Auth liveness check failed (failing closed):', error.message);
-        livenessCache.set(String(userId), { exists: false, expiresAt: Date.now() + 5000 });
+        setLivenessEntry(userId, false, 5000);
         return false;
     }
 
-    livenessCache.set(String(userId), { exists, expiresAt: Date.now() + LIVENESS_TTL_MS });
+    setLivenessEntry(userId, exists);
     return exists;
 }
 
@@ -91,4 +120,10 @@ const authenticateToken = async (req, res, next) => {
     next();
 };
 
-module.exports = { authenticateToken, clearLivenessCache, userExists };
+module.exports = {
+    authenticateToken,
+    clearLivenessCache,
+    userExists,
+    pruneExpiredLivenessEntries,
+    livenessCacheSize: () => livenessCache.size
+};
