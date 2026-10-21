@@ -197,6 +197,17 @@ router.post('/', authenticateToken, async (req, res) => {
                 company: companyId,
                 type: 'text',
             });
+            try {
+                const conversationIndexer = require('../utils/conversationIndexer');
+                const cacheInvalidator = require('../utils/cacheInvalidator');
+                Message.findById(message._id).populate('sender', 'name fullName').then(doc => {
+                    if (doc) {
+                        conversationIndexer.indexMessage(doc).catch(() => {});
+                        if (companyId) cacheInvalidator.invalidateForCompany(companyId);
+                        if (req.userId) cacheInvalidator.invalidateForUser(req.userId);
+                    }
+                }).catch(() => {});
+            } catch (e) { /* ignore */ }
             await Channel.findByIdAndUpdate(channelId, {
                 lastMessage: message._id,
                 lastMessageAt: new Date(),

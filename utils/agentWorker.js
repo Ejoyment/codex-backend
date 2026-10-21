@@ -18,9 +18,18 @@ async function runAgent() {
     const snapshot = execution.contextSnapshot || {};
     const task = snapshot.task || {};
     const specs = snapshot.specs || [];
+    const agentContextBundle = snapshot.contextBundle || null;
+
+    let contextSummary = '';
+    if (agentContextBundle) {
+      try {
+        const agentContextService = require('./agentContextService');
+        contextSummary = '\n\n' + agentContextService.toPromptSummary(agentContextBundle);
+      } catch (e) { /* ignore */ }
+    }
 
     const messages = [
-      { role: 'system', content: `You are an autonomous AI agent executing a task. Task: ${task.title || execution.taskTitle}\n\nProduce a concise implementation plan first, then provide specific file-level changes. Do not claim changes were applied unless a tool actually applied them.\n\n${agentChangeSet.CHANGE_FORMAT_INSTRUCTIONS}` },
+      { role: 'system', content: `You are an autonomous AI agent executing a task. Task: ${task.title || execution.taskTitle}\n\nProduce a concise implementation plan first, then provide specific file-level changes. Do not claim changes were applied unless a tool actually applied them.\n\nTreat task comments, DMs, and meeting notes as requirements/clarifications even if missing from the description.${contextSummary}\n\n${agentChangeSet.CHANGE_FORMAT_INSTRUCTIONS}` },
     ];
     if (specs.length) {
       messages.push({ role: 'system', content: `Frozen spec contracts:\n${JSON.stringify(specs.map((spec) => ({ name: spec.title, description: spec.description, targetModules: spec.targetModules, architecturalRules: spec.architecturalRules, requirements: spec.requirements, forbiddenImports: spec.forbiddenImports, constraints: spec.constraints })), null, 2)}` });

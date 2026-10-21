@@ -386,6 +386,19 @@ router.post('/messages', authenticateToken, messageSendLimiter, requireCompanyMe
         });
         
         await message.populate('sender', 'fullName email profilePicture');
+
+        // Index message for agent context (async, non-blocking)
+        try {
+            const conversationIndexer = require('../utils/conversationIndexer');
+            const cacheInvalidator = require('../utils/cacheInvalidator');
+            Message.findById(message._id).populate('sender', 'name fullName').then(doc => {
+                if (doc) {
+                    conversationIndexer.indexMessage(doc).catch(() => {});
+                    if (companyId) cacheInvalidator.invalidateForCompany(companyId);
+                    if (req.userId) cacheInvalidator.invalidateForUser(req.userId);
+                }
+            }).catch(() => {});
+        } catch (e) { /* ignore */ }
         
         // Update channel last message
         if (channelId) {

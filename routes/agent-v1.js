@@ -111,12 +111,32 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       return res.status(409).json({ success: false, message: `Could not create isolated branch: ${branchResult.error}` });
     }
 
+    // Build comprehensive context bundle for delegated agent
+    let agentContextBundle = null;
+    try {
+      const agentContextService = require('../utils/agentContextService');
+      agentContextBundle = await agentContextService.buildBundle({
+        userId: req.userId,
+        companyId: workspaceId,
+        workspaceId,
+        taskId: task?._id?.toString(),
+        projectId: task?.projectId?.toString(),
+        message: summary || taskTitleValue,
+        includeConversations: true,
+        includeMeetings: true,
+        includeFiles: true
+      });
+    } catch (ctxErr) {
+      console.error('Failed to build agent context bundle for delegation:', ctxErr.message);
+    }
+
     const contextSnapshot = {
       task: task ? { id: task._id.toString(), title: task.title, description: task.description, priority: task.priority, figmaNodeId: task.figmaNodeId } : { title: taskTitleValue, description: summary },
       specs: specs.map((spec) => ({ ...spec, _id: spec._id.toString() })),
       codebaseSnapshot: { branch: baseBranch, files: codeFiles.map((file) => ({ path: file.path, name: file.name, language: file.language, content: file.content })) },
       architecturalRules: specs.flatMap((spec) => spec.architecturalRules || []),
       figmaContext: null,
+      contextBundle: agentContextBundle,
       capturedAt: new Date(),
     };
 
@@ -163,6 +183,12 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
         'agentExecution.status': 'running',
         updatedAt: new Date(),
       });
+      try {
+        const cacheInvalidator = require('../utils/cacheInvalidator');
+        cacheInvalidator.invalidateForTask(taskId);
+        if (workspaceId) cacheInvalidator.invalidateForCompany(workspaceId);
+        if (task.userId) cacheInvalidator.invalidateForUser(task.userId);
+      } catch (e) { /* ignore */ }
     }
 
     realtimeBus.emitAgentProgress(req.userId, {
@@ -190,13 +216,25 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       execution.completedAt = new Date();
       execution.logs.push({ timestamp: new Date(), message: 'Agent execution completed, awaiting approval' });
       await execution.save();
-      if (task) await LocalTask.findByIdAndUpdate(task._id, { 'agentExecution.status': 'awaiting_approval', updatedAt: new Date() });
+      if (task) {
+        await LocalTask.findByIdAndUpdate(task._id, { 'agentExecution.status': 'awaiting_approval', updatedAt: new Date() });
+        try {
+          const cacheInvalidator = require('../utils/cacheInvalidator');
+          cacheInvalidator.invalidateForTask(task._id);
+        } catch (e) { /* ignore */ }
+      }
     }).catch(async (err) => {
       execution.status = 'failed';
       execution.completedAt = new Date();
       execution.logs.push({ timestamp: new Date(), message: `Agent worker error: ${err.message}` });
       await execution.save();
-      if (task) await LocalTask.findByIdAndUpdate(task._id, { 'agentExecution.status': 'failed', updatedAt: new Date() });
+      if (task) {
+        await LocalTask.findByIdAndUpdate(task._id, { 'agentExecution.status': 'failed', updatedAt: new Date() });
+        try {
+          const cacheInvalidator = require('../utils/cacheInvalidator');
+          cacheInvalidator.invalidateForTask(task._id);
+        } catch (e) { /* ignore */ }
+      }
     });
 
     res.status(202).json({
@@ -267,6 +305,25 @@ router.post('/approve', authenticateToken, async (req, res) => {
     if (!(execution.proposedChanges || []).length && !(execution.filesChanged || []).length) {
       return res.status(409).json({ success: false, message: 'This run produced no file changes to merge.' });
     }
+    // Run auto-validation on changes before merge
+    let autoValidation = null;
+    try {
+      const autoValidator = require('../utils/autoValidator');
+      autoValidation = await autoValidator.validate({ workspaceId, timeoutMs: 60000 });
+      if (autoValidation && !autoValidation.success && autoValidation.errors.length > 0) {
+        execution.validationResult = { ...(execution.validationResult || {}), autoValidation, ranAt: new Date() };
+        await execution.save();
+        return res.status(409).json({ 
+          success: false, 
+          message: `Auto-validation found ${autoValidation.errors.length} error(s). Fix them or review carefully.`, 
+          execution, 
+          autoValidation 
+        });
+      }
+    } catch (valErr) {
+      console.error('Auto-validation in approve:', valErr.message);
+    }
+
     const applied = await agentChangeSet.applyExecutionChanges(execution);
     if (applied.applied) {
       execution.logs.push({ timestamp: new Date(), message: `Applied ${applied.applied} change(s) to workspace files (${applied.created || 0} created, ${applied.updated || 0} updated, ${applied.deleted || 0} deleted)` });
