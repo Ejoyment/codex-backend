@@ -16,7 +16,7 @@ const SpecModel = require('../models/SpecModel');
 const contextPermissions = require('./permissions/contextPermissions');
 const contextLinker = require('./contextLinker');
 const { CONTEXT_SOURCES, CONTEXT_LIMITS, TOKEN_CAPS, TIME_WINDOWS } = require('./agentContextTypes');
-const vectorMemory = require('./vectorMemory');
+const vectorMemory = require('./vectorMemoryEnhanced');
 
 class AgentContextService {
     constructor() {
@@ -421,7 +421,9 @@ class AgentContextService {
             const query = message || (task ? `${task.title} ${task.description || ''}` : '');
             if (!query) return;
 
-            const memories = await vectorMemory.retrieve(query, CONTEXT_LIMITS.MAX_VECTOR_MATCHES, userId, companyId);
+            const memories = await vectorMemory.retrieveEnhanced 
+                ? await vectorMemory.retrieveEnhanced(query, CONTEXT_LIMITS.MAX_VECTOR_MATCHES, userId, companyId, { preferMessages: true, preferFiles: true })
+                : await vectorMemory.retrieve(query, CONTEXT_LIMITS.MAX_VECTOR_MATCHES, userId, companyId);
             if (memories && memories.length > 0) {
                 bundle.knowledge.vectorMatches = memories.map(m => ({
                     content: (m.content || '').substring(0, 200),

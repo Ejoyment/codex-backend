@@ -618,6 +618,10 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
             role: 'user',
             content: message
         });
+        try {
+            const cacheInvalidator = require('../utils/cacheInvalidator');
+            cacheInvalidator.invalidateForUser(req.userId);
+        } catch (e) { /* ignore */ }
 
         // If agent loop is requested, use orchestrator
         if (useAgentLoop) {
