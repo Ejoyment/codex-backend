@@ -108,5 +108,7 @@ localTaskSchema.pre('save', function(next) {
 localTaskSchema.index({ userId: 1, status: 1 });
 localTaskSchema.index({ userId: 1, completedAt: 1 });
 localTaskSchema.index({ projectId: 1, status: 1 });
+localTaskSchema.index({ userId: 1, companyId: 1, assignee: 1, status: 1 });
+localTaskSchema.index({ assignee: 1, updatedAt: -1 });
 
 module.exports = mongoose.model('LocalTask', localTaskSchema);

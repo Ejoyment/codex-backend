@@ -82,6 +82,76 @@ class AgentOrchestrator {
      */
     initializeTools() {
         return {
+            get_task_context: {
+                name: 'get_task_context',
+                description: 'Get detailed context for a specific task including comments and clarifications',
+                parameters: {
+                    taskId: 'string - Task ID'
+                },
+                execute: async (params, context) => {
+                    const TeamTask = require('../models/TeamTask');
+                    const LocalTask = require('../models/LocalTask');
+                    let task = await TeamTask.findById(params.taskId).populate('comments.user', 'name').populate('createdBy assignedTo', 'name').lean();
+                    if (!task) task = await LocalTask.findById(params.taskId).lean();
+                    if (!task) return { success: false, error: 'Task not found' };
+                    return { success: true, task };
+                }
+            },
+            search_conversations: {
+                name: 'search_conversations',
+                description: 'Search relevant conversations/messages for context',
+                parameters: {
+                    query: 'string - Search query'
+                },
+                execute: async (params, context) => {
+                    const vectorMemory = require('./vectorMemory');
+                    const memories = await vectorMemory.retrieve(params.query, 10, context.userId, context.workspaceId);
+                    return { success: true, results: memories || [] };
+                }
+            },
+            get_meeting_context: {
+                name: 'get_meeting_context',
+                description: 'Get details of a relevant meeting',
+                parameters: {
+                    meetingId: 'string - Meeting ID'
+                },
+                execute: async (params, context) => {
+                    const MeetingRoom = require('../models/MeetingRoom');
+                    const meeting = await MeetingRoom.findById(params.meetingId).lean();
+                    if (!meeting) return { success: false, error: 'Meeting not found' };
+                    return { success: true, meeting };
+                }
+            },
+            get_workspace_snapshot: {
+                name: 'get_workspace_snapshot',
+                description: 'Get workspace members and recent activity',
+                parameters: {},
+                execute: async (params, context) => {
+                    const agentContextService = require('./agentContextService');
+                    const bundle = await agentContextService.buildBundle({
+                        userId: context.userId,
+                        companyId: context.workspaceId,
+                        workspaceId: context.workspaceId,
+                        includeConversations: false,
+                        includeMeetings: false
+                    });
+                    return { success: true, snapshot: { members: bundle.people.members, assignedTasks: bundle.tasks.assignedToMe } };
+                }
+            },
+            get_thread_context: {
+                name: 'get_thread_context',
+                description: 'Get message thread context',
+                parameters: {
+                    messageId: 'string - Message ID'
+                },
+                execute: async (params, context) => {
+                    const Message = require('../models/Message');
+                    const msg = await Message.findById(params.messageId).populate('sender', 'name').lean();
+                    if (!msg) return { success: false, error: 'Message not found' };
+                    const thread = await Message.find({ parentMessage: params.messageId }).populate('sender', 'name').sort({ createdAt: 1 }).lean();
+                    return { success: true, message: msg, thread };
+                }
+            },
             read_file: {
                 name: 'read_file',
                 description: 'Read the contents of a file from the workspace',
@@ -448,7 +518,9 @@ class AgentOrchestrator {
             context,
             sessionId,
             iterations: [],
-            maxIterations: this.maxIterations
+            maxIterations: this.maxIterations,
+            mutations: [],
+            fixAttempts: 0
         };
 
         let iteration = 0;
@@ -512,6 +584,41 @@ class AgentOrchestrator {
             }
 
             const actionResult = await this.act(reasoning.action, context);
+
+            // Track mutations for auto-validation
+            if (actionResult.success && reasoning.action) {
+                const mutatingTools = ['create_file', 'update_file', 'create_multiple_files', 'delete_file'];
+                if (mutatingTools.includes(reasoning.action.tool)) {
+                    session.mutations.push({
+                        tool: reasoning.action.tool,
+                        params: reasoning.action.parameters,
+                        iteration,
+                        timestamp: new Date()
+                    });
+                }
+            }
+
+            // Auto-validation after mutations (self-healing)
+            if (session.mutations.length > 0 && context && context.workspaceId) {
+                try {
+                    const autoValidator = require('./autoValidator');
+                    const validationResult = await autoValidator.validate({
+                        workspaceId: context.workspaceId,
+                        mutatedFiles: session.mutations.slice(-10).map(m => m.params)
+                    });
+                    if (validationResult && !validationResult.success && validationResult.errors.length > 0) {
+                        if (!observation.state) observation.state = {};
+                        observation.state.validationErrors = validationResult.errors;
+                        session.fixAttempts++;
+                    } else if (validationResult && validationResult.success) {
+                        if (observation.state) {
+                            delete observation.state.validationErrors;
+                        }
+                    }
+                } catch (valErr) {
+                    console.error('Auto-validation error:', valErr.message);
+                }
+            }
 
             // 4. FEEDBACK - Integrate result for next iteration
             lastObservation = await this.feedback(observation, actionResult, context, goal);
@@ -905,10 +1012,32 @@ Use these past experiences to inform your decision, but adapt to the current con
 `;
         }
 
+        // Add comprehensive context bundle if available
+        let contextBundleSection = '';
+        if (context && context.agentContextBundle) {
+            try {
+                const agentContextService = require('./agentContextService');
+                contextBundleSection = '\n' + agentContextService.toPromptSummary(context.agentContextBundle);
+            } catch (e) {
+                console.error('Error adding context bundle to prompt:', e.message);
+            }
+        }
+
+        // Add validation errors if present (self-healing)
+        let validationErrorsSection = '';
+        if (observation.state.validationErrors && observation.state.validationErrors.length > 0) {
+            validationErrorsSection = `\n\n**CRITICAL: FIX VALIDATION ERRORS**\nYou MUST fix these errors before adding new features. Prioritize minimal fixes.\n\n`;
+            for (const err of observation.state.validationErrors.slice(0, 15)) {
+                validationErrorsSection += `- ${err.file}:${err.line} [${err.source}] ${err.severity}: ${err.message}\n`;
+            }
+            validationErrorsSection += '\n';
+        }
+
         return `You are an autonomous AI agent working in a code editor. Your goal is:
 
 **GOAL**: ${goal}
-
+${contextBundleSection}
+${validationErrorsSection}
 **CURRENT STATE** (Iteration ${observation.iteration}):
 - Workspace: ${observation.state.workspace.name}
 - Files: ${observation.state.files.length} files
@@ -922,6 +1051,10 @@ ${Object.entries(this.tools).map(([name, tool]) => `- ${name}: ${tool.descriptio
 
 **YOUR TASK**:
 Analyze the current state and decide the next action to achieve the goal.
+${validationErrorsSection ? '- **PRIORITY**: Fix validation errors first. Do not proceed with new features until errors are resolved.\n' : ''}
+- Treat task comments, DMs, meeting notes, and clarifications as requirements even if not in original description.
+- Use tools to read files before editing.
+- Stay scoped to the workspace.
 
 **RESPOND IN THIS EXACT JSON FORMAT**:
 {

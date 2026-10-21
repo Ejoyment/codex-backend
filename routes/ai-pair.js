@@ -596,7 +596,7 @@ router.get('/session/:sessionId', authenticateToken, async (req, res) => {
 // Chat with AI (Enhanced with ReAct Agent Loop)
 router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req, res) => {
     try {
-        const { sessionId, message, codeContext, enableActions = false, useAgentLoop = false, companyId } = req.body;
+        const { sessionId, message, codeContext, enableActions = false, useAgentLoop = false, companyId, taskId, projectId } = req.body;
         
         // Verify session belongs to user
         const session = await AIPairSession.findOne({
@@ -632,6 +632,7 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
             }
 
             const agentOrchestrator = require('../utils/agentOrchestrator');
+            const agentContextService = require('../utils/agentContextService');
             const executionTaskTitle = message || 'Workspace task';
             const execution = await AgentExecution.create({
                 userId: req.userId,
@@ -646,12 +647,32 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
                 }
             });
 
+            // Build comprehensive context bundle
+            let agentContextBundle = null;
+            try {
+                agentContextBundle = await agentContextService.buildBundle({
+                    userId: req.userId,
+                    companyId: companyId || codeContext?.workspace?.id || session.companyId,
+                    workspaceId: codeContext?.workspace?.id,
+                    taskId: taskId,
+                    projectId: projectId,
+                    message: message,
+                    currentFile: codeContext?.currentFile,
+                    includeConversations: true,
+                    includeMeetings: true,
+                    includeFiles: true
+                });
+            } catch (ctxErr) {
+                console.error('Failed to build agent context bundle:', ctxErr.message);
+            }
+
             const context = {
                 userId: req.userId,
                 workspaceId: codeContext.workspace?.id,
                 workspaceName: codeContext.workspace?.name,
                 files: codeContext.files || [],
-                currentFile: codeContext.currentFile
+                currentFile: codeContext.currentFile,
+                agentContextBundle
             };
 
             let result;
@@ -682,7 +703,12 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
                     finalStatus: executionStatus,
                     goal: message,
                     iterationCount: Array.isArray(result?.iterations) ? result.iterations.length : 0,
-                    summary: result?.summary || {}
+                    summary: result?.summary || {},
+                    contextMeta: agentContextBundle?.meta ? {
+                        sources: agentContextBundle.meta.sources,
+                        tokenEstimate: agentContextBundle.meta.tokenEstimate,
+                        hasActiveTask: !!agentContextBundle.tasks?.activeTask
+                    } : null
                 },
                 updatedAt: new Date()
             });
