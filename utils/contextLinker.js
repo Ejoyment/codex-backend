@@ -4,6 +4,7 @@
  */
 
 const { RELEVANCE_WEIGHTS, RECENCY_DECAY, TIME_WINDOWS } = require('./agentContextTypes');
+const meetingSummarizer = require('./meetingSummarizer');
 
 class ContextLinker {
     /**
@@ -116,6 +117,14 @@ class ContextLinker {
         score += this.getRecencyScore(meeting.scheduledAt) * 0.3;
 
         return { score: Math.min(score, 1.0), reasons };
+    }
+
+    async summarizeMeeting(meeting) {
+        try {
+            return await meetingSummarizer.summarizeMeeting(meeting);
+        } catch (error) {
+            return this.extractHeuristically ? this.extractHeuristically((meeting.notes || '') + ' ' + (meeting.transcript || ''), meeting) : { summary: meeting.notes || '' };
+        }
     }
 
     /**
