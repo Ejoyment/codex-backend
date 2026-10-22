@@ -126,11 +126,36 @@ router.post('/verify', authenticateToken, async (req, res) => {
 
         // Verify transaction
         const response = await paystack.transaction.verify({ reference });
+        const data = response.data || {};
 
-        if (!response.status || response.data.status !== 'success') {
+        if (!response.status || data.status !== 'success') {
             return res.status(400).json({
                 success: false,
                 message: 'Payment verification failed'
+            });
+        }
+
+        // The reference must belong to the authenticated account and be the
+        // $0.50 card-verification charge. Without this, any successful
+        // reference could be replayed to activate a trial on another account.
+        if (String((data.metadata && data.metadata.userId) || '') !== String(userId)) {
+            return res.status(403).json({
+                success: false,
+                message: 'This transaction does not belong to this account'
+            });
+        }
+        if (Number(data.amount) !== 50 || String(data.currency || '').toUpperCase() !== 'USD') {
+            return res.status(400).json({
+                success: false,
+                message: 'Payment verification failed'
+            });
+        }
+
+        const authorizationCode = data.authorization && data.authorization.authorization_code;
+        if (!authorizationCode) {
+            return res.status(400).json({
+                success: false,
+                message: 'Payment did not return a reusable authorization code'
             });
         }
 
@@ -139,13 +164,30 @@ router.post('/verify', authenticateToken, async (req, res) => {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
 
+        // Idempotent replay: this authorization code already has a trial.
+        let subscription = await Subscription.findOne({ userId });
+        if (subscription && subscription.paymentId === authorizationCode &&
+            ['trial', 'active'].includes(subscription.status)) {
+            return res.json({
+                success: true,
+                message: 'Payment already verified',
+                subscription: {
+                    status: subscription.status,
+                    tier: subscription.tier,
+                    trialEndsAt: subscription.trialEndsAt
+                }
+            });
+        }
+
         // Get or create customer
         let customerId = user.paystackCustomerId;
         if (!customerId) {
+            const name = String(user.fullName || user.email || 'Customer').trim();
+            const parts = name.split(' ').filter(Boolean);
             const customerResponse = await paystack.customer.create({
                 email: user.email,
-                first_name: user.fullName.split(' ')[0],
-                last_name: user.fullName.split(' ').slice(1).join(' ') || user.fullName.split(' ')[0]
+                first_name: parts[0] || 'Customer',
+                last_name: parts.slice(1).join(' ') || parts[0] || 'Customer'
             });
 
             if (customerResponse.status) {
@@ -155,11 +197,7 @@ router.post('/verify', authenticateToken, async (req, res) => {
             }
         }
 
-        // Get authorization code from transaction
-        const authorizationCode = response.data.authorization.authorization_code;
-
         // Create or update subscription
-        let subscription = await Subscription.findOne({ userId });
         const cardAddedAt = new Date();
 
         if (!subscription) {

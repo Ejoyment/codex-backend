@@ -18,12 +18,19 @@ const PLAN_PRICES = {
 };
 const PAID_TIERS = new Set(['pro', 'pro_plus', 'team_standard', 'team_premium']);
 
-function resolveAmount(body) {
-    const requested = Number(body && body.amount);
-    if (Number.isFinite(requested) && requested > 0) return requested;
-    const planPrice = PLAN_PRICES[body && body.plan];
-    if (Number.isFinite(planPrice) && planPrice > 0) return planPrice;
-    return 50;
+// Billing plans and prices are server-side only. The client may choose WHICH
+// plan to buy, but never how much it costs.
+function resolveCheckoutPlan(body = {}) {
+    const tier = body.plan || 'pro';
+    if (!PAID_TIERS.has(tier)) return null;
+    return { tier, amount: PLAN_PRICES[tier], currency: 'USD' };
+}
+
+function transactionBelongsToUser(data, userId) {
+    const metaUserId = data.meta && data.meta.userId;
+    if (metaUserId && String(metaUserId) === String(userId)) return true;
+    // Legacy checkouts put the id at the end of `txref_<timestamp>_<userId>`.
+    return Boolean(data.tx_ref) && String(data.tx_ref).endsWith(`_${userId}`);
 }
 
 /**
@@ -34,7 +41,7 @@ function resolveAmount(body) {
 async function activateTrialSubscription({ userId, user, cardToken, customerId, amount, currency, plan }) {
     const cardAddedAt = new Date();
     const tier = PAID_TIERS.has(plan) ? plan : 'pro';
-    const priceAmount = Number.isFinite(Number(amount)) && Number(amount) > 0 ? Number(amount) : 50;
+    const priceAmount = PLAN_PRICES[tier];
 
     let subscription = await Subscription.findOne({ userId });
 
@@ -115,14 +122,19 @@ router.post('/initialize', authenticateToken, async (req, res) => {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
 
-        const amount = resolveAmount(req.body);
-        const currency = (req.body && req.body.currency) || 'USD';
-        const plan = req.body && req.body.plan;
+        const checkout = resolveCheckoutPlan(req.body || {});
+        if (!checkout) {
+            return res.status(400).json({
+                success: false,
+                message: 'Unknown or unsupported plan'
+            });
+        }
+        const { tier: plan, amount: price, currency } = checkout;
 
         // Create payment payload
         const payload = {
             tx_ref: `txref_${Date.now()}_${userId}`,
-            amount,
+            amount: price,
             currency,
             redirect_url: `${process.env.FRONTEND_URL || 'http://localhost:5500'}/payment-success`,
             customer: {
@@ -218,44 +230,84 @@ router.post('/verify', authenticateToken, async (req, res) => {
 
         // Verify transaction with Flutterwave
         const response = await flw.Transaction.verify({ id: transaction_id });
+        const data = response.data || {};
+        const plan = data.meta && data.meta.plan;
 
-        if (response.data.status === 'successful' && response.data.amount >= 50) {
-            const user = await User.findById(userId);
-            if (!user) {
-                return res.status(404).json({ success: false, message: 'User not found' });
-            }
-
-            // Get card token for future charges
-            const cardToken = response.data.card.token;
-            const customerId = response.data.customer.id;
-
-            const subscription = await activateTrialSubscription({
-                userId,
-                user,
-                cardToken,
-                customerId,
-                amount: response.data.amount,
-                currency: response.data.currency,
-                plan: (req.body && req.body.plan) || 'pro',
-            });
-
-            res.json({
-                success: true,
-                message: 'Payment verified successfully',
-                subscription: {
-                    status: subscription.status,
-                    tier: subscription.tier,
-                    trialEndsAt: subscription.trialEndsAt,
-                    firstChargeAt: new Date(Date.now() + (10 * 1000))
-                }
-            });
-
-        } else {
-            res.status(400).json({
+        if (!PAID_TIERS.has(plan)) {
+            return res.status(400).json({
                 success: false,
                 message: 'Payment verification failed'
             });
         }
+
+        const expectedAmount = PLAN_PRICES[plan];
+        const currency = String(data.currency || '').toUpperCase();
+        const amountMatches = Number(data.amount) === expectedAmount;
+
+        if (data.status !== 'successful' || !amountMatches || currency !== 'USD') {
+            return res.status(400).json({
+                success: false,
+                message: 'Payment verification failed'
+            });
+        }
+
+        if (!transactionBelongsToUser(data, userId)) {
+            return res.status(403).json({
+                success: false,
+                message: 'This transaction does not belong to this account'
+            });
+        }
+
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        // Card token is required for the trial: it is the only way to charge
+        // the saved card after the trial ends.
+        const cardToken = data.card && data.card.token;
+        if (!cardToken) {
+            return res.status(400).json({
+                success: false,
+                message: 'Payment did not return a reusable card token'
+            });
+        }
+        const customerId = data.customer && data.customer.id;
+
+        // Idempotent replay: the same card token already has an active trial.
+        const existing = await Subscription.findOne({ userId });
+        if (existing && existing.paymentId === cardToken &&
+            ['trial', 'active'].includes(existing.status)) {
+            return res.json({
+                success: true,
+                message: 'Payment already verified',
+                subscription: {
+                    status: existing.status,
+                    tier: existing.tier,
+                    trialEndsAt: existing.trialEndsAt
+                }
+            });
+        }
+
+        const subscription = await activateTrialSubscription({
+            userId,
+            user,
+            cardToken,
+            customerId,
+            amount: expectedAmount,
+            currency,
+            plan,
+        });
+
+        res.json({
+            success: true,
+            message: 'Payment verified successfully',
+            subscription: {
+                status: subscription.status,
+                tier: subscription.tier,
+                trialEndsAt: subscription.trialEndsAt
+            }
+        });
 
     } catch (error) {
         console.error('Verify payment error:', error);
@@ -306,6 +358,18 @@ router.post('/webhook', requireVerifiedWebhook('flutterwave', async (req, res) =
     const user = await User.findById(userId);
     if (!user) {
         return res.json({ success: true, ignored: true, reason: 'user not found' });
+    }
+
+    // Only a checkout that we priced can start a trial. Tokenized recurring
+    // charges also emit charge.completed, but carry no plan metadata; they must
+    // not reset the subscription back to `trial`.
+    const plan = data.meta && data.meta.plan;
+    if (!PAID_TIERS.has(plan)) {
+        return res.json({ success: true, ignored: true, reason: 'no checkout plan' });
+    }
+    if (Number(data.amount) !== PLAN_PRICES[plan] ||
+        String(data.currency || '').toUpperCase() !== 'USD') {
+        return res.json({ success: true, ignored: true, reason: 'amount or currency mismatch' });
     }
 
     const cardToken = data.card && data.card.token;

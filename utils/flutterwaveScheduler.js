@@ -6,6 +6,15 @@ const flw = require('../config/flutterwave');
  * Schedule first charge (10 seconds after card is added)
  */
 async function scheduleFirstCharge(userId, subscriptionId, cardAddedAt) {
+    // Idempotent: repeated /verify or webhook replays must not stack duplicate
+    // charges on the same trial.
+    const existing = await BillingSchedule.findOne({
+        subscriptionId,
+        chargeType: 'first_charge',
+        status: 'pending'
+    });
+    if (existing) return existing;
+
     const firstChargeTime = new Date(cardAddedAt.getTime() + (10 * 1000)); // 10 seconds
 
     const billingSchedule = new BillingSchedule({
