@@ -121,6 +121,13 @@ router.post('/session/create', authenticateToken, async (req, res) => {
  */
 router.post('/launch', authenticateToken, async (req, res) => {
     try {
+        if (!debugAdapter.hostExecutionAllowed()) {
+            return res.status(403).json({
+                success: false,
+                error: 'Host debugging is disabled in production; use an isolated runner.'
+            });
+        }
+
         const { sessionId, fileId, language, args, env } = req.body;
         
         if (!sessionId || !fileId) {
@@ -145,7 +152,8 @@ router.post('/launch', authenticateToken, async (req, res) => {
             fs.mkdirSync(tempDir, { recursive: true });
         }
         
-        const tempFile = path.join(tempDir, `debug_${Date.now()}_${file.name}`);
+        const safeName = path.basename(String(file.name || 'debug.js'));
+        const tempFile = path.join(tempDir, `debug_${Date.now()}_${safeName}`);
         fs.writeFileSync(tempFile, file.content);
         
         const result = await debugAdapter.launch(sessionId, {
