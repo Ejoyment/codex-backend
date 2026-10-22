@@ -33,7 +33,6 @@ jest.mock('../config/stripe', () => ({
     verifyWebhookSignature: jest.fn(),
     stripe: {},
 }));
-jest.mock('../utils/paymentRouter', () => ({ createCheckout: jest.fn() }));
 jest.mock('../middleware/trial', () => ({
     getOrCreateSubscription: jest.fn(async () => store.doc),
 }));
@@ -80,6 +79,15 @@ beforeEach(() => {
         .spyOn(Subscription, 'findOne')
         .mockImplementation(async () => store.doc);
     getOrCreateSubscription.mockImplementation(async () => store.doc);
+});
+
+describe('POST /tier-checkout', () => {
+    test('returns 410 for the retired multi-rail entitlement checkout', async () => {
+        const res = await post('/tier-checkout', { tier: 'pro' });
+        expect(res.status).toBe(410);
+        expect(res.body.success).toBe(false);
+        expect(res.body.message).toMatch(/retired/i);
+    });
 });
 
 describe('GET /current', () => {
