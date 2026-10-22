@@ -7,6 +7,41 @@
 const { spawn } = require('child_process');
 const EventEmitter = require('events');
 
+// Debugging spawns user code as the service user. It is a development-only
+// feature: production must use an isolated runner, so host execution is off
+// unless the same opt-in used by the Run button is set explicitly.
+function hostExecutionAllowed() {
+    if (process.env.IDE_ALLOW_HOST_EXEC === 'true') return true;
+    return process.env.NODE_ENV !== 'production';
+}
+
+// Do not pass the server's environment to user code. Anything not needed to
+// find an interpreter is dropped (MONGODB_URI, JWT_SECRET, provider keys…).
+const CHILD_ENV_ALLOWLIST = [
+    'PATH',
+    'HOME',
+    'LANG',
+    'LC_ALL',
+    'LC_CTYPE',
+    'TMPDIR',
+    'TEMP',
+    'TMP',
+    'TZ',
+    'NODE_ENV',
+    'PYTHONPATH',
+    'PYTHONHOME',
+    'SYSTEMROOT',
+];
+
+function childEnv(extra) {
+    const env = {};
+    for (const key of CHILD_ENV_ALLOWLIST) {
+        if (process.env[key] !== undefined) env[key] = process.env[key];
+    }
+    if (extra && typeof extra === 'object') Object.assign(env, extra);
+    return env;
+}
+
 class DebugAdapter extends EventEmitter {
     constructor() {
         super();
@@ -45,6 +80,10 @@ class DebugAdapter extends EventEmitter {
      * Launch debugger for a program
      */
     async launch(sessionId, launchConfig) {
+        if (!hostExecutionAllowed()) {
+            throw new Error('Host debugging is disabled in production; use an isolated runner.');
+        }
+
         const session = this.sessions.get(sessionId);
         if (!session) {
             throw new Error('Debug session not found');
@@ -93,11 +132,11 @@ class DebugAdapter extends EventEmitter {
      * Launch Node.js debugger with --inspect-brk
      */
     async launchNodeDebugger(program, args, cwd, env) {
-        const debugArgs = ['--inspect-brk=0', program, ...args];
-        
+        const debugArgs = ['--inspect-brk=127.0.0.1:0', program, ...args];
+
         const process = spawn('node', debugArgs, {
             cwd: cwd || process.cwd(),
-            env: { ...process.env, ...env },
+            env: childEnv(env),
             stdio: ['pipe', 'pipe', 'pipe']
         });
 
@@ -111,11 +150,11 @@ class DebugAdapter extends EventEmitter {
      * Launch Python debugger with debugpy
      */
     async launchPythonDebugger(program, args, cwd, env) {
-        const debugArgs = ['-m', 'debugpy', '--listen', '0.0.0.0:5678', '--wait-for-client', program, ...args];
-        
+        const debugArgs = ['-m', 'debugpy', '--listen', '127.0.0.1:5678', '--wait-for-client', program, ...args];
+
         const process = spawn('python', debugArgs, {
             cwd: cwd || process.cwd(),
-            env: { ...process.env, ...env },
+            env: childEnv(env),
             stdio: ['pipe', 'pipe', 'pipe']
         });
 
@@ -474,4 +513,8 @@ class DebugAdapter extends EventEmitter {
     }
 }
 
-module.exports = new DebugAdapter();
+const debugAdapter = new DebugAdapter();
+debugAdapter.hostExecutionAllowed = hostExecutionAllowed;
+debugAdapter.childEnv = childEnv;
+
+module.exports = debugAdapter;

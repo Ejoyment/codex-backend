@@ -41,6 +41,7 @@ check-*.html
 check-*.bat
 debug-*.js
 !routes/debug-handoff.js
+!tests/debug-*.test.js
 debug-*.bat
 diagnose-*.bat
 
