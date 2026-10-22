@@ -143,14 +143,14 @@ describe('routes', () => {
     expect(res.body.reference).toMatch(/^txref_/);
   });
 
-  test('initialize honours the requested amount/plan and returns data.link', async () => {
+  test('initialize ignores the client amount and uses the server plan price', async () => {
     process.env.FLUTTERWAVE_SECRET_KEY = 'sk-test';
     const { app, post, User } = loadStack();
     post.mockResolvedValue({ data: { status: 'success', data: { link: 'https://pay.link' } } });
     jest.spyOn(User, 'findById').mockResolvedValue({ _id: 'u', email: 'a@b.c', fullName: 'A' });
     const res = await request(app)
       .post('/api/flutterwave-billing/initialize')
-      .send({ amount: 60, plan: 'pro_plus', currency: 'USD' });
+      .send({ amount: 1, plan: 'pro_plus', currency: 'NGN' });
     expect(res.status).toBe(200);
     expect(res.body.data.link).toBe('https://pay.link');
     expect(post).toHaveBeenCalledWith(
@@ -178,7 +178,15 @@ describe('routes', () => {
     get.mockResolvedValue({
       data: {
         status: 'success',
-        data: { status: 'successful', amount: 50, card: { token: 'ct' }, customer: { id: 'cu' } },
+        data: {
+          status: 'successful',
+          amount: 20,
+          currency: 'USD',
+          tx_ref: 'txref_1_507f1f77bcf86cd799439011',
+          meta: { userId: '507f1f77bcf86cd799439011', plan: 'pro' },
+          card: { token: 'ct' },
+          customer: { id: 'cu' },
+        },
       },
     });
     jest.spyOn(User, 'findById').mockResolvedValue({ _id: 'u', email: 'a@b.c', fullName: 'A' });
@@ -227,9 +235,10 @@ describe('routes', () => {
         event: 'charge.completed',
         data: {
           status: 'successful',
-          amount: 50,
+          amount: 20,
           currency: 'USD',
           tx_ref: 'txref_1_507f1f77bcf86cd799439011',
+          meta: { userId: '507f1f77bcf86cd799439011', plan: 'pro' },
           card: { token: 'ct' },
           customer: { id: 'cu' },
         },

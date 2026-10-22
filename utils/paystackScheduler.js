@@ -7,6 +7,15 @@ class PaystackScheduler {
      * Schedule first charge (14 days after card added - when trial ends)
      */
     static async scheduleFirstCharge(userId, subscriptionId, cardAddedAt) {
+        // Idempotent: repeated /verify or webhook replays must not stack
+        // duplicate charges on the same trial.
+        const existing = await BillingSchedule.findOne({
+            subscriptionId,
+            chargeType: 'first_charge',
+            status: 'pending'
+        });
+        if (existing) return existing;
+
         const scheduledFor = new Date(cardAddedAt.getTime() + (14 * 24 * 60 * 60 * 1000)); // 14 days
         const amount = 5000; // $50.00 USD in cents (Starter plan)
 
