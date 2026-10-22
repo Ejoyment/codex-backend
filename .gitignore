@@ -6,6 +6,7 @@ node_modules/
 .env.production
 .env.local
 .env.development
+.next
 
 # Uploads
 uploads/
@@ -26,6 +27,7 @@ UPLOAD_TO_SPACESHIP/
 
 # Zip files
 *.zip
+*.pdf
 
 # Test files (not needed in production)
 test-*.js
