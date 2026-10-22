@@ -79,19 +79,6 @@ export default function Projects() {
         <Sidebar user={user} subscription={subscription} />
 
         <main className="workspace-main min-w-0">
-          {selectedProjectId ? (
-            <ProjectDetails
-              projectId={selectedProjectId}
-              onBack={() => setSelectedProjectId(null)}
-              onCreateTask={() => router.push({ pathname: '/tasks', query: { action: 'new', projectId: selectedProjectId } })}
-            />
-          ) : isCreatingProject ? (
-            <CreateProjectWizard
-              onClose={() => setIsCreatingProject(false)}
-              onCreated={() => router.push('/dashboard')}
-            />
-          ) : (
-            <>
           <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-white/10 bg-[#0b0f17]/80 px-6 backdrop-blur">
             <button
               type="button"
@@ -131,6 +118,19 @@ export default function Projects() {
             </div>
           </header>
 
+          {selectedProjectId ? (
+            <ProjectDetails
+              projectId={selectedProjectId}
+              onBack={() => setSelectedProjectId(null)}
+              onCreateTask={() => router.push({ pathname: '/tasks', query: { action: 'new', projectId: selectedProjectId } })}
+            />
+          ) : isCreatingProject ? (
+            <CreateProjectWizard
+              onClose={() => setIsCreatingProject(false)}
+              onCreated={() => router.push('/dashboard')}
+            />
+          ) : (
+            <>
           <div className="flex min-h-[calc(100vh-4rem)] flex-col gap-4 p-6">
             <section className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
               <div>

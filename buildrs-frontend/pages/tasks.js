@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import Sidebar from '../components/Sidebar';
+import TaskWorkspaceTopBar from '../components/TaskWorkspaceTopBar';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch, projectApi } from '../lib/api';
@@ -294,6 +295,12 @@ export default function Tasks() {
             />
           ) : (
             <>
+              <TaskWorkspaceTopBar
+                user={user}
+                selectedCompany={selectedCompany}
+                onWorkspaceClick={() => router.push('/workspace')}
+              />
+
               <header className="workspace-header dash-header tsk-page-header">
                 <div>
                   <p className="dash-crumb"><span>WORK</span><span className="sep">/</span> TASKS</p>

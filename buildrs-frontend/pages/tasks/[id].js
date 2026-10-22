@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import AuthGuard from '../../components/AuthGuard';
 import Sidebar from '../../components/Sidebar';
+import TaskWorkspaceTopBar from '../../components/TaskWorkspaceTopBar';
 import { useCurrentCompany } from '../../hooks/useCurrentCompany';
 import { apiFetch, projectApi } from '../../lib/api';
 import useAuthStore from '../../store/authStore';
@@ -305,6 +306,11 @@ export default function TaskDetails() {
       <div className="workspace-container tsk-workspace-shell">
         <Sidebar user={user} subscription={subscription} />
         <main className="workspace-main">
+          <TaskWorkspaceTopBar
+            user={user}
+            selectedCompany={selectedCompany}
+            onWorkspaceClick={() => router.push('/workspace')}
+          />
           <header className="workspace-header tsk-detail-header">
             <div className="tsk-detail-header-title">
               <Link href="/tasks" className="tsk-back-link" aria-label="Back to tasks">
