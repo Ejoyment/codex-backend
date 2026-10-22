@@ -10,6 +10,7 @@ const TeamProject = require('../models/TeamProject');
 const LocalProject = require('../models/LocalProject');
 const CodeFile = require('../models/CodeFile');
 const { authenticateToken } = require('../middleware/auth');
+const { userIsCompanyMember } = require('../middleware/workspaceAccess');
 const { enforceDeploymentLimit } = require('../middleware/tierEnforcement');
 const depService = require('../utils/deploymentService');
 const { validateDeployFiles, backfillFileContent, limits: deployLimits } = require('../utils/deployContent');
@@ -122,6 +123,12 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
             return res.status(400).json({ error: 'subdomain is required' });
         }
 
+        // companyId is client-supplied and is used to select CodeFile rows.
+        // Never let it name a workspace the caller does not belong to.
+        if (companyId && !(await userIsCompanyMember(companyId, req.userId))) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+
         // Fail fast with a clear message if the deployment backend isn't configured
         if (!process.env.DEPLOY_SSH_HOST || (!process.env.DEPLOY_SSH_KEY && !process.env.DEPLOY_SSH_KEY_FILE)) {
             return res.status(503).json({
@@ -161,6 +168,14 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
 
             project = localProject || teamProject;
             workspaceId = project.workspaceId || companyId || project.company?.toString() || workspaceId;
+
+            // Re-check the resolved workspace: a project's stored workspaceId
+            // predates this request and must also belong to the caller before
+            // it can be used to read workspace-wide files.
+            if (workspaceId && !(await userIsCompanyMember(workspaceId, req.userId))) {
+                return res.status(403).json({ error: 'Access denied' });
+            }
+
             files = files.length ? files : await CodeFile.find({ project: projectId }).lean();
             if (files.length === 0 && workspaceId) {
                 files = await CodeFile.find({ company: workspaceId }).lean();
