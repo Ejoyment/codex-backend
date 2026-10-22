@@ -1,12 +1,13 @@
 const BillingSchedule = require('../models/BillingSchedule');
 const Subscription = require('../models/Subscription');
 const paystack = require('../config/paystack');
+const { planAmountCents } = require('../utils/billingPricing');
 
 class PaystackScheduler {
     /**
      * Schedule first charge (14 days after card added - when trial ends)
      */
-    static async scheduleFirstCharge(userId, subscriptionId, cardAddedAt) {
+    static async scheduleFirstCharge(userId, subscriptionId, cardAddedAt, tier = 'pro') {
         // Idempotent: repeated /verify or webhook replays must not stack
         // duplicate charges on the same trial.
         const existing = await BillingSchedule.findOne({
@@ -17,7 +18,7 @@ class PaystackScheduler {
         if (existing) return existing;
 
         const scheduledFor = new Date(cardAddedAt.getTime() + (14 * 24 * 60 * 60 * 1000)); // 14 days
-        const amount = 5000; // $50.00 USD in cents (Starter plan)
+        const amount = planAmountCents(tier);
 
         const billingSchedule = new BillingSchedule({
             userId,
@@ -36,10 +37,10 @@ class PaystackScheduler {
     /**
      * Schedule second charge (2 months after first charge)
      */
-    static async scheduleSecondCharge(userId, subscriptionId, firstChargeDate) {
+    static async scheduleSecondCharge(userId, subscriptionId, firstChargeDate, tier = 'pro') {
         const scheduledFor = new Date(firstChargeDate);
         scheduledFor.setMonth(scheduledFor.getMonth() + 2); // 2 months later
-        const amount = 5000; // $50.00 USD in cents (Starter plan)
+        const amount = planAmountCents(tier);
 
         const billingSchedule = new BillingSchedule({
             userId,
@@ -58,10 +59,10 @@ class PaystackScheduler {
     /**
      * Schedule recurring monthly charge
      */
-    static async scheduleRecurringCharge(userId, subscriptionId, lastChargeDate) {
+    static async scheduleRecurringCharge(userId, subscriptionId, lastChargeDate, tier = 'pro') {
         const scheduledFor = new Date(lastChargeDate);
         scheduledFor.setMonth(scheduledFor.getMonth() + 1); // 1 month later
-        const amount = 5000; // $50.00 USD in cents (Starter plan)
+        const amount = planAmountCents(tier);
 
         const billingSchedule = new BillingSchedule({
             userId,
@@ -131,7 +132,8 @@ class PaystackScheduler {
                     await this.scheduleSecondCharge(
                         subscription.userId,
                         subscription._id,
-                        now
+                        now,
+                        subscription.tier
                     );
                 } else if (billingSchedule.chargeType === 'second_charge') {
                     subscription.billingCycle = 2;
@@ -142,7 +144,8 @@ class PaystackScheduler {
                     await this.scheduleRecurringCharge(
                         subscription.userId,
                         subscription._id,
-                        now
+                        now,
+                        subscription.tier
                     );
                 } else if (billingSchedule.chargeType === 'recurring') {
                     subscription.billingCycle += 1;
@@ -153,7 +156,8 @@ class PaystackScheduler {
                     await this.scheduleRecurringCharge(
                         subscription.userId,
                         subscription._id,
-                        now
+                        now,
+                        subscription.tier
                     );
                 }
 

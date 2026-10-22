@@ -300,8 +300,8 @@ const sendTrialReminderEmail = async (email, fullName, daysLeft) => {
             paragraphs: [
                 `Your <strong>BuildrsHQ</strong> free trial has <strong>${dayText}</strong> remaining.`,
                 isLastDay
-                    ? 'This is your <strong>last day</strong> to enjoy full Starter plan features, including up to 10 projects and basic AI assistance.'
-                    : 'Choose a plan now to keep enjoying Starter features after your trial ends.',
+                    ? 'This is your <strong>last day</strong> to enjoy full Pro plan features, including up to 10 projects and basic AI assistance.'
+                    : 'Choose a plan now to keep enjoying Pro features after your trial ends.',
             ],
             code: String(daysLeft),
             codeLabel: 'Days remaining',
@@ -350,9 +350,9 @@ const sendTrialExpiredEmail = async (email, fullName) => {
                 'Upgrade to keep building without limits:',
             ],
             features: [
-                'Starter — $50/mo',
-                'Professional — $99/mo',
-                'Enterprise — $299/mo',
+                'Pro — $20/mo',
+                'Pro Plus — $60/mo',
+                'Team — from $40/mo',
             ],
             cta: { url: `${FRONTEND_URL}/pricing`, label: 'View plans' },
         }),

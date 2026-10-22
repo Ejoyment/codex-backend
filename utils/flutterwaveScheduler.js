@@ -1,11 +1,12 @@
 const BillingSchedule = require('../models/BillingSchedule');
 const Subscription = require('../models/Subscription');
 const flw = require('../config/flutterwave');
+const { planAmountCents } = require('../utils/billingPricing');
 
 /**
- * Schedule first charge (10 seconds after card is added)
+ * Schedule first charge when the 14-day trial ends
  */
-async function scheduleFirstCharge(userId, subscriptionId, cardAddedAt) {
+async function scheduleFirstCharge(userId, subscriptionId, cardAddedAt, tier = 'pro') {
     // Idempotent: repeated /verify or webhook replays must not stack duplicate
     // charges on the same trial.
     const existing = await BillingSchedule.findOne({
@@ -15,14 +16,14 @@ async function scheduleFirstCharge(userId, subscriptionId, cardAddedAt) {
     });
     if (existing) return existing;
 
-    const firstChargeTime = new Date(cardAddedAt.getTime() + (10 * 1000)); // 10 seconds
+    const firstChargeTime = new Date(cardAddedAt.getTime() + (14 * 24 * 60 * 60 * 1000)); // 14 days
 
     const billingSchedule = new BillingSchedule({
         userId,
         subscriptionId,
         chargeType: 'first_charge',
         scheduledFor: firstChargeTime,
-        amount: 5000, // $50.00 USD in cents (Starter plan)
+        amount: planAmountCents(tier),
         status: 'pending'
     });
 
@@ -35,7 +36,7 @@ async function scheduleFirstCharge(userId, subscriptionId, cardAddedAt) {
 /**
  * Schedule second charge (2 months after first charge)
  */
-async function scheduleSecondCharge(userId, subscriptionId, firstChargeDate) {
+async function scheduleSecondCharge(userId, subscriptionId, firstChargeDate, tier = 'pro') {
     const secondChargeTime = new Date(firstChargeDate);
     secondChargeTime.setMonth(secondChargeTime.getMonth() + 2); // 2 months later
 
@@ -44,7 +45,7 @@ async function scheduleSecondCharge(userId, subscriptionId, firstChargeDate) {
         subscriptionId,
         chargeType: 'second_charge',
         scheduledFor: secondChargeTime,
-        amount: 5000, // $50.00 USD in cents (Starter plan)
+        amount: planAmountCents(tier),
         status: 'pending'
     });
 
@@ -57,7 +58,7 @@ async function scheduleSecondCharge(userId, subscriptionId, firstChargeDate) {
 /**
  * Schedule recurring monthly charge
  */
-async function scheduleRecurringCharge(userId, subscriptionId, lastChargeDate) {
+async function scheduleRecurringCharge(userId, subscriptionId, lastChargeDate, tier = 'pro') {
     const nextChargeTime = new Date(lastChargeDate);
     nextChargeTime.setMonth(nextChargeTime.getMonth() + 1); // 1 month later
 
@@ -66,7 +67,7 @@ async function scheduleRecurringCharge(userId, subscriptionId, lastChargeDate) {
         subscriptionId,
         chargeType: 'recurring',
         scheduledFor: nextChargeTime,
-        amount: 5000, // $50.00 USD in cents (Starter plan)
+        amount: planAmountCents(tier),
         status: 'pending'
     });
 
@@ -128,7 +129,8 @@ async function processCharge(billingSchedule) {
                 await scheduleSecondCharge(
                     billingSchedule.userId,
                     billingSchedule.subscriptionId,
-                    new Date()
+                    new Date(),
+                    subscription.tier
                 );
             } else if (billingSchedule.chargeType === 'second_charge') {
                 subscription.billingCycle = 2;
@@ -138,7 +140,8 @@ async function processCharge(billingSchedule) {
                 await scheduleRecurringCharge(
                     billingSchedule.userId,
                     billingSchedule.subscriptionId,
-                    new Date()
+                    new Date(),
+                    subscription.tier
                 );
             } else if (billingSchedule.chargeType === 'recurring') {
                 subscription.billingCycle += 1;
@@ -149,7 +152,8 @@ async function processCharge(billingSchedule) {
                 await scheduleRecurringCharge(
                     billingSchedule.userId,
                     billingSchedule.subscriptionId,
-                    new Date()
+                    new Date(),
+                    subscription.tier
                 );
             }
 
