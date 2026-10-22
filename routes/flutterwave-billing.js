@@ -6,24 +6,14 @@ const Subscription = require('../models/Subscription');
 const User = require('../models/User');
 const FlutterwaveScheduler = require('../utils/flutterwaveScheduler');
 const { requireVerifiedWebhook } = require('../utils/webhookSecurity');
-
-// Monthly prices in USD for each self-serve tier. Used to resolve a checkout
-// amount when the client sends a plan id but no explicit amount.
-const PLAN_PRICES = {
-    developer: 0,
-    pro: 20,
-    pro_plus: 60,
-    team_standard: 40,
-    team_premium: 120,
-};
-const PAID_TIERS = new Set(['pro', 'pro_plus', 'team_standard', 'team_premium']);
+const { PAID_TIERS, planAmount } = require('../utils/billingPricing');
 
 // Billing plans and prices are server-side only. The client may choose WHICH
 // plan to buy, but never how much it costs.
 function resolveCheckoutPlan(body = {}) {
     const tier = body.plan || 'pro';
     if (!PAID_TIERS.has(tier)) return null;
-    return { tier, amount: PLAN_PRICES[tier], currency: 'USD' };
+    return { tier, amount: planAmount(tier), currency: 'USD' };
 }
 
 function transactionBelongsToUser(data, userId) {
@@ -41,7 +31,7 @@ function transactionBelongsToUser(data, userId) {
 async function activateTrialSubscription({ userId, user, cardToken, customerId, amount, currency, plan }) {
     const cardAddedAt = new Date();
     const tier = PAID_TIERS.has(plan) ? plan : 'pro';
-    const priceAmount = PLAN_PRICES[tier];
+    const priceAmount = planAmount(tier);
 
     let subscription = await Subscription.findOne({ userId });
 
@@ -79,8 +69,8 @@ async function activateTrialSubscription({ userId, user, cardToken, customerId, 
     subscription.upgradeTo(tier);
     await subscription.save();
 
-    // Schedule first charge (10 seconds from now — demo charge)
-    await FlutterwaveScheduler.scheduleFirstCharge(userId, subscription._id, cardAddedAt);
+    // Schedule first charge when the 14-day trial ends
+    await FlutterwaveScheduler.scheduleFirstCharge(userId, subscription._id, cardAddedAt, tier);
 
     return subscription;
 }
@@ -240,7 +230,7 @@ router.post('/verify', authenticateToken, async (req, res) => {
             });
         }
 
-        const expectedAmount = PLAN_PRICES[plan];
+        const expectedAmount = planAmount(plan);
         const currency = String(data.currency || '').toUpperCase();
         const amountMatches = Number(data.amount) === expectedAmount;
 
@@ -367,7 +357,7 @@ router.post('/webhook', requireVerifiedWebhook('flutterwave', async (req, res) =
     if (!PAID_TIERS.has(plan)) {
         return res.json({ success: true, ignored: true, reason: 'no checkout plan' });
     }
-    if (Number(data.amount) !== PLAN_PRICES[plan] ||
+    if (Number(data.amount) !== planAmount(plan) ||
         String(data.currency || '').toUpperCase() !== 'USD') {
         return res.json({ success: true, ignored: true, reason: 'amount or currency mismatch' });
     }
@@ -503,14 +493,27 @@ router.post('/cancel', authenticateToken, async (req, res) => {
         // Cancel all pending charges
         await FlutterwaveScheduler.cancelUserCharges(userId);
 
-        // Update subscription
+        // Downgrade to developer (free) tier (NO REFUND)
+        subscription.upgradeTo('developer');
         subscription.status = 'cancelled';
         subscription.cancelledAt = new Date();
+
+        // Clear payment info
+        subscription.isTrialWithCard = false;
+        subscription.firstChargeCompleted = false;
+        subscription.billingCycle = 0;
+        subscription.nextBillingDate = null;
+
         await subscription.save();
 
         res.json({
             success: true,
-            message: 'Subscription cancelled successfully'
+            message: 'Subscription cancelled successfully. You have been downgraded to the Free tier.',
+            subscription: {
+                tier: subscription.tier,
+                status: subscription.status,
+                cancelledAt: subscription.cancelledAt
+            }
         });
 
     } catch (error) {
