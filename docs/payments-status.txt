@@ -12,10 +12,11 @@ Last updated: 2026-10-22.
 | #47 | `fix/trial-charge-consistency` | `d110aa9` | P8, P9, partial P13 |
 | #48 | `fix/paystack-trial-activation` | `b1cbe0a` | P7, partial P14 |
 | #49 | `fix/paystack-failure-grace` | `f9efcaa` | P12 |
+| #51 | `fix/retire-legacy-entitlement-checkout` | `1f670c8` | P10 retired |
 
-P10 is retired in `fix/retire-legacy-entitlement-checkout`: `/api/subscription/tier-checkout`
-now returns 410 because the Entitlement rail had no `providerRef`, no webhook caller,
-and a fake Paystack checkout URL. The frontend never called it.
+P10 is retired in #51: `/api/subscription/tier-checkout` now returns 410 because the
+Entitlement rail had no `providerRef`, no webhook caller, and a fake Paystack checkout
+URL. The frontend never called it.
 
 ## Fixed
 
