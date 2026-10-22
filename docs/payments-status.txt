@@ -28,6 +28,7 @@ URL. The frontend never called it.
 - P9 — One canonical price table for pro/pro_plus/team plans on all rails.
 - P12 — Failed Paystack charges enter `past_due`; no immediate downgrade/cancel.
 - P13 (partial) — Cancellation now keeps the paid tier until period end on both rails.
+- P2 / E3 — VFS reads/writes/deletes/metadata are scoped by `_id` + `company`; VFS create rejects foreign companies.
 
 ## Remaining
 
@@ -37,7 +38,6 @@ URL. The frontend never called it.
 | P13 | Medium | Revoke provider-side card authorization/subscription on cancel; define refund and period-end semantics. |
 | P14 | Medium | Legacy `POST /api/subscription/payment/paystack` activates by `customerId` only and ignores metadata/amount. |
 | P15 | Medium | Three billing stacks and two `paymentRouter` modules still coexist; `/api/v1/billing` is the intended canonical stack. Delete the dead legacy router. |
-| P2 / E3 | Critical | VFS operations scoped by `fileId`, not workspace; cross-tenant read/write. `utils/virtualFileSystem.js:140-165,191-204` |
 | P3 / E1 | Critical | Host debugger runs user code with full server env. `routes/debug.js:122-157`; `utils/debugAdapter.js:95-120` |
 | P4 / E2 | Critical | Host shell available on free tier. `middleware/permissionMatrix.js:34-37`; `utils/terminalService.js:449-480` |
 | P11 / E4 | High | Deploy chain can publish another tenant's files. `routes/projects.js:550`; `routes/deployments.js:163-166` |
