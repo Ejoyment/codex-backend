@@ -7,7 +7,6 @@ const Entitlement = require('../server/models/EntitlementModel');
 const User = require('../models/User');
 const { createCheckoutSession, createPortalSession, verifyWebhookSignature, stripe } = require('../config/stripe');
 const { requireVerifiedWebhook } = require('../utils/webhookSecurity');
-const paymentRouter = require('../utils/paymentRouter');
 const { authenticateToken } = require('../middleware/auth');
 const { TIERS, canonicalTier } = require('../utils/tierNames');
 const { getOrCreateSubscription } = require('../middleware/trial');
@@ -247,56 +246,25 @@ router.post('/create-checkout', authenticateToken, async (req, res) => {
  * @swagger
  * /api/subscription/tier-checkout:
  *   post:
- *     summary: Create checkout session with multi-rail payment
+ *     summary: Retired multi-rail entitlement checkout
+ *     deprecated: true
  *     tags:
  *       - Subscription & Billing
  *     security:
  *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [tier]
- *             properties:
- *               tier:
- *                 type: string
- *                 enum: [developer, pro, pro_plus, team_standard, team_premium, enterprise]
- *               interval:
- *                 type: string
- *                 enum: [monthly, yearly]
- *               country:
- *                 type: string
- *                 example: NG
- *               currency:
- *                 type: string
- *                 example: NGN
- *               teamSize:
- *                 type: number
- *                 example: 5
  *     responses:
- *       200:
- *         description: Checkout session created with selected payment rail
- *       400:
- *         description: Invalid tier
- *       401:
- *         description: Unauthorized
+ *       410:
+ *         description: Legacy checkout retired; use a provider-specific billing route
  */
-// Multi-rail tier checkout
-router.post('/tier-checkout', authenticateToken, async (req, res) => {
-    try {
-        const { tier, interval = 'monthly', country, currency, teamSize = 1 } = req.body;
-        const validTiers = ['developer', 'pro', 'pro_plus', 'team_standard', 'team_premium', 'enterprise'];
-        if (!validTiers.includes(tier)) {
-            return res.status(400).json({ success: false, message: 'Invalid tier' });
-        }
-        const result = await paymentRouter.createCheckout(req.userId, tier, interval, country || 'US', currency || 'USD');
-        res.json(result);
-    } catch (error) {
-        console.error('Tier checkout error:', error);
-        res.status(500).json({ success: false, message: error.message });
-    }
+// Retired: this route created Entitlement rows through utils/paymentRouter, but
+// providerRef was never written and no webhook ever called processWebhook, so
+// no checkout could complete. Use /api/paystack-billing, /api/flutterwave-billing,
+// or /api/trial-billing instead. Kept as an explicit 410 for any old client.
+router.post('/tier-checkout', authenticateToken, (req, res) => {
+    res.status(410).json({
+        success: false,
+        message: 'Legacy tier checkout has been retired. Use the provider-specific billing endpoints.'
+    });
 });
 
 /**

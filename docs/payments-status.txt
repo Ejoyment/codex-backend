@@ -1,0 +1,49 @@
+# Payments + editor hardening status
+
+Source audit: `docs/audit/PAYMENTS-EDITOR-AUDIT-2026-10-21.md` (local-only, gitignored).
+
+Last updated: 2026-10-22.
+
+## Open PRs (stacked, merge in order)
+
+| PR | Branch | Commit | Scope |
+|----|--------|--------|-------|
+| #46 | `fix/payment-verification-hardening` | `bf07071` | P1, P5, P6 |
+| #47 | `fix/trial-charge-consistency` | `d110aa9` | P8, P9, partial P13 |
+| #48 | `fix/paystack-trial-activation` | `b1cbe0a` | P7, partial P14 |
+| #49 | `fix/paystack-failure-grace` | `f9efcaa` | P12 |
+| #51 | `fix/retire-legacy-entitlement-checkout` | `1f670c8` | P10 retired |
+
+P10 is retired in #51: `/api/subscription/tier-checkout` now returns 410 because the
+Entitlement rail had no `providerRef`, no webhook caller, and a fake Paystack checkout
+URL. The frontend never called it.
+
+## Fixed
+
+- P1 — Flutterwave checkout no longer trusts client amount/plan.
+- P5 — Paystack/Flutterwave verification bound to user, amount, currency, ownership, and card token.
+- P6 — Verify and first-charge scheduling are idempotent.
+- P7 — `payment-success` verifies provider redirects; Paystack webhook activates trials.
+- P8 — Every card-backed trial charges after 14 days, not 10s/210s.
+- P9 — One canonical price table for pro/pro_plus/team plans on all rails.
+- P12 — Failed Paystack charges enter `past_due`; no immediate downgrade/cancel.
+- P13 (partial) — Cancellation now keeps the paid tier until period end on both rails.
+
+## Remaining
+
+| # / E# | Sev | Remaining work |
+|--------|-----|----------------|
+| P10 | High | Retired; dead `utils/paymentRouter.js` + adapters remain until the P15 cleanup. |
+| P13 | Medium | Revoke provider-side card authorization/subscription on cancel; define refund and period-end semantics. |
+| P14 | Medium | Legacy `POST /api/subscription/payment/paystack` activates by `customerId` only and ignores metadata/amount. |
+| P15 | Medium | Three billing stacks and two `paymentRouter` modules still coexist; `/api/v1/billing` is the intended canonical stack. Delete the dead legacy router. |
+| P2 / E3 | Critical | VFS operations scoped by `fileId`, not workspace; cross-tenant read/write. `utils/virtualFileSystem.js:140-165,191-204` |
+| P3 / E1 | Critical | Host debugger runs user code with full server env. `routes/debug.js:122-157`; `utils/debugAdapter.js:95-120` |
+| P4 / E2 | Critical | Host shell available on free tier. `middleware/permissionMatrix.js:34-37`; `utils/terminalService.js:449-480` |
+| P11 / E4 | High | Deploy chain can publish another tenant's files. `routes/projects.js:550`; `routes/deployments.js:163-166` |
+| E5 | High | Credit pools are never debited; `deductCredits` has no callers. `middleware/tierEnforcement.js:206-289` |
+| E6 / E10 | High | `agent-confirmation/respond` IDOR; duplicate approval surfaces. `routes/agent-confirmation.js:73-89` |
+| E7 | Medium | AI context trusts client-supplied `companyId` without membership check. `routes/ai-pair.js:597-612` |
+| E8 | Medium | `/api/code-editor/files?projectId=` is unscoped. `routes/code-editor.js:389-429` |
+| E9 | Medium | Collaborator `permission` is stored but not enforced. `routes/code-editor.js:703-705`; `routes/vfs.js:102-113` |
+| E11 | Low | 24h JWT with no revocation list. `routes/auth.js:69` |
