@@ -1,4 +1,4 @@
-import { Fragment, useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import Sidebar from '../components/Sidebar';
@@ -11,16 +11,13 @@ import {
   X,
   ChevronRight,
   Loader2,
-  Inbox,
   RotateCw,
-  ListTodo,
-  Activity,
-  Eye,
-  CheckCircle2,
   Bot,
+  CheckCircle2,
   GitBranch,
   ExternalLink,
-  Link2,
+  FileText,
+  MoreHorizontal,
 } from 'lucide-react';
 import { useCurrentCompany } from '../hooks/useCurrentCompany';
 
@@ -59,6 +56,12 @@ const TAB_DOTS = {
   done: '#34d399',
 };
 
+function formatCreatedDate(value) {
+  if (!value) return 'Not set';
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T12:00:00`) : new Date(value);
+  return Number.isNaN(date.getTime()) ? 'Not set' : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 function normalizeTask(task) {
   const status = { pending: 'backlog', 'in-progress': 'in_progress', completed: 'done' }[task.status] || task.status || 'backlog';
   return { ...task, id: task.id || task._id, status, specIds: (task.specIds || []).map((spec) => String(spec?._id || spec)) };
@@ -75,6 +78,7 @@ export default function Tasks() {
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('all');
   const [showWizard, setShowWizard] = useState(false);
+  const [createdTask, setCreatedTask] = useState(null);
   const [cyclingId, setCyclingId] = useState(null);
   const [expandedTaskId, setExpandedTaskId] = useState(null);
   const [specs, setSpecs] = useState([]);
@@ -118,6 +122,15 @@ export default function Tasks() {
       setShowWizard(true);
     }
   }, [router.isReady, router.query.action]);
+
+  useEffect(() => {
+    if (!createdTask) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setCreatedTask(null);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [createdTask]);
 
   useEffect(() => {
     let active = true;
@@ -227,13 +240,10 @@ export default function Tasks() {
   };
 
   const handleTaskCreated = (task) => {
-    setTasks((previous) => [normalizeTask(task), ...previous]);
+    const normalizedTask = normalizeTask(task);
+    setTasks((previous) => [normalizedTask, ...previous]);
+    setCreatedTask(normalizedTask);
     setShowWizard(false);
-  };
-
-  const formatDate = (d) => {
-    if (!d) return '';
-    return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   const tabCount = (tab) => {
@@ -243,11 +253,12 @@ export default function Tasks() {
 
   const pct = (count) => (tasks.length ? Math.round((count / tasks.length) * 100) : 0);
 
+  const agentTaskCount = tasks.filter((task) => task.agentSessionId).length;
   const kpis = [
-    { key: 'all', label: 'Total Tasks', value: tasks.length, sub: `${pct(tasks.length)}% of workload`, color: 'blue', Icon: ListTodo },
-    { key: 'in_progress', label: 'In Progress', value: tabCount('in_progress'), sub: `${pct(tabCount('in_progress'))}% of work`, color: 'green', Icon: Activity },
-    { key: 'in_review', label: 'In Review', value: tabCount('in_review'), sub: `${pct(tabCount('in_review'))}% awaiting feedback`, color: 'orange', Icon: Eye },
-    { key: 'done', label: 'Done', value: tabCount('done'), sub: `${pct(tabCount('done'))}% shipped`, color: 'purple', Icon: CheckCircle2 },
+    { key: 'total', filter: 'all', label: 'Total tasks', value: tasks.length, sub: 'Across all columns', badge: 'Live' },
+    { key: 'in-progress', filter: 'in_progress', label: 'In progress', value: tabCount('in_progress'), sub: `${pct(tabCount('in_progress'))}% of total`, badge: 'Active' },
+    { key: 'agent-coverage', filter: 'all', label: 'Agent coverage', value: `${pct(agentTaskCount)}%`, sub: `${agentTaskCount} of ${tasks.length} tasks`, badge: `${agentTaskCount} agents` },
+    { key: 'completion', filter: 'done', label: 'Completion rate', value: `${pct(tabCount('done'))}%`, sub: `${tabCount('done')} of ${tasks.length} done`, badge: 'Healthy' },
   ];
 
   if (!hasHydrated) {
@@ -265,7 +276,7 @@ export default function Tasks() {
         <link rel="icon" href="/buildrs.png" />
       </Head>
 
-      <div className="workspace-container">
+      <div className="workspace-container tsk-workspace-shell">
         <Sidebar user={user} subscription={subscription} />
 
         <main className="workspace-main">
@@ -274,6 +285,7 @@ export default function Tasks() {
               onClose={() => setShowWizard(false)}
               onCreated={handleTaskCreated}
               companyId={selectedCompany?._id || selectedCompany?.id}
+              user={user}
               projects={projects}
               projectsLoading={projectsLoading}
               specs={specs}
@@ -282,240 +294,265 @@ export default function Tasks() {
             />
           ) : (
             <>
-          <header className="workspace-header dash-header">
-            <div>
-              <p className="dash-crumb">
-                BuildrsHQ <span className="sep">/</span> Tasks
-              </p>
-              <h1 className="dash-title">Task Board</h1>
-              <div className="dash-statusline">
-                <span className="status-indicator status-online" />
-                <span>{tasks.length} tasks tracked</span>
-                <span className="dash-clock">· {clock || '—:——:——'}</span>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="dash-pill hidden md:inline-flex">
-                <span className="dot" />
-                {activeTab === 'all' ? 'All Tasks' : STATUS_LABELS[activeTab]}
-              </span>
-              <button
-                type="button"
-                className="btn-workspace btn-secondary"
-                title="Refresh tasks"
-                onClick={loadTasks}
-                disabled={loading}
-              >
-                <RotateCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-              </button>
-              <button type="button" className="btn-workspace btn-primary" onClick={() => setShowWizard(true)}>
-                <Plus className="w-4 h-4" />
-                <span className="hidden sm:inline">New Task</span>
-              </button>
-            </div>
-          </header>
-
-          <div className="workspace-content">
-            <div className="tsk-content">
-              {actionError && <div className="std-alert std-alert-error mb-5">{actionError}<button type="button" className="ml-auto" onClick={() => setActionError('')}><X className="w-4 h-4" /></button></div>}
-              {error && (
-                <div className="std-alert std-alert-error mb-6">
-                  <Loader2 className="w-4 h-4 flex-shrink-0" />
-                  <p>{error}</p>
-                </div>
-              )}
-
-              {/* KPI strip */}
-              <section className="dash-section">
-                <div className="dash-section-head">
-                  <div className="dash-eyebrow">
-                    <span className="dot" />
-                    <b>Workload</b> · tap a metric to filter
+              <header className="workspace-header dash-header tsk-page-header">
+                <div>
+                  <p className="dash-crumb"><span>WORK</span><span className="sep">/</span> TASKS</p>
+                  <h1 className="dash-title">Tasks</h1>
+                  <div className="tsk-header-subtitle">
+                    <span>Plan, delegate, and ship connected engineering work.</span>
+                    {selectedCompany?.name && <span className="tsk-workspace-chip">{selectedCompany.name}</span>}
                   </div>
                 </div>
-                <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-                  {kpis.map((kpi) => (
-                    <div
-                      key={kpi.key}
-                      className={`dash-kpi dash-kpi-${kpi.color} dash-kpi-link ${activeTab === kpi.key ? 'tsk-kpi-active' : ''}`}
-                      onClick={() => setActiveTab(kpi.key)}
-                      style={activeTab === kpi.key ? { borderColor: 'rgba(47,214,230,0.5)' } : undefined}
-                    >
-                      <div className="dash-kpi-head">
-                        <span className="dash-kpi-eyebrow">{kpi.label}</span>
-                        <span className="dash-kpi-ico"><kpi.Icon className="w-4 h-4" /></span>
-                      </div>
-                      <div className="dash-kpi-value">{kpi.value}</div>
-                      <div className="dash-kpi-meta-row">
-                        <span className="dash-kpi-meta">{kpi.sub}</span>
-                      </div>
-                    </div>
-                  ))}
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    className="btn-workspace btn-secondary tsk-refresh-button"
+                    title="Refresh tasks"
+                    onClick={loadTasks}
+                    disabled={loading}
+                  >
+                    <RotateCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                  </button>
+                  <button type="button" className="btn-workspace btn-primary" onClick={() => setShowWizard(true)}>
+                    <Plus className="w-4 h-4" />
+                    <span>New Task</span>
+                  </button>
                 </div>
-              </section>
+              </header>
 
-              {/* Filter rail */}
-              <div className="flex items-center justify-between gap-4 mb-5 flex-wrap">
-                <div className="tsk-tabs">
-                  {TABS.map((tab) => {
-                    const isActive = activeTab === tab.key;
-                    return (
-                      <button
-                        key={tab.key}
-                        type="button"
-                        className={`tsk-tab ${isActive ? 'is-active' : ''}`}
-                        onClick={() => setActiveTab(tab.key)}
-                      >
-                        {tab.key !== 'all' && (
-                          <span className="tsk-tab-dot" style={{ background: TAB_DOTS[tab.key] }} />
-                        )}
-                        {tab.label}
-                        <span className="tsk-tab-count">{tabCount(tab.key)}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-                <span className="std-note">{filteredTasks.length} shown · click status dot to cycle</span>
-              </div>
-
-              {/* Board */}
-              {loading ? (
-                <div className="workspace-card">
-                  <div className="workspace-card-body">
-                    <div className="dash-empty">
-                      <div className="dash-empty-ico">
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                      </div>
-                      <p className="dash-empty-title">Loading tasks...</p>
+              <div className="workspace-content">
+                <div className="tsk-content">
+                  {actionError && <div className="std-alert std-alert-error mb-5">{actionError}<button type="button" className="ml-auto" onClick={() => setActionError('')}><X className="w-4 h-4" /></button></div>}
+                  {error && (
+                    <div className="std-alert std-alert-error mb-6">
+                      <Loader2 className="w-4 h-4 flex-shrink-0" />
+                      <p>{error}</p>
                     </div>
-                  </div>
-                </div>
-              ) : filteredTasks.length === 0 ? (
-                <div className="workspace-card">
-                  <div className="workspace-card-body">
-                    <div className="dash-empty">
-                      <div className="dash-empty-ico">
-                        <Inbox className="w-5 h-5" />
-                      </div>
-                      <p className="dash-empty-title">No tasks found</p>
-                      <p className="dash-empty-sub">
-                        {activeTab === 'all' ? 'Create your first task to get started.' : `No ${STATUS_LABELS[activeTab]?.toLowerCase()} tasks.`}
-                      </p>
-                      {activeTab === 'all' && (
+                  )}
+
+                  <section className="tsk-kpis" aria-label="Task metrics">
+                      {kpis.map((kpi) => (
                         <button
                           type="button"
-                          className="btn-workspace btn-primary mt-4"
-                          onClick={() => setShowWizard(true)}
+                          key={kpi.key}
+                          className={`tsk-kpi ${activeTab === kpi.filter ? 'tsk-kpi-active' : ''}`}
+                          onClick={() => setActiveTab(kpi.filter)}
+                          aria-pressed={activeTab === kpi.filter}
                         >
-                          <Plus className="w-4 h-4" /> New Task
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="tsk-list">
-                  {filteredTasks.map((task) => {
-                      const statusTint = STATUS_TINTS[task.status] || STATUS_TINTS.backlog;
-                    const priorityTint = PRIORITY_TINTS[task.priority] || PRIORITY_TINTS.medium;
-                    return (
-                      <Fragment key={task.id}>
-                      <div className="tsk-row">
-                        <button
-                          type="button"
-                          className="flex items-center justify-center flex-shrink-0 w-5 h-5 rounded-full border-0 bg-transparent cursor-pointer p-0"
-                          onClick={() => cycleStatus(task)}
-                          disabled={cyclingId === task.id}
-                          title={`Status: ${STATUS_LABELS[task.status] || task.status}. Click to cycle.`}
-                        >
-                          {cyclingId === task.id ? (
-                            <Loader2 className="w-4 h-4 animate-spin" style={{ color: statusTint.dot }} />
-                          ) : (
-                            <span
-                              className="tsk-dot"
-                              style={{
-                                background: statusTint.dot,
-                                boxShadow: `0 0 0 3px ${statusTint.bg}`,
-                              }}
-                            />
-                          )}
-                        </button>
-
-                        <div className="tsk-main">
-                          <div className="tsk-title-row">
-                            <p className="tsk-title">{task.title}</p>
-                            {task.agentSessionId && <span className="tsk-type">Agent session</span>}
+                          <div className="tsk-kpi-top">
+                            <span>{kpi.label}</span>
+                            <span className={`tsk-kpi-badge ${kpi.badge === 'Healthy' || kpi.badge === 'Live' ? 'is-good' : ''}`}>{kpi.badge}</span>
                           </div>
-                          {task.description && <p className="tsk-desc">{task.description}</p>}
-                        </div>
+                          <div className="tsk-kpi-bottom">
+                            <strong>{kpi.value}</strong>
+                            <span>{kpi.sub}</span>
+                          </div>
+                        </button>
+                      ))}
+                  </section>
 
-                        <div className="tsk-side">
-                          {task.priority && (
-                            <span className="pill" style={{ background: priorityTint.bg, color: priorityTint.text }}>
-                              {PRIORITY_LABELS[task.priority] || task.priority}
-                            </span>
-                          )}
-                          <span className="pill" style={{ background: statusTint.bg, color: statusTint.text }}>
-                            {STATUS_LABELS[task.status] || task.status}
-                          </span>
-                          <button type="button" className="btn-workspace btn-secondary" title="Task context and delegation" onClick={() => setExpandedTaskId((current) => current === task.id ? null : task.id)}><Link2 className="w-4 h-4" /></button>
-                          <span className="tsk-date">{formatDate(task.createdAt)}</span>
-                          <ChevronRight className="tsk-chevron" />
-                        </div>
-                      </div>
-                      {expandedTaskId === task.id && <div className="border-b border-white/10 bg-white/[0.02] px-4 py-4 sm:px-6">
-                        <div className="grid gap-6 lg:grid-cols-2">
-                          <section>
-                            <h3 className="mb-2 text-xs font-semibold uppercase text-[#9aa1ae]">Context</h3>
-                            <div className="grid gap-3 sm:grid-cols-2">
-                              <label className="text-xs text-[#9aa1ae]">Figma node or frame ID
-                                <input className="ws-input mt-1" value={task.figmaNodeId || ''} onChange={(event) => setTasks((current) => current.map((item) => item.id === task.id ? { ...item, figmaNodeId: event.target.value } : item))} onBlur={(event) => saveTaskContext(task, { figmaNodeId: event.target.value, specIds: task.specIds || [] })} placeholder="Optional frame ID" />
-                              </label>
-                              <label className="text-xs text-[#9aa1ae]">Blocked by
-                                <select className="ws-select mt-1 min-h-10" multiple value={(task.blockedBy || []).map((id) => String(id?._id || id))} onChange={(event) => {
-                                  const blockedBy = [...event.target.selectedOptions].map((option) => option.value);
-                                  setTasks((current) => current.map((item) => item.id === task.id ? { ...item, blockedBy } : item));
-                                  saveTaskContext(task, { blockedBy, specIds: task.specIds || [] });
-                                }}>{tasks.filter((item) => item.id !== task.id).map((item) => <option key={item.id} value={item.id}>{item.title} · {STATUS_LABELS[item.status]}</option>)}</select>
-                              </label>
-                            </div>
-                            <div className="mt-4">
-                              <p className="mb-2 text-xs text-[#9aa1ae]">Attached specs <span className="text-[#727987]">(validation contracts)</span></p>
-                              {specs.length ? <div className="grid gap-2 sm:grid-cols-2">{specs.map((spec) => <label key={spec._id} className="flex items-start gap-2 text-sm text-[#c6cad2]">
-                                <input type="checkbox" checked={(task.specIds || []).includes(String(spec._id))} onChange={(event) => {
-                                  const specIds = event.target.checked ? [...new Set([...(task.specIds || []), String(spec._id)])] : (task.specIds || []).filter((id) => id !== String(spec._id));
-                                  const nextTask = { ...task, specIds };
-                                  setTasks((current) => current.map((item) => item.id === task.id ? nextTask : item));
-                                  saveTaskContext(nextTask, { specIds });
-                                }} />
-                                <span>{spec.title}<span className="block text-xs text-[#727987]">{spec.status || 'unvalidated'}</span></span>
-                              </label>)}</div> : <p className="text-xs text-[#727987]">Create a spec in Specs to add executable validation.</p>}
+                  <div className="tsk-board-toolbar">
+                    <div className="tsk-tabs">
+                      {TABS.map((tab) => {
+                        const isActive = activeTab === tab.key;
+                        return (
+                          <button
+                            key={tab.key}
+                            type="button"
+                            className={`tsk-tab ${isActive ? 'is-active' : ''}`}
+                            onClick={() => setActiveTab(tab.key)}
+                          >
+                            {tab.key !== 'all' && (
+                              <span className="tsk-tab-dot" style={{ background: TAB_DOTS[tab.key] }} />
+                            )}
+                            {tab.label}
+                            <span className="tsk-tab-count">{tabCount(tab.key)}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="tsk-board-summary">
+                      <span><b>{filteredTasks.length}</b> {filteredTasks.length === 1 ? 'task' : 'tasks'}</span>
+                      <span className="tsk-summary-separator" />
+                      <span><Bot className="w-3.5 h-3.5" /> {agentTaskCount} agent runs</span>
+                      <span className="tsk-summary-updated">Updated {clock || 'just now'}</span>
+                    </div>
+                  </div>
+
+                  {loading ? (
+                    <div className="tsk-board-state">
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      <span>Loading tasks...</span>
+                    </div>
+                  ) : (
+                    <div className="tsk-board">
+                      {STATUS_OPTIONS.filter((status) => activeTab === 'all' || status === activeTab).map((status) => {
+                        const laneTasks = filteredTasks.filter((task) => task.status === status);
+                        const statusTint = STATUS_TINTS[status];
+                        const laneTitle = status === 'backlog' ? 'To Do' : status === 'in_review' ? 'Review' : STATUS_LABELS[status];
+                        return (
+                          <section className={`tsk-lane tsk-lane-${status}`} key={status}>
+                            <header className="tsk-lane-heading">
+                              <span className="tsk-lane-dot" style={{ background: statusTint.dot }} />
+                              <h2>{laneTitle}</h2>
+                              <span className="tsk-lane-count">{laneTasks.length}</span>
+                            </header>
+                            <div className="tsk-lane-cards">
+                              {laneTasks.length ? laneTasks.map((task) => {
+                                const priorityTint = PRIORITY_TINTS[task.priority] || PRIORITY_TINTS.medium;
+                                const projectId = String(task.projectId?._id || task.projectId || task.project?._id || task.project || '');
+                                const projectName = task.project?.name || task.projectName || projects.find((project) => String(project.id || project._id) === projectId)?.name || 'No project';
+                                const linkedSpec = specs.find((spec) => (task.specIds || []).includes(String(spec._id)));
+                                const assignee = typeof task.assignee === 'string' ? task.assignee : task.assignee?.fullName || task.assignee?.name;
+                                const taskShortId = String(task.id).slice(-4).toUpperCase();
+                                const isExpanded = expandedTaskId === task.id;
+                                return (
+                                  <article
+                                    className={`tsk-card ${isExpanded ? 'is-expanded' : ''}`}
+                                    key={task.id}
+                                    role="link"
+                                    tabIndex={0}
+                                    aria-label={`View details for ${task.title}`}
+                                    onClick={() => router.push(`/tasks/${task.id}`)}
+                                    onKeyDown={(event) => {
+                                      if (event.target !== event.currentTarget) return;
+                                      if (event.key === 'Enter' || event.key === ' ') {
+                                        event.preventDefault();
+                                        router.push(`/tasks/${task.id}`);
+                                      }
+                                    }}
+                                  >
+                                    <div className="tsk-card-top">
+                                      <span className="tsk-card-id">T-{taskShortId}</span>
+                                      <div className="tsk-card-actions">
+                                        {task.priority && <span className="tsk-priority" style={{ background: priorityTint.bg, color: priorityTint.text }}>• {PRIORITY_LABELS[task.priority] || task.priority}</span>}
+                                        <button
+                                          type="button"
+                                          className="tsk-card-status"
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            cycleStatus(task);
+                                          }}
+                                          disabled={cyclingId === task.id}
+                                          title={`Status: ${STATUS_LABELS[task.status] || task.status}. Click to cycle.`}
+                                          aria-label={`Change status for ${task.title}`}
+                                        >
+                                          {cyclingId === task.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <span style={{ background: statusTint.dot }} />}
+                                        </button>
+                                        <button type="button" className="tsk-card-menu" title="Task context and delegation" aria-label={`${isExpanded ? 'Close' : 'Open'} task details for ${task.title}`} aria-expanded={isExpanded} onClick={(event) => {
+                                          event.stopPropagation();
+                                          setExpandedTaskId((current) => current === task.id ? null : task.id);
+                                        }}>
+                                          <MoreHorizontal className="w-4 h-4" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                    <h3 className="tsk-card-title">{task.title}</h3>
+                                    {task.description && <p className="tsk-card-description">{task.description}</p>}
+                                    <div className="tsk-card-tags">
+                                      <span>{projectName}</span>
+                                      {task.status && <span>{STATUS_LABELS[task.status] || task.status}</span>}
+                                    </div>
+                                    <div className="tsk-card-meta">
+                                      <div><FileText className="w-3.5 h-3.5" /><span>Spec · {linkedSpec?.title || ((task.specIds || []).length ? `${task.specIds.length} attached` : 'No spec linked')}</span><ChevronRight className="w-3 h-3" /></div>
+                                      <div><GitBranch className="w-3.5 h-3.5" /><span>Figma · {task.figmaNodeId || 'No frame linked'}</span><ChevronRight className="w-3 h-3" /></div>
+                                    </div>
+                                    <div className="tsk-card-footer">
+                                      <span className="tsk-assignee"><span className="tsk-assignee-avatar">{(assignee || (task.agentSessionId ? 'AI' : '?')).slice(0, 1).toUpperCase()}</span>{assignee || (task.agentSessionId ? 'AI Agent' : 'Unassigned')}</span>
+                                      <span className={`tsk-agent-state ${task.agentSessionId ? 'is-running' : ''}`}>{task.agentSessionId ? task.agentExecution?.status || 'Agent running' : 'Ready for agent'}</span>
+                                    </div>
+                                    {isExpanded && <div className="tsk-card-details" onClick={(event) => event.stopPropagation()}>
+                                      <div className="grid gap-6 lg:grid-cols-2">
+                                        <section>
+                                          <h3 className="mb-2 text-xs font-semibold uppercase text-[#9aa1ae]">Context</h3>
+                                          <div className="grid gap-3 sm:grid-cols-2">
+                                            <label className="text-xs text-[#9aa1ae]">Figma node or frame ID
+                                              <input className="ws-input mt-1" value={task.figmaNodeId || ''} onChange={(event) => setTasks((current) => current.map((item) => item.id === task.id ? { ...item, figmaNodeId: event.target.value } : item))} onBlur={(event) => saveTaskContext(task, { figmaNodeId: event.target.value, specIds: task.specIds || [] })} placeholder="Optional frame ID" />
+                                            </label>
+                                            <label className="text-xs text-[#9aa1ae]">Blocked by
+                                              <select className="ws-select mt-1 min-h-10" multiple value={(task.blockedBy || []).map((id) => String(id?._id || id))} onChange={(event) => {
+                                                const blockedBy = [...event.target.selectedOptions].map((option) => option.value);
+                                                setTasks((current) => current.map((item) => item.id === task.id ? { ...item, blockedBy } : item));
+                                                saveTaskContext(task, { blockedBy, specIds: task.specIds || [] });
+                                              }}>{tasks.filter((item) => item.id !== task.id).map((item) => <option key={item.id} value={item.id}>{item.title} · {STATUS_LABELS[item.status]}</option>)}</select>
+                                            </label>
+                                          </div>
+                                          <div className="mt-4">
+                                            <p className="mb-2 text-xs text-[#9aa1ae]">Attached specs <span className="text-[#727987]">(validation contracts)</span></p>
+                                            {specs.length ? <div className="grid gap-2 sm:grid-cols-2">{specs.map((spec) => <label key={spec._id} className="flex items-start gap-2 text-sm text-[#c6cad2]">
+                                              <input type="checkbox" checked={(task.specIds || []).includes(String(spec._id))} onChange={(event) => {
+                                                const specIds = event.target.checked ? [...new Set([...(task.specIds || []), String(spec._id)])] : (task.specIds || []).filter((id) => id !== String(spec._id));
+                                                const nextTask = { ...task, specIds };
+                                                setTasks((current) => current.map((item) => item.id === task.id ? nextTask : item));
+                                                saveTaskContext(nextTask, { specIds });
+                                              }} />
+                                              <span>{spec.title}<span className="block text-xs text-[#727987]">{spec.status || 'unvalidated'}</span></span>
+                                            </label>)}</div> : <p className="text-xs text-[#727987]">Create a spec in Specs to add executable validation.</p>}
+                                          </div>
+                                        </section>
+                                        <section>
+                                          <h3 className="mb-2 text-xs font-semibold uppercase text-[#9aa1ae]">Execution</h3>
+                                          {task.branch && <p className="mb-2 flex items-center gap-2 text-sm text-[#c6cad2]"><GitBranch className="w-4 h-4 text-[#2fd6e6]" /><code>{task.branch}</code></p>}
+                                          {task.agentSessionId && <p className="mb-3 text-xs text-[#9aa1ae]">Session {String(task.agentSessionId)} · {task.agentExecution?.status || 'active'}</p>}
+                                          {task.pullRequestId && <p className="mb-3 text-sm text-[#c6cad2]">Pull request: {task.pullRequestId}</p>}
+                                          <div className="flex flex-wrap gap-2">
+                                            <button type="button" className="btn-workspace btn-primary" onClick={() => delegateTask(task)} disabled={delegatingId === task.id || Boolean(task.agentSessionId) || task.status === 'blocked' || !selectedCompany?._id || contextSavingId === task.id}>
+                                              {delegatingId === task.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bot className="w-4 h-4" />}{delegatingId === task.id ? 'Delegating' : 'Delegate to AI Agent'}
+                                            </button>
+                                            {task.agentSessionId && <button type="button" className="btn-workspace btn-secondary" onClick={() => window.location.assign(`/ai-pair?executionId=${task.agentSessionId}`)}><ExternalLink className="w-4 h-4" /> Open session</button>}
+                                            {contextSavingId === task.id && <span className="self-center text-xs text-[#9aa1ae]">Saving context</span>}
+                                          </div>
+                                          {!(task.specIds || []).length && <p className="mt-3 text-xs text-[#e5b84a]">Attach a spec to give this run an explicit contract and automated checks.</p>}
+                                        </section>
+                                      </div>
+                                    </div>}
+                                  </article>
+                                );
+                              }) : <div className="tsk-lane-empty">No {laneTitle.toLowerCase()} tasks</div>}
                             </div>
                           </section>
-                          <section>
-                            <h3 className="mb-2 text-xs font-semibold uppercase text-[#9aa1ae]">Execution</h3>
-                            {task.branch && <p className="mb-2 flex items-center gap-2 text-sm text-[#c6cad2]"><GitBranch className="w-4 h-4 text-[#2fd6e6]" /><code>{task.branch}</code></p>}
-                            {task.agentSessionId && <p className="mb-3 text-xs text-[#9aa1ae]">Session {String(task.agentSessionId)} · {task.agentExecution?.status || 'active'}</p>}
-                            {task.pullRequestId && <p className="mb-3 text-sm text-[#c6cad2]">Pull request: {task.pullRequestId}</p>}
-                            <div className="flex flex-wrap gap-2">
-                              <button type="button" className="btn-workspace btn-primary" onClick={() => delegateTask(task)} disabled={delegatingId === task.id || Boolean(task.agentSessionId) || task.status === 'blocked' || !selectedCompany?._id || contextSavingId === task.id}>
-                                {delegatingId === task.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bot className="w-4 h-4" />}{delegatingId === task.id ? 'Delegating' : 'Delegate to AI Agent'}
-                              </button>
-                              {task.agentSessionId && <button type="button" className="btn-workspace btn-secondary" onClick={() => window.location.assign(`/ai-pair?executionId=${task.agentSessionId}`)}><ExternalLink className="w-4 h-4" /> Open session</button>}
-                              {contextSavingId === task.id && <span className="self-center text-xs text-[#9aa1ae]">Saving context</span>}
-                            </div>
-                            {!(task.specIds || []).length && <p className="mt-3 text-xs text-[#e5b84a]">Attach a spec to give this run an explicit contract and automated checks.</p>}
-                          </section>
-                        </div>
-                      </div>}
-                      </Fragment>
-                    );
-                  })}
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          </div>
+              </div>
             </>
+          )}
+          {createdTask && (
+            <div
+              className="tsk-created-overlay"
+              role="presentation"
+              onMouseDown={(event) => {
+                if (event.target === event.currentTarget) setCreatedTask(null);
+              }}
+            >
+              <section className="tsk-created-modal" role="dialog" aria-modal="true" aria-labelledby="tsk-created-title">
+                <header className="tsk-created-modal-header">
+                  <span className="tsk-created-success-icon"><CheckCircle2 className="w-5 h-5" /></span>
+                  <h2 id="tsk-created-title">Task created successfully</h2>
+                  <button type="button" onClick={() => setCreatedTask(null)} aria-label="Close task confirmation"><X className="w-4 h-4" /></button>
+                </header>
+                <div className="tsk-created-modal-body">
+                  <p className="tsk-created-eyebrow">TASK DETAILS</p>
+                  <dl>
+                    <div><dt>Task title</dt><dd>{createdTask.title}</dd></div>
+                    <div><dt>Description</dt><dd title={createdTask.description || ''}>{createdTask.description || 'No description'}</dd></div>
+                    <div><dt>Status</dt><dd>{createdTask.status === 'backlog' ? 'To do' : STATUS_LABELS[createdTask.status] || createdTask.status || 'To do'}</dd></div>
+                    <div><dt>Priority</dt><dd>{PRIORITY_LABELS[createdTask.priority] || createdTask.priority || 'Medium'}</dd></div>
+                    <div><dt>Assigned</dt><dd>{createdTask.assigneeName || createdTask.assignee?.fullName || createdTask.assignee?.name || 'Unassigned'}</dd></div>
+                    <div><dt>Due date</dt><dd>{formatCreatedDate(createdTask.dueDate)}</dd></div>
+                    <div><dt>Project</dt><dd>{projects.find((project) => String(project.id || project._id) === String(createdTask.projectId?._id || createdTask.projectId || ''))?.name || createdTask.project?.name || 'No project'}</dd></div>
+                    <div><dt>Labels</dt><dd className="tsk-created-labels">{createdTask.labels?.length ? createdTask.labels.map((label, index) => <span className={`tsk-label-chip label-${index % 3}`} key={`${label}-${index}`}>{label}</span>) : 'None'}</dd></div>
+                  </dl>
+                  {createdTask.delegationError && <p className="tsk-created-delegation-error">{createdTask.delegationError}</p>}
+                </div>
+                <footer className="tsk-created-modal-actions">
+                  <button type="button" className="tsk-create-cancel" onClick={() => setCreatedTask(null)}>Done</button>
+                  <button type="button" className="tsk-create-submit" onClick={() => router.push(`/tasks/${createdTask.id}`)}>View Task</button>
+                </footer>
+              </section>
+            </div>
           )}
         </main>
       </div>
