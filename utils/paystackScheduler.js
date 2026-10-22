@@ -175,20 +175,14 @@ class PaystackScheduler {
             billingSchedule.error = error.message;
             await billingSchedule.save();
 
-            // Update subscription status and downgrade to developer (free) tier
+            // Keep the paid tier and card on file for a grace/retry window,
+            // matching Flutterwave. Only an explicit cancellation downgrades.
             const subscription = await Subscription.findById(billingSchedule.subscriptionId);
-            if (subscription) {
-                // Downgrade to developer (free) tier (NO REFUND)
-                subscription.upgradeTo('developer');
-                subscription.status = 'cancelled';
-                subscription.cancelledAt = new Date();
-                subscription.isTrialWithCard = false;
-                subscription.firstChargeCompleted = false;
-                subscription.billingCycle = 0;
-                subscription.nextBillingDate = null;
+            if (subscription && subscription.status !== 'past_due') {
+                subscription.status = 'past_due';
                 await subscription.save();
-                
-                console.log(`✗ Payment failed for user ${subscription.userId}, downgraded to developer tier`);
+
+                console.log(`✗ Payment failed for user ${subscription.userId}, marked past_due`);
             }
 
             return { success: false, error: error.message };
