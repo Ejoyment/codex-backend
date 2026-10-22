@@ -47,10 +47,23 @@ function validateBootConfig({ includeJwtSecret = true } = {}) {
             'on the application host. Only for locked-down dev machines.'
         );
     }
-    if (process.env.NODE_ENV === 'production' && String(process.env.TERMINAL_EXEC_MODE || 'auto').toLowerCase() !== 'container') {
+    const hostTerminalOptIn = process.env.TERMINAL_ALLOW_HOST_EXEC === 'true';
+    if (process.env.NODE_ENV === 'production' && hostTerminalOptIn) {
         warnings.push(
-            'Terminal sessions spawn host shells (TERMINAL_EXEC_MODE!=container). ' +
-            'Set TERMINAL_EXEC_MODE=container with VPS transport to isolate execution.'
+            'TERMINAL_ALLOW_HOST_EXEC=true in production: terminal shells run on the application host. ' +
+            'Only for locked-down machines; prefer VPS transport.'
+        );
+    }
+    if (
+        process.env.NODE_ENV === 'production' &&
+        !hostTerminalOptIn &&
+        String(process.env.TERMINAL_EXEC_MODE || 'auto').toLowerCase() !== 'container' &&
+        !process.env.TERMINAL_SSH_HOST &&
+        !process.env.DEPLOY_SSH_HOST
+    ) {
+        warnings.push(
+            'Terminal sessions will fail closed in production: no VPS transport is configured ' +
+            'and local PTY shells are disabled. Set TERMINAL_SSH_HOST or DEPLOY_SSH_HOST.'
         );
     }
     if (process.env.TERMINAL_SSH_HOST && !process.env.TERMINAL_SSH_KEY && !process.env.TERMINAL_SSH_KEY_FILE) {

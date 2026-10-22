@@ -32,6 +32,7 @@ URL. The frontend never called it.
 - P13 (partial) — Cancellation now keeps the paid tier until period end on both rails.
 - P2 / E3 — VFS reads/writes/deletes/metadata are scoped by `_id` + `company`; VFS create rejects foreign companies.
 - P3 / E1 — Host debugging is off in production unless `IDE_ALLOW_HOST_EXEC=true`; child processes get an env allowlist instead of `process.env`; debugpy binds to `127.0.0.1`; temp filenames are basenamed.
+- P4 / E2 — Production terminal sessions fail closed without VPS transport; a host PTY requires `TERMINAL_ALLOW_HOST_EXEC=true`; boot config warns instead of silently spawning host shells.
 
 ## Remaining
 
@@ -41,7 +42,6 @@ URL. The frontend never called it.
 | P13 | Medium | Revoke provider-side card authorization/subscription on cancel; define refund and period-end semantics. |
 | P14 | Medium | Legacy `POST /api/subscription/payment/paystack` activates by `customerId` only and ignores metadata/amount. |
 | P15 | Medium | Three billing stacks and two `paymentRouter` modules still coexist; `/api/v1/billing` is the intended canonical stack. Delete the dead legacy router. |
-| P4 / E2 | Critical | Host shell available on free tier. `middleware/permissionMatrix.js:34-37`; `utils/terminalService.js:449-480` |
 | P11 / E4 | High | Deploy chain can publish another tenant's files. `routes/projects.js:550`; `routes/deployments.js:163-166` |
 | E5 | High | Credit pools are never debited; `deductCredits` has no callers. `middleware/tierEnforcement.js:206-289` |
 | E6 / E10 | High | `agent-confirmation/respond` IDOR; duplicate approval surfaces. `routes/agent-confirmation.js:73-89` |
