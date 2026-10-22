@@ -10,6 +10,60 @@ const { requireVerifiedWebhook } = require('../utils/webhookSecurity');
 const { planAmount } = require('../utils/billingPricing');
 
 /**
+ * Activate a 14-day card-backed trial from a verified Paystack verification
+ * charge. Shared by /verify (client redirect) and the charge.success webhook
+ * (server-to-server fallback when the user closes the tab).
+ */
+async function activateTrialWithAuthorization({ userId, authorizationCode, customerId }) {
+    const user = await User.findById(userId);
+    if (!user) return null;
+
+    let subscription = await Subscription.findOne({ userId });
+    if (subscription && subscription.paymentId === authorizationCode &&
+        ['trial', 'active'].includes(subscription.status)) {
+        return subscription;
+    }
+
+    const cardAddedAt = new Date();
+    if (!subscription) {
+        subscription = new Subscription({
+            userId,
+            tier: 'pro',
+            status: 'trial',
+            isTrialWithCard: true,
+            cardAddedAt,
+            trialEndsAt: new Date(Date.now() + (14 * 24 * 60 * 60 * 1000)), // 14 days
+            customerId,
+            paymentId: authorizationCode,
+            paymentProvider: 'paystack',
+            pricing: {
+                amount: planAmount('pro'),
+                currency: 'USD',
+                interval: 'monthly'
+            }
+        });
+    } else {
+        subscription.isTrialWithCard = true;
+        subscription.cardAddedAt = cardAddedAt;
+        subscription.customerId = customerId;
+        subscription.paymentId = authorizationCode;
+        subscription.status = 'trial';
+        subscription.tier = 'pro';
+        subscription.trialEndsAt = new Date(Date.now() + (14 * 24 * 60 * 60 * 1000));
+        subscription.paymentProvider = 'paystack';
+    }
+
+    // Enable pro-tier features during trial
+    subscription.upgradeTo('pro');
+    await subscription.save();
+
+    // Schedule first charge when the 14-day trial ends
+    await BillingScheduler.scheduleFirstCharge(userId, subscription._id, cardAddedAt, subscription.tier);
+
+    return subscription;
+}
+
+/**
  * @swagger
  * /api/paystack-billing/initialize:
  *   post:
@@ -198,43 +252,14 @@ router.post('/verify', authenticateToken, async (req, res) => {
             }
         }
 
-        // Create or update subscription
-        const cardAddedAt = new Date();
-
+        subscription = await activateTrialWithAuthorization({
+            userId,
+            authorizationCode,
+            customerId,
+        });
         if (!subscription) {
-            subscription = new Subscription({
-                userId,
-                tier: 'pro',
-                status: 'trial',
-                isTrialWithCard: true,
-                cardAddedAt,
-                trialEndsAt: new Date(Date.now() + (14 * 24 * 60 * 60 * 1000)), // 14 days
-                customerId,
-                paymentId: authorizationCode,
-                paymentProvider: 'paystack',
-                pricing: {
-                    amount: planAmount('pro'),
-                    currency: 'USD',
-                    interval: 'monthly'
-                }
-            });
-        } else {
-            subscription.isTrialWithCard = true;
-            subscription.cardAddedAt = cardAddedAt;
-            subscription.customerId = customerId;
-            subscription.paymentId = authorizationCode;
-            subscription.status = 'trial';
-            subscription.tier = 'pro';
-            subscription.trialEndsAt = new Date(Date.now() + (14 * 24 * 60 * 60 * 1000));
-            subscription.paymentProvider = 'paystack';
+            return res.status(404).json({ success: false, message: 'User not found' });
         }
-
-        // Enable pro-tier features during trial
-        subscription.upgradeTo('pro');
-        await subscription.save();
-
-        // Schedule first charge (14 days from now - after trial ends)
-        await BillingScheduler.scheduleFirstCharge(userId, subscription._id, cardAddedAt, subscription.tier);
 
         res.json({
             success: true,
@@ -243,7 +268,7 @@ router.post('/verify', authenticateToken, async (req, res) => {
                 status: subscription.status,
                 tier: subscription.tier,
                 trialEndsAt: subscription.trialEndsAt,
-                firstChargeAt: new Date(cardAddedAt.getTime() + (14 * 24 * 60 * 60 * 1000)) // 14 days
+                firstChargeAt: subscription.trialEndsAt
             }
         });
 
@@ -456,6 +481,27 @@ async function handleChargeSuccess(data) {
 
         console.log(`Charge successful for user ${userId}, reference: ${reference}`);
 
+        // Verification charge: the client may never return to the success
+        // page, so activate the trial here as a server-to-server fallback.
+        if (data.metadata?.isVerification) {
+            if (Number(data.amount) !== 50 ||
+                String(data.currency || '').toUpperCase() !== 'USD') {
+                console.log('Ignoring verification charge with unexpected amount/currency');
+                return;
+            }
+            const authorizationCode = data.authorization && data.authorization.authorization_code;
+            if (!authorizationCode) {
+                console.log('Verification charge has no reusable authorization code');
+                return;
+            }
+            await activateTrialWithAuthorization({
+                userId,
+                authorizationCode,
+                customerId: data.customer && data.customer.customer_code,
+            });
+            return;
+        }
+
         notifyPaymentEvent({
             type: 'payment_succeeded',
             userId,
@@ -463,9 +509,17 @@ async function handleChargeSuccess(data) {
             data: { reference, provider: 'paystack' },
         });
 
-        // Update subscription if needed
+        // Only a charge that matches the subscription's price may clear
+        // past_due; a stray or partial charge must not reactivate billing.
         const subscription = await Subscription.findOne({ userId });
         if (subscription && subscription.status === 'past_due') {
+            const expectedAmount = Math.round((subscription.pricing?.amount || 0) * 100);
+            const expectedCurrency = String(subscription.pricing?.currency || 'USD').toUpperCase();
+            if (Number(data.amount) !== expectedAmount ||
+                String(data.currency || '').toUpperCase() !== expectedCurrency) {
+                console.log('Ignoring charge that does not match subscription pricing');
+                return;
+            }
             subscription.status = 'active';
             await subscription.save();
             console.log(`Subscription reactivated for user ${userId}`);

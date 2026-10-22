@@ -209,6 +209,32 @@ describe('Paystack verification binding', () => {
     expect(PaystackScheduler.scheduleFirstCharge).not.toHaveBeenCalled();
   });
 
+  test('activates a trial and schedules one first charge', async () => {
+    const app = makeApp();
+    paystack.transaction.verify.mockResolvedValue(PAYSTACK_OK);
+    jest.spyOn(User, 'findById').mockResolvedValue({
+      _id: '507f1f77bcf86cd799439011',
+      email: 'a@b.c',
+      fullName: 'A',
+      paystackCustomerId: 'cus-1',
+    });
+    const save = jest.spyOn(Subscription.prototype, 'save').mockResolvedValue({});
+    jest.spyOn(Subscription, 'findOne').mockResolvedValue(null);
+
+    const res = await request(app)
+      .post('/api/paystack-billing/verify')
+      .send({ reference: 'ref-1' });
+
+    expect(res.status).toBe(200);
+    expect(save).toHaveBeenCalled();
+    expect(PaystackScheduler.scheduleFirstCharge).toHaveBeenCalledWith(
+      '507f1f77bcf86cd799439011',
+      expect.anything(),
+      expect.any(Date),
+      'pro'
+    );
+  });
+
   test('is idempotent for the same authorization code', async () => {
     const app = makeApp();
     paystack.transaction.verify.mockResolvedValue(PAYSTACK_OK);
