@@ -138,6 +138,7 @@ class VirtualFileSystem {
    * Read file content (with caching)
    */
   async readFile(fileId, workspaceId) {
+    assertValidWorkspaceId(workspaceId);
     const cacheKey = `${workspaceId}:${fileId}`;
 
     // Check cache first
@@ -148,9 +149,10 @@ class VirtualFileSystem {
 
     console.log(`VFS cache miss: ${fileId}, loading from DB`);
 
-    // Load from database
-    assertValidWorkspaceId(workspaceId);
-    const file = await CodeFile.findById(fileId)
+    // Scope the lookup to the workspace as well as the file id. Callers have
+    // already checked workspace membership, but a foreign fileId would still
+    // be readable if the query trusted the id alone.
+    const file = await CodeFile.findOne({ _id: fileId, company: workspaceId })
       .select('name path content language size')
       .lean()
       .exec();
@@ -191,8 +193,8 @@ class VirtualFileSystem {
   async writeFile(fileId, content, workspaceId) {
     assertValidWorkspaceId(workspaceId);
 
-    const file = await CodeFile.findByIdAndUpdate(
-      fileId,
+    const file = await CodeFile.findOneAndUpdate(
+      { _id: fileId, company: workspaceId },
       { 
         content,
         size: Buffer.byteLength(content, 'utf8'),
@@ -229,6 +231,9 @@ class VirtualFileSystem {
    */
   async createFile(fileData, workspaceId) {
     assertValidWorkspaceId(workspaceId);
+    if (!fileData || String(fileData.company) !== String(workspaceId)) {
+      throw new Error('File does not belong to this workspace');
+    }
 
     const file = await CodeFile.create(fileData);
 
@@ -261,7 +266,7 @@ class VirtualFileSystem {
   async deleteFile(fileId, workspaceId) {
     assertValidWorkspaceId(workspaceId);
 
-    const file = await CodeFile.findById(fileId);
+    const file = await CodeFile.findOne({ _id: fileId, company: workspaceId });
     if (!file) {
       throw new Error('File not found');
     }
@@ -269,7 +274,7 @@ class VirtualFileSystem {
     const path = file.path;
 
     // Delete from database
-    await CodeFile.findByIdAndDelete(fileId);
+    await CodeFile.deleteOne({ _id: fileId, company: workspaceId });
 
     // Remove from cache
     const cacheKey = `${workspaceId}:${fileId}`;
@@ -309,6 +314,7 @@ class VirtualFileSystem {
    * Get file metadata without loading content
    */
   async getMetadata(fileId, workspaceId) {
+    assertValidWorkspaceId(workspaceId);
     const index = this.indexes.get(workspaceId);
     
     if (index) {
@@ -321,7 +327,7 @@ class VirtualFileSystem {
     }
 
     // Fallback to database
-    const file = await CodeFile.findById(fileId)
+    const file = await CodeFile.findOne({ _id: fileId, company: workspaceId })
       .select('name path language size updatedAt createdBy')
       .lean()
       .exec();
