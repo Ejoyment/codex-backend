@@ -267,11 +267,16 @@ describe('routes', () => {
   test('cancel marks the subscription cancelled', async () => {
     process.env.FLUTTERWAVE_SECRET_KEY = 'sk-test';
     const { app, Subscription } = loadStack();
-    const subDoc = { status: 'active', save: jest.fn(async function () { return this; }) };
+    const subDoc = {
+      status: 'active',
+      upgradeTo: jest.fn(),
+      save: jest.fn(async function () { return this; }),
+    };
     jest.spyOn(Subscription, 'findOne').mockResolvedValue(subDoc);
     const res = await request(app).post('/api/flutterwave-billing/cancel').send({});
     expect(res.status).toBe(200);
     expect(subDoc.status).toBe('cancelled');
+    expect(subDoc.upgradeTo).toHaveBeenCalledWith('developer');
   });
 
   test('status returns the subscription snapshot', async () => {

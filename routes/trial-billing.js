@@ -5,6 +5,7 @@ const { authenticateToken } = require('../middleware/auth');
 const Subscription = require('../models/Subscription');
 const User = require('../models/User');
 const BillingScheduler = require('../utils/billingScheduler');
+const { planAmount } = require('../utils/billingPricing');
 
 /**
  * @swagger
@@ -86,7 +87,7 @@ router.post('/setup-payment', authenticateToken, async (req, res) => {
                 paymentId: paymentMethodId,
                 paymentProvider: 'stripe',
                 pricing: {
-                    amount: 25,
+                    amount: planAmount('pro'),
                     currency: 'USD',
                     interval: 'monthly'
                 }
@@ -105,8 +106,8 @@ router.post('/setup-payment', authenticateToken, async (req, res) => {
         subscription.upgradeTo('pro');
         await subscription.save();
 
-        // Schedule first charge (210 seconds from now)
-        await BillingScheduler.scheduleFirstCharge(userId, subscription._id, cardAddedAt);
+        // Schedule first charge when the 14-day trial ends
+        await BillingScheduler.scheduleFirstCharge(userId, subscription._id, cardAddedAt, subscription.tier);
 
         res.json({
             success: true,
@@ -115,7 +116,7 @@ router.post('/setup-payment', authenticateToken, async (req, res) => {
                 status: subscription.status,
                 tier: subscription.tier,
                 trialEndsAt: subscription.trialEndsAt,
-                firstChargeAt: new Date(cardAddedAt.getTime() + (210 * 1000))
+                firstChargeAt: subscription.trialEndsAt
             }
         });
 
