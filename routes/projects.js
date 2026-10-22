@@ -7,6 +7,7 @@ const LocalTask = require('../models/LocalTask');
 const CodeFile = require('../models/CodeFile');
 const { resolveAccessibleSpecs, getAccessibleProjects, userCanAccessProject } = require('../utils/specAccess');
 const { normalizeMembers } = require('../utils/members');
+const { assertCompanyMembership } = require('../middleware/workspaceAccess');
 
 /**
  * @swagger
@@ -540,6 +541,10 @@ router.put('/:projectId', authenticateToken, async (req, res) => {
         if (!project) {
             return res.status(404).json({ success: false, message: 'Project not found' });
         }
+
+        // A project may only be attached to a workspace the caller belongs to;
+        // otherwise it becomes a handle for deploying another tenant's files.
+        if (workspaceId && !(await assertCompanyMembership(workspaceId, userId, res))) return;
 
         if (name) project.name = name;
         if (description !== undefined) project.description = description;
