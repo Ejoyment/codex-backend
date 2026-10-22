@@ -7,6 +7,7 @@ const User = require('../models/User');
 const BillingScheduler = require('../utils/paystackScheduler');
 const { notifyPaymentEvent } = require('../utils/notificationTriggers');
 const { requireVerifiedWebhook } = require('../utils/webhookSecurity');
+const { planAmount } = require('../utils/billingPricing');
 
 /**
  * @swagger
@@ -212,7 +213,7 @@ router.post('/verify', authenticateToken, async (req, res) => {
                 paymentId: authorizationCode,
                 paymentProvider: 'paystack',
                 pricing: {
-                    amount: 50, // $50.00 monthly subscription (Starter plan)
+                    amount: planAmount('pro'),
                     currency: 'USD',
                     interval: 'monthly'
                 }
@@ -233,7 +234,7 @@ router.post('/verify', authenticateToken, async (req, res) => {
         await subscription.save();
 
         // Schedule first charge (14 days from now - after trial ends)
-        await BillingScheduler.scheduleFirstCharge(userId, subscription._id, cardAddedAt);
+        await BillingScheduler.scheduleFirstCharge(userId, subscription._id, cardAddedAt, subscription.tier);
 
         res.json({
             success: true,

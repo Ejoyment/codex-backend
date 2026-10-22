@@ -2,6 +2,7 @@ const BillingSchedule = require('../models/BillingSchedule');
 const Subscription = require('../models/Subscription');
 const User = require('../models/User');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const { planAmountCents } = require('../utils/billingPricing');
 
 // A charge row left in `processing` longer than this crashed (or lost its
 // worker) between the atomic claim and the completion write. The reaper
@@ -17,17 +18,26 @@ const STRIPE_PENDING_STATUSES = new Set([
 
 class BillingScheduler {
     /**
-     * Schedule first charge (210 seconds after card entry)
+     * Schedule first charge when the 14-day trial ends
      */
-    static async scheduleFirstCharge(userId, subscriptionId, cardAddedAt) {
-        const firstChargeTime = new Date(cardAddedAt.getTime() + (210 * 1000)); // 210 seconds
+    static async scheduleFirstCharge(userId, subscriptionId, cardAddedAt, tier = 'pro') {
+        // Idempotent: repeated /setup-payment calls must not stack duplicate
+        // charges on the same trial.
+        const existing = await BillingSchedule.findOne({
+            subscriptionId,
+            chargeType: 'first_charge',
+            status: 'pending'
+        });
+        if (existing) return existing;
+
+        const firstChargeTime = new Date(cardAddedAt.getTime() + (14 * 24 * 60 * 60 * 1000)); // 14 days
         
         const schedule = new BillingSchedule({
             userId,
             subscriptionId,
             chargeType: 'first_charge',
             scheduledFor: firstChargeTime,
-            amount: 2500, // $25.00 in cents
+            amount: planAmountCents(tier),
             status: 'pending'
         });
         
@@ -40,7 +50,7 @@ class BillingScheduler {
     /**
      * Schedule second charge (2 months after first charge)
      */
-    static async scheduleSecondCharge(userId, subscriptionId, firstChargeDate) {
+    static async scheduleSecondCharge(userId, subscriptionId, firstChargeDate, tier = 'pro') {
         const secondChargeTime = new Date(firstChargeDate);
         secondChargeTime.setMonth(secondChargeTime.getMonth() + 2);
         
@@ -49,7 +59,7 @@ class BillingScheduler {
             subscriptionId,
             chargeType: 'second_charge',
             scheduledFor: secondChargeTime,
-            amount: 2500,
+            amount: planAmountCents(tier),
             status: 'pending'
         });
         
@@ -62,7 +72,7 @@ class BillingScheduler {
     /**
      * Schedule recurring monthly charge
      */
-    static async scheduleRecurringCharge(userId, subscriptionId, lastChargeDate) {
+    static async scheduleRecurringCharge(userId, subscriptionId, lastChargeDate, tier = 'pro') {
         const nextChargeTime = new Date(lastChargeDate);
         nextChargeTime.setMonth(nextChargeTime.getMonth() + 1);
         
@@ -71,7 +81,7 @@ class BillingScheduler {
             subscriptionId,
             chargeType: 'recurring',
             scheduledFor: nextChargeTime,
-            amount: 2500,
+            amount: planAmountCents(tier),
             status: 'pending'
         });
         
@@ -143,21 +153,21 @@ class BillingScheduler {
                 await subscription.save();
 
                 // Schedule second charge (2 months later)
-                await this.scheduleSecondCharge(user._id, subscription._id, new Date());
+                await this.scheduleSecondCharge(user._id, subscription._id, new Date(), subscription.tier);
             } else if (schedule.chargeType === 'second_charge') {
                 subscription.billingCycle = 2;
                 subscription.nextBillingDate = new Date(Date.now() + (30 * 24 * 60 * 60 * 1000)); // 1 month
                 await subscription.save();
 
                 // Schedule recurring monthly charge
-                await this.scheduleRecurringCharge(user._id, subscription._id, new Date());
+                await this.scheduleRecurringCharge(user._id, subscription._id, new Date(), subscription.tier);
             } else if (schedule.chargeType === 'recurring') {
                 subscription.billingCycle += 1;
                 subscription.nextBillingDate = new Date(Date.now() + (30 * 24 * 60 * 60 * 1000));
                 await subscription.save();
 
                 // Schedule next recurring charge
-                await this.scheduleRecurringCharge(user._id, subscription._id, new Date());
+                await this.scheduleRecurringCharge(user._id, subscription._id, new Date(), subscription.tier);
             }
 
             console.log(`Successfully processed ${schedule.chargeType} for user ${user.email}`);

@@ -218,7 +218,7 @@ async function startServer(port = process.env.PORT || 3000) {
         srv.listen(port, () => {
             console.log(`\n🚀 CODEX INC Server running on port ${port}`);
             console.log(`📧 Email service: Resend API (Production Ready)`);
-            console.log(`💳 Trial Billing: Active (210s first charge, 2 month second charge)`);
+            console.log(`💳 Trial Billing: Active (14-day trial, 2 month second charge)`);
             console.log(`💬 Live Support: Socket.IO Active`);
             console.log(`🌐 Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:5500'}`);
             resolve(srv);
