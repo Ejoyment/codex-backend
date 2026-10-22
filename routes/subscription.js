@@ -925,29 +925,21 @@ router.post('/payment/stripe', requireVerifiedWebhook('stripe', async (req, res)
  *     summary: Paystack payment webhook
  *     tags:
  *       - Subscription & Billing
- *     description: Receives Paystack charge.success events to activate subscriptions
+ *     description: Retired. Use /api/paystack-billing/webhook instead.
+ *     deprecated: true
  *     responses:
- *       200:
- *         description: Webhook received
+ *       410:
+ *         description: Endpoint retired
  */
-// Paystack webhook handler.
-// Signature-verified for the same reason as the Stripe route above. This one
-// previously had no verification at all, so a single unauthenticated POST
-// granted a free 30-day subscription to any customer code.
-router.post('/payment/paystack', requireVerifiedWebhook('paystack', async (req, res) => {
-    const event = req.verifiedWebhookEvent;
-
-    if (event.event === 'charge.success') {
-        const { customer, metadata } = event.data;
-        if (customer && customer.customer_code) {
-            await handleSuccessfulPayment(customer.customer_code, metadata);
-        }
-    }
-
-    res.json({ success: true });
-}), async (req, res, next) => {
-    if (res.headersSent) return;
-    next();
+// Retired. This handler activated a subscription by customer code alone and
+// ignored the charge amount, currency, and metadata. The canonical
+// /api/paystack-billing/webhook verifies the user and charge before mutating
+// any subscription state.
+router.post('/payment/paystack', (req, res) => {
+    res.status(410).json({
+        success: false,
+        message: 'This webhook is retired. Use /api/paystack-billing/webhook.'
+    });
 });
 
 // Helper function to handle successful payment
