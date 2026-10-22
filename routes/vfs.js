@@ -556,8 +556,7 @@ router.delete('/files/:fileId', authenticateToken, permissionMatrix.requirePermi
     if (!(await assertFileAccess(file, req.userId, res))) return;
 
     const workspaceId = file.company.toString();
-    
-    await CodeFile.findByIdAndDelete(fileId);
+
     await vfs.deleteFile(fileId, workspaceId);
     
     emitWorkspaceChange(workspaceId, 'file:deleted', {
