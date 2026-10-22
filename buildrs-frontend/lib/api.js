@@ -338,6 +338,7 @@ export const projectApi = {
   get: (projectId) => apiFetch(`/api/projects/${projectId}`),
   listProjectFiles: (projectId) => apiFetch(`/api/projects/${projectId}/files`),
   listTasks: () => apiFetch('/api/projects/tasks'),
+  getTask: (taskId) => apiFetch(`/api/projects/tasks/${taskId}`),
   createTask: (data) =>
     apiFetch('/api/projects/tasks', {
       method: 'POST',
