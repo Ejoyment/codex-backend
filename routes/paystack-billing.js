@@ -552,20 +552,14 @@ async function handleChargeFailed(data) {
             data: { reference, provider: 'paystack' },
         });
 
-        // Update subscription status and downgrade to developer
+        // Failed charges enter a grace state; only an explicit cancellation
+        // downgrades the tier or revokes the card, matching Flutterwave.
         const subscription = await Subscription.findOne({ userId });
-        if (subscription) {
-            // Downgrade to developer (free) tier (NO REFUND)
-            subscription.upgradeTo('developer');
-            subscription.status = 'cancelled';
-            subscription.cancelledAt = new Date();
-            subscription.isTrialWithCard = false;
-            subscription.firstChargeCompleted = false;
-            subscription.billingCycle = 0;
-            subscription.nextBillingDate = null;
+        if (subscription && subscription.status !== 'past_due') {
+            subscription.status = 'past_due';
             await subscription.save();
-            
-            console.log(`✗ Payment failed for user ${userId}, downgraded to developer (free) tier`);
+
+            console.log(`✗ Payment failed for user ${userId}, marked past_due`);
         }
 
     } catch (error) {
