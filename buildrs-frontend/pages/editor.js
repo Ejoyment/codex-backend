@@ -268,7 +268,34 @@ function buildFileTree(files) {
   return root;
 }
 
-function FileTreeNode({ node, depth, selectedId, onSelect, expanded, onToggle }) {
+function InlineFileRow({ depth, value, inputRef, onChange, onCommit, onCancel }) {
+  return (
+    <div className="ed-tree-row is-inline-create" style={{ paddingLeft: `${6 + depth * 14}px` }}>
+      <FileCode className="w-3.5 h-3.5 ed-file-inline-ico" />
+      <input
+        ref={inputRef}
+        className="ed-inline-input"
+        value={value}
+        placeholder="File name"
+        autoFocus
+        spellCheck={false}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            onCommit();
+          } else if (e.key === 'Escape') {
+            e.preventDefault();
+            onCancel();
+          }
+        }}
+        onBlur={onCommit}
+      />
+    </div>
+  );
+}
+
+function FileTreeNode({ node, depth, selectedId, onSelect, expanded, onToggle, inlineCreate, inlineInputRef, onInlineChange, onInlineCommit, onInlineCancel }) {
   const sortedChildren = useMemo(() => {
     if (!node.children) return null;
     return Object.values(node.children).sort((a, b) => {
@@ -293,6 +320,7 @@ function FileTreeNode({ node, depth, selectedId, onSelect, expanded, onToggle })
   }
   if (node.type === 'folder' || node.children) {
     const isOpen = expanded[node.path || node.name] !== false;
+    const inlineHere = inlineCreate && inlineCreate.parentPath === (node.path || '');
     return (
       <div>
         <button
@@ -305,11 +333,23 @@ function FileTreeNode({ node, depth, selectedId, onSelect, expanded, onToggle })
           <Folder className="w-3.5 h-3.5 ed-folder-ico" />
           <span className="ed-tree-name">{node.name}</span>
         </button>
-        {isOpen && sortedChildren && (
+        {isOpen && (
           <div>
-            {sortedChildren.map((child) => (
+            {inlineHere && (
+              <InlineFileRow
+                depth={depth + 1}
+                value={inlineCreate.value}
+                inputRef={inlineInputRef}
+                onChange={onInlineChange}
+                onCommit={onInlineCommit}
+                onCancel={onInlineCancel}
+              />
+            )}
+            {sortedChildren && sortedChildren.map((child) => (
               <FileTreeNode key={child._fullPath || child.path || child.name || child._id} node={child} depth={depth + 1}
-                selectedId={selectedId} onSelect={onSelect} expanded={expanded} onToggle={onToggle} />
+                selectedId={selectedId} onSelect={onSelect} expanded={expanded} onToggle={onToggle}
+                inlineCreate={inlineCreate} inlineInputRef={inlineInputRef} onInlineChange={onInlineChange}
+                onInlineCommit={onInlineCommit} onInlineCancel={onInlineCancel} />
             ))}
           </div>
         )}
@@ -361,11 +401,9 @@ export default function Editor() {
   const [tier, setTier] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [showNewModal, setShowNewModal] = useState(false);
-  const [newFileName, setNewFileName] = useState('');
-  const [newFileLang, setNewFileLang] = useState('javascript');
-  const [newFileContent, setNewFileContent] = useState('');
-  const [newFilePath, setNewFilePath] = useState('/');
+  const [inlineCreate, setInlineCreate] = useState(null);
+  const inlineInputRef = useRef(null);
+  const inlineCancelledRef = useRef(false);
   const [showNewFolderModal, setShowNewFolderModal] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [newFolderPath, setNewFolderPath] = useState('/');
@@ -1030,7 +1068,7 @@ export default function Editor() {
         if (selectedFileRef.current) closeTab(selectedFileRef.current);
       } else if (k === 'n') {
         e.preventDefault();
-        setShowNewModal(true);
+        startInlineCreate();
       } else if (k === 'd' && e.shiftKey) {
         e.preventDefault();
         router.push('/dashboard');
@@ -2305,70 +2343,97 @@ export default function Editor() {
     renderRemote();
   }
 
-  async function handleCreateFile(e) {
-    e.preventDefault();
-    if (!newFileName.trim()) return;
+  // VS Code-style creation: the new file appears as an editable row in the
+  // explorer. Enter commits, Escape/blur cancels, and the file lands in the
+  // selected file's folder (or the workspace root).
+  function startInlineCreate() {
+    if (creating) return;
+    // Use the ref so the global ⌘N shortcut (registered once) targets the
+    // file selected now, not the one selected at mount.
+    const current = selectedFileRef.current;
+    const parts = current ? fileFullPath(current).split('/').filter(Boolean) : [];
+    parts.pop();
+    const parentPath = parts.join('/');
+    if (parentPath) {
+      setExpandedFolders((prev) => ({ ...prev, [parentPath]: true }));
+    }
+    inlineCancelledRef.current = false;
+    setInlineCreate({ parentPath, value: '' });
+  }
+
+  function cancelInlineCreate() {
+    inlineCancelledRef.current = true;
+    setInlineCreate(null);
+  }
+
+  async function createFileAt(rawName, parentPath) {
+    const segments = String(rawName || '').trim().split('/').filter(Boolean);
+    const name = segments.pop();
+    if (!name || name === '.' || name === '..') return;
+    const dir = [parentPath, ...segments].filter(Boolean).join('/');
+    const filePath = dir ? `/${dir}` : '/';
+    const language = detectLanguage(name);
+
     if (selectedRepo && !selectedProject) {
       // Repo mode: the remote tree stays server-owned — stage the new file
       // locally and let Commit & Push publish it (see handleGitAction).
-      const name = newFileName.trim();
-      const dir = (newFilePath || '/').replace(/\/+$/, '');
-      const full = `${dir}/${name}`.replace(/\/{2,}/g, '/');
+      const full = `${filePath}/${name}`.replace(/\/{2,}/g, '/');
       const key = getFileKey({ path: full, name });
       const entry = {
         _id: key,
         id: key,
         name,
         path: full, // GitHub entries carry the full path
-        language: newFileLang,
-        content: newFileContent,
+        language,
+        content: '',
         source: 'github',
         pending: true,
       };
-      openContentsRef.current[key] = newFileContent;
-      openOriginalsRef.current[key] = newFileContent;
+      openContentsRef.current[key] = '';
+      openOriginalsRef.current[key] = '';
       remoteBaselineRef.current[key] = ''; // not on the remote yet → shows in SCM
       setRepoPending((prev) => [...prev.filter((f) => getFileKey(f) !== key), entry]);
-      setShowNewModal(false);
-      setNewFileName('');
-      setNewFileLang('javascript');
-      setNewFileContent('');
       refreshGitModified();
       setStatus({ type: 'success', msg: 'File staged — Commit & Push to publish it' });
       openFile(entry);
       loadFile(entry);
       return;
     }
+
+    const payload = {
+      name,
+      language,
+      content: '',
+      companyId: selectedProject?.workspaceId || workspaceId,
+      projectId: selectedProject?._id || selectedProject?.id || null,
+      path: filePath,
+    };
+    const data = await apiFetch('/api/code-editor/files', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!data.success && !data.file) {
+      throw new Error(data.message || 'Create failed');
+    }
+    const created = data.file || data;
+    setStatus({ type: 'success', msg: 'File created' });
+    setTimeout(() => setStatus(null), 2000);
+    await reloadFiles();
+    if (created) {
+      openFile(created);
+      loadFile(created);
+    }
+  }
+
+  async function commitInlineCreate() {
+    if (!inlineCreate || creating || inlineCancelledRef.current) return;
+    inlineCancelledRef.current = true;
+    const value = inlineCreate.value.trim();
+    setInlineCreate(null);
+    if (!value) return;
     try {
       setCreating(true);
-      const filePath = newFilePath || '/';
-      const payload = {
-        name: newFileName.trim(),
-        language: newFileLang,
-        content: newFileContent,
-        companyId: selectedProject?.workspaceId || workspaceId,
-        projectId: selectedProject?._id || selectedProject?.id || null,
-        path: filePath,
-      };
-      const data = await apiFetch('/api/code-editor/files', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      });
-      if (!data.success && !data.file) {
-        throw new Error(data.message || 'Create failed');
-      }
-      const created = data.file || data;
-      setShowNewModal(false);
-      setNewFileName('');
-      setNewFileLang('javascript');
-      setNewFileContent('');
-      setStatus({ type: 'success', msg: 'File created' });
-      setTimeout(() => setStatus(null), 2000);
-      await reloadFiles();
-      if (created) {
-        openFile(created);
-        loadFile(created);
-      }
+      await createFileAt(value, inlineCreate.parentPath);
     } catch (err) {
       setStatus({ type: 'error', msg: err.message || 'Create failed' });
     } finally {
@@ -2996,7 +3061,7 @@ export default function Editor() {
   const MENU_ITEMS = [
     {
       id: 'file', label: 'File', items: [
-        { label: 'New File', kbd: '⌘N', run: () => setShowNewModal(true) },
+        { label: 'New File', kbd: '⌘N', run: () => startInlineCreate() },
         { label: 'New Folder', kbd: '⇧⌘N', run: () => setShowNewFolderModal(true) },
         { label: null },
         { label: 'Save', kbd: '⌘S', run: handleSave },
@@ -3062,7 +3127,7 @@ export default function Editor() {
     const match = (s) => (q ? (s || '').toLowerCase().includes(q) : true);
     const fileMatches = files.filter((f) => match(f.name)).slice(0, 8).map((f) => ({ kind: 'file', label: f.name, icon: FileCode, file: f }));
     const cmds = [
-      { kind: 'command', label: 'File: New File', icon: FilePlus, run: () => setShowNewModal(true) },
+      { kind: 'command', label: 'File: New File', icon: FilePlus, run: () => startInlineCreate() },
       { kind: 'command', label: 'File: Save', icon: Save, run: handleSave },
       { kind: 'command', label: 'Run: Run File', icon: Play, run: handleRun },
       { kind: 'command', label: 'Run: Stop Run', icon: XCircle, run: stopRun },
@@ -3129,7 +3194,7 @@ export default function Editor() {
                 <span>Deploy</span>
                 <span>Live</span>
               </div>
-              <button type="button" className="btn-workspace btn-primary" onClick={() => setShowNewModal(true)}>
+              <button type="button" className="btn-workspace btn-primary" onClick={() => startInlineCreate()}>
                 <FilePlus className="w-4 h-4" /> New File
               </button>
             </div>
@@ -3236,7 +3301,7 @@ export default function Editor() {
                   <div className="ed-sidebar-head">
                     <span className="ed-sidebar-title">Explorer</span>
                     <div className="ed-sidebar-actions">
-                      <button type="button" className="ed-sidebar-btn" onClick={() => setShowNewModal(true)} title="New File"><FilePlus className="w-3.5 h-3.5" /></button>
+                      <button type="button" className="ed-sidebar-btn" onClick={() => startInlineCreate()} title="New File"><FilePlus className="w-3.5 h-3.5" /></button>
                       <button type="button" className="ed-sidebar-btn" onClick={() => setShowNewFolderModal(true)} title="New Folder"><FolderPlus className="w-3.5 h-3.5" /></button>
                       <button type="button" className="ed-sidebar-btn" onClick={reloadFiles} title="Refresh"><RefreshCw className="w-3.5 h-3.5" /></button>
                     </div>
@@ -3283,15 +3348,34 @@ export default function Editor() {
                           <Loader2 className="w-5 h-5 animate-spin" />
                           <span className="text-xs">Loading files...</span>
                         </div>
-                      ) : files.length === 0 ? (
+                      ) : files.length === 0 && !inlineCreate ? (
                         <div className="ed-empty">
                           <FileCode className="w-6 h-6" />
                           <p className="text-xs">No files yet</p>
-                          <button type="button" className="btn-workspace btn-primary" onClick={() => setShowNewModal(true)}>Create File</button>
+                          <button type="button" className="btn-workspace btn-primary" onClick={() => startInlineCreate()}>Create File</button>
                         </div>
                       ) : (
-                        <FileTreeNode node={tree} depth={-1} selectedId={selectedFile?._id} onSelect={selectFile} expanded={expandedFolders}
-                          onToggle={(path) => setExpandedFolders((prev) => ({ ...prev, [path]: prev[path] === false ? true : false }))} />
+                        <>
+                          {files.length === 0 && inlineCreate && (
+                            <InlineFileRow
+                              depth={0}
+                              value={inlineCreate.value}
+                              inputRef={inlineInputRef}
+                              onChange={(value) => setInlineCreate((prev) => (prev ? { ...prev, value } : prev))}
+                              onCommit={commitInlineCreate}
+                              onCancel={cancelInlineCreate}
+                            />
+                          )}
+                          {files.length > 0 && (
+                            <FileTreeNode node={tree} depth={-1} selectedId={selectedFile?._id} onSelect={selectFile} expanded={expandedFolders}
+                              onToggle={(path) => setExpandedFolders((prev) => ({ ...prev, [path]: prev[path] === false ? true : false }))}
+                              inlineCreate={inlineCreate}
+                              inlineInputRef={inlineInputRef}
+                              onInlineChange={(value) => setInlineCreate((prev) => (prev ? { ...prev, value } : prev))}
+                              onInlineCommit={commitInlineCreate}
+                              onInlineCancel={cancelInlineCreate} />
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
@@ -3903,7 +3987,7 @@ export default function Editor() {
                 <div className="ed-ide-empty">
                   <FileCode className="w-8 h-8" />
                   <p>Select a file to start editing</p>
-                  <button type="button" className="btn-workspace btn-primary" onClick={() => setShowNewModal(true)}>New File</button>
+                  <button type="button" className="btn-workspace btn-primary" onClick={() => startInlineCreate()}>New File</button>
                 </div>
               ) : (
                 <div className="ed-code-wrap">
@@ -4307,51 +4391,6 @@ export default function Editor() {
             </div>
           </footer>
         </div>
-
-      {showNewModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" style={{ zIndex: 9999 }}>
-          <div className="ws-modal w-full max-w-lg" style={{ position: 'relative', zIndex: 1 }}>
-            <div className="flex items-center justify-between p-5 border-b border-[rgba(255,255,255,0.09)]">
-              <div className="flex items-center gap-2.5">
-                <span className="card-ico">
-                  <FilePlus className="w-4 h-4" />
-                </span>
-                <h2 className="ws-modal-title">Create New File</h2>
-              </div>
-              <button type="button" onClick={() => setShowNewModal(false)} className="text-muted hover:text-white"><X className="w-5 h-5" /></button>
-            </div>
-            <form onSubmit={handleCreateFile} className="p-5 space-y-4">
-              <div>
-                <label className="ws-label">File Name</label>
-                <input type="text" value={newFileName} onChange={(e) => setNewFileName(e.target.value)} placeholder="e.g. app.js" className="ws-input" autoFocus required />
-              </div>
-              <div>
-                <label className="ws-label">Path (folder)</label>
-                <input type="text" value={newFilePath} onChange={(e) => setNewFilePath(e.target.value)} placeholder="/src" className="ws-input" />
-              </div>
-              <div>
-                <label className="ws-label">Language</label>
-                <select value={newFileLang} onChange={(e) => setNewFileLang(e.target.value)} className="ws-select">
-                  {(languages.length > 0 ? languages : [{ name: 'javascript' }, { name: 'python' }, { name: 'typescript' }, { name: 'html' }, { name: 'css' }, { name: 'json' }, { name: 'markdown' }, { name: 'plaintext' }]).map((lang) => (
-                    <option key={lang.name} value={lang.name} disabled={lang.allowed === false}>{lang.name}{lang.allowed === false ? ' (unavailable)' : ''}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="ws-label">Initial Content</label>
-                <textarea value={newFileContent} onChange={(e) => setNewFileContent(e.target.value)} placeholder="// Start writing code here..." className="ws-textarea w-full font-mono text-sm" style={{ minHeight: '150px', tabSize: 2 }} />
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', paddingTop: '0.5rem' }}>
-                <button type="button" className="btn-workspace btn-secondary" onClick={() => setShowNewModal(false)}>Cancel</button>
-                <button type="submit" className="btn-workspace btn-primary flex items-center gap-2" disabled={creating || !newFileName.trim()}>
-                  <FilePlus className="w-4 h-4" />
-                  {creating ? 'Creating...' : 'Create File'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {showNewFolderModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" style={{ zIndex: 9999 }}>

@@ -5875,6 +5875,40 @@
   font-weight: 500;
 }
 
+/* VS Code-style inline "new file" row in the explorer */
+.ed-tree-row.is-inline-create {
+  cursor: default;
+  padding-top: 0.15rem;
+  padding-bottom: 0.15rem;
+}
+
+.ed-tree-row.is-inline-create:hover {
+  background: transparent;
+}
+
+.ed-file-inline-ico {
+  color: #6e6e6e;
+  flex-shrink: 0;
+}
+
+.ed-inline-input {
+  flex: 1;
+  min-width: 0;
+  background: #1e1e1e;
+  border: 1px solid #007acc;
+  border-radius: 2px;
+  color: #e4e4e4;
+  font-size: 0.76rem;
+  font-family: inherit;
+  padding: 0.1rem 0.3rem;
+  outline: none;
+  box-shadow: 0 0 0 1px rgba(0, 122, 204, 0.35);
+}
+
+.ed-inline-input::placeholder {
+  color: #6e6e6e;
+}
+
 /* Search view */
 .ed-search-input-icon {
   position: relative;
