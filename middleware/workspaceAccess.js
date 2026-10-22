@@ -15,6 +15,7 @@
 
 async function userIsCompanyMember(companyId, userId) {
     if (!companyId || !userId) return false;
+    if (!require('mongoose').Types.ObjectId.isValid(companyId)) return false;
     const Company = require('../models/Company');
     const company = await Company.findOne({
         _id: companyId,

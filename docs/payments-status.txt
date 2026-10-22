@@ -14,6 +14,7 @@ Last updated: 2026-10-22.
 | #49 | `fix/paystack-failure-grace` | `f9efcaa` | P12 |
 | #51 | `fix/retire-legacy-entitlement-checkout` | `1f670c8` | P10 retired |
 | #52 | `fix/vfs-workspace-scope` | `123b497` | P2 / E3 |
+| #53 | `fix/disable-host-debugging` | `b1451f6` | P3 / E1 |
 
 P10 is retired in #51: `/api/subscription/tier-checkout` now returns 410 because the
 Entitlement rail had no `providerRef`, no webhook caller, and a fake Paystack checkout
@@ -30,6 +31,10 @@ URL. The frontend never called it.
 - P12 — Failed Paystack charges enter `past_due`; no immediate downgrade/cancel.
 - P13 (partial) — Cancellation now keeps the paid tier until period end on both rails.
 - P2 / E3 — VFS reads/writes/deletes/metadata are scoped by `_id` + `company`; VFS create rejects foreign companies.
+- P3 / E1 — Host debugging is off in production unless `IDE_ALLOW_HOST_EXEC=true`; child processes get an env allowlist instead of `process.env`; debugpy binds to `127.0.0.1`; temp filenames are basenamed.
+- P4 / E2 — Production terminal sessions fail closed without VPS transport; a host PTY requires `TERMINAL_ALLOW_HOST_EXEC=true`; boot config warns instead of silently spawning host shells.
+- P14 — Legacy `POST /api/subscription/payment/paystack` retired with 410; `/api/paystack-billing/webhook` verifies user, amount, and currency before activation.
+- P11 / E4 — Projects can only be attached to a workspace the caller belongs to; deployments reject a foreign `companyId` or stored project workspace before reading `CodeFile` rows.
 
 ## Remaining
 
@@ -37,11 +42,7 @@ URL. The frontend never called it.
 |--------|-----|----------------|
 | P10 | High | Retired; dead `utils/paymentRouter.js` + adapters remain until the P15 cleanup. |
 | P13 | Medium | Revoke provider-side card authorization/subscription on cancel; define refund and period-end semantics. |
-| P14 | Medium | Legacy `POST /api/subscription/payment/paystack` activates by `customerId` only and ignores metadata/amount. |
 | P15 | Medium | Three billing stacks and two `paymentRouter` modules still coexist; `/api/v1/billing` is the intended canonical stack. Delete the dead legacy router. |
-| P3 / E1 | Critical | Host debugger runs user code with full server env. `routes/debug.js:122-157`; `utils/debugAdapter.js:95-120` |
-| P4 / E2 | Critical | Host shell available on free tier. `middleware/permissionMatrix.js:34-37`; `utils/terminalService.js:449-480` |
-| P11 / E4 | High | Deploy chain can publish another tenant's files. `routes/projects.js:550`; `routes/deployments.js:163-166` |
 | E5 | High | Credit pools are never debited; `deductCredits` has no callers. `middleware/tierEnforcement.js:206-289` |
 | E6 / E10 | High | `agent-confirmation/respond` IDOR; duplicate approval surfaces. `routes/agent-confirmation.js:73-89` |
 | E7 | Medium | AI context trusts client-supplied `companyId` without membership check. `routes/ai-pair.js:597-612` |
