@@ -132,16 +132,10 @@ describe('payment webhook signature verification', () => {
             expect(src).not.toMatch(/In production, verify Stripe signature/);
         });
 
-        it('routes the Paystack webhook through signature verification', () => {
+        it('retires the legacy Paystack webhook instead of activating by customer code', () => {
             const src = readSource('routes/subscription.js');
-            expect(src).toMatch(/requireVerifiedWebhook\('paystack'/);
-        });
-
-        it('does not fall back to trusting req.body on the Paystack webhook', () => {
-            const src = readSource('routes/subscription.js');
-            const handler = src.slice(src.indexOf("requireVerifiedWebhook('paystack'"));
-            // The handler must read the verified event, not the raw body.
-            expect(handler.slice(0, 600)).toMatch(/verifiedWebhookEvent/);
+            expect(src).not.toMatch(/requireVerifiedWebhook\('paystack'/);
+            expect(src).toMatch(/This webhook is retired/);
         });
 
         it('routes the paystack-billing webhook through verification', () => {
@@ -176,11 +170,11 @@ describe('payment webhook signature verification', () => {
     });
 
     describe('raw body capture', () => {
-        it('matches every webhook path, including the legacy subscription routes', () => {
+        it('matches every active webhook path', () => {
             const { isWebhookPath } = require('../utils/webhookSecurity');
             expect(isWebhookPath('/api/v1/billing/webhook/stripe')).toBe(true);
             expect(isWebhookPath('/api/subscription/payment/stripe')).toBe(true);
-            expect(isWebhookPath('/api/subscription/payment/paystack')).toBe(true);
+            expect(isWebhookPath('/api/subscription/payment/paystack')).toBe(false);
             expect(isWebhookPath('/api/paystack-billing/webhook')).toBe(true);
             expect(isWebhookPath('/api/projects')).toBe(false);
         });

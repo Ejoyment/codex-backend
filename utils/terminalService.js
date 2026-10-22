@@ -18,17 +18,23 @@ const { VpsShell, terminalTransportEnabled } = require('./vpsShell');
 
 /**
  * Terminal execution mode (S1 host-isolation kill-switch).
- * - 'auto' (default): VPS/docker-remote transport when configured, otherwise
- *   a local node-pty shell jailed to a tmpdir workspace (current behavior).
- * - 'container': fail closed — refuse local PTY shells with 503. Use in
- *   production once an isolated backend (VPS transport) is configured;
- *   without one, terminal creation is unavailable rather than silently
- *   executing on the application host.
+ * - 'auto' (default): VPS/docker-remote transport when configured. In
+ *   development, fall back to a local node-pty shell jailed to a tmpdir.
+ * - 'container': always refuse local PTY shells with 503.
+ *
+ * Production never falls back to a host shell: without VPS transport,
+ * createTerminal fails closed unless TERMINAL_ALLOW_HOST_EXEC=true is set
+ * explicitly for a locked-down machine.
  */
 function terminalExecMode() {
     return String(process.env.TERMINAL_EXEC_MODE || 'auto').toLowerCase() === 'container'
         ? 'container'
         : 'auto';
+}
+
+function hostShellAllowed() {
+    if (process.env.TERMINAL_ALLOW_HOST_EXEC === 'true') return true;
+    return process.env.NODE_ENV !== 'production';
 }
 
 // VFS extension → language id (shared by per-file and bulk workspace sync).
@@ -446,7 +452,7 @@ class TerminalService {
         });
         console.log(`✓ VPS terminal queued: ${sessionId}`);
       } else {
-        if (terminalExecMode() === 'container') {
+        if (terminalExecMode() === 'container' || !hostShellAllowed()) {
           const err = new Error(
             'Terminal execution requires an isolated backend: configure VPS transport ' +
             '(DEPLOY_SSH_HOST + DEPLOY_SSH_KEY) instead of spawning shells on the application host.'
@@ -1166,3 +1172,4 @@ terminalService.stopCleanup = function() {
 
 module.exports = terminalService;
 module.exports.terminalExecMode = terminalExecMode;
+module.exports.hostShellAllowed = hostShellAllowed;
