@@ -1926,6 +1926,7 @@
 /* ---- Compact task board ------------------------------------------------ */
 
 .tsk-page-header {
+  position: static;
   align-items: flex-end;
   padding-top: 1.05rem;
   padding-bottom: 1rem;
@@ -1974,81 +1975,6 @@
 
 .tsk-content {
   max-width: 1360px;
-}
-
-.tsk-workspace-shell .workspace-sidebar {
-  width: 128px;
-}
-
-.tsk-workspace-shell .workspace-main {
-  margin-left: 128px;
-}
-
-.tsk-workspace-shell .sidebar-logo {
-  padding: 0.8rem 0.55rem 0.7rem;
-}
-
-.tsk-workspace-shell .sidebar-logo-content {
-  gap: 0.35rem;
-}
-
-.tsk-workspace-shell .sidebar-logo-content img {
-  width: 1.8rem;
-  height: 1.8rem;
-}
-
-.tsk-workspace-shell .sidebar-logo-text {
-  font-size: 0.85rem;
-}
-
-.tsk-workspace-shell .sidebar-logo-content > span:last-child {
-  display: none;
-}
-
-.tsk-workspace-shell .sidebar-nav {
-  padding: 0.45rem;
-}
-
-.tsk-workspace-shell .sidebar-nav-section {
-  margin-right: 0.3rem;
-  margin-left: 0.3rem;
-  font-size: 0.55rem;
-}
-
-.tsk-workspace-shell .sidebar-nav-item {
-  gap: 0.4rem;
-  padding: 0.45rem 0.4rem;
-  font-size: 0.7rem;
-}
-
-.tsk-workspace-shell .sidebar-user {
-  flex-wrap: wrap;
-  justify-content: flex-start;
-  gap: 0.4rem;
-  padding: 0.65rem 0.5rem;
-}
-
-.tsk-workspace-shell .sidebar-user-info {
-  gap: 0.4rem;
-}
-
-.tsk-workspace-shell .sidebar-user-avatar {
-  width: 1.7rem;
-  height: 1.7rem;
-}
-
-.tsk-workspace-shell .sidebar-user-name {
-  font-size: 0.68rem;
-}
-
-.tsk-workspace-shell .sidebar-user-role {
-  font-size: 0.58rem;
-}
-
-.tsk-workspace-shell .sidebar-badge {
-  margin-top: 0;
-  margin-left: 2.1rem;
-  font-size: 0.5rem;
 }
 
 .tsk-kpis {
@@ -2508,14 +2434,6 @@
 }
 
 @media (max-width: 640px) {
-  .tsk-workspace-shell .workspace-sidebar {
-    transform: translateX(-100%);
-  }
-
-  .tsk-workspace-shell .workspace-main {
-    margin-left: 0;
-  }
-
   .tsk-page-header {
     align-items: flex-start;
     padding: 0.9rem 1rem;
@@ -2602,6 +2520,7 @@
 /* ---- Task detail page -------------------------------------------------- */
 
 .tsk-detail-header {
+  position: static;
   min-height: 3.7rem;
   padding-top: 0.55rem;
   padding-bottom: 0.55rem;
