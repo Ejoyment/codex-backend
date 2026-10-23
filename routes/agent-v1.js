@@ -248,7 +248,8 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       workspaceId,
       specs.map((spec) => spec._id.toString()),
       provider,
-      localPrivacyMode
+      localPrivacyMode,
+      1800000 // 30 minutes
     );
 
     workerPromise.then(async (result) => {

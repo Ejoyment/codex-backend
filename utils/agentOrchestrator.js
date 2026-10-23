@@ -18,7 +18,7 @@ const { trimToLast, MAX_VERSIONS } = require('./retention');
 
 class AgentOrchestrator {
     constructor(io = null) {
-        this.maxIterations = 10; // Prevent infinite loops
+        this.maxIterations = parseInt(process.env.AGENT_MAX_ITERATIONS || '15'); // Prevent infinite loops
         this.maxRetries = 3; // Max retries per action
         this.tools = this.initializeTools();
         this.vectorMemory = vectorMemory;
@@ -730,7 +730,7 @@ class AgentOrchestrator {
      */
     async reason(goal, observation, context) {
         const prompt = this.buildReasoningPrompt(goal, observation, context);
-        const timeoutMs = parseInt(process.env.AGENT_REASON_TIMEOUT_MS || '300000');
+        const timeoutMs = parseInt(process.env.AGENT_REASON_TIMEOUT_MS || '600000');
         
         try {
             const response = await Promise.race([
