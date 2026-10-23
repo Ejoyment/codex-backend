@@ -45,7 +45,9 @@ export function debounce(fn, delayMs = 300) {
 export function isTokenExpired(token) {
   if (!token) return true;
   try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
+    const parts = String(token).split('.');
+    if (parts.length < 2) return true;
+    const payload = JSON.parse(atob(parts[1]));
     const expiryMs = payload.exp * 1000;
     return Date.now() >= expiryMs;
   } catch {
@@ -56,7 +58,9 @@ export function isTokenExpired(token) {
 export function getTokenRemainingMs(token) {
   if (!token) return 0;
   try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
+    const parts = String(token).split('.');
+    if (parts.length < 2) return 0;
+    const payload = JSON.parse(atob(parts[1]));
     const expiryMs = payload.exp * 1000;
     return Math.max(0, expiryMs - Date.now());
   } catch {

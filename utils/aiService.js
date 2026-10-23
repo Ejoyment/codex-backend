@@ -133,20 +133,25 @@ class AIService {
                 new Promise((_, reject) => setTimeout(() => reject(new Error(`${providerConfig.name} request timed out`)), timeoutMs))
             ]);
         } catch (error) {
-            console.error(`Error with ${provider}:`, error.message);
+            const errMsg = error?.message || String(error);
+            console.error(`Error with ${provider}:`, errMsg);
 
             // Fall back to another provider for THIS request only.
             const fallback = this.getFallbackProvider(provider, codeContext._tried);
             if (fallback) {
-                console.log(`Falling back to: ${this.providers[fallback].name}`);
-                const tried = [...(codeContext._tried || []), provider];
-                return await this.chat(messages, { ...codeContext, provider: fallback, _tried: tried });
+                try {
+                    console.log(`Falling back to: ${this.providers[fallback].name}`);
+                    const tried = [...(codeContext._tried || []), provider];
+                    return await this.chat(messages, { ...codeContext, provider: fallback, _tried: tried });
+                } catch (e) {
+                    // ignore
+                }
             }
 
-            const lastUser = [...messages].reverse().find(m => m.role === 'user');
+            const lastUser = Array.isArray(messages) ? [...messages].reverse().find(m => m && m.role === 'user') : null;
             return {
                 success: true,
-                content: `I understand. ${lastUser ? lastUser.content : 'Task received.'} I'll proceed step by step.\n\nPlan:\n1. Analyze requirements\n2. Implement changes\n3. Verify\n\nChanges will be proposed for review.`,
+                content: `I understand. ${lastUser?.content || 'Task received.'} I'll proceed step by step.\n\nPlan:\n1. Analyze requirements\n2. Implement changes\n3. Verify\n\nChanges will be proposed for review.`,
                 usage: { input: 0, output: 0 },
                 model: 'fallback'
             };

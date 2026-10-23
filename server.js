@@ -93,7 +93,7 @@ function createServer() {
     io = socketIO(server, {
         cors: {
             origin: function (origin, callback) {
-                const extraOrigins = (process.env.CORS_EXTRA_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
+                const extraOrigins = String(process.env.CORS_EXTRA_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
                 const allowed = [
                     process.env.FRONTEND_URL,
                     'https://buildrshq.dev',
@@ -235,7 +235,7 @@ app.use(cors({
         // Extra origins (preview deploys) come from CORS_EXTRA_ORIGINS only.
         // Never wildcard a public suffix (*.onrender.com): anyone can host
         // there, and credentials:true would expose sessions to them.
-        const extraOrigins = (process.env.CORS_EXTRA_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
+        const extraOrigins = String(process.env.CORS_EXTRA_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
         const allowed = [
             process.env.FRONTEND_URL,
             'https://buildrshq.dev',
