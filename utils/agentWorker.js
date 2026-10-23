@@ -60,7 +60,7 @@ async function runAgent() {
       },
     });
 
-    const AI_TIMEOUT_MS = parseInt(process.env.AGENT_AI_TIMEOUT_MS || process.env.AI_REQUEST_TIMEOUT_MS || '600000'); // 10 min default for agent
+    const AI_TIMEOUT_MS = parseInt(process.env.AGENT_AI_TIMEOUT_MS || process.env.AI_REQUEST_TIMEOUT_MS || '900000'); // 15 min default for agent
     let result;
     try {
       result = await Promise.race([
