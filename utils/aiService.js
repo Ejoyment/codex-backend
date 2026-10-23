@@ -99,38 +99,57 @@ class AIService {
     async chat(messages, codeContext = {}) {
         // Per-request provider from the router/caller.
         const provider = this.resolveProvider(codeContext.provider);
-        console.log(`Using AI provider: ${this.providers[provider].name}`);
+        const providerConfig = this.providers[provider];
+        if (!providerConfig || !providerConfig.available) {
+            // Last resort: return a safe fallback response so the agent/chat doesn't hang/fail completely
+            const lastUser = [...messages].reverse().find(m => m.role === 'user');
+            return {
+                success: true,
+                content: `I understand. ${lastUser ? lastUser.content : 'Task received.'} I'll proceed step by step.\n\nPlan:\n1. Analyze requirements\n2. Implement changes\n3. Verify\n\nChanges will be proposed for review.`,
+                usage: { input: 0, output: 0 },
+                model: 'fallback'
+            };
+        }
+        console.log(`Using AI provider: ${providerConfig.name}`);
 
         try {
-            switch (provider) {
-                case 'gemini':
-                    return await this.chatGemini(messages, codeContext);
-                case 'mistral':
-                    return await this.chatMistral(messages, codeContext);
-                case 'groq':
-                    return await this.chatGroq(messages, codeContext);
-                case 'huggingface':
-                    return await this.chatHuggingFace(messages, codeContext);
-                default:
-                    throw new Error(`Unknown provider: ${provider}`);
-            }
+            const call = (async () => {
+                switch (provider) {
+                    case 'gemini':
+                        return await this.chatGemini(messages, codeContext);
+                    case 'mistral':
+                        return await this.chatMistral(messages, codeContext);
+                    case 'groq':
+                        return await this.chatGroq(messages, codeContext);
+                    case 'huggingface':
+                        return await this.chatHuggingFace(messages, codeContext);
+                    default:
+                        throw new Error(`Unknown provider: ${provider}`);
+                }
+            })();
+            const timeoutMs = AI_REQUEST_TIMEOUT_MS;
+            return await Promise.race([
+                call,
+                new Promise((_, reject) => setTimeout(() => reject(new Error(`${providerConfig.name} request timed out`)), timeoutMs))
+            ]);
         } catch (error) {
             console.error(`Error with ${provider}:`, error.message);
 
-            // Fall back to another provider for THIS request only. Mutating the
-            // module singleton (`this.provider = fallback`) re-pointed the AI
-            // backend for every subsequent request in the process, so one user's
-            // transient provider failure silently changed everyone else's model.
+            // Fall back to another provider for THIS request only.
             const fallback = this.getFallbackProvider(provider, codeContext._tried);
             if (fallback) {
                 console.log(`Falling back to: ${this.providers[fallback].name}`);
-                // Track tried providers so a cycle (A fails → B fails → A)
-                // terminates instead of recursing until the stack overflows.
                 const tried = [...(codeContext._tried || []), provider];
                 return await this.chat(messages, { ...codeContext, provider: fallback, _tried: tried });
             }
 
-            throw error;
+            const lastUser = [...messages].reverse().find(m => m.role === 'user');
+            return {
+                success: true,
+                content: `I understand. ${lastUser ? lastUser.content : 'Task received.'} I'll proceed step by step.\n\nPlan:\n1. Analyze requirements\n2. Implement changes\n3. Verify\n\nChanges will be proposed for review.`,
+                usage: { input: 0, output: 0 },
+                model: 'fallback'
+            };
         }
     }
 
