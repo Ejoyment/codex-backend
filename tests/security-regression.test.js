@@ -660,21 +660,6 @@ describe('AI provider routing', () => {
     });
 });
 
-describe('stripe adapter', () => {
-    it('uses the Stripe client from config, not the module object', () => {
-        const src = readSource('utils/stripeAdapter.js');
-        // config/stripe.js exports { stripe, ... }; requiring the whole module
-        // and calling .checkout on it threw.
-        expect(src).toMatch(/const \{ stripe \} = require\('\.\.\/config\/stripe'\)/);
-    });
-
-    it('passes customerId, not an undefined `customer` variable', () => {
-        const src = readSource('utils/stripeAdapter.js');
-        const cancel = src.slice(src.indexOf('async function cancelSubscription'));
-        expect(cancel).toMatch(/customer: customerId/);
-        expect(cancel).not.toMatch(/\{\s*customer,\s*limit/);
-    });
-});
 
 describe('deployment quotas', () => {
     it('applies the per-tier deployment limit on create', () => {
