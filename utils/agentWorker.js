@@ -60,7 +60,11 @@ async function runAgent() {
       },
     });
 
-    const result = await aiRouterService.routeChat(messages, codeContext, { provider, localPrivacyMode });
+    const AI_TIMEOUT_MS = parseInt(process.env.AGENT_AI_TIMEOUT_MS || process.env.AI_REQUEST_TIMEOUT_MS || '600000'); // 10 min default for agent
+    const result = await Promise.race([
+      aiRouterService.routeChat(messages, codeContext, { provider, localPrivacyMode }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error(`Agent AI call timed out after ${Math.round(AI_TIMEOUT_MS/60000)} minutes`)), AI_TIMEOUT_MS)),
+    ]);
 
     if (result.success) {
       parentPort.postMessage({
