@@ -268,15 +268,16 @@ function buildFileTree(files) {
   return root;
 }
 
-function InlineFileRow({ depth, value, inputRef, onChange, onCommit, onCancel }) {
+function InlineCreateRow({ kind = 'file', depth, value, inputRef, onChange, onCommit, onCancel }) {
+  const Icon = kind === 'folder' ? Folder : FileCode;
   return (
     <div className="ed-tree-row is-inline-create" style={{ paddingLeft: `${6 + depth * 14}px` }}>
-      <FileCode className="w-3.5 h-3.5 ed-file-inline-ico" />
+      <Icon className={`w-3.5 h-3.5 ${kind === 'folder' ? 'ed-folder-ico' : 'ed-file-inline-ico'}`} />
       <input
         ref={inputRef}
         className="ed-inline-input"
         value={value}
-        placeholder="File name"
+        placeholder={kind === 'folder' ? 'Folder name' : 'File name'}
         autoFocus
         spellCheck={false}
         onChange={(e) => onChange(e.target.value)}
@@ -336,7 +337,8 @@ function FileTreeNode({ node, depth, selectedId, onSelect, expanded, onToggle, i
         {isOpen && (
           <div>
             {inlineHere && (
-              <InlineFileRow
+              <InlineCreateRow
+                kind={inlineCreate.kind}
                 depth={depth + 1}
                 value={inlineCreate.value}
                 inputRef={inlineInputRef}
@@ -404,9 +406,6 @@ export default function Editor() {
   const [inlineCreate, setInlineCreate] = useState(null);
   const inlineInputRef = useRef(null);
   const inlineCancelledRef = useRef(false);
-  const [showNewFolderModal, setShowNewFolderModal] = useState(false);
-  const [newFolderName, setNewFolderName] = useState('');
-  const [newFolderPath, setNewFolderPath] = useState('/');
   const [creating, setCreating] = useState(false);
   const [status, setStatus] = useState(null);
   // Selected-file dirty state is DERIVED (buffer vs per-file baseline), never
@@ -1066,9 +1065,12 @@ export default function Editor() {
       } else if (k === 'w') {
         e.preventDefault();
         if (selectedFileRef.current) closeTab(selectedFileRef.current);
+      } else if (k === 'n' && e.shiftKey) {
+        e.preventDefault();
+        startInlineCreate('folder');
       } else if (k === 'n') {
         e.preventDefault();
-        startInlineCreate();
+        startInlineCreate('file');
       } else if (k === 'd' && e.shiftKey) {
         e.preventDefault();
         router.push('/dashboard');
@@ -2346,7 +2348,7 @@ export default function Editor() {
   // VS Code-style creation: the new file appears as an editable row in the
   // explorer. Enter commits, Escape/blur cancels, and the file lands in the
   // selected file's folder (or the workspace root).
-  function startInlineCreate() {
+  function startInlineCreate(kind = 'file') {
     if (creating) return;
     // Use the ref so the global ⌘N shortcut (registered once) targets the
     // file selected now, not the one selected at mount.
@@ -2358,7 +2360,7 @@ export default function Editor() {
       setExpandedFolders((prev) => ({ ...prev, [parentPath]: true }));
     }
     inlineCancelledRef.current = false;
-    setInlineCreate({ parentPath, value: '' });
+    setInlineCreate({ kind, parentPath, value: '' });
   }
 
   function cancelInlineCreate() {
@@ -2425,31 +2427,17 @@ export default function Editor() {
     }
   }
 
-  async function commitInlineCreate() {
-    if (!inlineCreate || creating || inlineCancelledRef.current) return;
-    inlineCancelledRef.current = true;
-    const value = inlineCreate.value.trim();
-    setInlineCreate(null);
-    if (!value) return;
-    try {
-      setCreating(true);
-      await createFileAt(value, inlineCreate.parentPath);
-    } catch (err) {
-      setStatus({ type: 'error', msg: err.message || 'Create failed' });
-    } finally {
-      setCreating(false);
-    }
-  }
+  async function createFolderAt(rawName, parentPath) {
+    const segments = String(rawName || '').trim().split('/').filter(Boolean);
+    if (!segments.length || segments.some((s) => s === '.' || s === '..')) return;
+    const name = segments.join('/');
+    const parent = String(parentPath || '').replace(/^\/+|\/+$/g, '');
+    const dir = [parent, ...segments].filter(Boolean).join('/');
+    const full = `/${dir}`;
 
-  async function handleCreateFolder(e) {
-    e.preventDefault();
-    if (!newFolderName.trim()) return;
     if (selectedRepo && !selectedProject) {
       // Repo mode: stage a .gitkeep placeholder (git can't track empty
       // folders) until Commit & Push publishes it.
-      const name = newFolderName.trim();
-      const dir = (newFolderPath || '/').replace(/\/+$/, '');
-      const full = `${dir}/${name}`.replace(/\/{2,}/g, '/');
       const entry = {
         _id: `pending-dir:${full}`,
         id: `pending-dir:${full}`,
@@ -2461,36 +2449,45 @@ export default function Editor() {
         pending: true,
       };
       setRepoPending((prev) => [...prev.filter((f) => getFileKey(f) !== getFileKey(entry)), entry]);
-      setShowNewFolderModal(false);
-      setNewFolderName('');
       setStatus({ type: 'success', msg: 'Folder staged — Commit & Push to publish it' });
       setExpandedFolders((prev) => ({ ...prev, [full]: true }));
       return;
     }
+
+    const data = await apiFetch('/api/vfs/folders', {
+      method: 'POST',
+      body: JSON.stringify({
+        name,
+        path: parent ? `/${parent}` : '/',
+        companyId: selectedProject?.workspaceId || workspaceId,
+        projectId: selectedProject?._id || selectedProject?.id || null,
+      }),
+    });
+    if (!data.success) {
+      throw new Error(data.error || data.message || 'Folder create failed');
+    }
+    setStatus({ type: 'success', msg: 'Folder created' });
+    setTimeout(() => setStatus(null), 2000);
+    setExpandedFolders((prev) => ({ ...prev, [full]: true }));
+    await reloadFiles();
+  }
+
+  async function commitInlineCreate() {
+    if (!inlineCreate || creating || inlineCancelledRef.current) return;
+    inlineCancelledRef.current = true;
+    const { kind, parentPath, value } = inlineCreate;
+    const trimmed = value.trim();
+    setInlineCreate(null);
+    if (!trimmed) return;
     try {
       setCreating(true);
-      const folderPath = newFolderPath || '/';
-      const data = await apiFetch('/api/vfs/folders', {
-        method: 'POST',
-        body: JSON.stringify({
-          name: newFolderName.trim(),
-          path: folderPath,
-          companyId: selectedProject?.workspaceId || workspaceId,
-          projectId: selectedProject?._id || selectedProject?.id || null,
-        }),
-      });
-      if (!data.success) {
-        throw new Error(data.error || 'Folder create failed');
+      if (kind === 'folder') {
+        await createFolderAt(trimmed, parentPath);
+      } else {
+        await createFileAt(trimmed, parentPath);
       }
-      setShowNewFolderModal(false);
-      setNewFolderName('');
-      setStatus({ type: 'success', msg: 'Folder created' });
-      setTimeout(() => setStatus(null), 2000);
-      const fp = (folderPath === '/' ? '' : folderPath) + '/' + newFolderName.trim();
-      setExpandedFolders((prev) => ({ ...prev, [fp]: true }));
-      await reloadFiles();
     } catch (err) {
-      setStatus({ type: 'error', msg: err.message || 'Folder create failed' });
+      setStatus({ type: 'error', msg: err.message || `${kind === 'folder' ? 'Folder' : 'File'} create failed` });
     } finally {
       setCreating(false);
     }
@@ -3062,7 +3059,7 @@ export default function Editor() {
     {
       id: 'file', label: 'File', items: [
         { label: 'New File', kbd: '⌘N', run: () => startInlineCreate() },
-        { label: 'New Folder', kbd: '⇧⌘N', run: () => setShowNewFolderModal(true) },
+        { label: 'New Folder', kbd: '⇧⌘N', run: () => startInlineCreate('folder') },
         { label: null },
         { label: 'Save', kbd: '⌘S', run: handleSave },
         { label: null },
@@ -3302,7 +3299,7 @@ export default function Editor() {
                     <span className="ed-sidebar-title">Explorer</span>
                     <div className="ed-sidebar-actions">
                       <button type="button" className="ed-sidebar-btn" onClick={() => startInlineCreate()} title="New File"><FilePlus className="w-3.5 h-3.5" /></button>
-                      <button type="button" className="ed-sidebar-btn" onClick={() => setShowNewFolderModal(true)} title="New Folder"><FolderPlus className="w-3.5 h-3.5" /></button>
+                      <button type="button" className="ed-sidebar-btn" onClick={() => startInlineCreate('folder')} title="New Folder"><FolderPlus className="w-3.5 h-3.5" /></button>
                       <button type="button" className="ed-sidebar-btn" onClick={reloadFiles} title="Refresh"><RefreshCw className="w-3.5 h-3.5" /></button>
                     </div>
                   </div>
@@ -3357,7 +3354,8 @@ export default function Editor() {
                       ) : (
                         <>
                           {files.length === 0 && inlineCreate && (
-                            <InlineFileRow
+                            <InlineCreateRow
+                              kind={inlineCreate.kind}
                               depth={0}
                               value={inlineCreate.value}
                               inputRef={inlineInputRef}
@@ -4391,39 +4389,6 @@ export default function Editor() {
             </div>
           </footer>
         </div>
-
-      {showNewFolderModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" style={{ zIndex: 9999 }}>
-          <div className="ws-modal w-full max-w-lg" style={{ position: 'relative', zIndex: 1 }}>
-            <div className="flex items-center justify-between p-5 border-b border-[rgba(255,255,255,0.09)]">
-              <div className="flex items-center gap-2.5">
-                <span className="card-ico">
-                  <FolderPlus className="w-4 h-4" />
-                </span>
-                <h2 className="ws-modal-title">Create New Folder</h2>
-              </div>
-              <button type="button" onClick={() => setShowNewFolderModal(false)} className="text-muted hover:text-white"><X className="w-5 h-5" /></button>
-            </div>
-            <form onSubmit={handleCreateFolder} className="p-5 space-y-4">
-              <div>
-                <label className="ws-label">Folder Name</label>
-                <input type="text" value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)} placeholder="e.g. src" className="ws-input" autoFocus required />
-              </div>
-              <div>
-                <label className="ws-label">Parent Path</label>
-                <input type="text" value={newFolderPath} onChange={(e) => setNewFolderPath(e.target.value)} placeholder="/" className="ws-input" />
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', paddingTop: '0.5rem' }}>
-                <button type="button" className="btn-workspace btn-secondary" onClick={() => setShowNewFolderModal(false)}>Cancel</button>
-                <button type="submit" className="btn-workspace btn-primary flex items-center gap-2" disabled={creating || !newFolderName.trim()}>
-                  <FolderPlus className="w-4 h-4" />
-                  {creating ? 'Creating...' : 'Create Folder'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {repoCreateOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" style={{ zIndex: 9999 }}>
