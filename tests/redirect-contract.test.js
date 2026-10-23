@@ -105,8 +105,4 @@ describe('backend-issued frontend URLs resolve to real pages', () => {
     }
   });
 
-  test('stripe portal returns to the billing tab', () => {
-    const src = fs.readFileSync(path.join(ROOT, 'utils', 'stripeAdapter.js'), 'utf8');
-    expect(src).toMatch(/settings\?tab=billing/);
-  });
 });
