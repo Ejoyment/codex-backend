@@ -2,7 +2,29 @@
 
 Source audit: `docs/audit/PAYMENTS-EDITOR-AUDIT-2026-10-21.md` (local-only, gitignored).
 
-Last updated: 2026-10-22.
+Last updated: 2026-10-23.
+
+## Open investigation — editor file creation without a workspace
+
+Symptom reported: creating a file in the editor returns
+`You must be in a workspace/company to create files.` even after selecting a
+workspace.
+
+Still needed to confirm the root cause (record/screenshot):
+- Editor screen recording showing the project/workspace selected before clicking New File.
+- DevTools → Network for `POST /api/code-editor/files`: request payload (especially
+  `companyId`/`projectId`) and response status/body.
+- Response of `GET /api/company/my-companies`.
+- The selected project object from `GET /api/projects`.
+
+Known code facts:
+- `POST /api/projects` never sets `LocalProject.workspaceId` (optional in
+  `models/LocalProject.js`), and `POST /api/code-editor/files` falls back to the
+  user's first company when `companyId` is missing.
+- If the user has no `Company`, creation fails with the exact message above.
+- The editor has no workspace selector; `useCurrentCompany()` always picks
+  `companies[0]`.
+- Exact phrase "Choose a workspace" only exists in `pages/standup.js`, not the editor.
 
 ## Open PRs (stacked, merge in order)
 
