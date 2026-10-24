@@ -43,6 +43,9 @@ Focus on actionable items and concrete decisions.`;
                 agentMode: false,
                 instructions: 'Respond with valid JSON only.'
             });
+            if (!response.success || !response.content) {
+                throw new Error(response.error || 'AI returned an empty meeting summary');
+            }
 
             let cleaned = response.content.trim();
             if (cleaned.startsWith('```')) {

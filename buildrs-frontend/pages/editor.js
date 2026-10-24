@@ -1756,6 +1756,7 @@ export default function Editor() {
       }
       const data = await apiFetch('/api/ai-pair/chat', {
         method: 'POST',
+        timeoutMs: shouldUseAgentLoop ? 1800000 : 120000,
         body: JSON.stringify({
           sessionId: session._id,
           message: input,

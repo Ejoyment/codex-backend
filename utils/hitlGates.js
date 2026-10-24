@@ -36,6 +36,10 @@ class HITLGates {
      */
     requiresConfirmation(tool, params, userTier) {
         userTier = canonicalTier(userTier);
+        if (this.shouldAutoApprove(tool, params, userTier)) {
+            return false;
+        }
+
         // Enterprise users can bypass some confirmations
         if (userTier === 'enterprise') {
             return ['delete_file'].includes(tool); // Only critical operations
@@ -46,7 +50,7 @@ class HITLGates {
             return this.dangerousTools.includes(tool);
         }
         
-        // Free users need confirmation for all agent actions
+        // Developer-tier users need confirmation for non-read-only actions.
         return true;
     }
 
@@ -310,18 +314,30 @@ class HITLGates {
      */
     shouldAutoApprove(tool, params, userTier) {
         userTier = canonicalTier(userTier);
+        const safeTools = [
+            'read_file',
+            'list_files',
+            'search_code',
+            'analyze_code',
+            'get_repository_status'
+        ];
+
+        // Read-only inspection must not pause an agent run for user input.
+        if (safeTools.includes(tool)) {
+            return true;
+        }
+
         // Enterprise users can auto-approve most operations
         if (userTier === 'enterprise') {
             return !['delete_file'].includes(tool);
         }
         
-        // Paid tiers can auto-approve read operations
+        // Paid tiers rely on the dangerous-tool policy in requiresConfirmation.
         if (userTier !== 'developer') {
-            const safeTools = ['read_file', 'list_files', 'search_code', 'analyze_code'];
-            return safeTools.includes(tool);
+            return false;
         }
         
-        // Free users need confirmation for everything
+        // Non-read-only developer-tier actions remain gated.
         return false;
     }
 

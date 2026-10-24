@@ -177,6 +177,9 @@ router.post('/generate', authenticateToken, async (req, res) => {
       ],
       { agentMode: false, workspaceId, language: 'javascript' }
     );
+    if (!aiResult.success) {
+      return res.status(502).json({ success: false, message: `AI service error: ${aiResult.error}` });
+    }
 
     let files = [];
     const content = aiResult.content || '';
