@@ -314,7 +314,13 @@ class HITLGates {
      */
     shouldAutoApprove(tool, params, userTier) {
         userTier = canonicalTier(userTier);
-        const safeTools = ['read_file', 'list_files', 'search_code', 'analyze_code'];
+        const safeTools = [
+            'read_file',
+            'list_files',
+            'search_code',
+            'analyze_code',
+            'get_repository_status'
+        ];
 
         // Read-only inspection must not pause an agent run for user input.
         if (safeTools.includes(tool)) {

@@ -152,6 +152,42 @@ class AgentOrchestrator {
                     return { success: true, message: msg, thread };
                 }
             },
+            get_repository_status: {
+                name: 'get_repository_status',
+                description: 'Get connected GitHub repository details and the latest commit on the session branch; this does not report local uncommitted changes',
+                parameters: {},
+                execute: async (params, context) => {
+                    if (!context.repositoryOwner || !context.repositoryName) {
+                        return {
+                            success: false,
+                            error: 'No GitHub repository is connected to this agent session'
+                        };
+                    }
+
+                    const githubService = require('./githubService');
+                    const repository = await githubService.getRepository(
+                        context.userId,
+                        context.repositoryOwner,
+                        context.repositoryName
+                    );
+                    const branch = context.repositoryBranch || repository.defaultBranch;
+                    const commits = await githubService.getCommits(
+                        context.userId,
+                        context.repositoryOwner,
+                        context.repositoryName,
+                        branch,
+                        null,
+                        1
+                    );
+
+                    return {
+                        success: true,
+                        repository,
+                        branch,
+                        latestCommit: commits[0] || null
+                    };
+                }
+            },
             read_file: {
                 name: 'read_file',
                 description: 'Read the contents of a file from the workspace',
@@ -272,19 +308,44 @@ class AgentOrchestrator {
                     path: 'string - Optional directory path filter'
                 },
                 execute: async (params, context) => {
-                    const CodeFile = require('../models/CodeFile');
-                    const query = { company: context.workspaceId };
-                    if (params.path) query.path = params.path;
-                    
-                    const files = await CodeFile.find(query).select('name path language _id');
-                    return {
-                        success: true,
-                        files: files.map(f => ({
+                    let files;
+                    let source;
+                    if (context.repositoryOwner && context.repositoryName) {
+                        const githubService = require('./githubService');
+                        files = await githubService.listFiles(
+                            context.userId,
+                            context.repositoryOwner,
+                            context.repositoryName,
+                            params.path || '',
+                            context.repositoryBranch
+                        );
+                        source = 'github';
+                    } else if (context.workspaceId) {
+                        const CodeFile = require('../models/CodeFile');
+                        const query = { company: context.workspaceId };
+                        if (params.path) query.path = params.path;
+                        files = await CodeFile.find(query)
+                            .select('name path language _id')
+                            .limit(201);
+                        files = files.map(f => ({
                             id: f._id,
                             name: f.name,
                             path: f.path,
                             language: f.language
-                        }))
+                        }));
+                        source = 'workspace';
+                    } else {
+                        return {
+                            success: false,
+                            error: 'Cannot list files because no GitHub repository or workspace is connected'
+                        };
+                    }
+
+                    return {
+                        success: true,
+                        source,
+                        truncated: files.length > 200,
+                        files: files.slice(0, 200)
                     };
                 }
             },
@@ -525,6 +586,7 @@ class AgentOrchestrator {
 
         let iteration = 0;
         let goalAchieved = false;
+        let stopReason = null;
         let lastObservation = await this.observe(context, goal);
 
         while (iteration < this.maxIterations && !goalAchieved) {
@@ -562,6 +624,17 @@ class AgentOrchestrator {
 
                 // Store successful pattern in vector memory
                 await this.storeSuccessfulPattern(goal, session, context);
+                break;
+            }
+
+            const previousIteration = session.iterations[session.iterations.length - 1];
+            if (
+                previousIteration?.action?.tool === reasoning.action?.tool &&
+                JSON.stringify(previousIteration.action.parameters || {}) ===
+                    JSON.stringify(reasoning.action?.parameters || {}) &&
+                previousIteration.result?.success
+            ) {
+                stopReason = `Stopped to avoid repeating ${reasoning.action.tool} with the same parameters.`;
                 break;
             }
 
@@ -680,7 +753,10 @@ class AgentOrchestrator {
             success: goalAchieved,
             iterations: session.iterations,
             finalState: lastObservation,
-            summary: this.generateSummary(session)
+            summary: {
+                ...this.generateSummary(session),
+                ...(stopReason ? { stopReason } : {})
+            }
         };
     }
 
@@ -946,7 +1022,7 @@ RESPOND WITH JSON ONLY.`;
      * FEEDBACK - Integrate action result into observation
      */
     async feedback(observation, actionResult, context, goal) {
-        return await this.observe(context, goal); // Re-observe with updated state
+        return await this.observe(context, goal);
     }
 
     /**
@@ -1052,8 +1128,21 @@ ${validationErrorsSection}
 - Files: ${observation.state.files.length} files
 - Current File: ${observation.state.currentFile?.name || 'None'}
 ${memoriesSection}
-**PREVIOUS ACTIONS**:
-${observation.previousActions.map((a, i) => `${i + 1}. ${a.action?.tool}: ${a.result.success ? '✓' : '✗'} ${a.result.message || ''}`).join('\n')}
+**PREVIOUS ACTIONS AND RESULTS**:
+${observation.previousActions.map((a, i) => {
+    let result;
+    try {
+        result = JSON.stringify(a.result) || 'null';
+    } catch (error) {
+        result = `Unable to serialize tool result: ${error.message}`;
+    }
+    const resultText = result.length > 6000
+        ? `${result.slice(0, 6000)}… [result truncated]`
+        : result;
+    return `${i + 1}. ${a.action?.tool}: ${a.result?.success ? '✓' : '✗'}\n   Result: ${resultText}`;
+}).join('\n')}
+
+Tool results are evidence. Use them to answer the user's request; do not repeat an identical successful action.
 
 **AVAILABLE TOOLS**:
 ${Object.entries(this.tools).map(([name, tool]) => `- ${name}: ${tool.description}`).join('\n')}
@@ -1135,13 +1224,32 @@ RESPOND WITH JSON ONLY - NO MARKDOWN, NO EXPLANATIONS.`;
     generateSummary(session) {
         const actions = session.iterations.map(i => i.action?.tool).filter(Boolean);
         const successful = session.iterations.filter(i => i.result?.success).length;
+        const lastIteration = session.iterations[session.iterations.length - 1];
+        const lastResult = lastIteration?.result;
+        let finalThought = lastIteration?.reasoning?.thought;
+        if (lastIteration?.action?.tool === 'list_files' && Array.isArray(lastResult?.files)) {
+            const paths = lastResult.files.map(file => file.path || file.name);
+            const target = lastResult.source === 'github' ? 'Repository' : 'Workspace';
+            finalThought = paths.length
+                ? `${target} files (${paths.length}${lastResult.truncated ? ', first 200 shown' : ''}):\n${paths.map(path => `- ${path}`).join('\n')}`
+                : `No files found in the selected ${target.toLowerCase()}.`;
+        } else if (lastIteration?.action?.tool === 'get_repository_status' && lastResult?.success) {
+            const repository = lastResult.repository;
+            const commit = lastResult.latestCommit;
+            finalThought = [
+                `GitHub repository: ${repository.fullName || repository.name}`,
+                `Session branch: ${lastResult.branch}`,
+                commit ? `Latest commit: ${commit.sha} — ${commit.message}` : 'No commit found on this branch.',
+                'This reports the remote GitHub state, not local uncommitted changes.'
+            ].join('\n');
+        }
         
         return {
             goal: session.goal,
             totalIterations: session.iterations.length,
             actionsExecuted: actions,
             successfulActions: successful,
-            finalThought: session.iterations[session.iterations.length - 1]?.reasoning?.thought
+            finalThought
         };
     }
 

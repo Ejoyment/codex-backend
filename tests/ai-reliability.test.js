@@ -6,6 +6,12 @@ jest.mock('@google/generative-ai', () => ({
   })),
 }));
 
+jest.mock('../utils/githubService', () => ({
+  listFiles: jest.fn(),
+  getRepository: jest.fn(),
+  getCommits: jest.fn(),
+}));
+
 describe('AI request reliability', () => {
   let aiService;
 
@@ -110,6 +116,119 @@ describe('AI request reliability', () => {
     expect(result.iterations).toHaveLength(0);
   });
 
+  test('agent loop feeds tool results forward and stops repeated successful actions', async () => {
+    const orchestrator = require('../utils/agentOrchestrator');
+    const filesResult = {
+      success: true,
+      truncated: false,
+      files: [{ path: '/src/index.js', name: 'index.js', language: 'javascript' }],
+    };
+    const observe = jest.spyOn(orchestrator, 'observe').mockResolvedValue({
+      workspace: { name: 'test' },
+      files: [],
+    });
+    const prompts = [];
+    const reason = jest.spyOn(orchestrator, 'reason')
+      .mockImplementation(async (goal, observation, context) => {
+        prompts.push(orchestrator.buildReasoningPrompt(goal, observation, context));
+        return {
+          success: true,
+          thought: 'I should list the files.',
+          goalAchieved: false,
+          action: { tool: 'list_files', parameters: {} },
+        };
+      });
+    const act = jest.spyOn(orchestrator, 'act').mockResolvedValue(filesResult);
+    jest.spyOn(orchestrator, 'saveIteration').mockResolvedValue({});
+    jest.spyOn(orchestrator, 'storeActionPattern').mockResolvedValue();
+
+    const result = await orchestrator.executeAgenticLoop(
+      'List the files',
+      { userId: 'user-id', workspaceId: 'workspace-id' },
+      'session-id'
+    );
+
+    expect(result.success).toBe(false);
+    expect(act).toHaveBeenCalledTimes(1);
+    expect(reason).toHaveBeenCalledTimes(2);
+    expect(reason.mock.calls[1][1].previousActions[0].result).toEqual(filesResult);
+    expect(prompts[1]).toContain('/src/index.js');
+    expect(result.summary.finalThought).toContain('/src/index.js');
+    expect(result.summary.stopReason).toMatch(/avoid repeating list_files/);
+    expect(observe).toHaveBeenCalledTimes(2);
+  });
+
+  test('list_files reads the connected GitHub repository for AI Pair sessions', async () => {
+    const githubService = require('../utils/githubService');
+    githubService.listFiles.mockResolvedValue([
+      { name: 'index.js', path: 'src/index.js', type: 'file' },
+    ]);
+    const orchestrator = require('../utils/agentOrchestrator');
+
+    const result = await orchestrator.tools.list_files.execute({}, {
+      userId: 'user-id',
+      repositoryOwner: 'example',
+      repositoryName: 'sample-repo',
+      repositoryBranch: 'main',
+    });
+
+    expect(githubService.listFiles).toHaveBeenCalledWith(
+      'user-id',
+      'example',
+      'sample-repo',
+      '',
+      'main'
+    );
+    expect(result).toMatchObject({
+      success: true,
+      source: 'github',
+      files: [{ path: 'src/index.js' }],
+    });
+  });
+
+  test('repository status reports the latest commit without claiming local git state', async () => {
+    const githubService = require('../utils/githubService');
+    githubService.getRepository.mockResolvedValue({
+      name: 'sample-repo',
+      defaultBranch: 'main',
+    });
+    githubService.getCommits.mockResolvedValue([
+      { sha: 'abc123', message: 'Initial commit' },
+    ]);
+    const orchestrator = require('../utils/agentOrchestrator');
+
+    const result = await orchestrator.tools.get_repository_status.execute({}, {
+      userId: 'user-id',
+      repositoryOwner: 'example',
+      repositoryName: 'sample-repo',
+      repositoryBranch: 'main',
+    });
+
+    expect(githubService.getCommits).toHaveBeenCalledWith(
+      'user-id',
+      'example',
+      'sample-repo',
+      'main',
+      null,
+      1
+    );
+    expect(result).toMatchObject({
+      success: true,
+      branch: 'main',
+      latestCommit: { sha: 'abc123' },
+    });
+    const summary = orchestrator.generateSummary({
+      goal: 'Check repository status',
+      iterations: [{
+        action: { tool: 'get_repository_status' },
+        reasoning: { thought: 'Check remote state.' },
+        result,
+      }],
+    });
+    expect(summary.finalThought).toContain('Latest commit: abc123 — Initial commit');
+    expect(summary.finalThought).toContain('not local uncommitted changes');
+  });
+
   test('agent iteration messages include the required user ID', async () => {
     const orchestrator = require('../utils/agentOrchestrator');
     const ChatMessage = require('../models/ChatMessage');
@@ -139,7 +258,13 @@ describe('AI request reliability', () => {
     const HITLGates = require('../utils/hitlGates');
     const gates = new HITLGates();
 
-    for (const tool of ['read_file', 'list_files', 'search_code', 'analyze_code']) {
+    for (const tool of [
+      'read_file',
+      'list_files',
+      'search_code',
+      'analyze_code',
+      'get_repository_status',
+    ]) {
       expect(gates.requiresConfirmation(tool, {}, 'developer')).toBe(false);
     }
   });

@@ -596,7 +596,7 @@ router.get('/session/:sessionId', authenticateToken, async (req, res) => {
 // Chat with AI (Enhanced with ReAct Agent Loop)
 router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req, res) => {
     try {
-        const { sessionId, message, codeContext, enableActions = false, useAgentLoop = false, companyId, taskId, projectId } = req.body;
+        const { sessionId, message, codeContext = {}, enableActions = false, useAgentLoop = false, companyId, taskId, projectId } = req.body;
         
         // Verify session belongs to user
         const session = await AIPairSession.findOne({
@@ -673,10 +673,15 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
             const context = {
                 userId: req.userId,
                 userTier: agentPerm.tier,
-                workspaceId: codeContext.workspace?.id,
-                workspaceName: codeContext.workspace?.name,
-                files: codeContext.files || [],
-                currentFile: codeContext.currentFile,
+                workspaceId: codeContext?.workspace?.id || companyId || session.companyId,
+                workspaceName: codeContext?.workspace?.name,
+                files: codeContext?.files?.length
+                    ? codeContext.files
+                    : agentContextBundle?.files?.projectSnapshot || [],
+                currentFile: codeContext?.currentFile,
+                repositoryOwner: session.repositoryOwner,
+                repositoryName: session.repositoryName,
+                repositoryBranch: session.branch,
                 agentContextBundle
             };
 
