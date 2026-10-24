@@ -49,7 +49,8 @@ class LocalBridge {
           num_predict: parseInt(process.env.AI_MAX_TOKENS) || 8192,
         },
       }, {
-        timeout: 120000,
+        timeout: codeContext.timeoutMs || 120000,
+        signal: codeContext.signal,
         headers: { 'Content-Type': 'application/json' },
       });
 

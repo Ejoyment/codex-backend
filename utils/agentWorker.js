@@ -60,7 +60,15 @@ async function runAgent() {
       },
     });
 
-    const result = await aiRouterService.routeChat(messages, codeContext, { provider, localPrivacyMode });
+    const configuredTimeout = Number(process.env.AGENT_AI_TIMEOUT_MS);
+    const AI_TIMEOUT_MS = Number.isFinite(configuredTimeout) && configuredTimeout > 0
+      ? configuredTimeout
+      : 900000;
+    const result = await aiRouterService.routeChat(messages, codeContext, {
+      provider,
+      localPrivacyMode,
+      timeoutMs: AI_TIMEOUT_MS,
+    });
 
     if (result.success) {
       parentPort.postMessage({

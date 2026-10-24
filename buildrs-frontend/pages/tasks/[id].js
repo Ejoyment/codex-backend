@@ -282,6 +282,7 @@ export default function TaskDetails() {
 
       const result = await apiFetch('/api/v1/agent/delegate', {
         method: 'POST',
+        timeoutMs: 120000,
         body: JSON.stringify({ taskId: task.id, workspaceId, specIds: task.specIds || [] }),
       });
       if (result.success === false) throw new Error(result.message || 'Could not delegate this task.');

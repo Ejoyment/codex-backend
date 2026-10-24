@@ -18,29 +18,69 @@ const realtimeBus = require('../utils/realtimeBus');
 const { Worker } = require('worker_threads');
 const path = require('path');
 
-function spawnAgentWorker(executionId, taskId, workspaceId, specIds, provider, localPrivacyMode) {
+function spawnAgentWorker(executionId, taskId, workspaceId, specIds, provider, localPrivacyMode, timeoutMs = 900000) {
   return new Promise((resolve, reject) => {
+    let settled = false;
     const workerPath = path.join(__dirname, '../utils/agentWorker.js');
     const worker = new Worker(workerPath, {
       workerData: { executionId, taskId, workspaceId, specIds, provider, localPrivacyMode },
     });
 
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      try {
+        worker.terminate();
+      } catch (e) {}
+      AgentExecution.findByIdAndUpdate(executionId, {
+        status: 'failed',
+        completedAt: new Date(),
+        $push: {
+          logs: { timestamp: new Date(), message: `Agent execution timed out after ${Math.round(timeoutMs / 60000)} minutes` },
+          terminalLog: { timestamp: new Date(), type: 'error', message: `Agent execution timed out after ${Math.round(timeoutMs / 60000)} minutes` },
+        },
+      }).catch(() => {});
+      if (taskId) {
+        LocalTask.findByIdAndUpdate(taskId, { 'agentExecution.status': 'failed', updatedAt: new Date() }).catch(() => {});
+      }
+      reject(new Error(`Agent execution timed out after ${Math.round(timeoutMs / 60000)} minutes`));
+    }, timeoutMs);
+
+    const cleanup = () => {
+      if (timeout) clearTimeout(timeout);
+    };
+
     worker.on('message', (msg) => {
+      if (settled) return;
       if (msg.type === 'progress') {
         realtimeBus.emitAgentProgress(executionId, msg.payload);
         AgentExecution.findByIdAndUpdate(executionId, {
           $push: { terminalLog: { timestamp: new Date(), type: msg.payload.phase || 'progress', message: msg.payload.message || msg.payload.status || 'Agent progress' } },
         }).catch(() => {});
       } else if (msg.type === 'complete') {
+        settled = true;
+        cleanup();
         resolve(msg.result);
       } else if (msg.type === 'error') {
+        settled = true;
+        cleanup();
         reject(new Error(msg.error));
       }
     });
 
-    worker.on('error', reject);
+    worker.on('error', (err) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(err);
+    });
     worker.on('exit', (code) => {
-      if (code !== 0) reject(new Error(`Agent worker exited with code ${code}`));
+      if (settled) return;
+      if (code !== 0) {
+        settled = true;
+        cleanup();
+        reject(new Error(`Agent worker exited with code ${code}`));
+      }
     });
   });
 }
@@ -208,7 +248,8 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       workspaceId,
       specs.map((spec) => spec._id.toString()),
       provider,
-      localPrivacyMode
+      localPrivacyMode,
+      1800000 // 30 minutes
     );
 
     workerPromise.then(async (result) => {
