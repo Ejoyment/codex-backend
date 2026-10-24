@@ -93,6 +93,9 @@ router.post('/generate', authenticateToken, async (req, res) => {
 
         const aiService = require('../utils/aiService');
         const result = await aiService.chat([{ role: 'user', content: context }]);
+        if (!result.success) {
+            return res.status(502).json({ success: false, message: `AI service error: ${result.error}` });
+        }
 
         res.json({
             success: true,

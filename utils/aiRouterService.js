@@ -74,12 +74,17 @@ class AIRouterService {
   async routeChat(messages, codeContext = {}, options = {}) {
     const { provider } = this.resolveProviderName(options.provider);
     const localMode = options.localPrivacyMode ?? this.localPrivacyMode;
+    const requestContext = {
+      ...codeContext,
+      ...(options.timeoutMs ? { timeoutMs: options.timeoutMs } : {}),
+      ...(options.signal ? { signal: options.signal } : {}),
+    };
 
     if (localMode) {
-      return this.routeLocal(messages, codeContext, provider);
+      return this.routeLocal(messages, requestContext, provider);
     }
 
-    return this.routeCloud(messages, codeContext, provider);
+    return this.routeCloud(messages, requestContext, provider);
   }
 
   async routeCloud(messages, codeContext, provider) {

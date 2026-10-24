@@ -6,10 +6,11 @@
 
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
-// Outbound LLM calls carry no default timeout: a stalled provider would hold
-// the request open indefinitely (audit finding #5). 60s covers long
-// generations; override with AI_REQUEST_TIMEOUT_MS.
+// Outbound LLM calls must stay bounded, including provider failover.
 const AI_REQUEST_TIMEOUT_MS = parseInt(process.env.AI_REQUEST_TIMEOUT_MS, 10) || 60000;
+const MAX_CONTEXT_FILES = 10;
+const MAX_FILE_CONTEXT_CHARS = 12000;
+const MAX_TOTAL_FILE_CONTEXT_CHARS = 60000;
 
 class AIService {
     constructor() {
@@ -98,64 +99,68 @@ class AIService {
 
     async chat(messages, codeContext = {}) {
         // Per-request provider from the router/caller.
-        const provider = this.resolveProvider(codeContext.provider);
-        const providerConfig = this.providers[provider];
-        if (!providerConfig || !providerConfig.available) {
-            // Last resort: return a safe fallback response so the agent/chat doesn't hang/fail completely
-            const lastUser = [...messages].reverse().find(m => m.role === 'user');
-            return {
-                success: true,
-                content: `I understand. ${lastUser ? lastUser.content : 'Task received.'} I'll proceed step by step.\n\nPlan:\n1. Analyze requirements\n2. Implement changes\n3. Verify\n\nChanges will be proposed for review.`,
-                usage: { input: 0, output: 0 },
-                model: 'fallback'
-            };
-        }
-        console.log(`Using AI provider: ${providerConfig.name}`);
-
+        let provider;
         try {
-            const call = (async () => {
+            provider = this.resolveProvider(codeContext.provider);
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+
+        const timeoutMs = Number.isFinite(Number(codeContext.timeoutMs)) && Number(codeContext.timeoutMs) > 0
+            ? Number(codeContext.timeoutMs)
+            : AI_REQUEST_TIMEOUT_MS;
+        const deadline = Date.now() + timeoutMs;
+        const tried = Array.isArray(codeContext._tried) ? [...codeContext._tried] : [];
+        let lastError;
+
+        while (provider) {
+            const providerConfig = this.providers[provider];
+            const remainingMs = deadline - Date.now();
+            if (remainingMs <= 0) {
+                lastError = new Error('AI request timed out');
+                break;
+            }
+
+            console.log(`Using AI provider: ${providerConfig.name}`);
+            try {
+                const requestContext = {
+                    ...codeContext,
+                    timeoutMs: remainingMs,
+                    signal: codeContext.signal || AbortSignal.timeout(remainingMs),
+                };
+                let result;
                 switch (provider) {
                     case 'gemini':
-                        return await this.chatGemini(messages, codeContext);
+                        result = await this.chatGemini(messages, requestContext);
+                        break;
                     case 'mistral':
-                        return await this.chatMistral(messages, codeContext);
+                        result = await this.chatMistral(messages, requestContext);
+                        break;
                     case 'groq':
-                        return await this.chatGroq(messages, codeContext);
+                        result = await this.chatGroq(messages, requestContext);
+                        break;
                     case 'huggingface':
-                        return await this.chatHuggingFace(messages, codeContext);
+                        result = await this.chatHuggingFace(messages, requestContext);
+                        break;
                     default:
                         throw new Error(`Unknown provider: ${provider}`);
                 }
-            })();
-            const timeoutMs = AI_REQUEST_TIMEOUT_MS;
-            return await Promise.race([
-                call,
-                new Promise((_, reject) => setTimeout(() => reject(new Error(`${providerConfig.name} request timed out`)), timeoutMs))
-            ]);
-        } catch (error) {
-            const errMsg = error?.message || String(error);
-            console.error(`Error with ${provider}:`, errMsg);
-
-            // Fall back to another provider for THIS request only.
-            const fallback = this.getFallbackProvider(provider, codeContext._tried);
-            if (fallback) {
-                try {
-                    console.log(`Falling back to: ${this.providers[fallback].name}`);
-                    const tried = [...(codeContext._tried || []), provider];
-                    return await this.chat(messages, { ...codeContext, provider: fallback, _tried: tried });
-                } catch (e) {
-                    // ignore
+                if (!result?.success || typeof result.content !== 'string' || !result.content.trim()) {
+                    throw new Error(result?.error || `${providerConfig.name} returned an empty response`);
                 }
+                return result;
+            } catch (error) {
+                lastError = error;
+                tried.push(provider);
+                console.error(`Error with ${provider}:`, error?.message || String(error));
+                provider = this.getFallbackProvider(provider, tried);
             }
-
-            const lastUser = Array.isArray(messages) ? [...messages].reverse().find(m => m && m.role === 'user') : null;
-            return {
-                success: true,
-                content: `I understand. ${lastUser?.content || 'Task received.'} I'll proceed step by step.\n\nPlan:\n1. Analyze requirements\n2. Implement changes\n3. Verify\n\nChanges will be proposed for review.`,
-                usage: { input: 0, output: 0 },
-                model: 'fallback'
-            };
         }
+
+        return {
+            success: false,
+            error: lastError?.message || 'AI request failed: no available provider succeeded',
+        };
     }
 
     /**
@@ -225,7 +230,10 @@ Please:
         const conversationHistory = this.formatMessagesForGemini(messages);
         const fullPrompt = `${systemPrompt}\n\n${conversationHistory}`;
 
-        const result = await model.generateContent(fullPrompt);
+        const result = await model.generateContent(fullPrompt, {
+            timeout: codeContext.timeoutMs || AI_REQUEST_TIMEOUT_MS,
+            signal: codeContext.signal || AbortSignal.timeout(AI_REQUEST_TIMEOUT_MS),
+        });
         const response = result.response;
         const text = response.text();
 
@@ -263,7 +271,7 @@ Please:
                 max_tokens: parseInt(process.env.AI_MAX_TOKENS) || 8192,
                 temperature: parseFloat(process.env.AI_TEMPERATURE) || 0.7
             }),
-            signal: AbortSignal.timeout(AI_REQUEST_TIMEOUT_MS)
+            signal: codeContext.signal || AbortSignal.timeout(codeContext.timeoutMs || AI_REQUEST_TIMEOUT_MS)
         });
 
         if (!response.ok) {
@@ -309,7 +317,7 @@ Please:
                 temperature: parseFloat(process.env.AI_TEMPERATURE) || 0.7,
                 ...(String(config.model).includes('gpt-oss') ? { reasoning_effort: 'low' } : {})
             }),
-            signal: AbortSignal.timeout(AI_REQUEST_TIMEOUT_MS)
+            signal: codeContext.signal || AbortSignal.timeout(codeContext.timeoutMs || AI_REQUEST_TIMEOUT_MS)
         });
 
         if (!response.ok) {
@@ -352,7 +360,7 @@ Please:
                     return_full_text: false
                 }
             }),
-            signal: AbortSignal.timeout(AI_REQUEST_TIMEOUT_MS)
+            signal: codeContext.signal || AbortSignal.timeout(codeContext.timeoutMs || AI_REQUEST_TIMEOUT_MS)
         });
 
         if (!response.ok) {
@@ -373,7 +381,7 @@ Please:
     }
 
     buildSystemPrompt(codeContext) {
-        const { repository, files, currentFile, agentMode, instructions } = codeContext;
+        const { repository, files, currentFile, agentMode, instructions } = codeContext || {};
         
         let prompt = `You are an expert AI pair programming assistant. You help developers write, debug, and improve code.
 
@@ -416,9 +424,43 @@ Your capabilities:
 
         if (files && files.length > 0) {
             prompt += `\nAvailable Files:\n`;
-            files.slice(0, 10).forEach(file => {
+            files.slice(0, MAX_CONTEXT_FILES).forEach(file => {
                 prompt += `- ${file.path}\n`;
             });
+        }
+
+        let remainingContextChars = MAX_TOTAL_FILE_CONTEXT_CHARS;
+        const contextFiles = [
+            ...(currentFile?.content ? [currentFile] : []),
+            ...(files || []).filter((file) => typeof file.content === 'string' && file.content.length > 0),
+        ].filter((file, index, allFiles) => {
+            const path = file.path || file.name;
+            return !path || allFiles.findIndex((candidate) => (candidate.path || candidate.name) === path) === index;
+        }).slice(0, MAX_CONTEXT_FILES);
+        let fileContextTruncated = false;
+        if (contextFiles.length) {
+            prompt += '\nRelevant File Contents:\n';
+            for (const file of contextFiles) {
+                const header = `\n--- ${file.path || file.name || 'current file'} ---\n`;
+                const availableContentChars = Math.max(0, Math.min(
+                    MAX_FILE_CONTEXT_CHARS,
+                    remainingContextChars - header.length - 1
+                ));
+                if (availableContentChars === 0) {
+                    fileContextTruncated = true;
+                    break;
+                }
+                const content = file.content.slice(0, availableContentChars);
+                prompt += `${header}${content}\n`;
+                remainingContextChars -= header.length + content.length + 1;
+                if (content.length < file.content.length) {
+                    fileContextTruncated = true;
+                    break;
+                }
+            }
+            if (fileContextTruncated) {
+                prompt += '\n[File context truncated to keep the request within a bounded size.]\n';
+            }
         }
 
         // Add capabilities list if in agent mode

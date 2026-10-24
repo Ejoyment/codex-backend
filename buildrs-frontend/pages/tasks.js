@@ -229,6 +229,7 @@ export default function Tasks() {
     try {
       const result = await apiFetch('/api/v1/agent/delegate', {
         method: 'POST',
+        timeoutMs: 120000,
         body: JSON.stringify({ taskId: task.id, workspaceId: selectedCompany._id, specIds: task.specIds || [] }),
       });
       if (result.success) await loadTasks();
