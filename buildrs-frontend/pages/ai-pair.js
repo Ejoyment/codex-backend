@@ -72,7 +72,8 @@ function CodeBlock({ lang, code }) {
 
 function renderCodeBlocks(text, keyPrefix = '') {
   if (!text) return text;
-  const parts = text.split(/(```[\s\S]*?```)/g);
+  const displayText = typeof text === 'string' ? text : String(text);
+  const parts = displayText.split(/(```[\s\S]*?```)/g);
   return parts.map((part, i) => {
     if (part.startsWith('```') && part.endsWith('```')) {
       const lines = part.slice(3, -3);
@@ -83,6 +84,19 @@ function renderCodeBlocks(text, keyPrefix = '') {
     }
     return <span key={`${keyPrefix}${i}`}>{part}</span>;
   });
+}
+
+function formatAgentSummary(summary, success) {
+  if (typeof summary === 'string' && summary.trim()) return summary;
+  if (summary && typeof summary === 'object') {
+    if (typeof summary.finalThought === 'string' && summary.finalThought.trim()) {
+      return summary.finalThought;
+    }
+    if (typeof summary.goal === 'string' && summary.goal.trim()) {
+      return summary.goal;
+    }
+  }
+  return success ? 'Task complete.' : 'Agent finished with issues.';
 }
 
 function AgentRunsPanel({ sessions, selected, loading, error, followUp, setFollowUp, setError, onSelect, onRefresh, onAction, actionId }) {
@@ -395,9 +409,10 @@ export default function AiPair() {
             ...prev,
             { type: 'done', status: 'done', success: result.success !== false, summary: result.summary },
           ]);
+          const summaryText = formatAgentSummary(result.summary, result.success);
           const aiMsg = {
             role: 'assistant',
-            content: result.summary || (result.success ? 'Task complete.' : 'Agent finished with issues.'),
+            content: summaryText,
             agentSummary: result.summary,
             agentSteps: steps,
             timestamp: new Date().toISOString(),

@@ -672,6 +672,7 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
 
             const context = {
                 userId: req.userId,
+                userTier: agentPerm.tier,
                 workspaceId: codeContext.workspace?.id,
                 workspaceName: codeContext.workspace?.name,
                 files: codeContext.files || [],
