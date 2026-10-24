@@ -131,7 +131,7 @@ export default function Projects() {
             />
           ) : (
             <>
-          <div className="flex min-h-[calc(100vh-4rem)] flex-col gap-4 p-6">
+          <div className="projects-content flex min-h-[calc(100vh-4rem)] flex-col gap-4 p-6">
             <section className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
               <div>
                 <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-400">
@@ -221,7 +221,7 @@ export default function Projects() {
                 </button>
               </section>
             ) : (
-              <section className="grid flex-1 grid-cols-1 content-start gap-4 md:grid-cols-2" aria-label="Projects">
+              <section className="grid flex-1 grid-cols-1 content-start gap-4 md:grid-cols-2 2xl:grid-cols-3" aria-label="Projects">
                 {projects.map((project) => {
                   const progress = Math.min(100, Math.max(0, Number(project.progress) || 0));
                   const technologies = Array.isArray(project.technologies) && project.technologies.length
