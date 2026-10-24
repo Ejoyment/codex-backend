@@ -34,6 +34,81 @@ describe('AI request reliability', () => {
     jest.restoreAllMocks();
   });
 
+  test('constrains Groq GPT-OSS agent responses to the validated JSON action schema', async () => {
+    const originalFetch = global.fetch;
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: '{"thought":"Read package metadata","goalAchieved":false,"action":{"tool":"read_file","parameters":"{\\"path\\":\\"package.json\\"}"}}' } }] }),
+    });
+    process.env.GROQ_API_KEY = 'test-groq-key';
+
+    try {
+      await aiService.chatGroq([{ role: 'user', content: 'Inspect package.json' }], {
+        agentMode: true,
+        availableTools: ['read_file', 'list_files'],
+      });
+
+      const requestBody = JSON.parse(global.fetch.mock.calls[0][1].body);
+      expect(requestBody.response_format).toMatchObject({
+        type: 'json_schema',
+        json_schema: {
+          name: 'agent_reasoning',
+          strict: true,
+          schema: expect.objectContaining({
+            properties: expect.objectContaining({
+              action: expect.objectContaining({
+                properties: expect.objectContaining({
+                  tool: { type: 'string', enum: ['read_file', 'list_files', 'none'] },
+                  parameters: { type: 'string' },
+                }),
+              }),
+            }),
+          }),
+        },
+      });
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  test('rejects native Groq tool calls instead of treating them as agent JSON', async () => {
+    const originalFetch = global.fetch;
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        choices: [{
+          message: {
+            content: null,
+            tool_calls: [{ type: 'function', function: { name: 'read_file', arguments: '{"path":"package.json"}' } }],
+          },
+        }],
+      }),
+    });
+
+    try {
+      await expect(aiService.chatGroq([{ role: 'user', content: 'Inspect package metadata' }], {
+        agentMode: true,
+        availableTools: ['read_file'],
+      })).rejects.toThrow('Groq returned a native tool call');
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  test('parses the JSON-encoded tool parameters used by constrained agent responses', () => {
+    const orchestrator = require('../utils/agentOrchestrator');
+    const result = orchestrator.parseReasoningResponse(
+      '{"thought":"Read the manifest","goalAchieved":false,"action":{"tool":"read_file","parameters":"{\\"path\\":\\"package.json\\"}"}}'
+    );
+
+    expect(result).toEqual({
+      success: true,
+      thought: 'Read the manifest',
+      goalAchieved: false,
+      action: { tool: 'read_file', parameters: { path: 'package.json' } },
+    });
+  });
+
   test('passes a bounded deadline to Gemini and includes source contents in agent context', async () => {
     mockGenerateContent.mockResolvedValue({ response: { text: () => 'Implemented safely.' } });
     const result = await aiService.chat([

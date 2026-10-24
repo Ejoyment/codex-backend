@@ -979,6 +979,7 @@ class AgentOrchestrator {
             ], {
                 agentMode: true,
                 instructions: 'You are in ReAct agent mode. Respond with JSON only.',
+                availableTools: Object.keys(this.tools),
                 timeoutMs,
             });
 
@@ -1334,13 +1335,11 @@ ${validationErrorsSection ? '- **PRIORITY**: Fix validation errors first. Do not
   "goalAchieved": false,
   "action": {
     "tool": "tool_name",
-    "parameters": {
-      "param1": "value1"
-    }
+    "parameters": "{\"param1\":\"value1\"}"
   }
 }
 
-If the goal is achieved, set "goalAchieved": true and omit "action".
+The parameters value must be a JSON-encoded object string. If the goal is achieved, set "goalAchieved": true and use "action": {"tool":"none","parameters":"{}"}.
 
 RESPOND WITH JSON ONLY - NO MARKDOWN, NO EXPLANATIONS.`;
     }
@@ -1373,14 +1372,18 @@ RESPOND WITH JSON ONLY - NO MARKDOWN, NO EXPLANATIONS.`;
                 if (typeof parsed.action.tool !== 'string' || !this.tools[parsed.action.tool]) {
                     throw new Error(`Unknown or missing tool: ${parsed.action.tool || '(none)'}`);
                 }
-                if (
-                    parsed.action.parameters !== undefined &&
-                    (!parsed.action.parameters ||
-                        typeof parsed.action.parameters !== 'object' ||
-                        Array.isArray(parsed.action.parameters))
-                ) {
+                let parameters = parsed.action.parameters;
+                if (typeof parameters === 'string') {
+                    try {
+                        parameters = JSON.parse(parameters);
+                    } catch {
+                        throw new Error('action.parameters must contain a JSON object');
+                    }
+                }
+                if (parameters !== undefined && (!parameters || typeof parameters !== 'object' || Array.isArray(parameters))) {
                     throw new Error('action.parameters must be a JSON object');
                 }
+                parsed.action.parameters = parameters || {};
             }
             return {
                 success: true,
