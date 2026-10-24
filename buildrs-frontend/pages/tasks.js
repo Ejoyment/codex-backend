@@ -282,17 +282,24 @@ export default function Tasks() {
 
         <main className="workspace-main">
           {showWizard ? (
-            <CreateTaskWizard
-              onClose={() => setShowWizard(false)}
-              onCreated={handleTaskCreated}
-              companyId={selectedCompany?._id || selectedCompany?.id}
-              user={user}
-              projects={projects}
-              projectsLoading={projectsLoading}
-              specs={specs}
-              projectsError={projectsError}
-              defaultProjectId={typeof router.query.projectId === 'string' ? router.query.projectId : ''}
-            />
+            <>
+              <TaskWorkspaceTopBar
+                user={user}
+                selectedCompany={selectedCompany}
+                onWorkspaceClick={() => router.push('/workspace')}
+              />
+              <CreateTaskWizard
+                onClose={() => setShowWizard(false)}
+                onCreated={handleTaskCreated}
+                companyId={selectedCompany?._id || selectedCompany?.id}
+                user={user}
+                projects={projects}
+                projectsLoading={projectsLoading}
+                specs={specs}
+                projectsError={projectsError}
+                defaultProjectId={typeof router.query.projectId === 'string' ? router.query.projectId : ''}
+              />
+            </>
           ) : (
             <>
               <TaskWorkspaceTopBar
