@@ -304,6 +304,38 @@ Please:
             }))
         ];
 
+        const isAgentRequest = codeContext.agentMode === true;
+        const isGptOss = String(config.model).includes('gpt-oss');
+        const availableTools = Array.isArray(codeContext.availableTools) ? codeContext.availableTools : [];
+        const responseFormat = isAgentRequest && isGptOss
+            ? {
+                type: 'json_schema',
+                json_schema: {
+                    name: 'agent_reasoning',
+                    strict: true,
+                    schema: {
+                        type: 'object',
+                        properties: {
+                            thought: { type: 'string' },
+                            goalAchieved: { type: 'boolean' },
+                            action: {
+                                type: 'object',
+                                properties: {
+                                    tool: { type: 'string', enum: [...availableTools, 'none'] },
+                                    parameters: { type: 'string' },
+                                },
+                                required: ['tool', 'parameters'],
+                                additionalProperties: false,
+                            },
+                        },
+                        required: ['thought', 'goalAchieved', 'action'],
+                        additionalProperties: false,
+                    },
+                },
+            }
+            : isAgentRequest
+                ? { type: 'json_object' }
+                : undefined;
         const response = await fetch(config.endpoint, {
             method: 'POST',
             headers: {
@@ -315,7 +347,8 @@ Please:
                 messages: formattedMessages,
                 max_tokens: parseInt(process.env.AI_MAX_TOKENS) || 8192,
                 temperature: parseFloat(process.env.AI_TEMPERATURE) || 0.7,
-                ...(String(config.model).includes('gpt-oss') ? { reasoning_effort: 'low' } : {})
+                ...(isGptOss ? { reasoning_effort: 'low' } : {}),
+                ...(responseFormat ? { response_format: responseFormat } : {})
             }),
             signal: codeContext.signal || AbortSignal.timeout(codeContext.timeoutMs || AI_REQUEST_TIMEOUT_MS)
         });
@@ -327,6 +360,9 @@ Please:
 
         const data = await response.json();
         const msg = data.choices[0].message;
+        if (Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
+            throw new Error('Groq returned a native tool call, but this request uses application-managed agent tools');
+        }
         const text = msg.content || msg.reasoning || '';
 
         return {
@@ -399,7 +435,7 @@ Your capabilities:
 
         // Add agent mode instructions if enabled
         if (agentMode && instructions) {
-            prompt += `\n${instructions}\n\n`;
+            prompt += `\n${instructions}\nDo not emit native tool or function calls. Describe the next tool action only in the requested JSON response; tools are executed by the application after validating that response.\n\n`;
         }
 
         prompt += `Guidelines:
