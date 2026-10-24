@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { io } from 'socket.io-client';
 import useAuthStore from '../store/authStore';
@@ -7,6 +7,7 @@ import { subscriptionApi, SOCKET_URL } from '../lib/api';
 
 export default function AuthGuard({ children }) {
   const router = useRouter();
+  const [hasHydrated, setHasHydrated] = useState(false);
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
   const subscription = useAuthStore((s) => s.subscription);
@@ -15,6 +16,11 @@ export default function AuthGuard({ children }) {
   const subscriptionLoadedForToken = useRef(null);
 
   useEffect(() => {
+    setHasHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hasHydrated) return;
     if (!token) {
       router.replace('/sign_in');
       return;
@@ -82,7 +88,7 @@ export default function AuthGuard({ children }) {
     };
   }, [token]);
 
-  if (!token) {
+  if (!hasHydrated || !token) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-navy">
         <div className="text-white">Loading...</div>
