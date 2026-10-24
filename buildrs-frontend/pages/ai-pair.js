@@ -22,6 +22,10 @@ import {
   XCircle,
   Clock3,
   RefreshCw,
+  Activity,
+  ShieldCheck,
+  Workflow,
+  Terminal,
 } from 'lucide-react';
 import { getTierLimits, normalizeTier } from '../lib/tier';
 import { useRouter } from 'next/router';
@@ -86,17 +90,145 @@ function renderCodeBlocks(text, keyPrefix = '') {
   });
 }
 
-function formatAgentSummary(summary, success) {
+function formatAgentSummary(summary, success, error) {
   if (typeof summary === 'string' && summary.trim()) return summary;
   if (summary && typeof summary === 'object') {
     if (typeof summary.finalThought === 'string' && summary.finalThought.trim()) {
-      return summary.finalThought;
-    }
-    if (typeof summary.goal === 'string' && summary.goal.trim()) {
-      return summary.goal;
+      const details = [summary.finalThought];
+      if (!success && summary.stopReason && !summary.finalThought.includes(summary.stopReason)) {
+        details.push(summary.stopReason);
+      }
+      if (!success && error && !details.some((detail) => detail.includes(error))) {
+        details.push(error);
+      }
+      return details.join('\n\n');
     }
   }
+  if (error) return `The agent could not complete the request: ${error}`;
+  if (summary?.stopReason) return `The agent stopped before completing the request: ${summary.stopReason}`;
+  if (typeof summary?.goal === 'string' && summary.goal.trim()) return summary.goal;
   return success ? 'Task complete.' : 'Agent finished with issues.';
+}
+
+function getAgentProgressLabel(step) {
+  if (step.type === 'done') {
+    return step.success ? 'Task complete' : step.summary?.stopReason || 'Task stopped';
+  }
+  const tool = step.action?.tool || step.tool;
+  const labels = {
+    list_files: 'Inspecting repository files',
+    get_repository_status: 'Checking repository status',
+    read_file: 'Reading a source file',
+    search_code: 'Searching project code',
+    analyze_code: 'Analyzing source code',
+    run_tests: 'Running tests',
+    execute_code: 'Running code in the sandbox',
+    create_file: 'Creating a file',
+    update_file: 'Updating a file',
+    create_multiple_files: 'Creating project files',
+    delete_file: 'Deleting a file',
+  };
+  if (step.type === 'result') {
+    const actionLabel = labels[tool] || 'Step';
+    return step.result?.success
+      ? `${actionLabel} complete`
+      : `${actionLabel} needs attention${step.result?.message ? `: ${String(step.result.message).slice(0, 120)}` : ''}`;
+  }
+  return labels[tool] || step.message || 'Working on the requested task';
+}
+
+function AgentOperationsPanel({ session, agentMode, onToggleMode, loading, steps, messages, remaining, aiLimit }) {
+  const completedStep = [...steps].reverse().find((step) => step.type === 'done');
+  const runStatus = loading
+    ? 'Running'
+    : completedStep
+      ? (completedStep.success ? 'Complete' : 'Needs attention')
+      : agentMode
+        ? 'Ready to run'
+        : 'Pairing mode';
+  const stepCount = steps.reduce((count, step) => Math.max(count, Number(step.iteration) || 0), 0);
+  const iterationLimit = steps.reduce((count, step) => Math.max(count, Number(step.maxIterations) || 0), 0);
+  const activity = steps
+    .filter((step) => ['iteration', 'result', 'done'].includes(step.type))
+    .slice(-6)
+    .reverse();
+
+  return (
+    <aside className="ail-ops" aria-label="Agent operations">
+      <div className="ail-ops-head">
+        <div>
+          <p className="ail-eyebrow">Workspace controls</p>
+          <h2><Activity className="h-4 w-4" /> Agent operations</h2>
+        </div>
+        <span className={`ail-live-pill ${loading ? 'is-running' : ''}`}>
+          <span />{runStatus}
+        </span>
+      </div>
+
+      <section className={`ail-mode-card ${agentMode ? 'is-agent' : ''}`}>
+        <div className="ail-mode-card-top">
+          <span className="ail-mode-icon">{agentMode ? <Workflow className="h-4 w-4" /> : <Bot className="h-4 w-4" />}</span>
+          <div>
+            <strong>{agentMode ? 'Autonomous agent' : 'Pair assistant'}</strong>
+            <p>{agentMode ? 'Plans, uses tools, and reports verified outcomes.' : 'Conversational help with no autonomous tool loop.'}</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          className={`ail-mode-toggle ${agentMode ? 'is-on' : ''}`}
+          onClick={onToggleMode}
+          disabled={loading}
+          aria-pressed={agentMode}
+        >
+          <span>{agentMode ? 'Agent mode enabled' : 'Enable agent mode'}</span>
+          <span className="ail-toggle-track"><span /></span>
+        </button>
+      </section>
+
+      <section className="ail-ops-section">
+        <div className="ail-ops-section-title"><GitBranch className="h-3.5 w-3.5" /><span>Execution context</span></div>
+        <dl className="ail-context-list">
+          <div><dt>Repository</dt><dd title={session?.repositoryName || session?.repoName || ''}>{session?.repositoryName || session?.repoName || 'No session selected'}</dd></div>
+          <div><dt>Branch</dt><dd title={session?.branch || ''}>{session?.branch || 'Default branch'}</dd></div>
+          <div><dt>Language</dt><dd>{session?.language || '—'}</dd></div>
+          <div><dt>Messages</dt><dd>{messages.length}</dd></div>
+          <div><dt>Usage</dt><dd>{aiLimit === Infinity ? 'Unlimited' : `${remaining}/${aiLimit} today`}</dd></div>
+        </dl>
+      </section>
+
+      <section className="ail-ops-section ail-activity-section">
+        <div className="ail-ops-section-title"><Terminal className="h-3.5 w-3.5" /><span>Live activity</span><span className="ail-activity-count">{stepCount ? `${stepCount}${iterationLimit ? ` / ${iterationLimit}` : ''} steps` : '—'}</span></div>
+        {activity.length ? (
+          <ol className="ail-activity-list">
+            {activity.map((step, index) => {
+              const isDone = step.type === 'done';
+              const isResult = step.type === 'result';
+              const succeeded = isDone ? step.success : step.result?.success;
+              return (
+                <li key={`${step.iteration || step.type}-${index}`} className={isDone || isResult ? (succeeded ? 'is-success' : 'is-error') : 'is-active'}>
+                  <span className="ail-activity-marker">{isDone || isResult ? (succeeded ? <CheckCircle2 /> : <XCircle />) : <span />}</span>
+                  <span className="ail-activity-copy">
+                    <strong>{getAgentProgressLabel(step)}</strong>
+                    {step.iteration > 0 && <small>Step {step.iteration}</small>}
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
+        ) : (
+          <div className="ail-activity-empty">
+            <span className="ail-activity-pulse" />
+            <p>{loading ? 'Waiting for the first agent event…' : 'Agent activity will appear here when a run starts.'}</p>
+          </div>
+        )}
+      </section>
+
+      <section className="ail-safety-card">
+        <ShieldCheck className="h-4 w-4" />
+        <div><strong>Review stays with you</strong><p>Connected GitHub content is read-only. Workspace edits are not pushed; review changes before applying them.</p></div>
+      </section>
+    </aside>
+  );
 }
 
 function AgentRunsPanel({ sessions, selected, loading, error, followUp, setFollowUp, setError, onSelect, onRefresh, onAction, actionId }) {
@@ -262,7 +394,17 @@ export default function AiPair() {
     sock.on('connect', () => sock.emit('agent:join'));
     sock.on('agent:progress', (p) => {
       if (p && p.type) {
-        setAgentSteps((prev) => [...prev, p]);
+        const progress = {
+          type: p.type,
+          iteration: p.iteration,
+          maxIterations: p.maxIterations,
+          message: p.message,
+          action: p.action,
+          result: p.result,
+          success: p.success,
+          summary: p.summary,
+        };
+        setAgentSteps((prev) => [...prev.slice(-19), progress]);
       }
     });
     return () => {
@@ -274,6 +416,11 @@ export default function AiPair() {
 
   function resetAgentRun() {
     setAgentSteps([]);
+  }
+
+  function toggleAgentMode() {
+    setAgentMode((mode) => !mode);
+    resetAgentRun();
   }
 
   async function fetchSessions() {
@@ -401,7 +548,6 @@ export default function AiPair() {
           const result = data.result;
           const steps = (result.iterations || []).map((it) => ({
             step: it.iteration,
-            thought: it.reasoning?.thought || it.thought || '',
             tool: it.reasoning?.action?.tool || it.action?.tool || '',
             success: it.result?.success,
           }));
@@ -409,7 +555,7 @@ export default function AiPair() {
             ...prev,
             { type: 'done', status: 'done', success: result.success !== false, summary: result.summary },
           ]);
-          const summaryText = formatAgentSummary(result.summary, result.success);
+          const summaryText = formatAgentSummary(result.summary, result.success, result.error);
           const aiMsg = {
             role: 'assistant',
             content: summaryText,
@@ -481,7 +627,7 @@ export default function AiPair() {
             <div className="flex items-center gap-3">
               <span className="dash-pill hidden md:inline-flex">
                 <span className="dot" style={{ background: remaining <= 0 ? '#f87171' : '#2fd6e6' }} />
-                {aiLimit === Infinity ? `${remaining} messages` : `${remaining}/${aiLimit} today`}
+                {aiLimit === Infinity ? 'Unlimited messages' : `${remaining}/${aiLimit} today`}
               </span>
               {tier === 'developer' && (
                 <button
@@ -504,10 +650,10 @@ export default function AiPair() {
             </div>
           </header>
 
-          <div className="workspace-content">
-            <div className="mb-5 flex border-b border-white/10" role="tablist" aria-label="AI workspace mode">
-              <button type="button" role="tab" aria-selected={activeView === 'chat'} onClick={() => setActiveView('chat')} className={`border-b-2 px-4 py-2 text-sm ${activeView === 'chat' ? 'border-[#2fd6e6] text-white' : 'border-transparent text-[#9aa1ae]'}`}>Pair chat</button>
-              <button type="button" role="tab" aria-selected={activeView === 'runs'} onClick={() => setActiveView('runs')} className={`border-b-2 px-4 py-2 text-sm ${activeView === 'runs' ? 'border-[#2fd6e6] text-white' : 'border-transparent text-[#9aa1ae]'}`}>Agent runs</button>
+          <div className="workspace-content ail-workspace-content">
+            <div className="ail-view-tabs" role="tablist" aria-label="AI workspace view">
+              <button type="button" role="tab" aria-selected={activeView === 'chat'} onClick={() => setActiveView('chat')} className={`ail-view-tab ${activeView === 'chat' ? 'is-active' : ''}`}><MessageSquare className="h-4 w-4" /> Pair workspace</button>
+              <button type="button" role="tab" aria-selected={activeView === 'runs'} onClick={() => setActiveView('runs')} className={`ail-view-tab ${activeView === 'runs' ? 'is-active' : ''}`}><Activity className="h-4 w-4" /> Agent runs<span className="ail-tab-count">{agentSessions.length}</span></button>
             </div>
             {activeView === 'runs' ? (
               <AgentRunsPanel
@@ -593,8 +739,16 @@ export default function AiPair() {
                   </div>
                 </aside>
 
+                <div className="ail-main-layout">
                 {/* Conversation */}
                 <div className="ail-conv">
+                  <div className="ail-conv-toolbar">
+                    <div className="ail-conv-identity">
+                      <span className="ail-conv-avatar"><Bot className="h-4 w-4" /></span>
+                      <div><strong>{activeSession?.repositoryName || activeSession?.repoName || 'AI Pair workspace'}</strong><span>{activeSession ? `${activeSession.language || 'Code'} · ${agentMode ? 'Agent workflow' : 'Pairing'}` : 'Create or select a session to begin'}</span></div>
+                    </div>
+                    <div className={`ail-connection-state ${activeSession ? 'is-connected' : ''}`}><span />{activeSession ? 'Session ready' : 'Not connected'}</div>
+                  </div>
                   {error && (
                     <div className="std-alert std-alert-error mx-4 mt-4">
                       <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -656,7 +810,7 @@ export default function AiPair() {
                                         <span className="mkt-mono" style={{ color: s.success === false ? '#f87171' : '#2fd6e6' }}>
                                           {s.success === false ? '✕' : '✓'}
                                         </span>
-                                        <span>step {s.step}: {s.tool} — {String(s.thought).slice(0, 80)}</span>
+                                        <span>Step {s.step}: {s.tool || 'Agent action'} {s.success === false ? 'needs attention' : 'completed'}</span>
                                       </div>
                                     ))}
                                   </div>
@@ -678,17 +832,21 @@ export default function AiPair() {
                                     <span className="ail-msg-who">Agent working...</span>
                                   </div>
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.5rem' }}>
-                                    {agentSteps.filter((s) => s.type === 'iteration' || s.type === 'result').map((s, idx) => (
-                                      <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.78rem', color: s.status === 'error' ? '#f87171' : '#c8ccd4' }}>
-                                        <Loader2 className="w-3 h-3 animate-spin" style={{ color: '#2fd6e6' }} />
-                                        <span className="mkt-mono">
-                                          step {s.iteration}
-                                          {s.thought ? ` · ${String(s.thought).slice(0, 90)}` : ''}
-                                          {s.action?.tool ? ` · ${s.action.tool}` : ''}
-                                          {s.type === 'result' ? ` → ${s.result?.message || 'done'}` : ''}
-                                        </span>
-                                      </div>
-                                    ))}
+                                    {agentSteps.filter((s) => ['thinking', 'iteration', 'result', 'done'].includes(s.type)).map((s, idx) => {
+                                      const isCompleteEvent = s.type === 'result' || s.type === 'done';
+                                      const succeeded = s.type === 'done' ? s.success : s.result?.success;
+                                      const ProgressIcon = isCompleteEvent
+                                        ? (succeeded ? CheckCircle2 : XCircle)
+                                        : Loader2;
+                                      return (
+                                        <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.78rem', color: isCompleteEvent && !succeeded ? '#f87171' : '#c8ccd4' }}>
+                                          <ProgressIcon className={`w-3 h-3 ${!isCompleteEvent ? 'animate-spin' : ''}`} style={{ color: isCompleteEvent ? (succeeded ? '#34d399' : '#f87171') : '#2fd6e6' }} />
+                                          <span className="mkt-mono">
+                                            {s.iteration ? `step ${s.iteration} · ` : ''}{getAgentProgressLabel(s)}
+                                          </span>
+                                        </div>
+                                      );
+                                    })}
                                   </div>
                                 </div>
                               </div>
@@ -709,20 +867,10 @@ export default function AiPair() {
 
                   {activeSession && (
                     <form onSubmit={handleSend} className="ail-composer">
-                      <div className="ail-composer-mode" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem', fontSize: '0.78rem' }}>
-                        <button
-                          type="button"
-                          onClick={() => { setAgentMode((m) => !m); resetAgentRun(); }}
-                          className="btn-workspace btn-secondary text-xs inline-flex items-center gap-1.5"
-                          style={{ borderColor: agentMode ? 'rgba(47,214,230,0.5)' : undefined, color: agentMode ? '#2fd6e6' : undefined }}
-                          title="Let the agent autonomously read files, write code, and run steps"
-                        >
-                          <Sparkles className="w-3 h-3" />
-                          {agentMode ? 'Agent Mode: ON' : 'Agent Mode: OFF'}
-                        </button>
-                        {agentMode && (
-                          <span style={{ color: '#a8adba' }}>Autonomous — the agent may create/edit files and run code.</span>
-                        )}
+                      <div className="ail-composer-mode">
+                        <span className={`ail-composer-mode-indicator ${agentMode ? 'is-agent' : ''}`} />
+                        <span>{agentMode ? 'Autonomous agent enabled' : 'Pair assistant enabled'}</span>
+                        <span className="ail-composer-mode-hint">{agentMode ? 'Progress and tool activity appear in Agent operations.' : 'Enable agent mode for multi-step repository tasks.'}</span>
                       </div>
                       <div className="ail-field">
                         <textarea
@@ -753,11 +901,22 @@ export default function AiPair() {
                           <span>Enter to send · Shift+Enter for newline</span>
                         )}
                         <span className="ml-auto">
-                          {aiLimit === Infinity ? `${remaining} remaining` : `${remaining}/${aiLimit} messages today`}
+                          {aiLimit === Infinity ? 'Unlimited messages' : `${remaining}/${aiLimit} messages today`}
                         </span>
                       </div>
                     </form>
                   )}
+                </div>
+                <AgentOperationsPanel
+                  session={activeSession}
+                  agentMode={agentMode}
+                  onToggleMode={toggleAgentMode}
+                  loading={loading}
+                  steps={agentSteps}
+                  messages={messages}
+                  remaining={remaining}
+                  aiLimit={aiLimit}
+                />
                 </div>
               </div>
             </div>
