@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import Sidebar from '../components/Sidebar';
+import TaskWorkspaceTopBar from '../components/TaskWorkspaceTopBar';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch, projectApi } from '../lib/api';
@@ -282,19 +283,32 @@ export default function Tasks() {
 
         <main className="workspace-main">
           {showWizard ? (
-            <CreateTaskWizard
-              onClose={() => setShowWizard(false)}
-              onCreated={handleTaskCreated}
-              companyId={selectedCompany?._id || selectedCompany?.id}
-              user={user}
-              projects={projects}
-              projectsLoading={projectsLoading}
-              specs={specs}
-              projectsError={projectsError}
-              defaultProjectId={typeof router.query.projectId === 'string' ? router.query.projectId : ''}
-            />
+            <>
+              <TaskWorkspaceTopBar
+                user={user}
+                selectedCompany={selectedCompany}
+                onWorkspaceClick={() => router.push('/workspace')}
+              />
+              <CreateTaskWizard
+                onClose={() => setShowWizard(false)}
+                onCreated={handleTaskCreated}
+                companyId={selectedCompany?._id || selectedCompany?.id}
+                user={user}
+                projects={projects}
+                projectsLoading={projectsLoading}
+                specs={specs}
+                projectsError={projectsError}
+                defaultProjectId={typeof router.query.projectId === 'string' ? router.query.projectId : ''}
+              />
+            </>
           ) : (
             <>
+              <TaskWorkspaceTopBar
+                user={user}
+                selectedCompany={selectedCompany}
+                onWorkspaceClick={() => router.push('/workspace')}
+              />
+
               <header className="workspace-header dash-header tsk-page-header">
                 <div>
                   <p className="dash-crumb"><span>WORK</span><span className="sep">/</span> TASKS</p>
