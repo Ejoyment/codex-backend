@@ -134,4 +134,31 @@ describe('AI request reliability', () => {
     await expect(orchestrator.saveIteration('507f1f77bcf86cd799439011', {}))
       .rejects.toThrow('User ID is required to save an agent iteration');
   });
+
+  test('read-only agent tools do not wait for user confirmation on developer tier', () => {
+    const HITLGates = require('../utils/hitlGates');
+    const gates = new HITLGates();
+
+    for (const tool of ['read_file', 'list_files', 'search_code', 'analyze_code']) {
+      expect(gates.requiresConfirmation(tool, {}, 'developer')).toBe(false);
+    }
+  });
+
+  test('high-risk agent tools still require confirmation', () => {
+    const HITLGates = require('../utils/hitlGates');
+    const gates = new HITLGates();
+
+    expect(gates.requiresConfirmation('delete_file', {}, 'developer')).toBe(true);
+    expect(gates.requiresConfirmation('execute_code', {}, 'developer')).toBe(true);
+    expect(gates.requiresConfirmation('create_multiple_files', {}, 'pro')).toBe(true);
+    expect(gates.requiresConfirmation('delete_file', {}, 'enterprise')).toBe(true);
+  });
+
+  test('ordinary write tools retain the developer-tier confirmation gate', () => {
+    const HITLGates = require('../utils/hitlGates');
+    const gates = new HITLGates();
+
+    expect(gates.requiresConfirmation('update_file', {}, 'developer')).toBe(true);
+    expect(gates.requiresConfirmation('update_file', {}, 'pro')).toBe(false);
+  });
 });
