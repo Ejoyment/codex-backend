@@ -611,6 +611,33 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
             });
         }
 
+        let agentPerm = null;
+        const agentWorkspaceId = codeContext?.workspace?.id || companyId || session.companyId;
+        if (useAgentLoop) {
+            agentPerm = await permissionMatrix.checkPermission(req.userId, 'basic', 'agent');
+            if (!agentPerm.allowed) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Agent loop not permitted for your subscription tier',
+                    reason: agentPerm.reason
+                });
+            }
+
+            if (agentWorkspaceId) {
+                const contextPermissions = require('../utils/permissions/contextPermissions');
+                const isWorkspaceMember = await contextPermissions.isCompanyMember(
+                    req.userId,
+                    agentWorkspaceId
+                );
+                if (!isWorkspaceMember) {
+                    return res.status(403).json({
+                        success: false,
+                        message: 'Agent access denied: you are not a member of this workspace'
+                    });
+                }
+            }
+        }
+
         // Save user message
         const userMessage = await ChatMessage.create({
             sessionId,
@@ -625,16 +652,6 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
 
         // If agent loop is requested, use orchestrator
         if (useAgentLoop) {
-            // Enforce agent permission scope — gated by permission matrix
-            const agentPerm = await permissionMatrix.checkPermission(req.userId, 'basic', 'agent');
-            if (!agentPerm.allowed) {
-                return res.status(403).json({
-                    success: false,
-                    message: 'Agent loop not permitted for your subscription tier',
-                    reason: agentPerm.reason
-                });
-            }
-
             const agentOrchestrator = require('../utils/agentOrchestrator');
             const agentContextService = require('../utils/agentContextService');
             const executionTaskTitle = message || 'Workspace task';
@@ -643,10 +660,10 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
                 sessionId,
                 taskTitle: executionTaskTitle,
                 status: 'running',
-                approvalRequired: true,
+                approvalRequired: false,
                 metadata: {
                     startedFrom: 'ai-pair/chat',
-                    workspaceId: codeContext?.workspace?.id,
+                    workspaceId: agentWorkspaceId,
                     currentFile: codeContext?.currentFile?.path || null
                 }
             });
@@ -656,8 +673,8 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
             try {
                 agentContextBundle = await agentContextService.buildBundle({
                     userId: req.userId,
-                    companyId: companyId || codeContext?.workspace?.id || session.companyId,
-                    workspaceId: codeContext?.workspace?.id,
+                    companyId: agentWorkspaceId,
+                    workspaceId: agentWorkspaceId,
                     taskId: taskId,
                     projectId: projectId,
                     message: message,
@@ -673,7 +690,7 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
             const context = {
                 userId: req.userId,
                 userTier: agentPerm.tier,
-                workspaceId: codeContext?.workspace?.id || companyId || session.companyId,
+                workspaceId: agentWorkspaceId,
                 workspaceName: codeContext?.workspace?.name,
                 files: codeContext?.files?.length
                     ? codeContext.files
@@ -702,12 +719,22 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
                 throw error;
             }
 
-            const executionStatus = result?.success ? 'awaiting_approval' : 'failed';
+            const hasProposedMutations = Boolean(result?.success && result.iterations?.some((iteration) =>
+                iteration.result?.success &&
+                ['create_file', 'update_file', 'create_multiple_files', 'delete_file']
+                    .includes(iteration.action?.tool)
+            ));
+            const executionStatus = result?.success
+                ? (hasProposedMutations ? 'awaiting_approval' : 'completed')
+                : 'failed';
             await AgentExecution.findByIdAndUpdate(execution._id, {
                 status: executionStatus,
                 summary: result?.summary?.finalThought || result?.summary?.goal || 'Agent run complete',
-                approvalRequired: Boolean(result?.success),
+                approvalRequired: hasProposedMutations,
                 iterations: Array.isArray(result?.iterations) ? result.iterations.length : 0,
+                completedAt: executionStatus === 'completed' || executionStatus === 'failed'
+                    ? new Date()
+                    : null,
                 metadata: {
                     ...(execution.metadata && Object.fromEntries ? Object.fromEntries(execution.metadata) : {}),
                     finalStatus: executionStatus,
@@ -727,10 +754,16 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
                 sessionId,
                 userId: req.userId,
                 role: 'assistant',
-                content: JSON.stringify(result.summary),
+                content: result.summary?.finalThought ||
+                    result.error ||
+                    result.summary?.stopReason ||
+                    'Agent run complete.',
                 metadata: {
                     type: 'agent_summary',
-                    iterations: result.iterations.length
+                    iterations: result.iterations.length,
+                    success: result.success,
+                    stopReason: result.summary?.stopReason,
+                    error: result.error
                 }
             });
 

@@ -8,6 +8,8 @@ jest.mock('@google/generative-ai', () => ({
 
 jest.mock('../utils/githubService', () => ({
   listFiles: jest.fn(),
+  listRepositoryFiles: jest.fn(),
+  getFileContent: jest.fn(),
   getRepository: jest.fn(),
   getCommits: jest.fn(),
 }));
@@ -116,7 +118,7 @@ describe('AI request reliability', () => {
     expect(result.iterations).toHaveLength(0);
   });
 
-  test('agent loop feeds tool results forward and stops repeated successful actions', async () => {
+  test('agent completes file-list requests from the successful tool result', async () => {
     const orchestrator = require('../utils/agentOrchestrator');
     const filesResult = {
       success: true,
@@ -127,17 +129,7 @@ describe('AI request reliability', () => {
       workspace: { name: 'test' },
       files: [],
     });
-    const prompts = [];
-    const reason = jest.spyOn(orchestrator, 'reason')
-      .mockImplementation(async (goal, observation, context) => {
-        prompts.push(orchestrator.buildReasoningPrompt(goal, observation, context));
-        return {
-          success: true,
-          thought: 'I should list the files.',
-          goalAchieved: false,
-          action: { tool: 'list_files', parameters: {} },
-        };
-      });
+    const reason = jest.spyOn(orchestrator, 'reason');
     const act = jest.spyOn(orchestrator, 'act').mockResolvedValue(filesResult);
     jest.spyOn(orchestrator, 'saveIteration').mockResolvedValue({});
     jest.spyOn(orchestrator, 'storeActionPattern').mockResolvedValue();
@@ -148,21 +140,61 @@ describe('AI request reliability', () => {
       'session-id'
     );
 
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
     expect(act).toHaveBeenCalledTimes(1);
-    expect(reason).toHaveBeenCalledTimes(2);
-    expect(reason.mock.calls[1][1].previousActions[0].result).toEqual(filesResult);
-    expect(prompts[1]).toContain('/src/index.js');
+    expect(reason).not.toHaveBeenCalled();
     expect(result.summary.finalThought).toContain('/src/index.js');
-    expect(result.summary.stopReason).toMatch(/avoid repeating list_files/);
-    expect(observe).toHaveBeenCalledTimes(2);
+    expect(observe).toHaveBeenCalledTimes(1);
+  });
+
+  test('agent gathers all requested repository inspection evidence before completing', async () => {
+    const orchestrator = require('../utils/agentOrchestrator');
+    const listResult = {
+      success: true,
+      source: 'github',
+      files: [{ path: 'src/index.js', name: 'index.js' }],
+    };
+    const statusResult = {
+      success: true,
+      repository: { fullName: 'example/sample-repo' },
+      branch: 'main',
+      latestCommit: { sha: 'abc123', message: 'Initial commit' },
+    };
+    jest.spyOn(orchestrator, 'observe').mockResolvedValue({
+      workspace: { name: 'test' },
+      files: [],
+    });
+    const reason = jest.spyOn(orchestrator, 'reason');
+    const act = jest.spyOn(orchestrator, 'act')
+      .mockResolvedValueOnce(listResult)
+      .mockResolvedValueOnce(statusResult);
+    jest.spyOn(orchestrator, 'saveIteration').mockResolvedValue({});
+    jest.spyOn(orchestrator, 'storeActionPattern').mockResolvedValue();
+
+    const result = await orchestrator.executeAgenticLoop(
+      'List files in this repo and the state of the repo',
+      { userId: 'user-id', workspaceId: 'workspace-id' },
+      'session-id'
+    );
+
+    expect(result.success).toBe(true);
+    expect(reason).not.toHaveBeenCalled();
+    expect(act.mock.calls.map(([action]) => action.tool)).toEqual([
+      'list_files',
+      'get_repository_status',
+    ]);
+    expect(result.summary.finalThought).toContain('src/index.js');
+    expect(result.summary.finalThought).toContain('Latest commit: abc123');
   });
 
   test('list_files reads the connected GitHub repository for AI Pair sessions', async () => {
     const githubService = require('../utils/githubService');
-    githubService.listFiles.mockResolvedValue([
-      { name: 'index.js', path: 'src/index.js', type: 'file' },
-    ]);
+    githubService.listRepositoryFiles.mockResolvedValue({
+      branch: 'main',
+      truncated: false,
+      totalFiles: 1,
+      files: [{ name: 'index.js', path: 'src/index.js', type: 'file' }],
+    });
     const orchestrator = require('../utils/agentOrchestrator');
 
     const result = await orchestrator.tools.list_files.execute({}, {
@@ -172,17 +204,52 @@ describe('AI request reliability', () => {
       repositoryBranch: 'main',
     });
 
-    expect(githubService.listFiles).toHaveBeenCalledWith(
+    expect(githubService.listRepositoryFiles).toHaveBeenCalledWith(
       'user-id',
       'example',
       'sample-repo',
-      '',
       'main'
     );
     expect(result).toMatchObject({
       success: true,
       source: 'github',
+      totalFiles: 1,
       files: [{ path: 'src/index.js' }],
+    });
+  });
+
+  test('read_file reads a path from the connected GitHub repository', async () => {
+    const githubService = require('../utils/githubService');
+    githubService.getFileContent.mockResolvedValue({
+      path: 'src/index.js',
+      content: 'module.exports = true;',
+      sha: 'abc123',
+    });
+    const orchestrator = require('../utils/agentOrchestrator');
+
+    const result = await orchestrator.tools.read_file.execute(
+      { path: 'src/index.js' },
+      {
+        userId: 'user-id',
+        repositoryOwner: 'example',
+        repositoryName: 'sample-repo',
+        repositoryBranch: 'main',
+      }
+    );
+
+    expect(githubService.getFileContent).toHaveBeenCalledWith(
+      'user-id',
+      'example',
+      'sample-repo',
+      'src/index.js',
+      'main'
+    );
+    expect(result).toMatchObject({
+      success: true,
+      source: 'github',
+      path: 'src/index.js',
+      language: 'js',
+      content: 'module.exports = true;',
     });
   });
 
