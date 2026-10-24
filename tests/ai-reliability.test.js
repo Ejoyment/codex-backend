@@ -109,4 +109,29 @@ describe('AI request reliability', () => {
     expect(result.success).toBe(false);
     expect(result.iterations).toHaveLength(0);
   });
+
+  test('agent iteration messages include the required user ID', async () => {
+    const orchestrator = require('../utils/agentOrchestrator');
+    const ChatMessage = require('../models/ChatMessage');
+    const create = jest.spyOn(ChatMessage, 'create').mockResolvedValue({});
+    const sessionId = '507f1f77bcf86cd799439011';
+    const userId = '507f191e810c19729de860ea';
+    const iteration = { iteration: 1, thought: 'Inspect the code' };
+
+    await orchestrator.saveIteration(sessionId, iteration, userId);
+
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId,
+      userId,
+      role: 'system',
+      content: JSON.stringify(iteration),
+    }));
+  });
+
+  test('agent iteration persistence rejects a missing user ID clearly', async () => {
+    const orchestrator = require('../utils/agentOrchestrator');
+
+    await expect(orchestrator.saveIteration('507f1f77bcf86cd799439011', {}))
+      .rejects.toThrow('User ID is required to save an agent iteration');
+  });
 });

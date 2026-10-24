@@ -655,7 +655,7 @@ class AgentOrchestrator {
                 thought: reasoning.thought,
                 action: reasoning.action,
                 result: actionResult
-            });
+            }, context.userId);
 
             // Store successful action patterns
             if (actionResult.success) {
@@ -1113,9 +1113,13 @@ RESPOND WITH JSON ONLY - NO MARKDOWN, NO EXPLANATIONS.`;
     /**
      * Save iteration to database
      */
-    async saveIteration(sessionId, iteration) {
+    async saveIteration(sessionId, iteration, userId) {
+        if (!userId) {
+            throw new Error('User ID is required to save an agent iteration');
+        }
         await ChatMessage.create({
             sessionId,
+            userId,
             role: 'system',
             content: JSON.stringify(iteration),
             metadata: {
