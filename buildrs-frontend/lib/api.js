@@ -20,6 +20,7 @@ const DEFAULT_TIMEOUT_MS = 15000;
 const MAX_RETRIES = 2;
 
 export async function apiFetch(path, options = {}) {
+  const { timeoutMs = DEFAULT_TIMEOUT_MS, ...requestOptions } = options;
   const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
 
   if (token && isTokenExpired(token)) {
@@ -57,69 +58,70 @@ export async function apiFetch(path, options = {}) {
   }
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), options.timeoutMs || DEFAULT_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   let lastError;
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      const res = await fetch(`${API_BASE_URL}${path}`, {
-        ...options,
-        headers,
-        signal: controller.signal,
-      });
+  try {
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        const res = await fetch(`${API_BASE_URL}${path}`, {
+          ...requestOptions,
+          headers,
+          signal: controller.signal,
+        });
 
-      clearTimeout(timeoutId);
-
-      if (res.status === 429) {
-        const retryAfter = parseInt(res.headers.get('Retry-After') || '5', 10);
-        const error = new Error(`Rate limited. Retry after ${retryAfter}s`);
-        error.status = 429;
-        throw error;
-      }
-
-      const data = await res.json().catch(() => ({}));
-
-      if (res.status === 401) {
-        if (typeof window !== 'undefined' && !options.returnErrorData) {
-          localStorage.removeItem('authToken');
-          localStorage.removeItem('user');
-          localStorage.removeItem('subscription');
-          localStorage.removeItem('auth-storage');
-          localStorage.removeItem('supportAgent');
-          localStorage.removeItem('supportAgentToken');
-          window.location.href = '/sign_in';
+        if (res.status === 429) {
+          const retryAfter = parseInt(res.headers.get('Retry-After') || '5', 10);
+          const error = new Error(`Rate limited. Retry after ${retryAfter}s`);
+          error.status = 429;
+          throw error;
         }
-        const error = new Error(data.message || 'Unauthorized');
-        error.status = 401;
-        error.data = data;
-        throw error;
-      }
 
-      if (!res.ok && !options.returnErrorData) {
-        const error = new Error(data.message || data.error || 'API request failed');
-        error.status = res.status;
-        error.data = data;
-        throw error;
-      }
+        const data = await res.json().catch(() => ({}));
 
-      return data;
-    } catch (err) {
-      lastError = err;
-      if (err.name === 'AbortError') {
-        throw new Error('Request timed out');
-      }
-      if (err.message === 'Session expired' || err.message === 'Unauthorized') {
+        if (res.status === 401) {
+          if (typeof window !== 'undefined' && !options.returnErrorData) {
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('user');
+            localStorage.removeItem('subscription');
+            localStorage.removeItem('auth-storage');
+            localStorage.removeItem('supportAgent');
+            localStorage.removeItem('supportAgentToken');
+            window.location.href = '/sign_in';
+          }
+          const error = new Error(data.message || 'Unauthorized');
+          error.status = 401;
+          error.data = data;
+          throw error;
+        }
+
+        if (!res.ok && !options.returnErrorData) {
+          const error = new Error(data.message || data.error || 'API request failed');
+          error.status = res.status;
+          error.data = data;
+          throw error;
+        }
+
+        return data;
+      } catch (err) {
+        lastError = err;
+        if (err.name === 'AbortError') {
+          throw new Error('Request timed out');
+        }
+        if (err.message === 'Session expired' || err.message === 'Unauthorized') {
+          throw err;
+        }
+        if (attempt < MAX_RETRIES && !requestOptions.method) {
+          await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+          continue;
+        }
         throw err;
       }
-      if (attempt < MAX_RETRIES && !options.method) {
-        await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
-        continue;
-      }
-      throw err;
     }
+    throw lastError;
+  } finally {
+    clearTimeout(timeoutId);
   }
-
-  throw lastError;
 }
 
 export function sanitize(body) {
@@ -293,6 +295,7 @@ export const aiPairApi = {
     apiFetch('/api/ai-pair/chat', {
       method: 'POST',
       body: JSON.stringify({ sessionId, message }),
+      timeoutMs: 120000,
     }),
 };
 
@@ -361,6 +364,7 @@ export const agentApi = {
     apiFetch('/api/v1/agent/delegate', {
       method: 'POST',
       body: JSON.stringify(data),
+      timeoutMs: 120000,
     }),
   sessions: () => apiFetch('/api/v1/agent/sessions'),
   status: (taskId) => apiFetch(`/api/v1/agent/status/${taskId}`),

@@ -369,6 +369,7 @@ export default function AiPair() {
     try {
       const data = await apiFetch('/api/ai-pair/chat', {
         method: 'POST',
+        timeoutMs: agentMode ? 1800000 : 120000,
         body: JSON.stringify({
           sessionId: activeSession._id,
           message: currentInput,
