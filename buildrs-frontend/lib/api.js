@@ -364,7 +364,7 @@ export const agentApi = {
     apiFetch('/api/v1/agent/delegate', {
       method: 'POST',
       body: JSON.stringify(data),
-      timeoutMs: 120000,
+      timeoutMs: 300000,
     }),
   sessions: () => apiFetch('/api/v1/agent/sessions'),
   status: (taskId) => apiFetch(`/api/v1/agent/status/${taskId}`),

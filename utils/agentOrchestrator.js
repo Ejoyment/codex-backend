@@ -978,6 +978,7 @@ class AgentOrchestrator {
                 { role: 'user', content: prompt }
             ], {
                 agentMode: true,
+                agentReasoning: true,
                 instructions: 'You are in ReAct agent mode. Respond with JSON only.',
                 availableTools: Object.keys(this.tools),
                 timeoutMs,

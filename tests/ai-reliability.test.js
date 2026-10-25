@@ -1,4 +1,6 @@
 const mockGenerateContent = jest.fn();
+const originalLocalPrivacyMode = process.env.LOCAL_PRIVACY_MODE;
+const originalLocalAiProvider = process.env.LOCAL_AI_PROVIDER;
 
 jest.mock('@google/generative-ai', () => ({
   GoogleGenerativeAI: jest.fn(() => ({
@@ -25,12 +27,18 @@ describe('AI request reliability', () => {
     delete process.env.MISTRAL_API_KEY;
     delete process.env.HUGGINGFACE_API_KEY;
     delete process.env.AI_REQUEST_TIMEOUT_MS;
+    delete process.env.LOCAL_PRIVACY_MODE;
+    delete process.env.LOCAL_AI_PROVIDER;
     aiService = require('../utils/aiService');
     jest.spyOn(console, 'log').mockImplementation(() => {});
     jest.spyOn(console, 'error').mockImplementation(() => {});
   });
 
   afterEach(() => {
+    if (originalLocalPrivacyMode === undefined) delete process.env.LOCAL_PRIVACY_MODE;
+    else process.env.LOCAL_PRIVACY_MODE = originalLocalPrivacyMode;
+    if (originalLocalAiProvider === undefined) delete process.env.LOCAL_AI_PROVIDER;
+    else process.env.LOCAL_AI_PROVIDER = originalLocalAiProvider;
     jest.restoreAllMocks();
   });
 
@@ -45,6 +53,7 @@ describe('AI request reliability', () => {
     try {
       await aiService.chatGroq([{ role: 'user', content: 'Inspect package.json' }], {
         agentMode: true,
+        agentReasoning: true,
         availableTools: ['read_file', 'list_files'],
       });
 
@@ -88,11 +97,165 @@ describe('AI request reliability', () => {
     try {
       await expect(aiService.chatGroq([{ role: 'user', content: 'Inspect package metadata' }], {
         agentMode: true,
+        agentReasoning: true,
         availableTools: ['read_file'],
       })).rejects.toThrow('Groq returned a native tool call');
     } finally {
       global.fetch = originalFetch;
     }
+  });
+
+  test('keeps delegated file-change proposals as text instead of ReAct JSON', async () => {
+    const originalFetch = global.fetch;
+    const proposal = '### file: src/index.js\n```js\nmodule.exports = true;\n```';
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: proposal } }] }),
+    });
+
+    try {
+      const result = await aiService.chatGroq([{ role: 'user', content: 'Implement the task' }], {
+        agentMode: true,
+        instructions: 'Return a written plan and file-level proposed changes.',
+      });
+
+      const requestBody = JSON.parse(global.fetch.mock.calls[0][1].body);
+      expect(requestBody.response_format).toBeUndefined();
+      expect(result.content).toBe(proposal);
+      expect(aiService.buildSystemPrompt({
+        agentMode: true,
+        instructions: 'Return a written plan and file-level proposed changes.',
+      })).toContain('Return the requested plan and file-level changes as message text.');
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  test('preserves system and assistant roles in OpenAI-compatible provider requests', async () => {
+    const originalFetch = global.fetch;
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: 'Answer' } }] }),
+    });
+    aiService.providers.groq = {
+      available: true,
+      apiKey: 'test-groq-key',
+      model: 'llama-3.3-70b-versatile',
+      endpoint: 'https://example.test/chat',
+    };
+
+    try {
+      await aiService.chatGroq([
+        { role: 'system', content: 'Follow project rules.' },
+        { role: 'user', content: 'Question one' },
+        { role: 'assistant', content: 'Prior answer' },
+        { role: 'user', content: 'Question two' },
+      ], {});
+
+      const requestBody = JSON.parse(global.fetch.mock.calls[0][1].body);
+      expect(requestBody.messages.map(({ role }) => role)).toEqual([
+        'system', 'system', 'user', 'assistant', 'user',
+      ]);
+      expect(requestBody.messages[1].content).toContain('Follow project rules.');
+      expect(requestBody.messages[3].content).toBe('Prior answer');
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  test('keeps all conversation turns and system instructions for Hugging Face', async () => {
+    const originalFetch = global.fetch;
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [{ generated_text: 'Answer' }],
+    });
+    aiService.providers.huggingface = {
+      available: true,
+      apiKey: 'test-hf-key',
+      model: 'test/model',
+      endpoint: 'https://example.test/',
+    };
+
+    try {
+      await aiService.chatHuggingFace([
+        { role: 'system', content: 'Use the supplied project conventions.' },
+        { role: 'user', content: 'First question' },
+        { role: 'assistant', content: 'Earlier answer' },
+        { role: 'user', content: 'Follow-up question' },
+      ], {});
+
+      const requestBody = JSON.parse(global.fetch.mock.calls[0][1].body);
+      expect(requestBody.inputs).toContain('Use the supplied project conventions.');
+      expect(requestBody.inputs).toContain('User: First question');
+      expect(requestBody.inputs).toContain('Assistant: Earlier answer');
+      expect(requestBody.inputs).toContain('User: Follow-up question');
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  test('places Gemini system messages in system instructions, not conversation history', async () => {
+    mockGenerateContent.mockResolvedValue({ response: { text: () => 'Answer' } });
+
+    await aiService.chatGemini([
+      { role: 'system', content: 'Keep the response grounded in the repository.' },
+      { role: 'user', content: 'What does this code do?' },
+    ], {});
+
+    const prompt = mockGenerateContent.mock.calls[0][0];
+    expect(prompt).toContain('Keep the response grounded in the repository.');
+    expect(prompt).toContain('User: What does this code do?');
+    expect(prompt).not.toContain('Assistant: Keep the response grounded in the repository.');
+  });
+
+  test('rejects malformed or empty conversations with an actionable error', async () => {
+    await expect(aiService.chat([], null)).resolves.toEqual({
+      success: false,
+      error: 'AI request context must be an object.',
+    });
+    await expect(aiService.chat([])).resolves.toEqual({
+      success: false,
+      error: 'AI request requires at least one message.',
+    });
+    await expect(aiService.chat([{ role: 'tool', content: 'result' }])).resolves.toEqual({
+      success: false,
+      error: 'AI messages must have a supported role and string content.',
+    });
+    await expect(aiService.chat([{ role: 'assistant', content: 'Only an answer' }])).resolves.toEqual({
+      success: false,
+      error: 'AI request requires at least one user message.',
+    });
+  });
+
+  test('local model context includes bounded source file contents', () => {
+    const localBridge = require('../utils/localBridge');
+    const prompt = localBridge.buildSystemPrompt({
+      files: [{ path: 'src/app.js', content: 'export const answer = 42;' }],
+    });
+
+    expect(prompt).toContain('--- src/app.js ---');
+    expect(prompt).toContain('export const answer = 42;');
+    expect(prompt).toContain('running on a local model');
+  });
+
+  test('direct AI service calls honor deployment-wide local privacy mode', async () => {
+    const localBridge = require('../utils/localBridge');
+    const localChat = jest.spyOn(localBridge, 'chat').mockResolvedValue({
+      success: true,
+      content: 'Kept local',
+    });
+    process.env.LOCAL_PRIVACY_MODE = 'true';
+
+    const result = await aiService.chat([
+      { role: 'user', content: 'Review this code' },
+    ], { provider: 'groq', localPrivacyMode: false });
+
+    expect(result.content).toBe('Kept local');
+    expect(localChat).toHaveBeenCalledWith(
+      [{ role: 'user', content: 'Review this code' }],
+      { provider: 'groq', localPrivacyMode: false },
+      'ollama'
+    );
   });
 
   test('parses the JSON-encoded tool parameters used by constrained agent responses', () => {

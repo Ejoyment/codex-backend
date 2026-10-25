@@ -255,12 +255,18 @@ class AgentSocketHandler {
         // Stage the proposal on the isolated agent branch; VFS stays untouched
         // until the user approves.
         const changes = agentChangeSet.buildChangeset(result.content || '', codeFiles);
+        if (changes.length === 0) {
+          throw new Error('The AI responded but did not return any parseable file changes. Retry with a clearer implementation task or include the target files and expected behavior.');
+        }
         const { filesChanged, diffSummary } = agentChangeSet.summarize(changes, codeFiles);
-        if (changes.length && workspaceId) {
-          await agentChangeSet.stageChanges(workspaceId, changes, {
+        if (workspaceId) {
+          const staged = await agentChangeSet.stageChanges(workspaceId, changes, {
             message: `Agent: ${execution.taskTitle}`.slice(0, 200),
             branch: metaValue(execution, 'agentBranch') || execution.branch,
-          }).catch((error) => console.error('Agent stage error:', error));
+          });
+          if (!staged.success || !staged.committed) {
+            throw new Error(`Could not stage agent changes on branch ${metaValue(execution, 'agentBranch') || execution.branch}: ${staged.error || staged.reason || 'commit did not complete'}`);
+          }
         }
 
         execution.status = 'awaiting_approval';
@@ -320,8 +326,20 @@ class AgentSocketHandler {
       await execution.save();
     } catch (error) {
       execution.status = 'failed';
+      execution.summary = error.message;
       execution.logs.push({ timestamp: new Date(), message: `Execution error: ${error.message}` });
       await execution.save();
+      realtimeBus.emitAgentProgress(socket.userId, {
+        type: 'error',
+        executionId: execution._id,
+        status: 'failed',
+        error: error.message,
+      });
+      socket.emit('agent:execution-error', {
+        execution,
+        error: error.message,
+        status: 'failed',
+      });
       socket.emit('agent:error', { message: error.message });
     }
   }

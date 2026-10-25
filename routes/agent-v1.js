@@ -34,14 +34,20 @@ function spawnAgentWorker(executionId, taskId, workspaceId, specIds, provider, l
       } catch (e) {}
       AgentExecution.findByIdAndUpdate(executionId, {
         status: 'failed',
+        summary: `Agent execution timed out after ${Math.round(timeoutMs / 60000)} minutes`,
         completedAt: new Date(),
         $push: {
           logs: { timestamp: new Date(), message: `Agent execution timed out after ${Math.round(timeoutMs / 60000)} minutes` },
           terminalLog: { timestamp: new Date(), type: 'error', message: `Agent execution timed out after ${Math.round(timeoutMs / 60000)} minutes` },
         },
-      }).catch(() => {});
+      }).catch((error) => console.error('[agent] could not persist timeout state:', error.message));
       if (taskId) {
-        LocalTask.findByIdAndUpdate(taskId, { 'agentExecution.status': 'failed', updatedAt: new Date() }).catch(() => {});
+        LocalTask.findByIdAndUpdate(taskId, {
+          'agentExecution.status': 'failed',
+          'agentExecution.error': `Agent execution timed out after ${Math.round(timeoutMs / 60000)} minutes`,
+          $push: { 'agentExecution.logs': { timestamp: new Date(), message: `Agent execution timed out after ${Math.round(timeoutMs / 60000)} minutes` } },
+          updatedAt: new Date(),
+        }).catch((error) => console.error('[agent] could not persist task timeout state:', error.message));
       }
       reject(new Error(`Agent execution timed out after ${Math.round(timeoutMs / 60000)} minutes`));
     }, timeoutMs);
@@ -56,7 +62,7 @@ function spawnAgentWorker(executionId, taskId, workspaceId, specIds, provider, l
         realtimeBus.emitAgentProgress(executionId, msg.payload);
         AgentExecution.findByIdAndUpdate(executionId, {
           $push: { terminalLog: { timestamp: new Date(), type: msg.payload.phase || 'progress', message: msg.payload.message || msg.payload.status || 'Agent progress' } },
-        }).catch(() => {});
+        }).catch((error) => console.error('[agent] could not persist progress:', error.message));
       } else if (msg.type === 'complete') {
         settled = true;
         cleanup();
@@ -72,15 +78,14 @@ function spawnAgentWorker(executionId, taskId, workspaceId, specIds, provider, l
       if (settled) return;
       settled = true;
       cleanup();
+      worker.terminate().catch((terminateError) => console.error('[agent] worker cleanup failed:', terminateError.message));
       reject(err);
     });
     worker.on('exit', (code) => {
       if (settled) return;
-      if (code !== 0) {
-        settled = true;
-        cleanup();
-        reject(new Error(`Agent worker exited with code ${code}`));
-      }
+      settled = true;
+      cleanup();
+      reject(new Error(`Agent worker exited before reporting completion (code ${code})`));
     });
   });
 }
@@ -215,8 +220,13 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       task.agentExecution = {
         ...(task.agentExecution?.toObject?.() || task.agentExecution || {}),
         status: 'running',
+        error: '',
         agentBranch: branch,
         specRef: specs[0]?._id || null,
+        logs: [
+          ...(task.agentExecution?.logs || []),
+          { timestamp: new Date(), message: `Agent started on branch ${branch}` },
+        ],
       };
       await task.save();
       await LocalTask.findByIdAndUpdate(taskId, {
@@ -258,19 +268,32 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       execution.logs.push({ timestamp: new Date(), message: 'Agent execution completed, awaiting approval' });
       await execution.save();
       if (task) {
-        await LocalTask.findByIdAndUpdate(task._id, { 'agentExecution.status': 'awaiting_approval', updatedAt: new Date() });
+        await LocalTask.findByIdAndUpdate(task._id, {
+          'agentExecution.status': 'awaiting_approval',
+          'agentExecution.error': '',
+          $push: { 'agentExecution.logs': { timestamp: new Date(), message: 'Agent completed; changes are ready for review' } },
+          updatedAt: new Date(),
+        });
         try {
           const cacheInvalidator = require('../utils/cacheInvalidator');
           cacheInvalidator.invalidateForTask(task._id);
         } catch (e) { /* ignore */ }
       }
     }).catch(async (err) => {
+      const failureMessage = err.message || 'Agent execution failed without an error message';
       execution.status = 'failed';
       execution.completedAt = new Date();
-      execution.logs.push({ timestamp: new Date(), message: `Agent worker error: ${err.message}` });
+      execution.summary = failureMessage;
+      execution.terminalLog.push({ timestamp: new Date(), type: 'error', message: failureMessage });
+      execution.logs.push({ timestamp: new Date(), message: `Agent worker error: ${failureMessage}` });
       await execution.save();
       if (task) {
-        await LocalTask.findByIdAndUpdate(task._id, { 'agentExecution.status': 'failed', updatedAt: new Date() });
+        await LocalTask.findByIdAndUpdate(task._id, {
+          'agentExecution.status': 'failed',
+          'agentExecution.error': failureMessage,
+          $push: { 'agentExecution.logs': { timestamp: new Date(), message: `Agent failed: ${failureMessage}` } },
+          updatedAt: new Date(),
+        });
         try {
           const cacheInvalidator = require('../utils/cacheInvalidator');
           cacheInvalidator.invalidateForTask(task._id);
