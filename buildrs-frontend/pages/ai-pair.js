@@ -28,6 +28,7 @@ import {
   ShieldCheck,
   Workflow,
   Terminal,
+  FileDiff,
 } from 'lucide-react';
 import { getTierLimits, normalizeTier } from '../lib/tier';
 import { useRouter } from 'next/router';
@@ -52,6 +53,79 @@ function getAiLimitForTier(tier) {
 function formatTime(dateStr) {
   const d = new Date(dateStr);
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function parseUnifiedDiff(patch) {
+  if (typeof patch !== 'string' || !patch.trim()) return [];
+
+  let oldLine = 0;
+  let newLine = 0;
+  return patch.split('\n').flatMap((line, index) => {
+    const hunk = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+    if (hunk) {
+      oldLine = Number(hunk[1]);
+      newLine = Number(hunk[2]);
+      return [{ type: 'hunk', text: line, key: `hunk-${index}` }];
+    }
+    if (line.startsWith('+++') || line.startsWith('---') || line.startsWith('Index:') || /^=+$/.test(line) || line.startsWith('\\ No newline')) {
+      return [];
+    }
+    if (line.startsWith('+')) {
+      return [{ type: 'added', oldLine: '', newLine: newLine++, text: line.slice(1), key: `line-${index}` }];
+    }
+    if (line.startsWith('-')) {
+      return [{ type: 'removed', oldLine: oldLine++, newLine: '', text: line.slice(1), key: `line-${index}` }];
+    }
+    if (line.startsWith(' ')) {
+      return [{ type: 'context', oldLine: oldLine++, newLine: newLine++, text: line.slice(1), key: `line-${index}` }];
+    }
+    return [];
+  });
+}
+
+function getDiffCounts(patch) {
+  if (typeof patch !== 'string') return { insertions: 0, deletions: 0 };
+  return patch.split('\n').reduce((counts, line) => {
+    if (line.startsWith('+++') || line.startsWith('---')) return counts;
+    if (line.startsWith('+')) counts.insertions += 1;
+    else if (line.startsWith('-')) counts.deletions += 1;
+    return counts;
+  }, { insertions: 0, deletions: 0 });
+}
+
+function AgentFileDiff({ file, index }) {
+  const rows = parseUnifiedDiff(file.diff);
+  const counts = getDiffCounts(file.diff);
+  const action = file.action || 'edit';
+  const actionTint = ACTION_TINTS[action] || ACTION_TINTS.edit;
+
+  return (
+    <details className="ail-agent-diff-file" open={index === 0}>
+      <summary>
+        <FileDiff />
+        <code>{file.path || file.filePath || `Changed file ${index + 1}`}</code>
+        <span className="ail-agent-diff-action" style={{ color: actionTint.text, background: actionTint.bg }}>{action}</span>
+        <span className="ail-agent-diff-counts"><span>+{counts.insertions}</span><span>-{counts.deletions}</span></span>
+        <ChevronDown className="ail-agent-diff-chevron" />
+      </summary>
+      {rows.length ? (
+        <div className="ail-agent-diff-code" role="table" aria-label={`Diff for ${file.path || file.filePath || 'changed file'}`}>
+          {rows.map((row) => row.type === 'hunk' ? (
+            <div className="ail-agent-diff-hunk" role="row" key={row.key}>{row.text}</div>
+          ) : (
+            <div className={`ail-agent-diff-line is-${row.type}`} role="row" key={row.key}>
+              <span className="ail-agent-diff-line-number">{row.oldLine}</span>
+              <span className="ail-agent-diff-line-number">{row.newLine}</span>
+              <span className="ail-agent-diff-line-marker" aria-hidden="true">{row.type === 'added' ? '+' : row.type === 'removed' ? '−' : ' '}</span>
+              <code>{row.text || ' '}</code>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="ail-agent-diff-unavailable">A line-by-line patch is not available for this file.</p>
+      )}
+    </details>
+  );
 }
 
 function CodeBlock({ lang, code }) {
@@ -330,10 +404,26 @@ function AgentRunsPanel({ sessions, selected, loading, error, followUp, setFollo
               )}
               {detailTab === 'diff' && (
                 <div className="ail-agent-diff">
-                  {selected.diffSummary && <pre>{typeof selected.diffSummary === 'string' ? selected.diffSummary : JSON.stringify(selected.diffSummary, null, 2)}</pre>}
                   {(selected.filesChanged || []).length ? (
-                    <ul>{selected.filesChanged.map((file, index) => <li key={file.path || file.filePath || index}><Code /><span>{file.path || file.filePath || String(file)}</span></li>)}</ul>
-                  ) : !selected.diffSummary ? <p>No file diff is available for this session.</p> : null}
+                    <>
+                      <div className="ail-agent-diff-summary">
+                        <strong>{selected.filesChanged.length} {selected.filesChanged.length === 1 ? 'file' : 'files'} changed</strong>
+                        <span>+{selected.diffSummary?.insertions ?? selected.filesChanged.reduce((total, file) => total + getDiffCounts(file.diff).insertions, 0)} additions</span>
+                        <span>−{selected.diffSummary?.deletions ?? selected.filesChanged.reduce((total, file) => total + getDiffCounts(file.diff).deletions, 0)} deletions</span>
+                      </div>
+                      <div className="ail-agent-diff-files">
+                        {selected.filesChanged.map((file, index) => (
+                          <AgentFileDiff key={file.path || file.filePath || index} file={file} index={index} />
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="ail-agent-diff-empty">
+                      <FileDiff />
+                      <strong>No file diff is available</strong>
+                      <span>{selected.status === 'failed' ? 'This run failed before producing reviewable file changes.' : 'Line-by-line changes will appear here after the agent proposes file edits.'}</span>
+                    </div>
+                  )}
                 </div>
               )}
               {detailTab === 'validation' && (

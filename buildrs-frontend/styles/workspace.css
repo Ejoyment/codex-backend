@@ -13629,13 +13629,209 @@
   font-size: 0.65rem;
 }
 
-.ail-agent-diff > pre {
-  overflow: auto;
-  padding: 0.65rem;
-  border: 1px solid rgba(100, 129, 153, 0.18);
+.ail-agent-diff-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.7rem;
+  color: #8290a0;
+  font-size: 0.62rem;
+}
+
+.ail-agent-diff-summary strong {
+  margin-right: auto;
+  color: #dce6ee;
+  font-size: 0.68rem;
+}
+
+.ail-agent-diff-summary span:first-of-type {
+  color: #34d399;
+}
+
+.ail-agent-diff-summary span:last-of-type {
+  color: #f87171;
+}
+
+.ail-agent-diff-files {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.ail-agent-diff-file {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid rgba(100, 129, 153, 0.2);
+  border-radius: 0.4rem;
   background: #070b10;
-  color: #bdc9d4;
-  white-space: pre-wrap;
+}
+
+.ail-agent-diff-file > summary {
+  display: flex;
+  min-height: 2.2rem;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.65rem;
+  color: #b9c7d2;
+  cursor: pointer;
+  list-style: none;
+}
+
+.ail-agent-diff-file > summary::-webkit-details-marker {
+  display: none;
+}
+
+.ail-agent-diff-file > summary > svg:first-child {
+  width: 0.8rem;
+  height: 0.8rem;
+  flex: 0 0 auto;
+  color: #17d1dc;
+}
+
+.ail-agent-diff-file > summary > code {
+  min-width: 0;
+  overflow: hidden;
+  flex: 1;
+  color: #dce6ee;
+  font-family: var(--font-mono, Consolas, monospace);
+  font-size: 0.63rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ail-agent-diff-action {
+  flex: 0 0 auto;
+  padding: 0.12rem 0.4rem;
+  border-radius: 999px;
+  font-size: 0.52rem;
+  text-transform: capitalize;
+}
+
+.ail-agent-diff-counts {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 0.4rem;
+  font-family: var(--font-mono, Consolas, monospace);
+  font-size: 0.58rem;
+}
+
+.ail-agent-diff-counts span:first-child {
+  color: #34d399;
+}
+
+.ail-agent-diff-counts span:last-child {
+  color: #f87171;
+}
+
+.ail-agent-diff-chevron {
+  width: 0.75rem;
+  height: 0.75rem;
+  flex: 0 0 auto;
+  color: #718091;
+  transition: transform 0.15s ease;
+}
+
+.ail-agent-diff-file[open] .ail-agent-diff-chevron {
+  transform: rotate(180deg);
+}
+
+.ail-agent-diff-code {
+  overflow: auto;
+  border-top: 1px solid rgba(100, 129, 153, 0.16);
+  font-family: var(--font-mono, Consolas, monospace);
+  font-size: 0.61rem;
+  line-height: 1.55;
+  tab-size: 2;
+}
+
+.ail-agent-diff-hunk {
+  min-width: max-content;
+  padding: 0.28rem 0.6rem;
+  background: rgba(59, 130, 246, 0.12);
+  color: #8ab4f8;
+  white-space: pre;
+}
+
+.ail-agent-diff-line {
+  display: grid;
+  min-width: max-content;
+  grid-template-columns: 3.2rem 3.2rem 1.3rem minmax(100%, 1fr);
+  padding-right: 0.65rem;
+  white-space: pre;
+}
+
+.ail-agent-diff-line-number {
+  padding-right: 0.55rem;
+  color: #536477;
+  text-align: right;
+  user-select: none;
+}
+
+.ail-agent-diff-line-marker {
+  text-align: center;
+  user-select: none;
+}
+
+.ail-agent-diff-line code {
+  color: #c4ced8;
+  font-family: inherit;
+  white-space: pre;
+}
+
+.ail-agent-diff-line.is-context .ail-agent-diff-line-marker {
+  color: #536477;
+}
+
+.ail-agent-diff-line.is-added {
+  background: rgba(52, 211, 153, 0.12);
+}
+
+.ail-agent-diff-line.is-added .ail-agent-diff-line-marker,
+.ail-agent-diff-line.is-added code {
+  color: #72e3ad;
+}
+
+.ail-agent-diff-line.is-removed {
+  background: rgba(248, 113, 113, 0.12);
+}
+
+.ail-agent-diff-line.is-removed .ail-agent-diff-line-marker,
+.ail-agent-diff-line.is-removed code {
+  color: #ff9292;
+}
+
+.ail-agent-diff-unavailable {
+  margin: 0;
+  padding: 0.8rem;
+  color: #8290a0;
+  font-size: 0.6rem;
+}
+
+.ail-agent-diff-empty {
+  display: grid;
+  min-height: 10rem;
+  place-content: center;
+  justify-items: center;
+  gap: 0.45rem;
+  color: #8290a0;
+  text-align: center;
+}
+
+.ail-agent-diff-empty svg {
+  width: 1.35rem;
+  height: 1.35rem;
+  color: #17d1dc;
+}
+
+.ail-agent-diff-empty strong {
+  color: #dce6ee;
+  font-size: 0.7rem;
+}
+
+.ail-agent-diff-empty span {
+  max-width: 24rem;
+  font-size: 0.6rem;
+  line-height: 1.5;
 }
 
 .ail-agent-diff ul {
