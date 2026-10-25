@@ -18,9 +18,11 @@ import {
   Copy,
   Check,
   GitBranch,
+  ChevronDown,
+  Search,
+  ArrowLeft,
   CheckCircle2,
   XCircle,
-  Clock3,
   RefreshCw,
   Activity,
   ShieldCheck,
@@ -31,6 +33,7 @@ import { getTierLimits, normalizeTier } from '../lib/tier';
 import { useRouter } from 'next/router';
 import { io } from 'socket.io-client';
 import { useCurrentCompany } from '../hooks/useCurrentCompany';
+import NotificationBell from '../components/NotificationBell';
 
 const LANGUAGES = ['JavaScript', 'TypeScript', 'Python', 'Java', 'Go', 'Rust', 'C++', 'Ruby', 'PHP'];
 
@@ -58,7 +61,7 @@ function CodeBlock({ lang, code }) {
     navigator.clipboard?.writeText(code).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1200);
-    }).catch(() => {});
+    }).catch(() => { });
   };
 
   return (
@@ -231,67 +234,134 @@ function AgentOperationsPanel({ session, agentMode, onToggleMode, loading, steps
   );
 }
 
-function AgentRunsPanel({ sessions, selected, loading, error, followUp, setFollowUp, setError, onSelect, onRefresh, onAction, actionId }) {
+function AgentRunsPanel({ sessions, selected, loading, error, followUp, setFollowUp, setError, onSelect, onAction, actionId, onDelegate }) {
+  const [detailTab, setDetailTab] = useState('terminal');
   const reviewable = selected && ['awaiting_review', 'awaiting_approval'].includes(selected.status);
   const hasAppliedChanges = Boolean((selected?.filesChanged || []).length || selected?.diffSummary?.filesChanged > 0);
   const validation = selected?.validationResult;
-  const statusColor = selected?.status === 'failed' ? '#f87171' : reviewable ? '#e5b84a' : selected?.status === 'running' ? '#2fd6e6' : '#9aa1ae';
+  const statusColor = selected?.status === 'failed' ? '#f87171' : reviewable ? '#e5b84a' : ['running', 'in_progress'].includes(selected?.status) ? '#2fd6e6' : '#9aa1ae';
+  const activeCount = sessions.filter((session) => ['running', 'in_progress'].includes(session.status)).length;
+  const reviewCount = sessions.filter((session) => ['awaiting_review', 'awaiting_approval'].includes(session.status)).length;
+  const rawProgress = Number(selected?.progress);
+  const progressPercent = Number.isFinite(rawProgress) ? Math.min(100, Math.max(0, rawProgress <= 1 ? rawProgress * 100 : rawProgress)) : null;
+  const isAgentRunning = ['running', 'in_progress'].includes(selected?.status);
+  const isAgentComplete = ['complete', 'completed', 'done'].includes(selected?.status);
+  const startedAt = selected?.startedAt || selected?.createdAt;
+  const finishedAt = selected?.completedAt || (isAgentRunning ? new Date() : selected?.updatedAt);
+  const durationMs = startedAt && finishedAt ? Math.max(0, new Date(finishedAt).getTime() - new Date(startedAt).getTime()) : null;
+  const durationLabel = durationMs === null ? '—' : `${Math.floor(durationMs / 60000)}m ${Math.floor((durationMs % 60000) / 1000)}s`;
+  const passingSpecs = validation?.specs?.filter((spec) => spec.passed).length;
 
   return (
-    <div className="ail-content">
-      {error && <div className="std-alert std-alert-error mb-4"><AlertCircle className="w-4 h-4" /><span className="flex-1">{error}</span><button type="button" onClick={() => setError(null)}><X className="w-4 h-4" /></button></div>}
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div><h2 className="text-sm font-semibold text-white">Task agent sessions</h2><p className="mt-1 text-xs text-[#9aa1ae]">Execution logs, frozen inputs, validation, and human review</p></div>
-        <button type="button" className="btn-workspace btn-secondary" onClick={onRefresh} disabled={loading} title="Refresh sessions"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
-      </div>
-      <div className="grid min-h-[560px] overflow-hidden border border-white/10 lg:grid-cols-[290px_minmax(0,1fr)]">
-        <aside className="border-b border-white/10 lg:border-b-0 lg:border-r">
-          <div className="flex items-center justify-between border-b border-white/10 px-4 py-3"><span className="text-xs font-semibold uppercase text-[#9aa1ae]">Runs</span><span className="text-xs text-[#727987]">{sessions.length}</span></div>
-          <div className="max-h-[680px] overflow-y-auto">
-            {sessions.length ? sessions.map((session) => <button key={session._id} type="button" onClick={() => onSelect(session)} className={`block w-full border-b border-white/5 px-4 py-3 text-left hover:bg-white/5 ${selected?._id === session._id ? 'bg-white/5' : ''}`}>
-              <span className="block truncate text-sm font-medium text-white">{session.taskTitle || 'Agent run'}</span>
-              <span className="mt-1 flex items-center justify-between gap-2 text-xs"><span className="truncate text-[#9aa1ae]">{session.branch || session.model || 'No branch'}</span><span style={{ color: ['awaiting_review', 'awaiting_approval'].includes(session.status) ? '#e5b84a' : session.status === 'failed' ? '#f87171' : '#9aa1ae' }}>{session.status}</span></span>
-              <span className="mt-1 block text-[11px] text-[#727987]">{session.createdAt ? new Date(session.createdAt).toLocaleString() : ''}</span>
-            </button>) : <div className="px-4 py-10 text-center text-xs text-[#727987]">{loading ? 'Loading agent runs...' : 'No task agent runs yet'}</div>}
+    <div className="ail-content ail-agent-dashboard">
+      {error && <div className="std-alert std-alert-error mb-3"><AlertCircle className="w-4 h-4" /><span className="flex-1">{error}</span><button type="button" onClick={() => setError(null)}><X className="w-4 h-4" /></button></div>}
+      <div className="ail-agent-frame">
+        <aside className="ail-agent-sessions">
+          <div className="ail-agent-sessions-heading">
+            <div><h2>Agent Sessions</h2><p>{activeCount} active · {reviewCount} awaiting review</p></div>
+          </div>
+          <div className="ail-agent-session-list">
+            {sessions.length ? sessions.map((session) => {
+              const sessionStatusColor = session.status === 'failed' ? '#f87171' : ['awaiting_review', 'awaiting_approval'].includes(session.status) ? '#a78bfa' : ['running', 'in_progress'].includes(session.status) ? '#2fd6e6' : '#34d399';
+              return (
+                <button key={session._id} type="button" onClick={() => onSelect(session)} className={`ail-agent-session ${selected?._id === session._id ? 'is-selected' : ''}`}>
+                  <span className="ail-agent-session-dot" style={{ background: sessionStatusColor }} />
+                  <span className="ail-agent-session-copy">
+                    <strong>{session.taskTitle || 'Agent run'}</strong>
+                    <span className="ail-agent-branch">{session.branch || session.model || 'No branch'}</span>
+                    <span className="ail-agent-session-meta">
+                      <span className="ail-agent-status" style={{ color: sessionStatusColor, borderColor: `${sessionStatusColor}55` }}>{session.status?.replaceAll('_', ' ') || 'unknown'}</span>
+                      <span>{session.createdAt ? formatTime(session.createdAt) : '—'}</span>
+                    </span>
+                  </span>
+                </button>
+              );
+            }) : <div className="ail-agent-list-empty">{loading ? 'Loading agent sessions…' : 'No agent sessions yet. Delegate a task to get started.'}</div>}
           </div>
         </aside>
-        <section className="flex min-w-0 flex-col">
-          {!selected ? <div className="flex flex-1 flex-col items-center justify-center p-8 text-center"><Bot className="mb-3 h-8 w-8 text-[#2fd6e6]" /><p className="text-sm font-semibold text-white">Select an agent run</p><p className="mt-1 max-w-sm text-xs text-[#9aa1ae]">Delegate a task from Tasks to inspect execution and review it here.</p></div> : <>
-            <header className="border-b border-white/10 px-4 py-4 sm:px-6">
-              <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs uppercase text-[#9aa1ae]">{selected.taskId ? 'Task execution' : 'Agent session'}</p><h2 className="mt-1 text-lg font-semibold text-white">{selected.taskTitle}</h2></div><span className="inline-flex items-center gap-2 text-xs" style={{ color: statusColor }}><span className="h-2 w-2 rounded-full" style={{ background: statusColor }} />{selected.status}</span></div>
-              <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs text-[#9aa1ae]">
-                <span className="inline-flex items-center gap-1.5"><GitBranch className="h-3.5 w-3.5 text-[#2fd6e6]" />{selected.branch || 'No branch'}</span>
-                <span>{selected.model || 'Default model'}</span>
-                <span>{selected.contextSnapshot?.specs?.length || 0} frozen specs</span>
-                {selected.retryCount > 0 && <span>Correction attempts: {selected.retryCount}</span>}
-              </div>
-            </header>
-            <div className="grid flex-1 gap-5 overflow-y-auto p-4 sm:p-6 xl:grid-cols-2">
-              <div className="space-y-5">
-                <section><h3 className="mb-2 text-xs font-semibold uppercase text-[#9aa1ae]">Plan</h3><pre className="max-h-60 overflow-auto whitespace-pre-wrap border border-white/10 bg-black/20 p-3 text-xs leading-relaxed text-[#c6cad2]">{selected.plan || 'The worker did not return a separate plan.'}</pre></section>
-                <section><h3 className="mb-2 text-xs font-semibold uppercase text-[#9aa1ae]">Agent output</h3><pre className="max-h-[420px] overflow-auto whitespace-pre-wrap border border-white/10 bg-black/20 p-3 text-xs leading-relaxed text-[#c6cad2]">{selected.summary || 'Waiting for worker output...'}</pre></section>
-              </div>
-              <div className="space-y-5">
-                <section><h3 className="mb-2 text-xs font-semibold uppercase text-[#9aa1ae]">Terminal log</h3><div className="max-h-60 overflow-auto border border-white/10 bg-[#08080b] p-3 font-mono text-[11px] leading-relaxed">
-                  {(selected.terminalLog || []).length ? selected.terminalLog.map((line, index) => <p key={`${line.timestamp}-${index}`} className="mb-1 text-[#c6cad2]"><span className="mr-2 text-[#727987]">{line.timestamp ? new Date(line.timestamp).toLocaleTimeString() : '—'}</span><span className="mr-2 text-[#2fd6e6]">{line.type || 'log'}</span>{line.message}</p>) : <p className="text-[#727987]">No execution events recorded.</p>}
-                </div></section>
-                <section><h3 className="mb-2 text-xs font-semibold uppercase text-[#9aa1ae]">Validation</h3>
-                  {validation?.specs?.length ? <div className="space-y-3">{validation.specs.map((spec, index) => <div key={spec.specId || index} className="border border-white/10 p-3"><div className="mb-2 flex items-center justify-between gap-2 text-xs"><span className="font-medium text-white">{spec.title || `Spec ${index + 1}`}</span><span style={{ color: spec.passed ? '#34d399' : '#e5b84a' }}>{spec.passed ? 'requirements passing' : 'review needed'}</span></div>{(spec.requirements || []).map((requirement, requirementIndex) => <p key={requirement.id || requirementIndex} className="mb-1 flex gap-2 text-xs text-[#c6cad2]"><span style={{ color: requirement.status === 'pass' ? '#34d399' : requirement.status === 'fail' ? '#f87171' : '#e5b84a' }}>{requirement.status}</span><span>{requirement.id}: {requirement.text} <span className="text-[#727987]">{requirement.evidence}</span></span></p>)}{spec.verificationCommand && <p className="mt-2 text-xs text-[#e5b84a]">Command pending: {spec.verificationCommand.command}</p>}</div>)}</div> : <p className="border border-white/10 p-3 text-xs text-[#9aa1ae]">{validation?.command?.reason || 'No automated validation result is attached.'}</p>}
-                </section>
-                {selected.contextSnapshot?.specs?.length > 0 && <section><h3 className="mb-2 text-xs font-semibold uppercase text-[#9aa1ae]">Frozen spec context</h3><div className="flex flex-wrap gap-2">{selected.contextSnapshot.specs.map((spec) => <span key={spec._id} className="border border-white/10 px-2 py-1 text-xs text-[#c6cad2]">{spec.title}</span>)}</div></section>}
-              </div>
+
+        <section className="ail-agent-detail">
+          {!selected ? (
+            <div className="ail-agent-empty">
+              <Bot />
+              <strong>Select an agent session</strong>
+              <span>Execution progress, terminal logs, and validation will appear here.</span>
+              <button type="button" className="btn-workspace btn-primary" onClick={onDelegate}>Delegate Task</button>
             </div>
-            <footer className="border-t border-white/10 p-4 sm:px-6">
-              {['awaiting_review', 'awaiting_approval', 'failed'].includes(selected.status) && <form className="mb-3 flex gap-2" onSubmit={(event) => { event.preventDefault(); if (followUp.trim()) onAction('tweak', selected, { instruction: followUp.trim() }); }}>
+          ) : <>
+            <header className="ail-agent-run-header">
+              <div className="ail-agent-run-title">
+                <span className="ail-agent-session-dot" style={{ background: statusColor }} />
+                <div><h2>{selected.taskTitle || 'Agent session'}</h2><p>{selected.branch || 'No branch selected'}</p></div>
+                <span className="ail-agent-status ail-agent-running" style={{ color: statusColor }}>{selected.status?.replaceAll('_', ' ')}{progressPercent !== null ? ` · ${Math.round(progressPercent)}%` : ''}</span>
+              </div>
+              <div className="ail-agent-run-meta">
+                <span><small>Duration</small><strong>{durationLabel}</strong></span>
+                <span><small>Files changed</small><strong>{selected.filesChanged?.length || selected.diffSummary?.filesChanged || 0}</strong></span>
+                <span><small>Tests</small><strong>{typeof passingSpecs === 'number' ? `${passingSpecs} passed` : '—'}</strong></span>
+                <span><small>Started</small><strong>{startedAt ? new Date(startedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }) : '—'}</strong></span>
+                <span><small>Model</small><strong>{selected.model || 'Default model'}</strong></span>
+              </div>
+              <div className={`ail-agent-progress ${isAgentRunning && progressPercent === null ? 'is-indeterminate' : ''}`} aria-hidden="true"><span style={{ width: isAgentComplete ? '100%' : `${progressPercent ?? (isAgentRunning ? 40 : 0)}%` }} /></div>
+            </header>
+
+            <div className="ail-agent-tabs" role="tablist" aria-label="Agent session details">
+              <button type="button" role="tab" aria-selected={detailTab === 'terminal'} className={detailTab === 'terminal' ? 'is-active' : ''} onClick={() => setDetailTab('terminal')}><Terminal />Terminal</button>
+              <button type="button" role="tab" aria-selected={detailTab === 'diff'} className={detailTab === 'diff' ? 'is-active' : ''} onClick={() => setDetailTab('diff')}><Code />Diff</button>
+              <button type="button" role="tab" aria-selected={detailTab === 'validation'} className={detailTab === 'validation' ? 'is-active' : ''} onClick={() => setDetailTab('validation')}><ShieldCheck />Validation</button>
+            </div>
+
+            <div className="ail-agent-tab-panel" role="tabpanel">
+              {detailTab === 'terminal' && (
+                <div className="ail-agent-terminal">
+                  {(selected.terminalLog || []).length ? selected.terminalLog.map((line, index) => (
+                    <p key={`${line.timestamp}-${index}`} className={`ail-agent-log ail-agent-log-${String(line.type || 'log').replace(/[^a-z0-9-]/gi, '-')}`}>
+                      <time>{line.timestamp ? new Date(line.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }) : '—'}</time>
+                      <span className="ail-agent-log-marker">›</span>
+                      <span>{line.message}</span>
+                    </p>
+                  )) : (
+                    <div className="ail-agent-terminal-empty">
+                      <p>{selected.summary || selected.plan || 'No execution events recorded yet.'}</p>
+                    </div>
+                  )}
+                  {isAgentRunning && <span className="ail-agent-terminal-cursor" />}
+                </div>
+              )}
+              {detailTab === 'diff' && (
+                <div className="ail-agent-diff">
+                  {selected.diffSummary && <pre>{typeof selected.diffSummary === 'string' ? selected.diffSummary : JSON.stringify(selected.diffSummary, null, 2)}</pre>}
+                  {(selected.filesChanged || []).length ? (
+                    <ul>{selected.filesChanged.map((file, index) => <li key={file.path || file.filePath || index}><Code /><span>{file.path || file.filePath || String(file)}</span></li>)}</ul>
+                  ) : !selected.diffSummary ? <p>No file diff is available for this session.</p> : null}
+                </div>
+              )}
+              {detailTab === 'validation' && (
+                <div className="ail-agent-validation">
+                  {validation?.specs?.length ? validation.specs.map((spec, index) => (
+                    <section key={spec.specId || index}>
+                      <header><strong>{spec.title || `Spec ${index + 1}`}</strong><span style={{ color: spec.passed ? '#34d399' : '#e5b84a' }}>{spec.passed ? 'requirements passing' : 'review needed'}</span></header>
+                      {(spec.requirements || []).map((requirement, requirementIndex) => (
+                        <p key={requirement.id || requirementIndex}><span style={{ color: requirement.status === 'pass' ? '#34d399' : requirement.status === 'fail' ? '#f87171' : '#e5b84a' }}>{requirement.status}</span><span>{requirement.id}: {requirement.text} <small>{requirement.evidence}</small></span></p>
+                      ))}
+                      {spec.verificationCommand && <p className="ail-agent-validation-command">Command pending: {spec.verificationCommand.command}</p>}
+                    </section>
+                  )) : <p>{validation?.command?.reason || 'No automated validation result is attached.'}</p>}
+                </div>
+              )}
+            </div>
+
+            {(reviewable || selected.status === 'failed') && <footer className="ail-agent-run-footer">
+              {['awaiting_review', 'awaiting_approval', 'failed'].includes(selected.status) && <form className="ail-agent-followup" onSubmit={(event) => { event.preventDefault(); if (followUp.trim()) onAction('tweak', selected, { instruction: followUp.trim() }); }}>
                 <input className="ws-input min-w-0 flex-1" value={followUp} onChange={(event) => setFollowUp(event.target.value)} placeholder="Add a follow-up instruction" />
                 <button type="submit" className="btn-workspace btn-secondary" disabled={!followUp.trim() || Boolean(actionId)}><Send className="h-4 w-4" /><span className="hidden sm:inline">Continue</span></button>
               </form>}
-              <div className="flex flex-wrap items-center justify-between gap-3"><span className="text-xs text-[#727987]">Agent work always waits for a human decision.</span><div className="flex gap-2">
+              <div><span>Agent work always waits for a human decision.</span><div className="ail-agent-review-actions">
                 {reviewable && <><button type="button" className="btn-workspace btn-secondary" onClick={() => { const reason = window.prompt('Reason for rejecting this run?') || ''; onAction('reject', selected, { reason }); }} disabled={Boolean(actionId)}><XCircle className="h-4 w-4" />Reject &amp; Rollback</button><button type="button" className="btn-workspace btn-primary" onClick={() => onAction('approve', selected)} disabled={Boolean(actionId) || !hasAppliedChanges} title={!hasAppliedChanges ? 'The agent has not applied file changes to its branch' : 'Approve and merge the branch'}><CheckCircle2 className="h-4 w-4" />Approve &amp; Merge</button></>}
                 {actionId === selected._id && <Loader2 className="h-4 w-4 animate-spin text-[#2fd6e6]" />}
               </div></div>
-              {reviewable && !hasAppliedChanges && <p className="mt-3 text-xs text-[#e5b84a]">This worker has returned a plan and response, but has not written files to the branch. Merge stays disabled until branch edits are supported.</p>}
-            </footer>
+              {reviewable && !hasAppliedChanges && <p className="ail-agent-review-note">This worker has returned a plan and response, but has not written files to the branch. Merge stays disabled until branch edits are supported.</p>}
+            </footer>}
           </>}
         </section>
       </div>
@@ -338,10 +408,9 @@ export default function AiPair() {
   const [selectedLang, setSelectedLang] = useState('JavaScript');
   const [creatingSession, setCreatingSession] = useState(false);
   const [remaining, setRemaining] = useState(aiLimit);
-  const [clock, setClock] = useState('');
   const [agentMode, setAgentMode] = useState(false);
   const [agentSteps, setAgentSteps] = useState([]);
-  const [activeView, setActiveView] = useState('chat');
+  const [activeView, setActiveView] = useState('runs');
   const [agentSessions, setAgentSessions] = useState([]);
   const [selectedExecution, setSelectedExecution] = useState(null);
   const [loadingAgentSessions, setLoadingAgentSessions] = useState(false);
@@ -360,30 +429,25 @@ export default function AiPair() {
   }, []);
 
   useEffect(() => {
-    if (!router.isReady || !router.query.executionId) return;
-    setActiveView('runs');
-    fetchAgentSessions(router.query.executionId);
-  }, [router.isReady, router.query.executionId]);
+    if (!router.isReady) return;
+    if (router.query.executionId) {
+      setActiveView('runs');
+      fetchAgentSessions(router.query.executionId);
+      return;
+    }
+    setActiveView(router.query.view === 'chat' ? 'chat' : 'runs');
+  }, [router.isReady, router.query.executionId, router.query.view]);
 
   useEffect(() => {
     if (activeView !== 'runs') return undefined;
     fetchAgentSessions();
     const id = setInterval(() => fetchAgentSessions(), 5000);
     return () => clearInterval(id);
-  }, [activeView]);
+  }, [activeView, selectedExecution?._id]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
-
-  useEffect(() => {
-    const tick = () => {
-      setClock(new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }));
-    };
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, []);
 
   useEffect(() => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
@@ -444,6 +508,7 @@ export default function AiPair() {
       const targetId = preferredId || router.query.executionId || selectedExecution?._id;
       if (targetId) setSelectedExecution(loadedSessions.find((item) => item._id === targetId) || null);
       else if (selectedExecution) setSelectedExecution(loadedSessions.find((item) => item._id === selectedExecution._id) || null);
+      else setSelectedExecution(loadedSessions[0] || null);
     } catch (err) {
       setError(err.message || 'Failed to load agent runs');
     } finally {
@@ -604,324 +669,331 @@ export default function AiPair() {
   return (
     <AuthGuard>
       <Head>
-        <title>AI Pair Programming - BuildrsHQ</title>
+        <title>AI Agent - BuildrsHQ</title>
         <link rel="icon" href="/buildrs.png" />
       </Head>
 
-      <div className="workspace-container">
+      <div className="workspace-container ail-agent-page">
+        <header className="ail-global-header">
+          <div className="ail-global-brand">
+            <img src="/buildrs.png" alt="" />
+            <strong>Buildrs<span>HQ</span></strong>
+          </div>
+          <div className="ail-global-tools">
+            <button type="button" className="ail-branch-selector" title="Current branch">
+              <GitBranch />
+              <span>{selectedExecution?.branch || 'Feature/auth-flow-redesign'}</span>
+              <ChevronDown />
+            </button>
+            <span className="ail-global-chip is-ci"><i />CI Passing</span>
+            <span className="ail-global-chip is-staging"><i />Staging Live</span>
+            <label className="ail-global-search">
+              <Search />
+              <input type="search" placeholder="Search specs, diff, agents" aria-label="Search specs, diff, agents" />
+            </label>
+            <NotificationBell placement="down" look="header" />
+            <span className="ail-global-avatar" title={user?.fullName || user?.name || 'Profile'}>
+              {(user?.fullName || user?.name || 'DU').split(/\s+/).map((part) => part[0]).slice(0, 2).join('').toUpperCase()}
+            </span>
+          </div>
+        </header>
         <Sidebar user={user} subscription={subscription} />
+        <button type="button" className="ail-sidebar-back" onClick={() => router.back()} aria-label="Go back" title="Go back">
+          <ArrowLeft />
+        </button>
 
         <main className="workspace-main">
           <header className="workspace-header dash-header">
             <div>
               <p className="dash-crumb">
-                BuildrsHQ <span className="sep">/</span> AI Pair
+                BUILD <span className="sep">/</span> AI AGENT
               </p>
-              <h1 className="dash-title">AI Pair Programming</h1>
-              <div className="dash-statusline">
-                <span className="status-indicator status-online" />
-                <span>{activeSession ? `${activeSession.repositoryName || activeSession.repoName || 'Session'}${activeSession.language ? ` · ${activeSession.language}` : ''}` : 'No active session'}</span>
-                <span className="dash-clock">· {clock || '—:——:——'}</span>
-              </div>
+              <h1 className="dash-title">AI Agent</h1>
+              <div className="dash-statusline">Let AI agents do the work for you</div>
             </div>
             <div className="flex items-center gap-3">
-              <span className="dash-pill hidden md:inline-flex">
-                <span className="dot" style={{ background: remaining <= 0 ? '#f87171' : '#2fd6e6' }} />
-                {aiLimit === Infinity ? 'Unlimited messages' : `${remaining}/${aiLimit} today`}
-              </span>
-              {tier === 'developer' && (
-                <button
-                  type="button"
-                  onClick={() => router.push('/pricing')}
-                  className="dash-action"
-                >
-                  Upgrade to Pro
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </button>
-              )}
               <button
                 type="button"
-                onClick={openNewSessionModal}
-                className="btn-workspace btn-primary"
+                className="ail-model-button hidden sm:inline-flex"
+                disabled
+                title="AI model selection is not available yet"
               >
-                <Plus className="w-4 h-4" />
-                <span className="hidden sm:inline">New Session</span>
+                Change AI Model
+              </button>
+              <button type="button" onClick={() => router.push('/tasks')} className="btn-workspace btn-primary">
+                <Sparkles className="w-4 h-4" />
+                <span>Delegate Task</span>
               </button>
             </div>
           </header>
 
-          <div className="workspace-content ail-workspace-content">
-            <div className="ail-view-tabs" role="tablist" aria-label="AI workspace view">
-              <button type="button" role="tab" aria-selected={activeView === 'chat'} onClick={() => setActiveView('chat')} className={`ail-view-tab ${activeView === 'chat' ? 'is-active' : ''}`}><MessageSquare className="h-4 w-4" /> Pair workspace</button>
-              <button type="button" role="tab" aria-selected={activeView === 'runs'} onClick={() => setActiveView('runs')} className={`ail-view-tab ${activeView === 'runs' ? 'is-active' : ''}`}><Activity className="h-4 w-4" /> Agent runs<span className="ail-tab-count">{agentSessions.length}</span></button>
-            </div>
-            {activeView === 'runs' ? (
-              <AgentRunsPanel
-                sessions={agentSessions}
-                selected={selectedExecution}
-                loading={loadingAgentSessions}
-                error={error}
-                followUp={followUp}
-                setFollowUp={setFollowUp}
-                setError={setError}
-                onSelect={setSelectedExecution}
-                onRefresh={() => fetchAgentSessions()}
-                onAction={(action, execution, extra) => submitAgentAction(action, execution, extra)}
-                actionId={agentActionId}
-              />
-            ) : (
-            <div className="ail-content">
-              <div className="ail-shell">
-                {/* Session rail */}
-                <aside className="ail-rail">
-                  <div className="ail-rail-head">
-                    <span className="ail-rail-title">
-                      <MessageSquare className="w-4 h-4" style={{ color: '#2fd6e6' }} />
-                      Sessions
-                    </span>
-                    <button type="button" className="ail-new" onClick={openNewSessionModal} title="New session">
-                      <Plus className="w-3 h-3" />
-                    </button>
-                  </div>
-                  <div className="flex-1 overflow-y-auto">
-                    {loadingSessions ? (
-                      <div className="dash-empty">
-                        <div className="dash-empty-ico">
-                          <Loader2 className="w-5 h-5 animate-spin" />
-                        </div>
-                        <p className="dash-empty-title">Loading sessions...</p>
-                      </div>
-                    ) : sessions.length === 0 ? (
-                      <div className="dash-empty">
-                        <div className="dash-empty-ico">
-                          <Sparkles className="w-5 h-5" />
-                        </div>
-                        <p className="dash-empty-title">No sessions yet</p>
-                        <p className="dash-empty-sub">Start a pairing session to begin.</p>
-                      </div>
-                    ) : (
-                      sessions.map((sess) => {
-                        const isActive = activeSession?._id === sess._id;
-                        return (
-                          <button
-                            key={sess._id}
-                            type="button"
-                            onClick={() => selectSession(sess)}
-                            className={`ail-session ${isActive ? 'is-active' : ''}`}
-                          >
-                            <span className="ail-sess-ico">
-                              <Sparkles className="w-4 h-4" />
-                            </span>
-                            <span className="ail-sess-main">
-                              <span className="ail-sess-top">
-                                <span className="ail-sess-name">{sess.repositoryName || sess.repoName || 'Session'}</span>
-                              </span>
-                              <span className="ail-sess-meta">
-                                <span className="ail-sess-lang">{sess.language || '—'}</span>
-                                <span
-                                  className="ail-sess-status"
-                                  style={
-                                    sess.status === 'active'
-                                      ? { background: 'rgba(52,211,153,0.12)', color: '#34d399' }
-                                      : { background: 'rgba(255,255,255,0.05)', color: '#9aa1ae' }
-                                  }
-                                >
-                                  {sess.status}
-                                </span>
-                              </span>
-                              <span className="ail-sess-time">{formatTime(sess.createdAt)}</span>
-                            </span>
-                            <ChevronRight className="w-3.5 h-3.5 flex-shrink-0" style={{ color: isActive ? '#2fd6e6' : '#3a4050' }} />
-                          </button>
-                        );
-                      })
-                    )}
-                  </div>
-                </aside>
-
-                <div className="ail-main-layout">
-                {/* Conversation */}
-                <div className="ail-conv">
-                  <div className="ail-conv-toolbar">
-                    <div className="ail-conv-identity">
-                      <span className="ail-conv-avatar"><Bot className="h-4 w-4" /></span>
-                      <div><strong>{activeSession?.repositoryName || activeSession?.repoName || 'AI Pair workspace'}</strong><span>{activeSession ? `${activeSession.language || 'Code'} · ${agentMode ? 'Agent workflow' : 'Pairing'}` : 'Create or select a session to begin'}</span></div>
-                    </div>
-                    <div className={`ail-connection-state ${activeSession ? 'is-connected' : ''}`}><span />{activeSession ? 'Session ready' : 'Not connected'}</div>
-                  </div>
-                  {error && (
-                    <div className="std-alert std-alert-error mx-4 mt-4">
-                      <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                      <p className="flex-1">{error}</p>
-                      <button type="button" onClick={() => setError(null)} className="text-[#fca5a5] hover:text-white">
-                        <X className="w-4 h-4" />
+          {activeView === 'runs' && <div className="workspace-content ail-workspace-content">
+            <AgentRunsPanel
+              sessions={agentSessions}
+              selected={selectedExecution}
+              loading={loadingAgentSessions}
+              error={error}
+              followUp={followUp}
+              setFollowUp={setFollowUp}
+              setError={setError}
+              onSelect={setSelectedExecution}
+              onAction={(action, execution, extra) => submitAgentAction(action, execution, extra)}
+              actionId={agentActionId}
+              onDelegate={() => router.push('/tasks')}
+            />
+          </div>}
+          {activeView === 'chat' && (
+              <div className="ail-content">
+                <div className="ail-shell">
+                  {/* Session rail */}
+                  <aside className="ail-rail">
+                    <div className="ail-rail-head">
+                      <span className="ail-rail-title">
+                        <MessageSquare className="w-4 h-4" style={{ color: '#2fd6e6' }} />
+                        Sessions
+                      </span>
+                      <button type="button" className="ail-new" onClick={openNewSessionModal} title="New session">
+                        <Plus className="w-3 h-3" />
                       </button>
                     </div>
-                  )}
-
-                  <div className="ail-scroll">
-                    {!activeSession ? (
-                      <div className="ail-empty">
-                        <div className="src-empty-ico">
-                          <Bot className="w-7 h-7" />
+                    <div className="flex-1 overflow-y-auto">
+                      {loadingSessions ? (
+                        <div className="dash-empty">
+                          <div className="dash-empty-ico">
+                            <Loader2 className="w-5 h-5 animate-spin" />
+                          </div>
+                          <p className="dash-empty-title">Loading sessions...</p>
                         </div>
-                        <p className="dash-empty-title" style={{ fontSize: '1rem', marginBottom: '0.35rem' }}>
-                          AI Pair Programming
-                        </p>
-                        <p className="dash-empty-sub" style={{ maxWidth: '26rem', lineHeight: '1.5', marginBottom: '1.5rem' }}>
-                          Get real-time coding assistance from AI. Start a new session to begin pairing.
-                        </p>
-                        <button
-                          type="button"
-                          onClick={openNewSessionModal}
-                          className="btn-workspace btn-primary"
-                        >
-                          <Plus className="w-4 h-4" />
-                          Start New Session
-                        </button>
-                      </div>
-                    ) : (
-                      <>
-                        {messages.map((msg, i) => (
-                          msg.role === 'user' ? (
-                            <div key={i} className="ail-msg-row is-user">
-                              <div className="ail-bubble ail-bubble-user">
-                                <div className="ail-msg-head">
-                                  <span className="ail-msg-who">You</span>
-                                </div>
-                                <span>{msg.content}</span>
-                                {msg.codeChanges && msg.codeChanges.length > 0 && (
-                                  msg.codeChanges.map((change, ci) => <ChangeBlock key={`u${i}-${ci}`} change={change} />)
-                                )}
-                              </div>
-                            </div>
-                          ) : (
-                            <div key={i} className="ail-msg-row">
-                              <div className="ail-bubble ail-bubble-ai">
-                                <div className="ail-msg-head">
-                                  <Bot className="w-3.5 h-3.5" style={{ color: '#2fd6e6' }} />
-                                  <span className="ail-msg-who">AI</span>
-                                </div>
-                                {renderCodeBlocks(msg.content, `a${i}`)}
-                                {msg.agentSteps && msg.agentSteps.length > 0 && (
-                                  <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                                    {msg.agentSteps.map((s, si) => (
-                                      <div key={si} style={{ fontSize: '0.75rem', color: '#a8adba', display: 'flex', gap: '0.4rem' }}>
-                                        <span className="mkt-mono" style={{ color: s.success === false ? '#f87171' : '#2fd6e6' }}>
-                                          {s.success === false ? '✕' : '✓'}
-                                        </span>
-                                        <span>Step {s.step}: {s.tool || 'Agent action'} {s.success === false ? 'needs attention' : 'completed'}</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                                {msg.codeChanges && msg.codeChanges.length > 0 && (
-                                  msg.codeChanges.map((change, ci) => <ChangeBlock key={`${i}-${ci}`} change={change} />)
-                                )}
-                              </div>
-                            </div>
-                          )
-                        ))}
-                        {loading && (
-                          <>
-                            {agentMode && agentSteps.length > 0 ? (
-                              <div className="ail-msg-row">
-                                <div className="ail-bubble ail-bubble-ai" style={{ width: '100%' }}>
-                                  <div className="ail-msg-head">
-                                    <Bot className="w-3.5 h-3.5" style={{ color: '#2fd6e6' }} />
-                                    <span className="ail-msg-who">Agent working...</span>
-                                  </div>
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.5rem' }}>
-                                    {agentSteps.filter((s) => ['thinking', 'iteration', 'result', 'done'].includes(s.type)).map((s, idx) => {
-                                      const isCompleteEvent = s.type === 'result' || s.type === 'done';
-                                      const succeeded = s.type === 'done' ? s.success : s.result?.success;
-                                      const ProgressIcon = isCompleteEvent
-                                        ? (succeeded ? CheckCircle2 : XCircle)
-                                        : Loader2;
-                                      return (
-                                        <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.78rem', color: isCompleteEvent && !succeeded ? '#f87171' : '#c8ccd4' }}>
-                                          <ProgressIcon className={`w-3 h-3 ${!isCompleteEvent ? 'animate-spin' : ''}`} style={{ color: isCompleteEvent ? (succeeded ? '#34d399' : '#f87171') : '#2fd6e6' }} />
-                                          <span className="mkt-mono">
-                                            {s.iteration ? `step ${s.iteration} · ` : ''}{getAgentProgressLabel(s)}
-                                          </span>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="ail-msg-row">
-                                <div className="ail-thinking ail-typing">
-                                  <Loader2 className="w-4 h-4 animate-spin" style={{ color: '#2fd6e6' }} />
-                                  <span className="ail-msg-who">{agentMode ? 'Agent thinking...' : 'Thinking...'}</span>
-                                </div>
-                              </div>
-                            )}
-                          </>
-                        )}
-                        <div ref={messagesEndRef} />
-                      </>
-                    )}
-                  </div>
+                      ) : sessions.length === 0 ? (
+                        <div className="dash-empty">
+                          <div className="dash-empty-ico">
+                            <Sparkles className="w-5 h-5" />
+                          </div>
+                          <p className="dash-empty-title">No sessions yet</p>
+                          <p className="dash-empty-sub">Start a pairing session to begin.</p>
+                        </div>
+                      ) : (
+                        sessions.map((sess) => {
+                          const isActive = activeSession?._id === sess._id;
+                          return (
+                            <button
+                              key={sess._id}
+                              type="button"
+                              onClick={() => selectSession(sess)}
+                              className={`ail-session ${isActive ? 'is-active' : ''}`}
+                            >
+                              <span className="ail-sess-ico">
+                                <Sparkles className="w-4 h-4" />
+                              </span>
+                              <span className="ail-sess-main">
+                                <span className="ail-sess-top">
+                                  <span className="ail-sess-name">{sess.repositoryName || sess.repoName || 'Session'}</span>
+                                </span>
+                                <span className="ail-sess-meta">
+                                  <span className="ail-sess-lang">{sess.language || '—'}</span>
+                                  <span
+                                    className="ail-sess-status"
+                                    style={
+                                      sess.status === 'active'
+                                        ? { background: 'rgba(52,211,153,0.12)', color: '#34d399' }
+                                        : { background: 'rgba(255,255,255,0.05)', color: '#9aa1ae' }
+                                    }
+                                  >
+                                    {sess.status}
+                                  </span>
+                                </span>
+                                <span className="ail-sess-time">{formatTime(sess.createdAt)}</span>
+                              </span>
+                              <ChevronRight className="w-3.5 h-3.5 flex-shrink-0" style={{ color: isActive ? '#2fd6e6' : '#3a4050' }} />
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  </aside>
 
-                  {activeSession && (
-                    <form onSubmit={handleSend} className="ail-composer">
-                      <div className="ail-composer-mode">
-                        <span className={`ail-composer-mode-indicator ${agentMode ? 'is-agent' : ''}`} />
-                        <span>{agentMode ? 'Autonomous agent enabled' : 'Pair assistant enabled'}</span>
-                        <span className="ail-composer-mode-hint">{agentMode ? 'Progress and tool activity appear in Agent operations.' : 'Enable agent mode for multi-step repository tasks.'}</span>
+                  <div className="ail-main-layout">
+                    {/* Conversation */}
+                    <div className="ail-conv">
+                      <div className="ail-conv-toolbar">
+                        <div className="ail-conv-identity">
+                          <span className="ail-conv-avatar"><Bot className="h-4 w-4" /></span>
+                          <div><strong>{activeSession?.repositoryName || activeSession?.repoName || 'AI Pair workspace'}</strong><span>{activeSession ? `${activeSession.language || 'Code'} · ${agentMode ? 'Agent workflow' : 'Pairing'}` : 'Create or select a session to begin'}</span></div>
+                        </div>
+                        <div className={`ail-connection-state ${activeSession ? 'is-connected' : ''}`}><span />{activeSession ? 'Session ready' : 'Not connected'}</div>
                       </div>
-                      <div className="ail-field">
-                        <textarea
-                          value={input}
-                          onChange={(e) => setInput(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(e); } }}
-                          placeholder="Ask AI anything about your code..."
-                          rows={1}
-                          disabled={loading || remaining <= 0}
-                        />
-                        <button
-                          type="submit"
-                          disabled={!input.trim() || loading || remaining <= 0}
-                          className="btn-workspace btn-primary"
-                          title="Send"
-                          style={{ minHeight: '46px' }}
-                        >
-                          <Send className="w-4 h-4" />
-                        </button>
-                      </div>
-                      <div className="ail-composer-note">
-                        {remaining <= 0 ? (
-                          <>
-                            <AlertCircle className="w-3 h-3 ail-limit" />
-                            <span className="ail-limit">Message limit reached for this session</span>
-                          </>
+                      {error && (
+                        <div className="std-alert std-alert-error mx-4 mt-4">
+                          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                          <p className="flex-1">{error}</p>
+                          <button type="button" onClick={() => setError(null)} className="text-[#fca5a5] hover:text-white">
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
+
+                      <div className="ail-scroll">
+                        {!activeSession ? (
+                          <div className="ail-empty">
+                            <div className="src-empty-ico">
+                              <Bot className="w-7 h-7" />
+                            </div>
+                            <p className="dash-empty-title" style={{ fontSize: '1rem', marginBottom: '0.35rem' }}>
+                              AI Pair Programming
+                            </p>
+                            <p className="dash-empty-sub" style={{ maxWidth: '26rem', lineHeight: '1.5', marginBottom: '1.5rem' }}>
+                              Get real-time coding assistance from AI. Start a new session to begin pairing.
+                            </p>
+                            <button
+                              type="button"
+                              onClick={openNewSessionModal}
+                              className="btn-workspace btn-primary"
+                            >
+                              <Plus className="w-4 h-4" />
+                              Start New Session
+                            </button>
+                          </div>
                         ) : (
-                          <span>Enter to send · Shift+Enter for newline</span>
+                          <>
+                            {messages.map((msg, i) => (
+                              msg.role === 'user' ? (
+                                <div key={i} className="ail-msg-row is-user">
+                                  <div className="ail-bubble ail-bubble-user">
+                                    <div className="ail-msg-head">
+                                      <span className="ail-msg-who">You</span>
+                                    </div>
+                                    <span>{msg.content}</span>
+                                    {msg.codeChanges && msg.codeChanges.length > 0 && (
+                                      msg.codeChanges.map((change, ci) => <ChangeBlock key={`u${i}-${ci}`} change={change} />)
+                                    )}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div key={i} className="ail-msg-row">
+                                  <div className="ail-bubble ail-bubble-ai">
+                                    <div className="ail-msg-head">
+                                      <Bot className="w-3.5 h-3.5" style={{ color: '#2fd6e6' }} />
+                                      <span className="ail-msg-who">AI</span>
+                                    </div>
+                                    {renderCodeBlocks(msg.content, `a${i}`)}
+                                    {msg.agentSteps && msg.agentSteps.length > 0 && (
+                                      <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                                        {msg.agentSteps.map((s, si) => (
+                                          <div key={si} style={{ fontSize: '0.75rem', color: '#a8adba', display: 'flex', gap: '0.4rem' }}>
+                                            <span className="mkt-mono" style={{ color: s.success === false ? '#f87171' : '#2fd6e6' }}>
+                                              {s.success === false ? '✕' : '✓'}
+                                            </span>
+                                            <span>Step {s.step}: {s.tool || 'Agent action'} {s.success === false ? 'needs attention' : 'completed'}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                    {msg.codeChanges && msg.codeChanges.length > 0 && (
+                                      msg.codeChanges.map((change, ci) => <ChangeBlock key={`${i}-${ci}`} change={change} />)
+                                    )}
+                                  </div>
+                                </div>
+                              )
+                            ))}
+                            {loading && (
+                              <>
+                                {agentMode && agentSteps.length > 0 ? (
+                                  <div className="ail-msg-row">
+                                    <div className="ail-bubble ail-bubble-ai" style={{ width: '100%' }}>
+                                      <div className="ail-msg-head">
+                                        <Bot className="w-3.5 h-3.5" style={{ color: '#2fd6e6' }} />
+                                        <span className="ail-msg-who">Agent working...</span>
+                                      </div>
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.5rem' }}>
+                                        {agentSteps.filter((s) => ['thinking', 'iteration', 'result', 'done'].includes(s.type)).map((s, idx) => {
+                                          const isCompleteEvent = s.type === 'result' || s.type === 'done';
+                                          const succeeded = s.type === 'done' ? s.success : s.result?.success;
+                                          const ProgressIcon = isCompleteEvent
+                                            ? (succeeded ? CheckCircle2 : XCircle)
+                                            : Loader2;
+                                          return (
+                                            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.78rem', color: isCompleteEvent && !succeeded ? '#f87171' : '#c8ccd4' }}>
+                                              <ProgressIcon className={`w-3 h-3 ${!isCompleteEvent ? 'animate-spin' : ''}`} style={{ color: isCompleteEvent ? (succeeded ? '#34d399' : '#f87171') : '#2fd6e6' }} />
+                                              <span className="mkt-mono">
+                                                {s.iteration ? `step ${s.iteration} · ` : ''}{getAgentProgressLabel(s)}
+                                              </span>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="ail-msg-row">
+                                    <div className="ail-thinking ail-typing">
+                                      <Loader2 className="w-4 h-4 animate-spin" style={{ color: '#2fd6e6' }} />
+                                      <span className="ail-msg-who">{agentMode ? 'Agent thinking...' : 'Thinking...'}</span>
+                                    </div>
+                                  </div>
+                                )}
+                              </>
+                            )}
+                            <div ref={messagesEndRef} />
+                          </>
                         )}
-                        <span className="ml-auto">
-                          {aiLimit === Infinity ? 'Unlimited messages' : `${remaining}/${aiLimit} messages today`}
-                        </span>
                       </div>
-                    </form>
-                  )}
-                </div>
-                <AgentOperationsPanel
-                  session={activeSession}
-                  agentMode={agentMode}
-                  onToggleMode={toggleAgentMode}
-                  loading={loading}
-                  steps={agentSteps}
-                  messages={messages}
-                  remaining={remaining}
-                  aiLimit={aiLimit}
-                />
+
+                      {activeSession && (
+                        <form onSubmit={handleSend} className="ail-composer">
+                          <div className="ail-composer-mode">
+                            <span className={`ail-composer-mode-indicator ${agentMode ? 'is-agent' : ''}`} />
+                            <span>{agentMode ? 'Autonomous agent enabled' : 'Pair assistant enabled'}</span>
+                            <span className="ail-composer-mode-hint">{agentMode ? 'Progress and tool activity appear in Agent operations.' : 'Enable agent mode for multi-step repository tasks.'}</span>
+                          </div>
+                          <div className="ail-field">
+                            <textarea
+                              value={input}
+                              onChange={(e) => setInput(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(e); } }}
+                              placeholder="Ask AI anything about your code..."
+                              rows={1}
+                              disabled={loading || remaining <= 0}
+                            />
+                            <button
+                              type="submit"
+                              disabled={!input.trim() || loading || remaining <= 0}
+                              className="btn-workspace btn-primary"
+                              title="Send"
+                              style={{ minHeight: '46px' }}
+                            >
+                              <Send className="w-4 h-4" />
+                            </button>
+                          </div>
+                          <div className="ail-composer-note">
+                            {remaining <= 0 ? (
+                              <>
+                                <AlertCircle className="w-3 h-3 ail-limit" />
+                                <span className="ail-limit">Message limit reached for this session</span>
+                              </>
+                            ) : (
+                              <span>Enter to send · Shift+Enter for newline</span>
+                            )}
+                            <span className="ml-auto">
+                              {aiLimit === Infinity ? 'Unlimited messages' : `${remaining}/${aiLimit} messages today`}
+                            </span>
+                          </div>
+                        </form>
+                      )}
+                    </div>
+                    <AgentOperationsPanel
+                      session={activeSession}
+                      agentMode={agentMode}
+                      onToggleMode={toggleAgentMode}
+                      loading={loading}
+                      steps={agentSteps}
+                      messages={messages}
+                      remaining={remaining}
+                      aiLimit={aiLimit}
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
             )}
-          </div>
         </main>
       </div>
 

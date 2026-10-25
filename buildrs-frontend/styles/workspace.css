@@ -13191,3 +13191,1172 @@
     flex: 1;
   }
 }
+
+/* ---- AI Agent session console ----------------------------------------- */
+
+.ail-workspace-content {
+  padding: 0.9rem 1rem 1rem;
+}
+
+.ail-workspace-content > .ail-view-tabs {
+  align-self: flex-start;
+  margin: 0 0 0.65rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.ail-workspace-content > .ail-view-tabs .ail-view-tab {
+  min-height: 2rem;
+  padding: 0.35rem 0.65rem;
+  border-radius: 6px;
+  font-size: 0.68rem;
+}
+
+.ail-model-button {
+  min-height: 2.45rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0 1rem;
+  border: 1px solid rgba(47, 214, 230, 0.48);
+  border-radius: 8px;
+  background: transparent;
+  color: #d5e3eb;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: not-allowed;
+  opacity: 0.78;
+}
+
+.ail-agent-dashboard {
+  min-height: 0;
+}
+
+.ail-agent-frame {
+  display: grid;
+  min-height: 480px;
+  height: calc(100vh - 230px);
+  overflow: hidden;
+  grid-template-columns: 225px minmax(0, 1fr);
+  border: 1px solid rgba(100, 129, 153, 0.2);
+  background: #080d13;
+}
+
+.ail-agent-sessions {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  border-right: 1px solid rgba(100, 129, 153, 0.2);
+  background: #0b1118;
+}
+
+.ail-agent-sessions-heading {
+  display: flex;
+  min-height: 50px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.55rem 0.65rem;
+  border-bottom: 1px solid rgba(100, 129, 153, 0.18);
+}
+
+.ail-agent-sessions-heading h2 {
+  margin: 0;
+  color: #c7d0db;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.ail-agent-sessions-heading p {
+  margin: 0.15rem 0 0;
+  color: #718091;
+  font-size: 0.58rem;
+}
+
+.ail-agent-sessions-heading button {
+  display: grid;
+  width: 1.7rem;
+  height: 1.7rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgba(100, 129, 153, 0.2);
+  border-radius: 6px;
+  background: #101923;
+  color: #9ba9b8;
+  cursor: pointer;
+}
+
+.ail-agent-sessions-heading button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.ail-agent-sessions-heading button svg {
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+.ail-agent-session-list {
+  min-height: 0;
+  overflow: auto;
+  padding: 0.5rem;
+}
+
+.ail-agent-session {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  gap: 0.5rem;
+  padding: 0.62rem 0.55rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ail-agent-session + .ail-agent-session {
+  margin-top: 0.25rem;
+}
+
+.ail-agent-session:hover {
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.ail-agent-session.is-selected {
+  border-color: rgba(47, 214, 230, 0.22);
+  background: rgba(12, 48, 55, 0.35);
+}
+
+.ail-agent-session-dot {
+  width: 0.4rem;
+  height: 0.4rem;
+  flex: 0 0 auto;
+  margin-top: 0.18rem;
+  border-radius: 50%;
+}
+
+.ail-agent-session-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.28rem;
+}
+
+.ail-agent-session-copy > strong {
+  overflow: hidden;
+  color: #dce5ed;
+  font-size: 0.66rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ail-agent-branch {
+  overflow: hidden;
+  color: #718091;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.53rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ail-agent-session-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.3rem;
+  color: #718091;
+  font-size: 0.5rem;
+}
+
+.ail-agent-status {
+  display: inline-flex;
+  max-width: 60%;
+  overflow: hidden;
+  align-items: center;
+  padding: 0.12rem 0.3rem;
+  border: 1px solid;
+  border-radius: 999px;
+  font-size: 0.48rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ail-agent-list-empty {
+  padding: 2rem 0.8rem;
+  color: #718091;
+  font-size: 0.68rem;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.ail-agent-detail {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  background: #080d13;
+}
+
+.ail-agent-empty {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  padding: 2rem;
+  text-align: center;
+}
+
+.ail-agent-empty > svg {
+  width: 2rem;
+  height: 2rem;
+  margin-bottom: 0.4rem;
+  color: #2fd6e6;
+}
+
+.ail-agent-empty > strong {
+  color: #e4ebf2;
+  font-size: 0.9rem;
+}
+
+.ail-agent-empty > span {
+  max-width: 24rem;
+  color: #8996a5;
+  font-size: 0.72rem;
+}
+
+.ail-agent-empty > button {
+  margin-top: 0.65rem;
+}
+
+.ail-agent-run-header {
+  flex: 0 0 auto;
+  padding: 0.8rem 0.95rem 0.65rem;
+  border-bottom: 1px solid rgba(100, 129, 153, 0.18);
+  background: #0b1118;
+}
+
+.ail-agent-run-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.ail-agent-run-title > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.ail-agent-run-title h2 {
+  overflow: hidden;
+  margin: 0;
+  color: #e5edf4;
+  font-size: 0.82rem;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ail-agent-run-title p {
+  overflow: hidden;
+  margin: 0.15rem 0 0;
+  color: #718091;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.53rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ail-agent-run-title .ail-agent-running {
+  flex: 0 0 auto;
+  max-width: none;
+  font-size: 0.52rem;
+}
+
+.ail-agent-run-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+  margin: 0.65rem 0 0 0.95rem;
+  color: #8290a0;
+  font-size: 0.53rem;
+}
+
+.ail-agent-run-meta > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+}
+
+.ail-agent-run-meta svg {
+  width: 0.7rem;
+  height: 0.7rem;
+  color: #47c8d4;
+}
+
+.ail-agent-progress {
+  height: 3px;
+  overflow: hidden;
+  margin: 0.65rem 0 0 0.95rem;
+  border-radius: 99px;
+  background: rgba(123, 145, 164, 0.18);
+}
+
+.ail-agent-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #18d1dc;
+  transition: width 0.3s ease;
+}
+
+.ail-agent-progress.is-indeterminate span {
+  animation: ail-agent-progress 1.7s ease-in-out infinite;
+}
+
+.ail-agent-tabs {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.95rem;
+  padding: 0 0.95rem;
+  border-bottom: 1px solid rgba(100, 129, 153, 0.18);
+}
+
+.ail-agent-tabs button {
+  display: inline-flex;
+  min-height: 2rem;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: #8290a0;
+  font-size: 0.63rem;
+  cursor: pointer;
+}
+
+.ail-agent-tabs button.is-active {
+  border-bottom-color: #17d1dc;
+  color: #e0edf4;
+}
+
+.ail-agent-tabs button svg {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+.ail-agent-tabs button.is-active svg {
+  color: #17d1dc;
+}
+
+.ail-agent-tab-panel {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+}
+
+.ail-agent-terminal {
+  min-height: 100%;
+  padding: 0.55rem 0.7rem;
+  background: #070b10;
+  font-family: var(--font-mono, Consolas, monospace);
+}
+
+.ail-agent-log {
+  display: grid;
+  grid-template-columns: 3.1rem 0.65rem minmax(0, 1fr);
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0.23rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.025);
+  color: #b9c7d2;
+  font-size: 0.57rem;
+  line-height: 1.45;
+}
+
+.ail-agent-log time {
+  color: #61778a;
+}
+
+.ail-agent-log-marker {
+  color: #16d7c7;
+}
+
+.ail-agent-log-created,
+.ail-agent-log-success {
+  color: #18d8c0;
+}
+
+.ail-agent-log-error,
+.ail-agent-log-failed {
+  color: #f87171;
+}
+
+.ail-agent-log-warning {
+  color: #e8b93f;
+}
+
+.ail-agent-terminal-empty {
+  max-width: 52rem;
+  color: #91a0ad;
+  font-size: 0.64rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.ail-agent-terminal-cursor {
+  display: block;
+  width: 0.28rem;
+  height: 0.55rem;
+  margin: 0.4rem 0 0 3.55rem;
+  background: #17d1dc;
+  animation: ail-pulse 1s steps(2, start) infinite;
+}
+
+.ail-agent-diff,
+.ail-agent-validation {
+  padding: 0.9rem;
+  color: #b9c7d2;
+  font-size: 0.65rem;
+}
+
+.ail-agent-diff > pre {
+  overflow: auto;
+  padding: 0.65rem;
+  border: 1px solid rgba(100, 129, 153, 0.18);
+  background: #070b10;
+  color: #bdc9d4;
+  white-space: pre-wrap;
+}
+
+.ail-agent-diff ul {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ail-agent-diff li {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid rgba(100, 129, 153, 0.14);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.ail-agent-diff li svg {
+  width: 0.75rem;
+  height: 0.75rem;
+  color: #17d1dc;
+}
+
+.ail-agent-validation > section {
+  margin-bottom: 0.65rem;
+  padding: 0.7rem;
+  border: 1px solid rgba(100, 129, 153, 0.18);
+}
+
+.ail-agent-validation > section > header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-bottom: 0.55rem;
+}
+
+.ail-agent-validation p {
+  display: flex;
+  gap: 0.45rem;
+  margin: 0.4rem 0;
+}
+
+.ail-agent-validation small {
+  color: #718091;
+}
+
+.ail-agent-validation-command {
+  color: #e5b84a;
+}
+
+.ail-agent-run-footer {
+  flex: 0 0 auto;
+  padding: 0.65rem 0.9rem;
+  border-top: 1px solid rgba(100, 129, 153, 0.18);
+  background: #0a1017;
+}
+
+.ail-agent-followup {
+  display: flex;
+  gap: 0.45rem;
+  margin-bottom: 0.55rem;
+}
+
+.ail-agent-run-footer > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  color: #718091;
+  font-size: 0.54rem;
+}
+
+.ail-agent-review-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.ail-agent-review-actions .btn-workspace {
+  min-height: 1.9rem;
+  padding: 0 0.55rem;
+  font-size: 0.58rem;
+}
+
+.ail-agent-review-note {
+  margin: 0.5rem 0 0;
+  color: #e5b84a;
+  font-size: 0.58rem;
+}
+
+@keyframes ail-agent-progress {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(250%); }
+}
+
+@media (max-width: 900px) {
+  .ail-agent-frame {
+    height: calc(100vh - 230px);
+    grid-template-columns: 190px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .ail-workspace-content {
+    padding: 0.65rem;
+  }
+
+  .ail-workspace-content > .ail-view-tabs {
+    width: 100%;
+  }
+
+  .ail-workspace-content > .ail-view-tabs .ail-view-tab {
+    flex: 1;
+  }
+
+  .ail-agent-frame {
+    height: auto;
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ail-agent-sessions {
+    max-height: 190px;
+    border-right: 0;
+    border-bottom: 1px solid rgba(100, 129, 153, 0.2);
+  }
+
+  .ail-agent-session-list {
+    display: flex;
+    overflow: auto;
+    gap: 0.35rem;
+  }
+
+  .ail-agent-session {
+    width: 220px;
+    flex: 0 0 220px;
+  }
+
+  .ail-agent-detail {
+    min-height: 65vh;
+  }
+
+  .ail-agent-run-footer > div {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+/* Match the AI Agent page to its app-shell reference layout. */
+.ail-agent-page {
+  min-height: 100dvh;
+  background: #0e1118;
+}
+
+.ail-agent-page .ail-global-header {
+  position: fixed;
+  z-index: 60;
+  top: 0;
+  right: 0;
+  left: 0;
+  display: flex;
+  height: 64px;
+  align-items: center;
+  gap: 1.75rem;
+  padding: 0 13px;
+  border-bottom: 1px solid rgba(100, 129, 153, 0.2);
+  background: #090d13;
+}
+
+.ail-agent-page .ail-global-brand {
+  display: flex;
+  width: var(--ws-sidebar-width);
+  flex: 0 0 var(--ws-sidebar-width);
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.ail-agent-page .ail-global-brand img {
+  width: 56px;
+  height: 38px;
+  object-fit: contain;
+}
+
+.ail-agent-page .ail-global-brand strong {
+  color: #e9f2f7;
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.ail-agent-page .ail-global-brand strong span {
+  color: #17d1dc;
+}
+
+.ail-agent-page .ail-global-tools {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.ail-agent-page .ail-branch-selector {
+  display: flex;
+  min-width: 0;
+  width: 185px;
+  height: 30px;
+  flex: 0 1 185px;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0 0.6rem;
+  border: 1px solid rgba(68, 117, 151, 0.42);
+  border-radius: 999px;
+  background: #121a27;
+  color: #a5b1c0;
+  font-size: 0.62rem;
+}
+
+.ail-agent-page .ail-branch-selector span {
+  overflow: hidden;
+  flex: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ail-agent-page .ail-branch-selector svg:first-child {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+.ail-agent-page .ail-branch-selector svg:last-child {
+  width: 0.7rem;
+  height: 0.7rem;
+  flex: 0 0 auto;
+}
+
+.ail-agent-page .ail-global-chip {
+  display: inline-flex;
+  height: 18px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0 0.55rem;
+  border: 1px solid;
+  border-radius: 999px;
+  font-size: 0.55rem;
+  white-space: nowrap;
+}
+
+.ail-agent-page .ail-global-chip i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+}
+
+.ail-agent-page .ail-global-chip.is-ci {
+  border-color: rgba(27, 177, 54, 0.6);
+  background: rgba(20, 106, 35, 0.22);
+  color: #54d468;
+}
+
+.ail-agent-page .ail-global-chip.is-ci i {
+  background: #36da58;
+}
+
+.ail-agent-page .ail-global-chip.is-staging {
+  border-color: rgba(31, 115, 237, 0.56);
+  background: rgba(20, 69, 135, 0.2);
+  color: #78aaff;
+}
+
+.ail-agent-page .ail-global-chip.is-staging i {
+  background: #438bff;
+}
+
+.ail-agent-page .ail-global-search {
+  display: flex;
+  min-width: 90px;
+  max-width: 245px;
+  height: 32px;
+  flex: 1 1 190px;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+  padding: 0 0.65rem;
+  border: 1px solid rgba(68, 117, 151, 0.36);
+  border-radius: 999px;
+  background: #1b2434;
+}
+
+.ail-agent-page .ail-global-search svg {
+  width: 0.9rem;
+  height: 0.9rem;
+  flex: 0 0 auto;
+  color: #91a2b5;
+}
+
+.ail-agent-page .ail-global-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #d5e1eb;
+  font-size: 0.65rem;
+}
+
+.ail-agent-page .ail-global-search input::placeholder {
+  color: #7f8da0;
+}
+
+.ail-agent-page .notif-bell-wrap {
+  flex: 0 0 auto;
+}
+
+.ail-agent-page .ail-global-avatar {
+  display: grid;
+  width: 37px;
+  height: 37px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid #35e0e5;
+  border-radius: 50%;
+  background: linear-gradient(145deg, #37e4df, #19aabc);
+  color: #05232b;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.ail-agent-page .workspace-sidebar {
+  z-index: 50;
+  top: 64px;
+  width: var(--ws-sidebar-width);
+  transform: none;
+  border-right-color: rgba(100, 129, 153, 0.14);
+  background: #0a0e14;
+}
+
+.ail-agent-page .sidebar-logo,
+.ail-agent-page .sidebar-user {
+  display: none;
+}
+
+.ail-agent-page .sidebar-nav {
+  padding: 2.8rem 0.75rem 0.6rem;
+  gap: 0;
+}
+
+.ail-agent-page .sidebar-nav > div {
+  margin-bottom: 1rem;
+}
+
+.ail-agent-page .sidebar-nav-section {
+  margin: 0.875rem 0.75rem 0.25rem;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+}
+
+.ail-agent-page .sidebar-nav-item {
+  gap: 0.625rem;
+  padding: 0.5rem 0.625rem;
+  border-radius: 7px;
+  color: #e2e6eb;
+  font-size: 0.8125rem;
+}
+
+.ail-agent-page .sidebar-nav-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.ail-agent-page .sidebar-nav-item.active {
+  background: rgba(13, 189, 203, 0.14);
+  color: #16d1dc;
+}
+
+.ail-agent-page .ail-sidebar-back {
+  position: fixed;
+  z-index: 55;
+  top: 74px;
+  left: 10px;
+  display: grid;
+  width: 27px;
+  height: 27px;
+  place-items: center;
+  border: 1px solid rgba(126, 147, 168, 0.15);
+  border-radius: 50%;
+  background: #1b2533;
+  color: #d8e1ea;
+  cursor: pointer;
+}
+
+.ail-agent-page .ail-sidebar-back svg {
+  width: 15px;
+  height: 15px;
+}
+
+.ail-agent-page .workspace-main {
+  min-width: 0;
+  min-height: 100dvh;
+  margin-left: var(--ws-sidebar-width);
+  padding-top: 64px;
+  background: #0e1118;
+}
+
+.ail-agent-page .workspace-header.dash-header {
+  position: relative;
+  top: auto;
+  z-index: 10;
+  min-height: 104px;
+  padding: 15px;
+  border-bottom: 1px solid rgba(100, 129, 153, 0.15);
+  background: #0e1118;
+  backdrop-filter: none;
+}
+
+.ail-agent-page .ail-model-button:disabled {
+  opacity: 1;
+  cursor: not-allowed;
+}
+
+.ail-agent-page .dash-crumb {
+  margin-bottom: 0.45rem;
+  color: #1ad5df;
+  font-size: 0.54rem;
+  font-weight: 700;
+}
+
+.ail-agent-page .dash-crumb .sep {
+  color: #506171;
+}
+
+.ail-agent-page .dash-title {
+  margin: 0;
+  color: #f0f3f7;
+  font-size: 1.35rem;
+  font-weight: 650;
+}
+
+.ail-agent-page .dash-statusline {
+  margin-top: 0.36rem;
+  color: #718091;
+  font-size: 0.64rem;
+}
+
+.ail-agent-page .ail-workspace-content {
+  min-height: 0;
+  height: calc(100dvh - 168px);
+  flex: 1 1 auto;
+  padding: 0 26px 19px 15px;
+}
+
+.ail-agent-page .ail-agent-dashboard {
+  display: flex;
+}
+
+.ail-agent-page .ail-agent-frame {
+  width: 100%;
+  min-height: 0;
+  height: auto;
+  flex: 1;
+  grid-template-columns: 225px minmax(0, 1fr);
+  border: 0;
+  border-radius: 0;
+  background: #080d13;
+}
+
+.ail-agent-page .ail-agent-sessions {
+  border-right-color: rgba(100, 129, 153, 0.18);
+  background: #0b1118;
+}
+
+.ail-agent-page .ail-agent-sessions-heading {
+  min-height: 51px;
+  padding: 0.4rem 0.7rem;
+  border-bottom-color: rgba(100, 129, 153, 0.16);
+}
+
+.ail-agent-page .ail-agent-sessions-heading h2 {
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.ail-agent-page .ail-agent-sessions-heading p {
+  margin-top: 0.12rem;
+  font-size: 0.59rem;
+}
+
+.ail-agent-page .ail-agent-session-list {
+  padding: 0.5rem 0.65rem;
+}
+
+.ail-agent-page .ail-agent-session {
+  min-height: 82px;
+  gap: 0.45rem;
+  padding: 0.55rem 0.48rem;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: #0e151d;
+}
+
+.ail-agent-page .ail-agent-session + .ail-agent-session {
+  margin-top: 0.45rem;
+}
+
+.ail-agent-page .ail-agent-session.is-selected {
+  border-color: rgba(19, 205, 214, 0.3);
+  background: #0b1a20;
+  box-shadow: none;
+}
+
+.ail-agent-page .ail-agent-session-copy {
+  gap: 0.22rem;
+}
+
+.ail-agent-page .ail-agent-session-copy > strong {
+  font-size: 0.64rem;
+}
+
+.ail-agent-page .ail-agent-branch {
+  font-size: 0.51rem;
+}
+
+.ail-agent-page .ail-agent-session-meta {
+  margin-top: 0.12rem;
+  font-size: 0.48rem;
+}
+
+.ail-agent-page .ail-agent-status {
+  padding: 0.1rem 0.28rem;
+}
+
+.ail-agent-page .ail-agent-run-header {
+  padding: 0.75rem 0.8rem 0.55rem;
+  border-bottom: 0;
+  background: #0b1118;
+}
+
+.ail-agent-page .ail-agent-run-title {
+  gap: 0.48rem;
+}
+
+.ail-agent-page .ail-agent-run-title h2 {
+  font-size: 0.8rem;
+}
+
+.ail-agent-page .ail-agent-run-title p {
+  margin-top: 0.12rem;
+  font-size: 0.5rem;
+}
+
+.ail-agent-page .ail-agent-run-title .ail-agent-running {
+  padding: 0.12rem 0.35rem;
+  border-color: rgba(22, 209, 220, 0.3);
+  background: rgba(22, 209, 220, 0.08);
+}
+
+.ail-agent-page .ail-agent-run-meta {
+  display: flex;
+  gap: 1.15rem;
+  margin: 0.52rem 0 0 0.9rem;
+  color: #8a98a7;
+  font-size: 0.5rem;
+}
+
+.ail-agent-page .ail-agent-run-meta > span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.12rem;
+}
+
+.ail-agent-page .ail-agent-run-meta small {
+  color: #5f6e7c;
+  font-size: 0.43rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.ail-agent-page .ail-agent-run-meta strong {
+  overflow: hidden;
+  max-width: 10rem;
+  color: #aab7c3;
+  font-size: 0.52rem;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ail-agent-page .ail-agent-progress {
+  height: 3px;
+  margin: 0.55rem 0 0 0.9rem;
+}
+
+.ail-agent-page .ail-agent-tabs {
+  gap: 0.85rem;
+  padding: 0 0.8rem;
+}
+
+.ail-agent-page .ail-agent-tabs button {
+  min-height: 2rem;
+  gap: 0;
+  font-size: 0.65rem;
+}
+
+.ail-agent-page .ail-agent-tabs button svg {
+  display: none;
+}
+
+.ail-agent-page .ail-agent-tab-panel {
+  background: #070b10;
+}
+
+.ail-agent-page .ail-agent-terminal {
+  padding: 0.3rem 0.65rem;
+  background: #070b10;
+}
+
+.ail-agent-page .ail-agent-log {
+  grid-template-columns: 3.35rem 0.55rem minmax(0, 1fr);
+  gap: 0.4rem;
+  padding: 0.19rem 0;
+  font-size: 0.53rem;
+}
+
+.ail-agent-page .ail-agent-log-created,
+.ail-agent-page .ail-agent-log-success,
+.ail-agent-page .ail-agent-log-tool {
+  color: #08d6be;
+}
+
+.ail-agent-page .ail-agent-log-info,
+.ail-agent-page .ail-agent-log-progress {
+  color: #94a1ae;
+}
+
+.ail-agent-page .ail-agent-log-warning {
+  color: #e5b84a;
+}
+
+.ail-agent-page .ail-agent-log-test {
+  color: #2797fa;
+}
+
+.ail-agent-page .ail-agent-terminal-cursor {
+  margin-left: 3.95rem;
+}
+
+@media (max-width: 1024px) {
+  .ail-agent-page .workspace-sidebar {
+    transform: none;
+  }
+
+  .ail-agent-page .workspace-main {
+    margin-left: var(--ws-sidebar-width);
+  }
+}
+
+@media (max-width: 760px) {
+  .ail-agent-page .workspace-sidebar {
+    display: none;
+  }
+
+  .ail-agent-page .workspace-main {
+    margin-left: 0;
+  }
+
+  .ail-agent-page .ail-global-header {
+    gap: 0.5rem;
+  }
+
+  .ail-agent-page .ail-global-brand {
+    width: auto;
+    flex-basis: auto;
+  }
+
+  .ail-agent-page .ail-global-brand img {
+    width: 42px;
+  }
+
+  .ail-agent-page .ail-branch-selector,
+  .ail-agent-page .ail-global-chip {
+    display: none;
+  }
+
+  .ail-agent-page .ail-global-search {
+    max-width: none;
+  }
+
+  .ail-agent-page .ail-sidebar-back {
+    display: none;
+  }
+
+  .ail-agent-page .ail-workspace-content {
+    height: auto;
+    min-height: calc(100dvh - 168px);
+    padding: 0 0.65rem 0.65rem;
+  }
+
+  .ail-agent-page .ail-agent-frame {
+    min-height: 65vh;
+    grid-template-columns: 1fr;
+  }
+
+  .ail-agent-page .ail-agent-sessions {
+    max-height: 190px;
+  }
+
+  .ail-agent-page .ail-agent-session-list {
+    display: flex;
+    gap: 0.35rem;
+  }
+
+  .ail-agent-page .ail-agent-session {
+    width: 220px;
+    flex: 0 0 220px;
+  }
+
+  .ail-agent-page .ail-agent-detail {
+    min-height: 50vh;
+  }
+}
