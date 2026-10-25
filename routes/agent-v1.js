@@ -17,6 +17,7 @@ const { userCanAccessSpec, resolveAccessibleSpecs } = require('../utils/specAcce
 const realtimeBus = require('../utils/realtimeBus');
 const { Worker } = require('worker_threads');
 const path = require('path');
+const aiRouterService = require('../utils/aiRouterService');
 
 function spawnAgentWorker(executionId, taskId, workspaceId, specIds, provider, localPrivacyMode, timeoutMs = 900000) {
   return new Promise((resolve, reject) => {
@@ -92,7 +93,16 @@ function spawnAgentWorker(executionId, taskId, workspaceId, specIds, provider, l
 
 router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurrentJobs(), enforceTaskTimeout(), enforceCreditPool(), enforceCloudComputeLimit(), async (req, res) => {
   try {
-    const { taskId, taskTitle, sessionId, summary = '', provider = 'gemini', localPrivacyMode = false } = req.body;
+    const { taskId, taskTitle, sessionId, summary = '', provider: requestedProvider, localPrivacyMode: requestedLocalPrivacyMode = false } = req.body;
+    let provider;
+    let localPrivacyMode;
+    try {
+      const routing = aiRouterService.resolveRequestProvider(requestedProvider, requestedLocalPrivacyMode);
+      provider = routing.provider;
+      localPrivacyMode = routing.localPrivacyMode;
+    } catch (error) {
+      return res.status(503).json({ success: false, message: error.message });
+    }
 
     if (!taskId && !taskTitle) {
       return res.status(400).json({ success: false, message: 'taskId or taskTitle is required' });

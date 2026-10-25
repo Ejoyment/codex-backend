@@ -90,9 +90,11 @@ class AgentSocketHandler {
   }
 
   async handleDelegate(socket, data = {}) {
-    const { taskId, taskTitle, sessionId, workspaceId, summary = '', specId, provider = 'gemini', localPrivacyMode = false } = data;
+    const { taskId, taskTitle, sessionId, workspaceId, summary = '', specId, provider: requestedProvider, localPrivacyMode = false } = data;
 
     try {
+      const { provider, localPrivacyMode: effectiveLocalPrivacyMode } =
+        aiRouterService.resolveRequestProvider(requestedProvider, localPrivacyMode);
       // Access checks BEFORE any mutation (execution creation, task updates):
       // a client-supplied taskId/specId/workspaceId must belong to the caller.
       if (taskId) {
@@ -124,7 +126,7 @@ class AgentSocketHandler {
           specId: specId || null,
           source: 'agent:delegate',
           provider,
-          localPrivacyMode,
+          localPrivacyMode: effectiveLocalPrivacyMode,
         },
       });
 
@@ -172,7 +174,7 @@ class AgentSocketHandler {
         taskId,
         status: 'running',
         provider,
-        localPrivacyMode,
+        localPrivacyMode: effectiveLocalPrivacyMode,
       });
 
       socket.join(`task:${taskId}`);
@@ -184,7 +186,7 @@ class AgentSocketHandler {
         taskId,
       });
 
-      this.executionLoop(execution, taskId, workspaceId, specId, provider, localPrivacyMode, socket);
+      this.executionLoop(execution, taskId, workspaceId, specId, provider, effectiveLocalPrivacyMode, socket);
 
       // Provision container worker if Docker is available
       if (workspaceId) {
@@ -513,7 +515,7 @@ class AgentSocketHandler {
       { role: 'user', content: feedback },
     ];
 
-    const result = await aiRouterService.routeChat(messages, {}, { provider: execution.metadata?.provider || 'gemini' });
+    const result = await aiRouterService.routeChat(messages, {}, { provider: execution.metadata?.provider });
 
     if (result.success) {
       execution.logs.push({ timestamp: new Date(), message: 'Agent re-execution completed with feedback' });

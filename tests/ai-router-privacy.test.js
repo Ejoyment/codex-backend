@@ -1,9 +1,12 @@
 describe('AI router local privacy configuration', () => {
   const originalValue = process.env.LOCAL_PRIVACY_MODE;
+  const originalGeminiApiKey = process.env.GEMINI_API_KEY;
 
   afterEach(() => {
     if (originalValue === undefined) delete process.env.LOCAL_PRIVACY_MODE;
     else process.env.LOCAL_PRIVACY_MODE = originalValue;
+    if (originalGeminiApiKey === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = originalGeminiApiKey;
     jest.resetModules();
     jest.restoreAllMocks();
   });
@@ -53,6 +56,7 @@ describe('AI router local privacy configuration', () => {
 
   test('routes textual privacy flags according to their boolean value', async () => {
     delete process.env.LOCAL_PRIVACY_MODE;
+    process.env.GEMINI_API_KEY = 'test-gemini-key';
     jest.resetModules();
     const aiRouterService = require('../utils/aiRouterService');
     const local = jest.spyOn(aiRouterService, 'routeLocal').mockResolvedValue({ success: true });

@@ -1,7 +1,7 @@
 /**
  * Multi-AI Service
  * Supports: Gemini, Mistral AI, Groq, and more
- * Automatically falls back to available providers
+ * Automatic provider selection can fail over; explicit selections stay pinned.
  */
 
 const { GoogleGenerativeAI } = require('@google/generative-ai');
@@ -69,33 +69,26 @@ class AIService {
      * or aiRouterService's routing decision) takes precedence over the
      * process-wide default. Previously `chat()` read only `this.provider`,
      * so aiRouterService's `provider` argument was silently discarded and
-     * every request went to whichever provider happened to be configured —
-     * users picking Anthropic or OpenAI were served Gemini with no error.
+     * requests could be sent to a provider different from the caller's choice.
      */
     resolveProvider(requested) {
-        const candidates = [requested, this.provider];
-        let resolved = null;
-        for (const candidate of candidates) {
-            if (candidate && candidate !== 'auto' && this.providers[candidate]?.available) {
-                resolved = candidate;
-                break;
-            }
+        const configuredProvider = this.provider && this.provider !== 'auto'
+            ? this.provider
+            : null;
+        const provider = requested && requested !== 'auto'
+            ? requested
+            : configuredProvider || Object.keys(this.providers).find((key) => this.providers[key].available);
+
+        if (!provider) {
+            throw new Error('No AI provider configured. Please add an API key to the environment.');
         }
-        if (!resolved) {
-            resolved = Object.keys(this.providers).find((key) => this.providers[key].available);
+        if (!this.providers[provider]) {
+            throw new Error(`AI provider "${provider}" is not supported by this service.`);
         }
-        if (!resolved) {
-            throw new Error('No AI provider configured. Please add API keys to .env file.');
+        if (!this.providers[provider].available) {
+            throw new Error(`AI provider "${provider}" is selected but not configured. Add its API key or select an available provider.`);
         }
-        // A provider the caller asked for that this service cannot serve must
-        // never be substituted silently: clients (agent sockets read the name
-        // from user payloads) otherwise believe they got the model they picked.
-        if (requested && requested !== 'auto' && requested !== resolved) {
-            console.warn(
-                `[ai] provider "${requested}" is not implemented or not configured — using "${resolved}" instead`
-            );
-        }
-        return resolved;
+        return provider;
     }
 
     async chat(messages, codeContext = {}) {
@@ -148,6 +141,10 @@ class AIService {
             : AI_REQUEST_TIMEOUT_MS;
         const deadline = Date.now() + timeoutMs;
         const tried = Array.isArray(codeContext._tried) ? [...codeContext._tried] : [];
+        const allowProviderFallback = typeof codeContext.allowProviderFallback === 'boolean'
+            ? codeContext.allowProviderFallback
+            : !(codeContext.provider && codeContext.provider !== 'auto') &&
+                !(this.provider && this.provider !== 'auto');
         let lastError;
 
         while (provider) {
@@ -190,7 +187,7 @@ class AIService {
                 lastError = error;
                 tried.push(provider);
                 console.error(`Error with ${provider}:`, error?.message || String(error));
-                provider = this.getFallbackProvider(provider, tried);
+                provider = allowProviderFallback ? this.getFallbackProvider(provider, tried) : null;
             }
         }
 

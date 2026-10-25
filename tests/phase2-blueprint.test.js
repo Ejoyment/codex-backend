@@ -191,32 +191,18 @@ describe('Phase 2 - Spec-Driven & Autonomous Workflows', () => {
       expect(usage.totalInput).toBeDefined();
     });
 
-    test('should support Claude provider', () => {
+    test('does not advertise unimplemented Claude or GPT-4o providers', () => {
       const aiRouter = require('../utils/aiRouterService');
-      const provider = aiRouter.getProvider('claude-sonnet');
-      expect(provider).toBeDefined();
-      expect(provider.type).toBe('cloud');
+      expect(aiRouter.getProvider('claude-sonnet')).toBeNull();
+      expect(aiRouter.getProvider('gpt-4o')).toBeNull();
     });
 
-    test('should support GPT-4o provider', () => {
+    test('routes supported local providers outside the cloud provider registry', () => {
       const aiRouter = require('../utils/aiRouterService');
-      const provider = aiRouter.getProvider('gpt-4o');
-      expect(provider).toBeDefined();
-      expect(provider.type).toBe('cloud');
-    });
-
-    test('should support Ollama local provider', () => {
-      const aiRouter = require('../utils/aiRouterService');
-      const provider = aiRouter.getProvider('ollama');
-      expect(provider).toBeDefined();
-      expect(provider.type).toBe('local');
-    });
-
-    test('should support LM Studio local provider', () => {
-      const aiRouter = require('../utils/aiRouterService');
-      const provider = aiRouter.getProvider('lm-studio');
-      expect(provider).toBeDefined();
-      expect(provider.type).toBe('local');
+      expect(aiRouter.getProvider('ollama')).toBeNull();
+      expect(aiRouter.getProvider('lm-studio')).toBeNull();
+      expect(aiRouter.isLocalProvider('ollama')).toBe(true);
+      expect(aiRouter.isLocalProvider('lm-studio')).toBe(true);
     });
 
     test('should have isLocalProvider method', () => {
