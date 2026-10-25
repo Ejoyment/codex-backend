@@ -28,7 +28,7 @@ import AuthGuard from '../../components/AuthGuard';
 import Sidebar from '../../components/Sidebar';
 import TaskWorkspaceTopBar from '../../components/TaskWorkspaceTopBar';
 import { useCurrentCompany } from '../../hooks/useCurrentCompany';
-import { apiFetch, projectApi } from '../../lib/api';
+import { agentApi, apiFetch, projectApi } from '../../lib/api';
 import useAuthStore from '../../store/authStore';
 
 const STATUS_LABELS = {
@@ -147,6 +147,37 @@ export default function TaskDetails() {
   useEffect(() => {
     if (router.isReady) loadTask();
   }, [router.isReady, loadTask]);
+
+  useEffect(() => {
+    if (!task?.agentSessionId || !['queued', 'running'].includes(task.agentExecution?.status)) return undefined;
+    let active = true;
+    const refreshExecution = async () => {
+      try {
+        const result = await agentApi.status(task.id);
+        if (!active || result.success === false || !result.execution) return;
+        const execution = result.execution;
+        const lastFailure = [...(execution.terminalLog || [])].reverse()
+          .find((entry) => entry.type === 'error')?.message;
+        setTask((current) => current ? ({
+          ...current,
+          agentExecution: {
+            ...current.agentExecution,
+            status: execution.status === 'awaiting_review' ? 'awaiting_approval' : execution.status,
+            error: execution.status === 'failed' ? (execution.summary || lastFailure || 'The agent stopped without a detailed error.') : '',
+            logs: execution.logs || current.agentExecution?.logs || [],
+          },
+        }) : current);
+      } catch (statusError) {
+        console.error('Could not refresh delegated agent status:', statusError.message);
+      }
+    };
+    refreshExecution();
+    const intervalId = setInterval(refreshExecution, 5000);
+    return () => {
+      active = false;
+      clearInterval(intervalId);
+    };
+  }, [task?.agentSessionId, task?.agentExecution?.status, task?.id]);
 
   useEffect(() => {
     let active = true;
@@ -341,6 +372,13 @@ export default function TaskDetails() {
 
           <div className="workspace-content tsk-detail-content">
             {actionError && <div className="std-alert std-alert-error tsk-detail-alert">{actionError}<button type="button" className="ml-auto" onClick={() => setActionError('')} aria-label="Dismiss error"><X className="w-4 h-4" /></button></div>}
+            {task?.agentExecution?.status === 'failed' && (
+              <div className="std-alert std-alert-error tsk-detail-alert" role="alert">
+                <Bot className="h-4 w-4 flex-shrink-0" />
+                <span className="flex-1">Agent execution failed: {task.agentExecution.error || 'No failure details were saved.'}</span>
+                {task.agentSessionId && <Link href={`/ai-pair?executionId=${task.agentSessionId}`} className="text-xs underline">Open run logs</Link>}
+              </div>
+            )}
             {loading ? (
               <div className="tsk-detail-state"><Loader2 className="w-5 h-5 animate-spin" /> Loading task details...</div>
             ) : error ? (

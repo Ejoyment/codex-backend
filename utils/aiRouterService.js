@@ -1,7 +1,9 @@
+const { parsePrivacyMode } = require('./aiPrivacy');
+
 class AIRouterService {
   constructor() {
     this.defaultProvider = process.env.AI_PROVIDER || 'gemini';
-    this.localPrivacyMode = !!process.env.LOCAL_PRIVACY_MODE;
+    this.localPrivacyMode = parsePrivacyMode(process.env.LOCAL_PRIVACY_MODE);
     // Only providers utils/aiService can actually serve are listed here.
     // The previous registry also advertised claude-sonnet/gpt-4o/ollama/
     // lm-studio, none of which aiService implements — every selection of one
@@ -46,8 +48,15 @@ class AIRouterService {
   }
 
   setLocalPrivacyMode(enabled) {
-    this.localPrivacyMode = Boolean(enabled);
+    this.localPrivacyMode = parsePrivacyMode(enabled, this.localPrivacyMode);
     return this.localPrivacyMode;
+  }
+
+  resolveLocalProvider(requested) {
+    const candidate = requested || process.env.LOCAL_AI_PROVIDER || 'ollama';
+    if (candidate === 'ollama' || candidate === 'lm-studio') return candidate;
+    console.warn(`[ai] unsupported local provider "${candidate}"; using ollama`);
+    return 'ollama';
   }
 
   /**
@@ -72,16 +81,25 @@ class AIRouterService {
   }
 
   async routeChat(messages, codeContext = {}, options = {}) {
-    const { provider } = this.resolveProviderName(options.provider);
-    const localMode = options.localPrivacyMode ?? this.localPrivacyMode;
+    const requestedProvider = options.provider || codeContext.provider;
+    const isLocalProvider = requestedProvider === 'ollama' || requestedProvider === 'lm-studio';
+    const { provider } = isLocalProvider
+      ? { provider: requestedProvider }
+      : this.resolveProviderName(requestedProvider);
+    const localMode = parsePrivacyMode(process.env.LOCAL_PRIVACY_MODE) ||
+      parsePrivacyMode(options.localPrivacyMode, this.localPrivacyMode);
     const requestContext = {
       ...codeContext,
       ...(options.timeoutMs ? { timeoutMs: options.timeoutMs } : {}),
       ...(options.signal ? { signal: options.signal } : {}),
     };
 
-    if (localMode) {
-      return this.routeLocal(messages, requestContext, provider);
+    if (localMode || isLocalProvider) {
+      return this.routeLocal(
+        messages,
+        requestContext,
+        this.resolveLocalProvider(isLocalProvider ? provider : null)
+      );
     }
 
     return this.routeCloud(messages, requestContext, provider);
@@ -102,13 +120,20 @@ class AIRouterService {
   }
 
   async routeToProvider(messages, codeContext, providerName) {
-    const { provider } = this.resolveProviderName(providerName);
+    const isLocalProvider = providerName === 'ollama' || providerName === 'lm-studio';
+    const { provider } = isLocalProvider
+      ? { provider: providerName }
+      : this.resolveProviderName(providerName);
     if (!provider) {
       throw new Error('No AI provider configured. Please add API keys to .env file.');
     }
 
-    if (this.localPrivacyMode) {
-      return this.routeLocal(messages, codeContext, provider);
+    if (parsePrivacyMode(process.env.LOCAL_PRIVACY_MODE) || this.localPrivacyMode || isLocalProvider) {
+      return this.routeLocal(
+        messages,
+        codeContext,
+        this.resolveLocalProvider(isLocalProvider ? provider : null)
+      );
     }
 
     return this.routeCloud(messages, codeContext, provider);
@@ -161,8 +186,7 @@ class AIRouterService {
   }
 
   isLocalProvider(name) {
-    const provider = this.providers[name];
-    return provider && provider.type === 'local';
+    return name === 'ollama' || name === 'lm-studio';
   }
 }
 

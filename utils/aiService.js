@@ -5,6 +5,7 @@
  */
 
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { parsePrivacyMode } = require('./aiPrivacy');
 
 // Outbound LLM calls must stay bounded, including provider failover.
 const AI_REQUEST_TIMEOUT_MS = parseInt(process.env.AI_REQUEST_TIMEOUT_MS, 10) || 60000;
@@ -98,6 +99,42 @@ class AIService {
     }
 
     async chat(messages, codeContext = {}) {
+        if (!codeContext || typeof codeContext !== 'object' || Array.isArray(codeContext)) {
+            return { success: false, error: 'AI request context must be an object.' };
+        }
+        if (!Array.isArray(messages) || messages.length === 0) {
+            return { success: false, error: 'AI request requires at least one message.' };
+        }
+        const invalidMessage = messages.find((message) =>
+            !message ||
+            !['system', 'user', 'assistant'].includes(message.role) ||
+            typeof message.content !== 'string'
+        );
+        if (invalidMessage) {
+            return { success: false, error: 'AI messages must have a supported role and string content.' };
+        }
+        if (!messages.some((message) => message.role === 'user')) {
+            return { success: false, error: 'AI request requires at least one user message.' };
+        }
+
+        const requestedLocalProvider = ['ollama', 'lm-studio'].includes(codeContext.provider)
+            ? codeContext.provider
+            : null;
+        const localPrivacyMode =
+            parsePrivacyMode(process.env.LOCAL_PRIVACY_MODE) ||
+            parsePrivacyMode(codeContext.localPrivacyMode);
+        if (localPrivacyMode || requestedLocalProvider) {
+            const configuredLocalProvider = process.env.LOCAL_AI_PROVIDER || 'ollama';
+            const localProvider = requestedLocalProvider ||
+                (['ollama', 'lm-studio'].includes(configuredLocalProvider)
+                    ? configuredLocalProvider
+                    : 'ollama');
+            if (!requestedLocalProvider && configuredLocalProvider !== localProvider) {
+                console.warn(`[ai] unsupported local provider "${configuredLocalProvider}"; using ollama`);
+            }
+            return require('./localBridge').chat(messages, codeContext, localProvider);
+        }
+
         // Per-request provider from the router/caller.
         let provider;
         try {
@@ -226,8 +263,13 @@ Please:
             }
         });
 
-        const systemPrompt = this.buildSystemPrompt(codeContext);
-        const conversationHistory = this.formatMessagesForGemini(messages);
+        const systemMessages = messages
+            .filter((message) => message.role === 'system')
+            .map((message) => message.content);
+        const systemPrompt = [this.buildSystemPrompt(codeContext), ...systemMessages].join('\n\n');
+        const conversationHistory = this.formatMessagesForGemini(
+            messages.filter((message) => message.role !== 'system')
+        );
         const fullPrompt = `${systemPrompt}\n\n${conversationHistory}`;
 
         const result = await model.generateContent(fullPrompt, {
@@ -254,7 +296,7 @@ Please:
         const formattedMessages = [
             { role: 'system', content: systemPrompt },
             ...messages.map(m => ({
-                role: m.role === 'assistant' ? 'assistant' : 'user',
+                role: m.role,
                 content: m.content
             }))
         ];
@@ -299,15 +341,15 @@ Please:
         const formattedMessages = [
             { role: 'system', content: systemPrompt },
             ...messages.map(m => ({
-                role: m.role === 'assistant' ? 'assistant' : 'user',
+                role: m.role,
                 content: m.content
             }))
         ];
 
-        const isAgentRequest = codeContext.agentMode === true;
+        const isAgentReasoning = codeContext.agentReasoning === true;
         const isGptOss = String(config.model).includes('gpt-oss');
         const availableTools = Array.isArray(codeContext.availableTools) ? codeContext.availableTools : [];
-        const responseFormat = isAgentRequest && isGptOss
+        const responseFormat = isAgentReasoning && isGptOss
             ? {
                 type: 'json_schema',
                 json_schema: {
@@ -333,7 +375,7 @@ Please:
                     },
                 },
             }
-            : isAgentRequest
+            : isAgentReasoning
                 ? { type: 'json_object' }
                 : undefined;
         const response = await fetch(config.endpoint, {
@@ -378,9 +420,18 @@ Please:
     async chatHuggingFace(messages, codeContext) {
         const config = this.providers.huggingface;
         const systemPrompt = this.buildSystemPrompt(codeContext);
-        const lastMessage = messages[messages.length - 1];
-        
-        const prompt = `${systemPrompt}\n\nUser: ${lastMessage.content}\nAssistant:`;
+        const systemMessages = messages
+            .filter((message) => message.role === 'system')
+            .map((message) => message.content);
+        const conversation = messages
+            .filter((message) => message.role !== 'system')
+            .map((message) => `${message.role === 'assistant' ? 'Assistant' : 'User'}: ${message.content}`)
+            .join('\n\n');
+        const prompt = [
+            [systemPrompt, ...systemMessages].join('\n\n'),
+            conversation,
+            'Assistant:',
+        ].filter(Boolean).join('\n\n');
 
         const response = await fetch(config.endpoint + config.model, {
             method: 'POST',
@@ -405,7 +456,7 @@ Please:
         }
 
         const data = await response.json();
-        const text = Array.isArray(data) ? data[0].generated_text : data.generated_text;
+        const text = Array.isArray(data) ? data[0]?.generated_text : data?.generated_text;
 
         return {
             success: true,
@@ -435,7 +486,10 @@ Your capabilities:
 
         // Add agent mode instructions if enabled
         if (agentMode && instructions) {
-            prompt += `\n${instructions}\nDo not emit native tool or function calls. Describe the next tool action only in the requested JSON response; tools are executed by the application after validating that response.\n\n`;
+            prompt += `\n${instructions}\n`;
+            prompt += codeContext.agentReasoning
+                ? 'Do not emit native tool or function calls. Describe the next tool action only in the requested JSON response; tools are executed by the application after validating that response.\n\n'
+                : 'Do not emit native tool or function calls. Return the requested plan and file-level changes as message text.\n\n';
         }
 
         prompt += `Guidelines:

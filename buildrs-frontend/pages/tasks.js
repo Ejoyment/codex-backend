@@ -118,6 +118,55 @@ export default function Tasks() {
 
   useEffect(() => { loadTasks(); }, [loadTasks]);
 
+  const activeAgentTaskIds = tasks
+    .filter((task) => task.agentSessionId && ['queued', 'running'].includes(task.agentExecution?.status))
+    .map((task) => task.id)
+    .join(',');
+
+  useEffect(() => {
+    if (!activeAgentTaskIds) return undefined;
+    let active = true;
+    const refreshAgentStatuses = async () => {
+      const taskIds = activeAgentTaskIds.split(',');
+      const updates = await Promise.all(taskIds.map(async (taskId) => {
+        try {
+          const result = await apiFetch(`/api/v1/agent/status/${taskId}`);
+          if (!result.execution) return null;
+          const execution = result.execution;
+          const lastFailure = [...(execution.terminalLog || [])].reverse()
+            .find((entry) => entry.type === 'error')?.message;
+          return {
+            taskId,
+            status: execution.status === 'awaiting_review' ? 'awaiting_approval' : execution.status,
+            error: execution.status === 'failed'
+              ? (execution.summary || lastFailure || 'The agent stopped without a detailed error.')
+              : '',
+          };
+        } catch (statusError) {
+          console.error(`Could not refresh agent status for task ${taskId}:`, statusError.message);
+          return null;
+        }
+      }));
+      if (!active) return;
+      const byTaskId = new Map(updates.filter(Boolean).map((update) => [update.taskId, update]));
+      if (byTaskId.size) {
+        setTasks((current) => current.map((task) => {
+          const update = byTaskId.get(task.id);
+          return update ? {
+            ...task,
+            agentExecution: { ...task.agentExecution, status: update.status, error: update.error },
+          } : task;
+        }));
+      }
+    };
+    refreshAgentStatuses();
+    const intervalId = setInterval(refreshAgentStatuses, 5000);
+    return () => {
+      active = false;
+      clearInterval(intervalId);
+    };
+  }, [activeAgentTaskIds]);
+
   useEffect(() => {
     if (router.isReady && router.query.action === 'new') {
       setShowWizard(true);
@@ -230,7 +279,7 @@ export default function Tasks() {
     try {
       const result = await apiFetch('/api/v1/agent/delegate', {
         method: 'POST',
-        timeoutMs: 120000,
+        timeoutMs: 300000,
         body: JSON.stringify({ taskId: task.id, workspaceId: selectedCompany._id, specIds: task.specIds || [] }),
       });
       if (result.success) await loadTasks();
@@ -476,6 +525,7 @@ export default function Tasks() {
                                       <span className="tsk-assignee"><span className="tsk-assignee-avatar">{(assignee || (task.agentSessionId ? 'AI' : '?')).slice(0, 1).toUpperCase()}</span>{assignee || (task.agentSessionId ? 'AI Agent' : 'Unassigned')}</span>
                                       <span className={`tsk-agent-state ${task.agentSessionId ? 'is-running' : ''}`}>{task.agentSessionId ? task.agentExecution?.status || 'Agent running' : 'Ready for agent'}</span>
                                     </div>
+                                    {task.agentExecution?.status === 'failed' && <p className="tsk-create-error-note" role="alert">Agent failed: {task.agentExecution.error || 'Open task details for execution diagnostics.'}</p>}
                                     {isExpanded && <div className="tsk-card-details" onClick={(event) => event.stopPropagation()}>
                                       <div className="grid gap-6 lg:grid-cols-2">
                                         <section>

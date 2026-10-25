@@ -596,7 +596,26 @@ router.get('/session/:sessionId', authenticateToken, async (req, res) => {
 // Chat with AI (Enhanced with ReAct Agent Loop)
 router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req, res) => {
     try {
-        const { sessionId, message, codeContext = {}, enableActions = false, useAgentLoop = false, companyId, taskId, projectId } = req.body;
+        const { sessionId, message, codeContext = {}, enableActions = false, useAgentLoop = false, companyId, taskId, projectId } = req.body || {};
+
+        if (typeof message !== 'string' || !message.trim()) {
+            return res.status(400).json({
+                success: false,
+                message: 'A non-empty message is required.'
+            });
+        }
+        if (codeContext === null || typeof codeContext !== 'object' || Array.isArray(codeContext)) {
+            return res.status(400).json({
+                success: false,
+                message: 'codeContext must be an object.'
+            });
+        }
+        if (!sessionId || typeof sessionId !== 'string') {
+            return res.status(400).json({
+                success: false,
+                message: 'sessionId is required.'
+            });
+        }
         
         // Verify session belongs to user
         const session = await AIPairSession.findOne({
@@ -781,10 +800,16 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
         }
 
         // Standard chat mode (existing logic)
-        const history = await ChatMessage.find({ sessionId })
-            .sort({ createdAt: 1 })
+        const recentHistory = await ChatMessage.find({
+            sessionId,
+            userId: req.userId,
+            role: { $in: ['user', 'assistant'] }
+        })
+            .sort({ createdAt: -1, _id: -1 })
             .limit(20)
-            .select('role content');
+            .select('role content')
+            .lean();
+        const history = recentHistory.reverse();
 
         // Enhanced context with cross-tool AI context engine
         let teamConventionPrompt = '';

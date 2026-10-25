@@ -145,6 +145,19 @@ describe('stageChanges', () => {
     expect(result).toMatchObject({ success: false, error: 'boom' });
     expect(gitService.commitWorkingTree).not.toHaveBeenCalled();
   });
+
+  test('reports commit failures as unsuccessful staging', async () => {
+    gitService.writeWorkingTree.mockResolvedValue({ success: true, written: 1 });
+    gitService.commitWorkingTree.mockResolvedValue({ success: false, reason: 'nothing to commit' });
+
+    const result = await agentChangeSet.stageChanges('ws', [{ path: 'x', action: 'update', content: 'y' }]);
+
+    expect(result).toMatchObject({
+      success: false,
+      committed: false,
+      reason: 'nothing to commit',
+    });
+  });
 });
 
 describe('applyToVFS', () => {

@@ -43,6 +43,7 @@ const localTaskSchema = new mongoose.Schema({
             enum: ['idle', 'running', 'awaiting_approval', 'completed', 'failed', 'rejected'],
             default: 'idle'
         },
+        error: { type: String, default: '' },
         agentBranch: String,
         specRef: {
             type: mongoose.Schema.Types.ObjectId,

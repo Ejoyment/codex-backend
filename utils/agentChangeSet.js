@@ -279,9 +279,10 @@ async function stageChanges(workspaceId, changes, { message = 'Agent changes', b
   if (!write.success) return { success: false, error: write.error };
   const commit = await gitService.commitWorkingTree(workspaceId, message, branch);
   return {
-    success: true,
-    committed: commit.success,
+    success: Boolean(commit.success),
+    committed: Boolean(commit.success),
     commit: commit.commit || null,
+    error: commit.error || null,
     reason: commit.reason || null,
   };
 }
