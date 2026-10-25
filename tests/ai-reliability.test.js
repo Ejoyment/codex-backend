@@ -304,6 +304,20 @@ describe('AI request reliability', () => {
     expect(result.content).toBeUndefined();
   });
 
+  test('does not silently switch providers after an explicitly selected provider fails', async () => {
+    aiService.providers.groq.available = true;
+    const groqChat = jest.spyOn(aiService, 'chatGroq').mockRejectedValue(new Error('Groq unavailable'));
+    const geminiChat = jest.spyOn(aiService, 'chatGemini');
+
+    const result = await aiService.chat([
+      { role: 'user', content: 'Implement the requested change' },
+    ], { provider: 'groq', timeoutMs: 1000 });
+
+    expect(result).toEqual({ success: false, error: 'Groq unavailable' });
+    expect(groqChat).toHaveBeenCalledTimes(1);
+    expect(geminiChat).not.toHaveBeenCalled();
+  });
+
   test('aborts a stalled provider request at the configured deadline', async () => {
     mockGenerateContent.mockImplementation((prompt, { signal }) => new Promise((resolve, reject) => {
       signal.addEventListener('abort', () => reject(signal.reason), { once: true });

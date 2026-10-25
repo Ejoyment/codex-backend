@@ -2,15 +2,13 @@ const { parsePrivacyMode } = require('./aiPrivacy');
 
 class AIRouterService {
   constructor() {
-    this.defaultProvider = process.env.AI_PROVIDER || 'gemini';
     this.localPrivacyMode = parsePrivacyMode(process.env.LOCAL_PRIVACY_MODE);
     // Only providers utils/aiService can actually serve are listed here.
     // The previous registry also advertised claude-sonnet/gpt-4o/ollama/
     // lm-studio, none of which aiService implements — every selection of one
     // of those names was silently rerouted to the first configured provider
-    // (agent sockets and agent-v1 read `provider` from client payloads, so
-    // this was reachable by any signed-up account). Legacy names now resolve
-    // through resolveProviderName() and degrade with an explicit warning.
+    // (agent sockets and agent-v1 read `provider` from client payloads). Names
+    // this service cannot serve are rejected rather than silently substituted.
     this.providers = {
       gemini: {
         name: 'Google Gemini',
@@ -43,6 +41,9 @@ class AIRouterService {
         apiKey: process.env.HUGGINGFACE_API_KEY,
       },
     };
+    this.defaultProvider = process.env.AI_PROVIDER ||
+      Object.keys(this.providers).find((key) => this.providers[key].available) ||
+      null;
     this.tokenUsage = { totalInput: 0, totalOutput: 0 };
     this.rateLimitMap = new Map();
   }
@@ -60,55 +61,86 @@ class AIRouterService {
   }
 
   /**
-   * Resolve a possibly-legacy or unknown provider name to one this service can
-   * serve. Never reroutes silently: when the request cannot be honored the
-   * substitution is logged and reported via substitutedFrom.
+   * Resolve an explicit request, deployment preference, or configured provider.
+   * An explicit selection is never replaced by a different provider.
    */
   resolveProviderName(requested) {
-    if (!requested || requested === 'auto') {
-      return { provider: this.defaultProvider, substitutedFrom: null };
+    const requestedProvider = requested && requested !== 'auto' ? requested : null;
+    const configuredProvider = process.env.AI_PROVIDER && process.env.AI_PROVIDER !== 'auto'
+      ? process.env.AI_PROVIDER
+      : null;
+    const provider = requestedProvider || configuredProvider ||
+      Object.keys(this.providers).find((key) => this.providers[key].available);
+
+    if (!provider) {
+      throw new Error('No AI provider configured. Add an API key for Gemini, Mistral, Groq, or Hugging Face.');
     }
-    if (this.providers[requested]) {
-      return { provider: requested, substitutedFrom: null };
+    if (!this.providers[provider]) {
+      throw new Error(`AI provider "${provider}" is not supported. Choose a configured provider or set AI_PROVIDER to a supported provider.`);
     }
-    const fallback =
-      this.providers[this.defaultProvider] ? this.defaultProvider
-        : Object.keys(this.providers).find((key) => this.providers[key].available) || null;
-    console.warn(
-      `[ai] requested provider "${requested}" is not implemented by this service — using "${fallback || 'default'}" instead`
-    );
-    return { provider: fallback, substitutedFrom: requested };
+    if (!this.providers[provider].available) {
+      throw new Error(`AI provider "${provider}" is selected but not configured. Add its API key or select an available provider.`);
+    }
+    return { provider, substitutedFrom: null };
+  }
+
+  resolveRequestProvider(requested, localPrivacyMode) {
+    const localMode = parsePrivacyMode(process.env.LOCAL_PRIVACY_MODE) ||
+      parsePrivacyMode(localPrivacyMode, this.localPrivacyMode);
+    const isLocalProvider = requested === 'ollama' || requested === 'lm-studio';
+
+    if (localMode || isLocalProvider) {
+      return {
+        provider: this.resolveLocalProvider(isLocalProvider ? requested : null),
+        localPrivacyMode: localMode,
+      };
+    }
+
+    return {
+      ...this.resolveProviderName(requested),
+      localPrivacyMode: false,
+    };
+  }
+
+  hasExplicitProviderPreference(requested) {
+    const requestPreference = requested && requested !== 'auto';
+    const deploymentPreference = process.env.AI_PROVIDER && process.env.AI_PROVIDER !== 'auto';
+    return Boolean(requestPreference || deploymentPreference);
   }
 
   async routeChat(messages, codeContext = {}, options = {}) {
     const requestedProvider = options.provider || codeContext.provider;
-    const isLocalProvider = requestedProvider === 'ollama' || requestedProvider === 'lm-studio';
-    const { provider } = isLocalProvider
-      ? { provider: requestedProvider }
-      : this.resolveProviderName(requestedProvider);
-    const localMode = parsePrivacyMode(process.env.LOCAL_PRIVACY_MODE) ||
-      parsePrivacyMode(options.localPrivacyMode, this.localPrivacyMode);
+    const { provider, localPrivacyMode } = this.resolveRequestProvider(
+      requestedProvider,
+      options.localPrivacyMode
+    );
     const requestContext = {
       ...codeContext,
       ...(options.timeoutMs ? { timeoutMs: options.timeoutMs } : {}),
       ...(options.signal ? { signal: options.signal } : {}),
     };
 
-    if (localMode || isLocalProvider) {
-      return this.routeLocal(
-        messages,
-        requestContext,
-        this.resolveLocalProvider(isLocalProvider ? provider : null)
-      );
+    if (localPrivacyMode || this.isLocalProvider(provider)) {
+      return this.routeLocal(messages, requestContext, provider);
     }
 
-    return this.routeCloud(messages, requestContext, provider);
+    return this.routeCloud(
+      messages,
+      requestContext,
+      provider,
+      !this.hasExplicitProviderPreference(requestedProvider)
+    );
   }
 
-  async routeCloud(messages, codeContext, provider) {
+  async routeCloud(messages, codeContext, provider, allowProviderFallback = false) {
     this.checkRateLimit(provider);
     const aiService = require('./aiService');
-    const result = await aiService.chat(messages, { ...codeContext, localPrivacyMode: false, provider });
+    const result = await aiService.chat(messages, {
+      ...codeContext,
+      localPrivacyMode: false,
+      provider,
+      allowProviderFallback,
+    });
     this.trackTokenUsage(result);
     return result;
   }
@@ -120,23 +152,17 @@ class AIRouterService {
   }
 
   async routeToProvider(messages, codeContext, providerName) {
-    const isLocalProvider = providerName === 'ollama' || providerName === 'lm-studio';
-    const { provider } = isLocalProvider
-      ? { provider: providerName }
-      : this.resolveProviderName(providerName);
-    if (!provider) {
-      throw new Error('No AI provider configured. Please add API keys to .env file.');
+    const { provider, localPrivacyMode } = this.resolveRequestProvider(providerName);
+    if (localPrivacyMode || this.isLocalProvider(provider)) {
+      return this.routeLocal(messages, codeContext, provider);
     }
 
-    if (parsePrivacyMode(process.env.LOCAL_PRIVACY_MODE) || this.localPrivacyMode || isLocalProvider) {
-      return this.routeLocal(
-        messages,
-        codeContext,
-        this.resolveLocalProvider(isLocalProvider ? provider : null)
-      );
-    }
-
-    return this.routeCloud(messages, codeContext, provider);
+    return this.routeCloud(
+      messages,
+      codeContext,
+      provider,
+      !this.hasExplicitProviderPreference(providerName)
+    );
   }
 
   checkRateLimit(provider) {
