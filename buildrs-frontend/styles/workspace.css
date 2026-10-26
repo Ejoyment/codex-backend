@@ -31,9 +31,217 @@
   background: var(--ws-navy);
 }
 
+.workspace-global-header {
+  position: fixed;
+  z-index: 60;
+  top: 0;
+  right: 0;
+  left: 0;
+  display: flex;
+  height: 64px;
+  align-items: center;
+  gap: 1.75rem;
+  padding: 0 13px;
+  border-bottom: 1px solid rgba(100, 129, 153, 0.2);
+  background: #090d13;
+}
+
+.workspace-global-header .ail-global-brand {
+  display: flex;
+  width: var(--ws-sidebar-width);
+  flex: 0 0 var(--ws-sidebar-width);
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.workspace-global-header .ail-global-brand img {
+  width: 56px;
+  height: 38px;
+  object-fit: contain;
+}
+
+.workspace-global-header .ail-global-brand strong {
+  color: #e9f2f7;
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.workspace-global-header .ail-global-brand strong span {
+  color: #17d1dc;
+}
+
+.workspace-global-header .ail-global-tools {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.workspace-global-header .ail-branch-selector {
+  display: flex;
+  min-width: 0;
+  width: 185px;
+  height: 30px;
+  flex: 0 1 185px;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0 0.6rem;
+  border: 1px solid rgba(68, 117, 151, 0.42);
+  border-radius: 999px;
+  background: #121a27;
+  color: #a5b1c0;
+  font-size: 0.62rem;
+  cursor: pointer;
+}
+
+.workspace-global-header .ail-branch-selector:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
+.workspace-global-header .ail-branch-selector span {
+  overflow: hidden;
+  flex: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-global-header .ail-branch-selector svg:first-child {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+.workspace-global-header .ail-branch-selector svg:last-child {
+  width: 0.7rem;
+  height: 0.7rem;
+  flex: 0 0 auto;
+}
+
+.workspace-global-header .ail-global-chip {
+  display: inline-flex;
+  height: 18px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0 0.55rem;
+  border: 1px solid;
+  border-radius: 999px;
+  font-size: 0.55rem;
+  white-space: nowrap;
+}
+
+.workspace-global-header .ail-global-chip i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+}
+
+.workspace-global-header .ail-global-chip.is-ci {
+  border-color: rgba(27, 177, 54, 0.6);
+  background: rgba(20, 106, 35, 0.22);
+  color: #54d468;
+}
+
+.workspace-global-header .ail-global-chip.is-ci i {
+  background: #36da58;
+}
+
+.workspace-global-header .ail-global-chip.is-ci.is-error,
+.workspace-global-header .ail-global-chip.is-ci.is-error i,
+.workspace-global-header .ail-global-chip.is-staging.is-error,
+.workspace-global-header .ail-global-chip.is-staging.is-error i {
+  border-color: rgba(248, 113, 113, 0.6);
+  background: rgba(127, 29, 29, 0.22);
+  color: #f87171;
+}
+
+.workspace-global-header .ail-global-chip.is-ci.is-warning,
+.workspace-global-header .ail-global-chip.is-ci.is-warning i,
+.workspace-global-header .ail-global-chip.is-staging.is-warning,
+.workspace-global-header .ail-global-chip.is-staging.is-warning i {
+  border-color: rgba(245, 158, 11, 0.5);
+  background: rgba(120, 53, 15, 0.22);
+  color: #fbbf24;
+}
+
+.workspace-global-header .ail-global-chip.is-staging {
+  border-color: rgba(31, 115, 237, 0.56);
+  background: rgba(20, 69, 135, 0.2);
+  color: #78aaff;
+}
+
+.workspace-global-header .ail-global-chip.is-staging i {
+  background: #438bff;
+}
+
+.workspace-global-header .ail-global-search {
+  display: flex;
+  min-width: 90px;
+  max-width: 245px;
+  height: 32px;
+  flex: 1 1 190px;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+  padding: 0 0.65rem;
+  border: 1px solid rgba(68, 117, 151, 0.36);
+  border-radius: 999px;
+  background: #1b2434;
+}
+
+.workspace-global-header .ail-global-search svg {
+  width: 0.9rem;
+  height: 0.9rem;
+  flex: 0 0 auto;
+  color: #91a2b5;
+}
+
+.workspace-global-header .ail-global-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #d5e1eb;
+  font-size: 0.65rem;
+}
+
+.workspace-global-header .ail-global-search input::placeholder {
+  color: #7f8da0;
+}
+
+.workspace-global-header .notif-bell-wrap {
+  flex: 0 0 auto;
+}
+
+.workspace-global-header .ail-global-avatar {
+  display: grid;
+  width: 37px;
+  height: 37px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid #35e0e5;
+  border-radius: 50%;
+  background: linear-gradient(145deg, #37e4df, #19aabc);
+  color: #05232b;
+  font-size: 0.8rem;
+  font-weight: 700;
+  overflow: hidden;
+  text-decoration: none;
+}
+
+.workspace-global-header .ail-global-avatar img {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+}
+
 .workspace-sidebar {
   position: fixed;
-  top: 0;
+  top: 64px;
   left: 0;
   bottom: 0;
   width: var(--ws-sidebar-width);
@@ -47,9 +255,14 @@
 .workspace-main {
   flex: 1;
   margin-left: var(--ws-sidebar-width);
+  padding-top: 64px;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+}
+
+.workspace-main > .workspace-header {
+  top: 64px;
 }
 
 .workspace-header {
@@ -550,6 +763,30 @@
 
   .workspace-main {
     margin-left: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .workspace-global-header {
+    gap: 0.5rem;
+  }
+
+  .workspace-global-header .ail-global-brand {
+    width: auto;
+    flex-basis: auto;
+  }
+
+  .workspace-global-header .ail-global-brand img {
+    width: 42px;
+  }
+
+  .workspace-global-header .ail-branch-selector,
+  .workspace-global-header .ail-global-chip {
+    display: none;
+  }
+
+  .workspace-global-header .ail-global-search {
+    max-width: none;
   }
 }
 
@@ -11722,7 +11959,9 @@
   }
 
   .ed-workspace-main {
-    height: 100vh;
+    height: calc(100vh - 64px);
+    margin-top: 64px;
+    padding-top: 0;
     min-height: 0;
     min-width: 0;
     overflow: hidden;
@@ -14336,27 +14575,133 @@
     min-height: calc(100dvh - 168px);
     padding: 0 0.65rem 0.65rem;
   }
+}
+
+@media (min-width: 1280px) {
+  .ail-agent-page .ail-bubble {
+    font-size: 0.96rem;
+  }
+
+  .ail-agent-page .ail-msg-who {
+    font-size: 0.78rem;
+  }
+
+  .ail-agent-page .ail-rail-title {
+    font-size: 0.86rem;
+  }
+
+  .ail-agent-page .ail-sess-name {
+    font-size: 0.9rem;
+  }
+
+  .ail-agent-page .ail-sess-lang,
+  .ail-agent-page .ail-sess-status,
+  .ail-agent-page .ail-sess-time {
+    font-size: 0.72rem;
+  }
+
+  .ail-agent-page .ail-conv-identity strong {
+    font-size: 0.86rem;
+  }
+
+  .ail-agent-page .ail-conv-identity > div > span,
+  .ail-agent-page .ail-connection-state,
+  .ail-agent-page .ail-composer-mode {
+    font-size: 0.76rem;
+  }
+
+  .ail-agent-page .ail-composer-mode-hint {
+    font-size: 0.72rem;
+  }
 
   .ail-agent-page .ail-agent-frame {
     min-height: 65vh;
-    grid-template-columns: 1fr;
+    grid-template-columns: clamp(225px, 20vw, 300px) minmax(0, 1fr);
   }
 
-  .ail-agent-page .ail-agent-sessions {
-    max-height: 190px;
+  .ail-agent-page .ail-agent-sessions-heading h2 {
+    font-size: 1.08rem;
   }
 
-  .ail-agent-page .ail-agent-session-list {
-    display: flex;
-    gap: 0.35rem;
+  .ail-agent-page .ail-agent-sessions-heading p {
+    font-size: 0.74rem;
   }
 
-  .ail-agent-page .ail-agent-session {
-    width: 220px;
-    flex: 0 0 220px;
+  .ail-agent-page .ail-agent-session-copy > strong {
+    font-size: 0.88rem;
   }
 
-  .ail-agent-page .ail-agent-detail {
-    min-height: 50vh;
+  .ail-agent-page .ail-agent-branch {
+    font-size: 0.7rem;
+  }
+
+  .ail-agent-page .ail-agent-session-meta {
+    font-size: 0.68rem;
+  }
+
+  .ail-agent-page .ail-agent-status {
+    font-size: 0.64rem;
+  }
+
+  .ail-agent-page .ail-agent-run-title h2 {
+    font-size: 1.12rem;
+  }
+
+  .ail-agent-page .ail-agent-run-title p {
+    font-size: 0.72rem;
+  }
+
+  .ail-agent-page .ail-agent-run-title .ail-agent-running {
+    font-size: 0.68rem;
+  }
+
+  .ail-agent-page .ail-agent-run-meta {
+    flex-wrap: wrap;
+    gap: 0.75rem 1.25rem;
+    font-size: 0.7rem;
+  }
+
+  .ail-agent-page .ail-agent-run-meta small {
+    font-size: 0.6rem;
+  }
+
+  .ail-agent-page .ail-agent-run-meta strong {
+    font-size: 0.72rem;
+  }
+
+  .ail-agent-page .ail-agent-tabs button {
+    min-height: 2.35rem;
+    font-size: 0.86rem;
+  }
+
+  .ail-agent-page .ail-agent-log {
+    grid-template-columns: 4rem 0.65rem minmax(0, 1fr);
+    gap: 0.5rem;
+    padding: 0.28rem 0;
+    font-size: 0.76rem;
+  }
+
+  .ail-agent-page .ail-agent-terminal-cursor {
+    margin-left: 4.7rem;
+  }
+}
+
+@media (min-width: 1600px) {
+  .ail-agent-page .ail-agent-frame {
+    grid-template-columns: clamp(280px, 21vw, 360px) minmax(0, 1fr);
+  }
+
+  .ail-agent-page .ail-agent-session-copy > strong,
+  .ail-agent-page .ail-agent-run-title h2 {
+    font-size: 1.2rem;
+  }
+
+  .ail-agent-page .ail-agent-run-meta,
+  .ail-agent-page .ail-agent-log {
+    font-size: 0.82rem;
+  }
+
+  .ail-agent-page .ail-agent-run-meta strong {
+    font-size: 0.8rem;
   }
 }

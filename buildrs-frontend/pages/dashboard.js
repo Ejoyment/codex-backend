@@ -2,13 +2,10 @@ import { useState, useMemo, useEffect } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import Sidebar from '../components/Sidebar';
-import NotificationBell from '../components/NotificationBell';
 import AuthGuard from '../components/AuthGuard';
 import TrialBanner from '../components/TrialBanner';
-import DashboardSkeleton from '../components/DashboardSkeleton';
 import useAuthStore from '../store/authStore';
 import { useDashboard } from '../hooks/useDashboard';
-import { getAvatarUrl } from '../lib/utils';
 import CreateProjectWizard from '../components/CreateProjectWizard';
 import {
   Plus,
@@ -33,7 +30,8 @@ import {
   Rocket,
   Plug2,
   Activity,
-  Bell
+  Bell,
+  Loader2
 } from 'lucide-react';
 
 function formatGreeting() {
@@ -52,12 +50,6 @@ function relativeTime(date) {
   if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
   return new Date(date).toLocaleDateString();
 }
-
-const TONE_CLASSES = {
-  ok: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
-  warn: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
-  error: 'bg-rose-500/10 text-rose-400 border-rose-500/20',
-};
 
 const ACTIVITY_ICON = {
   code: { Icon: FileCode, cls: 'bg-cyan-500/10 border-cyan-500/20 text-cyan-400' },
@@ -164,7 +156,53 @@ export default function Dashboard() {
       </Head>
 
       <div className="workspace-container bg-[#0b0f17] text-white min-h-screen flex">
-        <Sidebar user={user} subscription={subscription} />
+        <Sidebar
+          user={user}
+          subscription={subscription}
+          headerBranch={ws?.branch || 'main'}
+          onWorkspaceClick={() => router.push('/workspace')}
+          ciStatus={overview?.ciStatus}
+          deployStatus={overview?.deployStatus}
+          searchContent={(
+            <form onSubmit={handleSearch} className="ail-global-search">
+              <Search className="h-4 w-4 text-zinc-400" />
+              <input
+                type="text"
+                placeholder="Search tasks, projects"
+                value={searchQuery}
+                onChange={(e) => { setSearchQuery(e.target.value); setSearchOpen(true); }}
+                onFocus={() => setSearchOpen(true)}
+                onBlur={() => setTimeout(() => setSearchOpen(false), 150)}
+                aria-label="Search tasks and projects"
+              />
+              {searchOpen && searchQuery.trim().length >= 2 && (
+                <div className="absolute top-full mt-2 left-0 right-0 bg-[#161b26] border border-white/10 rounded-lg shadow-2xl overflow-hidden z-40">
+                  {searchResults.length === 0 ? (
+                    <div className="px-4 py-3 text-xs text-zinc-500">No matches for “{searchQuery}”</div>
+                  ) : (
+                    searchResults.map((result) => {
+                      const Icon = result.Icon;
+                      return (
+                        <button
+                          key={result.key}
+                          type="button"
+                          onMouseDown={(e) => { e.preventDefault(); goToResult(result.href); }}
+                          className="w-full flex items-center gap-3 px-3.5 py-2.5 text-left hover:bg-white/5 transition"
+                        >
+                          <Icon className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-xs font-medium text-white truncate">{result.label}</span>
+                            <span className="block text-[10px] text-zinc-500">{result.sub}</span>
+                          </span>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+            </form>
+          )}
+        />
 
         <main className="workspace-main flex-1 flex flex-col min-w-0">
           {isCreatingProject ? (
@@ -174,85 +212,6 @@ export default function Dashboard() {
             />
           ) : (
             <>
-              {/* Top bar */}
-              <header className="h-16 px-6 border-b border-white/10 flex items-center justify-between bg-[#0b0f17]/80 backdrop-blur sticky top-0 z-30">
-                <div className="flex items-center gap-4">
-                  <button
-                    type="button"
-                    onClick={() => router.push('/workspace')}
-                    className="flex items-center gap-2 bg-[#161b26] border border-white/10 px-3 py-1.5 rounded-full text-sm text-zinc-200 cursor-pointer hover:border-white/20 transition"
-                  >
-                    <span className="w-2 h-2 rounded-full bg-cyan-400" />
-                    <span className="font-medium max-w-[220px] truncate">
-                      {ws?.branch || 'main'}
-                    </span>
-                    <ChevronDown className="w-4 h-4 text-zinc-400" />
-                  </button>
-                  <div className="hidden lg:flex items-center gap-3">
-                    {overview?.ciStatus && (
-                      <span className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border font-medium ${TONE_CLASSES[overview.ciStatus.tone] || TONE_CLASSES.ok}`}>
-                        <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" /> {overview.ciStatus.label}
-                      </span>
-                    )}
-                    {overview?.deployStatus && (
-                      <span className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border font-medium ${TONE_CLASSES[overview.deployStatus.tone] || TONE_CLASSES.ok}`}>
-                        <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" /> {overview.deployStatus.label}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-4">
-                  <form onSubmit={handleSearch} className="relative hidden md:block w-72">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
-                    <input
-                      type="text"
-                      placeholder="Search tasks, projects"
-                      value={searchQuery}
-                      onChange={(e) => { setSearchQuery(e.target.value); setSearchOpen(true); }}
-                      onFocus={() => setSearchOpen(true)}
-                      onBlur={() => setTimeout(() => setSearchOpen(false), 150)}
-                      className="w-full bg-[#161b26] border border-white/10 rounded-full pl-9 pr-4 py-1.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-cyan-500 transition"
-                    />
-                    {searchOpen && searchQuery.trim().length >= 2 && (
-                      <div className="absolute top-full mt-2 left-0 right-0 bg-[#161b26] border border-white/10 rounded-lg shadow-2xl overflow-hidden z-40">
-                        {searchResults.length === 0 ? (
-                          <div className="px-4 py-3 text-xs text-zinc-500">No matches for “{searchQuery}”</div>
-                        ) : (
-                          searchResults.map((r) => {
-                            const Icon = r.Icon;
-                            return (
-                              <button
-                                key={r.key}
-                                type="button"
-                                onMouseDown={(e) => { e.preventDefault(); goToResult(r.href); }}
-                                className="w-full flex items-center gap-3 px-3.5 py-2.5 text-left hover:bg-white/5 transition"
-                              >
-                                <Icon className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                                <span className="min-w-0 flex-1">
-                                  <span className="block text-xs font-medium text-white truncate">{r.label}</span>
-                                  <span className="block text-[10px] text-zinc-500">{r.sub}</span>
-                                </span>
-                              </button>
-                            );
-                          })
-                        )}
-                      </div>
-                    )}
-                  </form>
-
-                  <NotificationBell look="header" />
-
-                  <div className="flex items-center gap-3 pl-2 border-l border-white/10">
-                    <img
-                      className="w-9 h-9 rounded-full object-cover border border-cyan-500/40"
-                      src={getAvatarUrl(user, user?.fullName || user?.name || 'User')}
-                      alt={user?.fullName || user?.name || 'User'}
-                    />
-                  </div>
-                </div>
-              </header>
-
               <div className="workspace-content dashboard-content p-8 max-w-[1680px] mx-auto w-full space-y-6">
                 <TrialBanner trial={trial} />
 
@@ -344,7 +303,12 @@ export default function Dashboard() {
                 )}
 
                 {loading ? (
-                  <DashboardSkeleton />
+                  <>
+                    {/* <DashboardSkeleton /> */}
+                    <div className="flex min-h-64 items-center justify-center" role="status" aria-label="Loading dashboard">
+                      <Loader2 className="h-7 w-7 animate-spin text-cyan-400" />
+                    </div>
+                  </>
                 ) : isEmpty ? (
                   /* Empty state */
                   <div className="space-y-4">
