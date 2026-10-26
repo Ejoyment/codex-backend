@@ -252,8 +252,8 @@ Please:
     // Gemini Implementation
     async chatGemini(messages, codeContext) {
         const config = this.providers.gemini;
-        const model = config.client.getGenerativeModel({ 
-            model: config.model,
+        const model = config.client.getGenerativeModel({
+            model: codeContext.model || config.model,
             generationConfig: {
                 maxOutputTokens: parseInt(process.env.AI_MAX_TOKENS) || 8192,
                 temperature: parseFloat(process.env.AI_TEMPERATURE) || 0.7,
@@ -305,7 +305,7 @@ Please:
                 'Authorization': `Bearer ${config.apiKey}`
             },
             body: JSON.stringify({
-                model: config.model,
+                model: codeContext.model || config.model,
                 messages: formattedMessages,
                 max_tokens: parseInt(process.env.AI_MAX_TOKENS) || 8192,
                 temperature: parseFloat(process.env.AI_TEMPERATURE) || 0.7
@@ -344,7 +344,7 @@ Please:
         ];
 
         const isAgentReasoning = codeContext.agentReasoning === true;
-        const isGptOss = String(config.model).includes('gpt-oss');
+        const isGptOss = String(codeContext.model || config.model).includes('gpt-oss');
         const availableTools = Array.isArray(codeContext.availableTools) ? codeContext.availableTools : [];
         const responseFormat = isAgentReasoning && isGptOss
             ? {
@@ -382,7 +382,7 @@ Please:
                 'Authorization': `Bearer ${config.apiKey}`
             },
             body: JSON.stringify({
-                model: config.model,
+                model: codeContext.model || config.model,
                 messages: formattedMessages,
                 max_tokens: parseInt(process.env.AI_MAX_TOKENS) || 8192,
                 temperature: parseFloat(process.env.AI_TEMPERATURE) || 0.7,
@@ -430,7 +430,7 @@ Please:
             'Assistant:',
         ].filter(Boolean).join('\n\n');
 
-        const response = await fetch(config.endpoint + config.model, {
+        const response = await fetch(config.endpoint + (codeContext.model || config.model), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

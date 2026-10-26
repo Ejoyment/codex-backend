@@ -37,6 +37,7 @@ import { useCurrentCompany } from '../hooks/useCurrentCompany';
 import NotificationBell from '../components/NotificationBell';
 
 const LANGUAGES = ['JavaScript', 'TypeScript', 'Python', 'Java', 'Go', 'Rust', 'C++', 'Ruby', 'PHP'];
+const AI_MODEL_PREFERENCE_KEY = 'buildrs-ai-model-preference';
 
 const ACTION_TINTS = {
   create: { bg: 'rgba(52, 211, 153, 0.12)', text: '#34d399' },
@@ -504,24 +505,42 @@ export default function AiPair() {
   const [agentSessions, setAgentSessions] = useState([]);
   const [selectedExecution, setSelectedExecution] = useState(null);
   const [loadingAgentSessions, setLoadingAgentSessions] = useState(false);
+  const [aiProviders, setAiProviders] = useState([]);
+  const [selectedAiModel, setSelectedAiModel] = useState(null);
+  const selectedModelIsLocal = ['ollama', 'lm-studio'].includes(selectedAiModel?.provider);
+  const effectiveAiLimit = selectedModelIsLocal ? Infinity : aiLimit;
+  const [draftAiModel, setDraftAiModel] = useState(null);
+  const [showModelPicker, setShowModelPicker] = useState(false);
+  const [loadingAiProviders, setLoadingAiProviders] = useState(false);
   const [agentActionId, setAgentActionId] = useState('');
   const [followUp, setFollowUp] = useState('');
   const agentSocketRef = useRef(null);
+  const selectedExecutionIdRef = useRef(null);
+  const agentSessionsRequestRef = useRef(0);
+  const chatSessionRequestRef = useRef(0);
+  const chatSendRequestRef = useRef(0);
   const { selectedCompany, hasCompany } = useCurrentCompany();
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
-    setRemaining(aiLimit);
-  }, [aiLimit]);
+    setRemaining(effectiveAiLimit);
+  }, [effectiveAiLimit]);
 
   useEffect(() => {
     fetchSessions();
+    try {
+      const savedPreference = localStorage.getItem(AI_MODEL_PREFERENCE_KEY);
+      if (savedPreference) setSelectedAiModel(JSON.parse(savedPreference));
+    } catch (err) {
+      localStorage.removeItem(AI_MODEL_PREFERENCE_KEY);
+    }
   }, []);
 
   useEffect(() => {
     if (!router.isReady) return;
     if (router.query.executionId) {
       setActiveView('runs');
+      selectedExecutionIdRef.current = String(router.query.executionId);
       fetchAgentSessions(router.query.executionId);
       return;
     }
@@ -590,20 +609,82 @@ export default function AiPair() {
   }
 
   async function fetchAgentSessions(preferredId) {
+    const requestId = ++agentSessionsRequestRef.current;
     setLoadingAgentSessions(true);
     try {
       const data = await apiFetch('/api/v1/agent/sessions');
       const loadedSessions = data.sessions || [];
+      if (requestId !== agentSessionsRequestRef.current) return;
       setAgentSessions(loadedSessions);
-      const targetId = preferredId || router.query.executionId || selectedExecution?._id;
-      if (targetId) setSelectedExecution(loadedSessions.find((item) => item._id === targetId) || null);
-      else if (selectedExecution) setSelectedExecution(loadedSessions.find((item) => item._id === selectedExecution._id) || null);
-      else setSelectedExecution(loadedSessions[0] || null);
+      const targetId = preferredId || selectedExecutionIdRef.current;
+      const selected = targetId
+        ? loadedSessions.find((item) => item._id === String(targetId))
+        : loadedSessions[0];
+      if (selected) {
+        selectedExecutionIdRef.current = selected._id;
+        setSelectedExecution(selected);
+      } else if (!targetId) {
+        selectedExecutionIdRef.current = null;
+        setSelectedExecution(null);
+      }
     } catch (err) {
-      setError(err.message || 'Failed to load agent runs');
+      if (requestId === agentSessionsRequestRef.current) setError(err.message || 'Failed to load agent runs');
     } finally {
-      setLoadingAgentSessions(false);
+      if (requestId === agentSessionsRequestRef.current) setLoadingAgentSessions(false);
     }
+  }
+
+  function selectAgentExecution(execution) {
+    selectedExecutionIdRef.current = execution?._id || null;
+    setSelectedExecution(execution || null);
+    const query = { ...router.query };
+    if (execution?._id) query.executionId = execution._id;
+    else delete query.executionId;
+    router.replace({ pathname: router.pathname, query }, undefined, { shallow: true });
+  }
+
+  async function fetchAiProviders() {
+    setLoadingAiProviders(true);
+    try {
+      const data = await apiFetch('/api/ai-pair/providers');
+      if (!data.success) throw new Error(data.message || 'Could not load AI models');
+      setAiProviders(data.providers || []);
+      const saved = selectedAiModel || (() => {
+        try {
+          return JSON.parse(localStorage.getItem(AI_MODEL_PREFERENCE_KEY) || 'null');
+        } catch {
+          return null;
+        }
+      })();
+      const available = (data.providers || []).some((provider) =>
+        provider.key === saved?.provider &&
+        (provider.type === 'cloud' ? provider.model === saved?.model : provider.models?.includes(saved?.model))
+      );
+      const defaultProvider = (data.providers || []).find((provider) => provider.key === data.defaultProvider);
+      const defaultModel = defaultProvider?.type === 'cloud'
+        ? defaultProvider.model
+        : defaultProvider?.models?.[0];
+      setDraftAiModel(available ? saved : defaultProvider && defaultModel
+        ? { provider: defaultProvider.key, model: defaultModel }
+        : null);
+    } catch (err) {
+      setError(err.message || 'Could not load AI models');
+    } finally {
+      setLoadingAiProviders(false);
+    }
+  }
+
+  function openModelPicker() {
+    setError(null);
+    setShowModelPicker(true);
+    fetchAiProviders();
+  }
+
+  function saveAiModel() {
+    if (!draftAiModel) return;
+    setSelectedAiModel(draftAiModel);
+    localStorage.setItem(AI_MODEL_PREFERENCE_KEY, JSON.stringify(draftAiModel));
+    setShowModelPicker(false);
   }
 
   async function submitAgentAction(action, execution, extra = {}) {
@@ -635,6 +716,9 @@ export default function AiPair() {
 
   async function handleCreateSession() {
     if (!selectedRepo) return;
+    chatSessionRequestRef.current += 1;
+    chatSendRequestRef.current += 1;
+    setLoading(false);
     setCreatingSession(true);
     setError(null);
     try {
@@ -658,7 +742,7 @@ export default function AiPair() {
         setSessions((prev) => [sess, ...prev]);
         setActiveSession(sess);
         setMessages([]);
-        setRemaining(aiLimit);
+        setRemaining(effectiveAiLimit);
         setShowNewSession(false);
       } else {
         setError(data.message || 'Failed to create session');
@@ -674,6 +758,8 @@ export default function AiPair() {
     e.preventDefault();
     if (!input.trim() || !activeSession || loading) return;
 
+    const requestId = ++chatSendRequestRef.current;
+    const sessionRequestId = chatSessionRequestRef.current;
     const userMsg = { role: 'user', content: input, timestamp: new Date().toISOString() };
     setMessages((prev) => [...prev, userMsg]);
     const currentInput = input;
@@ -690,6 +776,8 @@ export default function AiPair() {
           sessionId: activeSession._id,
           message: currentInput,
           useAgentLoop: agentMode,
+          provider: selectedAiModel?.provider,
+          model: selectedAiModel?.model,
           companyId: selectedCompany?._id || undefined,
           codeContext: {
             workspace: { id: selectedCompany?._id, name: selectedCompany?.name },
@@ -698,6 +786,10 @@ export default function AiPair() {
           },
         }),
       });
+      if (
+        requestId !== chatSendRequestRef.current ||
+        sessionRequestId !== chatSessionRequestRef.current
+      ) return;
       if (data.success) {
         if (data.agentMode && data.result) {
           const result = data.result;
@@ -735,9 +827,12 @@ export default function AiPair() {
         }
       }
     } catch (err) {
-      setError(err.message || 'Failed to send message');
+      if (
+        requestId === chatSendRequestRef.current &&
+        sessionRequestId === chatSessionRequestRef.current
+      ) setError(err.message || 'Failed to send message');
     } finally {
-      setLoading(false);
+      if (requestId === chatSendRequestRef.current) setLoading(false);
     }
   }
 
@@ -750,10 +845,29 @@ export default function AiPair() {
   }
 
   function selectSession(sess) {
+    chatSessionRequestRef.current += 1;
+    chatSendRequestRef.current += 1;
     setActiveSession(sess);
     setMessages([]);
-    setRemaining(aiLimit);
+    setLoading(false);
+    setRemaining(effectiveAiLimit);
     setError(null);
+    const requestId = ++chatSessionRequestRef.current;
+    apiFetch(`/api/ai-pair/session/${sess._id}`)
+      .then((data) => {
+        if (requestId !== chatSessionRequestRef.current) return;
+        if (!data.success) throw new Error(data.message || 'Could not load conversation');
+        setActiveSession(data.session || sess);
+        setMessages((data.messages || []).map((message) => ({
+          role: message.role,
+          content: message.content,
+          timestamp: message.createdAt,
+          codeChanges: message.metadata?.codeChanges || [],
+        })));
+      })
+      .catch((err) => {
+        if (requestId === chatSessionRequestRef.current) setError(err.message || 'Could not load conversation');
+      });
   }
 
   return (
@@ -804,11 +918,11 @@ export default function AiPair() {
             <div className="flex items-center gap-3">
               <button
                 type="button"
-                className="ail-model-button hidden sm:inline-flex"
-                disabled
-                title="AI model selection is not available yet"
+                className="ail-model-button"
+                onClick={openModelPicker}
+                title="Choose a configured cloud or connected BYOM model"
               >
-                Change AI Model
+                {selectedAiModel ? `${selectedAiModel.provider} · ${selectedAiModel.model}` : 'Change AI Model'}
               </button>
               <button type="button" onClick={() => router.push('/tasks')} className="btn-workspace btn-primary">
                 <Sparkles className="w-4 h-4" />
@@ -816,6 +930,52 @@ export default function AiPair() {
               </button>
             </div>
           </header>
+
+          {showModelPicker && (
+            <div className="ail-model-backdrop" role="presentation" onMouseDown={(event) => {
+              if (event.target === event.currentTarget) setShowModelPicker(false);
+            }}>
+              <section className="ail-model-dialog" role="dialog" aria-modal="true" aria-labelledby="ail-model-title">
+                <header>
+                  <div><p className="ail-eyebrow">Model preferences</p><h2 id="ail-model-title">Choose an AI model</h2></div>
+                  <button type="button" onClick={() => setShowModelPicker(false)} aria-label="Close model picker"><X /></button>
+                </header>
+                {loadingAiProviders ? (
+                  <div className="ail-model-loading"><Loader2 className="animate-spin" /> Checking configured and connected models…</div>
+                ) : aiProviders.length ? (
+                  <>
+                    <label htmlFor="ail-model-select">Available models</label>
+                    <select
+                      id="ail-model-select"
+                      value={draftAiModel ? JSON.stringify(draftAiModel) : ''}
+                      onChange={(event) => setDraftAiModel(event.target.value ? JSON.parse(event.target.value) : null)}
+                    >
+                      {aiProviders.flatMap((provider) => {
+                        const models = provider.type === 'cloud' ? [provider.model] : provider.models || [];
+                        return models.map((model) => (
+                          <option key={`${provider.key}:${model}`} value={JSON.stringify({ provider: provider.key, model })}>
+                            {provider.name} · {model}
+                          </option>
+                        ));
+                      })}
+                    </select>
+                    <p>Local BYOM options are listed only when Ollama or LM Studio is connected and has a model loaded.</p>
+                  </>
+                ) : (
+                  <div className="ail-model-empty">
+                    <AlertCircle />
+                    <strong>No AI models are available</strong>
+                    <span>Configure a cloud provider or connect Ollama/LM Studio with a loaded model, then refresh.</span>
+                  </div>
+                )}
+                <footer>
+                  <button type="button" className="btn-workspace btn-secondary" onClick={fetchAiProviders} disabled={loadingAiProviders}>Refresh models</button>
+                  <button type="button" className="btn-workspace btn-secondary" onClick={() => setShowModelPicker(false)}>Cancel</button>
+                  <button type="button" className="btn-workspace btn-primary" onClick={saveAiModel} disabled={loadingAiProviders || !draftAiModel}>Use model</button>
+                </footer>
+              </section>
+            </div>
+          )}
 
           {activeView === 'runs' && <div className="workspace-content ail-workspace-content">
             <AgentRunsPanel
@@ -826,7 +986,7 @@ export default function AiPair() {
               followUp={followUp}
               setFollowUp={setFollowUp}
               setError={setError}
-              onSelect={setSelectedExecution}
+              onSelect={selectAgentExecution}
               onAction={(action, execution, extra) => submitAgentAction(action, execution, extra)}
               actionId={agentActionId}
               onDelegate={() => router.push('/tasks')}
@@ -1064,7 +1224,7 @@ export default function AiPair() {
                               <span>Enter to send · Shift+Enter for newline</span>
                             )}
                             <span className="ml-auto">
-                              {aiLimit === Infinity ? 'Unlimited messages' : `${remaining}/${aiLimit} messages today`}
+                              {effectiveAiLimit === Infinity ? 'Unlimited messages' : `${remaining}/${effectiveAiLimit} messages today`}
                             </span>
                           </div>
                         </form>
@@ -1078,7 +1238,7 @@ export default function AiPair() {
                       steps={agentSteps}
                       messages={messages}
                       remaining={remaining}
-                      aiLimit={aiLimit}
+                      aiLimit={effectiveAiLimit}
                     />
                   </div>
                 </div>

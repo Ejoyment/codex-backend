@@ -982,6 +982,8 @@ class AgentOrchestrator {
                 instructions: 'You are in ReAct agent mode. Respond with JSON only.',
                 availableTools: Object.keys(this.tools),
                 timeoutMs,
+                provider: context.provider,
+                model: context.model,
             });
 
             // Parse LLM response
@@ -1133,7 +1135,9 @@ RESPOND WITH JSON ONLY.`;
                 { role: 'user', content: prompt }
             ], {
                 agentMode: true,
-                instructions: 'Analyze error and suggest correction. JSON only.'
+                instructions: 'Analyze error and suggest correction. JSON only.',
+                provider: context.provider,
+                model: context.model
             });
             if (!response?.success || !response.content) {
                 throw new Error(response?.error || 'AI returned an empty error analysis');

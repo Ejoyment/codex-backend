@@ -55,6 +55,22 @@ describe('local AI bridge', () => {
     expect(localBridge.getStatus()['lm-studio']).toBe(true);
   });
 
+  test('lists Ollama models from its tags endpoint', async () => {
+    axios.get.mockResolvedValue({ data: { models: [{ name: 'qwen2.5-coder:7b' }, { name: 'llama3.1' }] } });
+
+    await expect(localBridge.getModels('ollama')).resolves.toEqual(['qwen2.5-coder:7b', 'llama3.1']);
+
+    expect(axios.get).toHaveBeenCalledWith('http://ollama.test/api/tags', { timeout: 3000 });
+  });
+
+  test('lists LM Studio model ids from its models endpoint', async () => {
+    axios.get.mockResolvedValue({ data: { data: [{ id: 'local-code-model' }] } });
+
+    await expect(localBridge.getModels('lm-studio')).resolves.toEqual(['local-code-model']);
+
+    expect(axios.get).toHaveBeenCalledWith('http://lmstudio.test/v1/models', { timeout: 3000 });
+  });
+
   test('parses chunked Ollama JSON lines and applies the requested timeout', async () => {
     async function* responseChunks() {
       yield Buffer.from('{"message":{"content":"Hello"}');

@@ -25,12 +25,24 @@ class LocalBridge {
     }
   }
 
+  async getModels(provider) {
+    const isLmStudio = provider === 'lm-studio';
+    const baseUrl = isLmStudio ? this.lmStudioUrl : this.ollamaUrl;
+    const endpoint = isLmStudio ? '/v1/models' : '/api/tags';
+    const response = await axios.get(`${baseUrl}${endpoint}`, { timeout: 3000 });
+    const models = isLmStudio ? response.data?.data : response.data?.models;
+    return (Array.isArray(models) ? models : [])
+      .map((model) => (typeof model === 'string' ? model : model?.name || model?.id))
+      .filter((name) => typeof name === 'string' && name.trim())
+      .map((name) => name.trim());
+  }
+
   async chat(messages, codeContext = {}, provider = 'ollama') {
     const isLmStudio = provider === 'lm-studio';
     const baseUrl = isLmStudio ? this.lmStudioUrl : this.ollamaUrl;
     const model = isLmStudio
-      ? (process.env.LM_STUDIO_MODEL || 'local-model')
-      : (process.env.OLLAMA_MODEL || 'llama3');
+      ? (codeContext.model || process.env.LM_STUDIO_MODEL || 'local-model')
+      : (codeContext.model || process.env.OLLAMA_MODEL || 'llama3');
 
     const systemPrompt = this.buildSystemPrompt(codeContext);
     const systemMessages = messages
@@ -99,8 +111,8 @@ class LocalBridge {
     const isLmStudio = provider === 'lm-studio';
     const baseUrl = isLmStudio ? this.lmStudioUrl : this.ollamaUrl;
     const model = isLmStudio
-      ? (process.env.LM_STUDIO_MODEL || 'local-model')
-      : (process.env.OLLAMA_MODEL || 'llama3');
+      ? (codeContext.model || process.env.LM_STUDIO_MODEL || 'local-model')
+      : (codeContext.model || process.env.OLLAMA_MODEL || 'llama3');
 
     const systemPrompt = this.buildSystemPrompt(codeContext);
     const systemMessages = messages
