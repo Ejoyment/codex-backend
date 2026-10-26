@@ -43,7 +43,7 @@ export default function Workspace() {
   }, [loadWorkspaces]);
 
   const getProjectCount = (workspaceId) => {
-    return projects.filter((p) => p.company === workspaceId).length;
+    return projects.filter((p) => p.workspaceId === workspaceId).length;
   };
 
   const handleCreate = async (e) => {
@@ -192,7 +192,7 @@ export default function Workspace() {
                       </div>
                     </div>
                     <div className="workspace-card-body">
-                      {projects.filter((p) => p.company === selectedWorkspace._id).length === 0 ? (
+                      {projects.filter((p) => p.workspaceId === selectedWorkspace._id).length === 0 ? (
                         <div className="text-center py-8 text-gray-500">
                           <FolderOpen className="w-8 h-8 mx-auto mb-2 opacity-50" />
                           <p>No projects in this workspace yet.</p>
@@ -200,10 +200,10 @@ export default function Workspace() {
                       ) : (
                         <div className="space-y-3">
                           {projects
-                            .filter((p) => p.company === selectedWorkspace._id)
+                            .filter((p) => p.workspaceId === selectedWorkspace._id)
                             .map((project) => (
                               <div
-                                key={project._id}
+                                key={project.id || project._id}
                                 className="flex items-center justify-between p-3 rounded-lg bg-navy-light border border-gray-700"
                               >
                                 <div className="flex items-center gap-3">

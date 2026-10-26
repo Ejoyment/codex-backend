@@ -4,6 +4,7 @@
  */
 
 const express = require('express');
+const mongoose = require('mongoose');
 const router = express.Router();
 const { authenticateToken } = require('../middleware/auth');
 const CodeFile = require('../models/CodeFile');
@@ -18,7 +19,9 @@ const { assertFileAccess } = require('../middleware/workspaceAccess');
 
 const ensureCompanyMember = async (req, res, next) => {
     try {
-        const company = await Company.findById(req.params.companyId);
+        const company = mongoose.isValidObjectId(req.params.companyId)
+            ? await Company.findById(req.params.companyId)
+            : await Company.findOne({ slug: req.params.companyId, isActive: true });
         if (!company) {
             return res.status(404).json({ success: false, message: 'Company not found' });
         }
@@ -187,7 +190,7 @@ router.post('/file/:fileId/leave', authenticateToken, async (req, res) => {
  */
 router.get('/:companyId/projects', authenticateToken, ensureCompanyMember, async (req, res) => {
     try {
-        const projects = await TeamProject.find({ company: req.params.companyId })
+        const projects = await TeamProject.find({ company: req.company._id })
             .populate('owner', 'fullName email profilePicture')
             .populate('members', 'fullName email profilePicture')
             .sort({ createdAt: -1 });
@@ -267,7 +270,7 @@ router.post('/:companyId/projects', authenticateToken, ensureCompanyMember, asyn
         }
         
         const project = await TeamProject.create({
-            company: req.params.companyId,
+            company: req.company._id,
             name,
             description: description || '',
             status: status || 'planning',
@@ -327,7 +330,7 @@ router.post('/:companyId/projects', authenticateToken, ensureCompanyMember, asyn
 router.get('/:companyId/tasks', authenticateToken, ensureCompanyMember, async (req, res) => {
     try {
         const { projectId, status } = req.query;
-        const query = { company: req.params.companyId };
+        const query = { company: req.company._id };
         
         if (projectId) {
             query.project = projectId;
@@ -420,7 +423,7 @@ router.post('/:companyId/tasks', authenticateToken, ensureCompanyMember, async (
         }
         
         const task = await TeamTask.create({
-            company: req.params.companyId,
+            company: req.company._id,
             project: projectId || null,
             title,
             description: description || '',

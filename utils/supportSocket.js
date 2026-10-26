@@ -25,7 +25,7 @@ module.exports = (io) => {
             const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
             if (decoded.agentId) {
                 const agent = await SupportAgent.findById(decoded.agentId);
-                if (!agent) return next(new Error('Authentication error'));
+                if (!agent || agent.isActive === false) return next(new Error('Authentication error'));
                 socket.isAgent = true;
                 socket.agentId = String(agent._id);
                 socket.agentName = agent.name || 'Support Agent';
@@ -33,7 +33,7 @@ module.exports = (io) => {
             } else if (decoded.id || decoded.userId) {
                 // Same liveness gate as every other namespace: deleted or
                 // banned accounts cannot hold support sockets either.
-                await assertSocketUserLive(decoded.id || decoded.userId);
+                await assertSocketUserLive(decoded.id || decoded.userId, decoded.tokenVersion);
                 socket.isAgent = false;
                 socket.userId = String(decoded.id || decoded.userId);
             } else {

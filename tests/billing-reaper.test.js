@@ -11,6 +11,13 @@ jest.mock('stripe', () => {
 });
 
 jest.mock('../models/BillingSchedule', () => ({ find: jest.fn() }));
+jest.mock('../config/paystack', () => ({
+    transaction: { verify: jest.fn(), charge: jest.fn() }
+}));
+jest.mock('../config/flutterwave', () => ({
+    Transaction: { verify: jest.fn() },
+    Tokenized: { charge: jest.fn() }
+}));
 
 const BillingSchedule = require('../models/BillingSchedule');
 const BillingScheduler = require('../utils/billingScheduler');

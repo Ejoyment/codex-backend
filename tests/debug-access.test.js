@@ -15,6 +15,9 @@ process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret-for-automated-te
 jest.mock('../models/CodeFile', () => ({ findById: jest.fn(), findByIdAndDelete: jest.fn(async () => null) }));
 jest.mock('../models/Company', () => ({ findOne: jest.fn() }));
 jest.mock('../models/User', () => ({ exists: jest.fn(), findById: jest.fn() }));
+jest.mock('../middleware/trial', () => ({
+  getOrCreateSubscription: jest.fn(async () => ({ tier: 'pro' })),
+}));
 jest.mock('../utils/debugAdapter', () => {
   const sessions = new Map();
   const ok = (ret) => jest.fn(async () => ret);
@@ -59,6 +62,7 @@ app.use('/api/debug', require('../routes/debug'));
 
 const tokenFor = (userId) => jwt.sign({ userId }, process.env.JWT_SECRET);
 const auth = (userId) => ({ Authorization: `Bearer ${tokenFor(userId)}` });
+const WORKSPACE_A = '507f1f77bcf86cd799439022';
 
 let currentFile = null;
 let currentCompany = null;
@@ -79,6 +83,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   clearLivenessCache();
   User.exists.mockResolvedValue({ _id: 'x' });
+  User.findById.mockResolvedValue({ _id: 'userA' });
   currentFile = null;
   currentCompany = null;
   debugAdapter.sessions.clear();
@@ -94,17 +99,17 @@ describe('session creation', () => {
     const res = await request(app)
       .post('/api/debug/session/create')
       .set(auth('userB'))
-      .send({ workspaceId: 'companyA', config: {} });
+      .send({ workspaceId: WORKSPACE_A, config: {} });
     expect(res.status).toBe(403);
     expect(debugAdapter.createSession).not.toHaveBeenCalled();
   });
 
   test('create session in own workspace → 200', async () => {
-    currentCompany = { _id: 'companyA' };
+    currentCompany = { _id: WORKSPACE_A, owner: 'userA', members: [] };
     const res = await request(app)
       .post('/api/debug/session/create')
       .set(auth('userA'))
-      .send({ workspaceId: 'companyA', config: {} });
+      .send({ workspaceId: WORKSPACE_A, config: {} });
     expect(res.status).toBe(200);
     expect(debugAdapter.createSession).toHaveBeenCalled();
   });

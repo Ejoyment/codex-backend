@@ -8,6 +8,30 @@ const CodeFile = require('../models/CodeFile');
 const { resolveAccessibleSpecs, getAccessibleProjects, userCanAccessProject } = require('../utils/specAccess');
 const { normalizeMembers } = require('../utils/members');
 const { assertCompanyMembership } = require('../middleware/workspaceAccess');
+const { ensurePersonalWorkspace } = require('../utils/personalWorkspace');
+const { getGitHubIntegration } = require('../utils/githubApiClient');
+const {
+    TEMPLATE_FILES,
+    provisionProject,
+    retryProvisioning,
+    normalizeRepoName,
+    normalizeBranch
+} = require('../utils/projectProvisioningService');
+
+function provisioningPayload(project) {
+    return {
+        id: project._id,
+        name: project.name,
+        sourceType: project.sourceType,
+        githubRepoName: project.githubRepoName,
+        githubRepoUrl: project.githubRepoUrl,
+        defaultBranch: project.defaultBranch,
+        provisioningStatus: project.provisioningStatus,
+        provisioningError: project.provisioningError,
+        provisionedAt: project.provisionedAt,
+        provisionedFileCount: project.provisionedFileCount
+    };
+}
 
 /**
  * @swagger
@@ -48,6 +72,10 @@ router.get('/', authenticateToken, async (req, res) => {
                 sourceType: p.sourceType,
                 defaultBranch: p.defaultBranch,
                 template: p.template,
+                provisioningStatus: p.provisioningStatus,
+                provisioningError: p.provisioningError,
+                provisionedAt: p.provisionedAt,
+                provisionedFileCount: p.provisionedFileCount,
                 technologies: p.technologies,
                 intelligence: p.intelligence,
                 workspaceId: p.workspaceId,
@@ -126,8 +154,8 @@ router.post('/', authenticateToken, enforceProjectLimit, async (req, res) => {
         const userId = req.userId || req.user.userId || req.user.id;
         const {
             name, description, priority, tags, visibility = 'private',
-            sourceType = 'scratch', githubRepoUrl, defaultBranch = 'main',
-            template = '', technologies = [], intelligence = {}
+            sourceType = 'scratch', githubRepoUrl, githubRepoName, defaultBranch = 'main',
+            template = '', technologies = [], intelligence = {}, workspaceId
         } = req.body;
 
         if (typeof name !== 'string' || !name.trim()) {
@@ -167,33 +195,46 @@ router.post('/', authenticateToken, enforceProjectLimit, async (req, res) => {
 
         let repositoryUrl;
         let repositoryName;
+        let branch;
         if (sourceType === 'github') {
             try {
-                const parsedUrl = new URL(githubRepoUrl);
-                const pathParts = parsedUrl.pathname.split('/').filter(Boolean);
-                if (
-                    parsedUrl.protocol !== 'https:' ||
-                    parsedUrl.hostname !== 'github.com' ||
-                    pathParts.length !== 2 ||
-                    parsedUrl.username ||
-                    parsedUrl.password
-                ) {
-                    throw new Error('Invalid repository URL');
-                }
-                const repo = pathParts[1].replace(/\.git$/i, '');
-                if (!repo) throw new Error('Invalid repository URL');
-                repositoryName = `${pathParts[0]}/${repo}`;
-                repositoryUrl = `https://github.com/${repositoryName}`;
-            } catch {
+                const repository = normalizeRepoName(githubRepoName || githubRepoUrl);
+                repositoryName = repository.fullName;
+                repositoryUrl = repository.url;
+                branch = normalizeBranch(defaultBranch || 'main');
+                await getGitHubIntegration(userId);
+            } catch (error) {
                 return res.status(400).json({
                     success: false,
-                    message: 'A valid GitHub repository URL is required when using a GitHub source'
+                    message: error.code === 'GITHUB_NOT_CONNECTED'
+                        ? 'Connect GitHub before importing a repository.'
+                        : 'A valid GitHub repository and branch are required when using a GitHub source'
                 });
             }
+        } else {
+            try {
+                branch = normalizeBranch(defaultBranch || 'main');
+            } catch {
+                return res.status(400).json({ success: false, message: 'A valid branch name is required' });
+            }
+        }
+
+        if (sourceType === 'template' && !TEMPLATE_FILES[String(template).trim()]) {
+            return res.status(400).json({ success: false, message: 'Choose a supported project template' });
+        }
+
+        let projectWorkspaceId;
+        if (workspaceId) {
+            if (!(await assertCompanyMembership(workspaceId, userId, res))) return;
+            projectWorkspaceId = workspaceId;
+        } else {
+            const workspace = await ensurePersonalWorkspace(userId);
+            projectWorkspaceId = workspace._id;
         }
 
         const project = await LocalProject.create({
             userId,
+            workspaceId: projectWorkspaceId,
             name: name.trim(),
             description: (description || '').trim(),
             priority: priority || 'medium',
@@ -203,16 +244,34 @@ router.post('/', authenticateToken, enforceProjectLimit, async (req, res) => {
             sourceType,
             githubRepoUrl: repositoryUrl,
             githubRepoName: repositoryName,
-            defaultBranch: defaultBranch.trim() || 'main',
+            defaultBranch: branch,
             template: template.trim(),
+            provisioningStatus: 'pending',
             technologies: [...new Set(technologies.map((technology) => technology.trim()).filter(Boolean))],
             intelligence: intelligenceSettings
         });
 
+        if (sourceType === 'github') {
+            provisionProject(project._id, userId).catch((error) => {
+                console.error('Project provisioning kickoff failed:', project._id, error?.message || error);
+            });
+
+            return res.status(201).json({
+                success: true,
+                message: 'Project created; repository import started',
+                project
+            });
+        }
+
+        const provisionedProject = await provisionProject(project._id, userId);
+        const provisioningFailed = provisionedProject?.provisioningStatus === 'failed';
+
         res.status(201).json({
             success: true,
-            message: 'Project created successfully',
-            project
+            message: provisioningFailed
+                ? (provisionedProject.provisioningError || 'Project created; setup needs a retry')
+                : 'Project created successfully',
+            project: provisionedProject || project
         });
     } catch (error) {
         console.error('Create project error:', error);
@@ -437,6 +496,87 @@ router.put('/tasks/:taskId', authenticateToken, async (req, res) => {
 });
 
 // ============ PROJECT-SPECIFIC ROUTES ============
+
+router.get('/:projectId/provisioning', authenticateToken, async (req, res) => {
+    try {
+        const userId = req.userId || req.user.userId || req.user.id;
+        const project = await LocalProject.findById(req.params.projectId);
+
+        if (!project || !await userCanAccessProject(project._id, userId)) {
+            return res.status(404).json({ success: false, message: 'Project not found' });
+        }
+
+        res.json({
+            success: true,
+            project: provisioningPayload(project)
+        });
+    } catch (error) {
+        console.error('Get project provisioning error:', error);
+        res.status(500).json({ success: false, message: 'Error fetching project setup status' });
+    }
+});
+
+router.post('/:projectId/provisioning/retry', authenticateToken, async (req, res) => {
+    try {
+        const userId = req.userId || req.user.userId || req.user.id;
+        const project = await LocalProject.findById(req.params.projectId);
+
+        if (!project || !await userCanAccessProject(project._id, userId)) {
+            return res.status(404).json({ success: false, message: 'Project not found' });
+        }
+        if (project.provisioningStatus === 'ready') {
+            return res.json({
+                success: true,
+                message: 'Project setup is already complete',
+                project: provisioningPayload(project)
+            });
+        }
+        if (project.provisioningStatus === 'provisioning') {
+            return res.status(409).json({
+                success: false,
+                message: 'Project setup is already running',
+                project: provisioningPayload(project)
+            });
+        }
+
+        if (project.sourceType === 'github') {
+            try {
+                await getGitHubIntegration(userId);
+            } catch {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Connect GitHub before importing a repository'
+                });
+            }
+
+            retryProvisioning(project._id, userId).catch((error) => {
+                console.error('Project provisioning retry failed:', project._id, error?.message || error);
+            });
+
+            const pending = await LocalProject.findById(project._id);
+            return res.status(202).json({
+                success: true,
+                message: 'Project setup retry started',
+                project: provisioningPayload(pending)
+            });
+        }
+
+        const updated = await retryProvisioning(project._id, userId);
+        const updatedStatus = updated?.provisioningStatus;
+        res.json({
+            success: true,
+            message: updatedStatus === 'failed'
+                ? (updated.provisioningError || 'Project setup failed')
+                : updatedStatus === 'ready'
+                    ? 'Project setup completed'
+                    : 'Project setup is already running',
+            project: provisioningPayload(updated || project)
+        });
+    } catch (error) {
+        console.error('Retry project provisioning error:', error);
+        res.status(500).json({ success: false, message: 'Error retrying project setup' });
+    }
+});
 
 /**
  * @swagger

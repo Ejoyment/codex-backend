@@ -21,6 +21,7 @@ jest.doMock('../middleware/auth', () => ({
     req.user = { _id: '507f1f77bcf86cd799439011' };
     next();
   },
+  isUserSessionValid: jest.fn(async () => true),
 }));
 jest.doMock('../utils/auditLogService', () => ({ addAuditLog: jest.fn() }));
 jest.doMock('../models/Company', () => ({ findOne: jest.fn(), findById: jest.fn() }));

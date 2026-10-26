@@ -513,12 +513,12 @@ function hostExecAllowed() {
   return process.env.NODE_ENV !== 'production';
 }
 
-function pickStrategy() {
+function pickStrategy({ allowHost = true } = {}) {
   const forced = process.env.IDE_EXEC_STRATEGY;
   if (forced === 'vps' || forced === 'docker') return forced;
   if (forced === 'host') {
-    if (!hostExecAllowed()) {
-      console.error('✗ IDE_EXEC_STRATEGY=host is not permitted in production — refusing to execute user code unsandboxed.');
+    if (!allowHost || !hostExecAllowed()) {
+      console.error('✗ Host execution is not permitted for this caller — refusing to execute user code unsandboxed.');
       return 'none';
     }
     return 'host';
@@ -527,8 +527,8 @@ function pickStrategy() {
   if (hasLocalDocker()) return 'docker';
   // No isolation available. Previously this silently fell through to
   // runOnHost(), giving every user code execution on the application host.
-  if (!hostExecAllowed()) {
-    console.error('✗ No Docker or VPS sandbox available and host execution is disabled — the Run button will report unavailable.');
+  if (!allowHost || !hostExecAllowed()) {
+    console.error('✗ No Docker or VPS sandbox available and host execution is disabled for this caller — the Run button will report unavailable.');
     return 'none';
   }
   return 'host';
@@ -888,7 +888,7 @@ function rateGate(userId) {
 // Main entry
 // ---------------------------------------------------------------------------
 
-async function executeRun({ language, files, entry, args, stdin, timeoutMs, onOutput }) {
+async function executeRun({ language, files, entry, args, stdin, timeoutMs, allowHost = true, onOutput }) {
   const def = resolveLanguage(language);
   if (!def) throw new Error(`Unsupported language: ${language}`);
   const v = sanitizeFiles(files);
@@ -901,7 +901,7 @@ async function executeRun({ language, files, entry, args, stdin, timeoutMs, onOu
   const safeArgs = (Array.isArray(args) ? args : []).slice(0, 20).map((a) => String(a).slice(0, 200));
   const timeout = Math.min(Math.max(parseInt(timeoutMs, 10) || def.timeoutMs, 1000), 180000);
   const script = buildContainerScript(def, v.files, entryRel, safeArgs);
-  const strategy = pickStrategy();
+  const strategy = pickStrategy({ allowHost });
 
   let result;
   if (strategy === 'none') {

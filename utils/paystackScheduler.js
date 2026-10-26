@@ -23,6 +23,7 @@ class PaystackScheduler {
         const billingSchedule = new BillingSchedule({
             userId,
             subscriptionId,
+            provider: 'paystack',
             chargeType: 'first_charge',
             scheduledFor,
             amount,
@@ -45,6 +46,7 @@ class PaystackScheduler {
         const billingSchedule = new BillingSchedule({
             userId,
             subscriptionId,
+            provider: 'paystack',
             chargeType: 'second_charge',
             scheduledFor,
             amount,
@@ -67,6 +69,7 @@ class PaystackScheduler {
         const billingSchedule = new BillingSchedule({
             userId,
             subscriptionId,
+            provider: 'paystack',
             chargeType: 'recurring',
             scheduledFor,
             amount,
@@ -99,24 +102,34 @@ class PaystackScheduler {
                 throw new Error('User not found');
             }
 
+            // Stable reference: if this process dies after Paystack charged but
+            // before the reference is saved, the reaper can verify this exact
+            // reference instead of guessing (and without charging again).
+            const reference =
+                billingSchedule.paystackReference || `bs-${String(billingSchedule._id)}`;
+
             // Charge using saved authorization
             const response = await paystack.transaction.charge({
                 email: user.email,
                 amount: billingSchedule.amount,
                 authorization_code: subscription.paymentId,
                 currency: 'USD',
+                reference,
                 metadata: {
                     userId: subscription.userId.toString(),
                     subscriptionId: subscription._id.toString(),
+                    scheduleId: billingSchedule._id.toString(),
                     chargeType: billingSchedule.chargeType
                 }
             });
 
             if (response.status && response.data.status === 'success') {
                 // Update billing schedule
+                billingSchedule.provider = 'paystack';
                 billingSchedule.status = 'completed';
                 billingSchedule.completedAt = new Date();
-                billingSchedule.paystackReference = response.data.reference;
+                billingSchedule.paystackReference = response.data.reference || reference;
+                billingSchedule.providerStatus = response.data.status;
                 await billingSchedule.save();
 
                 // Update subscription
@@ -164,12 +177,16 @@ class PaystackScheduler {
                 console.log(`✓ Successfully processed ${billingSchedule.chargeType} for user ${subscription.userId}`);
                 return { success: true, reference: response.data.reference };
             } else {
+                billingSchedule.provider = 'paystack';
+                billingSchedule.providerStatus =
+                    (response.data && response.data.status) || null;
                 throw new Error(response.message || 'Charge failed');
             }
 
         } catch (error) {
             console.error(`✗ Charge failed for billing schedule ${billingSchedule._id}:`, error.message);
             
+            billingSchedule.provider = 'paystack';
             billingSchedule.status = 'failed';
             billingSchedule.attempts += 1;
             billingSchedule.error = error.message;

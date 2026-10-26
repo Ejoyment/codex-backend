@@ -204,6 +204,17 @@ function BillingTab({ router, toast }) {
   const resume = () => runAction('resume', () => subscriptionApi.resume(), 'Your plan will continue');
 
   const goToCheckout = (tier) => router.push(`/checkout?plan=${tier}&interval=${interval}`);
+  const toggleOverage = (enabled) =>
+    runAction(
+      'overage',
+      () => subscriptionApi.setOverage(enabled),
+      enabled ? 'Overage enabled' : 'Overage disabled'
+    );
+
+  const compute = subscription?.usage?.computeHours;
+  const overageEnabled = compute?.overageEnabled === true;
+  const overageCapMinor = compute?.overageCapMinor || 0;
+  const overageRateMinor = compute?.overageRateMinorPerHour || 100;
 
   if (loading) {
     return (
@@ -353,6 +364,43 @@ function BillingTab({ router, toast }) {
             <span className="bill-usage-item">
               Cloud hours: <strong>{subscription.usage.computeHours.used}{subscription.usage.computeHours.limit == null ? ' (unlimited)' : ` / ${subscription.usage.computeHours.limit}`}</strong>
             </span>
+          </div>
+        )}
+
+        {compute && compute.limit > 0 && (
+          <div className="bill-overage">
+            <div className="bill-overage-copy">
+              <p className="bill-overage-title">
+                <Zap className="bill-overage-icon" aria-hidden="true" />
+                Compute overage
+              </p>
+              <p className="bill-overage-body">
+                {overageEnabled
+                  ? `Jobs can run past your ${compute.limit}h allowance at $${(overageRateMinor / 100).toFixed(2)}/hour, up to $${(overageCapMinor / 100).toFixed(2)} per month.`
+                  : `Jobs stop at your ${compute.limit}h allowance. Enable overage to keep long jobs running.`}
+              </p>
+              {compute.overageHours > 0 && (
+                <p className="bill-overage-usage">
+                  This month: {compute.overageHours.toFixed(2)}h overage
+                  {overageEnabled
+                    ? ` · $${(compute.overageAmountMinor / 100).toFixed(2)}`
+                    : ' · not billed'}
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              className={`btn-workspace ${overageEnabled ? 'btn-secondary' : 'btn-primary'}`}
+              onClick={() => toggleOverage(!overageEnabled)}
+              disabled={isBusy('overage')}
+            >
+              {isBusy('overage') ? (
+                <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+              ) : (
+                <Zap className="w-4 h-4" aria-hidden="true" />
+              )}
+              {overageEnabled ? 'Disable overage' : 'Enable overage'}
+            </button>
           </div>
         )}
 

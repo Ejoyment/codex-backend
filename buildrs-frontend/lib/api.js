@@ -196,26 +196,26 @@ export const companyApi = {
 };
 
 export const subscriptionApi = {
-  getCurrent: () => apiFetch('/api/subscription/current'),
-  // `mode` is 'period_end' (default, keeps access until the paid period runs
-  // out) or 'immediate' (revoke at once). The API decides the right default;
-  // only send it when the user explicitly asked to lose access now.
-  cancel: (mode) =>
-    apiFetch('/api/subscription/cancel', {
-      method: 'POST',
-      body: JSON.stringify(mode ? { mode } : {}),
-    }),
-  resume: () => apiFetch('/api/subscription/resume', { method: 'POST' }),
+  getCurrent: () => apiFetch('/api/v1/billing/subscription/current'),
+  // User-initiated cancellation is always period-end; immediate revocation is
+  // reserved for abuse/refund handling and is not exposed to the client.
+  cancel: () => apiFetch('/api/v1/billing/cancel', { method: 'POST' }),
+  resume: () => apiFetch('/api/v1/billing/subscription/resume', { method: 'POST' }),
   // Downgrades and moves to Free. Upgrades must go through checkout instead.
   changePlan: (tier, timing) =>
-    apiFetch('/api/subscription/change-plan', {
+    apiFetch('/api/v1/billing/subscription/change-plan', {
       method: 'POST',
       body: JSON.stringify({ tier, timing }),
+    }),
+  setOverage: (enabled) =>
+    apiFetch('/api/v1/billing/subscription/overage', {
+      method: 'POST',
+      body: JSON.stringify({ enabled }),
     }),
 };
 
 export const billingApi = {
-  getTrial: () => apiFetch('/api/trial-billing/status'),
+  getTrial: () => apiFetch('/api/v1/billing/trial/status'),
 };
 
 export const integrationApi = {
@@ -240,6 +240,7 @@ export const githubApi = {
     return apiFetch(`/api/github/repos${qs ? `?${qs}` : ''}`);
   },
   getRepo: (owner, repo) => apiFetch(`/api/github/repos/${owner}/${repo}`),
+  getBranches: (owner, repo) => apiFetch(`/api/github/repos/${owner}/${repo}/branches`),
   getCommits: (owner, repo, params = {}) => {
     const qs = new URLSearchParams(params).toString();
     return apiFetch(`/api/github/repos/${owner}/${repo}/commits${qs ? `?${qs}` : ''}`);
@@ -336,6 +337,11 @@ export const projectApi = {
       body: JSON.stringify(data),
     }),
   get: (projectId) => apiFetch(`/api/projects/${projectId}`),
+  getProvisioning: (projectId) => apiFetch(`/api/projects/${projectId}/provisioning`),
+  retryProvisioning: (projectId) =>
+    apiFetch(`/api/projects/${projectId}/provisioning/retry`, {
+      method: 'POST',
+    }),
   listProjectFiles: (projectId) => apiFetch(`/api/projects/${projectId}/files`),
   listTasks: () => apiFetch('/api/projects/tasks'),
   createTask: (data) =>

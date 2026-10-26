@@ -7,12 +7,13 @@ const rateLimit = require('express-rate-limit');
 const { supportTicketLimiter, supportReplyLimiter } = require('../middleware/rateLimits');
 const { MAX_TICKET_MESSAGES } = require('../utils/retention');
 const { isLockedOut, recordFailure, clearLockout } = require('../models/AuthLockout');
+const { isUserSessionValid } = require('../middleware/auth');
 
 // Rate limiting for support agent login (same as main auth)
 const supportLoginLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 5,
-    store: require('../utils/redis').getRateLimitStore(),
+    store: require('../utils/redis').getRateLimitStore('support-login'),
     passOnStoreError: true,
     message: { success: false, message: 'Too many login attempts, please try again later.' }
 });
@@ -190,7 +191,7 @@ const verifyUser = async (req, res, next) => {
         }
         const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
         const userId = decoded.id || decoded.userId;
-        if (!userId) {
+        if (!userId || !(await isUserSessionValid(userId, decoded.tokenVersion))) {
             return res.status(401).json({ success: false, message: 'Invalid token' });
         }
         req.userId = userId;
@@ -213,7 +214,7 @@ router.get('/tickets', async (req, res) => {
             const userId = decoded.id || decoded.userId;
             // Never fall through to an empty filter: a valid token without a
             // user claim (e.g. an agent token) must not list other users' tickets.
-            if (!userId || typeof userId !== 'string') {
+            if (!userId || typeof userId !== 'string' || !(await isUserSessionValid(userId, decoded.tokenVersion))) {
                 return res.status(401).json({ success: false, message: 'Invalid token' });
             }
             filter = { userId };
@@ -251,7 +252,7 @@ router.post('/tickets/:ticketId/messages', supportReplyLimiter, async (req, res)
             const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
             if (decoded.agentId) {
                 const agent = await SupportAgent.findById(decoded.agentId);
-                if (!agent) {
+                if (!agent || agent.isActive === false) {
                     return res.status(401).json({ success: false, message: 'Invalid token' });
                 }
                 isAgent = true;
@@ -259,6 +260,9 @@ router.post('/tickets/:ticketId/messages', supportReplyLimiter, async (req, res)
                 senderName = agent.name || 'Support Agent';
             } else if (decoded.id || decoded.userId) {
                 requesterUserId = String(decoded.id || decoded.userId);
+                if (!(await isUserSessionValid(requesterUserId, decoded.tokenVersion))) {
+                    return res.status(401).json({ success: false, message: 'Invalid token' });
+                }
                 senderType = 'user';
                 try {
                     const User = require('../models/User');
@@ -395,9 +399,11 @@ router.get('/tickets/:ticketId', async (req, res) => {
                 }
                 if (isAgent) {
                     const agent = await SupportAgent.findById(decoded.agentId);
-                    if (!agent) {
+                    if (!agent || agent.isActive === false) {
                         return res.status(401).json({ success: false, message: 'Invalid token' });
                     }
+                } else if (!(await isUserSessionValid(requesterUserId, decoded.tokenVersion))) {
+                    return res.status(401).json({ success: false, message: 'Invalid token' });
                 }
             } catch (e) {
                 return res.status(401).json({ success: false, message: 'Invalid token' });

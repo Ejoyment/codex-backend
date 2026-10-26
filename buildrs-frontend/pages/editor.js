@@ -504,6 +504,10 @@ export default function Editor() {
   const [byomOpen, setByomOpen] = useState(false);
   const [customModel, setCustomModel] = useState('GPT-4.1');
   const [collaborators, setCollaborators] = useState([]);
+  const [fileCollaborators, setFileCollaborators] = useState([]);
+  const [fileAccess, setFileAccess] = useState(null);
+  const [companyMembers, setCompanyMembers] = useState([]);
+  const [sharingBusy, setSharingBusy] = useState(null);
   const [remoteCursors, setRemoteCursors] = useState({});
   const [figmaFiles, setFigmaFiles] = useState([]);
   const [selectedFigmaFile, setSelectedFigmaFile] = useState(null);
@@ -573,7 +577,11 @@ export default function Editor() {
   const termSessionRef = useRef(null);
   const termRef = useRef(null);
   const aiSessionRef = useRef(null);
-  const { selectedCompany } = useCurrentCompany();
+  const {
+    selectedCompany,
+    hasCompany,
+    refetch: refetchCompanies,
+  } = useCurrentCompany();
   const workspaceId = selectedCompany?._id;
 
   const [projects, setProjects] = useState([]);
@@ -647,6 +655,50 @@ export default function Editor() {
       ? [...files, ...repoPending]
       : files,
   ), [files, repoPending, selectedRepo, selectedProject]);
+
+  // Teammates who can be given file-level read/write access. Company
+  // owners/admins already manage every file, and the creator always keeps
+  // control, so those rows are not shown as editable share targets.
+  const fileSharingRows = useMemo(() => {
+    const currentUserId = String(user?.id || user?._id || '');
+    const creatorId = String(selectedFile?.createdBy?._id || selectedFile?.createdBy || '');
+    const rows = new Map();
+
+    (companyMembers || []).forEach((membership) => {
+      const memberUser = membership?.user;
+      const id = String(memberUser?._id || memberUser || '');
+      if (!id) return;
+      rows.set(id, {
+        id,
+        name: memberUser?.fullName || memberUser?.email || 'Teammate',
+        email: memberUser?.email || '',
+        role: membership?.role || 'viewer',
+        permission: null,
+      });
+    });
+
+    (fileCollaborators || []).forEach((collaborator) => {
+      const collaboratorUser = collaborator?.user;
+      const id = String(collaboratorUser?._id || collaboratorUser || '');
+      if (!id) return;
+      const existing = rows.get(id);
+      rows.set(id, {
+        id,
+        name: existing?.name || collaboratorUser?.fullName || collaboratorUser?.email || 'Collaborator',
+        email: existing?.email || collaboratorUser?.email || '',
+        role: existing?.role || null,
+        permission: collaborator?.permission || 'read',
+      });
+    });
+
+    return [...rows.values()].filter((row) => (
+      row.id !== currentUserId
+      && row.id !== creatorId
+      && !['owner', 'admin'].includes(row.role)
+    ));
+  }, [companyMembers, fileCollaborators, selectedFile, user]);
+
+  const isWorkspaceFile = /^[0-9a-f]{24}$/i.test(String(selectedFile?._id || ''));
 
   const getFileKey = useCallback((file) => {
     if (!file) return null;
@@ -1030,6 +1082,44 @@ export default function Editor() {
     };
   }, [selectedFile?._id, user]);
 
+  // File-level collaborator permissions (read/write) live in the Live Share
+  // panel. Company members are the candidates; the server is the source of
+  // truth for whether the caller may change them.
+  useEffect(() => {
+    let cancelled = false;
+    const fileId = selectedFile?._id;
+    if (!fileId || !/^[0-9a-f]{24}$/i.test(String(fileId))) {
+      setFileCollaborators([]);
+      setFileAccess(null);
+      return undefined;
+    }
+    (async () => {
+      try {
+        const data = await apiFetch(`/api/code-editor/files/${fileId}/collaborators`);
+        if (cancelled) return;
+        setFileCollaborators(data.collaborators || []);
+        setFileAccess(data.access || null);
+      } catch {
+        if (cancelled) return;
+        setFileCollaborators([]);
+        setFileAccess(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedFile?._id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!workspaceId) {
+      setCompanyMembers([]);
+      return undefined;
+    }
+    companyApi.getMembers(workspaceId)
+      .then((data) => { if (!cancelled) setCompanyMembers(data.members || []); })
+      .catch(() => { if (!cancelled) setCompanyMembers([]); });
+    return () => { cancelled = true; };
+  }, [workspaceId]);
+
   useEffect(() => {
     function handleClickOutside(e) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
@@ -1283,6 +1373,47 @@ export default function Editor() {
       setStatus({ type: 'error', msg: 'Failed to load files' });
     } finally {
       if (seq === filesSeqRef.current) setLoading(false);
+    }
+  }
+
+  async function loadFileSharing(fileId) {
+    if (!fileId || !/^[0-9a-f]{24}$/i.test(String(fileId))) {
+      setFileCollaborators([]);
+      setFileAccess(null);
+      return;
+    }
+    try {
+      const data = await apiFetch(`/api/code-editor/files/${fileId}/collaborators`);
+      setFileCollaborators(data.collaborators || []);
+      setFileAccess(data.access || null);
+    } catch {
+      setFileCollaborators([]);
+      setFileAccess(null);
+    }
+  }
+
+  async function updateFileCollaborator(userId, permission) {
+    const fileId = selectedFile?._id;
+    if (!fileId || !/^[0-9a-f]{24}$/i.test(String(fileId))) return;
+    setSharingBusy(String(userId));
+    try {
+      if (!permission) {
+        await apiFetch(`/api/code-editor/files/${fileId}/collaborators/${encodeURIComponent(userId)}`, {
+          method: 'DELETE',
+        });
+      } else {
+        await apiFetch(`/api/code-editor/files/${fileId}/collaborators`, {
+          method: 'POST',
+          body: JSON.stringify({ userId, permission }),
+        });
+      }
+      await loadFileSharing(fileId);
+      setStatus({ type: 'success', msg: permission ? 'File access updated' : 'Collaborator removed' });
+      setTimeout(() => setStatus(null), 2000);
+    } catch (err) {
+      setStatus({ type: 'error', msg: err.message || 'Could not update file access' });
+    } finally {
+      setSharingBusy(null);
     }
   }
 
@@ -1558,6 +1689,11 @@ export default function Editor() {
   const startAgentExecution = useCallback(async (taskLabel) => {
     const goal = taskLabel || (selectedFile ? `Fix ${selectedFile.name}` : 'Review workspace');
     const title = selectedFile ? `Fix ${selectedFile.name}` : 'Review workspace';
+    const delegateWorkspaceId = workspaceId || selectedProject?.workspaceId || null;
+    if (!delegateWorkspaceId) {
+      toastError('Select a workspace before delegating to the agent.');
+      return;
+    }
 
     clearAgentPoll();
     setAgentExecution({
@@ -1576,8 +1712,7 @@ export default function Editor() {
     });
 
     try {
-      const wsId = workspaceId || selectedProject?._id || selectedProject?.id || null;
-      const data = await agentApi.delegate({ taskTitle: title, summary: goal, workspaceId: wsId });
+      const data = await agentApi.delegate({ taskTitle: title, summary: goal, workspaceId: delegateWorkspaceId });
       const exec = data?.execution;
       if (!data?.success || !exec?._id) throw new Error(data?.message || 'Delegation failed');
       const backendId = exec._id;
@@ -2420,6 +2555,7 @@ export default function Editor() {
     const created = data.file || data;
     setStatus({ type: 'success', msg: 'File created' });
     setTimeout(() => setStatus(null), 2000);
+    if (!workspaceId) await refetchCompanies();
     await reloadFiles();
     if (created) {
       openFile(created);
@@ -3191,6 +3327,9 @@ export default function Editor() {
                 <span>Deploy</span>
                 <span>Live</span>
               </div>
+              <button type="button" className="btn-workspace btn-secondary" onClick={() => router.push('/workspace')}>
+                <Layers className="w-4 h-4" /> {hasCompany ? 'Workspaces' : 'Create Workspace'}
+              </button>
               <button type="button" className="btn-workspace btn-primary" onClick={() => startInlineCreate()}>
                 <FilePlus className="w-4 h-4" /> New File
               </button>
@@ -3641,6 +3780,58 @@ export default function Editor() {
                     >
                       Copy Link
                     </button>
+                    {isWorkspaceFile && (
+                      <>
+                        <div className="ed-sidebar-title" style={{ padding: '0.1rem 0.55rem' }}>File access</div>
+                        {!fileAccess?.canManage && (
+                          <p className="text-xs" style={{ color: '#6e6e6e', padding: '0.2rem 0.55rem', lineHeight: 1.5 }}>
+                            {fileAccess
+                              ? 'Only the file owner or workspace admins can change who can edit this file.'
+                              : 'Checking file permissions…'}
+                          </p>
+                        )}
+                        {fileSharingRows.length === 0 ? (
+                          <p className="text-xs" style={{ color: '#6e6e6e', padding: '0.2rem 0.55rem' }}>
+                            No teammates to share this file with.
+                          </p>
+                        ) : (
+                          fileSharingRows.map((row) => (
+                            <div key={row.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.3rem 0.55rem' }}>
+                              <div style={{ minWidth: 0, flex: 1 }}>
+                                <div className="text-xs" style={{ color: '#d4d4d4', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {row.name}
+                                </div>
+                                {row.email && (
+                                  <div className="text-xs" style={{ color: '#6e6e6e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {row.email}
+                                  </div>
+                                )}
+                              </div>
+                              <select
+                                aria-label={`Access for ${row.name}`}
+                                value={row.permission || ''}
+                                disabled={!fileAccess?.canManage || sharingBusy === row.id}
+                                onChange={(e) => updateFileCollaborator(row.id, e.target.value)}
+                                style={{
+                                  background: '#1e1e1e',
+                                  color: '#d4d4d4',
+                                  border: '1px solid rgba(255,255,255,0.12)',
+                                  borderRadius: 6,
+                                  fontSize: '0.66rem',
+                                  padding: '0.2rem 0.25rem',
+                                  maxWidth: 96,
+                                }}
+                              >
+                                <option value="">No access</option>
+                                <option value="read">Can view</option>
+                                <option value="write">Can edit</option>
+                                {row.permission === 'admin' && <option value="admin">Can manage</option>}
+                              </select>
+                            </div>
+                          ))
+                        )}
+                      </>
+                    )}
                     <div className="ed-sidebar-title" style={{ padding: '0.1rem 0.55rem' }}>Active</div>
                     {collaborators.length === 0 ? (
                       <p className="text-xs" style={{ color: '#6e6e6e', padding: '0.2rem 0.55rem' }}>No active collaborators yet</p>

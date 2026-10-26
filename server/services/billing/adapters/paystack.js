@@ -16,7 +16,7 @@ class PaystackAdapter extends PaymentAdapter {
     return s;
   }
 
-  async createCheckout({ userId, email, plan = 'pro', amount, currency = 'NGN', callbackUrl }) {
+  async createCheckout({ userId, email, plan = 'pro', interval = 'monthly', amount, currency = 'NGN', callbackUrl }) {
     const axios = require('axios');
     const res = await axios.post(
       'https://api.paystack.co/transaction/initialize',
@@ -25,9 +25,9 @@ class PaystackAdapter extends PaymentAdapter {
         amount: Math.round(Number(amount) * 100), // kobo
         currency,
         callback_url: callbackUrl,
-        metadata: { userId: String(userId), plan },
+        metadata: { userId: String(userId), plan, interval },
       },
-      { headers: { Authorization: `Bearer ${this._secret()}` } }
+      { headers: { Authorization: `Bearer ${this._secret()}` }, timeout: 15000 }
     );
     const data = res.data?.data || {};
     return { provider: 'paystack', sessionId: data.reference, url: data.authorization_url };
@@ -43,15 +43,19 @@ class PaystackAdapter extends PaymentAdapter {
     // exact policy wording is a team decision — see 3.2).
     const refunded = event.event === 'refund.processed' || event.event === 'refund.failed';
     const disputed = event.event === 'charge.dispute.create' || event.event === 'charge.dispute.reminder';
+    const amountMinor = d.amount == null ? null : Math.round(Number(d.amount));
     return {
       eventId: `paystack:${event.id || d.reference}`,
       type: event.event,
       userId: d.metadata?.userId || null,
       plan: d.metadata?.plan || null,
+      interval: d.metadata?.interval || null,
       status: event.event === 'charge.success' ? 'active' : (refunded || disputed ? 'past_due' : null),
       customerId: d.customer?.customer_code || d.customer?.email || null,
       subscriptionId: d.reference || null,
-      currency: (d.currency || 'NGN').toUpperCase(),
+      currency: d.currency ? String(d.currency).toUpperCase() : null,
+      amountMinor: Number.isFinite(amountMinor) ? amountMinor : null,
+      amount: Number.isFinite(amountMinor) ? amountMinor / 100 : null,
     };
   }
 

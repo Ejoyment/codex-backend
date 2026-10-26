@@ -14,11 +14,13 @@ process.env.MONGODB_URI = 'mongodb://fake:27017/test';
 // Mock all external dependencies
 jest.mock('jsonwebtoken', () => ({
   sign: jest.fn(() => 'mock-jwt-token'),
-  verify: jest.fn((token, secret, cb) => {
-    if (cb) {
-      cb(null, { id: 'mock-user-id', userId: 'mock-user-id' });
+  verify: jest.fn((token, secret, options, cb) => {
+    const done = typeof options === 'function' ? options : cb;
+    const payload = { id: 'mock-user-id', userId: 'mock-user-id' };
+    if (done) {
+      done(null, payload);
     }
-    return { id: 'mock-user-id', userId: 'mock-user-id' };
+    return payload;
   }),
 }));
 

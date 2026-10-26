@@ -245,7 +245,7 @@ describe('terminal authorization', () => {
         const src = readSource('server.js');
         const idx = src.indexOf("socket.on('terminal:create'");
         expect(idx).toBeGreaterThan(-1);
-        const block = src.slice(idx, idx + 900);
+        const block = src.slice(idx, idx + 1800);
         expect(block).toMatch(/permissionMatrix\.checkPermission/);
         // The permission gate must appear before the terminal is spawned.
         expect(block.indexOf('checkPermission')).toBeLessThan(block.indexOf('createTerminal('));
@@ -694,7 +694,7 @@ describe('token lifetime vs account lifecycle', () => {
     it('rejects a signature-valid token whose account no longer exists', async () => {
         jest.resetModules();
         jest.doMock('jsonwebtoken', () => ({
-            verify: jest.fn((t, s, cb) => cb(null, { userId: 'ghost-user' })),
+            verify: jest.fn((t, s, options, cb) => (typeof options === 'function' ? options : cb)(null, { userId: 'ghost-user' })),
             sign: jest.fn(),
         }));
         jest.doMock('../models/User', () => ({
@@ -717,7 +717,7 @@ describe('token lifetime vs account lifecycle', () => {
     it('allows a token whose account still exists', async () => {
         jest.resetModules();
         jest.doMock('jsonwebtoken', () => ({
-            verify: jest.fn((t, s, cb) => cb(null, { userId: 'live-user' })),
+            verify: jest.fn((t, s, options, cb) => (typeof options === 'function' ? options : cb)(null, { userId: 'live-user' })),
             sign: jest.fn(),
         }));
         jest.doMock('../models/User', () => ({

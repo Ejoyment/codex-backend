@@ -36,7 +36,7 @@ class StripeAdapter extends PaymentAdapter {
       line_items: [{ price, quantity: 1 }],
       success_url: successUrl,
       cancel_url: cancelUrl,
-      metadata: { userId: String(userId), plan },
+      metadata: { userId: String(userId), plan, interval },
     });
     return { provider: 'stripe', sessionId: session.id, url: session.url };
   }
@@ -47,22 +47,33 @@ class StripeAdapter extends PaymentAdapter {
     const secret = process.env.STRIPE_WEBHOOK_SECRET;
     const event = stripe.webhooks.constructEvent(rawBody, signature, secret);
     const obj = event.data?.object || {};
+    const amountMinor = stripeAmountMinor(obj);
     return {
       eventId: `stripe:${event.id}`,
       type: event.type,
       userId: obj.metadata?.userId || obj.client_reference_id || null,
       plan: obj.metadata?.plan || null,
+      interval: obj.metadata?.interval || stripeInterval(obj),
       status: mapStripeStatus(event.type, obj),
       customerId: obj.customer || null,
       subscriptionId: obj.subscription || obj.id || null,
-      currency: (obj.currency || 'USD').toUpperCase(),
+      currency: obj.currency ? String(obj.currency).toUpperCase() : null,
+      amountMinor,
+      amount: amountMinor == null ? null : amountMinor / 100,
     };
   }
 
-  async cancelSubscription({ subscriptionId }) {
+  async cancelSubscription({ subscriptionId, atPeriodEnd = true }) {
     const stripe = this._client();
-    const sub = await stripe.subscriptions.cancel(subscriptionId);
-    return { provider: 'stripe', id: sub.id, status: sub.status };
+    const sub = atPeriodEnd
+      ? await stripe.subscriptions.update(subscriptionId, { cancel_at_period_end: true })
+      : await stripe.subscriptions.cancel(subscriptionId);
+    return {
+      provider: 'stripe',
+      id: sub.id,
+      status: sub.status,
+      cancelAtPeriodEnd: atPeriodEnd,
+    };
   }
 
   async getCustomerPortal({ customerId, returnUrl }) {
@@ -70,6 +81,31 @@ class StripeAdapter extends PaymentAdapter {
     const session = await stripe.billingPortal.sessions.create({ customer: customerId, return_url: returnUrl });
     return { provider: 'stripe', url: session.url };
   }
+}
+
+function stripeAmountMinor(obj) {
+  // Prefer pre-tax/subtotal values so Stripe Tax does not make a legitimate
+  // charge fail canonical price validation.
+  const values = [
+    obj.amount_subtotal,
+    obj.subtotal,
+    obj.items?.data?.[0]?.price?.unit_amount,
+    obj.amount_total,
+    obj.amount_paid,
+    obj.amount_due,
+    obj.amount,
+  ];
+  for (const value of values) {
+    if (value != null && Number.isFinite(Number(value))) return Math.round(Number(value));
+  }
+  return null;
+}
+
+function stripeInterval(obj) {
+  const interval = obj.metadata?.interval || obj.items?.data?.[0]?.price?.recurring?.interval;
+  if (interval === 'year') return 'yearly';
+  if (interval === 'month') return 'monthly';
+  return interval || null;
 }
 
 function mapStripeStatus(type, obj) {

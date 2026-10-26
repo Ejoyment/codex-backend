@@ -30,6 +30,7 @@ const Company = require('../models/Company');
 const LocalProject = require('../models/LocalProject');
 const CodeFile = require('../models/CodeFile');
 const deploymentsRouter = require('../routes/deployments');
+const { backfillFileContent } = require('../utils/deployContent');
 
 const companyQuery = (result) => ({
     select: () => ({ lean: async () => result }),
@@ -85,7 +86,11 @@ describe('deployment tenant scoping', () => {
 
     test('allows a workspace the caller belongs to', async () => {
         const workspaceId = '507f1f77bcf86cd799439014';
-        Company.findOne.mockReturnValue(companyQuery({ _id: workspaceId }));
+        Company.findOne.mockReturnValue(companyQuery({
+            _id: workspaceId,
+            owner: '507f1f77bcf86cd799439011',
+            members: [],
+        }));
         LocalProject.findOne.mockReturnValue({
             lean: async () => ({
                 _id: '507f1f77bcf86cd799439013',
@@ -99,5 +104,46 @@ describe('deployment tenant scoping', () => {
 
         expect(response.status).toBe(400);
         expect(response.body.error).toMatch(/no .*files/i);
+    });
+
+    test('an empty selected project never falls back to workspace files', async () => {
+        const workspaceId = '507f1f77bcf86cd799439014';
+        const projectId = '507f1f77bcf86cd799439013';
+        Company.findOne.mockReturnValue(companyQuery({
+            _id: workspaceId,
+            owner: '507f1f77bcf86cd799439011',
+            members: [],
+        }));
+        LocalProject.findOne.mockReturnValue({
+            lean: async () => ({ _id: projectId, workspaceId }),
+        });
+        CodeFile.find.mockReturnValue({ lean: async () => [] });
+
+        const response = await request(app)
+            .post('/api/deployments')
+            .send({ subdomain: 'my-app', projectId });
+
+        expect(response.status).toBe(400);
+        expect(CodeFile.find).toHaveBeenCalledTimes(1);
+        expect(CodeFile.find).toHaveBeenCalledWith({ project: projectId });
+        expect(CodeFile.find).not.toHaveBeenCalledWith({ company: workspaceId });
+    });
+
+    test('content backfill reads only the selected project', async () => {
+        const workspaceId = '507f1f77bcf86cd799439014';
+        const projectId = '507f1f77bcf86cd799439013';
+        CodeFile.find.mockReturnValue({ lean: async () => [] });
+
+        await expect(backfillFileContent({
+            userId: '507f1f77bcf86cd799439011',
+            projectId,
+            workspaceId,
+            files: [{ name: 'app.js', path: '/', language: 'javascript' }],
+        })).rejects.toThrow(/No file content/);
+
+        expect(CodeFile.find).toHaveBeenCalledWith({ project: projectId });
+        expect(CodeFile.find).not.toHaveBeenCalledWith(expect.objectContaining({
+            $or: expect.anything(),
+        }));
     });
 });

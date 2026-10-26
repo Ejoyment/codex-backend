@@ -32,6 +32,8 @@ describe('project workspace scoping', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
+        // workspaceAccess.userIsCompanyMember resolves membership via
+        // Company.findOne({ _id, $or: [owner, members.user] }).
         Company.findOne.mockReturnValue(companyQuery(null));
         LocalProject.findOne.mockReturnValue({
             _id: '507f1f77bcf86cd799439013',
@@ -52,7 +54,10 @@ describe('project workspace scoping', () => {
 
     test('allows moving a project into a workspace the caller belongs to', async () => {
         const workspaceId = '507f1f77bcf86cd799439014';
-        Company.findOne.mockReturnValue(companyQuery({ _id: workspaceId }));
+        Company.findOne.mockReturnValue(companyQuery({
+            _id: workspaceId,
+            owner: '507f1f77bcf86cd799439011',
+        }));
 
         const response = await request(app)
             .put('/api/projects/507f1f77bcf86cd799439013')
