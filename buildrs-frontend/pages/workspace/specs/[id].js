@@ -101,7 +101,7 @@ export default function SpecWorkspace() {
                   <AlertTriangle className="w-3 h-3" /> {spec.assertions.length} assertions
                 </span>
               )}
-            </main>
+            </div>
           </div>
 
           <div className="grid grid-cols-3 gap-4 mb-6">
@@ -173,7 +173,7 @@ export default function SpecWorkspace() {
             workspaceId={spec?.workspaceId}
             onDriftDetected={handleDriftDetected}
           />
-        </div>
+        </main>
       </div>
 
       {showDrawer && (
