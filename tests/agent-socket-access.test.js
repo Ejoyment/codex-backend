@@ -32,6 +32,7 @@ jest.mock('../utils/aiRouterService', () => ({
     provider: provider || 'gemini',
     localPrivacyMode: Boolean(localPrivacyMode),
   })),
+  validateModel: jest.fn().mockResolvedValue(true),
 }));
 jest.mock('../utils/sddVerificationService', () => ({ verifySpec: jest.fn() }));
 jest.mock('../utils/containerWorker', () => ({ provisionWorker: jest.fn(), teardownWorker: jest.fn() }));

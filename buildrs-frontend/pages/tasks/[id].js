@@ -311,10 +311,22 @@ export default function TaskDetails() {
         return;
       }
 
+      let modelPreference = null;
+      try {
+        modelPreference = JSON.parse(window.localStorage.getItem('buildrs-ai-model-preference') || 'null');
+      } catch {
+        window.localStorage.removeItem('buildrs-ai-model-preference');
+      }
       const result = await apiFetch('/api/v1/agent/delegate', {
         method: 'POST',
         timeoutMs: 120000,
-        body: JSON.stringify({ taskId: task.id, workspaceId, specIds: task.specIds || [] }),
+        body: JSON.stringify({
+          taskId: task.id,
+          workspaceId,
+          specIds: task.specIds || [],
+          provider: modelPreference?.provider,
+          model: modelPreference?.model,
+        }),
       });
       if (result.success === false) throw new Error(result.message || 'Could not delegate this task.');
       await loadTask();

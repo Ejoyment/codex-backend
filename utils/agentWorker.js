@@ -6,7 +6,7 @@ const realtimeBus = require('./realtimeBus');
 const AgentExecution = require('../models/AgentExecution');
 const { slicedPush, MAX_AGENT_LOG } = require('./retention');
 const { connectWorkerDatabase } = require('./agentWorkerDatabase');
-const { executionId, taskId, workspaceId, specIds = [], provider, localPrivacyMode } = workerData;
+const { executionId, taskId, workspaceId, specIds = [], provider, model, localPrivacyMode } = workerData;
 
 async function runAgent() {
   try {
@@ -49,6 +49,8 @@ async function runAgent() {
       workspaceId,
       files: codeFiles,
       agentMode: true,
+      provider,
+      model,
       instructions: `Use branch ${execution.branch} based on ${execution.baseBranch}. Follow these architectural rules: ${(snapshot.architecturalRules || []).join('; ') || 'none supplied'}. Return a written plan and file-level proposed changes.`,
     };
 
@@ -68,6 +70,7 @@ async function runAgent() {
       : 900000;
     const result = await aiRouterService.routeChat(messages, codeContext, {
       provider,
+      model,
       localPrivacyMode,
       timeoutMs: AI_TIMEOUT_MS,
     });

@@ -58,7 +58,10 @@ function enforceMinTier(minTier) {
 function enforceConcurrentJobs(maxJobs) {
     return async (req, res, next) => {
         const subscription = req.subscription;
-        const limit = subscription.getMaxConcurrentAgentJobs();
+        const localModelRequested = ['ollama', 'lm-studio'].includes(req.body?.provider);
+        const limit = localModelRequested && subscription.tier === 'developer'
+            ? 1
+            : subscription.getMaxConcurrentAgentJobs();
         if (limit === 0) {
             return res.status(403).json({
                 success: false,
@@ -177,6 +180,7 @@ function enforceDeploymentLimit() {
 
 function enforceCloudComputeLimit() {
     return async (req, res, next) => {
+        if (['ollama', 'lm-studio'].includes(req.body?.provider)) return next();
         const subscription = req.subscription;
         const monthlyLimit = subscription.getCloudComputeHours();
         if (monthlyLimit === 0 && subscription.tier === 'developer') {
@@ -205,6 +209,7 @@ function enforceCloudComputeLimit() {
 
 function enforceCreditPool() {
     return async (req, res, next) => {
+        if (['ollama', 'lm-studio'].includes(req.body?.provider)) return next();
         const subscription = req.subscription;
         const monthlyLimit = subscription.getMonthlyCreditLimit();
         if (monthlyLimit === 0 && subscription.tier === 'developer') {

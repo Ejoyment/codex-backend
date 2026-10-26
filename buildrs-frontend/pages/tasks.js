@@ -277,10 +277,22 @@ export default function Tasks() {
     setDelegatingId(task.id);
     setActionError('');
     try {
+      let modelPreference = null;
+      try {
+        modelPreference = JSON.parse(window.localStorage.getItem('buildrs-ai-model-preference') || 'null');
+      } catch {
+        window.localStorage.removeItem('buildrs-ai-model-preference');
+      }
       const result = await apiFetch('/api/v1/agent/delegate', {
         method: 'POST',
         timeoutMs: 300000,
-        body: JSON.stringify({ taskId: task.id, workspaceId: selectedCompany._id, specIds: task.specIds || [] }),
+        body: JSON.stringify({
+          taskId: task.id,
+          workspaceId: selectedCompany._id,
+          specIds: task.specIds || [],
+          provider: modelPreference?.provider,
+          model: modelPreference?.model,
+        }),
       });
       if (result.success) await loadTasks();
     } catch (error) {

@@ -90,11 +90,12 @@ class AgentSocketHandler {
   }
 
   async handleDelegate(socket, data = {}) {
-    const { taskId, taskTitle, sessionId, workspaceId, summary = '', specId, provider: requestedProvider, localPrivacyMode = false } = data;
+    const { taskId, taskTitle, sessionId, workspaceId, summary = '', specId, provider: requestedProvider, model, localPrivacyMode = false } = data;
 
     try {
       const { provider, localPrivacyMode: effectiveLocalPrivacyMode } =
         aiRouterService.resolveRequestProvider(requestedProvider, localPrivacyMode);
+      await aiRouterService.validateModel(provider, model);
       // Access checks BEFORE any mutation (execution creation, task updates):
       // a client-supplied taskId/specId/workspaceId must belong to the caller.
       if (taskId) {
@@ -119,6 +120,7 @@ class AgentSocketHandler {
         taskTitle: taskTitle || 'Agent task',
         summary,
         status: 'running',
+        model: model || provider,
         approvalRequired: true,
         metadata: {
           taskId: taskId || null,
@@ -126,6 +128,7 @@ class AgentSocketHandler {
           specId: specId || null,
           source: 'agent:delegate',
           provider,
+          model: model || null,
           localPrivacyMode: effectiveLocalPrivacyMode,
         },
       });
@@ -186,7 +189,7 @@ class AgentSocketHandler {
         taskId,
       });
 
-      this.executionLoop(execution, taskId, workspaceId, specId, provider, effectiveLocalPrivacyMode, socket);
+      this.executionLoop(execution, taskId, workspaceId, specId, provider, model, effectiveLocalPrivacyMode, socket);
 
       // Provision container worker if Docker is available
       if (workspaceId) {
@@ -216,7 +219,7 @@ class AgentSocketHandler {
     }
   }
 
-  async executionLoop(execution, taskId, workspaceId, specId, provider, localPrivacyMode, socket) {
+  async executionLoop(execution, taskId, workspaceId, specId, provider, model, localPrivacyMode, socket) {
     try {
       execution.status = 'running';
       execution.logs = [{ timestamp: new Date(), message: 'Agent execution started' }];
@@ -248,10 +251,12 @@ class AgentSocketHandler {
         workspaceId,
         files: codeFiles,
         agentMode: true,
+        provider,
+        model,
         instructions: spec ? `Follow the spec contract: ${spec.specId}` : undefined,
       };
 
-      const result = await aiRouterService.routeChat(messages, codeContext, { provider, localPrivacyMode });
+      const result = await aiRouterService.routeChat(messages, codeContext, { provider, model, localPrivacyMode });
 
       if (result.success) {
         // Stage the proposal on the isolated agent branch; VFS stays untouched
@@ -515,7 +520,10 @@ class AgentSocketHandler {
       { role: 'user', content: feedback },
     ];
 
-    const result = await aiRouterService.routeChat(messages, {}, { provider: execution.metadata?.provider });
+    const provider = execution.metadata?.provider;
+    const model = execution.metadata?.model;
+    await aiRouterService.validateModel(provider, model);
+    const result = await aiRouterService.routeChat(messages, {}, { provider, model });
 
     if (result.success) {
       execution.logs.push({ timestamp: new Date(), message: 'Agent re-execution completed with feedback' });

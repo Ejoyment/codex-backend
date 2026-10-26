@@ -1,4 +1,5 @@
 const { parsePrivacyMode } = require('./aiPrivacy');
+const localBridge = require('./localBridge');
 
 class AIRouterService {
   constructor() {
@@ -108,6 +109,25 @@ class AIRouterService {
     return Boolean(requestPreference || deploymentPreference);
   }
 
+  async validateModel(provider, model) {
+    if (!model) return true;
+    if (typeof model !== 'string' || !model.trim() || model.length > 200) {
+      throw new Error('AI model must be a non-empty name of at most 200 characters.');
+    }
+    if (this.isLocalProvider(provider)) {
+      const models = await localBridge.getModels(provider);
+      if (!models.includes(model)) {
+        throw new Error(`Model "${model}" is not currently available from ${provider}. Refresh the model list and choose a connected model.`);
+      }
+      return true;
+    }
+    const configuredModel = this.providers[provider]?.model;
+    if (configuredModel !== model) {
+      throw new Error(`Model "${model}" is not configured for ${provider}.`);
+    }
+    return true;
+  }
+
   async routeChat(messages, codeContext = {}, options = {}) {
     const requestedProvider = options.provider || codeContext.provider;
     const { provider, localPrivacyMode } = this.resolveRequestProvider(
@@ -119,6 +139,9 @@ class AIRouterService {
       ...(options.timeoutMs ? { timeoutMs: options.timeoutMs } : {}),
       ...(options.signal ? { signal: options.signal } : {}),
     };
+
+    await this.validateModel(provider, options.model || codeContext.model);
+    if (options.model || codeContext.model) requestContext.model = options.model || codeContext.model;
 
     if (localPrivacyMode || this.isLocalProvider(provider)) {
       return this.routeLocal(messages, requestContext, provider);

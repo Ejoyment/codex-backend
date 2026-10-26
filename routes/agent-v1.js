@@ -19,12 +19,12 @@ const { Worker } = require('worker_threads');
 const path = require('path');
 const aiRouterService = require('../utils/aiRouterService');
 
-function spawnAgentWorker(executionId, taskId, workspaceId, specIds, provider, localPrivacyMode, timeoutMs = 900000) {
+function spawnAgentWorker(executionId, taskId, workspaceId, specIds, provider, model, localPrivacyMode, timeoutMs = 900000) {
   return new Promise((resolve, reject) => {
     let settled = false;
     const workerPath = path.join(__dirname, '../utils/agentWorker.js');
     const worker = new Worker(workerPath, {
-      workerData: { executionId, taskId, workspaceId, specIds, provider, localPrivacyMode },
+      workerData: { executionId, taskId, workspaceId, specIds, provider, model, localPrivacyMode },
     });
 
     const timeout = setTimeout(() => {
@@ -93,13 +93,14 @@ function spawnAgentWorker(executionId, taskId, workspaceId, specIds, provider, l
 
 router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurrentJobs(), enforceTaskTimeout(), enforceCreditPool(), enforceCloudComputeLimit(), async (req, res) => {
   try {
-    const { taskId, taskTitle, sessionId, summary = '', provider: requestedProvider, localPrivacyMode: requestedLocalPrivacyMode = false } = req.body;
+    const { taskId, taskTitle, sessionId, summary = '', provider: requestedProvider, model, localPrivacyMode: requestedLocalPrivacyMode = false } = req.body;
     let provider;
     let localPrivacyMode;
     try {
       const routing = aiRouterService.resolveRequestProvider(requestedProvider, requestedLocalPrivacyMode);
       provider = routing.provider;
       localPrivacyMode = routing.localPrivacyMode;
+      await aiRouterService.validateModel(provider, model);
     } catch (error) {
       return res.status(503).json({ success: false, message: error.message });
     }
@@ -109,7 +110,7 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
     }
 
     const { tier } = req.subscription;
-    if (tier === 'developer') {
+    if (tier === 'developer' && !aiRouterService.isLocalProvider(provider)) {
       return res.status(403).json({ success: false, message: 'Agent delegation requires Pro tier or higher. Use local BYOM.', requiresUpgrade: true });
     }
 
@@ -208,7 +209,7 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       branch,
       baseBranch,
       contextSnapshot,
-      model: provider,
+      model: model || provider,
       startedAt: new Date(),
       metadata: {
         taskId: taskId || null,
@@ -217,6 +218,7 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
         agentBranch: branch,
         source: 'agent-v1/delegate',
         provider,
+        model: model || null,
         localPrivacyMode,
       },
       logs: [{ timestamp: new Date(), message: 'Agent execution initialized' }],
@@ -268,6 +270,7 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       workspaceId,
       specs.map((spec) => spec._id.toString()),
       provider,
+      model,
       localPrivacyMode,
       1800000 // 30 minutes
     );
@@ -478,7 +481,9 @@ router.post('/tweak', authenticateToken, async (req, res) => {
     const workspaceId = execution.metadata?.get?.('workspaceId') || execution.metadata?.workspaceId;
     const specIds = execution.metadata?.get?.('specIds') || execution.metadata?.specIds || [];
     const localPrivacyMode = execution.metadata?.get?.('localPrivacyMode') || execution.metadata?.localPrivacyMode || false;
-    spawnAgentWorker(execution._id.toString(), execution.taskId?.toString(), workspaceId, specIds, execution.model || 'gemini', localPrivacyMode)
+    const provider = execution.metadata?.get?.('provider') || execution.metadata?.provider;
+    const model = execution.metadata?.get?.('model') || execution.metadata?.model;
+    spawnAgentWorker(execution._id.toString(), execution.taskId?.toString(), workspaceId, specIds, provider, model, localPrivacyMode)
       .then(async () => {
         execution.status = 'awaiting_review';
         execution.completedAt = new Date();
