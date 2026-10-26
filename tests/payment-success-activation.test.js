@@ -17,9 +17,9 @@ describe('payment success activation', () => {
     expect(source).toContain('router.query.transaction_id');
   });
 
-  test('calls the matching verify endpoint before claiming success', () => {
-    expect(source).toContain("'/api/paystack-billing/verify'");
-    expect(source).toContain("'/api/flutterwave-billing/verify'");
+  test('calls the matching canonical verify endpoint before claiming success', () => {
+    expect(source).toContain("'/api/v1/billing/paystack/verify'");
+    expect(source).toContain("'/api/v1/billing/flutterwave/verify'");
     expect(source).toContain('verifying');
     expect(source).toContain('setStatus(\'error\')');
   });

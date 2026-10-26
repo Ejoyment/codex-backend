@@ -215,6 +215,9 @@ router.get('/guilds', authenticateToken, async (req, res) => {
             }))
         });
     } catch (error) {
+        if (error.message === 'Discord not connected') {
+            return res.json({ success: true, guilds: [], connected: false });
+        }
         res.status(500).json({ success: false, message: error.message });
     }
 });

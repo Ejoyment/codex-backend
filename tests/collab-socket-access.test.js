@@ -19,6 +19,9 @@ jest.mock('../models/CollaborationSession', () => ({ findOne: jest.fn(), create:
 jest.mock('../models/DesignSyncSession', () => ({ findOne: jest.fn() }));
 jest.mock('../models/EphemeralSandbox', () => ({ findOne: jest.fn() }));
 jest.mock('../models/Company', () => ({ findOne: jest.fn() }));
+jest.mock('../models/User', () => ({
+  exists: jest.fn(async (query) => ({ _id: query?._id || 'test-user' })),
+}));
 
 const CollaborationSession = require('../models/CollaborationSession');
 const EphemeralSandbox = require('../models/EphemeralSandbox');
@@ -37,13 +40,13 @@ let sandboxes = {};
 // only currentMember (or companyA's owner userA) passes.
 let currentMember = null;
 const isMemberQuery = (q) => {
-  if (String(q?._id) !== 'companyA') return false;
+  if (String(q?._id) !== '507f1f77bcf86cd799439013') return false;
   const ors = q?.$or || [];
   return ors.some((c) => String(c.owner) === 'userA' || (c['members.user'] && String(c['members.user']) === currentMember));
 };
 
 const sessionDoc = (over = {}) => ({
-  _id: 'sessA', sessionId: 'sessA', companyId: 'companyA', createdBy: 'userA',
+  _id: 'sessA', sessionId: 'sessA', companyId: '507f1f77bcf86cd799439013', createdBy: 'userA',
   participants: [
     { userId: 'userM', name: 'Member', color: '#0f0', joinedAt: new Date(), lastSeen: new Date() },
   ],
@@ -53,7 +56,7 @@ const sessionDoc = (over = {}) => ({
 });
 const sandboxDoc = (over = {}) => ({
   _id: 'sb1', sandboxKey: 'sb_0123456789abcdef0123', createdBy: 'userA',
-  companyId: 'companyA', status: 'ready',
+  companyId: '507f1f77bcf86cd799439013', status: 'ready',
   ...over,
 });
 
@@ -120,7 +123,7 @@ beforeEach(() => {
   });
   EphemeralSandbox.findOne.mockImplementation(async (q) => sandboxes[q?.sandboxKey] || null);
   Company.findOne.mockImplementation((q) => ({
-    select: () => ({ lean: async () => (isMemberQuery(q) ? { _id: 'companyA' } : null) }),
+    select: () => ({ lean: async () => (isMemberQuery(q) ? { _id: '507f1f77bcf86cd799439013' } : null) }),
   }));
 });
 
@@ -173,7 +176,7 @@ describe('session:join access', () => {
 
   test('creating a session with a foreign companyId is rejected', async () => {
     const s = await connect('userB');
-    s.emit('session:join', { sessionId: 'fresh', companyId: 'companyA' });
+    s.emit('session:join', { sessionId: 'fresh', companyId: '507f1f77bcf86cd799439013' });
     const err = await once(s, 'error');
     expect(err.message).toMatch(/denied/i);
     expect(CollaborationSession.create).not.toHaveBeenCalled();

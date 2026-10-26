@@ -73,10 +73,14 @@ class HITLGates {
             expiresAt: new Date(Date.now() + 60000) // 1 minute timeout
         };
         
-        // Store pending confirmation
+        // Store pending confirmation. The workspace is server-derived from the
+        // agent context (never the confirmation response) so the HTTP boundary
+        // can re-check membership before approving a run.
+        const workspaceId = context?.workspaceId || context?.companyId || null;
         this.pendingConfirmations.set(confirmationId, {
             request,
-            userId,
+            userId: userId == null ? userId : String(userId),
+            workspaceId: workspaceId == null ? workspaceId : String(workspaceId),
             resolve: null,
             reject: null
         });
@@ -100,6 +104,13 @@ class HITLGates {
                 }
             }, 60000);
         });
+    }
+
+    /**
+     * Look up a pending confirmation without consuming it.
+     */
+    getPendingConfirmation(confirmationId) {
+        return this.pendingConfirmations.get(confirmationId) || null;
     }
 
     /**
@@ -332,7 +343,7 @@ class HITLGates {
         const pending = [];
         
         this.pendingConfirmations.forEach((value, key) => {
-            if (value.userId === userId) {
+            if (String(value.userId) === String(userId)) {
                 pending.push({
                     id: key,
                     ...value.request

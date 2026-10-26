@@ -9,6 +9,8 @@ const fs = require('fs');
 const path = require('path');
 const jwt = require('jsonwebtoken');
 
+process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret-for-automated-testing-32chars';
+
 jest.mock('../models/User', () => ({
     exists: jest.fn(async () => ({ _id: 'user-1' }))
 }));

@@ -36,6 +36,8 @@ export default function ProjectDetails({ projectId, onBack, onCreateTask }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [retryCount, setRetryCount] = useState(0);
+  const [retryingProvisioning, setRetryingProvisioning] = useState(false);
+  const [provisioningError, setProvisioningError] = useState('');
 
   useEffect(() => {
     let active = true;
@@ -60,6 +62,39 @@ export default function ProjectDetails({ projectId, onBack, onCreateTask }) {
 
     return () => { active = false; };
   }, [projectId, retryCount]);
+
+  useEffect(() => {
+    if (!project || !['pending', 'provisioning'].includes(project.provisioningStatus)) return undefined;
+    let active = true;
+    const timer = setInterval(() => {
+      projectApi.getProvisioning(projectId)
+        .then((response) => {
+          if (active && response?.project) {
+            setProject((current) => ({ ...current, ...response.project }));
+          }
+        })
+        .catch(() => {});
+    }, 2500);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [projectId, project?.provisioningStatus]);
+
+  const retryProjectSetup = async () => {
+    setRetryingProvisioning(true);
+    setProvisioningError('');
+    try {
+      const response = await projectApi.retryProvisioning(projectId);
+      if (response?.project) {
+        setProject((current) => ({ ...current, ...response.project }));
+      }
+    } catch (retryError) {
+      setProvisioningError(retryError.message || 'Could not retry project setup.');
+    } finally {
+      setRetryingProvisioning(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -148,6 +183,35 @@ export default function ProjectDetails({ projectId, onBack, onCreateTask }) {
           </div>
         </section>
       </div>
+
+      {['pending', 'provisioning', 'failed'].includes(project.provisioningStatus) && (
+        <section className={`mb-6 rounded-xl border p-4 ${project.provisioningStatus === 'failed' ? 'border-rose-500/20 bg-rose-500/5' : 'border-cyan-500/20 bg-cyan-500/5'}`}>
+          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+            <div>
+              <p className={`text-xs font-semibold ${project.provisioningStatus === 'failed' ? 'text-rose-300' : 'text-cyan-300'}`}>
+                {project.provisioningStatus === 'failed' ? 'Project setup failed' : 'Preparing project files'}
+              </p>
+              <p className={`mt-1 text-[11px] ${project.provisioningStatus === 'failed' ? 'text-rose-200/80' : 'text-cyan-100/70'}`}>
+                {project.provisioningStatus === 'failed'
+                  ? (project.provisioningError || 'The workspace could not be prepared.')
+                  : `${project.provisionedFileCount || 0} files written so far. This can take a moment for larger repositories.`}
+              </p>
+              {provisioningError && <p role="alert" className="mt-1 text-[11px] text-rose-300">{provisioningError}</p>}
+            </div>
+            {project.provisioningStatus === 'failed' && (
+              <button
+                type="button"
+                onClick={retryProjectSetup}
+                disabled={retryingProvisioning}
+                className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold text-white transition hover:bg-white/5 disabled:cursor-wait disabled:opacity-60"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${retryingProvisioning ? 'animate-spin' : ''}`} />
+                {retryingProvisioning ? 'Retrying...' : 'Retry setup'}
+              </button>
+            )}
+          </div>
+        </section>
+      )}
 
       <div className="mb-6 grid grid-cols-2 gap-3 xl:grid-cols-4">
         {[

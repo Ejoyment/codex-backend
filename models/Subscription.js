@@ -1,5 +1,9 @@
 const mongoose = require('mongoose');
 const { TIER_LIMITS, limitFor } = require('../utils/tierLimits');
+const {
+    COMPUTE_OVERAGE_RATE_MINOR_PER_HOUR,
+    DEFAULT_COMPUTE_OVERAGE_CAP_MINOR,
+} = require('../utils/overagePolicy');
 
 const subscriptionSchema = new mongoose.Schema({
     userId: {
@@ -56,7 +60,17 @@ const subscriptionSchema = new mongoose.Schema({
     // Cloud compute
     cloudComputeHours: {
         monthlyLimit: { type: Number, default: 0 },
-        usedThisMonth: { type: Number, default: 0 }
+        usedThisMonth: { type: Number, default: 0 },
+        // Hours that ran past the included allowance because the job started
+        // before the pool was exhausted. New launches are blocked at/over the
+        // limit; this records what the in-flight job actually consumed so the
+        // overage can be invoiced (rate is configured separately).
+        overageHoursThisMonth: { type: Number, default: 0 },
+        overageAmountMinor: { type: Number, default: 0 },
+        // Billing is opt-in: recording overage hours never implies consent to
+        // charge. The cap is a monthly ceiling in minor units.
+        overageEnabled: { type: Boolean, default: false },
+        overageCapMinor: { type: Number, default: DEFAULT_COMPUTE_OVERAGE_CAP_MINOR }
     },
     // Runtime
     runtimeTier: {
@@ -127,6 +141,8 @@ subscriptionSchema.pre('save', function(next) {
     if (resetDate && now > resetDate) {
         this.creditPool.usedThisMonth = 0;
         this.cloudComputeHours.usedThisMonth = 0;
+        this.cloudComputeHours.overageHoursThisMonth = 0;
+        this.cloudComputeHours.overageAmountMinor = 0;
         const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
         this.creditPool.resetAt = nextMonth;
     }
@@ -163,6 +179,11 @@ subscriptionSchema.methods.getRemainingCompute = function() {
         limit: limit === undefined ? null : limit,
         used,
         remaining: limit === null || limit === undefined ? null : limit - used,
+        overageHours: this.cloudComputeHours?.overageHoursThisMonth || 0,
+        overageAmountMinor: this.cloudComputeHours?.overageAmountMinor || 0,
+        overageEnabled: this.cloudComputeHours?.overageEnabled === true,
+        overageCapMinor: this.cloudComputeHours?.overageCapMinor ?? DEFAULT_COMPUTE_OVERAGE_CAP_MINOR,
+        overageRateMinorPerHour: COMPUTE_OVERAGE_RATE_MINOR_PER_HOUR,
     };
 };
 

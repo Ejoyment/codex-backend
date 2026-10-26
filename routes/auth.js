@@ -9,7 +9,11 @@ const User = require('../models/User');
 const Subscription = require('../models/Subscription');
 const rateLimit = require('express-rate-limit');
 const emailService = require('../utils/emailServiceResend');
-const { authenticateToken } = require('../middleware/auth');
+const {
+    authenticateToken,
+    invalidateLivenessEverywhere,
+    normalizeTokenVersion
+} = require('../middleware/auth');
 const { isLockedOut, recordFailure, clearLockout } = require('../models/AuthLockout');
 const { createTrialSubscription, getOrCreateSubscription } = require('../middleware/trial');
 
@@ -50,7 +54,7 @@ const upload = multer({
 const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 5, // 5 requests per window
-    store: require('../utils/redis').getRateLimitStore(),
+    store: require('../utils/redis').getRateLimitStore('auth'),
     passOnStoreError: true,
     message: { success: false, message: 'Too many attempts, please try again later.' }
 });
@@ -59,14 +63,19 @@ const authLimiter = rateLimit({
 const oauthLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 20, // 20 OAuth initiations per window
-    store: require('../utils/redis').getRateLimitStore(),
+    store: require('../utils/redis').getRateLimitStore('oauth'),
     passOnStoreError: true,
     message: { success: false, message: 'Too many OAuth attempts. Please try again later.' }
 });
 
-// Generate JWT token
-const generateToken = (userId) => {
-    return jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: '24h' });
+// Generate JWT token. tokenVersion lets logout-all / password changes / bans
+// invalidate tokens that were issued before the bump.
+const generateToken = (userId, tokenVersion = 0) => {
+    return jwt.sign(
+        { userId, tokenVersion: normalizeTokenVersion(tokenVersion) },
+        process.env.JWT_SECRET,
+        { expiresIn: '24h' }
+    );
 };
 
 /**
@@ -280,7 +289,7 @@ router.post('/signin', authLimiter, async (req, res) => {
         const subscription = await getOrCreateSubscription(user._id);
 
         // Generate token
-        const token = generateToken(user._id);
+        const token = generateToken(user._id, user.tokenVersion);
 
         const { addAuditLog } = require('../utils/auditLogService');
         addAuditLog({
@@ -363,7 +372,7 @@ router.get('/google/callback',
     passport.authenticate('google', { failureRedirect: '/sign_in' }),
     (req, res) => {
         // Generate token
-        const token = generateToken(req.user._id);
+        const token = generateToken(req.user._id, req.user.tokenVersion);
         
         // Set httpOnly cookie for security (token not visible in JS/browser history)
         res.cookie('auth_token', token, {
@@ -732,13 +741,16 @@ router.post('/change-password', authLimiter, authenticateToken, async (req, res)
             });
         }
 
-        // Update password (will be hashed by pre-save hook)
+        // Update password (will be hashed by pre-save hook) and revoke every
+        // session issued under the previous password, including this one.
         user.password = newPassword;
+        user.tokenVersion = normalizeTokenVersion(user.tokenVersion) + 1;
         await user.save();
+        await invalidateLivenessEverywhere(user._id);
 
         res.json({
             success: true,
-            message: 'Password changed successfully'
+            message: 'Password changed successfully. Please sign in again.'
         });
 
     } catch (error) {
@@ -747,6 +759,56 @@ router.post('/change-password', authLimiter, authenticateToken, async (req, res)
             success: false, 
             message: 'Error changing password',
             error: error.message 
+        });
+    }
+});
+
+/**
+ * @swagger
+ * /api/auth/logout-all:
+ *   post:
+ *     summary: Sign out of every session
+ *     description: Increments the account tokenVersion, invalidating every JWT issued before this call (including the caller's current token).
+ *     tags:
+ *       - Authentication
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: All sessions revoked
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: User not found
+ */
+// Logout all sessions. Ordinary stateless sign-out is client-side only; this
+// endpoint is the explicit "sign out everywhere" action.
+router.post('/logout-all', authenticateToken, async (req, res) => {
+    try {
+        const user = await User.findById(req.userId);
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        user.tokenVersion = normalizeTokenVersion(user.tokenVersion) + 1;
+        await user.save();
+        await invalidateLivenessEverywhere(user._id);
+
+        res.json({
+            success: true,
+            message: 'All sessions have been signed out'
+        });
+
+    } catch (error) {
+        console.error('Logout all error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error signing out all sessions',
+            error: error.message
         });
     }
 });

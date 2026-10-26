@@ -5,6 +5,7 @@
  */
 
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { providerDefinitions, implementedProviderNames } = require('../config/aiProviders');
 
 // Outbound LLM calls carry no default timeout: a stalled provider would hold
 // the request open indefinitely (audit finding #5). 60s covers long
@@ -18,35 +19,21 @@ class AIService {
     }
 
     initializeProviders() {
-        this.providers = {
-            gemini: {
-                available: !!process.env.GEMINI_API_KEY,
-                client: process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null,
-                model: process.env.AI_MODEL || 'gemini-1.5-flash',
-                name: 'Google Gemini'
-            },
-            mistral: {
-                available: !!process.env.MISTRAL_API_KEY,
-                apiKey: process.env.MISTRAL_API_KEY,
-                model: process.env.MISTRAL_MODEL || 'mistral-tiny',
-                endpoint: 'https://api.mistral.ai/v1/chat/completions',
-                name: 'Mistral AI'
-            },
-            groq: {
-                available: !!process.env.GROQ_API_KEY,
-                apiKey: process.env.GROQ_API_KEY,
-                model: process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
-                endpoint: 'https://api.groq.com/openai/v1/chat/completions',
-                name: 'Groq (Fast Inference)'
-            },
-            huggingface: {
-                available: !!process.env.HUGGINGFACE_API_KEY,
-                apiKey: process.env.HUGGINGFACE_API_KEY,
-                model: process.env.HUGGINGFACE_MODEL || 'mistralai/Mistral-7B-Instruct-v0.2',
-                endpoint: 'https://api-inference.huggingface.co/models/',
-                name: 'Hugging Face'
-            }
-        };
+        const definitions = providerDefinitions();
+        this.providers = Object.fromEntries(
+            implementedProviderNames().map((key) => {
+                const definition = definitions[key];
+                return [
+                    key,
+                    {
+                        ...definition,
+                        client: key === 'gemini' && definition.apiKey
+                            ? new GoogleGenerativeAI(definition.apiKey)
+                            : null,
+                    },
+                ];
+            })
+        );
 
         // Log available providers
         const available = Object.entries(this.providers)

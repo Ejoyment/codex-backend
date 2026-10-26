@@ -11,8 +11,10 @@
 const crypto = require('crypto');
 
 let clients = null; // { pub, sub } once connected
+let authRevokeSubscriber = null;
 let negativeUntil = 0;
 const NEGATIVE_TTL_MS = 30000;
+const AUTH_REVOKE_CHANNEL = 'auth:revoke';
 
 function isRedisConfigured() {
     return Boolean(process.env.REDIS_URL);
@@ -49,15 +51,69 @@ async function getRedisClients() {
 function resetRedisCache() {
     clients = null;
     negativeUntil = 0;
-    rateLimitStore = undefined;
+    if (authRevokeSubscriber) {
+        try { authRevokeSubscriber.disconnect(); } catch {}
+        authRevokeSubscriber = null;
+    }
+    if (rateLimitClient) {
+        try { rateLimitClient.disconnect(); } catch {}
+        rateLimitClient = null;
+    }
 }
 
 async function closeRedis() {
     const current = clients;
     clients = null;
+    if (rateLimitClient) {
+        try { await rateLimitClient.quit(); } catch {}
+        rateLimitClient = null;
+    }
+    if (authRevokeSubscriber) {
+        try { await authRevokeSubscriber.disconnect(); } catch {}
+        authRevokeSubscriber = null;
+    }
     if (current) {
         try { await current.sub.disconnect(); } catch {}
         try { await current.pub.disconnect(); } catch {}
+    }
+}
+
+// Cross-instance auth revocation. The subscriber is a dedicated duplicate so
+// it never steals messages from the Socket.IO adapter's pub/sub pair.
+async function publishAuthRevoke(userId) {
+    const redis = await getRedisClients();
+    if (!redis) return false;
+    try {
+        await redis.pub.publish(AUTH_REVOKE_CHANNEL, JSON.stringify({ userId: String(userId) }));
+        return true;
+    } catch (error) {
+        console.warn('Auth revocation publish failed:', error.message);
+        return false;
+    }
+}
+
+async function subscribeAuthRevoke(handler) {
+    if (typeof handler !== 'function') return false;
+    const redis = await getRedisClients();
+    if (!redis) return false;
+    if (authRevokeSubscriber) return true;
+    try {
+        const sub = redis.pub.duplicate();
+        sub.on('error', () => {});
+        await sub.connect();
+        await sub.subscribe(AUTH_REVOKE_CHANNEL);
+        sub.on('message', (channel, message) => {
+            if (channel !== AUTH_REVOKE_CHANNEL) return;
+            try {
+                const payload = JSON.parse(message);
+                if (payload && payload.userId) handler(String(payload.userId));
+            } catch {}
+        });
+        authRevokeSubscriber = sub;
+        return true;
+    } catch (error) {
+        console.warn('Auth revocation subscriber unavailable:', error.message);
+        return false;
     }
 }
 
@@ -89,32 +145,45 @@ async function withLeadership(name, ttlMs, fn) {
 }
 
 // express-rate-limit store: Redis when configured, undefined (= in-process
-// MemoryStore) otherwise. Constructed synchronously; the client connects in
-// the background and every limiter sets passOnStoreError so a dead Redis
-// fails OPEN (requests allowed) instead of 500ing.
-let rateLimitStore;
-function getRateLimitStore() {
-    if (rateLimitStore !== undefined) return rateLimitStore;
-    rateLimitStore = undefined;
-    if (!process.env.REDIS_URL) return rateLimitStore;
+// MemoryStore) otherwise. Each limiter needs its OWN store instance (sharing
+// one is an express-rate-limit validation error), so this returns a fresh
+// store per call. The name becomes a stable Redis key prefix so every instance
+// of the same limiter shares counters across deploys.
+let rateLimitClient = null;
+function getRateLimitStore(name = 'default') {
+    if (!process.env.REDIS_URL) return undefined;
     try {
-        const Redis = require('ioredis');
+        if (!rateLimitClient) {
+            const Redis = require('ioredis');
+            rateLimitClient = new Redis(process.env.REDIS_URL, {
+                enableOfflineQueue: false,
+                maxRetriesPerRequest: 2,
+            });
+            rateLimitClient.on('error', () => {});
+        }
         const RedisStore = require('rate-limit-redis');
-        const client = new Redis(process.env.REDIS_URL, {
-            enableOfflineQueue: false,
-            maxRetriesPerRequest: 2,
+        const store = new RedisStore({
+            sendCommand: (...args) => rateLimitClient.call(...args),
+            prefix: `rl:${String(name).replace(/[^a-zA-Z0-9:_-]/g, '-')}:`,
         });
-        client.on('error', () => {});
-        const store = new RedisStore({ sendCommand: (...args) => client.call(...args) });
         // Construction kicks off a Lua upload that may reject while Redis is
         // unreachable; the store reloads it on first use, so just prevent an
         // unhandled rejection from crashing boot.
         store.loadedScriptSha1.catch(() => {});
-        rateLimitStore = store;
+        return store;
     } catch (error) {
         console.warn('Redis rate-limit store unavailable, using memory:', error.message);
+        return undefined;
     }
-    return rateLimitStore;
 }
 
-module.exports = { isRedisConfigured, getRedisClients, resetRedisCache, closeRedis, withLeadership, getRateLimitStore };
+module.exports = {
+    isRedisConfigured,
+    getRedisClients,
+    resetRedisCache,
+    closeRedis,
+    withLeadership,
+    getRateLimitStore,
+    publishAuthRevoke,
+    subscribeAuthRevoke,
+};

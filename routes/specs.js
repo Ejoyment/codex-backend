@@ -6,7 +6,8 @@ const SpecModel = require('../models/SpecModel');
 const LocalProject = require('../models/LocalProject');
 const LocalTask = require('../models/LocalTask');
 const sddVerificationService = require('../utils/sddVerificationService');
-const { userCanAccessProject, userCanAccessSpec, userCanAccessWorkspace, getWorkspaceProjectIds } = require('../utils/specAccess');
+const { userCanAccessProject, userCanAccessSpec, getWorkspaceProjectIds } = require('../utils/specAccess');
+const { canonicalWorkspaceId } = require('../utils/workspaceIdentity');
 
 /**
  * Specs are project-level. Creating one records the project's workspace (when
@@ -95,14 +96,15 @@ router.get('/project/:projectId', authenticateToken, async (req, res) => {
  */
 router.get('/workspace/:workspaceId', authenticateToken, async (req, res) => {
   try {
-    if (!await userCanAccessWorkspace(req.params.workspaceId, req.userId)) {
+    const workspaceId = await canonicalWorkspaceId(req.params.workspaceId, req.userId);
+    if (!workspaceId) {
       return res.status(403).json({ success: false, message: 'Workspace access denied' });
     }
-    const projectIds = await getWorkspaceProjectIds(req.params.workspaceId);
+    const projectIds = await getWorkspaceProjectIds(workspaceId);
     const specs = await SpecModel.find({
       $or: [
         ...(projectIds.length ? [{ projectId: { $in: projectIds } }] : []),
-        { workspaceId: req.params.workspaceId }
+        { workspaceId }
       ]
     }).sort({ updatedAt: -1 });
     res.json({ success: true, specs });
@@ -157,7 +159,7 @@ router.post('/verify', authenticateToken, async (req, res) => {
 router.post('/drift-report', authenticateToken, async (req, res) => {
   try {
     const { projectId, workspaceId } = req.body;
-    const target = projectId || workspaceId;
+    let target = projectId || workspaceId;
     if (!target) {
       return res.status(400).json({ success: false, message: 'projectId is required' });
     }
@@ -166,10 +168,11 @@ router.post('/drift-report', authenticateToken, async (req, res) => {
         return res.status(403).json({ success: false, message: 'Project access denied' });
       }
     } else {
-      // Workspace scope still requires workspace membership.
-      if (!await userCanAccessWorkspace(workspaceId, req.userId)) {
+      const scopedWorkspaceId = await canonicalWorkspaceId(workspaceId, req.userId);
+      if (!scopedWorkspaceId) {
         return res.status(403).json({ success: false, message: 'Workspace access denied' });
       }
+      target = scopedWorkspaceId;
     }
     const report = await sddVerificationService.generateDriftReport(target);
     res.json({ success: true, report });

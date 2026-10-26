@@ -94,9 +94,11 @@ beforeEach(() => {
     'TKT-G': ticketDoc({ _id: 'tg', ticketId: 'TKT-G', userId: null, guestEmail: 'guest@x.io', guestName: 'Guesty' }),
   };
   SupportTicket.findOne.mockImplementation(async (q) => tickets[q?.ticketId] || null);
-  SupportAgent.findById.mockImplementation(async (id) =>
-    String(id) === 'ag1' ? { _id: 'ag1', name: 'Alice A.' } : null
-  );
+  SupportAgent.findById.mockImplementation(async (id) => {
+    if (String(id) === 'ag1') return { _id: 'ag1', name: 'Alice A.', isActive: true };
+    if (String(id) === 'ag-off') return { _id: 'ag-off', name: 'Disabled', isActive: false };
+    return null;
+  });
   User.exists.mockResolvedValue({ _id: 'live' });
   User.findById.mockImplementation(async (id) =>
     String(id) === USER_A ? { fullName: 'Real User A' } : { fullName: 'Real User B' }
@@ -114,6 +116,10 @@ describe('authentication', () => {
 
   test('agent token with unknown agent is rejected', async () => {
     await expect(agentSocket('ag-ghost')).rejects.toThrow(/auth/i);
+  });
+
+  test('deactivated agent cannot connect', async () => {
+    await expect(agentSocket('ag-off')).rejects.toThrow(/auth/i);
   });
 
   test('deleted/banned user cannot connect (liveness)', async () => {

@@ -27,12 +27,12 @@ export default function PaymentSuccess() {
     const verify = async () => {
       try {
         if (transactionId) {
-          await apiFetch('/api/flutterwave-billing/verify', {
+          await apiFetch('/api/v1/billing/flutterwave/verify', {
             method: 'POST',
             body: JSON.stringify({ transaction_id: transactionId }),
           });
         } else {
-          await apiFetch('/api/paystack-billing/verify', {
+          await apiFetch('/api/v1/billing/paystack/verify', {
             method: 'POST',
             body: JSON.stringify({ reference }),
           });

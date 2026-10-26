@@ -10,7 +10,8 @@
 const Subscription = require('../models/Subscription');
 const AgentExecution = require('../models/AgentExecution');
 const jwt = require('jsonwebtoken');
-const { limitAllows, remainingFor } = require('../utils/tierLimits');
+const { limitAllows } = require('../utils/tierLimits');
+const { DEFAULT_COMPUTE_OVERAGE_CAP_MINOR } = require('../utils/overagePolicy');
 
 // Lazy require — DebugRoom and Deployment may not exist on all deploys
 let DebugRoom = null;
@@ -189,13 +190,28 @@ function enforceCloudComputeLimit() {
         }
         if (monthlyLimit !== null) {
             const used = subscription.cloudComputeHours?.usedThisMonth || 0;
-            if (used >= monthlyLimit) {
+            const overageEnabled = subscription.cloudComputeHours?.overageEnabled === true;
+            const configuredCap = Number(subscription.cloudComputeHours?.overageCapMinor);
+            const overageCapMinor = Number.isFinite(configuredCap) && configuredCap >= 0
+                ? configuredCap
+                : DEFAULT_COMPUTE_OVERAGE_CAP_MINOR;
+            const overageAmountMinor = subscription.cloudComputeHours?.overageAmountMinor || 0;
+            const overageCapReached = overageEnabled && overageAmountMinor >= overageCapMinor;
+
+            if (used >= monthlyLimit && (!overageEnabled || overageCapReached)) {
                 return res.status(403).json({
                     success: false,
-                    message: `You've used ${monthlyLimit}h of cloud compute this month. Upgrade for more.`,
+                    message: overageCapReached
+                        ? `You've reached your ${(overageCapMinor / 100).toFixed(2)} USD monthly compute overage cap. Upgrade for more.`
+                        : `You've used ${monthlyLimit}h of cloud compute this month. Enable overage or upgrade for more.`,
                     code: 'COMPUTE_LIMIT_REACHED',
                     usedThisMonth: used,
-                    monthlyLimit
+                    monthlyLimit,
+                    overageHours: subscription.cloudComputeHours?.overageHoursThisMonth || 0,
+                    overageAmountMinor,
+                    overageEnabled,
+                    overageCapMinor,
+                    overageCapReached
                 });
             }
         }
@@ -218,7 +234,9 @@ function enforceCreditPool() {
         if (monthlyLimit !== null) {
             const used = subscription.creditPool?.usedThisMonth || 0;
             const remaining = monthlyLimit - used;
-            if (remaining <= 0) {
+            // Pay-As-You-Go must reach the route so deduction can record the
+            // overage; otherwise the exhausted-pool guard blocks it forever.
+            if (remaining <= 0 && !subscription.allowPayAsYouGo) {
                 return res.status(403).json({
                     success: false,
                     message: `You've exhausted your ${monthlyLimit} monthly AI credits. Enable Pay-As-You-Go or upgrade.`,
@@ -255,47 +273,6 @@ function enforceSpecEngineLevel(minLevel) {
     };
 }
 
-// === Credit deduction helpers ===
-
-async function deductCredits(userId, amount = 1) {
-    const subscription = await Subscription.findOne({ userId });
-    if (!subscription) return { success: false, message: 'No subscription found', remaining: 0 };
-    if (subscription.tier === 'developer') return { success: false, message: 'No cloud AI credits on Developer tier' };
-
-    const monthlyLimit = subscription.getMonthlyCreditLimit();
-    const used = subscription.creditPool?.usedThisMonth || 0;
-    const remaining = remainingFor(monthlyLimit, used);
-
-    if (remaining === Infinity) {
-        return { success: true, overage: false, remaining: Infinity };
-    }
-
-    if (amount > remaining) {
-        if (subscription.allowPayAsYouGo) {
-            subscription.creditPool.usedThisMonth += amount;
-            await subscription.save();
-            return { success: true, overage: true, amountDeducted: amount };
-        }
-        return { success: false, message: 'Insufficient credits', remaining };
-    }
-
-    subscription.creditPool.usedThisMonth += amount;
-    await subscription.save();
-    return { success: true, overage: false, remaining: remaining - amount, amountDeducted: amount };
-}
-
-async function deductComputeHours(userId, hours = 1) {
-    const subscription = await Subscription.findOne({ userId });
-    if (!subscription) return { success: false };
-    const monthlyLimit = subscription.getCloudComputeHours();
-    const used = subscription.cloudComputeHours?.usedThisMonth || 0;
-    const remaining = remainingFor(monthlyLimit, used);
-    if (hours > remaining) return { success: false, remaining };
-    subscription.cloudComputeHours.usedThisMonth += hours;
-    await subscription.save();
-    return { success: true, hoursDeducted: hours };
-}
-
 // === Main exports ===
 
 module.exports = {
@@ -307,7 +284,5 @@ module.exports = {
     enforceDeploymentLimit,
     enforceCloudComputeLimit,
     enforceCreditPool,
-    enforceSpecEngineLevel,
-    deductCredits,
-    deductComputeHours
+    enforceSpecEngineLevel
 };

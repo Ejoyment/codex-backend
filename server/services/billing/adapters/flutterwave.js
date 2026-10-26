@@ -16,7 +16,7 @@ class FlutterwaveAdapter extends PaymentAdapter {
     return s;
   }
 
-  async createCheckout({ userId, email, plan = 'pro', amount, currency = 'NGN', redirectUrl }) {
+  async createCheckout({ userId, email, plan = 'pro', interval = 'monthly', amount, currency = 'NGN', redirectUrl }) {
     const axios = require('axios');
     const txRef = `flw_${Date.now()}_${String(userId).slice(-6)}`;
     const res = await axios.post(
@@ -27,9 +27,9 @@ class FlutterwaveAdapter extends PaymentAdapter {
         currency,
         redirect_url: redirectUrl,
         customer: { email },
-        meta: { userId: String(userId), plan },
+        meta: { userId: String(userId), plan, interval },
       },
-      { headers: { Authorization: `Bearer ${this._secret()}` } }
+      { headers: { Authorization: `Bearer ${this._secret()}` }, timeout: 15000 }
     );
     const data = res.data?.data || {};
     return { provider: 'flutterwave', sessionId: txRef, url: data.link };
@@ -49,15 +49,20 @@ class FlutterwaveAdapter extends PaymentAdapter {
     // Failed charges enter dunning (recoverable); exact refund policy wording
     // is a team decision — see 3.2.
     const failedCharge = event.event === 'charge.completed' && !ok;
+    const amount = d.amount == null ? null : Number(d.amount);
+    const amountMinor = Number.isFinite(amount) ? Math.round(amount * 100) : null;
     return {
       eventId: `flutterwave:${event.id || d.tx_ref || d.id}`,
       type: event.event,
       userId: d.meta?.userId || d.meta?.user_id || null,
       plan: d.meta?.plan || null,
+      interval: d.meta?.interval || null,
       status: ok ? 'active' : (failedCharge ? 'past_due' : null),
       customerId: d.customer?.email || d.customer?.id || null,
       subscriptionId: d.tx_ref || String(d.id) || null,
-      currency: (d.currency || 'NGN').toUpperCase(),
+      currency: d.currency ? String(d.currency).toUpperCase() : null,
+      amountMinor,
+      amount: amountMinor == null ? null : amountMinor / 100,
     };
   }
 

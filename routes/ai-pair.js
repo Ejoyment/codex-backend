@@ -9,10 +9,19 @@ const ChatMessage = require('../models/ChatMessage');
 const CodeChange = require('../models/CodeChange');
 const AgentExecution = require('../models/AgentExecution');
 const Subscription = require('../models/Subscription');
+const CreditPoolService = require('../utils/creditPoolService');
 const { createDiffPatch } = require('diff');
 const permissionMatrix = require('../middleware/permissionMatrix');
 const { authenticateToken } = require('../middleware/auth');
 const { canonicalTier } = require('../utils/tierNames');
+const { assertWorkspaceAccess } = require('../utils/workspaceAuth');
+
+async function resolveMemoryWorkspace(workspaceId, userId) {
+    if (!workspaceId) return { ok: true, workspaceId: null };
+    const access = await assertWorkspaceAccess(workspaceId, userId);
+    if (!access.ok) return { ok: false, reason: access.reason };
+    return { ok: true, workspaceId: access.workspaceId };
+}
 
 // Middleware to check AI usage limits
 const checkAILimits = async (req, res, next) => {
@@ -436,6 +445,17 @@ router.post('/executions', authenticateToken, async (req, res) => {
             return res.status(404).json({ success: false, message: 'Session not found' });
         }
 
+        const requestedWorkspaceId = req.body.workspaceId || req.body.companyId
+            || req.body.metadata?.workspaceId || req.body.metadata?.companyId;
+        let workspaceId = null;
+        if (requestedWorkspaceId) {
+            const access = await assertWorkspaceAccess(requestedWorkspaceId, req.userId);
+            if (!access.ok) {
+                return res.status(403).json({ success: false, message: access.reason || 'Workspace access denied' });
+            }
+            workspaceId = access.workspaceId;
+        }
+
         const execution = await AgentExecution.create({
             userId: req.userId,
             sessionId,
@@ -443,7 +463,7 @@ router.post('/executions', authenticateToken, async (req, res) => {
             summary,
             status,
             approvalRequired,
-            metadata: {}
+            metadata: workspaceId ? { workspaceId } : {}
         });
 
         res.status(201).json({ success: true, execution });
@@ -463,8 +483,36 @@ router.patch('/executions/:executionId', authenticateToken, async (req, res) => 
             return res.status(404).json({ success: false, message: 'Execution not found' });
         }
 
+        let metadataUpdate = update.metadata && typeof update.metadata === 'object'
+            ? { ...update.metadata }
+            : null;
+        const requestedWorkspaceId = update.workspaceId || update.companyId
+            || metadataUpdate?.workspaceId || metadataUpdate?.companyId;
+        let workspaceId = null;
+        if (requestedWorkspaceId) {
+            const access = await assertWorkspaceAccess(requestedWorkspaceId, req.userId);
+            if (!access.ok) {
+                return res.status(403).json({ success: false, message: access.reason || 'Workspace access denied' });
+            }
+            workspaceId = access.workspaceId;
+        }
+        if (workspaceId) {
+            if (!metadataUpdate) {
+                const current = execution.metadata;
+                metadataUpdate = current && typeof current.toObject === 'function'
+                    ? current.toObject()
+                    : { ...(current || {}) };
+            }
+            metadataUpdate.workspaceId = workspaceId;
+            delete metadataUpdate.companyId;
+        }
+
         Object.keys(update).forEach((key) => {
-            if (key === '_id' || key === 'userId' || key === 'sessionId' || key === 'createdAt') return;
+            if (['_id', 'userId', 'sessionId', 'createdAt', 'workspaceId', 'companyId'].includes(key)) return;
+            if (key === 'metadata') {
+                if (metadataUpdate) execution.metadata = metadataUpdate;
+                return;
+            }
             execution[key] = update[key];
         });
 
@@ -595,6 +643,15 @@ router.get('/session/:sessionId', authenticateToken, async (req, res) => {
  */
 // Chat with AI (Enhanced with ReAct Agent Loop)
 router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req, res) => {
+    let creditCharged = false;
+    const refundCredit = async () => {
+        if (!creditCharged) return;
+        creditCharged = false;
+        await CreditPoolService.refundCredits(req.userId, CreditPoolService.AGENT_JOB_CREDIT_COST).catch((error) => {
+            console.error('AI pair credit refund error:', error.message);
+        });
+    };
+
     try {
         const { sessionId, message, codeContext, enableActions = false, useAgentLoop = false, companyId } = req.body;
         
@@ -609,6 +666,29 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
                 success: false,
                 message: 'Session not found'
             });
+        }
+
+        // Workspace/company ids drive server-side memory reads and agent file
+        // access, so resolve them before storing the message or charging credits.
+        let companyWorkspaceId = null;
+        if (companyId) {
+            const access = await assertWorkspaceAccess(companyId, req.userId);
+            if (!access.ok) {
+                return res.status(403).json({ success: false, message: access.reason || 'Workspace access denied' });
+            }
+            companyWorkspaceId = access.workspaceId;
+        }
+
+        let agentWorkspaceId = null;
+        if (useAgentLoop) {
+            const requestedAgentWorkspaceId = codeContext?.workspace?.id || companyWorkspaceId || null;
+            if (requestedAgentWorkspaceId) {
+                const access = await assertWorkspaceAccess(requestedAgentWorkspaceId, req.userId);
+                if (!access.ok) {
+                    return res.status(403).json({ success: false, message: access.reason || 'Workspace access denied' });
+                }
+                agentWorkspaceId = access.workspaceId;
+            }
         }
 
         // Save user message
@@ -631,6 +711,18 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
                 });
             }
 
+            const credit = await CreditPoolService.deductCredits(req.userId, CreditPoolService.AGENT_JOB_CREDIT_COST);
+            if (!credit.success) {
+                return res.status(403).json({
+                    success: false,
+                    message: credit.message || 'Insufficient AI credits',
+                    code: 'CREDIT_LIMIT_REACHED',
+                    requiresUpgrade: true,
+                    remaining: credit.remaining
+                });
+            }
+            creditCharged = true;
+
             const agentOrchestrator = require('../utils/agentOrchestrator');
             const executionTaskTitle = message || 'Workspace task';
             const execution = await AgentExecution.create({
@@ -641,17 +733,18 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
                 approvalRequired: true,
                 metadata: {
                     startedFrom: 'ai-pair/chat',
-                    workspaceId: codeContext?.workspace?.id,
-                    currentFile: codeContext?.currentFile?.path || null
+                    workspaceId: agentWorkspaceId,
+                    currentFile: codeContext?.currentFile?.path || null,
+                    creditsCharged: CreditPoolService.AGENT_JOB_CREDIT_COST
                 }
             });
 
             const context = {
                 userId: req.userId,
-                workspaceId: codeContext.workspace?.id,
-                workspaceName: codeContext.workspace?.name,
-                files: codeContext.files || [],
-                currentFile: codeContext.currentFile
+                workspaceId: agentWorkspaceId,
+                workspaceName: codeContext?.workspace?.name,
+                files: codeContext?.files || [],
+                currentFile: codeContext?.currentFile
             };
 
             let result;
@@ -662,23 +755,25 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
                     sessionId
                 );
             } catch (error) {
-                await AgentExecution.findByIdAndUpdate(execution._id, {
+                await AgentExecution.findOneAndUpdate({ _id: execution._id, userId: req.userId }, {
                     status: 'failed',
                     summary: error.message,
                     approvalRequired: false,
                     updatedAt: new Date()
                 });
+                await refundCredit();
                 throw error;
             }
 
             const executionStatus = result?.success ? 'awaiting_approval' : 'failed';
-            await AgentExecution.findByIdAndUpdate(execution._id, {
+            if (executionStatus === 'failed') await refundCredit();
+            await AgentExecution.findOneAndUpdate({ _id: execution._id, userId: req.userId }, {
                 status: executionStatus,
                 summary: result?.summary?.finalThought || result?.summary?.goal || 'Agent run complete',
                 approvalRequired: Boolean(result?.success),
                 iterations: Array.isArray(result?.iterations) ? result.iterations.length : 0,
                 metadata: {
-                    ...(execution.metadata && Object.fromEntries ? Object.fromEntries(execution.metadata) : {}),
+                    ...(execution.metadata?.toObject?.() || execution.metadata || {}),
                     finalStatus: executionStatus,
                     goal: message,
                     iterationCount: Array.isArray(result?.iterations) ? result.iterations.length : 0,
@@ -720,13 +815,13 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
         // Enhanced context with cross-tool AI context engine
         let teamConventionPrompt = '';
         let crossToolContext = null;
-        if (companyId) {
+        if (companyWorkspaceId) {
             try {
                 const teamMemoryService = require('../utils/teamMemoryService');
-                teamConventionPrompt = await teamMemoryService.getConventionsPrompt(companyId);
+                teamConventionPrompt = await teamMemoryService.getConventionsPrompt(companyWorkspaceId);
                 
                 const aiContextEngine = require('../utils/aiContextEngine');
-                crossToolContext = await aiContextEngine.buildCrossToolContext(req.userId, companyId, {
+                crossToolContext = await aiContextEngine.buildCrossToolContext(req.userId, companyWorkspaceId, {
                     includeFigma: true,
                     includeTeamConventions: true,
                     includeTicketContext: false,
@@ -833,6 +928,7 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
             aiLimit: req.aiLimit
         });
     } catch (error) {
+        await refundCredit();
         console.error('Chat error:', error);
         res.status(500).json({
             success: false,
@@ -1307,12 +1403,16 @@ router.post('/memory/store', authenticateToken, async (req, res) => {
         }
 
         const vectorMemory = require('../utils/vectorMemory');
+        const workspaceAccess = await resolveMemoryWorkspace(workspaceId, req.userId);
+        if (!workspaceAccess.ok) {
+            return res.status(403).json({ success: false, message: workspaceAccess.reason || 'Workspace access denied' });
+        }
         
         const result = await vectorMemory.store(
             content,
             metadata || {},
             req.userId,
-            workspaceId
+            workspaceAccess.workspaceId
         );
 
         res.json({
@@ -1372,12 +1472,16 @@ router.get('/memory/retrieve', authenticateToken, async (req, res) => {
         }
 
         const vectorMemory = require('../utils/vectorMemory');
+        const workspaceAccess = await resolveMemoryWorkspace(workspaceId, req.userId);
+        if (!workspaceAccess.ok) {
+            return res.status(403).json({ success: false, message: workspaceAccess.reason || 'Workspace access denied' });
+        }
         
         const results = await vectorMemory.retrieve(
             query,
             parseInt(k),
             req.userId,
-            workspaceId
+            workspaceAccess.workspaceId
         );
 
         res.json({
@@ -1420,10 +1524,14 @@ router.delete('/memory/clear', authenticateToken, async (req, res) => {
         const { workspaceId } = req.query;
         
         const vectorMemory = require('../utils/vectorMemory');
+        const workspaceAccess = await resolveMemoryWorkspace(workspaceId, req.userId);
+        if (!workspaceAccess.ok) {
+            return res.status(403).json({ success: false, message: workspaceAccess.reason || 'Workspace access denied' });
+        }
         
         const result = await vectorMemory.clear(
             req.userId,
-            workspaceId
+            workspaceAccess.workspaceId
         );
 
         res.json({
@@ -1465,10 +1573,14 @@ router.get('/memory/stats', authenticateToken, async (req, res) => {
         const { workspaceId } = req.query;
         
         const vectorMemory = require('../utils/vectorMemory');
+        const workspaceAccess = await resolveMemoryWorkspace(workspaceId, req.userId);
+        if (!workspaceAccess.ok) {
+            return res.status(403).json({ success: false, message: workspaceAccess.reason || 'Workspace access denied' });
+        }
         
         const stats = await vectorMemory.getStats(
             req.userId,
-            workspaceId
+            workspaceAccess.workspaceId
         );
 
         res.json({

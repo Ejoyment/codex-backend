@@ -30,7 +30,7 @@ let io;
 let port;
 
 const channelDoc = (over = {}) => ({
-  _id: 'chanPub', company: 'companyA', type: 'public', archived: false,
+  _id: 'chanPub', company: '507f1f77bcf86cd799439013', type: 'public', archived: false,
   members: [{ user: 'userM', role: 'member' }],
   ...over,
 });
@@ -38,7 +38,7 @@ let channels = {};
 // Discriminating membership mock: only currentMember (or companyA owner userA).
 let currentMember = null;
 const isMemberQuery = (q) => {
-  if (String(q?._id) !== 'companyA') return false;
+  if (String(q?._id) !== '507f1f77bcf86cd799439013') return false;
   const ors = q?.$or || [];
   return ors.some((c) => String(c.owner) === 'userA' || (c['members.user'] && String(c['members.user']) === currentMember));
 };
@@ -104,7 +104,7 @@ beforeEach(() => {
     select: () => ({ fullName: 'Real Name', profilePicture: null }),
   }));
   Company.findOne.mockImplementation((q) => ({
-    select: () => ({ lean: async () => (isMemberQuery(q) ? { _id: 'companyA' } : null) }),
+    select: () => ({ lean: async () => (isMemberQuery(q) ? { _id: '507f1f77bcf86cd799439013' } : null) }),
   }));
 });
 

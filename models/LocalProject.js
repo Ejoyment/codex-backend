@@ -51,6 +51,21 @@ const localProjectSchema = new mongoose.Schema({
         type: String,
         default: ''
     },
+    provisioningStatus: {
+        type: String,
+        enum: ['not_started', 'pending', 'provisioning', 'ready', 'failed'],
+        default: 'not_started'
+    },
+    provisioningError: {
+        type: String,
+        default: ''
+    },
+    provisionedAt: Date,
+    provisionedFileCount: {
+        type: Number,
+        default: 0,
+        min: 0
+    },
     technologies: {
         type: [String],
         default: []

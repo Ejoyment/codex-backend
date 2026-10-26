@@ -31,13 +31,13 @@ let port;
 
 // Room fixtures (mocked DB rows).
 const meetingDoc = (over = {}) => ({
-  _id: 'mA', roomId: 'roomA', host: 'userA', company: 'companyA',
+  _id: 'mA', roomId: 'roomA', host: 'userA', company: '507f1f77bcf86cd799439013',
   participants: [{ user: 'userM', status: 'invited' }], status: 'scheduled',
   save: jest.fn(async function () { return this; }),
   ...over,
 });
 const overlayDoc = (over = {}) => ({
-  meetingId: 'mA', status: 'active', hostUserId: 'userA', companyId: 'companyA',
+  meetingId: 'mA', status: 'active', hostUserId: 'userA', companyId: '507f1f77bcf86cd799439013',
   access: { mode: 'company', invitedUserIds: [] },
   ...over,
 });
@@ -47,7 +47,7 @@ let overlays = {};
 // only currentMember (or companyA's owner userA) passes.
 let currentMember = null;
 const isMemberQuery = (q) => {
-  if (String(q?._id) !== 'companyA') return false;
+  if (String(q?._id) !== '507f1f77bcf86cd799439013') return false;
   const ors = q?.$or || [];
   return ors.some((c) => String(c.owner) === 'userA' || (c['members.user'] && String(c['members.user']) === currentMember));
 };
@@ -110,7 +110,7 @@ beforeEach(() => {
   }));
   // userC is a companyA member; everyone else is a stranger unless listed.
   Company.findOne.mockImplementation((q) => ({
-    select: () => ({ lean: async () => (isMemberQuery(q) ? { _id: 'companyA' } : null) }),
+    select: () => ({ lean: async () => (isMemberQuery(q) ? { _id: '507f1f77bcf86cd799439013' } : null) }),
   }));
 });
 

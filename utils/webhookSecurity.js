@@ -25,6 +25,10 @@ const crypto = require('crypto');
  */
 const WEBHOOK_PATH_MARKERS = [
     '/api/v1/billing/webhook',
+    '/api/v1/billing/subscription/payment/stripe',
+    '/api/v1/billing/subscription/webhook/stripe',
+    '/api/v1/billing/paystack/webhook',
+    '/api/v1/billing/flutterwave/webhook',
     '/api/subscription/payment/stripe',
     '/api/subscription/webhook/stripe',
     '/api/paystack-billing/webhook',

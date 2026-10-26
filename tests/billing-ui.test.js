@@ -341,6 +341,13 @@ describe('settings billing tab wiring', () => {
         expect(source).toMatch(/from '\.\.\/lib\/plans'/);
         expect(source).not.toMatch(/const PLANS = \[/);
     });
+
+    test('offers an explicit compute-overage opt-in with the cap visible', () => {
+        expect(source).toMatch(/subscriptionApi\.setOverage/);
+        expect(source).toMatch(/Enable overage/);
+        expect(source).toMatch(/Disable overage/);
+        expect(source).toMatch(/overageCapMinor/);
+    });
 });
 
 describe('checkout deep links', () => {
@@ -365,14 +372,24 @@ describe('checkout deep links', () => {
 describe('api client', () => {
     const source = read(path.resolve(FRONTEND, 'lib/api.js'));
 
-    test('exposes cancel, resume and changePlan', () => {
+    test('exposes cancel, resume, changePlan and overage opt-in', () => {
         expect(source).toMatch(/subscriptionApi/);
         expect(source).toMatch(/cancel:/);
         expect(source).toMatch(/resume:/);
         expect(source).toMatch(/changePlan:/);
+        expect(source).toMatch(/setOverage:/);
     });
 
-    test('cancel sends no mode by default so the API can decide', () => {
-        expect(source).toMatch(/mode \? \{ mode \} : \{\}/);
+    test('cancel posts to the canonical endpoint with no mode', () => {
+        expect(source).toContain("cancel: () => apiFetch('/api/v1/billing/cancel', { method: 'POST' })");
+        expect(source).not.toMatch(/mode \? \{ mode \}/);
+    });
+
+    test('subscription reads and actions use canonical billing paths', () => {
+        expect(source).toContain("'/api/v1/billing/subscription/current'");
+        expect(source).toContain("'/api/v1/billing/subscription/resume'");
+        expect(source).toContain("'/api/v1/billing/subscription/change-plan'");
+        expect(source).toContain("'/api/v1/billing/subscription/overage'");
+        expect(source).toContain("'/api/v1/billing/trial/status'");
     });
 });
