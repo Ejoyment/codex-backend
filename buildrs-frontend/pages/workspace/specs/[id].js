@@ -78,9 +78,9 @@ export default function SpecWorkspace() {
       <Head>
         <title>Spec: {spec?.title} - BuildrsHQ</title>
       </Head>
-      <div className="flex min-h-screen">
+      <div className="workspace-container min-h-screen">
         <Sidebar />
-        <div className="flex-1 p-6 bg-[#0f0f1a] overflow-auto">
+        <main className="workspace-main flex-1 p-6 bg-[#0f0f1a] overflow-auto">
           <div className="mb-6">
             <div className="flex items-center gap-3 mb-2">
               <FileCodeIcon className="w-6 h-6 text-purple-400" />
@@ -101,7 +101,7 @@ export default function SpecWorkspace() {
                   <AlertTriangle className="w-3 h-3" /> {spec.assertions.length} assertions
                 </span>
               )}
-            </div>
+            </main>
           </div>
 
           <div className="grid grid-cols-3 gap-4 mb-6">

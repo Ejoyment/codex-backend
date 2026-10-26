@@ -33,7 +33,6 @@ import { getTierLimits, normalizeTier } from '../lib/tier';
 import { useRouter } from 'next/router';
 import { io } from 'socket.io-client';
 import { useCurrentCompany } from '../hooks/useCurrentCompany';
-import NotificationBell from '../components/NotificationBell';
 
 const LANGUAGES = ['JavaScript', 'TypeScript', 'Python', 'Java', 'Go', 'Rust', 'C++', 'Ruby', 'PHP'];
 
@@ -674,30 +673,11 @@ export default function AiPair() {
       </Head>
 
       <div className="workspace-container ail-agent-page">
-        <header className="ail-global-header">
-          <div className="ail-global-brand">
-            <img src="/buildrs.png" alt="" />
-            <strong>Buildrs<span>HQ</span></strong>
-          </div>
-          <div className="ail-global-tools">
-            <button type="button" className="ail-branch-selector" title="Current branch">
-              <GitBranch />
-              <span>{selectedExecution?.branch || 'Feature/auth-flow-redesign'}</span>
-              <ChevronDown />
-            </button>
-            <span className="ail-global-chip is-ci"><i />CI Passing</span>
-            <span className="ail-global-chip is-staging"><i />Staging Live</span>
-            <label className="ail-global-search">
-              <Search />
-              <input type="search" placeholder="Search specs, diff, agents" aria-label="Search specs, diff, agents" />
-            </label>
-            <NotificationBell placement="down" look="header" />
-            <span className="ail-global-avatar" title={user?.fullName || user?.name || 'Profile'}>
-              {(user?.fullName || user?.name || 'DU').split(/\s+/).map((part) => part[0]).slice(0, 2).join('').toUpperCase()}
-            </span>
-          </div>
-        </header>
-        <Sidebar user={user} subscription={subscription} />
+        <Sidebar
+          user={user}
+          subscription={subscription}
+          headerBranch={selectedExecution?.branch || 'Feature/auth-flow-redesign'}
+        />
         <button type="button" className="ail-sidebar-back" onClick={() => router.back()} aria-label="Go back" title="Go back">
           <ArrowLeft />
         </button>

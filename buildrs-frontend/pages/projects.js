@@ -2,14 +2,12 @@ import { useCallback, useEffect, useState } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import Sidebar from '../components/Sidebar';
-import NotificationBell from '../components/NotificationBell';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
-import { getAvatarUrl } from '../lib/utils';
 import CreateProjectWizard from '../components/CreateProjectWizard';
 import ProjectDetails from '../components/ProjectDetails';
 import { projectApi } from '../lib/api';
-import { ChevronDown, Folder, GitBranch, RefreshCw, Search } from 'lucide-react';
+import { Folder, GitBranch, RefreshCw } from 'lucide-react';
 
 function formatRelativeTime(value) {
   if (!value) return '';
@@ -76,48 +74,9 @@ export default function Projects() {
       </Head>
 
       <div className="workspace-container min-h-screen bg-[#0b0f17] text-white">
-        <Sidebar user={user} subscription={subscription} />
+        <Sidebar user={user} subscription={subscription} headerBranch="Feature/auth-flow-redesign" />
 
         <main className="workspace-main min-w-0">
-          <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-white/10 bg-[#0b0f17]/80 px-6 backdrop-blur">
-            <button
-              type="button"
-              className="flex items-center gap-2 rounded-full border border-white/10 bg-[#161b26] px-3 py-1.5 text-sm text-zinc-200 transition hover:border-white/20"
-            >
-              <span className="h-2 w-2 rounded-full bg-cyan-400" />
-              <span className="max-w-[220px] truncate font-medium">Feature/auth-flow-redesign</span>
-              <ChevronDown className="h-4 w-4 text-zinc-400" />
-            </button>
-
-            <div className="flex items-center gap-4">
-              <div className="hidden items-center gap-2 lg:flex">
-                <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-400">
-                  CI Passing
-                </span>
-                <span className="rounded-full border border-blue-500/20 bg-blue-500/10 px-2.5 py-1 text-xs font-medium text-blue-400">
-                  Staging Live
-                </span>
-              </div>
-
-              <label className="relative hidden w-72 md:block">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
-                <input
-                  type="search"
-                  aria-label="Search specs, diff, agents"
-                  placeholder="Search specs, diff, agents"
-                  className="w-full rounded-full border border-white/10 bg-[#161b26] py-1.5 pl-9 pr-4 text-sm text-white placeholder-zinc-500 transition focus:border-cyan-500 focus:outline-none"
-                />
-              </label>
-
-              <NotificationBell look="header" />
-              <img
-                className="h-9 w-9 rounded-full border border-cyan-500/40 object-cover"
-                src={getAvatarUrl(user, user?.fullName || user?.name || 'User')}
-                alt={user?.fullName || user?.name || 'User'}
-              />
-            </div>
-          </header>
-
           {selectedProjectId ? (
             <ProjectDetails
               projectId={selectedProjectId}
