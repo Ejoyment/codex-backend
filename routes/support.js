@@ -328,11 +328,34 @@ router.post('/tickets', supportTicketLimiter, async (req, res) => {
             return res.status(400).json({ success: false, message: 'Subject and message are required' });
         }
 
+        let authenticatedUserId = null;
+        const token = req.headers.authorization?.split(' ')[1];
+        if (token) {
+            let decoded;
+            try {
+                decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+            } catch {
+                return res.status(401).json({ success: false, message: 'Invalid token' });
+            }
+            const tokenUserId = decoded.id || decoded.userId;
+            if (!tokenUserId || !(await isUserSessionValid(tokenUserId, decoded.tokenVersion))) {
+                return res.status(401).json({ success: false, message: 'Invalid token' });
+            }
+            authenticatedUserId = String(tokenUserId);
+        }
+
+        if (userId && !authenticatedUserId) {
+            return res.status(401).json({ success: false, message: 'Sign in to attach a ticket to an account' });
+        }
+        if (userId && authenticatedUserId && String(userId) !== authenticatedUserId) {
+            return res.status(403).json({ success: false, message: 'Ticket owner does not match the authenticated user' });
+        }
+
         const ticket = new SupportTicket({
             subject: subject.trim(),
             guestName: guestName || 'Guest',
             guestEmail,
-            userId: userId || null,
+            userId: authenticatedUserId,
             priority: priority || 'medium',
             messages: [{
                 sender: 'user',

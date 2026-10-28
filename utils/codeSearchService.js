@@ -66,7 +66,7 @@ class CodeSearchService {
         path: file.path,
         content: file.content || '',
         language: file.language || 'unknown',
-        companyId: file.companyId.toString(),
+        companyId: (file.company || file.companyId)?.toString(),
         createdBy: file.createdBy?.toString(),
         size: file.size || 0,
         updatedAt: file.updatedAt?.getTime() || Date.now()
@@ -91,7 +91,7 @@ class CodeSearchService {
         path: file.path,
         content: file.content || '',
         language: file.language || 'unknown',
-        companyId: file.companyId.toString(),
+        companyId: (file.company || file.companyId)?.toString(),
         createdBy: file.createdBy?.toString(),
         size: file.size || 0,
         updatedAt: file.updatedAt?.getTime() || Date.now()
@@ -189,7 +189,7 @@ class CodeSearchService {
       }).catch(() => {}); // Ignore if already exists
 
       const results = await CodeFile.find({
-        companyId: workspaceId,
+        company: workspaceId,
         $text: { $search: query }
       })
       .select('name path language size content')
@@ -275,7 +275,7 @@ class CodeSearchService {
   async searchByName(query, workspaceId, options = {}) {
     try {
       const results = await CodeFile.find({
-        companyId: workspaceId,
+        company: workspaceId,
         name: { $regex: query, $options: 'i' }
       })
       .select('name path language size')
@@ -305,7 +305,7 @@ class CodeSearchService {
   async searchByLanguage(language, workspaceId, options = {}) {
     try {
       const results = await CodeFile.find({
-        companyId: workspaceId,
+        company: workspaceId,
         language: language
       })
       .select('name path language size')
@@ -342,7 +342,7 @@ class CodeSearchService {
       console.log(`Rebuilding search index for workspace: ${workspaceId}`);
 
       // Fetch all files
-      const files = await CodeFile.find({ companyId: workspaceId })
+      const files = await CodeFile.find({ company: workspaceId })
         .select('name path content language size createdBy updatedAt')
         .lean()
         .exec();
