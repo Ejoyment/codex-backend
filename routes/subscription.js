@@ -11,6 +11,10 @@ const { authenticateToken } = require('../middleware/auth');
 const { TIERS, canonicalTier } = require('../utils/tierNames');
 const { getOrCreateSubscription } = require('../middleware/trial');
 const {
+    COMPUTE_OVERAGE_RATE_MINOR_PER_HOUR,
+    DEFAULT_COMPUTE_OVERAGE_CAP_MINOR,
+} = require('../utils/overagePolicy');
+const {
     applyPendingChanges,
     describeState,
     currentPeriodEnd,
@@ -126,6 +130,11 @@ router.get('/current', authenticateToken, async (req, res) => {
                     computeHours: {
                         used: subscription.cloudComputeHours?.usedThisMonth || 0,
                         limit: subscription.getCloudComputeHours(),
+                        overageHours: subscription.cloudComputeHours?.overageHoursThisMonth || 0,
+                        overageAmountMinor: subscription.cloudComputeHours?.overageAmountMinor || 0,
+                        overageEnabled: subscription.cloudComputeHours?.overageEnabled === true,
+                        overageCapMinor: subscription.cloudComputeHours?.overageCapMinor ?? DEFAULT_COMPUTE_OVERAGE_CAP_MINOR,
+                        overageRateMinorPerHour: COMPUTE_OVERAGE_RATE_MINOR_PER_HOUR,
                     },
                 },
             }
@@ -314,6 +323,61 @@ router.get('/entitlement', authenticateToken, async (req, res) => {
     } catch (error) {
         console.error('Entitlement error:', error);
         res.status(500).json({ success: false, message: 'Error fetching entitlement' });
+    }
+});
+
+/**
+ * Opt in to (or out of) billable compute overage.
+ *
+ * Overage hours are always recorded, but amount accrual and any later charge
+ * require explicit consent. The cap is a monthly ceiling; it defaults to $50
+ * and is enforced by creditPoolService.
+ */
+router.post('/overage', authenticateToken, async (req, res) => {
+    try {
+        const enabled = req.body?.enabled;
+        if (typeof enabled !== 'boolean') {
+            return res.status(400).json({ success: false, message: '`enabled` must be a boolean' });
+        }
+
+        const subscription = await getOrCreateSubscription(req.userId);
+        if (!subscription) {
+            return res.status(404).json({ success: false, message: 'No subscription found' });
+        }
+
+        const limit = subscription.getCloudComputeHours();
+        if (limit === null || limit === undefined) {
+            return res.status(400).json({
+                success: false,
+                code: 'UNLIMITED_COMPUTE',
+                message: 'This plan includes unlimited compute; overage does not apply.'
+            });
+        }
+        if (limit <= 0) {
+            return res.status(400).json({
+                success: false,
+                code: 'NO_COMPUTE_ALLOWANCE',
+                message: 'Cloud compute is not included on this tier.'
+            });
+        }
+
+        if (!Number.isFinite(Number(subscription.cloudComputeHours.overageCapMinor)) ||
+            Number(subscription.cloudComputeHours.overageCapMinor) <= 0) {
+            subscription.cloudComputeHours.overageCapMinor = DEFAULT_COMPUTE_OVERAGE_CAP_MINOR;
+        }
+        subscription.cloudComputeHours.overageEnabled = enabled;
+        await subscription.save();
+
+        res.json({
+            success: true,
+            message: enabled
+                ? `Overage enabled, capped at ${subscription.cloudComputeHours.overageCapMinor} minor units per month.`
+                : 'Overage disabled. New jobs will stop at the included compute limit.',
+            compute: subscription.getRemainingCompute(),
+        });
+    } catch (error) {
+        console.error('Overage opt-in error:', error);
+        res.status(500).json({ success: false, message: 'Error updating overage preference' });
     }
 });
 

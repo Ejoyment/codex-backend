@@ -113,7 +113,15 @@ describe('GET /api/subscription/current usage block', () => {
     expect(res.status).toBe(200);
     expect(res.body.subscription.usage).toEqual({
       credits: { used: 7, limit: 20 },
-      computeHours: { used: 2, limit: 10 },
+      computeHours: {
+        used: 2,
+        limit: 10,
+        overageHours: 0,
+        overageAmountMinor: 0,
+        overageEnabled: false,
+        overageCapMinor: 5000,
+        overageRateMinorPerHour: 100,
+      },
     });
   });
 });

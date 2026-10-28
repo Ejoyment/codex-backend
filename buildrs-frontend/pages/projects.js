@@ -27,6 +27,7 @@ export default function Projects() {
   const subscription = useAuthStore((state) => state.subscription);
   const [hasHydrated, setHasHydrated] = useState(false);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
+  const [createSourceType, setCreateSourceType] = useState('scratch');
   const [selectedProjectId, setSelectedProjectId] = useState(null);
   const [projects, setProjects] = useState([]);
   const [loadingProjects, setLoadingProjects] = useState(true);
@@ -77,6 +78,7 @@ export default function Projects() {
         <Sidebar user={user} subscription={subscription} headerBranch="Feature/auth-flow-redesign" />
 
         <main className="workspace-main min-w-0">
+
           {selectedProjectId ? (
             <ProjectDetails
               projectId={selectedProjectId}
@@ -85,8 +87,14 @@ export default function Projects() {
             />
           ) : isCreatingProject ? (
             <CreateProjectWizard
+              initialSourceType={createSourceType}
               onClose={() => setIsCreatingProject(false)}
-              onCreated={() => router.push('/dashboard')}
+              onCreated={(project) => {
+                const projectId = project?.id || project?._id;
+                setIsCreatingProject(false);
+                loadProjects();
+                if (projectId) setSelectedProjectId(projectId);
+              }}
             />
           ) : (
             <>
@@ -104,13 +112,20 @@ export default function Projects() {
               <div className="flex items-center gap-3">
                 <button
                   type="button"
+                  onClick={() => {
+                    setCreateSourceType('github');
+                    setIsCreatingProject(true);
+                  }}
                   className="rounded-lg border border-cyan-500/50 px-4 py-2 text-xs font-semibold text-white transition hover:bg-cyan-500/10"
                 >
                   Import from GitHub
                 </button>
                 <button
                   type="button"
-                  onClick={() => setIsCreatingProject(true)}
+                  onClick={() => {
+                    setCreateSourceType('scratch');
+                    setIsCreatingProject(true);
+                  }}
                   className="rounded-lg bg-cyan-400 px-4 py-2 text-xs font-bold text-slate-950 shadow-lg shadow-cyan-500/20 transition hover:bg-cyan-300"
                 >
                   New Project
@@ -173,7 +188,10 @@ export default function Projects() {
                 </p>
                 <button
                   type="button"
-                  onClick={() => setIsCreatingProject(true)}
+                  onClick={() => {
+                    setCreateSourceType('scratch');
+                    setIsCreatingProject(true);
+                  }}
                   className="mt-6 rounded-lg bg-cyan-400 px-5 py-2.5 text-xs font-bold text-slate-950 shadow-lg shadow-cyan-500/20 transition hover:bg-cyan-300"
                 >
                   Create New Project
@@ -262,6 +280,8 @@ export default function Projects() {
                           {project.githubRepoName && <span className="truncate text-zinc-600">· {project.githubRepoName}</span>}
                         </span>
                         <span className="ml-3 flex shrink-0 items-center gap-2">
+                          {project.provisioningStatus === 'failed' && <span className="text-rose-400">Setup failed</span>}
+                          {['pending', 'provisioning'].includes(project.provisioningStatus) && <span className="text-cyan-400">Setting up</span>}
                           {project.visibility && <span className="capitalize">{project.visibility}</span>}
                           {updatedLabel && <span>{updatedLabel}</span>}
                         </span>

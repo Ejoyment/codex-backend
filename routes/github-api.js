@@ -5,42 +5,7 @@ const Integration = require('../models/Integration');
 const jwt = require('jsonwebtoken');
 const { authenticateToken } = require('../middleware/auth');
 const { createStateToken, verifyStateToken } = require('../utils/oauthState');
-
-// Helper to get GitHub integration
-async function getGitHubIntegration(userId) {
-    const integration = await Integration.findOne({
-        userId,
-        provider: 'github',
-        isActive: true
-    });
-    
-    if (!integration) {
-        throw new Error('GitHub not connected');
-    }
-    
-    return integration;
-}
-
-// Helper to make GitHub API calls
-async function githubAPI(accessToken, endpoint, method = 'GET', data = null) {
-    try {
-        const response = await axios({
-            method,
-            url: `https://api.github.com${endpoint}`,
-            headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'Accept': 'application/vnd.github.v3+json',
-                'User-Agent': 'CODEX-INC-App'
-            },
-            data,
-            timeout: 20000
-        });
-        return response.data;
-    } catch (error) {
-        console.error('GitHub API error:', error.response?.data || error.message);
-        throw error;
-    }
-}
+const { getGitHubIntegration, githubAPI } = require('../utils/githubApiClient');
 
 // ===== REPOSITORIES =====
 
@@ -110,6 +75,9 @@ router.get('/repos', authenticateToken, async (req, res) => {
             }))
         });
     } catch (error) {
+        if (error.message === 'GitHub not connected') {
+            return res.json({ success: true, repositories: [], connected: false });
+        }
         res.status(500).json({ success: false, message: error.message });
     }
 });
@@ -274,7 +242,7 @@ router.get('/repos/:owner/:repo/branches', authenticateToken, async (req, res) =
         const integration = await getGitHubIntegration(req.userId);
         const { owner, repo } = req.params;
         
-        const branches = await githubAPI(integration.accessToken, `/repos/${owner}/${repo}/branches`);
+        const branches = await githubAPI(integration.accessToken, `/repos/${owner}/${repo}/branches?per_page=100`);
         
         res.json({
             success: true,

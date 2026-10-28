@@ -191,6 +191,20 @@ describe('Phase 2 - Spec-Driven & Autonomous Workflows', () => {
       expect(usage.totalInput).toBeDefined();
     });
 
+    test('should support Mistral provider', () => {
+      const aiRouter = require('../utils/aiRouterService');
+      const provider = aiRouter.getProvider('mistral');
+      expect(provider).toBeDefined();
+      expect(provider.type).toBe('cloud');
+    });
+
+    test('should support Groq provider', () => {
+      const aiRouter = require('../utils/aiRouterService');
+      const provider = aiRouter.getProvider('groq');
+      expect(provider).toBeDefined();
+      expect(provider.type).toBe('cloud');
+    });
+
     test('does not advertise unimplemented Claude or GPT-4o providers', () => {
       const aiRouter = require('../utils/aiRouterService');
       expect(aiRouter.getProvider('claude-sonnet')).toBeNull();

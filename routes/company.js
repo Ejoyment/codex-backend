@@ -8,6 +8,8 @@ const { checkMemberLimit, checkProjectLimit, requireTeamFeature, getCompanyLimit
 const permissionMatrix = require('../middleware/permissionMatrix');
 const { authenticateToken } = require('../middleware/auth');
 const { canonicalTier } = require('../utils/tierNames');
+const { ensurePersonalWorkspace } = require('../utils/personalWorkspace');
+const companyRoleService = require('../server/services/companyRoleService');
 
 /**
  * @swagger
@@ -158,6 +160,8 @@ router.post('/create', authenticateToken, permissionMatrix.requirePermission('co
 // Get user's companies
 router.get('/my-companies', authenticateToken, async (req, res) => {
     try {
+        await ensurePersonalWorkspace(req.userId);
+
         const companies = await Company.find({
             $or: [
                 { owner: req.userId },
@@ -792,6 +796,42 @@ router.post('/:companyId/logo', authenticateToken, async (req, res) => {
     } catch (error) {
         console.error('Logo upload error:', error);
         res.status(500).json({ success: false, message: 'Failed to upload logo' });
+    }
+});
+
+// Owner-only bulk promotion. Dry-run by default; the response lists every
+// requested member and why it was skipped so the caller can correct the list
+// before applying it.
+router.post('/:companyId/members/roles/bulk', authenticateToken, permissionMatrix.requirePermission('company', 'update'), async (req, res) => {
+    try {
+        const body = req.body || {};
+        const result = await companyRoleService.bulkPromoteMembers({
+            companyId: req.params.companyId,
+            userIds: body.userIds,
+            role: body.role || 'member',
+            actorId: req.userId,
+            dryRun: body.dryRun !== false,
+        });
+
+        if (!result.dryRun) {
+            for (const change of result.changes) {
+                await TeamActivity.create({
+                    company: req.params.companyId,
+                    user: req.userId,
+                    type: 'role_bulk_updated',
+                    action: `Bulk-promoted member to ${change.to}`,
+                    metadata: {
+                        targetUser: change.userId,
+                        oldValue: change.from,
+                        newValue: change.to,
+                    },
+                });
+            }
+        }
+
+        res.json({ success: true, data: result });
+    } catch (error) {
+        res.status(error.statusCode || 500).json({ success: false, message: error.message });
     }
 });
 

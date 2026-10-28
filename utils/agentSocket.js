@@ -1,11 +1,14 @@
 const { resolveSocketUser } = require('./socketAuth');
 const AgentExecution = require('../models/AgentExecution');
 const LocalTask = require('../models/LocalTask');
+const LocalProject = require('../models/LocalProject');
 const SpecModel = require('../models/SpecModel');
-const { userCanAccessSpec, userCanAccessWorkspace } = require('./specAccess');
+const { userCanAccessProject, userCanAccessSpec } = require('./specAccess');
+const { assertWorkspaceAccess } = require('./workspaceAuth');
 const aiRouterService = require('./aiRouterService');
 const sddVerificationService = require('./sddVerificationService');
 const agentChangeSet = require('./agentChangeSet');
+const agentApprovalService = require('./agentApprovalService');
 const realtimeBus = require('./realtimeBus');
 const gitService = require('./gitService');
 const CodeFile = require('../models/CodeFile');
@@ -13,6 +16,7 @@ const terminalService = require('./terminalService');
 const containerWorker = require('./containerWorker');
 const { execSync } = require('child_process');
 const { notifyAgentEvent } = require('./notificationTriggers');
+const CreditPoolService = require('./creditPoolService');
 
 // `metadata` is a Mongoose Map: prefer .get(), but tolerate plain objects too.
 function metaValue(execution, key) {
@@ -20,6 +24,30 @@ function metaValue(execution, key) {
   if (!meta) return undefined;
   if (typeof meta.get === 'function') return meta.get(key);
   return meta[key];
+}
+
+function setMetaValue(execution, key, value) {
+  const meta = execution?.metadata;
+  if (!meta) {
+    execution.metadata = { [key]: value };
+    return;
+  }
+  if (typeof meta.set === 'function') meta.set(key, value);
+  else meta[key] = value;
+}
+
+// Re-check the execution's stored workspace at approval time. Membership can
+// change between delegation and approval, and older rows may store a personal
+// user id instead of the canonical Company id.
+async function resolveExecutionWorkspace(socket, execution) {
+  const stored = metaValue(execution, 'workspaceId');
+  if (!stored) return { ok: true, workspaceId: null };
+  const access = await assertWorkspaceAccess(stored, socket.userId);
+  if (!access.ok) return { ok: false, reason: access.reason };
+  if (String(stored) !== access.workspaceId) {
+    setMetaValue(execution, 'workspaceId', access.workspaceId);
+  }
+  return { ok: true, workspaceId: access.workspaceId };
 }
 
 class AgentSocketHandler {
@@ -79,7 +107,7 @@ class AgentSocketHandler {
       socket.on('disconnect', () => {
         console.log(`Agent socket disconnected: ${socket.userId}`);
         for (const [executionId, execution] of this.executions) {
-          if (execution.userId === socket.userId && execution.status === 'running') {
+          if (String(execution.userId) === String(socket.userId) && execution.status === 'running') {
             execution.status = 'failed';
             execution.logs.push({ timestamp: new Date(), message: 'Connection lost - execution paused' });
             this.executions.set(executionId, execution);
@@ -91,6 +119,16 @@ class AgentSocketHandler {
 
   async handleDelegate(socket, data = {}) {
     const { taskId, taskTitle, sessionId, workspaceId, summary = '', specId, provider: requestedProvider, model, localPrivacyMode = false } = data;
+    let creditCharged = false;
+    const refundCredit = async () => {
+      if (!creditCharged) return;
+      creditCharged = false;
+      try {
+        await CreditPoolService.refundCredits(socket.userId, CreditPoolService.AGENT_JOB_CREDIT_COST);
+      } catch (error) {
+        console.error('Agent credit refund error:', error.message);
+      }
+    };
 
     try {
       const { provider, localPrivacyMode: effectiveLocalPrivacyMode } =
@@ -98,8 +136,9 @@ class AgentSocketHandler {
       await aiRouterService.validateModel(provider, model);
       // Access checks BEFORE any mutation (execution creation, task updates):
       // a client-supplied taskId/specId/workspaceId must belong to the caller.
+      let task = null;
       if (taskId) {
-        const task = await LocalTask.findOne({ _id: taskId, userId: socket.userId });
+        task = await LocalTask.findOne({ _id: taskId, userId: socket.userId });
         if (!task) {
           return socket.emit('agent:error', { message: 'Task not found' });
         }
@@ -110,9 +149,44 @@ class AgentSocketHandler {
           return socket.emit('agent:error', { message: 'Spec not found or project access denied' });
         }
       }
-      if (workspaceId && !await userCanAccessWorkspace(workspaceId, socket.userId)) {
-        return socket.emit('agent:error', { message: 'Workspace access denied' });
+
+      let project = null;
+      if (task?.projectId) {
+        project = await LocalProject.findById(task.projectId).select('workspaceId').lean();
+        if (!project) {
+          return socket.emit('agent:error', { message: 'Project not found' });
+        }
+        if (!await userCanAccessProject(task.projectId, socket.userId)) {
+          return socket.emit('agent:error', { message: 'Project access denied' });
+        }
       }
+
+      const requestedWorkspaceId = workspaceId || task?.companyId || project?.workspaceId || null;
+      let canonicalWorkspaceId = null;
+      if (requestedWorkspaceId) {
+        const access = await assertWorkspaceAccess(requestedWorkspaceId, socket.userId);
+        if (!access.ok) {
+          return socket.emit('agent:error', { message: 'Workspace access denied' });
+        }
+        canonicalWorkspaceId = access.workspaceId;
+      }
+      if (task?.companyId && String(task.companyId) !== canonicalWorkspaceId) {
+        return socket.emit('agent:error', { message: 'Task does not belong to this workspace' });
+      }
+      if (project?.workspaceId && String(project.workspaceId) !== canonicalWorkspaceId) {
+        return socket.emit('agent:error', { message: 'Project does not belong to this workspace' });
+      }
+
+      const credit = await CreditPoolService.deductCredits(socket.userId, CreditPoolService.AGENT_JOB_CREDIT_COST);
+      if (!credit.success) {
+        return socket.emit('agent:error', {
+          message: credit.message || 'Insufficient AI credits',
+          code: 'CREDIT_LIMIT_REACHED',
+          requiresUpgrade: true,
+          remaining: credit.remaining,
+        });
+      }
+      creditCharged = true;
 
       const execution = await AgentExecution.create({
         userId: socket.userId,
@@ -124,24 +198,25 @@ class AgentSocketHandler {
         approvalRequired: true,
         metadata: {
           taskId: taskId || null,
-          workspaceId: workspaceId || null,
+          workspaceId: canonicalWorkspaceId || null,
           specId: specId || null,
           source: 'agent:delegate',
           provider,
           model: model || null,
           localPrivacyMode: effectiveLocalPrivacyMode,
+          creditsCharged: CreditPoolService.AGENT_JOB_CREDIT_COST,
         },
       });
 
       // Create the isolated agent branch so every execution has a real base to
       // merge back into. Without a workspace there is nowhere to branch.
-      if (workspaceId) {
+      if (canonicalWorkspaceId) {
         try {
           const slug = String(taskTitle || 'task').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'task';
           const agentBranch = `feature/${execution._id}-${slug}`;
-          await gitService.init(workspaceId);
-          await gitService.ensureBaseCommit(workspaceId, 'main');
-          const branchResult = await gitService.createBranch(workspaceId, agentBranch);
+          await gitService.init(canonicalWorkspaceId);
+          await gitService.ensureBaseCommit(canonicalWorkspaceId, 'main');
+          const branchResult = await gitService.createBranch(canonicalWorkspaceId, agentBranch);
           if (branchResult.success) {
             execution.branch = agentBranch;
             execution.baseBranch = 'main';
@@ -156,7 +231,7 @@ class AgentSocketHandler {
       }
 
       if (taskId) {
-        await LocalTask.findByIdAndUpdate(taskId, {
+        await LocalTask.findOneAndUpdate({ _id: taskId, userId: socket.userId }, {
           status: 'in-progress',
           'agentExecution.status': 'running',
           'agentExecution.agentBranch': `agent/${taskId}`,
@@ -189,15 +264,15 @@ class AgentSocketHandler {
         taskId,
       });
 
-      this.executionLoop(execution, taskId, workspaceId, specId, provider, model, effectiveLocalPrivacyMode, socket);
+      this.executionLoop(execution, taskId, canonicalWorkspaceId, specId, provider, model, effectiveLocalPrivacyMode, socket, refundCredit);
 
       // Provision container worker if Docker is available
-      if (workspaceId) {
+      if (canonicalWorkspaceId) {
         try {
           const containerResult = await containerWorker.provisionWorker(
             taskId,
             socket.userId,
-            workspaceId,
+            canonicalWorkspaceId,
             { specId, image: 'node:18-alpine' }
           );
           if (containerResult.success) {
@@ -214,12 +289,13 @@ class AgentSocketHandler {
       }
 
     } catch (error) {
+      await refundCredit();
       console.error('Agent delegate error:', error);
       socket.emit('agent:error', { message: error.message });
     }
   }
 
-  async executionLoop(execution, taskId, workspaceId, specId, provider, model, localPrivacyMode, socket) {
+  async executionLoop(execution, taskId, workspaceId, specId, provider, model, localPrivacyMode, socket, refundCredit = async () => {}) {
     try {
       execution.status = 'running';
       execution.logs = [{ timestamp: new Date(), message: 'Agent execution started' }];
@@ -230,6 +306,7 @@ class AgentSocketHandler {
       // Spec content is fed to the model below, so never read one the socket
       // user cannot reach.
       if (spec && !await userCanAccessSpec(spec, socket.userId)) {
+        await refundCredit();
         return socket.emit('agent:error', { message: 'Spec not found or project access denied' });
       }
 
@@ -309,6 +386,7 @@ class AgentSocketHandler {
       } else {
         execution.status = 'failed';
         execution.logs.push({ timestamp: new Date(), message: `Agent execution failed: ${result.error}` });
+        await refundCredit();
 
         realtimeBus.emitAgentProgress(socket.userId, {
           type: 'error',
@@ -335,6 +413,7 @@ class AgentSocketHandler {
       execution.status = 'failed';
       execution.summary = error.message;
       execution.logs.push({ timestamp: new Date(), message: `Execution error: ${error.message}` });
+      await refundCredit();
       await execution.save();
       realtimeBus.emitAgentProgress(socket.userId, {
         type: 'error',
@@ -358,7 +437,7 @@ class AgentSocketHandler {
     }
     const execution = await AgentExecution.findById(executionId);
 
-    if (!execution || execution.userId !== socket.userId) {
+    if (!execution || String(execution.userId) !== String(socket.userId)) {
       return socket.emit('agent:error', { message: 'Execution not found' });
     }
 
@@ -384,8 +463,13 @@ class AgentSocketHandler {
     }
     const execution = await AgentExecution.findById(executionId);
 
-    if (!execution || execution.userId !== socket.userId) {
+    if (!execution || String(execution.userId) !== String(socket.userId)) {
       return socket.emit('agent:error', { message: 'Execution not found' });
+    }
+
+    const workspaceAccess = await resolveExecutionWorkspace(socket, execution);
+    if (!workspaceAccess.ok) {
+      return socket.emit('agent:error', { message: workspaceAccess.reason || 'Workspace access denied' });
     }
 
     // The taskId is client-supplied — only allow it to move the caller's own task.
@@ -394,40 +478,19 @@ class AgentSocketHandler {
       if (!task) {
         return socket.emit('agent:error', { message: 'Task not found' });
       }
-      await LocalTask.findByIdAndUpdate(taskId, {
-        status: 'completed',
-        completedAt: new Date(),
-        'agentExecution.status': 'completed',
-        updatedAt: new Date(),
-      });
     }
 
-    execution.status = 'completed';
-    execution.approvalRequired = false;
-    // Apply the staged proposal to the VFS only now that a human approved it.
-    const applied = await agentChangeSet.applyExecutionChanges(execution);
-    execution.logs.push({
-      timestamp: new Date(),
-      message: applied.applied
-        ? `Agent changes approved and merged (${applied.applied} file(s) applied)`
-        : 'Agent changes approved and merged',
+    const result = await agentApprovalService.approveExecution({
+      execution,
+      userId: socket.userId,
+      taskId,
+      workspaceId: workspaceAccess.workspaceId,
+      source: 'socket',
+      requireWorkspace: false,
+      requireChanges: false,
     });
-    await execution.save();
-
-    const agentBranch = metaValue(execution, 'agentBranch') || execution.branch;
-    const workspaceId = metaValue(execution, 'workspaceId');
-    if (agentBranch) {
-      try {
-        await gitService.merge(workspaceId || 'default', agentBranch);
-      } catch (error) {
-        console.error('Git merge error:', error);
-        execution.logs.push({ timestamp: new Date(), message: `Merge warning: ${error.message}` });
-        await execution.save();
-      }
-    }
-
-    if (execution.metadata?.containerId) {
-      try { await containerWorker.teardownWorker(taskId); } catch {}
+    if (!result.ok) {
+      return socket.emit('agent:error', { message: result.message });
     }
 
     socket.emit('agent:approved', { execution, taskId, message: 'Changes approved and merged' });
@@ -446,8 +509,13 @@ class AgentSocketHandler {
     }
     const execution = await AgentExecution.findById(executionId);
 
-    if (!execution || execution.userId !== socket.userId) {
+    if (!execution || String(execution.userId) !== String(socket.userId)) {
       return socket.emit('agent:error', { message: 'Execution not found' });
+    }
+
+    const workspaceAccess = await resolveExecutionWorkspace(socket, execution);
+    if (!workspaceAccess.ok) {
+      return socket.emit('agent:error', { message: workspaceAccess.reason || 'Workspace access denied' });
     }
 
     // Client-supplied taskId must belong to the caller.
@@ -456,33 +524,16 @@ class AgentSocketHandler {
       if (!task) {
         return socket.emit('agent:error', { message: 'Task not found' });
       }
-      await LocalTask.findByIdAndUpdate(taskId, {
-        status: 'in-progress',
-        'agentExecution.status': 'rejected',
-        updatedAt: new Date(),
-      });
     }
 
-    execution.status = 'rejected';
-    execution.approvalRequired = false;
-    execution.proposedChanges = [];
-    execution.filesChanged = [];
-    execution.logs.push({ timestamp: new Date(), message: 'Agent work rejected and task rolled back' });
-    await execution.save();
-
-    const agentBranch = metaValue(execution, 'agentBranch') || execution.branch;
-    const workspaceId = metaValue(execution, 'workspaceId');
-    if (agentBranch) {
-      try {
-        await gitService.reset(workspaceId || 'default', [agentBranch]);
-      } catch (error) {
-        console.error('Git reset error:', error);
-      }
-    }
-
-    if (execution.metadata?.containerId) {
-      try { await containerWorker.teardownWorker(taskId); } catch {}
-    }
+    await agentApprovalService.rejectExecution({
+      execution,
+      userId: socket.userId,
+      taskId,
+      workspaceId: workspaceAccess.workspaceId,
+      reason: data.reason || '',
+      source: 'socket',
+    });
 
     socket.emit('agent:rejected', { execution, taskId, message: 'Changes rejected and rolled back' });
 
@@ -500,8 +551,13 @@ class AgentSocketHandler {
     }
     const execution = await AgentExecution.findById(executionId);
 
-    if (!execution || execution.userId !== socket.userId) {
+    if (!execution || String(execution.userId) !== String(socket.userId)) {
       return socket.emit('agent:error', { message: 'Execution not found' });
+    }
+
+    const workspaceAccess = await resolveExecutionWorkspace(socket, execution);
+    if (!workspaceAccess.ok) {
+      return socket.emit('agent:error', { message: workspaceAccess.reason || 'Workspace access denied' });
     }
 
     if (taskId) {
@@ -511,25 +567,48 @@ class AgentSocketHandler {
       }
     }
 
-    execution.status = 'running';
-    execution.logs.push({ timestamp: new Date(), message: `Re-running agent with feedback: ${feedback}` });
-    await execution.save();
+    const credit = await CreditPoolService.deductCredits(socket.userId, CreditPoolService.AGENT_JOB_CREDIT_COST);
+    if (!credit.success) {
+      return socket.emit('agent:error', {
+        message: credit.message || 'Insufficient AI credits',
+        code: 'CREDIT_LIMIT_REACHED',
+        requiresUpgrade: true,
+        remaining: credit.remaining,
+      });
+    }
+    let creditCharged = true;
+    const refundCredit = async () => {
+      if (!creditCharged) return;
+      creditCharged = false;
+      await CreditPoolService.refundCredits(socket.userId, CreditPoolService.AGENT_JOB_CREDIT_COST).catch((error) => {
+        console.error('Agent tweak credit refund error:', error.message);
+      });
+    };
 
-    const messages = [
-      { role: 'system', content: `Re-running agent with feedback: ${feedback}` },
-      { role: 'user', content: feedback },
-    ];
+    try {
+      execution.status = 'running';
+      execution.logs.push({ timestamp: new Date(), message: `Re-running agent with feedback: ${feedback}` });
+      await execution.save();
 
-    const provider = execution.metadata?.provider;
-    const model = execution.metadata?.model;
-    await aiRouterService.validateModel(provider, model);
-    const result = await aiRouterService.routeChat(messages, {}, { provider, model });
+      const messages = [
+        { role: 'system', content: `Re-running agent with feedback: ${feedback}` },
+        { role: 'user', content: feedback },
+      ];
+      const provider = execution.metadata?.provider;
+      const model = execution.metadata?.model;
+      await aiRouterService.validateModel(provider, model);
+      const result = await aiRouterService.routeChat(messages, {}, { provider, model });
 
-    if (result.success) {
-      execution.logs.push({ timestamp: new Date(), message: 'Agent re-execution completed with feedback' });
-      socket.emit('agent:tweak-result', { execution, result });
-    } else {
-      socket.emit('agent:error', { message: result.error });
+      if (result.success) {
+        execution.logs.push({ timestamp: new Date(), message: 'Agent re-execution completed with feedback' });
+        socket.emit('agent:tweak-result', { execution, result });
+      } else {
+        await refundCredit();
+        socket.emit('agent:error', { message: result.error });
+      }
+    } catch (error) {
+      await refundCredit();
+      socket.emit('agent:error', { message: error.message });
     }
   }
 

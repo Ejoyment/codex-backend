@@ -21,7 +21,7 @@ const codeFileSchema = new mongoose.Schema({
     },
     project: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'TeamProject'
+        ref: 'LocalProject'
     },
     createdBy: {
         type: mongoose.Schema.Types.ObjectId,

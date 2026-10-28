@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
-import { projectApi } from '../lib/api';
+import React, { useCallback, useEffect, useState } from 'react';
+import { githubApi, integrationApi, projectApi } from '../lib/api';
 import {
   Check, Github, FileText, Code, Layout, Settings, Bot, X, Loader2,
-  Folder, Figma
+  Folder, Figma, GitBranch, RefreshCw
 } from 'lucide-react';
 
 const STEPS = [
@@ -12,17 +12,26 @@ const STEPS = [
   { id: 4, title: 'Review', subtitle: 'Confirm configuration' },
 ];
 
-export default function CreateProjectWizard({ onClose, onCreated }) {
+export default function CreateProjectWizard({ onClose, onCreated, initialSourceType = 'github' }) {
   const [currentStep, setCurrentStep] = useState(1);
   const [showConfigurationReady, setShowConfigurationReady] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [createdProject, setCreatedProject] = useState(null);
+  const [githubConnected, setGithubConnected] = useState(null);
+  const [githubAccount, setGithubAccount] = useState('');
+  const [githubRepos, setGithubRepos] = useState([]);
+  const [githubBranches, setGithubBranches] = useState([]);
+  const [githubLoading, setGithubLoading] = useState(true);
+  const [branchesLoading, setBranchesLoading] = useState(false);
+  const [githubError, setGithubError] = useState('');
+  const [retryingProvisioning, setRetryingProvisioning] = useState(false);
   const [project, setProject] = useState({
     name: '',
     description: '',
     visibility: 'private',
-    sourceType: 'github',
+    sourceType: initialSourceType,
+    repositoryFullName: '',
     repositoryUrl: '',
     branch: 'main',
     template: 'Full-stack web application',
@@ -37,6 +46,88 @@ export default function CreateProjectWizard({ onClose, onCreated }) {
   });
   const [showCustomTechnologyInput, setShowCustomTechnologyInput] = useState(false);
 
+  const loadGitHubRepositories = useCallback(async () => {
+    setGithubLoading(true);
+    setGithubError('');
+    try {
+      const status = await integrationApi.github();
+      const connected = Boolean(status?.connected);
+      setGithubConnected(connected);
+      setGithubAccount(status?.account || status?.username || '');
+      if (!connected) {
+        setGithubRepos([]);
+        return;
+      }
+      const data = await githubApi.listRepos({ per_page: 100, sort: 'updated' });
+      setGithubRepos(Array.isArray(data?.repositories) ? data.repositories : []);
+    } catch (error) {
+      setGithubConnected(false);
+      setGithubError(error.message || 'Could not load GitHub repositories.');
+    } finally {
+      setGithubLoading(false);
+    }
+  }, []);
+
+  const loadBranches = async (repo) => {
+    if (!repo) return;
+    setBranchesLoading(true);
+    setGithubBranches([]);
+    setGithubError('');
+    try {
+      const data = await githubApi.getBranches(repo.owner, repo.name);
+      const branches = Array.isArray(data?.branches)
+        ? data.branches.map((branch) => branch.name || branch)
+        : [];
+      setGithubBranches(branches);
+      setProject((current) => ({
+        ...current,
+        branch: branches.includes(current.branch)
+          ? current.branch
+          : (repo.defaultBranch || branches[0] || 'main'),
+      }));
+    } catch (error) {
+      const fallback = repo.defaultBranch ? [repo.defaultBranch] : [];
+      setGithubBranches(fallback);
+      setGithubError(error.message || 'Could not load repository branches.');
+    } finally {
+      setBranchesLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadGitHubRepositories();
+  }, [loadGitHubRepositories]);
+
+  useEffect(() => {
+    const projectId = createdProject?.id || createdProject?._id;
+    const status = createdProject?.provisioningStatus;
+    if (!projectId || !['pending', 'provisioning'].includes(status)) return undefined;
+
+    let active = true;
+    let timer;
+
+    const poll = async () => {
+      try {
+        const response = await projectApi.getProvisioning(projectId);
+        if (!active) return;
+        if (response?.project) {
+          setCreatedProject((current) => ({ ...current, ...response.project }));
+          if (['pending', 'provisioning'].includes(response.project.provisioningStatus)) {
+            timer = setTimeout(poll, 2000);
+          }
+        }
+      } catch {
+        if (active) timer = setTimeout(poll, 3000);
+      }
+    };
+
+    timer = setTimeout(poll, 1200);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [createdProject?.id, createdProject?._id, createdProject?.provisioningStatus]);
+
   const nextStep = () => setCurrentStep((prev) => Math.min(prev + 1, 4));
   const prevStep = () => setCurrentStep((prev) => Math.max(prev - 1, 1));
   const handleFinishReview = async () => {
@@ -45,8 +136,8 @@ export default function CreateProjectWizard({ onClose, onCreated }) {
       setSubmitError('Enter a project name before creating the project.');
       return;
     }
-    if (project.sourceType === 'github' && !project.repositoryUrl.trim()) {
-      setSubmitError('Enter a GitHub repository URL or choose another source.');
+    if (project.sourceType === 'github' && (!project.repositoryFullName || !project.branch.trim())) {
+      setSubmitError('Choose a GitHub repository and branch, or choose another source.');
       return;
     }
 
@@ -57,7 +148,8 @@ export default function CreateProjectWizard({ onClose, onCreated }) {
         description: project.description.trim(),
         visibility: project.visibility,
         sourceType: project.sourceType,
-        githubRepoUrl: project.sourceType === 'github' ? project.repositoryUrl.trim() : undefined,
+        githubRepoName: project.sourceType === 'github' ? project.repositoryFullName : undefined,
+        githubRepoUrl: project.sourceType === 'github' ? project.repositoryUrl : undefined,
         defaultBranch: project.branch.trim() || 'main',
         template: project.sourceType === 'template' ? project.template : '',
         technologies: [...project.technologies, ...project.customTechnologies],
@@ -76,6 +168,43 @@ export default function CreateProjectWizard({ onClose, onCreated }) {
   };
   const updateProject = (field, value) => {
     setProject((current) => ({ ...current, [field]: value }));
+  };
+  const handleRepositoryChange = (fullName) => {
+    const repo = githubRepos.find((item) => item.fullName === fullName);
+    if (!repo) {
+      setProject((current) => ({
+        ...current,
+        repositoryFullName: '',
+        repositoryUrl: '',
+        branch: 'main',
+      }));
+      setGithubBranches([]);
+      return;
+    }
+    setProject((current) => ({
+      ...current,
+      repositoryFullName: repo.fullName,
+      repositoryUrl: repo.url,
+      branch: repo.defaultBranch || 'main',
+      name: current.name.trim() ? current.name : repo.name,
+    }));
+    loadBranches(repo);
+  };
+  const retryProvisioning = async () => {
+    const projectId = createdProject?.id || createdProject?._id;
+    if (!projectId) return;
+    setRetryingProvisioning(true);
+    setSubmitError('');
+    try {
+      const response = await projectApi.retryProvisioning(projectId);
+      if (response?.project) {
+        setCreatedProject((current) => ({ ...current, ...response.project }));
+      }
+    } catch (error) {
+      setSubmitError(error.message || 'Could not retry project setup.');
+    } finally {
+      setRetryingProvisioning(false);
+    }
   };
   const toggleTechnology = (technology) => {
     setProject((current) => ({
@@ -111,6 +240,16 @@ export default function CreateProjectWizard({ onClose, onCreated }) {
   }[project.sourceType];
   const selectedTechnologies = [...project.technologies, ...project.customTechnologies];
   const accessLabel = project.visibility === 'private' ? 'Private' : 'Public';
+  const provisioningStatus = createdProject?.provisioningStatus || 'pending';
+  const provisioningBusy = ['pending', 'provisioning'].includes(provisioningStatus);
+  const provisioningReady = provisioningStatus === 'ready';
+  const provisioningFailed = provisioningStatus === 'failed';
+  const provisioningLabel = {
+    pending: 'Queued',
+    provisioning: 'Preparing files',
+    ready: 'Ready',
+    failed: 'Needs attention',
+  }[provisioningStatus] || provisioningStatus;
 
   return (
     <div className="min-h-screen bg-[#0b0f17] text-white flex flex-col p-6">
@@ -300,26 +439,83 @@ export default function CreateProjectWizard({ onClose, onCreated }) {
                     {project.sourceType === 'github' && <div className="h-2 w-2 rounded-full bg-cyan-400" />}
                   </div>
                 </button>
-                <p className="text-[10px] text-zinc-400 mb-4">Save a GitHub repository URL and default branch. Repository indexing is not enabled yet.</p>
+                <p className="text-[10px] text-zinc-400 mb-4">Import a repository from your connected GitHub account. Files become editable in the project workspace.</p>
                 <div className="mt-auto space-y-3">
-                  <div>
-                    <label className="text-[10px] text-zinc-400">GitHub repository URL *</label>
-                    <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-[#0b0f17] px-2 py-1.5 mt-1">
-                      <Github className="h-3 w-3 text-zinc-500" />
-                      <input type="url" value={project.repositoryUrl} onChange={(event) => updateProject('repositoryUrl', event.target.value)} placeholder="https://github.com/owner/repository" aria-label="GitHub repository URL" className="bg-transparent text-xs text-white placeholder-zinc-600 focus:outline-none w-full" />
+                  {githubLoading ? (
+                    <div className="flex items-center gap-2 rounded-lg border border-white/5 bg-[#161b26] px-3 py-2 text-[10px] text-zinc-400">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Loading GitHub account...
                     </div>
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-zinc-400">Default branch</label>
-                    <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-[#0b0f17] px-2 py-1.5 mt-1">
-                      <Code className="h-3 w-3 text-zinc-500" />
-                      <input type="text" value={project.branch} onChange={(event) => updateProject('branch', event.target.value)} aria-label="GitHub default branch" className="bg-transparent text-xs text-white focus:outline-none w-full" />
+                  ) : !githubConnected ? (
+                    <div className="space-y-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">
+                      <p className="text-[10px] text-amber-300">GitHub is not connected.</p>
+                      <a href="/integrations" className="inline-flex items-center gap-1 text-[10px] font-medium text-cyan-400 hover:text-cyan-300">
+                        <Github className="h-3 w-3" /> Connect GitHub
+                      </a>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2 rounded-lg border border-white/5 bg-[#161b26] px-3 py-1.5">
-                    <Github className="h-3 w-3 text-zinc-400" />
-                    <p className="text-[10px] text-zinc-400">Repository details are saved locally for now.</p>
-                  </div>
+                  ) : (
+                    <>
+                      <div>
+                        <label className="text-[10px] text-zinc-400">Repository *</label>
+                        <div className="mt-1 flex items-center gap-2 rounded-lg border border-white/10 bg-[#0b0f17] px-2 py-1.5">
+                          <Github className="h-3 w-3 shrink-0 text-zinc-500" />
+                          <select
+                            value={project.repositoryFullName}
+                            onChange={(event) => handleRepositoryChange(event.target.value)}
+                            aria-label="GitHub repository"
+                            className="w-full bg-transparent text-xs text-white focus:outline-none"
+                          >
+                            <option value="">Select a repository</option>
+                            {githubRepos.map((repo) => (
+                              <option key={repo.id || repo.fullName} value={repo.fullName}>
+                                {repo.fullName}{repo.private ? ' (private)' : ''}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        {!githubRepos.length && (
+                          <p className="mt-1 text-[10px] text-zinc-500">No repositories found for this account.</p>
+                        )}
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-zinc-400">Branch</label>
+                        <div className="mt-1 flex items-center gap-2 rounded-lg border border-white/10 bg-[#0b0f17] px-2 py-1.5">
+                          <GitBranch className="h-3 w-3 shrink-0 text-zinc-500" />
+                          <select
+                            value={project.branch}
+                            onChange={(event) => updateProject('branch', event.target.value)}
+                            disabled={!project.repositoryFullName || branchesLoading}
+                            aria-label="GitHub branch"
+                            className="w-full bg-transparent text-xs text-white focus:outline-none disabled:text-zinc-500"
+                          >
+                            {branchesLoading ? (
+                              <option value={project.branch}>Loading branches...</option>
+                            ) : (
+                              <>
+                                {!githubBranches.includes(project.branch) && project.branch && (
+                                  <option value={project.branch}>{project.branch}</option>
+                                )}
+                                {githubBranches.map((branch) => (
+                                  <option key={branch} value={branch}>{branch}</option>
+                                ))}
+                              </>
+                            )}
+                          </select>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between gap-2 rounded-lg border border-white/5 bg-[#161b26] px-3 py-1.5">
+                        <p className="text-[10px] text-zinc-400">
+                          {githubAccount ? `Connected as ${githubAccount}` : 'GitHub connected'}
+                        </p>
+                        <button type="button" onClick={loadGitHubRepositories} className="text-zinc-500 hover:text-white" aria-label="Refresh GitHub repositories">
+                          <RefreshCw className="h-3 w-3" />
+                        </button>
+                      </div>
+                      {githubError && (
+                        <p role="alert" className="text-[10px] text-red-400">{githubError}</p>
+                      )}
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -561,7 +757,7 @@ export default function CreateProjectWizard({ onClose, onCreated }) {
                 </div>
                 <div className="space-y-2 text-[11px]">
                   <div className="flex"><span className="w-24 shrink-0 text-zinc-500">Connection</span><span className="text-cyan-400">{sourceLabel}</span></div>
-                  {project.sourceType === 'github' && <div className="flex"><span className="w-24 shrink-0 text-zinc-500">Repository</span><span className="break-all text-white">{project.repositoryUrl || 'Not provided'}</span></div>}
+                  {project.sourceType === 'github' && <div className="flex"><span className="w-24 shrink-0 text-zinc-500">Repository</span><span className="break-all text-white">{project.repositoryFullName || 'Not selected'}</span></div>}
                   {project.sourceType === 'template' && <div className="flex"><span className="w-24 shrink-0 text-zinc-500">Template</span><span className="text-white">{project.template}</span></div>}
                   <div className="flex"><span className="w-24 shrink-0 text-zinc-500">Branch</span><span className="text-white">{project.branch || 'main'}</span></div>
                 </div>
@@ -658,19 +854,43 @@ export default function CreateProjectWizard({ onClose, onCreated }) {
           <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#0d1119] p-6 shadow-2xl">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400">
-                  <Check className="h-5 w-5" />
+                <div className={`flex h-10 w-10 items-center justify-center rounded-full ${provisioningReady ? 'bg-emerald-500/20 text-emerald-400' : provisioningFailed ? 'bg-rose-500/20 text-rose-400' : 'bg-cyan-500/20 text-cyan-400'}`}>
+                  {provisioningReady ? <Check className="h-5 w-5" /> : provisioningFailed ? <X className="h-5 w-5" /> : <Loader2 className="h-5 w-5 animate-spin" />}
                 </div>
-                <h2 className="text-lg font-semibold text-white">Project created</h2>
+                <h2 className="text-lg font-semibold text-white">
+                  {provisioningReady ? 'Project ready' : provisioningFailed ? 'Setup needs attention' : 'Creating project workspace'}
+                </h2>
               </div>
               <button
                 type="button"
                 onClick={() => createdProject ? onCreated?.(createdProject) : setShowConfigurationReady(false)}
-                aria-label={createdProject ? 'Open dashboard' : 'Close confirmation'}
+                aria-label={createdProject ? 'Open project' : 'Close confirmation'}
                 className="text-zinc-500 hover:text-white"
               >
                 <X className="h-5 w-5" />
               </button>
+            </div>
+
+            <div className="mb-4 rounded-xl border border-white/5 bg-[#161b26] p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h3 className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Setup status</h3>
+                <span className={`text-[10px] font-medium ${provisioningReady ? 'text-emerald-400' : provisioningFailed ? 'text-rose-400' : 'text-cyan-400'}`}>
+                  {provisioningLabel}
+                </span>
+              </div>
+              {provisioningFailed ? (
+                <p role="alert" className="text-xs leading-relaxed text-rose-300">
+                  {createdProject?.provisioningError || 'The workspace could not be prepared. Retry setup to try again.'}
+                </p>
+              ) : (
+                <div className="flex items-center gap-2 text-xs text-zinc-300">
+                  {provisioningBusy && <Loader2 className="h-3.5 w-3.5 animate-spin text-cyan-400" />}
+                  {provisioningBusy
+                    ? 'Writing project files into the workspace...'
+                    : 'Project files are ready to edit.'}
+                  {createdProject?.provisionedFileCount ? ` ${createdProject.provisionedFileCount} files.` : ''}
+                </div>
+              )}
             </div>
 
             <div className="mb-6 rounded-xl border border-white/5 bg-[#161b26] p-4">
@@ -678,20 +898,31 @@ export default function CreateProjectWizard({ onClose, onCreated }) {
               <div className="space-y-3 text-xs">
                 <div className="flex justify-between gap-4"><span className="text-zinc-400">Name</span><span className="text-right font-medium text-white">{createdProject?.name || projectName}</span></div>
                 <div className="flex justify-between gap-4"><span className="shrink-0 text-zinc-400">Stack</span><span className="text-right text-white">{selectedTechnologies.join(' · ') || 'None selected'}</span></div>
-                {project.sourceType === 'github' && <div className="flex justify-between gap-4"><span className="text-zinc-400">Repository</span><span className="break-all text-right text-white">{project.repositoryUrl || 'Not provided'}</span></div>}
+                {project.sourceType === 'github' && <div className="flex justify-between gap-4"><span className="text-zinc-400">Repository</span><span className="break-all text-right text-white">{createdProject?.githubRepoName || project.repositoryFullName || 'Not selected'}</span></div>}
                 <div className="flex justify-between gap-4"><span className="text-zinc-400">Access</span><span className="text-right text-cyan-400">{accessLabel}</span></div>
               </div>
             </div>
-            <p className="mb-6 text-xs text-zinc-400">
-              Your project and selected configuration have been saved. GitHub indexing, workspace sharing, and template generation are not enabled yet.
-            </p>
+
+            {submitError && (
+              <p role="alert" className="mb-4 text-xs text-rose-400">{submitError}</p>
+            )}
 
             <div className="flex justify-end gap-3">
+              {provisioningFailed && (
+                <button
+                  onClick={retryProvisioning}
+                  disabled={retryingProvisioning}
+                  className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-4 py-2 text-xs font-semibold text-zinc-300 transition hover:bg-white/5 disabled:cursor-wait disabled:opacity-60"
+                >
+                  <RefreshCw className={`h-3 w-3 ${retryingProvisioning ? 'animate-spin' : ''}`} />
+                  {retryingProvisioning ? 'Retrying...' : 'Retry setup'}
+                </button>
+              )}
               <button
                 onClick={() => onCreated?.(createdProject)}
                 className="rounded-lg bg-cyan-400 px-4 py-2 text-xs font-bold text-slate-950 transition hover:bg-cyan-300"
               >
-                Open dashboard
+                {provisioningReady ? 'Open project' : provisioningBusy ? 'Continue in background' : 'Open project'}
               </button>
             </div>
           </div>

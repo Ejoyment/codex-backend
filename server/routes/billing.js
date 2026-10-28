@@ -123,10 +123,16 @@ router.get('/entitlement', authenticateToken, async (req, res) => {
 router.post('/cancel', authenticateToken, async (req, res) => {
   try {
     const e = await entitlementService.getEntitlement(req.userId);
+    // User-initiated cancellation is always period-end. Immediate revocation
+    // is reserved for abuse/refund handling and must not be selectable here.
     if (e.provider && e.providerSubscriptionId) {
       try {
         const adapter = getAdapter(e.provider);
-        await adapter.cancelSubscription({ subscriptionId: e.providerSubscriptionId, customerId: e.providerCustomerId });
+        await adapter.cancelSubscription({
+          subscriptionId: e.providerSubscriptionId,
+          customerId: e.providerCustomerId,
+          atPeriodEnd: true,
+        });
       } catch (err) {
         // Provider cancel failure must not block local entitlement update.
         console.error('provider cancel failed:', err.message);

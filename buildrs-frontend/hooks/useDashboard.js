@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  authApi,
   dashboardApi,
   githubApi,
   discordApi,
@@ -254,9 +253,10 @@ export function useDashboard() {
       }
 
       try {
-        const userData = await authApi.getMe();
-        if (userData.success && userData.user?.company) {
-          const projectsData = await collaborationApi.getCompanyProjects(userData.user.company);
+        const companiesData = await companyApi.getMyCompanies();
+        const companyId = companiesData.success ? companiesData.companies?.[0]?._id : null;
+        if (companyId) {
+          const projectsData = await collaborationApi.getCompanyProjects(companyId);
           if (projectsData.success && projectsData.projects) {
             collected.push(
               ...projectsData.projects.map((project) => ({

@@ -69,7 +69,7 @@ export default function Checkout() {
   const initStripeElements = useCallback(async () => {
     if (stripeReady || clientSecret) return;
     try {
-      const data = await apiFetch('/api/trial-billing/setup-intent', { method: 'POST' });
+      const data = await apiFetch('/api/v1/billing/trial/setup-intent', { method: 'POST' });
       if (data.clientSecret) {
         setClientSecret(data.clientSecret);
         const stripe = await loadStripe();
@@ -120,7 +120,7 @@ export default function Checkout() {
         toast.error(error.message || 'Card setup failed');
         return;
       }
-      await apiFetch('/api/trial-billing/setup-payment', {
+      await apiFetch('/api/v1/billing/trial/setup-payment', {
         method: 'POST',
         body: JSON.stringify({ paymentMethodId: setupIntent.payment_method }),
       });
@@ -138,7 +138,7 @@ export default function Checkout() {
     try {
       const plan = planById(selectedPlan);
       const amount = (yearly ? plan.yearlyPrice : plan.monthlyPrice) * 100; // kobo
-      const data = await apiFetch('/api/paystack-billing/initialize', {
+      const data = await apiFetch('/api/v1/billing/paystack/initialize', {
         method: 'POST',
         body: JSON.stringify({
           email: user?.email,
@@ -163,7 +163,7 @@ export default function Checkout() {
     try {
       const plan = planById(selectedPlan);
       const amount = yearly ? plan.yearlyPrice : plan.monthlyPrice;
-      const data = await apiFetch('/api/flutterwave-billing/initialize', {
+      const data = await apiFetch('/api/v1/billing/flutterwave/initialize', {
         method: 'POST',
         body: JSON.stringify({
           email: user?.email,
@@ -186,7 +186,7 @@ export default function Checkout() {
   const handleHostedCheckout = async () => {
     setLoading(true);
     try {
-      const data = await apiFetch('/api/subscription/create-checkout', {
+      const data = await apiFetch('/api/v1/billing/subscription/create-checkout', {
         method: 'POST',
         body: JSON.stringify({ tier: selectedPlan, interval }),
       });

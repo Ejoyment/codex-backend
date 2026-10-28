@@ -274,7 +274,10 @@ class VirtualFileSystem {
     const path = file.path;
 
     // Delete from database
-    await CodeFile.deleteOne({ _id: fileId, company: workspaceId });
+    const result = await CodeFile.deleteOne({ _id: fileId, company: workspaceId });
+    if (!result.deletedCount) {
+        throw Object.assign(new Error('File was not deleted'), { code: 'FILE_NOT_DELETED' });
+    }
 
     // Remove from cache
     const cacheKey = `${workspaceId}:${fileId}`;

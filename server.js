@@ -46,6 +46,7 @@ if (require.main === module) {
 const authRoutes = require('./routes/auth');
 const otpRoutes = require('./routes/otp');
 const subscriptionRoutes = require('./routes/subscription');
+const legacyBillingDeprecation = require('./middleware/legacyBillingDeprecation');
 const integrationsRoutes = require('./routes/integrations');
 const aiPairRoutes = require('./routes/ai-pair');
 const codeEditorRoutes = require('./routes/code-editor');
@@ -72,7 +73,7 @@ const globalLimiter = rateLimit({
     max: 200,
     standardHeaders: true,
     legacyHeaders: false,
-    store: require('./utils/redis').getRateLimitStore(),
+    store: require('./utils/redis').getRateLimitStore('global'),
     passOnStoreError: true,
     message: { success: false, message: 'Too many requests, please try again later.' }
 });
@@ -314,6 +315,11 @@ mongoose.connect(process.env.MONGODB_URI, mongooseOptions)
 .then(() => {
     console.log('✓ MongoDB connected successfully');
     console.log('✓ Database:', mongoose.connection.name);
+    CreditPoolService.resetMonthlyCredits();
+    if (process.env.NODE_ENV !== 'test') {
+        require('./middleware/auth').initLivenessRevocationSubscriber()
+            .catch((error) => console.warn('Auth revocation subscriber failed:', error.message));
+    }
 })
 .catch(err => {
     console.error('✗ MongoDB connection error:', err.message);
@@ -398,7 +404,7 @@ app.use('/uploads', express.static(require('path').join(__dirname, 'uploads'), {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/otp', otpRoutes);
-app.use('/api/subscription', subscriptionRoutes);
+app.use('/api/subscription', legacyBillingDeprecation('legacy subscription API'), subscriptionRoutes);
 app.use('/api/integrations', integrationsRoutes);
 // Apply trial middleware to all dashboard routes (protected routes)
 app.use('/api/dashboard', checkTrialStatus, dashboardRoutes);
@@ -417,9 +423,9 @@ app.use('/api/messaging', messagingRoutes);
 app.use('/api/meetings', meetingsRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/admin', adminRoutes);
-app.use('/api/trial-billing', trialBillingRoutes);
-app.use('/api/paystack-billing', paystackBillingRoutes);
-app.use('/api/flutterwave-billing', flutterwaveBillingRoutes);
+app.use('/api/trial-billing', legacyBillingDeprecation('legacy trial billing API'), trialBillingRoutes);
+app.use('/api/paystack-billing', legacyBillingDeprecation('legacy Paystack billing API'), paystackBillingRoutes);
+app.use('/api/flutterwave-billing', legacyBillingDeprecation('legacy Flutterwave billing API'), flutterwaveBillingRoutes);
 app.use('/api/support', supportRoutes);
 app.use('/api/notifications', notificationsRoutes);
 // Public waitlist — signup, live counter and release blast (no auth)
@@ -456,14 +462,16 @@ app.use('/api/v1/specs', checkTrialStatus, specRoutes);
 // Phase 3 — Ephemeral Debug Rooms + Multi-rail billing (entitlement-gated)
 app.use('/api/v1/rooms', checkTrialStatus, enforceDebugRoomAccess(), enforceDebugRoomLimit(), roomsRoutes);
 app.use('/api/v1/billing', billingV1Routes);
+// P15 migration facade: the canonical namespace fronts the existing handlers
+// while they are extracted. Legacy URLs stay mounted only for old clients and
+// provider callbacks, and are deprecation-wrapped above.
+app.use('/api/v1/billing/subscription', subscriptionRoutes);
+app.use('/api/v1/billing/trial', trialBillingRoutes);
+app.use('/api/v1/billing/paystack', paystackBillingRoutes);
+app.use('/api/v1/billing/flutterwave', flutterwaveBillingRoutes);
 app.use('/api/projects', checkTrialStatus, enforceDeploymentLimit(), projectRoutes);
 app.use('/api/ai-context', figmaContextRoutes, teamMemoryRoutes, ticketBridgeRoutes);
 
-
-// Credit pool reset check (skipped in tests: no database to scan).
-if (process.env.NODE_ENV !== 'test') {
-    CreditPoolService.resetMonthlyCredits();
-}
 
 // Swagger API Documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs, {
@@ -889,10 +897,19 @@ terminalNamespace.on('connection', (socket) => {
                 return socket.emit('terminal:error', { message: permission.reason || 'Permission denied' });
             }
 
+            // Real PTY sessions are paid-only. Free accounts still get the
+            // VFS-backed simulated terminal, so they cannot reach a host shell
+            // by upgrading the socket payload.
+            const hostPermission = await permissionMatrix.checkPermission(
+                socket.userId,
+                'host',
+                'terminal'
+            );
+
             const result = await terminalService.createTerminal(
                 socket.userId,
                 workspaceId,
-                options
+                { ...(options || {}), allowHostShell: hostPermission.allowed }
             );
 
             currentSession = result.sessionId;

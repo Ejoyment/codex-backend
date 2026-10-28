@@ -176,10 +176,10 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
                 return res.status(403).json({ error: 'Access denied' });
             }
 
+            // A selected project deploys only that project's files. Never
+            // widen an empty project to the whole workspace: that could
+            // publish another project's source under this subdomain.
             files = files.length ? files : await CodeFile.find({ project: projectId }).lean();
-            if (files.length === 0 && workspaceId) {
-                files = await CodeFile.find({ company: workspaceId }).lean();
-            }
         }
 
         if (files.length === 0 && !projectId && !Array.isArray(directFiles)) {

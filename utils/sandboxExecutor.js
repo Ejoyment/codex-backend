@@ -19,7 +19,6 @@ const sandboxSecurity = require('./sandboxSecurity');
  * in production. Set SANDBOX_ALLOW_HOST_EXEC=true to enable it locally.
  */
 function hostExecAllowed() {
-    if (process.env.SANDBOX_ALLOW_HOST_EXEC === 'true') return true;
     return process.env.NODE_ENV !== 'production';
 }
 

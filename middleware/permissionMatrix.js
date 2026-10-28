@@ -35,9 +35,18 @@ class PermissionMatrix {
       'terminal:access': ALL_TIERS,
       'terminal:create': ALL_TIERS,
       'terminal:execute': ALL_TIERS,
+      // Host PTY/debug execution is paid-only. Free tier keeps the VFS-backed
+      // WebContainer/simulated terminal; it never gets a host shell.
+      'terminal:host': PAID_TIERS,
 
       // Code execution (editor Run button)
       'ide:run': ALL_TIERS,
+      // Falling back to unsandboxed host execution is paid-only; free runs
+      // still use the configured Docker/VPS sandbox.
+      'ide:host': PAID_TIERS,
+
+      // Host debugger (spawns user code on the application host)
+      'debug:host': PAID_TIERS,
 
       // Git operations
       'git:read': ALL_TIERS,
@@ -68,7 +77,7 @@ class PermissionMatrix {
       'agent:deploy': PAID_TIERS,
 
       // Company operations
-      'company:create': PAID_TIERS,
+      'company:create': ALL_TIERS,
       'company:read': ALL_TIERS,
       'company:update': PAID_TIERS,
       'company:delete': ENTERPRISE_TIERS,

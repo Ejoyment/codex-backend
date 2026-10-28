@@ -2,7 +2,29 @@
 
 Source audit: `docs/audit/PAYMENTS-EDITOR-AUDIT-2026-10-21.md` (local-only, gitignored).
 
-Last updated: 2026-10-22.
+Last updated: 2026-10-25 (P14/P15/E5/E9/E11/#4; P15 and E5 policy decisions implemented).
+
+## Fixed — editor file creation without a workspace
+
+Root cause: onboarding stored a free-text company name on the user but never
+created a `Company`; `POST /api/projects` never set `LocalProject.workspaceId`;
+and `POST /api/code-editor/files` failed when the user had no company.
+
+Fix:
+- `GET /api/company/my-companies` and project/file creation auto-create or reuse
+  one personal workspace via `utils/personalWorkspace.js`.
+- `POST /api/projects` accepts and validates `workspaceId`, otherwise assigns
+  the personal workspace.
+- Single and batch file creation use that workspace and attach an orphan
+  `LocalProject` to it.
+- `company:create` is available on the free tier; the developer tier limit is
+  one workspace, so free users can code without upgrading.
+- The editor links to `/workspace` for creation; collaboration routes accept a
+  company id or slug.
+
+Verified against the `ranger` account: workspace `hud-sonn` was created, file
+creation returned 200 without `companyId`, project `son and names` was attached
+to it, and `/api/collaboration/hud-sonn/projects` returned 200.
 
 ## Open PRs (stacked, merge in order)
 
@@ -14,7 +36,7 @@ Last updated: 2026-10-22.
 | #49 | `fix/paystack-failure-grace` | `f9efcaa` | P12 |
 | #51 | `fix/retire-legacy-entitlement-checkout` | `1f670c8` | P10 retired |
 | #52 | `fix/vfs-workspace-scope` | `123b497` | P2 / E3 |
-| #53 | `fix/disable-host-debugging` | `b1451f6` | P3 / E1 |
+| #53 | `fix/disable-host-debugging` | `d585ed9` | P3/E1, P4/E2, P14, P11/E4, partial E5, partial P15 |
 
 P10 is retired in #51: `/api/subscription/tier-checkout` now returns 410 because the
 Entitlement rail had no `providerRef`, no webhook caller, and a fake Paystack checkout
@@ -29,23 +51,65 @@ URL. The frontend never called it.
 - P8 — Every card-backed trial charges after 14 days, not 10s/210s.
 - P9 — One canonical price table for pro/pro_plus/team plans on all rails.
 - P12 — Failed Paystack charges enter `past_due`; no immediate downgrade/cancel.
-- P13 (partial) — Cancellation now keeps the paid tier until period end on both rails.
+- P13 — Cancellation now keeps the paid tier until period end on both rails.
 - P2 / E3 — VFS reads/writes/deletes/metadata are scoped by `_id` + `company`; VFS create rejects foreign companies.
 - P3 / E1 — Host debugging is off in production unless `IDE_ALLOW_HOST_EXEC=true`; child processes get an env allowlist instead of `process.env`; debugpy binds to `127.0.0.1`; temp filenames are basenamed.
 - P4 / E2 — Production terminal sessions fail closed without VPS transport; a host PTY requires `TERMINAL_ALLOW_HOST_EXEC=true`; boot config warns instead of silently spawning host shells.
-- P14 — Legacy `POST /api/subscription/payment/paystack` retired with 410; `/api/paystack-billing/webhook` verifies user, amount, and currency before activation.
+- P14 — Legacy `POST /api/subscription/payment/paystack` retired with 410; `/api/paystack-billing/webhook` verifies user, amount, and currency before activation. The canonical `/api/v1/billing/webhook/:provider` path now validates signed activation amount/currency against canonical plan pricing before any entitlement write (including team-tier USD fallback and Stripe pre-tax subtotal). Enterprise remains custom-priced: admin manual provisioning stores the contracted amount and a tamper-evident signature (`POST /api/admin/entitlements/:userId/enterprise`).
+- P14 hardening — Admin writes emit a structured `[admin-audit]` line and persist an `AdminAudit` row with a key fingerprint (never the key). Manual entitlement signatures use a dedicated `ENTITLEMENT_SIGNING_SECRET` with comma-separated `ENTITLEMENT_SIGNING_SECRET_PREVIOUS` verification during rotation; `JWT_SECRET` remains a migration fallback. Runbook: `docs/payments-admin-runbook.txt`.
 - P11 / E4 — Projects can only be attached to a workspace the caller belongs to; deployments reject a foreign `companyId` or stored project workspace before reading `CodeFile` rows.
+- P15 — Deleted dead `utils/paymentRouter.js` and its unused Stripe/Paystack/Flutterwave adapters; no production callers remained.
+- E5 (credits) — Agent runs now charge the monthly credit pool atomically across REST, socket, AI-pair agent mode, and follow-up tweaks (1 credit/run by default, `AGENT_JOB_CREDIT_COST`); failures refund, and Pay-As-You-Go may exceed an exhausted pool.
+- E5 (compute overage) — Compute overage is recorded on `Subscription.cloudComputeHours` (hours + amount) and reset monthly. New jobs are blocked at/over the included limit unless overage is opted in and below its cap; in-flight jobs record actual overage. Pricing is $1.00/hour (`COMPUTE_OVERAGE_RATE_MINOR_PER_HOUR=100`). Billing is opt-in per subscription (`POST /api/v1/billing/subscription/overage`) and capped at $50/month by default (`COMPUTE_OVERAGE_MONTHLY_CAP_MINOR=5000`); amount accrual stays zero until opt-in, and no invoice/auto-charge path exists yet.
+- E9 (backfill) — `POST /api/admin/companies/roles/backfill` repairs missing/invalid roles to `viewer` (dry-run default); owner-only `POST /api/company/:companyId/members/roles/bulk` promotes upward with per-change audit.
+- E11 (pub/sub) — `auth:revoke` Redis pub/sub invalidates liveness across instances; `logout-all`/password change/admin ban await publication. Single-device logout remains client-side by design.
+- #4 — `config/aiProviders.js` is the single provider registry; router and implementation now expose only gemini, mistral, groq, huggingface, with a test preventing advertised-but-unimplemented providers.
 
-## Remaining
+## Status
 
 | # / E# | Sev | Remaining work |
 |--------|-----|----------------|
-| P10 | High | Retired; dead `utils/paymentRouter.js` + adapters remain until the P15 cleanup. |
-| P13 | Medium | Revoke provider-side card authorization/subscription on cancel; define refund and period-end semantics. |
-| P15 | Medium | Three billing stacks and two `paymentRouter` modules still coexist; `/api/v1/billing` is the intended canonical stack. Delete the dead legacy router. |
-| E5 | High | Credit pools are never debited; `deductCredits` has no callers. `middleware/tierEnforcement.js:206-289` |
-| E6 / E10 | High | `agent-confirmation/respond` IDOR; duplicate approval surfaces. `routes/agent-confirmation.js:73-89` |
-| E7 | Medium | AI context trusts client-supplied `companyId` without membership check. `routes/ai-pair.js:597-612` |
-| E8 | Medium | `/api/code-editor/files?projectId=` is unscoped. `routes/code-editor.js:389-429` |
-| E9 | Medium | Collaborator `permission` is stored but not enforced. `routes/code-editor.js:703-705`; `routes/vfs.js:102-113` |
-| E11 | Low | 24h JWT with no revocation list. `routes/auth.js:69` |
+| P13 | Medium | Fixed: user cancellation defaults to provider period-end (`cancel_at_period_end`); immediate revocation is internal-only for abuse/refund. |
+| P15 | Medium | Facade complete: canonical `/api/v1/billing/{subscription,trial,paystack,flutterwave}` aliases are mounted and frontend callers migrated. Legacy routes still emit deprecation headers and can return 410 via `LEGACY_BILLING_RETIRED=true`; provider callbacks stay alive. Retirement waits for 30 consecutive days of zero non-callback legacy traffic. |
+| E5 (compute) | Medium | Fixed: terminal executions are metered once and overage is recorded monthly. Rate is $1.00/hour with per-subscription opt-in and a $50/month default cap; no auto-charge/invoice path yet. |
+| E6 | High | Fixed: `agent-confirmation/respond` resolves the pending confirmation and re-checks the owner plus stored workspace before responding. |
+| E10 | Medium | Fixed for agent execution approvals: REST `/agent/approve` and `/agent/reject` plus socket `agent:approve` and `agent:reject` now share `utils/agentApprovalService.js`. The separate HITL confirmation flow remains distinct. |
+| E7 | Medium | Fixed: AI chat/execution/memory paths validate client-supplied `companyId`/`workspaceId` before reading context or writing memory. |
+| E8 | Medium | Fixed: `/api/code-editor/files?projectId=` checks project access and scopes the query to the project. |
+| E9 | Medium | Fixed: company roles are explicit (owner/admin manage, member write, viewer read); collaborator read/write/admin is enforced and the editor exposes per-teammate access. Legacy member rows without `role` fail closed to viewer; backfill + owner bulk-promote endpoints added. |
+| E11 | Low | Fixed: JWTs carry `tokenVersion`; password change, admin ban, and `POST /api/auth/logout-all` revoke existing REST/socket sessions across instances via `auth:revoke` pub/sub. |
+
+## 2026-10-19 audit follow-up (2026-10-24)
+
+- Finding 5 (outbound timeouts) — Fixed remaining gap: live Paystack and
+  Flutterwave checkout adapters now pass an explicit 15s timeout; covered by
+  `tests/http-timeouts.test.js`.
+- Finding 7 (support agent lifecycle) — Fixed remaining gap: deactivated
+  agents are rejected on ticket reply, ticket read, and the support socket;
+  user-token support paths now also enforce account liveness.
+- Finding 11 (billing reaper) — Added `{status, lastAttempt}` index for the
+  stuck-row scan and provider-specific reconciliation for Paystack/Flutterwave
+  stuck charges. Non-reconcilable rows remain visible for manual review.
+- Finding 4 (provider registry) — Fixed: router and `aiService` consume the
+  shared `config/aiProviders.js`; advertised providers must be implemented.
+
+## 2026-10-24 accepted decisions
+
+- E1/E2 — Free tier keeps the VFS/WebContainer terminal and sandboxed Run
+  button. Host PTY, unsandboxed host Run fallback, and host debugger are
+  paid-only (`terminal:host`, `ide:host`, `debug:host`).
+- P13 — User cancellation uses provider period-end semantics. Immediate
+  revocation is reserved for abuse/refund handling.
+- P15 — Legacy billing routes are instrumented and can be retired with
+  `LEGACY_BILLING_RETIRED=true`; provider callbacks bypass the 410.
+- E5 — Agent compute hours are metered once per terminal execution for paid
+  tiers. Cost-per-hour/pricing is still TBD.
+- E10 — Agent execution approvals/rejections share one service across REST and
+  socket paths.
+- E11 — `tokenVersion` revocation is enforced on REST and socket auth.
+- P14 — Enterprise manual provisioning stores the contract amount and a signed
+  entitlement.
+- E9 — Company roles and collaborator access are explicit; the editor exposes
+  per-teammate read/write access.
+- Oct 19 #11 — Stuck Paystack/Flutterwave charges are reconciled against the
+  provider before being marked complete/failed/manual review.

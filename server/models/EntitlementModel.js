@@ -29,6 +29,10 @@ const entitlementSchema = new mongoose.Schema(
     currency: { type: String, default: 'USD' },
     country: { type: String, default: '' },
     currentPeriodEnd: { type: Date, default: null },
+    // Manual enterprise provisioning stores the contracted amount in minor
+    // units plus a signature over the identity/amount/status/period fields.
+    amountMinor: { type: Number, default: null, min: 0 },
+    entitlementSignature: { type: String, default: null },
     lastEventId: { type: String, default: null },
     creditsRemaining: { type: Number, default: 0 },
     computeHoursRemaining: { type: Number, default: 0 },

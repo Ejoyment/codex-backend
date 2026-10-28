@@ -47,6 +47,37 @@ describe('billing client instances', () => {
     });
 });
 
+describe('billing checkout adapters', () => {
+    test('live checkout calls pass an explicit 15s timeout', async () => {
+        const axios = require('axios');
+        axios.post.mockReset();
+        axios.post.mockResolvedValue({ data: { data: {} } });
+        process.env.PAYSTACK_SECRET_KEY = 'pk_test_dummy';
+        process.env.FLUTTERWAVE_SECRET_KEY = 'flw_test_dummy';
+
+        const { PaystackAdapter } = require('../server/services/billing/adapters/paystack');
+        const { FlutterwaveAdapter } = require('../server/services/billing/adapters/flutterwave');
+
+        await new PaystackAdapter().createCheckout({
+            userId: '507f1f77bcf86cd799439011',
+            email: 'a@b.c',
+            plan: 'pro',
+            amount: 20,
+            currency: 'USD',
+        });
+        await new FlutterwaveAdapter().createCheckout({
+            userId: '507f1f77bcf86cd799439011',
+            email: 'a@b.c',
+            plan: 'pro',
+            amount: 20,
+            currency: 'USD',
+        });
+
+        expect(axios.post.mock.calls[0][2]).toEqual(expect.objectContaining({ timeout: 15000 }));
+        expect(axios.post.mock.calls[1][2]).toEqual(expect.objectContaining({ timeout: 15000 }));
+    });
+});
+
 describe('Resend transport', () => {
     test('emails are sent with an abort timeout', async () => {
         process.env.RESEND_API_KEY = 're_test_dummy';

@@ -6,6 +6,7 @@
 const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../middleware/auth');
+const permissionMatrix = require('../middleware/permissionMatrix');
 const debugAdapter = require('../utils/debugAdapter');
 const CodeFile = require('../models/CodeFile');
 // Tenant isolation (audit rec 7): debug sessions drive live processes and
@@ -119,7 +120,7 @@ router.post('/session/create', authenticateToken, async (req, res) => {
  *       401:
  *         description: Unauthorized
  */
-router.post('/launch', authenticateToken, async (req, res) => {
+router.post('/launch', authenticateToken, permissionMatrix.requirePermission('debug', 'host'), async (req, res) => {
     try {
         if (!debugAdapter.hostExecutionAllowed()) {
             return res.status(403).json({
