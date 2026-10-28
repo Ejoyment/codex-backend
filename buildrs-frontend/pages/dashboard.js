@@ -207,6 +207,7 @@ export default function Dashboard() {
         <main className="workspace-main flex-1 flex flex-col min-w-0">
           {isCreatingProject ? (
             <CreateProjectWizard
+              initialSourceType="scratch"
               onClose={() => setIsCreatingProject(false)}
               onCreated={handleProjectCreated}
             />

@@ -114,6 +114,10 @@ const notificationSchema = new mongoose.Schema(
 notificationSchema.index({ userId: 1, read: 1, createdAt: -1 });
 notificationSchema.index({ userId: 1, createdAt: -1 });
 notificationSchema.index({ userId: 1, dedupeKey: 1, createdAt: -1 });
+notificationSchema.index(
+    { userId: 1, dedupeKey: 1 },
+    { unique: true, partialFilterExpression: { dedupeKey: { $type: 'string' } } }
+);
 notificationSchema.index({ createdAt: 1 }, { expireAfterSeconds: 60 * 60 * 24 * 30 });
 
 notificationSchema.virtual('timeAgo').get(function () {

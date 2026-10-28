@@ -84,6 +84,9 @@ router.get('/conversations/list', authenticateToken, async (req, res) => {
         const channels = await slackAPI(integration.accessToken, 'conversations.list', { types, limit });
         res.json({ success: true, channels: channels.channels });
     } catch (error) {
+        if (error.message === 'Slack not connected') {
+            return res.json({ success: true, channels: [], connected: false });
+        }
         res.status(500).json({ success: false, message: error.message });
     }
 });

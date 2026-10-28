@@ -133,6 +133,9 @@ router.get('/files', authenticateToken, async (req, res) => {
         const files = await figmaAPI(integration.accessToken, `/projects/${projectId}/files`);
         res.json({ success: true, files: files.files });
     } catch (error) {
+        if (error.message === 'Figma not connected') {
+            return res.json({ success: true, files: [], connected: false });
+        }
         res.status(500).json({ success: false, message: error.message });
     }
 });

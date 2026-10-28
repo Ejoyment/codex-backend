@@ -4,20 +4,30 @@
  */
 
 const express = require('express');
+const mongoose = require('mongoose');
 const router = express.Router();
 const vfs = require('../utils/virtualFileSystem');
 const codeSearchService = require('../utils/codeSearchService');
 const CodeFile = require('../models/CodeFile');
 const { emitWorkspaceChange } = require('../utils/realtimeBus');
+const { userCanAccessProject } = require('../utils/specAccess');
 // Tenant isolation (audit rec 7): every workspaceId/fileId below is verified.
 // requirePermission('vfs', …) only gates tiers — its resource check has no
 // 'vfs' case, so without these guards any user could read/mutate any workspace.
 const {
     assertFileAccess,
+    assertCompanyAccess,
     assertCompanyMembership,
 } = require('../middleware/workspaceAccess');
 const { authenticateToken } = require('../middleware/auth');
 const permissionMatrix = require('../middleware/permissionMatrix');
+
+// A file/folder may only be attached to a project the caller can reach.
+async function canUseProject(projectId, userId) {
+    if (!projectId) return true;
+    if (!mongoose.isValidObjectId(projectId)) return false;
+    return userCanAccessProject(projectId, userId);
+}
 
 /**
  * @swagger
@@ -466,7 +476,10 @@ router.post('/files', authenticateToken, permissionMatrix.requirePermission('vfs
       return res.status(400).json({ error: 'name and companyId are required' });
     }
 
-    if (!(await assertCompanyMembership(companyId, req.userId, res))) return;
+    if (!(await assertCompanyAccess(companyId, req.userId, res, 'write'))) return;
+    if (projectId && !(await canUseProject(projectId, req.userId))) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
 
     const file = await vfs.createFile({
       name,
@@ -509,7 +522,7 @@ router.put('/files/:fileId', authenticateToken, permissionMatrix.requirePermissi
     const { content, name, language } = req.body;
     
     const file = await CodeFile.findById(fileId);
-    if (!(await assertFileAccess(file, req.userId, res))) return;
+    if (!(await assertFileAccess(file, req.userId, res, 'write'))) return;
 
     if (content !== undefined) file.content = content;
     if (name) file.name = name;
@@ -553,7 +566,7 @@ router.delete('/files/:fileId', authenticateToken, permissionMatrix.requirePermi
     const { fileId } = req.params;
     
     const file = await CodeFile.findById(fileId);
-    if (!(await assertFileAccess(file, req.userId, res))) return;
+    if (!(await assertFileAccess(file, req.userId, res, 'manage'))) return;
 
     const workspaceId = file.company.toString();
 
@@ -609,8 +622,12 @@ router.post('/folders', authenticateToken, async (req, res) => {
     }
 
     // An explicit companyId must be one of the caller's (the fallback above
-    // already is, and passes this check trivially).
-    if (!(await assertCompanyMembership(companyId, req.userId, res))) return;
+    // already is, and passes this check trivially). Creating a folder writes a
+    // placeholder file, so viewers are read-only here too.
+    if (!(await assertCompanyAccess(companyId, req.userId, res, 'write'))) return;
+    if (projectId && !(await canUseProject(projectId, req.userId))) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
 
     const folderPath = path === '/' ? `/${name}` : `${path}/${name}`;
     

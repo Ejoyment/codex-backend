@@ -17,7 +17,7 @@ const subscribeLimiter = rateLimit({
     max: process.env.NODE_ENV === 'test' ? 1000 : 5,
     standardHeaders: true,
     legacyHeaders: false,
-    store: require('../utils/redis').getRateLimitStore(),
+    store: require('../utils/redis').getRateLimitStore('waitlist'),
     passOnStoreError: true,
     message: { success: false, message: 'Too many signups from this network, please try again later.' }
 });

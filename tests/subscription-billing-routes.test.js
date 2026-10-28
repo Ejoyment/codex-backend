@@ -101,6 +101,10 @@ describe('GET /current', () => {
         // Legacy shape preserved for the auth store and other consumers.
         expect(res.body.subscription.tier).toBe('pro');
         expect(res.body.subscription.status).toBe('active');
+        expect(res.body.subscription.usage.computeHours).toMatchObject({
+            overageEnabled: false,
+            overageCapMinor: 5000,
+        });
     });
 
     test('exposes a live trial as phase=trial (never "free")', async () => {
@@ -155,6 +159,51 @@ describe('GET /entitlement', () => {
     const res = await request(app).get('/api/subscription/entitlement').set('x-user-id', USER);
     expect(res.status).toBe(404);
   });
+});
+
+describe('POST /overage', () => {
+    test('requires a boolean preference', async () => {
+        seed({ tier: 'pro', status: 'active' });
+        const res = await post('/overage', { enabled: 'yes' });
+        expect(res.status).toBe(400);
+    });
+
+    test('enables overage with the default cap', async () => {
+        const doc = seed({ tier: 'pro', status: 'active' });
+        const res = await post('/overage', { enabled: true });
+        expect(res.status).toBe(200);
+        expect(doc.cloudComputeHours.overageEnabled).toBe(true);
+        expect(doc.cloudComputeHours.overageCapMinor).toBe(5000);
+        expect(res.body.compute).toMatchObject({ overageEnabled: true, overageCapMinor: 5000 });
+    });
+
+    test('disables overage without clearing recorded usage', async () => {
+        const doc = seed({ tier: 'pro', status: 'active' });
+        doc.cloudComputeHours.overageEnabled = true;
+        doc.cloudComputeHours.overageHoursThisMonth = 2;
+        doc.cloudComputeHours.overageAmountMinor = 200;
+
+        const res = await post('/overage', { enabled: false });
+
+        expect(res.status).toBe(200);
+        expect(doc.cloudComputeHours.overageEnabled).toBe(false);
+        expect(doc.cloudComputeHours.overageHoursThisMonth).toBe(2);
+        expect(doc.cloudComputeHours.overageAmountMinor).toBe(200);
+    });
+
+    test('rejects tiers without a compute allowance', async () => {
+        seed({ tier: 'developer', status: 'active' });
+        const res = await post('/overage', { enabled: true });
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe('NO_COMPUTE_ALLOWANCE');
+    });
+
+    test('rejects unlimited enterprise compute', async () => {
+        seed({ tier: 'enterprise', status: 'active' });
+        const res = await post('/overage', { enabled: true });
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe('UNLIMITED_COMPUTE');
+    });
 });
 
 describe('POST /cancel', () => {

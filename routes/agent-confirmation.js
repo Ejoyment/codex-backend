@@ -6,6 +6,7 @@
 const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../middleware/auth');
+const { assertWorkspaceAccess } = require('../utils/workspaceAuth');
 
 /**
  * @swagger
@@ -25,7 +26,8 @@ const { authenticateToken } = require('../middleware/auth');
 router.get('/pending', authenticateToken, async (req, res) => {
     try {
         const agentOrchestrator = require('../utils/agentOrchestrator');
-        const pending = agentOrchestrator.hitlGates.getPendingConfirmations(req.user._id.toString());
+        const userId = req.userId || (req.user && (req.user.userId || req.user._id));
+        const pending = agentOrchestrator.hitlGates.getPendingConfirmations(String(userId));
         
         res.json({
             success: true,
@@ -82,6 +84,32 @@ router.post('/respond', authenticateToken, async (req, res) => {
         }
         
         const agentOrchestrator = require('../utils/agentOrchestrator');
+        const userId = req.userId || (req.user && (req.user.userId || req.user._id));
+        if (!userId) {
+            return res.status(401).json({
+                success: false,
+                error: 'Authentication required'
+            });
+        }
+
+        const pending = agentOrchestrator.hitlGates.getPendingConfirmation(confirmationId);
+        if (!pending || String(pending.userId) !== String(userId)) {
+            return res.status(404).json({
+                success: false,
+                error: 'Confirmation not found or expired'
+            });
+        }
+
+        if (pending.workspaceId) {
+            const access = await assertWorkspaceAccess(pending.workspaceId, userId);
+            if (!access.ok) {
+                return res.status(403).json({
+                    success: false,
+                    error: access.reason || 'Workspace access denied'
+                });
+            }
+        }
+
         const result = agentOrchestrator.hitlGates.handleConfirmationResponse(
             confirmationId,
             approved === true,

@@ -269,15 +269,16 @@ function buildFileTree(files) {
   return root;
 }
 
-function InlineFileRow({ depth, value, inputRef, onChange, onCommit, onCancel }) {
+function InlineCreateRow({ kind = 'file', depth, value, inputRef, onChange, onCommit, onCancel }) {
+  const Icon = kind === 'folder' ? Folder : FileCode;
   return (
     <div className="ed-tree-row is-inline-create" style={{ paddingLeft: `${6 + depth * 14}px` }}>
-      <FileCode className="w-3.5 h-3.5 ed-file-inline-ico" />
+      <Icon className={`w-3.5 h-3.5 ${kind === 'folder' ? 'ed-folder-ico' : 'ed-file-inline-ico'}`} />
       <input
         ref={inputRef}
         className="ed-inline-input"
         value={value}
-        placeholder="File name"
+        placeholder={kind === 'folder' ? 'Folder name' : 'File name'}
         autoFocus
         spellCheck={false}
         onChange={(e) => onChange(e.target.value)}
@@ -337,7 +338,8 @@ function FileTreeNode({ node, depth, selectedId, onSelect, expanded, onToggle, i
         {isOpen && (
           <div>
             {inlineHere && (
-              <InlineFileRow
+              <InlineCreateRow
+                kind={inlineCreate.kind}
                 depth={depth + 1}
                 value={inlineCreate.value}
                 inputRef={inlineInputRef}
@@ -405,9 +407,6 @@ export default function Editor() {
   const [inlineCreate, setInlineCreate] = useState(null);
   const inlineInputRef = useRef(null);
   const inlineCancelledRef = useRef(false);
-  const [showNewFolderModal, setShowNewFolderModal] = useState(false);
-  const [newFolderName, setNewFolderName] = useState('');
-  const [newFolderPath, setNewFolderPath] = useState('/');
   const [creating, setCreating] = useState(false);
   const [status, setStatus] = useState(null);
   // Selected-file dirty state is DERIVED (buffer vs per-file baseline), never
@@ -506,6 +505,10 @@ export default function Editor() {
   const [byomOpen, setByomOpen] = useState(false);
   const [customModel, setCustomModel] = useState('GPT-4.1');
   const [collaborators, setCollaborators] = useState([]);
+  const [fileCollaborators, setFileCollaborators] = useState([]);
+  const [fileAccess, setFileAccess] = useState(null);
+  const [companyMembers, setCompanyMembers] = useState([]);
+  const [sharingBusy, setSharingBusy] = useState(null);
   const [remoteCursors, setRemoteCursors] = useState({});
   const [figmaFiles, setFigmaFiles] = useState([]);
   const [selectedFigmaFile, setSelectedFigmaFile] = useState(null);
@@ -574,7 +577,11 @@ export default function Editor() {
   const termSessionRef = useRef(null);
   const termRef = useRef(null);
   const aiSessionRef = useRef(null);
-  const { selectedCompany } = useCurrentCompany();
+  const {
+    selectedCompany,
+    hasCompany,
+    refetch: refetchCompanies,
+  } = useCurrentCompany();
   const workspaceId = selectedCompany?._id;
 
   const [projects, setProjects] = useState([]);
@@ -648,6 +655,50 @@ export default function Editor() {
       ? [...files, ...repoPending]
       : files,
   ), [files, repoPending, selectedRepo, selectedProject]);
+
+  // Teammates who can be given file-level read/write access. Company
+  // owners/admins already manage every file, and the creator always keeps
+  // control, so those rows are not shown as editable share targets.
+  const fileSharingRows = useMemo(() => {
+    const currentUserId = String(user?.id || user?._id || '');
+    const creatorId = String(selectedFile?.createdBy?._id || selectedFile?.createdBy || '');
+    const rows = new Map();
+
+    (companyMembers || []).forEach((membership) => {
+      const memberUser = membership?.user;
+      const id = String(memberUser?._id || memberUser || '');
+      if (!id) return;
+      rows.set(id, {
+        id,
+        name: memberUser?.fullName || memberUser?.email || 'Teammate',
+        email: memberUser?.email || '',
+        role: membership?.role || 'viewer',
+        permission: null,
+      });
+    });
+
+    (fileCollaborators || []).forEach((collaborator) => {
+      const collaboratorUser = collaborator?.user;
+      const id = String(collaboratorUser?._id || collaboratorUser || '');
+      if (!id) return;
+      const existing = rows.get(id);
+      rows.set(id, {
+        id,
+        name: existing?.name || collaboratorUser?.fullName || collaboratorUser?.email || 'Collaborator',
+        email: existing?.email || collaboratorUser?.email || '',
+        role: existing?.role || null,
+        permission: collaborator?.permission || 'read',
+      });
+    });
+
+    return [...rows.values()].filter((row) => (
+      row.id !== currentUserId
+      && row.id !== creatorId
+      && !['owner', 'admin'].includes(row.role)
+    ));
+  }, [companyMembers, fileCollaborators, selectedFile, user]);
+
+  const isWorkspaceFile = /^[0-9a-f]{24}$/i.test(String(selectedFile?._id || ''));
 
   const getFileKey = useCallback((file) => {
     if (!file) return null;
@@ -1031,6 +1082,44 @@ export default function Editor() {
     };
   }, [selectedFile?._id, user]);
 
+  // File-level collaborator permissions (read/write) live in the Live Share
+  // panel. Company members are the candidates; the server is the source of
+  // truth for whether the caller may change them.
+  useEffect(() => {
+    let cancelled = false;
+    const fileId = selectedFile?._id;
+    if (!fileId || !/^[0-9a-f]{24}$/i.test(String(fileId))) {
+      setFileCollaborators([]);
+      setFileAccess(null);
+      return undefined;
+    }
+    (async () => {
+      try {
+        const data = await apiFetch(`/api/code-editor/files/${fileId}/collaborators`);
+        if (cancelled) return;
+        setFileCollaborators(data.collaborators || []);
+        setFileAccess(data.access || null);
+      } catch {
+        if (cancelled) return;
+        setFileCollaborators([]);
+        setFileAccess(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedFile?._id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!workspaceId) {
+      setCompanyMembers([]);
+      return undefined;
+    }
+    companyApi.getMembers(workspaceId)
+      .then((data) => { if (!cancelled) setCompanyMembers(data.members || []); })
+      .catch(() => { if (!cancelled) setCompanyMembers([]); });
+    return () => { cancelled = true; };
+  }, [workspaceId]);
+
   useEffect(() => {
     function handleClickOutside(e) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
@@ -1069,9 +1158,12 @@ export default function Editor() {
       } else if (k === 'w') {
         e.preventDefault();
         if (selectedFileRef.current) closeTab(selectedFileRef.current);
+      } else if (k === 'n' && e.shiftKey) {
+        e.preventDefault();
+        startInlineCreate('folder');
       } else if (k === 'n') {
         e.preventDefault();
-        startInlineCreate();
+        startInlineCreate('file');
       } else if (k === 'd' && e.shiftKey) {
         e.preventDefault();
         router.push('/dashboard');
@@ -1284,6 +1376,47 @@ export default function Editor() {
       setStatus({ type: 'error', msg: 'Failed to load files' });
     } finally {
       if (seq === filesSeqRef.current) setLoading(false);
+    }
+  }
+
+  async function loadFileSharing(fileId) {
+    if (!fileId || !/^[0-9a-f]{24}$/i.test(String(fileId))) {
+      setFileCollaborators([]);
+      setFileAccess(null);
+      return;
+    }
+    try {
+      const data = await apiFetch(`/api/code-editor/files/${fileId}/collaborators`);
+      setFileCollaborators(data.collaborators || []);
+      setFileAccess(data.access || null);
+    } catch {
+      setFileCollaborators([]);
+      setFileAccess(null);
+    }
+  }
+
+  async function updateFileCollaborator(userId, permission) {
+    const fileId = selectedFile?._id;
+    if (!fileId || !/^[0-9a-f]{24}$/i.test(String(fileId))) return;
+    setSharingBusy(String(userId));
+    try {
+      if (!permission) {
+        await apiFetch(`/api/code-editor/files/${fileId}/collaborators/${encodeURIComponent(userId)}`, {
+          method: 'DELETE',
+        });
+      } else {
+        await apiFetch(`/api/code-editor/files/${fileId}/collaborators`, {
+          method: 'POST',
+          body: JSON.stringify({ userId, permission }),
+        });
+      }
+      await loadFileSharing(fileId);
+      setStatus({ type: 'success', msg: permission ? 'File access updated' : 'Collaborator removed' });
+      setTimeout(() => setStatus(null), 2000);
+    } catch (err) {
+      setStatus({ type: 'error', msg: err.message || 'Could not update file access' });
+    } finally {
+      setSharingBusy(null);
     }
   }
 
@@ -1559,6 +1692,11 @@ export default function Editor() {
   const startAgentExecution = useCallback(async (taskLabel) => {
     const goal = taskLabel || (selectedFile ? `Fix ${selectedFile.name}` : 'Review workspace');
     const title = selectedFile ? `Fix ${selectedFile.name}` : 'Review workspace';
+    const delegateWorkspaceId = workspaceId || selectedProject?.workspaceId || null;
+    if (!delegateWorkspaceId) {
+      toastError('Select a workspace before delegating to the agent.');
+      return;
+    }
 
     clearAgentPoll();
     setAgentExecution({
@@ -1577,8 +1715,7 @@ export default function Editor() {
     });
 
     try {
-      const wsId = workspaceId || selectedProject?._id || selectedProject?.id || null;
-      const data = await agentApi.delegate({ taskTitle: title, summary: goal, workspaceId: wsId });
+      const data = await agentApi.delegate({ taskTitle: title, summary: goal, workspaceId: delegateWorkspaceId });
       const exec = data?.execution;
       if (!data?.success || !exec?._id) throw new Error(data?.message || 'Delegation failed');
       const backendId = exec._id;
@@ -2351,7 +2488,7 @@ export default function Editor() {
   // VS Code-style creation: the new file appears as an editable row in the
   // explorer. Enter commits, Escape/blur cancels, and the file lands in the
   // selected file's folder (or the workspace root).
-  function startInlineCreate() {
+  function startInlineCreate(kind = 'file') {
     if (creating) return;
     // Use the ref so the global ⌘N shortcut (registered once) targets the
     // file selected now, not the one selected at mount.
@@ -2363,7 +2500,7 @@ export default function Editor() {
       setExpandedFolders((prev) => ({ ...prev, [parentPath]: true }));
     }
     inlineCancelledRef.current = false;
-    setInlineCreate({ parentPath, value: '' });
+    setInlineCreate({ kind, parentPath, value: '' });
   }
 
   function cancelInlineCreate() {
@@ -2423,6 +2560,7 @@ export default function Editor() {
     const created = data.file || data;
     setStatus({ type: 'success', msg: 'File created' });
     setTimeout(() => setStatus(null), 2000);
+    if (!workspaceId) await refetchCompanies();
     await reloadFiles();
     if (created) {
       openFile(created);
@@ -2430,31 +2568,17 @@ export default function Editor() {
     }
   }
 
-  async function commitInlineCreate() {
-    if (!inlineCreate || creating || inlineCancelledRef.current) return;
-    inlineCancelledRef.current = true;
-    const value = inlineCreate.value.trim();
-    setInlineCreate(null);
-    if (!value) return;
-    try {
-      setCreating(true);
-      await createFileAt(value, inlineCreate.parentPath);
-    } catch (err) {
-      setStatus({ type: 'error', msg: err.message || 'Create failed' });
-    } finally {
-      setCreating(false);
-    }
-  }
+  async function createFolderAt(rawName, parentPath) {
+    const segments = String(rawName || '').trim().split('/').filter(Boolean);
+    if (!segments.length || segments.some((s) => s === '.' || s === '..')) return;
+    const name = segments.join('/');
+    const parent = String(parentPath || '').replace(/^\/+|\/+$/g, '');
+    const dir = [parent, ...segments].filter(Boolean).join('/');
+    const full = `/${dir}`;
 
-  async function handleCreateFolder(e) {
-    e.preventDefault();
-    if (!newFolderName.trim()) return;
     if (selectedRepo && !selectedProject) {
       // Repo mode: stage a .gitkeep placeholder (git can't track empty
       // folders) until Commit & Push publishes it.
-      const name = newFolderName.trim();
-      const dir = (newFolderPath || '/').replace(/\/+$/, '');
-      const full = `${dir}/${name}`.replace(/\/{2,}/g, '/');
       const entry = {
         _id: `pending-dir:${full}`,
         id: `pending-dir:${full}`,
@@ -2466,36 +2590,45 @@ export default function Editor() {
         pending: true,
       };
       setRepoPending((prev) => [...prev.filter((f) => getFileKey(f) !== getFileKey(entry)), entry]);
-      setShowNewFolderModal(false);
-      setNewFolderName('');
       setStatus({ type: 'success', msg: 'Folder staged — Commit & Push to publish it' });
       setExpandedFolders((prev) => ({ ...prev, [full]: true }));
       return;
     }
+
+    const data = await apiFetch('/api/vfs/folders', {
+      method: 'POST',
+      body: JSON.stringify({
+        name,
+        path: parent ? `/${parent}` : '/',
+        companyId: selectedProject?.workspaceId || workspaceId,
+        projectId: selectedProject?._id || selectedProject?.id || null,
+      }),
+    });
+    if (!data.success) {
+      throw new Error(data.error || data.message || 'Folder create failed');
+    }
+    setStatus({ type: 'success', msg: 'Folder created' });
+    setTimeout(() => setStatus(null), 2000);
+    setExpandedFolders((prev) => ({ ...prev, [full]: true }));
+    await reloadFiles();
+  }
+
+  async function commitInlineCreate() {
+    if (!inlineCreate || creating || inlineCancelledRef.current) return;
+    inlineCancelledRef.current = true;
+    const { kind, parentPath, value } = inlineCreate;
+    const trimmed = value.trim();
+    setInlineCreate(null);
+    if (!trimmed) return;
     try {
       setCreating(true);
-      const folderPath = newFolderPath || '/';
-      const data = await apiFetch('/api/vfs/folders', {
-        method: 'POST',
-        body: JSON.stringify({
-          name: newFolderName.trim(),
-          path: folderPath,
-          companyId: selectedProject?.workspaceId || workspaceId,
-          projectId: selectedProject?._id || selectedProject?.id || null,
-        }),
-      });
-      if (!data.success) {
-        throw new Error(data.error || 'Folder create failed');
+      if (kind === 'folder') {
+        await createFolderAt(trimmed, parentPath);
+      } else {
+        await createFileAt(trimmed, parentPath);
       }
-      setShowNewFolderModal(false);
-      setNewFolderName('');
-      setStatus({ type: 'success', msg: 'Folder created' });
-      setTimeout(() => setStatus(null), 2000);
-      const fp = (folderPath === '/' ? '' : folderPath) + '/' + newFolderName.trim();
-      setExpandedFolders((prev) => ({ ...prev, [fp]: true }));
-      await reloadFiles();
     } catch (err) {
-      setStatus({ type: 'error', msg: err.message || 'Folder create failed' });
+      setStatus({ type: 'error', msg: err.message || `${kind === 'folder' ? 'Folder' : 'File'} create failed` });
     } finally {
       setCreating(false);
     }
@@ -3056,6 +3189,7 @@ export default function Editor() {
     }
   };
 
+
   const paletteEntries = (() => {
     const q = paletteQuery.trim().toLowerCase();
     const match = (s) => (q ? (s || '').toLowerCase().includes(q) : true);
@@ -3203,6 +3337,7 @@ export default function Editor() {
               <span>Search specs, diff, agents</span>
               <kbd>⌘K</kbd>
             </button>
+
           </header>
           <div className="ed-page">
             {/* ---- Editor workspace ---- */}
@@ -3240,7 +3375,7 @@ export default function Editor() {
                     <span className="ed-sidebar-title">Explorer</span>
                     <div className="ed-sidebar-actions">
                       <button type="button" className="ed-sidebar-btn" onClick={() => startInlineCreate()} title="New File"><FilePlus className="w-3.5 h-3.5" /></button>
-                      <button type="button" className="ed-sidebar-btn" onClick={() => setShowNewFolderModal(true)} title="New Folder"><FolderPlus className="w-3.5 h-3.5" /></button>
+                      <button type="button" className="ed-sidebar-btn" onClick={() => startInlineCreate('folder')} title="New Folder"><FolderPlus className="w-3.5 h-3.5" /></button>
                       <button type="button" className="ed-sidebar-btn" onClick={reloadFiles} title="Refresh"><RefreshCw className="w-3.5 h-3.5" /></button>
                     </div>
                   </div>
@@ -3295,7 +3430,8 @@ export default function Editor() {
                       ) : (
                         <>
                           {files.length === 0 && inlineCreate && (
-                            <InlineFileRow
+                            <InlineCreateRow
+                              kind={inlineCreate.kind}
                               depth={0}
                               value={inlineCreate.value}
                               inputRef={inlineInputRef}
@@ -3719,6 +3855,58 @@ export default function Editor() {
                     >
                       Copy Link
                     </button>
+                    {isWorkspaceFile && (
+                      <>
+                        <div className="ed-sidebar-title" style={{ padding: '0.1rem 0.55rem' }}>File access</div>
+                        {!fileAccess?.canManage && (
+                          <p className="text-xs" style={{ color: '#6e6e6e', padding: '0.2rem 0.55rem', lineHeight: 1.5 }}>
+                            {fileAccess
+                              ? 'Only the file owner or workspace admins can change who can edit this file.'
+                              : 'Checking file permissions…'}
+                          </p>
+                        )}
+                        {fileSharingRows.length === 0 ? (
+                          <p className="text-xs" style={{ color: '#6e6e6e', padding: '0.2rem 0.55rem' }}>
+                            No teammates to share this file with.
+                          </p>
+                        ) : (
+                          fileSharingRows.map((row) => (
+                            <div key={row.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.3rem 0.55rem' }}>
+                              <div style={{ minWidth: 0, flex: 1 }}>
+                                <div className="text-xs" style={{ color: '#d4d4d4', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {row.name}
+                                </div>
+                                {row.email && (
+                                  <div className="text-xs" style={{ color: '#6e6e6e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {row.email}
+                                  </div>
+                                )}
+                              </div>
+                              <select
+                                aria-label={`Access for ${row.name}`}
+                                value={row.permission || ''}
+                                disabled={!fileAccess?.canManage || sharingBusy === row.id}
+                                onChange={(e) => updateFileCollaborator(row.id, e.target.value)}
+                                style={{
+                                  background: '#1e1e1e',
+                                  color: '#d4d4d4',
+                                  border: '1px solid rgba(255,255,255,0.12)',
+                                  borderRadius: 6,
+                                  fontSize: '0.66rem',
+                                  padding: '0.2rem 0.25rem',
+                                  maxWidth: 96,
+                                }}
+                              >
+                                <option value="">No access</option>
+                                <option value="read">Can view</option>
+                                <option value="write">Can edit</option>
+                                {row.permission === 'admin' && <option value="admin">Can manage</option>}
+                              </select>
+                            </div>
+                          ))
+                        )}
+                      </>
+                    )}
                     <div className="ed-sidebar-title" style={{ padding: '0.1rem 0.55rem' }}>Active</div>
                     {collaborators.length === 0 ? (
                       <p className="text-xs" style={{ color: '#6e6e6e', padding: '0.2rem 0.55rem' }}>No active collaborators yet</p>
@@ -4465,39 +4653,6 @@ export default function Editor() {
             </div>
           </footer>
         </div>
-
-      {showNewFolderModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" style={{ zIndex: 9999 }}>
-          <div className="ws-modal w-full max-w-lg" style={{ position: 'relative', zIndex: 1 }}>
-            <div className="flex items-center justify-between p-5 border-b border-[rgba(255,255,255,0.09)]">
-              <div className="flex items-center gap-2.5">
-                <span className="card-ico">
-                  <FolderPlus className="w-4 h-4" />
-                </span>
-                <h2 className="ws-modal-title">Create New Folder</h2>
-              </div>
-              <button type="button" onClick={() => setShowNewFolderModal(false)} className="text-muted hover:text-white"><X className="w-5 h-5" /></button>
-            </div>
-            <form onSubmit={handleCreateFolder} className="p-5 space-y-4">
-              <div>
-                <label className="ws-label">Folder Name</label>
-                <input type="text" value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)} placeholder="e.g. src" className="ws-input" autoFocus required />
-              </div>
-              <div>
-                <label className="ws-label">Parent Path</label>
-                <input type="text" value={newFolderPath} onChange={(e) => setNewFolderPath(e.target.value)} placeholder="/" className="ws-input" />
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', paddingTop: '0.5rem' }}>
-                <button type="button" className="btn-workspace btn-secondary" onClick={() => setShowNewFolderModal(false)}>Cancel</button>
-                <button type="submit" className="btn-workspace btn-primary flex items-center gap-2" disabled={creating || !newFolderName.trim()}>
-                  <FolderPlus className="w-4 h-4" />
-                  {creating ? 'Creating...' : 'Create Folder'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {repoCreateOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" style={{ zIndex: 9999 }}>

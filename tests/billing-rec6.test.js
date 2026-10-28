@@ -55,6 +55,7 @@ describe('write-through bridge (3.1)', () => {
   });
 
   test('applyWebhookEvent mirrors tier/status to Subscription', async () => {
+    jest.spyOn(Entitlement, 'findOne').mockResolvedValue(null);
     jest.spyOn(Entitlement, 'updateOne').mockResolvedValue({});
     const ent = appliedDoc();
     jest.spyOn(Entitlement, 'findOneAndUpdate').mockResolvedValue(ent);
@@ -67,6 +68,8 @@ describe('write-through bridge (3.1)', () => {
       status: 'active',
       provider: 'stripe',
       customerId: 'cus_1',
+      currency: 'USD',
+      amountMinor: 2000,
     });
     expect(res.applied).toBe(true);
     expect(mirror).toHaveBeenCalledWith(
@@ -88,6 +91,8 @@ describe('write-through bridge (3.1)', () => {
       userId: '507f1f77bcf86cd799439011',
       plan: 'pro',
       status: 'active',
+      currency: 'USD',
+      amountMinor: 2000,
     });
     expect(res.applied).toBe(false);
     expect(res.reason).toMatch(/duplicate/i);
@@ -119,6 +124,7 @@ describe('write-through bridge (3.1)', () => {
   });
 
   test('unmapped type is a visible no-op (refund/dispute policy pending)', async () => {
+    jest.spyOn(Entitlement, 'findOne').mockResolvedValue(null);
     jest.spyOn(Entitlement, 'updateOne').mockResolvedValue({});
     const ent = appliedDoc();
     jest.spyOn(Entitlement, 'findOneAndUpdate').mockResolvedValue(ent);
@@ -228,6 +234,8 @@ describe('v1 checkout server pricing', () => {
       userId: '507f1f77bcf86cd799439011',
       plan: 'pro',
       status: 'active',
+      currency: 'USD',
+      amountMinor: 2000,
     });
     const Ent = require('../server/models/EntitlementModel');
     jest.spyOn(Ent, 'updateOne').mockResolvedValue({});

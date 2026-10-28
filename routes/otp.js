@@ -11,7 +11,7 @@ const { isLockedOut: isLockedOutStore, recordFailure, clearLockout: clearLockout
 const otpLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 3, // 3 requests per window
-    store: require('../utils/redis').getRateLimitStore(),
+    store: require('../utils/redis').getRateLimitStore('otp'),
     passOnStoreError: true,
     message: { success: false, message: 'Too many OTP requests, please try again later.' }
 });
@@ -282,7 +282,11 @@ router.post('/verify', async (req, res) => {
         // Generate JWT token for automatic login (24h, same as auth.js)
         const jwt = require('jsonwebtoken');
         const token = jwt.sign(
-            { userId: user._id, email: user.email },
+            {
+                userId: user._id,
+                email: user.email,
+                tokenVersion: Number(user.tokenVersion) || 0
+            },
             process.env.JWT_SECRET,
             { expiresIn: '24h' }
         );

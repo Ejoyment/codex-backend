@@ -7,17 +7,60 @@ const { enforceConcurrentJobs, enforceTaskTimeout, enforceCreditPool, enforceClo
 const CreditPoolService = require('../utils/creditPoolService');
 const AgentExecution = require('../models/AgentExecution');
 const LocalTask = require('../models/LocalTask');
+const LocalProject = require('../models/LocalProject');
 const SpecModel = require('../models/SpecModel');
-const Company = require('../models/Company');
 const CodeFile = require('../models/CodeFile');
 const gitService = require('../utils/gitService');
 const agentChangeSet = require('../utils/agentChangeSet');
+const agentApprovalService = require('../utils/agentApprovalService');
 const sddVerificationService = require('../utils/sddVerificationService');
-const { userCanAccessSpec, resolveAccessibleSpecs } = require('../utils/specAccess');
+const { userCanAccessProject, userCanAccessSpec, resolveAccessibleSpecs } = require('../utils/specAccess');
+const { assertWorkspaceAccess } = require('../utils/workspaceAuth');
 const realtimeBus = require('../utils/realtimeBus');
 const { Worker } = require('worker_threads');
 const path = require('path');
 const aiRouterService = require('../utils/aiRouterService');
+
+// Delegate is the expensive cloud AI path: one pool credit per job. Failed
+// jobs refund below so only executions that actually ran consume budget.
+const AGENT_JOB_CREDIT_COST = CreditPoolService.AGENT_JOB_CREDIT_COST;
+
+function refundAgentCredit(userId) {
+  return CreditPoolService.refundCredits(userId, AGENT_JOB_CREDIT_COST).catch((err) => {
+    console.error('Agent credit refund error:', err.message);
+  });
+}
+
+function metaValue(execution, key) {
+  const meta = execution?.metadata;
+  if (!meta) return undefined;
+  if (typeof meta.get === 'function') return meta.get(key);
+  return meta[key];
+}
+
+function setMetaValue(execution, key, value) {
+  const meta = execution?.metadata;
+  if (!meta) {
+    execution.metadata = { [key]: value };
+    return;
+  }
+  if (typeof meta.set === 'function') meta.set(key, value);
+  else meta[key] = value;
+}
+
+// Approve/reject/tweak re-check the workspace stored on the execution because
+// membership can change after delegation. Legacy rows may also hold the
+// caller's user id; access resolution stores the canonical Company id.
+async function resolveExecutionWorkspace(execution, userId) {
+  const stored = metaValue(execution, 'workspaceId');
+  if (!stored) return { ok: true, workspaceId: null };
+  const access = await assertWorkspaceAccess(stored, userId);
+  if (!access.ok) return { ok: false, reason: access.reason };
+  if (String(stored) !== access.workspaceId) {
+    setMetaValue(execution, 'workspaceId', access.workspaceId);
+  }
+  return { ok: true, workspaceId: access.workspaceId };
+}
 
 function spawnAgentWorker(executionId, taskId, workspaceId, specIds, provider, model, localPrivacyMode, timeoutMs = 900000) {
   return new Promise((resolve, reject) => {
@@ -92,6 +135,7 @@ function spawnAgentWorker(executionId, taskId, workspaceId, specIds, provider, m
 }
 
 router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurrentJobs(), enforceTaskTimeout(), enforceCreditPool(), enforceCloudComputeLimit(), async (req, res) => {
+  let creditCharged = false;
   try {
     const { taskId, taskTitle, sessionId, summary = '', provider: requestedProvider, model, localPrivacyMode: requestedLocalPrivacyMode = false } = req.body;
     let provider;
@@ -134,15 +178,29 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       if (unresolvedBlockers) return res.status(409).json({ success: false, message: 'Resolve blocking tasks before delegation' });
     }
 
-    const workspaceId = req.body.workspaceId || task?.companyId?.toString();
-    if (!workspaceId) {
+    const requestedWorkspaceId = req.body.workspaceId || task?.companyId?.toString();
+    if (!requestedWorkspaceId) {
       return res.status(400).json({ success: false, message: 'A workspace is required to create an isolated agent branch' });
     }
-    const workspace = await Company.findById(workspaceId).select('owner members');
-    const isMember = workspace && (workspace.owner?.toString() === req.userId || workspace.members.some((member) => member.user?.toString() === req.userId));
-    if (!isMember) return res.status(403).json({ success: false, message: 'Workspace access denied' });
-    if (task?.companyId && task.companyId.toString() !== workspaceId) {
+    const workspaceAccess = await assertWorkspaceAccess(requestedWorkspaceId, req.userId);
+    if (!workspaceAccess.ok) {
+      return res.status(403).json({ success: false, message: workspaceAccess.reason || 'Workspace access denied' });
+    }
+    const workspaceId = workspaceAccess.workspaceId;
+    if (task?.companyId && String(task.companyId) !== workspaceId) {
       return res.status(403).json({ success: false, message: 'Task is linked to a different workspace' });
+    }
+    if (task?.projectId) {
+      const project = await LocalProject.findById(task.projectId).select('workspaceId').lean();
+      if (!project) {
+        return res.status(404).json({ success: false, message: 'Project not found' });
+      }
+      if (!(await userCanAccessProject(task.projectId, req.userId))) {
+        return res.status(403).json({ success: false, message: 'Project access denied' });
+      }
+      if (project.workspaceId && String(project.workspaceId) !== workspaceId) {
+        return res.status(403).json({ success: false, message: 'Project does not belong to this workspace' });
+      }
     }
 
     const requestedSpecIds = [...new Set([...(req.body.specIds || []), ...(req.body.specId ? [req.body.specId] : []), ...(task?.specIds || []).map(String)])];
@@ -196,6 +254,18 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       capturedAt: new Date(),
     };
 
+    const credit = await CreditPoolService.deductCredits(req.userId, AGENT_JOB_CREDIT_COST);
+    if (!credit.success) {
+      return res.status(403).json({
+        success: false,
+        message: credit.message || 'Insufficient AI credits',
+        code: 'CREDIT_LIMIT_REACHED',
+        requiresUpgrade: true,
+        remaining: credit.remaining,
+      });
+    }
+    creditCharged = true;
+
     const execution = await AgentExecution.create({
       userId: req.userId,
       sessionId: sessionId || null,
@@ -220,6 +290,7 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
         provider,
         model: model || null,
         localPrivacyMode,
+        creditsCharged: AGENT_JOB_CREDIT_COST,
       },
       logs: [{ timestamp: new Date(), message: 'Agent execution initialized' }],
     });
@@ -241,7 +312,7 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
         ],
       };
       await task.save();
-      await LocalTask.findByIdAndUpdate(taskId, {
+      await LocalTask.findOneAndUpdate({ _id: taskId, userId: req.userId }, {
         'agentExecution.status': 'running',
         updatedAt: new Date(),
       });
@@ -281,7 +352,7 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       execution.logs.push({ timestamp: new Date(), message: 'Agent execution completed, awaiting approval' });
       await execution.save();
       if (task) {
-        await LocalTask.findByIdAndUpdate(task._id, {
+        await LocalTask.findOneAndUpdate({ _id: task._id, userId: req.userId }, {
           'agentExecution.status': 'awaiting_approval',
           'agentExecution.error': '',
           $push: { 'agentExecution.logs': { timestamp: new Date(), message: 'Agent completed; changes are ready for review' } },
@@ -301,7 +372,7 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       execution.logs.push({ timestamp: new Date(), message: `Agent worker error: ${failureMessage}` });
       await execution.save();
       if (task) {
-        await LocalTask.findByIdAndUpdate(task._id, {
+        await LocalTask.findOneAndUpdate({ _id: task._id, userId: req.userId }, {
           'agentExecution.status': 'failed',
           'agentExecution.error': failureMessage,
           $push: { 'agentExecution.logs': { timestamp: new Date(), message: `Agent failed: ${failureMessage}` } },
@@ -311,6 +382,10 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
           const cacheInvalidator = require('../utils/cacheInvalidator');
           cacheInvalidator.invalidateForTask(task._id);
         } catch (e) { /* ignore */ }
+      }
+      if (creditCharged) {
+        creditCharged = false;
+        await refundAgentCredit(req.userId);
       }
     });
 
@@ -323,6 +398,10 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       agentBranch: branch,
     });
   } catch (error) {
+    if (creditCharged) {
+      creditCharged = false;
+      await refundAgentCredit(req.userId);
+    }
     console.error('Delegate task error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
@@ -364,68 +443,55 @@ router.post('/approve', authenticateToken, async (req, res) => {
     if (execution.status !== 'awaiting_review' && execution.status !== 'awaiting_approval') {
       return res.status(409).json({ success: false, message: 'Only sessions awaiting review can be approved' });
     }
-    const workspaceId = execution.metadata?.get?.('workspaceId') || execution.metadata?.workspaceId;
-    const branch = execution.branch || execution.metadata?.get?.('agentBranch') || execution.metadata?.agentBranch;
-    if (!workspaceId || !branch) return res.status(409).json({ success: false, message: 'Session is missing its workspace branch' });
-    const specIds = execution.metadata?.get?.('specIds') || execution.metadata?.specIds || [execution.specRef].filter(Boolean);
-    const specResults = await Promise.all(specIds.map((id) => sddVerificationService.verifySpec(id, taskId || execution.taskId)));
-    const blockingFailures = specResults.some((result) =>
-      (result.requirements || []).some((requirement) => requirement.severity === 'blocking' && requirement.status === 'fail') ||
-      (result.forbiddenImports || []).some((item) => item.status === 'fail') ||
-      (result.results || []).some((item) => item.passed === false)
-    );
-    if (blockingFailures) {
-      execution.validationResult = { specs: specResults, ranAt: new Date() };
-      await execution.save();
-      return res.status(409).json({ success: false, message: 'Blocking spec requirements failed; the branch was not merged', execution, sddVerification: specResults });
+    const workspaceAccess = await resolveExecutionWorkspace(execution, req.userId);
+    if (!workspaceAccess.ok) {
+      return res.status(403).json({ success: false, message: workspaceAccess.reason || 'Workspace access denied' });
     }
-    if (!(execution.proposedChanges || []).length && !(execution.filesChanged || []).length) {
-      return res.status(409).json({ success: false, message: 'This run produced no file changes to merge.' });
+    const workspaceId = workspaceAccess.workspaceId;
+    if (taskId) {
+      const task = await LocalTask.findOne({ _id: taskId, userId: req.userId });
+      if (!task) return res.status(404).json({ success: false, message: 'Task not found' });
     }
-    // Run auto-validation on changes before merge
-    let autoValidation = null;
+    // Run auto-validation on changes before merge.
     try {
       const autoValidator = require('../utils/autoValidator');
-      autoValidation = await autoValidator.validate({ workspaceId, timeoutMs: 60000 });
+      const autoValidation = await autoValidator.validate({ workspaceId, timeoutMs: 60000 });
       if (autoValidation && !autoValidation.success && autoValidation.errors.length > 0) {
         execution.validationResult = { ...(execution.validationResult || {}), autoValidation, ranAt: new Date() };
         await execution.save();
-        return res.status(409).json({ 
-          success: false, 
-          message: `Auto-validation found ${autoValidation.errors.length} error(s). Fix them or review carefully.`, 
-          execution, 
-          autoValidation 
+        return res.status(409).json({
+          success: false,
+          message: `Auto-validation found ${autoValidation.errors.length} error(s). Fix them or review carefully.`,
+          execution,
+          autoValidation,
         });
       }
     } catch (valErr) {
       console.error('Auto-validation in approve:', valErr.message);
     }
 
-    const applied = await agentChangeSet.applyExecutionChanges(execution);
-    if (applied.applied) {
-      execution.logs.push({ timestamp: new Date(), message: `Applied ${applied.applied} change(s) to workspace files (${applied.created || 0} created, ${applied.updated || 0} updated, ${applied.deleted || 0} deleted)` });
+    const result = await agentApprovalService.approveExecution({
+      execution,
+      userId: req.userId,
+      taskId,
+      workspaceId,
+      source: 'rest',
+      verifySpecs: true,
+    });
+    if (!result.ok) {
+      return res.status(result.status).json({
+        success: false,
+        message: result.message,
+        execution: result.execution,
+        ...(result.sddVerification ? { sddVerification: result.sddVerification } : {}),
+      });
     }
-    const branchList = await gitService.branches(workspaceId);
-    const baseBranch = execution.baseBranch || 'main';
-    if (branchList.success && branchList.branches.includes(baseBranch)) await gitService.checkout(workspaceId, baseBranch);
-    const mergeResult = await gitService.merge(workspaceId, branch);
-    if (!mergeResult.success) {
-      execution.logs.push({ timestamp: new Date(), message: `Merge failed: ${mergeResult.error}` });
-      await execution.save();
-      return res.status(409).json({ success: false, message: mergeResult.error, execution });
-    }
-    execution.status = 'approved';
-    execution.approvalRequired = false;
-    execution.approvedBy = req.userId;
-    execution.approvedAt = new Date();
-    execution.updatedAt = new Date();
-    execution.logs.push({ timestamp: new Date(), message: 'Agent changes approved and merged' });
-    if (taskId || execution.taskId) {
-      await LocalTask.findByIdAndUpdate(taskId || execution.taskId, { status: 'done', completedAt: new Date(), updatedAt: new Date() });
-    }
-    execution.validationResult = { specs: specResults, ranAt: new Date() };
-    await execution.save();
-    res.json({ success: true, execution, message: 'Agent branch merged', sddVerification: specResults });
+    res.json({
+      success: true,
+      execution: result.execution,
+      message: 'Agent branch merged',
+      sddVerification: result.sddVerification,
+    });
   } catch (error) {
     console.error('Approve execution error:', error);
     res.status(500).json({ success: false, message: error.message });
@@ -440,23 +506,25 @@ router.post('/reject', authenticateToken, async (req, res) => {
       return res.status(404).json({ success: false, message: 'Execution not found' });
     }
 
-    execution.status = 'rejected';
-    execution.approvalRequired = false;
-    execution.rejectedBy = req.userId;
-    execution.rejectedAt = new Date();
-    execution.rejectionReason = req.body.reason || '';
-    execution.updatedAt = new Date();
-    execution.proposedChanges = [];
-    execution.filesChanged = [];
-    execution.logs.push({ timestamp: new Date(), message: 'Agent work rejected and task rolled back' });
-    await execution.save();
+    const workspaceAccess = await resolveExecutionWorkspace(execution, req.userId);
+    if (!workspaceAccess.ok) {
+      return res.status(403).json({ success: false, message: workspaceAccess.reason || 'Workspace access denied' });
+    }
+    const workspaceId = workspaceAccess.workspaceId;
+    if (taskId) {
+      const ownedTask = await LocalTask.findOne({ _id: taskId, userId: req.userId });
+      if (!ownedTask) return res.status(404).json({ success: false, message: 'Task not found' });
+    }
 
-    const task = taskId || execution.taskId;
-    if (task) await LocalTask.findByIdAndUpdate(task, { status: 'backlog', agentSessionId: null, branch: null, 'agentExecution.status': 'idle', updatedAt: new Date() });
-    const workspaceId = execution.metadata?.get?.('workspaceId') || execution.metadata?.workspaceId;
-    if (workspaceId && execution.branch) await gitService.deleteBranch(workspaceId, execution.branch, execution.baseBranch || 'main');
-
-    res.json({ success: true, execution, message: 'Agent work rejected and task rolled back' });
+    const result = await agentApprovalService.rejectExecution({
+      execution,
+      userId: req.userId,
+      taskId,
+      workspaceId,
+      reason: req.body.reason || '',
+      source: 'rest',
+    });
+    res.json({ success: true, execution: result.execution, message: 'Agent work rejected and task rolled back' });
   } catch (error) {
     console.error('Reject execution error:', error);
     res.status(500).json({ success: false, message: error.message });
@@ -464,12 +532,32 @@ router.post('/reject', authenticateToken, async (req, res) => {
 });
 
 router.post('/tweak', authenticateToken, async (req, res) => {
+  let creditCharged = false;
   try {
     const { executionId, instruction } = req.body;
     if (!instruction?.trim()) return res.status(400).json({ success: false, message: 'Instruction is required' });
     const execution = await AgentExecution.findOne({ _id: executionId, userId: req.userId });
     if (!execution) return res.status(404).json({ success: false, message: 'Session not found' });
     if (!['awaiting_review', 'awaiting_approval', 'failed'].includes(execution.status)) return res.status(409).json({ success: false, message: 'Session cannot be resumed in its current state' });
+
+    const workspaceAccess = await resolveExecutionWorkspace(execution, req.userId);
+    if (!workspaceAccess.ok) {
+      return res.status(403).json({ success: false, message: workspaceAccess.reason || 'Workspace access denied' });
+    }
+    const workspaceId = workspaceAccess.workspaceId;
+
+    const credit = await CreditPoolService.deductCredits(req.userId, AGENT_JOB_CREDIT_COST);
+    if (!credit.success) {
+      return res.status(403).json({
+        success: false,
+        message: credit.message || 'Insufficient AI credits',
+        code: 'CREDIT_LIMIT_REACHED',
+        requiresUpgrade: true,
+        remaining: credit.remaining,
+      });
+    }
+    creditCharged = true;
+
     execution.tweaks.push({ instruction: instruction.trim(), addedAt: new Date() });
     trimToLast(execution.tweaks, MAX_TWEAKS);
     execution.status = 'running';
@@ -478,11 +566,10 @@ router.post('/tweak', authenticateToken, async (req, res) => {
     execution.terminalLog.push({ timestamp: new Date(), type: 'follow_up', message: instruction.trim() });
     trimToLast(execution.terminalLog, MAX_AGENT_LOG);
     await execution.save();
-    const workspaceId = execution.metadata?.get?.('workspaceId') || execution.metadata?.workspaceId;
-    const specIds = execution.metadata?.get?.('specIds') || execution.metadata?.specIds || [];
-    const localPrivacyMode = execution.metadata?.get?.('localPrivacyMode') || execution.metadata?.localPrivacyMode || false;
-    const provider = execution.metadata?.get?.('provider') || execution.metadata?.provider;
-    const model = execution.metadata?.get?.('model') || execution.metadata?.model;
+    const specIds = metaValue(execution, 'specIds') || [];
+    const localPrivacyMode = metaValue(execution, 'localPrivacyMode') || false;
+    const provider = metaValue(execution, 'provider') || 'gemini';
+    const model = metaValue(execution, 'model') || execution.model || null;
     spawnAgentWorker(execution._id.toString(), execution.taskId?.toString(), workspaceId, specIds, provider, model, localPrivacyMode)
       .then(async () => {
         execution.status = 'awaiting_review';
@@ -494,9 +581,17 @@ router.post('/tweak', authenticateToken, async (req, res) => {
         execution.completedAt = new Date();
         execution.terminalLog.push({ timestamp: new Date(), type: 'error', message: error.message });
         await execution.save();
+        if (creditCharged) {
+          creditCharged = false;
+          await refundAgentCredit(req.userId);
+        }
       });
     res.json({ success: true, execution });
   } catch (error) {
+    if (creditCharged) {
+      creditCharged = false;
+      await refundAgentCredit(req.userId);
+    }
     res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -504,7 +599,7 @@ router.post('/tweak', authenticateToken, async (req, res) => {
 router.post('/verify', authenticateToken, async (req, res) => {
   try {
     const { executionId, taskId, specId } = req.body;
-    const execution = await AgentExecution.findById(executionId || taskId);
+    const execution = await AgentExecution.findOne({ _id: executionId || taskId, userId: req.userId });
     const spec = specId ? await SpecModel.findById(specId) : (execution?.specRef ? await SpecModel.findById(execution.specRef) : null);
 
     if (!spec) {
@@ -513,6 +608,13 @@ router.post('/verify', authenticateToken, async (req, res) => {
 
     if (!await userCanAccessSpec(spec, req.userId)) {
       return res.status(403).json({ success: false, message: 'Project access denied' });
+    }
+
+    if (taskId) {
+      const task = await LocalTask.findOne({ _id: taskId, userId: req.userId });
+      if (!task) {
+        return res.status(404).json({ success: false, message: 'Task not found' });
+      }
     }
 
     const result = await sddVerificationService.verifySpec(spec._id, taskId);

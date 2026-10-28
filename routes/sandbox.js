@@ -95,7 +95,10 @@ router.post('/start', authenticateToken, async (req, res) => {
             const access = await assertWorkspaceAccess(wsId, req.user?.userId || req.user?._id);
             if (access.ok) {
                 try {
-                    payloadFile = await CodeFile.findOne({ _id: fileId, company: wsId }).lean();
+                    payloadFile = await CodeFile.findOne({
+                        _id: fileId,
+                        company: access.workspaceId || wsId,
+                    }).lean();
                 } catch (_) {
                     payloadFile = null;
                 }

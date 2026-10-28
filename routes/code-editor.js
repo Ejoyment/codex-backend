@@ -1,6 +1,8 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const router = express.Router();
 const CodeFile = require('../models/CodeFile');
+const LocalProject = require('../models/LocalProject');
 const { authenticateToken } = require('../middleware/auth');
 const { getAllowedLanguages, isLanguageAllowed, getAllLanguagesWithStatus } = require('../utils/languageRestrictions');
 const { addAuditLog } = require('../utils/auditLogService');
@@ -10,8 +12,27 @@ const { emitWorkspaceChange } = require('../utils/realtimeBus');
 // Shared tenant-isolation primitive (audit rec 7) — single enforced version.
 const {
     assertFileAccess,
+    assertCompanyAccess,
     assertCompanyMembership,
+    resolveFileAccess,
 } = require('../middleware/workspaceAccess');
+const { ensurePersonalWorkspace } = require('../utils/personalWorkspace');
+const { userCanAccessProject } = require('../utils/specAccess');
+
+/**
+ * A file may only be attached to a project the caller can reach. Without this
+ * a caller could tag a file with a foreign project id and have it appear in
+ * (or be deployed with) another tenant's project.
+ */
+async function canUseProject(projectId, userId) {
+    if (!projectId) return true;
+    if (!mongoose.isValidObjectId(projectId)) return false;
+    return userCanAccessProject(projectId, userId);
+}
+
+function denyProject(res) {
+    return res.status(403).json({ success: false, message: 'Access denied' });
+}
 
 /**
  * @swagger
@@ -131,29 +152,18 @@ router.post('/files', authenticateToken, async (req, res) => {
             });
         }
         
-        // Determine company: use companyId from body, or look up user's companies
+        // Determine company: use companyId from body, or use/create the
+        // caller's personal workspace so local projects can always create files.
         let effectiveCompanyId = companyId;
         if (!effectiveCompanyId) {
-            // Try to find a company the user belongs to
-            const Company = require('../models/Company');
-            const userCompany = await Company.findOne({
-                $or: [
-                    { owner: req.userId },
-                    { 'members.user': req.userId }
-                ]
-            }).select('_id').lean();
-            if (userCompany) {
-                effectiveCompanyId = userCompany._id;
-            } else {
-                return res.status(400).json({
-                    success: false,
-                    message: 'You must be in a workspace/company to create files.'
-                });
-            }
+            const workspace = await ensurePersonalWorkspace(req.userId);
+            effectiveCompanyId = workspace._id;
         }
 
-        // Tenant isolation: a caller-supplied companyId must be one of theirs.
-        if (!(await assertCompanyMembership(effectiveCompanyId, req.userId, res))) return;
+        // Tenant isolation: a caller-supplied companyId must be one of theirs,
+        // and creating a file is a write (viewers are read-only).
+        if (!(await assertCompanyAccess(effectiveCompanyId, req.userId, res, 'write'))) return;
+        if (projectId && !(await canUseProject(projectId, req.userId))) return denyProject(res);
 
         const codeFile = await CodeFile.create({
             name,
@@ -188,8 +198,23 @@ router.post('/files', authenticateToken, async (req, res) => {
             console.error('VFS index update error:', vfsError);
         }
         
+        if (projectId) {
+            try {
+                await LocalProject.updateOne(
+                    {
+                        _id: projectId,
+                        userId: req.userId,
+                        $or: [{ workspaceId: null }, { workspaceId: { $exists: false } }],
+                    },
+                    { $set: { workspaceId: effectiveCompanyId } }
+                );
+            } catch (projectError) {
+                console.error('Attach project workspace error:', projectError);
+            }
+        }
+
         // Emit real-time event
-        emitWorkspaceChange(companyId, 'file:created', {
+        emitWorkspaceChange(effectiveCompanyId, 'file:created', {
             file: {
                 _id: codeFile._id,
                 name: codeFile.name,
@@ -264,14 +289,30 @@ router.post('/files', authenticateToken, async (req, res) => {
 // Batch create multiple files (for AI agent)
 router.post('/files/batch', authenticateToken, async (req, res) => {
     try {
-        const { files, companyId, projectId } = req.body;
+        const { files, companyId, workspaceId, projectId } = req.body;
         
         if (!Array.isArray(files) || files.length === 0) {
             return res.status(400).json({ success: false, message: 'Files array is required' });
         }
 
+        // A batch may name its target as either companyId or workspaceId, but
+        // never both pointing at different workspaces.
+        if (companyId && workspaceId && String(companyId) !== String(workspaceId)) {
+            return res.status(400).json({ success: false, message: 'companyId and workspaceId must match' });
+        }
+        const requestedCompanyId = companyId || workspaceId;
+
         // Tenant isolation: batch target must be one of the caller's companies.
-        if (companyId && !(await assertCompanyMembership(companyId, req.userId, res))) return;
+        // A foreign/missing-workspace id is rejected; it is never copied into
+        // CodeFile.company from the request body.
+        if (requestedCompanyId && !(await assertCompanyAccess(requestedCompanyId, req.userId, res, 'write'))) return;
+        if (projectId && !(await canUseProject(projectId, req.userId))) return denyProject(res);
+
+        let effectiveCompanyId = requestedCompanyId;
+        if (!effectiveCompanyId) {
+            const workspace = await ensurePersonalWorkspace(req.userId);
+            effectiveCompanyId = workspace._id;
+        }
 
         const user = await require('../models/User').findById(req.userId).populate('subscription');
         const tier = user.subscription?.tier || 'free';
@@ -293,7 +334,7 @@ router.post('/files/batch', authenticateToken, async (req, res) => {
                     name,
                     language: language.toLowerCase(),
                     content: content || '',
-                    company: companyId,
+                    company: effectiveCompanyId,
                     project: projectId,
                     createdBy: req.userId,
                     lastModifiedBy: req.userId,
@@ -305,7 +346,7 @@ router.post('/files/batch', authenticateToken, async (req, res) => {
                 
                 // Update VFS index (keyed by full path: dir + name)
                 try {
-                    const existingIndex = vfs.indexes.get(companyId);
+                    const existingIndex = vfs.indexes.get(effectiveCompanyId);
                     if (existingIndex) {
                         const full = vfs.fullPathOf(codeFile);
                         existingIndex.set(full, {
@@ -327,9 +368,24 @@ router.post('/files/batch', authenticateToken, async (req, res) => {
             }
         }
         
+        if (projectId && createdFiles.length > 0) {
+            try {
+                await LocalProject.updateOne(
+                    {
+                        _id: projectId,
+                        userId: req.userId,
+                        $or: [{ workspaceId: null }, { workspaceId: { $exists: false } }],
+                    },
+                    { $set: { workspaceId: effectiveCompanyId } }
+                );
+            } catch (projectError) {
+                console.error('Attach project workspace error:', projectError);
+            }
+        }
+
         // Emit real-time event for batch creation
         if (createdFiles.length > 0) {
-            emitWorkspaceChange(companyId, 'files:created', {
+            emitWorkspaceChange(effectiveCompanyId, 'files:created', {
                 files: createdFiles.map(f => ({
                     _id: f._id,
                     name: f.name,
@@ -394,8 +450,10 @@ router.get('/files', authenticateToken, async (req, res) => {
         // user's own companies or created by them — never the whole database
         // (an unscoped query used to make newly created files invisible in
         // the editor explorer whenever companyId was missing).
-        // Tenant isolation: an explicit companyId must be one of theirs.
+        // Tenant isolation: an explicit companyId must be one of theirs, and
+        // a projectId must be a project they can reach (owner/member/workspace).
         if (companyId && !(await assertCompanyMembership(companyId, req.userId, res))) return;
+        if (projectId && !(await canUseProject(projectId, req.userId))) return denyProject(res);
         const query = {};
         if (companyId) {
             query.company = companyId;
@@ -529,7 +587,7 @@ router.put('/files/:id', authenticateToken, async (req, res) => {
         const { content, name, language } = req.body;
         
         const file = await CodeFile.findById(req.params.id);
-        if (!(await assertFileAccess(file, req.userId, res))) return;
+        if (!(await assertFileAccess(file, req.userId, res, 'write'))) return;
         const oldFull = vfs.fullPathOf(file);
         
         // Save version if content changed
@@ -611,21 +669,25 @@ router.delete('/files/:id', authenticateToken, async (req, res) => {
     try {
         const file = await CodeFile.findById(req.params.id);
 
-        if (!(await assertFileAccess(file, req.userId, res))) return;
+        if (!(await assertFileAccess(file, req.userId, res, 'manage'))) return;
 
         const workspaceId = file.company.toString();
         const fileId = file._id.toString();
         const filePath = vfs.fullPathOf(file);
         
         // VFS first: it re-reads the doc to drop the index entry, so it must
-        // run before the hard delete (the old order always threw not-found
-        // and leaked the index entry).
+        // run before the hard delete. It also performs the tenant-scoped DB
+        // delete and reports failure instead of silently reporting success.
         try {
             await vfs.deleteFile(fileId, workspaceId);
         } catch (vfsError) {
             console.error('VFS delete error:', vfsError);
+            return res.status(500).json({
+                success: false,
+                code: 'FILE_DELETE_FAILED',
+                message: 'File could not be deleted'
+            });
         }
-        await CodeFile.findByIdAndDelete(req.params.id).catch(() => null);
         
         // Emit real-time event
         emitWorkspaceChange(workspaceId, 'file:deleted', {
@@ -653,21 +715,23 @@ router.delete('/files/:id', authenticateToken, async (req, res) => {
     }
 });
 
+const FILE_PERMISSIONS = ['read', 'write', 'admin'];
+
 /**
  * @swagger
  * /api/code-editor/files/{id}/collaborators:
- *   post:
- *     summary: Add a collaborator to a code file
+ *   get:
+ *     summary: List file collaborators and the caller's effective access
  *     tags:
  *       - Code Editor
  *     security:
  *       - bearerAuth: []
- *     parameters:
- *       - name: id
- *         in: path
- *         required: true
- *         schema:
- *           type: string
+ *   post:
+ *     summary: Add or update a file collaborator
+ *     tags:
+ *       - Code Editor
+ *     security:
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -682,25 +746,59 @@ router.delete('/files/:id', authenticateToken, async (req, res) => {
  *               permission:
  *                 type: string
  *                 enum: [read, write, admin]
- *                 default: write
+ *                 default: read
  *     responses:
  *       200:
  *         description: Collaborator added
+ *       400:
+ *         description: Invalid user or permission
+ *       403:
+ *         description: Caller cannot manage this file
  *       404:
  *         description: File not found
- *       401:
- *         description: Unauthorized
  */
-// Add collaborator
-router.post('/files/:id/collaborators', authenticateToken, async (req, res) => {
+// List collaborators (also tells the editor whether to show sharing controls)
+router.get('/files/:id/collaborators', authenticateToken, async (req, res) => {
     try {
-        const { userId, permission } = req.body;
-        
-        const file = await CodeFile.findById(req.params.id);
+        const file = await CodeFile.findById(req.params.id)
+            .populate('collaborators.user', 'fullName email profilePicture');
+
         if (!(await assertFileAccess(file, req.userId, res))) return;
 
-        // Check if already a collaborator
-        const existing = file.collaborators.find(c => c.user.toString() === userId);
+        const access = await resolveFileAccess(file, req.userId);
+        res.json({
+            success: true,
+            collaborators: file.collaborators || [],
+            access,
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// Add or update collaborator
+router.post('/files/:id/collaborators', authenticateToken, async (req, res) => {
+    try {
+        const { userId } = req.body;
+        const permission = req.body.permission || 'read';
+
+        const file = await CodeFile.findById(req.params.id);
+        if (!(await assertFileAccess(file, req.userId, res, 'manage'))) return;
+
+        if (!userId || !mongoose.isValidObjectId(userId)) {
+            return res.status(400).json({ success: false, message: 'Valid userId is required' });
+        }
+        if (!FILE_PERMISSIONS.includes(permission)) {
+            return res.status(400).json({
+                success: false,
+                message: `Invalid permission. Allowed values: ${FILE_PERMISSIONS.join(', ')}`
+            });
+        }
+
+        const targetId = String(userId);
+        const existing = (file.collaborators || []).find(
+            c => String(c.user?._id || c.user) === targetId
+        );
         if (existing) {
             existing.permission = permission;
         } else {
@@ -714,6 +812,34 @@ router.post('/files/:id/collaborators', authenticateToken, async (req, res) => {
             success: true,
             file
         });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+/**
+ * Remove a collaborator. File management follows the same `canManage` rule as
+ * deletion: owners/admins/creator/admin collaborators, never viewers.
+ */
+router.delete('/files/:id/collaborators/:userId', authenticateToken, async (req, res) => {
+    try {
+        const file = await CodeFile.findById(req.params.id);
+        if (!(await assertFileAccess(file, req.userId, res, 'manage'))) return;
+
+        const targetId = String(req.params.userId);
+        const collaborators = file.collaborators || [];
+        const index = collaborators.findIndex(
+            c => String(c.user?._id || c.user) === targetId
+        );
+        if (index === -1) {
+            return res.status(404).json({ success: false, message: 'Collaborator not found' });
+        }
+
+        collaborators.splice(index, 1);
+        await file.save();
+        await file.populate('collaborators.user', 'fullName email profilePicture');
+
+        res.json({ success: true, file });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }

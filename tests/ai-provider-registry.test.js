@@ -12,6 +12,7 @@ process.env.GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'test-gemini-key';
 
 const aiRouterService = require('../utils/aiRouterService');
 const aiService = require('../utils/aiService');
+const { implementedProviderNames, isImplementedProvider } = require('../config/aiProviders');
 
 const LEGACY = ['claude-sonnet', 'gpt-4o', 'ollama', 'lm-studio'];
 const IMPLEMENTED = ['gemini', 'mistral', 'groq', 'huggingface'];
@@ -23,6 +24,16 @@ describe('AI provider registry', () => {
         expect(Object.keys(aiRouterService.providers).sort()).toEqual([...IMPLEMENTED].sort());
         for (const legacy of LEGACY) {
             expect(aiRouterService.providers[legacy]).toBeUndefined();
+        }
+    });
+
+    test('router and implementation consume the same registry (#4)', () => {
+        const expected = implementedProviderNames().sort();
+        expect(Object.keys(aiRouterService.providers).sort()).toEqual(expected);
+        expect(Object.keys(aiService.providers).sort()).toEqual(expected);
+        for (const name of Object.keys(aiRouterService.providers)) {
+            expect(aiRouterService.getProvider(name).implemented).toBe(true);
+            expect(isImplementedProvider(name)).toBe(true);
         }
     });
 

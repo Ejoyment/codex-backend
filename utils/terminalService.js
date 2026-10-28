@@ -399,6 +399,7 @@ class TerminalService {
       err.statusCode = 403;
       throw err;
     }
+    if (access.workspaceId) workspaceId = access.workspaceId;
 
     const sessionToken = require('crypto').randomBytes(32).toString('hex');
     const sessionId = `${userId}_${workspaceId}_${Date.now()}`;
@@ -425,7 +426,10 @@ class TerminalService {
     await fs.mkdir(workspacePath, { recursive: true });
     this.workspaces.set(sessionId, workspacePath);
 
-    if (this.usePty) {
+    // Free-tier callers are explicitly forced onto the simulated/VFS terminal.
+    // Paid callers keep the existing isolated-backend policy (VPS first, then
+    // the opt-in host fallback).
+    if (this.usePty && options.allowHostShell !== false) {
       if (terminalTransportEnabled()) {
         // Remote PTY: ssh → docker exec in a VPS toolbox container. The shell
         // implements the node-pty subset (write/resize/kill/onData) so the

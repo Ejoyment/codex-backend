@@ -1,47 +1,22 @@
+const { providerDefinitions, implementedProviderNames } = require('../config/aiProviders');
 const { parsePrivacyMode } = require('./aiPrivacy');
 const localBridge = require('./localBridge');
 
 class AIRouterService {
   constructor() {
     this.localPrivacyMode = parsePrivacyMode(process.env.LOCAL_PRIVACY_MODE);
-    // Only providers utils/aiService can actually serve are listed here.
-    // The previous registry also advertised claude-sonnet/gpt-4o/ollama/
-    // lm-studio, none of which aiService implements — every selection of one
-    // of those names was silently rerouted to the first configured provider
-    // (agent sockets and agent-v1 read `provider` from client payloads). Names
-    // this service cannot serve are rejected rather than silently substituted.
-    this.providers = {
-      gemini: {
-        name: 'Google Gemini',
-        type: 'cloud',
-        model: process.env.AI_MODEL || 'gemini-1.5-flash',
-        available: !!process.env.GEMINI_API_KEY,
-      },
-      mistral: {
-        name: 'Mistral AI',
-        type: 'cloud',
-        model: process.env.MISTRAL_MODEL || 'mistral-tiny',
-        endpoint: 'https://api.mistral.ai/v1/chat/completions',
-        available: !!process.env.MISTRAL_API_KEY,
-        apiKey: process.env.MISTRAL_API_KEY,
-      },
-      groq: {
-        name: 'Groq (Fast Completion)',
-        type: 'cloud',
-        model: process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
-        endpoint: 'https://api.groq.com/openai/v1/chat/completions',
-        available: !!process.env.GROQ_API_KEY,
-        apiKey: process.env.GROQ_API_KEY,
-      },
-      huggingface: {
-        name: 'Hugging Face',
-        type: 'cloud',
-        model: process.env.HUGGINGFACE_MODEL || 'mistralai/Mistral-7B-Instruct-v0.2',
-        endpoint: 'https://api-inference.huggingface.co/models/',
-        available: !!process.env.HUGGINGFACE_API_KEY,
-        apiKey: process.env.HUGGINGFACE_API_KEY,
-      },
-    };
+    // Only implemented providers are exposed. The registry is shared with
+    // utils/aiService, so a name cannot be advertised here without a real
+    // chat implementation there. Unknown/legacy names are rejected rather
+    // than silently substituted.
+    const definitions = providerDefinitions();
+    this.providers = Object.fromEntries(
+      implementedProviderNames().map((key) => {
+        const definition = { ...definitions[key] };
+        delete definition.apiKey;
+        return [key, definition];
+      })
+    );
     this.defaultProvider = process.env.AI_PROVIDER ||
       Object.keys(this.providers).find((key) => this.providers[key].available) ||
       null;
