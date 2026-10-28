@@ -26,9 +26,16 @@ jest.mock('../models/LocalTask', () => ({ findOne: jest.fn(), findById: jest.fn(
 jest.mock('../models/LocalProject', () => ({ findById: jest.fn() }));
 jest.mock('../models/SpecModel', () => ({ findById: jest.fn(), findByIdAndUpdate: jest.fn() }));
 jest.mock('../models/CodeFile', () => ({ find: jest.fn(), findOne: jest.fn(), create: jest.fn() }));
-jest.mock('../utils/specAccess', () => ({ userCanAccessProject: jest.fn(), userCanAccessSpec: jest.fn() }));
+jest.mock('../utils/specAccess', () => ({ userCanAccessProject: jest.fn(), userCanAccessSpec: jest.fn(), userCanAccessWorkspace: jest.fn() }));
 jest.mock('../utils/workspaceAuth', () => ({ assertWorkspaceAccess: jest.fn() }));
-jest.mock('../utils/aiRouterService', () => ({ routeChat: jest.fn() }));
+jest.mock('../utils/aiRouterService', () => ({
+  routeChat: jest.fn(),
+  resolveRequestProvider: jest.fn((provider, localPrivacyMode) => ({
+    provider: provider || 'gemini',
+    localPrivacyMode: Boolean(localPrivacyMode),
+  })),
+  validateModel: jest.fn().mockResolvedValue(true),
+}));
 jest.mock('../utils/sddVerificationService', () => ({ verifySpec: jest.fn() }));
 jest.mock('../utils/containerWorker', () => ({ provisionWorker: jest.fn(), teardownWorker: jest.fn() }));
 jest.mock('../utils/gitService', () => ({

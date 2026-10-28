@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const { authenticateToken } = require('../middleware/auth');
 const { enforceProjectLimit } = require('../middleware/trial');
 const LocalProject = require('../models/LocalProject');
@@ -281,6 +282,36 @@ router.post('/', authenticateToken, enforceProjectLimit, async (req, res) => {
 
 // ============ STANDALONE TASKS (must come before /:projectId routes) ============
 
+// Shared serializer so GET /tasks and GET /tasks/:taskId return identical task shapes
+const serializeTask = (t) => ({
+    id: t._id,
+    title: t.title,
+    description: t.description,
+    status: t.status,
+    priority: t.priority,
+    taskType: t.taskType,
+    projectId: t.projectId,
+    companyId: t.companyId,
+    specIds: t.specIds,
+    figmaNodeId: t.figmaNodeId,
+    blockedBy: t.blockedBy,
+    branch: t.branch,
+    pullRequestId: t.pullRequestId,
+    agentSessionId: t.agentSessionId,
+    agentExecution: t.agentExecution,
+    dueDate: t.dueDate,
+    labels: t.labels,
+    assignee: t.assignee,
+    assigneeName: t.assigneeName,
+    githubIssueUrl: t.githubIssueUrl,
+    githubIssueNumber: t.githubIssueNumber,
+    githubRepoName: t.githubRepoName,
+    isPushedToGit: t.isPushedToGit,
+    completedAt: t.completedAt,
+    createdAt: t.createdAt,
+    updatedAt: t.updatedAt
+});
+
 /**
  * @swagger
  * /api/projects/tasks:
@@ -298,34 +329,14 @@ router.post('/', authenticateToken, enforceProjectLimit, async (req, res) => {
 router.get('/tasks', authenticateToken, async (req, res) => {
     try {
         const userId = req.userId || req.user.userId || req.user.id;
-        const tasks = await LocalTask.find({ 
-            userId, 
-            status: { $ne: 'archived' } 
-        }).sort({ createdAt: -1 });
+        const tasks = await LocalTask.find({
+            userId,
+            status: { $ne: 'archived' }
+        }).populate('assignee', 'fullName name').sort({ createdAt: -1 });
 
         res.json({
             success: true,
-            tasks: tasks.map(t => ({
-                id: t._id,
-                title: t.title,
-                description: t.description,
-                status: t.status,
-                priority: t.priority,
-                taskType: t.taskType,
-                projectId: t.projectId,
-                companyId: t.companyId,
-                specIds: t.specIds,
-                figmaNodeId: t.figmaNodeId,
-                blockedBy: t.blockedBy,
-                branch: t.branch,
-                pullRequestId: t.pullRequestId,
-                agentSessionId: t.agentSessionId,
-                agentExecution: t.agentExecution,
-                dueDate: t.dueDate,
-                labels: t.labels,
-                createdAt: t.createdAt,
-                updatedAt: t.updatedAt
-            }))
+            tasks: tasks.map(serializeTask)
         });
     } catch (error) {
         console.error('Get tasks error:', error);
@@ -357,6 +368,15 @@ router.get('/tasks', authenticateToken, async (req, res) => {
  *                 type: string
  *               taskType:
  *                 type: string
+ *               status:
+ *                 type: string
+ *                 enum: [backlog, in_progress, in_review, blocked, done]
+ *               assignToMe:
+ *                 type: boolean
+ *               labels:
+ *                 type: array
+ *                 items:
+ *                   type: string
  *     responses:
  *       201:
  *         description: Task created successfully
@@ -365,7 +385,11 @@ router.get('/tasks', authenticateToken, async (req, res) => {
 router.post('/tasks', authenticateToken, async (req, res) => {
     try {
         const userId = req.userId || req.user.userId || req.user.id;
-        const { title, description, priority, taskType, dueDate, projectId, companyId, specIds = [], figmaNodeId, blockedBy = [] } = req.body;
+        const {
+            title, description, priority, taskType, dueDate, projectId, companyId,
+            specIds = [], figmaNodeId, blockedBy = [], status = 'backlog',
+            assignToMe = false, labels = [],
+        } = req.body;
 
         if (!title) {
             return res.status(400).json({ success: false, message: 'Task title is required' });
@@ -373,6 +397,15 @@ router.post('/tasks', authenticateToken, async (req, res) => {
 
         if (!['critical', 'high', 'medium', 'low', 'urgent'].includes(priority || 'medium')) {
             return res.status(400).json({ success: false, message: 'Invalid task priority' });
+        }
+        if (!['backlog', 'in_progress', 'in_review', 'blocked', 'done'].includes(status)) {
+            return res.status(400).json({ success: false, message: 'Invalid task status' });
+        }
+        if (typeof assignToMe !== 'boolean') {
+            return res.status(400).json({ success: false, message: 'assignToMe must be a boolean' });
+        }
+        if (!Array.isArray(labels) || labels.some((label) => typeof label !== 'string' || !label.trim())) {
+            return res.status(400).json({ success: false, message: 'Labels must be an array of non-empty strings' });
         }
 
         if (specIds.length) {
@@ -394,7 +427,11 @@ router.post('/tasks', authenticateToken, async (req, res) => {
             specIds,
             figmaNodeId: figmaNodeId || null,
             blockedBy,
-            status: 'backlog'
+            status,
+            completedAt: status === 'done' ? new Date() : null,
+            assignee: assignToMe ? userId : null,
+            assigneeName: assignToMe ? (req.user.fullName || req.user.name || '') : '',
+            labels: [...new Set(labels.map((label) => label.trim()).filter(Boolean))],
         });
 
         res.status(201).json({
@@ -411,6 +448,23 @@ router.post('/tasks', authenticateToken, async (req, res) => {
 /**
  * @swagger
  * /api/projects/tasks/{taskId}:
+ *   get:
+ *     summary: Get a single task by ID
+ *     tags:
+ *       - Tasks
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: taskId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Task found
+ *       404:
+ *         description: Task not found
  *   put:
  *     summary: Update a task status
  *     tags:
@@ -437,6 +491,31 @@ router.post('/tasks', authenticateToken, async (req, res) => {
  *       200:
  *         description: Task updated successfully
  */
+// Get single task by ID
+router.get('/tasks/:taskId', authenticateToken, async (req, res) => {
+    try {
+        const userId = req.userId || req.user.userId || req.user.id;
+        const { taskId } = req.params;
+
+        if (!mongoose.Types.ObjectId.isValid(taskId)) {
+            return res.status(404).json({ success: false, message: 'Task not found' });
+        }
+
+        const task = await LocalTask.findOne({ _id: taskId, userId });
+        if (!task) {
+            return res.status(404).json({ success: false, message: 'Task not found' });
+        }
+
+        res.json({
+            success: true,
+            task: serializeTask(task)
+        });
+    } catch (error) {
+        console.error('Get task error:', error);
+        res.status(500).json({ success: false, message: 'Error fetching task' });
+    }
+});
+
 // Update task status
 router.put('/tasks/:taskId', authenticateToken, async (req, res) => {
     try {
@@ -674,8 +753,8 @@ router.get('/:projectId', authenticateToken, async (req, res) => {
 router.put('/:projectId', authenticateToken, async (req, res) => {
     try {
         const userId = req.userId || req.user.userId || req.user.id;
-        const { name, description, status, priority, progress, tags, workspaceId, 
-                isGitEnabled, pushedToGitHub, githubRepoUrl, githubRepoName } = req.body;
+        const { name, description, status, priority, progress, tags, workspaceId,
+            isGitEnabled, pushedToGitHub, githubRepoUrl, githubRepoName } = req.body;
 
         const project = await LocalProject.findOne({ _id: req.params.projectId, userId });
         if (!project) {
@@ -851,9 +930,9 @@ router.post('/:projectId/tasks', authenticateToken, async (req, res) => {
 router.get('/:projectId/tasks', authenticateToken, async (req, res) => {
     try {
         const userId = req.userId || req.user.userId || req.user.id;
-        const tasks = await LocalTask.find({ 
-            userId, 
-            projectId: req.params.projectId 
+        const tasks = await LocalTask.find({
+            userId,
+            projectId: req.params.projectId
         }).sort({ createdAt: -1 });
 
         res.json({

@@ -631,11 +631,11 @@ describe('AI provider routing', () => {
 
     it('honours a per-request provider instead of the process default', async () => {
         const service = await freshService();
-        service.chatGemini = async () => ({ picked: 'gemini' });
-        service.chatMistral = async () => ({ picked: 'mistral' });
+        service.chatGemini = async () => ({ success: true, content: 'gemini', picked: 'gemini' });
+        service.chatMistral = async () => ({ success: true, content: 'mistral', picked: 'mistral' });
 
         // Default is gemini, but the caller explicitly asked for mistral.
-        const res = await service.chat([], { provider: 'mistral' });
+        const res = await service.chat([{ role: 'user', content: 'hi' }], { provider: 'mistral' });
         expect(res.picked).toBe('mistral');
     });
 
@@ -646,7 +646,7 @@ describe('AI provider routing', () => {
         service.chatGemini = async () => { throw new Error('boom'); };
         service.chatMistral = async () => ({ picked: 'mistral' });
 
-        await service.chat([], { provider: 'gemini' });
+        await service.chat([{ role: 'user', content: 'hi' }], { provider: 'gemini' });
         // A transient failure must not re-point every later request.
         expect(service.provider).toBe(before);
     });
@@ -656,7 +656,9 @@ describe('AI provider routing', () => {
         service.chatGemini = async () => { throw new Error('g'); };
         service.chatMistral = async () => { throw new Error('m'); };
 
-        await expect(service.chat([], { provider: 'gemini' })).rejects.toThrow();
+        const res = await service.chat([{ role: 'user', content: 'hi' }], { provider: 'gemini' });
+        expect(res.success).toBe(false);
+        expect(res.error).toMatch(/g|failed/i);
     });
 });
 

@@ -93,6 +93,9 @@ router.post('/generate', authenticateToken, async (req, res) => {
 
         const aiService = require('../utils/aiService');
         const result = await aiService.chat([{ role: 'user', content: context }]);
+        if (!result.success) {
+            return res.status(502).json({ success: false, message: `AI service error: ${result.error}` });
+        }
 
         res.json({
             success: true,
@@ -197,6 +200,17 @@ router.post('/', authenticateToken, async (req, res) => {
                 company: companyId,
                 type: 'text',
             });
+            try {
+                const conversationIndexer = require('../utils/conversationIndexer');
+                const cacheInvalidator = require('../utils/cacheInvalidator');
+                Message.findById(message._id).populate('sender', 'name fullName').then(doc => {
+                    if (doc) {
+                        conversationIndexer.indexMessage(doc).catch(() => {});
+                        if (companyId) cacheInvalidator.invalidateForCompany(companyId);
+                        if (req.userId) cacheInvalidator.invalidateForUser(req.userId);
+                    }
+                }).catch(() => {});
+            } catch (e) { /* ignore */ }
             await Channel.findByIdAndUpdate(channelId, {
                 lastMessage: message._id,
                 lastMessageAt: new Date(),

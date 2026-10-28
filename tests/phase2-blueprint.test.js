@@ -205,12 +205,18 @@ describe('Phase 2 - Spec-Driven & Autonomous Workflows', () => {
       expect(provider.type).toBe('cloud');
     });
 
-    test('should not advertise providers the service cannot serve', () => {
+    test('does not advertise unimplemented Claude or GPT-4o providers', () => {
       const aiRouter = require('../utils/aiRouterService');
       expect(aiRouter.getProvider('claude-sonnet')).toBeNull();
       expect(aiRouter.getProvider('gpt-4o')).toBeNull();
+    });
+
+    test('routes supported local providers outside the cloud provider registry', () => {
+      const aiRouter = require('../utils/aiRouterService');
       expect(aiRouter.getProvider('ollama')).toBeNull();
       expect(aiRouter.getProvider('lm-studio')).toBeNull();
+      expect(aiRouter.isLocalProvider('ollama')).toBe(true);
+      expect(aiRouter.isLocalProvider('lm-studio')).toBe(true);
     });
 
     test('should have isLocalProvider method', () => {

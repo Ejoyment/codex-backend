@@ -285,10 +285,18 @@ class SandboxExecutor {
      * Regex blocklists are trivially bypassable.
      */
     validateCode(code, language) {
+        try {
+            const sandboxSecurity = require('./sandboxSecurity');
+            const enhanced = sandboxSecurity.validateCode(code, language);
+            if (!enhanced.valid) return enhanced;
+        } catch (e) { /* fallback */ }
+        
         const dangerousPatterns = [
             /require\s*\(\s*['"]fs['"]\s*\)/,
             /require\s*\(\s*['"]child_process['"]\s*\)/,
             /require\s*\(\s*['"]net['"]\s*\)/,
+            /require\s*\(\s*['"]http['"]\s*\)/,
+            /require\s*\(\s*['"]https['"]\s*\)/,
             /eval\s*\(/,
             /Function\s*\(/,
             /process\.exit/,

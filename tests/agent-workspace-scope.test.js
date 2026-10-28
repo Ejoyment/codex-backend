@@ -96,9 +96,18 @@ jest.mock('../utils/creditPoolService', () => ({
 }));
 jest.mock('../utils/realtimeBus', () => ({ emitAgentProgress: jest.fn() }));
 jest.mock('../utils/aiService', () => ({ chat: jest.fn() }));
+jest.mock('../utils/aiRouterService', () => ({
+  resolveRequestProvider: jest.fn((provider, localPrivacyMode) => ({
+    provider: provider || 'gemini',
+    localPrivacyMode: Boolean(localPrivacyMode),
+  })),
+  validateModel: jest.fn().mockResolvedValue(true),
+  isLocalProvider: jest.fn(() => false),
+}));
 jest.mock('../utils/githubService', () => ({}));
 jest.mock('../utils/teamMemoryService', () => ({ getConventionsPrompt: jest.fn() }));
 jest.mock('../utils/aiContextEngine', () => ({ buildCrossToolContext: jest.fn() }));
+jest.mock('../utils/agentContextService', () => ({ buildBundle: jest.fn().mockResolvedValue(null) }));
 jest.mock('../utils/agentOrchestrator', () => ({ executeAgenticLoop: jest.fn() }));
 jest.mock('../utils/vectorMemory', () => ({
   store: jest.fn(),

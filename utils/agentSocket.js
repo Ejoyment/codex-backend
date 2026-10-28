@@ -118,7 +118,7 @@ class AgentSocketHandler {
   }
 
   async handleDelegate(socket, data = {}) {
-    const { taskId, taskTitle, sessionId, workspaceId, summary = '', specId, provider = 'gemini', localPrivacyMode = false } = data;
+    const { taskId, taskTitle, sessionId, workspaceId, summary = '', specId, provider: requestedProvider, model, localPrivacyMode = false } = data;
     let creditCharged = false;
     const refundCredit = async () => {
       if (!creditCharged) return;
@@ -131,6 +131,9 @@ class AgentSocketHandler {
     };
 
     try {
+      const { provider, localPrivacyMode: effectiveLocalPrivacyMode } =
+        aiRouterService.resolveRequestProvider(requestedProvider, localPrivacyMode);
+      await aiRouterService.validateModel(provider, model);
       // Access checks BEFORE any mutation (execution creation, task updates):
       // a client-supplied taskId/specId/workspaceId must belong to the caller.
       let task = null;
@@ -191,6 +194,7 @@ class AgentSocketHandler {
         taskTitle: taskTitle || 'Agent task',
         summary,
         status: 'running',
+        model: model || provider,
         approvalRequired: true,
         metadata: {
           taskId: taskId || null,
@@ -198,7 +202,8 @@ class AgentSocketHandler {
           specId: specId || null,
           source: 'agent:delegate',
           provider,
-          localPrivacyMode,
+          model: model || null,
+          localPrivacyMode: effectiveLocalPrivacyMode,
           creditsCharged: CreditPoolService.AGENT_JOB_CREDIT_COST,
         },
       });
@@ -247,7 +252,7 @@ class AgentSocketHandler {
         taskId,
         status: 'running',
         provider,
-        localPrivacyMode,
+        localPrivacyMode: effectiveLocalPrivacyMode,
       });
 
       socket.join(`task:${taskId}`);
@@ -259,7 +264,7 @@ class AgentSocketHandler {
         taskId,
       });
 
-      this.executionLoop(execution, taskId, canonicalWorkspaceId, specId, provider, localPrivacyMode, socket, refundCredit);
+      this.executionLoop(execution, taskId, canonicalWorkspaceId, specId, provider, model, effectiveLocalPrivacyMode, socket, refundCredit);
 
       // Provision container worker if Docker is available
       if (canonicalWorkspaceId) {
@@ -290,7 +295,7 @@ class AgentSocketHandler {
     }
   }
 
-  async executionLoop(execution, taskId, workspaceId, specId, provider, localPrivacyMode, socket, refundCredit = async () => {}) {
+  async executionLoop(execution, taskId, workspaceId, specId, provider, model, localPrivacyMode, socket, refundCredit = async () => {}) {
     try {
       execution.status = 'running';
       execution.logs = [{ timestamp: new Date(), message: 'Agent execution started' }];
@@ -323,21 +328,29 @@ class AgentSocketHandler {
         workspaceId,
         files: codeFiles,
         agentMode: true,
+        provider,
+        model,
         instructions: spec ? `Follow the spec contract: ${spec.specId}` : undefined,
       };
 
-      const result = await aiRouterService.routeChat(messages, codeContext, { provider, localPrivacyMode });
+      const result = await aiRouterService.routeChat(messages, codeContext, { provider, model, localPrivacyMode });
 
       if (result.success) {
         // Stage the proposal on the isolated agent branch; VFS stays untouched
         // until the user approves.
         const changes = agentChangeSet.buildChangeset(result.content || '', codeFiles);
+        if (changes.length === 0) {
+          throw new Error('The AI responded but did not return any parseable file changes. Retry with a clearer implementation task or include the target files and expected behavior.');
+        }
         const { filesChanged, diffSummary } = agentChangeSet.summarize(changes, codeFiles);
-        if (changes.length && workspaceId) {
-          await agentChangeSet.stageChanges(workspaceId, changes, {
+        if (workspaceId) {
+          const staged = await agentChangeSet.stageChanges(workspaceId, changes, {
             message: `Agent: ${execution.taskTitle}`.slice(0, 200),
             branch: metaValue(execution, 'agentBranch') || execution.branch,
-          }).catch((error) => console.error('Agent stage error:', error));
+          });
+          if (!staged.success || !staged.committed) {
+            throw new Error(`Could not stage agent changes on branch ${metaValue(execution, 'agentBranch') || execution.branch}: ${staged.error || staged.reason || 'commit did not complete'}`);
+          }
         }
 
         execution.status = 'awaiting_approval';
@@ -398,9 +411,21 @@ class AgentSocketHandler {
       await execution.save();
     } catch (error) {
       execution.status = 'failed';
+      execution.summary = error.message;
       execution.logs.push({ timestamp: new Date(), message: `Execution error: ${error.message}` });
       await refundCredit();
       await execution.save();
+      realtimeBus.emitAgentProgress(socket.userId, {
+        type: 'error',
+        executionId: execution._id,
+        status: 'failed',
+        error: error.message,
+      });
+      socket.emit('agent:execution-error', {
+        execution,
+        error: error.message,
+        status: 'failed',
+      });
       socket.emit('agent:error', { message: error.message });
     }
   }
@@ -569,8 +594,10 @@ class AgentSocketHandler {
         { role: 'system', content: `Re-running agent with feedback: ${feedback}` },
         { role: 'user', content: feedback },
       ];
-
-      const result = await aiRouterService.routeChat(messages, {}, { provider: execution.metadata?.provider || 'gemini' });
+      const provider = execution.metadata?.provider;
+      const model = execution.metadata?.model;
+      await aiRouterService.validateModel(provider, model);
+      const result = await aiRouterService.routeChat(messages, {}, { provider, model });
 
       if (result.success) {
         execution.logs.push({ timestamp: new Date(), message: 'Agent re-execution completed with feedback' });

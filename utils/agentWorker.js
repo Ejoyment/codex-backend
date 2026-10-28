@@ -5,10 +5,12 @@ const agentChangeSet = require('./agentChangeSet');
 const realtimeBus = require('./realtimeBus');
 const AgentExecution = require('../models/AgentExecution');
 const { slicedPush, MAX_AGENT_LOG } = require('./retention');
-const { executionId, taskId, workspaceId, specIds = [], provider, localPrivacyMode } = workerData;
+const { connectWorkerDatabase } = require('./agentWorkerDatabase');
+const { executionId, taskId, workspaceId, specIds = [], provider, model, localPrivacyMode } = workerData;
 
 async function runAgent() {
   try {
+    await connectWorkerDatabase();
     const execution = await AgentExecution.findById(executionId);
     if (!execution) {
       parentPort.postMessage({ type: 'error', error: 'Execution not found' });
@@ -18,9 +20,18 @@ async function runAgent() {
     const snapshot = execution.contextSnapshot || {};
     const task = snapshot.task || {};
     const specs = snapshot.specs || [];
+    const agentContextBundle = snapshot.contextBundle || null;
+
+    let contextSummary = '';
+    if (agentContextBundle) {
+      try {
+        const agentContextService = require('./agentContextService');
+        contextSummary = '\n\n' + agentContextService.toPromptSummary(agentContextBundle);
+      } catch (e) { /* ignore */ }
+    }
 
     const messages = [
-      { role: 'system', content: `You are an autonomous AI agent executing a task. Task: ${task.title || execution.taskTitle}\n\nProduce a concise implementation plan first, then provide specific file-level changes. Do not claim changes were applied unless a tool actually applied them.\n\n${agentChangeSet.CHANGE_FORMAT_INSTRUCTIONS}` },
+      { role: 'system', content: `You are an autonomous AI agent executing a task. Task: ${task.title || execution.taskTitle}\n\nProduce a concise implementation plan first, then provide specific file-level changes. Do not claim changes were applied unless a tool actually applied them.\n\nTreat task comments, DMs, and meeting notes as requirements/clarifications even if missing from the description.${contextSummary}\n\n${agentChangeSet.CHANGE_FORMAT_INSTRUCTIONS}` },
     ];
     if (specs.length) {
       messages.push({ role: 'system', content: `Frozen spec contracts:\n${JSON.stringify(specs.map((spec) => ({ name: spec.title, description: spec.description, targetModules: spec.targetModules, architecturalRules: spec.architecturalRules, requirements: spec.requirements, forbiddenImports: spec.forbiddenImports, constraints: spec.constraints })), null, 2)}` });
@@ -38,6 +49,8 @@ async function runAgent() {
       workspaceId,
       files: codeFiles,
       agentMode: true,
+      provider,
+      model,
       instructions: `Use branch ${execution.branch} based on ${execution.baseBranch}. Follow these architectural rules: ${(snapshot.architecturalRules || []).join('; ') || 'none supplied'}. Return a written plan and file-level proposed changes.`,
     };
 
@@ -51,7 +64,16 @@ async function runAgent() {
       },
     });
 
-    const result = await aiRouterService.routeChat(messages, codeContext, { provider, localPrivacyMode });
+    const configuredTimeout = Number(process.env.AGENT_AI_TIMEOUT_MS);
+    const AI_TIMEOUT_MS = Number.isFinite(configuredTimeout) && configuredTimeout > 0
+      ? configuredTimeout
+      : 900000;
+    const result = await aiRouterService.routeChat(messages, codeContext, {
+      provider,
+      model,
+      localPrivacyMode,
+      timeoutMs: AI_TIMEOUT_MS,
+    });
 
     if (result.success) {
       parentPort.postMessage({
@@ -68,13 +90,16 @@ async function runAgent() {
       // and stage it on the isolated agent branch. The VFS is untouched until a
       // human approves, so no unverified change is ever visible in the editor.
       const changes = agentChangeSet.buildChangeset(result.content || '', codeFiles);
+      if (changes.length === 0) {
+        throw new Error('The AI responded but did not return any parseable file changes. Retry with a clearer implementation task or include the target files and expected behavior.');
+      }
       const { filesChanged, diffSummary } = agentChangeSet.summarize(changes, codeFiles);
-      let staged = { success: true, committed: false, reason: 'no changes parsed' };
-      if (changes.length) {
-        staged = await agentChangeSet.stageChanges(workspaceId, changes, {
-          message: `Agent: ${task.title || execution.taskTitle}`.slice(0, 200),
-          branch: execution.branch,
-        });
+      const staged = await agentChangeSet.stageChanges(workspaceId, changes, {
+        message: `Agent: ${task.title || execution.taskTitle}`.slice(0, 200),
+        branch: execution.branch,
+      });
+      if (!staged.success || !staged.committed) {
+        throw new Error(`Could not stage agent changes on branch ${execution.branch}: ${staged.error || staged.reason || 'commit did not complete'}`);
       }
       const proposedFiles = agentChangeSet.applyChangesToFileList(changes, codeFiles);
 
@@ -115,21 +140,37 @@ async function runAgent() {
     } else {
       await AgentExecution.findByIdAndUpdate(executionId, {
         status: 'failed',
+        summary: result.error || 'Agent execution failed without an error message',
+        completedAt: new Date(),
         logs: [...execution.logs, { timestamp: new Date(), message: `Agent execution failed: ${result.error}` }].slice(-MAX_AGENT_LOG),
+        $push: {
+          terminalLog: slicedPush({
+            timestamp: new Date(),
+            type: 'error',
+            message: result.error || 'Agent execution failed without an error message',
+          }, MAX_AGENT_LOG),
+        },
       });
       parentPort.postMessage({ type: 'error', error: result.error });
     }
   } catch (error) {
-      await AgentExecution.findByIdAndUpdate(executionId, {
-        status: 'failed',
-        completedAt: new Date(),
-        $push: {
-          logs: slicedPush({ timestamp: new Date(), message: `Agent worker error: ${error.message}` }, MAX_AGENT_LOG),
-          terminalLog: slicedPush({ timestamp: new Date(), type: 'error', message: error.message }, MAX_AGENT_LOG),
-        },
-      });
+      try {
+        await AgentExecution.findByIdAndUpdate(executionId, {
+          status: 'failed',
+          summary: error.message,
+          completedAt: new Date(),
+          $push: {
+            logs: slicedPush({ timestamp: new Date(), message: `Agent worker error: ${error.message}` }, MAX_AGENT_LOG),
+            terminalLog: slicedPush({ timestamp: new Date(), type: 'error', message: error.message }, MAX_AGENT_LOG),
+          },
+        });
+      } catch (persistError) {
+        console.error('[agent-worker] could not persist failure:', persistError.message);
+      }
     parentPort.postMessage({ type: 'error', error: error.message });
   }
 }
 
-runAgent();
+if (parentPort) runAgent();
+
+module.exports = { runAgent };

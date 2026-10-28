@@ -44,6 +44,9 @@ Return JSON only with this schema:
         const aiResult = await aiService.chat([
             { role: 'user', content: analysisPrompt }
         ]);
+        if (!aiResult.success || !aiResult.content) {
+            throw new Error(aiResult.error || 'AI returned an empty ticket analysis');
+        }
         
         let extractedContext = {};
         try {
@@ -120,6 +123,9 @@ Return JSON only with this schema:
     const aiResult = await aiService.chat([
         { role: 'user', content: fixPrompt }
     ]);
+    if (!aiResult.success || !aiResult.content) {
+        throw new Error(aiResult.error || 'AI returned an empty ticket fix');
+    }
     
     let suggestedFix = {};
     try {

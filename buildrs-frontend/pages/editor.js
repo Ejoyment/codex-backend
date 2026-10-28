@@ -2,7 +2,10 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import AuthGuard from '../components/AuthGuard';
+import Sidebar from '../components/Sidebar';
+import NotificationBell from '../components/NotificationBell';
 import useAuthStore from '../store/authStore';
+import { getAvatarUrl } from '../lib/utils';
 import { apiFetch, projectApi, API_BASE_URL, SOCKET_URL, agentApi, companyApi } from '../lib/api';
 import * as editorDrafts from '../lib/editorDrafts';
 import { registerEditorSnippets } from '../lib/monacoExtras';
@@ -11,9 +14,9 @@ import { startRun, streamRun, runLanguageFor } from '../lib/ideRun';
 import { lspApi, docUri, lspKindToMonaco, lspRangeToMonaco } from '../lib/lspClient';
 import {
   Save, ChevronDown, ChevronRight, FileCode, Terminal, Bot, Layers, Rocket, Box,
-  Users, GitBranch, Eye, X, FolderOpen, Search, Settings, Folder, Trash2,
+  Users, GitBranch, Eye, Bug, X, FolderOpen, Search, Settings, Folder, Trash2,
   FolderPlus, AlertCircle, CheckCircle, XCircle, RefreshCw, Puzzle, HelpCircle,
-  FilePlus, Play, Loader2, LayoutDashboard, GitPullRequestArrow, Copy, GitCommit,
+  FilePlus, Play, Loader2, GitPullRequestArrow, Copy, GitCommit,
 } from 'lucide-react';
 import MonacoEditor from '@monaco-editor/react';
 import { io } from 'socket.io-client';
@@ -537,6 +540,7 @@ export default function Editor() {
   const [deploying, setDeploying] = useState(false);
   const [logDeployId, setLogDeployId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [recentSearches, setRecentSearches] = useState([]);
   const { success: toastSuccess, error: toastError } = useToastStore(
     (s) => ({ success: s.success, error: s.error })
   );
@@ -557,13 +561,11 @@ export default function Editor() {
     setConfirmScopeSwitch(null);
     if (fn) fn();
   };
-  const [menuOpen, setMenuOpen] = useState(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState('');
   const [paletteIndex, setPaletteIndex] = useState(0);
   const [aboutOpen, setAboutOpen] = useState(false);
   const dropdownRef = useRef(null);
-  const menuRef = useRef(null);
   const terminalRef = useRef(null);
   const editorRef = useRef(null);
   const decorationsRef = useRef(null);
@@ -1125,9 +1127,6 @@ export default function Editor() {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
         setShowProjectSelector(false);
       }
-      if (menuRef.current && !menuRef.current.contains(e.target)) {
-        setMenuOpen(null);
-      }
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -1149,6 +1148,12 @@ export default function Editor() {
         e.preventDefault();
         setPaletteOpen(true);
         setPaletteQuery('');
+        setPaletteIndex(0);
+      } else if (k === 'k') {
+        e.preventDefault();
+        setPaletteOpen(true);
+        setPaletteQuery('');
+        setPaletteIndex(0);
       } else if (k === '`') {
         e.preventDefault();
         setPanel((p) => (p === 'terminal' ? null : 'terminal'));
@@ -1888,6 +1893,7 @@ export default function Editor() {
       }
       const data = await apiFetch('/api/ai-pair/chat', {
         method: 'POST',
+        timeoutMs: shouldUseAgentLoop ? 1800000 : 120000,
         body: JSON.stringify({
           sessionId: session._id,
           message: input,
@@ -2237,7 +2243,8 @@ export default function Editor() {
     // the code runner — preview them in the sandbox instead of erroring out.
     if (lang.language === 'auto' || /\.(html?|xhtml|css)$/i.test(file.name || '')) {
       await handleSandboxStart(file);
-      setPanel('preview');
+      setPanel(null);
+      showSidebar('debug');
       return;
     }
     const editor = editorRef.current;
@@ -2260,7 +2267,7 @@ export default function Editor() {
     setExternalProblems([]);
     setRunProblems(monacoRef.current, editor?.getModel?.() || null, []);
     clearOutput();
-    setPanel('output');
+    setPanel('tests');
     appendOutput('sys', `▸ Running ${file.name} as ${lang.language === 'auto' ? 'auto-detected' : lang.language}${dirty ? ' (unsaved buffer)' : ''}…`);
     runLineBufRef.current = '';
 
@@ -2982,7 +2989,7 @@ export default function Editor() {
   }
 
   function handleDeploy() {
-    setPanel('deploy');
+    showSidebar('debug');
     setShowSubdomainInput(true);
 
     const deployName =
@@ -3139,13 +3146,6 @@ export default function Editor() {
     }
   }
 
-  const eyebrow = (fn) => {
-    setMenuOpen(null);
-    setPaletteOpen(false);
-    setAboutOpen(false);
-    fn();
-  };
-
   function handleDelete(file) {
     setConfirmDelete(file);
   }
@@ -3191,83 +3191,31 @@ export default function Editor() {
     }
   };
 
-  const MENU_ITEMS = [
-    {
-      id: 'file', label: 'File', items: [
-        { label: 'New File', kbd: '⌘N', run: () => startInlineCreate() },
-        { label: 'New Folder', kbd: '⇧⌘N', run: () => startInlineCreate('folder') },
-        { label: null },
-        { label: 'Save', kbd: '⌘S', run: handleSave },
-        { label: null },
-        { label: 'Close Editor', kbd: '⌘W', run: () => { if (selectedFileRef.current) closeTab(selectedFileRef.current); } },
-        { label: null },
-        { label: 'Back to Dashboard', kbd: '⌘⇧D', run: () => router.push('/dashboard') },
-      ],
-    },
-    {
-      id: 'edit', label: 'Edit', items: [
-        { label: 'Undo', kbd: '⌘Z', run: () => editorRef.current?.trigger('keyboard', 'undo', null) },
-        { label: 'Redo', kbd: '⇧⌘Z', run: () => editorRef.current?.trigger('keyboard', 'redo', null) },
-        { label: null },
-        { label: 'Command Palette...', kbd: '⌘P', run: () => { setPaletteOpen(true); setPaletteQuery(''); } },
-      ],
-    },
-    {
-      id: 'view', label: 'View', items: [
-        { label: 'Toggle Sidebar', kbd: '⌘B', run: () => setSidebarVisible((v) => !v) },
-        { label: 'Toggle Terminal', kbd: '⌘`', run: () => setPanel((p) => (p === 'terminal' ? null : 'terminal')) },
-        { label: null },
-        { label: 'Explorer', run: () => showSidebar('explorer') },
-        { label: 'Search', run: () => showSidebar('search') },
-        { label: 'Source Control', run: () => showSidebar('scm') },
-        { label: 'Run & Deploy', run: () => showSidebar('run') },
-        { label: 'Live Share', run: () => showSidebar('live') },
-        { label: 'AI Assistant', run: () => showSidebar('ai') },
-        { label: 'Extensions', run: () => showSidebar('extensions') },
-      ],
-    },
-    {
-      id: 'run', label: 'Run', items: [
-        { label: 'Run File', kbd: '⌘R', run: () => handleRun() },
-        { label: 'Stop Run', run: stopRun },
-        { label: null },
-        { label: 'Deploy Project...', run: handleDeploy },
-        { label: 'Start Sandbox', run: handleSandboxStart },
-        { label: null },
-        { label: 'Open Terminal', kbd: '⌘`', run: () => setPanel((p) => (p === 'terminal' ? null : 'terminal')) },
-      ],
-    },
-    {
-      id: 'terminal', label: 'Terminal', items: [
-        { label: 'New Terminal', kbd: '⌘`', run: () => setPanel((p) => (p === 'terminal' ? null : 'terminal')) },
-        { label: 'Run git status', run: () => handleGitAction('status') },
-        { label: null },
-        { label: 'Open Deployments', run: () => setPanel('deploy') },
-      ],
-    },
-    {
-      id: 'help', label: 'Help', items: [
-        { label: 'About Buildrs HQ', run: () => setAboutOpen(true) },
-        { label: 'Keyboard Shortcuts', run: () => setAboutOpen(true) },
-        { label: null },
-        { label: 'Support Center', run: () => router.push('/support') },
-      ],
-    },
-  ];
 
   const paletteEntries = (() => {
     const q = paletteQuery.trim().toLowerCase();
     const match = (s) => (q ? (s || '').toLowerCase().includes(q) : true);
-    const fileMatches = files.filter((f) => match(f.name)).slice(0, 8).map((f) => ({ kind: 'file', label: f.name, icon: FileCode, file: f }));
+    const fileMatches = files
+      .filter((f) => match(`${f.name || ''} ${f.path || ''}`))
+      .slice(0, 8)
+      .map((f) => ({ kind: 'file', label: f.name, icon: FileCode, file: f }));
     const cmds = [
       { kind: 'command', label: 'File: New File', icon: FilePlus, run: () => startInlineCreate() },
+      { kind: 'command', label: 'File: New Folder', icon: FolderPlus, run: () => setShowNewFolderModal(true) },
       { kind: 'command', label: 'File: Save', icon: Save, run: handleSave },
+      { kind: 'command', label: 'File: Close Editor', icon: X, run: () => { if (selectedFileRef.current) closeTab(selectedFileRef.current); } },
       { kind: 'command', label: 'Run: Run File', icon: Play, run: handleRun },
       { kind: 'command', label: 'Run: Stop Run', icon: XCircle, run: stopRun },
       { kind: 'command', label: 'Git: Refresh Status', icon: GitBranch, run: () => handleGitAction('status') },
+      { kind: 'command', label: 'Git: View changes and diff', icon: GitPullRequestArrow, run: () => showSidebar('scm') },
       { kind: 'command', label: 'Deploy: Deploy Project', icon: Rocket, run: handleDeploy },
       { kind: 'command', label: 'Sandbox: Start preview', icon: Box, run: handleSandboxStart },
       { kind: 'command', label: 'Terminal: Toggle', icon: Terminal, run: () => setPanel((p) => (p === 'terminal' ? null : 'terminal')) },
+      { kind: 'command', label: 'View: Explorer', icon: FolderOpen, run: () => showSidebar('explorer') },
+      { kind: 'command', label: 'View: Search files', icon: Search, run: () => showSidebar('search') },
+      { kind: 'command', label: 'AI: Open assistant', icon: Bot, run: () => showSidebar('ai') },
+      { kind: 'command', label: 'Specs: Open specifications', icon: FileCode, run: () => router.push('/specs') },
+      { kind: 'command', label: 'Help: Keyboard shortcuts', icon: HelpCircle, run: () => setAboutOpen(true) },
       { kind: 'command', label: 'View: Toggle Sidebar', icon: FolderOpen, run: () => setSidebarVisible((v) => !v) },
       { kind: 'command', label: 'Help: About', icon: HelpCircle, run: () => setAboutOpen(true) },
     ].filter((c) => match(c.label));
@@ -3277,7 +3225,6 @@ export default function Editor() {
   function showSidebar(view) {
     setActiveSidebar(view);
     setSidebarVisible(true);
-    setMenuOpen(null);
   }
 
   const runPaletteEntry = (entry) => {
@@ -3298,12 +3245,49 @@ export default function Editor() {
   );
   const allProblems = [...externalProblems, ...problemList];
   const filePathSegs = selectedFile ? String(selectedFile.path || selectedFile.name || '').split('/').filter(Boolean) : [];
-  const commandStats = [
-    { label: 'Files', value: files.length, tone: 'cyan', icon: FileCode },
-    { label: 'Deploys', value: deployments.length, tone: 'green', icon: Rocket },
-    { label: 'Collaborators', value: collaborators.length, tone: 'purple', icon: Users },
-    { label: 'Git Changes', value: modifiedCount, tone: 'amber', icon: GitBranch },
-  ];
+  const searchMatches = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return [];
+
+    const seen = new Set();
+    const candidates = [...files, ...openFiles, ...(selectedFile ? [selectedFile] : [])];
+    const matches = [];
+
+    candidates.forEach((file) => {
+      const key = getFileKey(file);
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+
+      const path = String(file.fullPath || file._fullPath || fileFullPath(file));
+      const source = key === getFileKey(selectedFile)
+        ? content
+        : openContentsRef.current[key] ?? file.content;
+      const lines = typeof source === 'string' ? source.split(/\r?\n/) : [];
+      let fileMatches = 0;
+
+      lines.forEach((line, index) => {
+        if (line.toLowerCase().includes(query) && fileMatches < 3) {
+          const matchIndex = line.toLowerCase().indexOf(query);
+          const start = Math.max(0, matchIndex - 45);
+          const end = Math.min(line.length, start + 120);
+          matches.push({
+            key: `${key}:${index + 1}`,
+            file,
+            path,
+            lineNumber: index + 1,
+            excerpt: `${start > 0 ? '…' : ''}${line.slice(start, end)}${end < line.length ? '…' : ''}`,
+          });
+          fileMatches += 1;
+        }
+      });
+
+      if (fileMatches === 0 && path.toLowerCase().includes(query)) {
+        matches.push({ key, file, path, lineNumber: null, excerpt: path });
+      }
+    });
+
+    return matches.slice(0, 50);
+  }, [files, openFiles, selectedFile, content, searchQuery, getFileKey]);
 
   return (
     <AuthGuard>
@@ -3312,88 +3296,77 @@ export default function Editor() {
         <link rel="icon" href="/buildrs.png" />
       </Head>
 
-      <div className="ed-page">
-        <div className="ed-product-shell">
-          <div className="ed-command-header">
-            <div className="ed-command-copy">
-              <div className="ed-command-kicker">Buildrs HQ Workspace</div>
-              <h1>{selectedProject ? selectedProject.name : selectedRepo ? (selectedRepo.fullName || selectedRepo.name) : (workspaceId ? 'Workspace Console' : 'No workspace')}</h1>
-              <p>Product engineering operations, live collaboration, AI assistance, and deployment workflows in one command center.</p>
+      <div className="workspace-container ed-workspace-shell">
+        <Sidebar user={user} subscription={subscription} />
+        <main className="workspace-main ed-workspace-main">
+          <header className="ed-global-header">
+            <div className="ed-global-context">
+              <button
+                type="button"
+                className="ed-global-branch"
+                onClick={() => {
+                  showSidebar('explorer');
+                  setShowProjectSelector(true);
+                }}
+                title="Switch workspace, project, or repository"
+              >
+                <GitBranch className="w-3.5 h-3.5" />
+                <span>{gitStatus?.branch || selectedRepo?.default_branch || selectedRepo?.defaultBranch || selectedProject?.defaultBranch || 'main'}</span>
+                <ChevronDown className="w-3.5 h-3.5" />
+              </button>
+              {gitStatus && (
+                <span className={`ed-global-status ${modifiedCount ? 'is-changed' : 'is-clean'}`}>
+                  <span />
+                  {modifiedCount ? `${modifiedCount} changes` : 'Working tree clean'}
+                </span>
+              )}
             </div>
-            <div className="ed-command-actions">
-              <div className="ed-product-pills">
-                <span>AI</span>
-                <span>Git</span>
-                <span>Deploy</span>
-                <span>Live</span>
-              </div>
-              <button type="button" className="btn-workspace btn-secondary" onClick={() => router.push('/workspace')}>
+            <button
+              type="button"
+              className="ed-global-search-trigger"
+              onClick={() => {
+                setPaletteQuery('');
+                setPaletteIndex(0);
+                setPaletteOpen(true);
+              }}
+              aria-label="Search files and editor commands"
+            >
+              <Search className="w-4 h-4" />
+              <span>Search specs, diff, agents</span>
+              <kbd>⌘K</kbd>
+            </button>
+            <div className="ed-global-actions">
+              <button
+                type="button"
+                className="btn-workspace btn-secondary"
+                onClick={() => router.push('/workspace')}
+              >
                 <Layers className="w-4 h-4" /> {hasCompany ? 'Workspaces' : 'Create Workspace'}
               </button>
-              <button type="button" className="btn-workspace btn-primary" onClick={() => startInlineCreate()}>
+              <button
+                type="button"
+                className="btn-workspace btn-primary"
+                onClick={() => startInlineCreate()}
+              >
                 <FilePlus className="w-4 h-4" /> New File
               </button>
+              <NotificationBell look="header" />
+              <button
+                type="button"
+                className="ed-global-avatar"
+                onClick={() => router.push('/profile')}
+                title="Open profile"
+              >
+                <img
+                  src={getAvatarUrl(user, user?.fullName || user?.name || 'User')}
+                  alt={user?.fullName || user?.name || 'User'}
+                />
+              </button>
             </div>
-          </div>
-
-          <div className="ed-command-stats">
-            {commandStats.map(({ label, value, tone, icon: Icon }) => (
-              <div key={label} className={`ed-stat-card is-${tone}`}>
-                <div className="ed-stat-icon"><Icon className="w-4 h-4" /></div>
-                <div>
-                  <div className="ed-stat-label">{label}</div>
-                  <div className="ed-stat-value">{value}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* ---- Menu bar ---- */}
-        <div className="ed-menubar">
-          <div className="ed-window-dots">
-            <span className="ed-dot is-red" />
-            <span className="ed-dot is-yellow" />
-            <span className="ed-dot is-green" />
-          </div>
-          <button type="button" className="ed-menubar-brand" onClick={() => router.push('/dashboard')} title="Back to Dashboard">
-            <LayoutDashboard className="w-3.5 h-3.5" />
-            <span>Buildrs <em>HQ</em></span>
-          </button>
-          <nav className="ed-menubars" ref={menuRef}>
-            {MENU_ITEMS.map((m) => (
-              <div key={m.id} style={{ position: 'relative' }}>
-                <button
-                  type="button"
-                  className={`ed-menubtn ${menuOpen === m.id ? 'is-open' : ''}`}
-                  onClick={() => setMenuOpen(menuOpen === m.id ? null : m.id)}
-                >
-                  {m.label}
-                </button>
-                {menuOpen === m.id && (
-                  <div className="ed-menudrop">
-                    {m.items.map((it, i) =>
-                      it.label === null ? (
-                        <div key={`s${i}`} className="ed-menudrop-sep" />
-                      ) : (
-                        <button key={it.label} type="button" className="ed-menudrop-item" onClick={() => eyebrow(it.run)}>
-                          <span>{it.label}</span>
-                          {it.kbd && <kbd>{it.kbd}</kbd>}
-                        </button>
-                      )
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
-          </nav>
-          <div className="ed-menubar-right">
-            {selectedProject ? selectedProject.name : selectedRepo ? (selectedRepo.fullName || selectedRepo.name) : (workspaceId ? 'Workspace' : 'No workspace')}
-          </div>
-        </div>
-
-        {/* ---- Body ---- */}
-        <div className="ed-body">
+          </header>
+          <div className="ed-page">
+            {/* ---- Editor workspace ---- */}
+            <div className="ed-body">
           {/* Activity bar */}
           <nav className="ed-actbar">
             <button type="button" className={`ed-actbtn ${activeSidebar === 'explorer' ? 'is-active' : ''}`} onClick={() => showSidebar('explorer')} title="Explorer (⌘B)">
@@ -3406,19 +3379,8 @@ export default function Editor() {
               <GitBranch className="w-5 h-5" />
               {modifiedCount > 0 && <span className="ed-actbadge">{modifiedCount}</span>}
             </button>
-            <button type="button" className={`ed-actbtn ${activeSidebar === 'run' ? 'is-active' : ''}`} onClick={() => showSidebar('run')} title="Run & Deploy">
-              <Play className="w-5 h-5" />
-            </button>
-            <button type="button" className={`ed-actbtn ${activeSidebar === 'live' ? 'is-active' : ''}`} onClick={() => showSidebar('live')} title="Live Share">
-              <Users className="w-5 h-5" />
-              {collaborators.length > 0 && <span className="ed-actbadge">{collaborators.length}</span>}
-            </button>
-            <button type="button" className={`ed-actbtn ${activeSidebar === 'ai' ? 'is-active' : ''}`} onClick={() => showSidebar('ai')} title="AI Assistant">
-              <Bot className="w-5 h-5" />
-              {aiLoading && <span className="ed-actbadge">·</span>}
-            </button>
-            <button type="button" className={`ed-actbtn ${activeSidebar === 'extensions' ? 'is-active' : ''}`} onClick={() => showSidebar('extensions')} title="Extensions">
-              <Puzzle className="w-5 h-5" />
+            <button type="button" className={`ed-actbtn ${activeSidebar === 'debug' ? 'is-active' : ''}`} onClick={() => showSidebar('debug')} title="Debug">
+              <Bug className="w-5 h-5" />
             </button>
             <div className="ed-actbar-grow" />
             <button type="button" className="ed-actbtn" onClick={() => setAboutOpen(true)} title="Help & shortcuts">
@@ -3525,33 +3487,107 @@ export default function Editor() {
                     <span className="ed-sidebar-title">Search</span>
                     <div className="ed-sidebar-actions"></div>
                   </div>
-                  <div className="ed-sidebar-body">
-                    <div className="ed-search-input-icon">
+                  <div className="ed-sidebar-body ed-search-body">
+                    <form
+                      className="ed-search-input-icon"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        const query = searchQuery.trim();
+                        if (query) {
+                          setRecentSearches((previous) => [query, ...previous.filter((item) => item !== query)].slice(0, 8));
+                        }
+                      }}
+                    >
                       <Search className="w-3.5 h-3.5" />
                       <input
                         type="text"
                         className="ed-search-input"
-                        placeholder="Search files..."
+                        placeholder="Search"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
+                        aria-label="Search files and open file contents"
                         autoFocus
                       />
+                    </form>
+                    <div className="ed-search-section-title">
+                      <span>{searchQuery.trim() ? 'Results' : 'Recent searches'}</span>
+                      {searchQuery.trim() && <span>{searchMatches.length}</span>}
                     </div>
                     {searchQuery.trim() ? (
-                      <>
-                        <div className="ed-stat">{files.filter((f) => f.name.toLowerCase().includes(searchQuery.trim().toLowerCase())).length} matching file(s)</div>
-                        {files.filter((f) => f.name.toLowerCase().includes(searchQuery.trim().toLowerCase())).slice(0, 30).map((f) => (
-                          <button key={f._id} type="button" className="ed-search-result" onClick={() => selectFile(f)}>
-                            {getLanguageGlyph(f.name)}
-                            <span><em>{f.name}</em> <span style={{ color: '#6e6e6e' }}>{f.path && f.path !== '/' ? `— ${f.path}` : ''}</span></span>
+                      searchMatches.length ? (
+                        <div className="ed-search-list">
+                          {searchMatches.map((match) => (
+                            <button
+                              key={match.key}
+                              type="button"
+                              className="ed-search-result"
+                              onClick={() => {
+                                const query = searchQuery.trim();
+                                if (query) {
+                                  setRecentSearches((previous) => [query, ...previous.filter((item) => item !== query)].slice(0, 8));
+                                }
+                                selectFile(match.file);
+                              }}
+                              title={match.lineNumber ? `${match.path}:${match.lineNumber}` : match.path}
+                            >
+                              {getLanguageGlyph(match.file.name)}
+                              <span className="ed-search-result-copy">
+                                <span className="ed-search-path">{match.path}</span>
+                                <span className="ed-search-preview">
+                                  {match.lineNumber && <small>{match.lineNumber}</small>}
+                                  <code>{match.excerpt}</code>
+                                </span>
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="ed-search-empty">No matching files or open-file content.</div>
+                      )
+                    ) : recentSearches.length ? (
+                      <div className="ed-search-list">
+                        {recentSearches.map((query) => (
+                          <button
+                            key={query}
+                            type="button"
+                            className="ed-search-recent"
+                            onClick={() => setSearchQuery(query)}
+                          >
+                            <Search className="w-3.5 h-3.5" />
+                            <span>{query}</span>
                           </button>
                         ))}
-                      </>
-                    ) : (
-                      <div className="ed-empty">
-                        <Search className="w-6 h-6" />
-                        <p className="text-xs">Type to search across your workspace files</p>
                       </div>
+                    ) : (
+                      <>
+                        {openFiles.length > 0 && <div className="ed-search-subtitle">Recently opened</div>}
+                        <div className="ed-search-list">
+                          {openFiles.slice(-10).reverse().map((file) => {
+                            const key = getFileKey(file);
+                            const source = key === getFileKey(selectedFile)
+                              ? content
+                              : openContentsRef.current[key] ?? file.content ?? '';
+                            const preview = String(source).split(/\r?\n/).find((line) => line.trim()) || file.name;
+                            return (
+                              <button
+                                key={key}
+                                type="button"
+                                className="ed-search-result"
+                                onClick={() => selectFile(file)}
+                              >
+                                {getLanguageGlyph(file.name)}
+                                <span className="ed-search-result-copy">
+                                  <span className="ed-search-path">{file.fullPath || file._fullPath || fileFullPath(file)}</span>
+                                  <span className="ed-search-preview"><code>{preview}</code></span>
+                                </span>
+                              </button>
+                            );
+                          })}
+                          {openFiles.length === 0 && (
+                            <div className="ed-search-empty">Search files by name, path, or content in open files.</div>
+                          )}
+                        </div>
+                      </>
                     )}
                   </div>
                 </>
@@ -3693,10 +3729,10 @@ export default function Editor() {
                 </>
               )}
 
-              {activeSidebar === 'run' && (
+              {activeSidebar === 'debug' && (
                 <>
                   <div className="ed-sidebar-head">
-                    <span className="ed-sidebar-title">Run & Deploy</span>
+                    <span className="ed-sidebar-title">Debug</span>
                     <div className="ed-sidebar-actions">
                       <button type="button" className="ed-sidebar-btn" onClick={loadDeployments} title="Refresh deployments"><RefreshCw className="w-3.5 h-3.5" /></button>
                     </div>
@@ -3718,10 +3754,74 @@ export default function Editor() {
                     <button type="button" className="btn-workspace btn-primary" onClick={handleSandboxStart}>
                       <Box className="w-4 h-4" /> Start Sandbox
                     </button>
+                    {deployScopeId && (
+                      <button
+                        type="button"
+                        className="btn-workspace btn-secondary"
+                        onClick={() => setAutoDeploy(!autoDeployOn)}
+                        aria-pressed={autoDeployOn}
+                        title={autoDeployOn ? 'Auto-deploy is ON: saving republishes this workspace' : 'Auto-deploy is OFF: save without republishing'}
+                      >
+                        Auto-Deploy {autoDeployOn ? 'ON' : 'OFF'}
+                      </button>
+                    )}
                     {sandboxUrl && (
-                      <button type="button" className="btn-workspace btn-secondary" onClick={() => setPanel('preview')}>
+                      <button type="button" className="btn-workspace btn-secondary" onClick={() => showSidebar('debug')}>
                         <Eye className="w-4 h-4" /> Open Live Preview
                       </button>
+                    )}
+                    {sandboxUrl && (
+                      <iframe
+                        src={sandboxUrl}
+                        title="Live preview"
+                        style={{ width: '100%', minHeight: 180, border: '1px solid rgba(255,255,255,0.09)', borderRadius: 6, background: '#fff' }}
+                      />
+                    )}
+                    <div className="ed-sidebar-title" style={{ padding: '0.1rem 0.55rem' }}>Tools</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                      <button type="button" className="btn-workspace btn-secondary" onClick={() => showSidebar('live')}>
+                        <Users className="w-3.5 h-3.5" /> Live Share{collaborators.length > 0 ? ` (${collaborators.length})` : ''}
+                      </button>
+                      <button type="button" className="btn-workspace btn-secondary" onClick={() => showSidebar('ai')}>
+                        <Bot className="w-3.5 h-3.5" /> AI Assistant{aiLoading ? ' ·' : ''}
+                      </button>
+                      <button type="button" className="btn-workspace btn-secondary" onClick={() => showSidebar('extensions')}>
+                        <Puzzle className="w-3.5 h-3.5" /> Extensions
+                      </button>
+                    </div>
+                    {showSubdomainInput && (
+                      <form onSubmit={confirmDeploy} className="ed-stat" style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                        <label className="ws-label" style={{ color: '#8c8c8c' }}>Choose a subdomain</label>
+                        {(() => {
+                          const secretFiles = gatherDeploymentFiles().filter((f) =>
+                            /(^|\/)\.env(\.|$)/i.test(`${f.path || ''}/${f.name || ''}`));
+                          return secretFiles.length > 0 ? (
+                            <p className="text-xs" style={{ color: '#e5b84a' }}>
+                              Includes {secretFiles.length} secret file{secretFiles.length === 1 ? '' : 's'}
+                              {secretFiles[0]?.name ? ` (${secretFiles.slice(0, 3).map((f) => f.name).join(', ')})` : ''} — values ship with this deploy.
+                            </p>
+                          ) : null;
+                        })()}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                          <input
+                            type="text"
+                            value={deploySubdomain}
+                            onChange={(e) => setDeploySubdomain(e.target.value.replace(/[^a-z0-9-]/g, '-').toLowerCase())}
+                            placeholder="my-app"
+                            className="ws-input"
+                            style={{ minWidth: 0, flex: 1, fontFamily: 'ui-monospace, Menlo, Consolas, monospace', background: '#1e1e1e', borderColor: '#3c3c3c' }}
+                            required
+                            minLength={2}
+                          />
+                          <span className="text-xs whitespace-nowrap" style={{ color: '#6e6e6e' }}>.buildrshq.dev</span>
+                          <button type="submit" disabled={deploying || deploySubdomain.length < 2} className="btn-workspace btn-primary">
+                            {deploying ? 'Deploying...' : 'Deploy'}
+                          </button>
+                          <button type="button" onClick={() => setShowSubdomainInput(false)} className="btn-workspace btn-secondary">
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
                     )}
                     <div className="ed-sidebar-title" style={{ padding: '0.1rem 0.55rem' }}>Deployments</div>
                     {deployments.length === 0 ? (
@@ -4196,14 +4296,12 @@ export default function Editor() {
 
             {/* ---- Bottom panel ---- */}
             {panel && (
-              <div className={`ed-panel ${panel === 'deploy' ? 'is-deploy' : ''}`}>
+              <div className="ed-panel">
                 <div className="ed-panelbar">
                   {[
                     { id: 'terminal', label: 'Terminal', icon: Terminal },
                     { id: 'problems', label: 'Problems', icon: AlertCircle },
-                    { id: 'output', label: 'Output', icon: FileCode },
-                    { id: 'preview', label: 'Preview', icon: Eye },
-                    { id: 'deploy', label: 'Deployments', icon: Rocket },
+                    { id: 'tests', label: 'Tests', icon: CheckCircle },
                   ].map((t) => (
                     <button key={t.id} type="button" className={`ed-panel-tab ${panel === t.id ? 'is-active' : ''}`} onClick={() => setPanel(t.id)}>
                       <t.icon className="w-3.5 h-3.5" /> {t.label}
@@ -4213,12 +4311,12 @@ export default function Editor() {
                     </button>
                   ))}
                   <div className="ed-panel-actions">
-                    {panel === 'output' && outputLines.length > 0 && (
+                    {panel === 'tests' && outputLines.length > 0 && (
                       <button type="button" className="ed-panel-close" onClick={copyOutput} title="Copy output">
                         <Copy className="w-3.5 h-3.5" />
                       </button>
                     )}
-                    {panel === 'output' && outputLines.length > 0 && (
+                    {panel === 'tests' && outputLines.length > 0 && (
                       <button type="button" className="ed-panel-close" onClick={clearOutput} title="Clear output">
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -4313,12 +4411,12 @@ export default function Editor() {
                     </>
                   )}
 
-                  {panel === 'output' && (
+                  {panel === 'tests' && (
                     <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', fontSize: '0.72rem' }}>
                       {outputLines.length === 0 ? (
                         <div className="ed-empty" style={{ flex: 1 }}>
                           <Play className="w-6 h-6" />
-                          <p className="text-xs">Run a file to see build &amp; program output here</p>
+                          <p className="text-xs">Run a file to see its output and results here</p>
                         </div>
                       ) : (
                         <div style={{ overflowY: 'auto', minHeight: 0, flex: 1, padding: '0.35rem 0.6rem' }}>
@@ -4914,6 +5012,8 @@ export default function Editor() {
           </div>
         </div>
       )}
+        </main>
+      </div>
     </AuthGuard>
   );
 }
