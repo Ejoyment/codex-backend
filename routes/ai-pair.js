@@ -17,6 +17,7 @@ const permissionMatrix = require('../middleware/permissionMatrix');
 const { authenticateToken } = require('../middleware/auth');
 const { canonicalTier } = require('../utils/tierNames');
 const { assertWorkspaceAccess } = require('../utils/workspaceAuth');
+const { boundedLimit } = require('../utils/queryLimits');
 
 async function resolveMemoryWorkspace(workspaceId, userId) {
     if (!workspaceId) return { ok: true, workspaceId: null };
@@ -431,7 +432,7 @@ router.get('/sessions', authenticateToken, async (req, res) => {
 
         const sessions = await AIPairSession.find(query)
             .sort({ lastActivityAt: -1 })
-            .limit(parseInt(limit));
+            .limit(boundedLimit(limit, 20, 100));
 
         res.json({
             success: true,
@@ -460,7 +461,7 @@ router.get('/executions', authenticateToken, async (req, res) => {
 
         const executions = await AgentExecution.find(query)
             .sort({ createdAt: -1 })
-            .limit(parseInt(limit, 10));
+            .limit(boundedLimit(limit, 25, 100));
 
         res.json({ success: true, executions });
     } catch (error) {
@@ -471,7 +472,7 @@ router.get('/executions', authenticateToken, async (req, res) => {
 
 router.post('/executions', authenticateToken, async (req, res) => {
     try {
-        const { sessionId, taskTitle, summary = '', status = 'pending', approvalRequired = false } = req.body;
+        const { sessionId, taskTitle, summary = '', approvalRequired = false } = req.body;
 
         if (!sessionId) {
             return res.status(400).json({ success: false, message: 'sessionId is required' });
@@ -498,7 +499,7 @@ router.post('/executions', authenticateToken, async (req, res) => {
             sessionId,
             taskTitle: taskTitle || 'Workspace task',
             summary,
-            status,
+            status: 'idle',
             approvalRequired,
             metadata: workspaceId ? { workspaceId } : {}
         });
@@ -544,12 +545,13 @@ router.patch('/executions/:executionId', authenticateToken, async (req, res) => 
             delete metadataUpdate.companyId;
         }
 
+        const editableFields = new Set(['taskTitle', 'summary', 'approvalRequired']);
         Object.keys(update).forEach((key) => {
-            if (['_id', 'userId', 'sessionId', 'createdAt', 'workspaceId', 'companyId'].includes(key)) return;
             if (key === 'metadata') {
                 if (metadataUpdate) execution.metadata = metadataUpdate;
                 return;
             }
+            if (!editableFields.has(key)) return;
             execution[key] = update[key];
         });
 

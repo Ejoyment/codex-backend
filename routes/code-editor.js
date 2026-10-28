@@ -676,16 +676,18 @@ router.delete('/files/:id', authenticateToken, async (req, res) => {
         const filePath = vfs.fullPathOf(file);
         
         // VFS first: it re-reads the doc to drop the index entry, so it must
-        // run before the hard delete (the old order always threw not-found
-        // and leaked the index entry).
+        // run before the hard delete. It also performs the tenant-scoped DB
+        // delete and reports failure instead of silently reporting success.
         try {
             await vfs.deleteFile(fileId, workspaceId);
         } catch (vfsError) {
             console.error('VFS delete error:', vfsError);
+            return res.status(500).json({
+                success: false,
+                code: 'FILE_DELETE_FAILED',
+                message: 'File could not be deleted'
+            });
         }
-        // Delete with the workspace filter as well as the id: the mutation
-        // itself is tenant-scoped, not just the pre-check above.
-        await CodeFile.findOneAndDelete({ _id: req.params.id, company: file.company }).catch(() => null);
         
         // Emit real-time event
         emitWorkspaceChange(workspaceId, 'file:deleted', {

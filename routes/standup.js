@@ -9,6 +9,7 @@ const Message = require('../models/Message');
 const { authenticateToken } = require('../middleware/auth');
 const { canPostToChannel } = require('../utils/channelPolicy');
 const { notifyStandupPosted } = require('../utils/notificationTriggers');
+const { boundedLimit } = require('../utils/queryLimits');
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -260,7 +261,7 @@ router.get('/', authenticateToken, async (req, res) => {
             .populate('user', 'fullName email profilePicture')
             .populate('relatedTasks', 'title status')
             .sort({ createdAt: -1 })
-            .limit(parseInt(limit));
+            .limit(boundedLimit(limit, 50, 100));
 
         res.json({ success: true, standups });
     } catch (error) {

@@ -9,6 +9,7 @@ const { userIsCompanyMember } = require('../middleware/workspaceAccess');
 const { notifyNewMessage, notifyChannelCreated } = require('../utils/notificationTriggers');
 const { MAX_REACTIONS, MAX_CHANNEL_MEMBERS } = require('../utils/retention');
 const { messageSendLimiter } = require('../middleware/rateLimits');
+const { boundedLimit } = require('../utils/queryLimits');
 
 // Verify user is a member of the company before operating
 async function requireCompanyMember(req, res, next) {
@@ -458,7 +459,7 @@ router.get('/messages', authenticateToken, requireCompanyMember, async (req, res
             .populate('sender', 'fullName email profilePicture')
             .populate('mentions', 'fullName email')
             .sort({ createdAt: -1 })
-            .limit(parseInt(limit));
+            .limit(boundedLimit(limit, 50, 100));
         
         res.json({
             success: true,

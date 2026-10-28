@@ -39,10 +39,16 @@ describe('legacy billing deprecation', () => {
 
   test('keeps provider callbacks alive during retirement', async () => {
     process.env.LEGACY_BILLING_RETIRED = 'true';
-    const webhook = await request(buildApp()).post('/api/subscription/webhook');
-    const verify = await request(buildApp()).get('/api/subscription/verify');
+    const paths = [
+      ['post', '/api/subscription/webhook'],
+      ['post', '/api/subscription/webhook/stripe'],
+      ['post', '/api/subscription/payment/stripe'],
+      ['get', '/api/subscription/verify'],
+    ];
 
-    expect(webhook.status).toBe(200);
-    expect(verify.status).toBe(200);
+    for (const [method, path] of paths) {
+      const res = await request(buildApp())[method](path);
+      expect(res.status).toBe(200);
+    }
   });
 });

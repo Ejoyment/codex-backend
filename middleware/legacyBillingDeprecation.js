@@ -2,7 +2,7 @@ const SUCCESSOR = '/api/v1/billing';
 
 function isProviderCallback(req) {
   const path = String(req.path || '').toLowerCase();
-  return path.endsWith('/webhook') || path.endsWith('/verify');
+  return /(^|\/)(webhook|verify|payment)(\/|$)/.test(path);
 }
 
 function legacyBillingDeprecation(name) {

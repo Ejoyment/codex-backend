@@ -41,6 +41,7 @@ const Company = require('../models/Company');
 const LocalProject = require('../models/LocalProject');
 const User = require('../models/User');
 const { ensurePersonalWorkspace } = require('../utils/personalWorkspace');
+const vfs = require('../utils/virtualFileSystem');
 const { clearLivenessCache } = require('../middleware/auth');
 
 const app = express();
@@ -298,7 +299,7 @@ describe('DELETE /files/:id', () => {
     setFile(f);
     const res = await request(app).delete('/api/code-editor/files/fileA').set(auth('userC'));
     expect(res.status).toBe(403);
-    expect(CodeFile.findOneAndDelete).not.toHaveBeenCalled();
+    expect(vfs.deleteFile).not.toHaveBeenCalled();
   });
 
   test('read-only member collaborator cannot delete', async () => {
@@ -308,7 +309,7 @@ describe('DELETE /files/:id', () => {
     setCompany({ _id: COMPANY_ID, members: [{ user: 'userC', role: 'member' }] });
     const res = await request(app).delete('/api/code-editor/files/fileA').set(auth('userC'));
     expect(res.status).toBe(403);
-    expect(CodeFile.findOneAndDelete).not.toHaveBeenCalled();
+    expect(vfs.deleteFile).not.toHaveBeenCalled();
   });
 
   test('company member without a collaborator row cannot delete (write is not manage)', async () => {
@@ -316,7 +317,7 @@ describe('DELETE /files/:id', () => {
     setCompany({ _id: COMPANY_ID, members: [{ user: 'userM', role: 'member' }] });
     const res = await request(app).delete('/api/code-editor/files/fileA').set(auth('userM'));
     expect(res.status).toBe(403);
-    expect(CodeFile.findOneAndDelete).not.toHaveBeenCalled();
+    expect(vfs.deleteFile).not.toHaveBeenCalled();
   });
 
   test('company admin without a collaborator row can delete', async () => {
@@ -324,7 +325,7 @@ describe('DELETE /files/:id', () => {
     setCompany({ _id: COMPANY_ID, members: [{ user: 'userAdmin', role: 'admin' }] });
     const res = await request(app).delete('/api/code-editor/files/fileA').set(auth('userAdmin'));
     expect(res.status).toBe(200);
-    expect(CodeFile.findOneAndDelete).toHaveBeenCalledWith({ _id: 'fileA', company: COMPANY_ID });
+    expect(vfs.deleteFile).toHaveBeenCalledWith('fileA', COMPANY_ID);
   });
 
   test('viewer cannot delete even with an admin collaborator row', async () => {
@@ -334,7 +335,7 @@ describe('DELETE /files/:id', () => {
     setCompany({ _id: COMPANY_ID, members: [{ user: 'userV', role: 'viewer' }] });
     const res = await request(app).delete('/api/code-editor/files/fileA').set(auth('userV'));
     expect(res.status).toBe(403);
-    expect(CodeFile.findOneAndDelete).not.toHaveBeenCalled();
+    expect(vfs.deleteFile).not.toHaveBeenCalled();
   });
 
   test('company owner can delete despite a read-only collaborator row', async () => {
@@ -344,7 +345,7 @@ describe('DELETE /files/:id', () => {
     setCompany({ _id: COMPANY_ID, owner: 'userO' });
     const res = await request(app).delete('/api/code-editor/files/fileA').set(auth('userO'));
     expect(res.status).toBe(200);
-    expect(CodeFile.findOneAndDelete).toHaveBeenCalledWith({ _id: 'fileA', company: COMPANY_ID });
+    expect(vfs.deleteFile).toHaveBeenCalledWith('fileA', COMPANY_ID);
   });
 
   test('admin collaborator can delete', async () => {
@@ -353,7 +354,7 @@ describe('DELETE /files/:id', () => {
     setFile(f);
     const res = await request(app).delete('/api/code-editor/files/fileA').set(auth('userC'));
     expect(res.status).toBe(200);
-    expect(CodeFile.findOneAndDelete).toHaveBeenCalledWith({ _id: 'fileA', company: COMPANY_ID });
+    expect(vfs.deleteFile).toHaveBeenCalledWith('fileA', COMPANY_ID);
   });
 });
 

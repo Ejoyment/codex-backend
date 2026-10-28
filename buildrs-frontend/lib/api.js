@@ -11,7 +11,7 @@ export function normalizeApiBaseUrl(raw) {
     .replace(/\/+$/, '');
 }
 
-export const API_BASE_URL = normalizeApiBaseUrl(process.env.NEXT_PUBLIC_API_URL || 'https://codex-backend-7utu.onrender.com');
+export const API_BASE_URL = normalizeApiBaseUrl(process.env.NEXT_PUBLIC_API_URL || '');
 // Realtime endpoints share the backend origin unless overridden — never fall
 // back to localhost in production (REST-on-render + socket-on-localhost is a
 // guaranteed split failure).
