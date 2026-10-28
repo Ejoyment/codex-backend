@@ -129,6 +129,44 @@ class GitHubService {
         }
     }
 
+    async listRepositoryFiles(userId, owner, repo, branch = null) {
+        try {
+            const octokit = await this.getClient(userId);
+            const { data: repository } = await octokit.repos.get({ owner, repo });
+            const targetBranch = branch || repository.default_branch;
+            const { data: branchData } = await octokit.repos.getBranch({
+                owner,
+                repo,
+                branch: targetBranch
+            });
+            const { data: treeData } = await octokit.git.getTree({
+                owner,
+                repo,
+                tree_sha: branchData.commit.sha,
+                recursive: '1'
+            });
+            const files = treeData.tree
+                .filter(item => item.type === 'blob')
+                .map(item => ({
+                    name: item.path.split('/').pop(),
+                    path: item.path,
+                    type: 'file',
+                    size: item.size,
+                    sha: item.sha
+                }));
+
+            return {
+                branch: targetBranch,
+                truncated: Boolean(treeData.truncated),
+                totalFiles: treeData.truncated ? null : files.length,
+                files
+            };
+        } catch (error) {
+            console.error('GitHub recursive file listing error:', error);
+            throw new Error('Failed to list repository files: ' + error.message);
+        }
+    }
+
     async getFileContent(userId, owner, repo, path, branch = null) {
         try {
             const octokit = await this.getClient(userId);

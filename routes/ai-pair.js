@@ -3,6 +3,8 @@ const { aiChatLimiter } = require('../middleware/rateLimits');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const aiService = require('../utils/aiService');
+const aiRouterService = require('../utils/aiRouterService');
+const localBridge = require('../utils/localBridge');
 const githubService = require('../utils/githubService');
 const AIPairSession = require('../models/AIPairSession');
 const ChatMessage = require('../models/ChatMessage');
@@ -22,6 +24,38 @@ async function resolveMemoryWorkspace(workspaceId, userId) {
     if (!access.ok) return { ok: false, reason: access.reason };
     return { ok: true, workspaceId: access.workspaceId };
 }
+
+router.get('/providers', authenticateToken, async (req, res) => {
+    const cloudProviders = aiService.getProviderInfo()
+        .filter((provider) => provider.available)
+        .map((provider) => ({
+            key: provider.name,
+            name: provider.displayName,
+            model: provider.model,
+            type: 'cloud'
+        }));
+    const localProviders = await Promise.all(['ollama', 'lm-studio'].map(async (provider) => {
+        try {
+            const models = await localBridge.getModels(provider);
+            return models.length ? { key: provider, name: provider === 'ollama' ? 'Ollama (BYOM)' : 'LM Studio (BYOM)', type: 'local', models } : null;
+        } catch (error) {
+            return null;
+        }
+    }));
+    let providers = [
+        ...cloudProviders,
+        ...localProviders.filter(Boolean).map(({ key, name, type, models }) => ({ key, name, type, models }))
+    ];
+    if (aiRouterService.localPrivacyMode) {
+        providers = providers.filter((provider) => provider.type === 'local');
+    }
+    const configuredDefault = process.env.AI_PROVIDER;
+    const preferredProvider = aiRouterService.localPrivacyMode ? process.env.LOCAL_AI_PROVIDER : configuredDefault;
+    const defaultProvider = providers.some((provider) => provider.key === preferredProvider)
+        ? preferredProvider
+        : providers[0]?.key || null;
+    res.json({ success: true, providers, defaultProvider });
+});
 
 // Middleware to check AI usage limits
 const checkAILimits = async (req, res, next) => {
@@ -51,7 +85,8 @@ const checkAILimits = async (req, res, next) => {
 
         const limit = limits[tier] ?? 10;
         
-        if (messageCount >= limit) {
+        const localModelRequested = ['ollama', 'lm-studio'].includes(req.body?.provider);
+        if (!localModelRequested && messageCount >= limit) {
             return res.status(429).json({
                 success: false,
                 message: `Daily AI message limit reached (${limit} messages). Upgrade to get more.`,
@@ -60,7 +95,9 @@ const checkAILimits = async (req, res, next) => {
             });
         }
 
-        req.aiLimit = { limit, used: messageCount, remaining: limit - messageCount };
+        req.aiLimit = localModelRequested
+            ? { limit: Infinity, used: messageCount, remaining: Infinity }
+            : { limit, used: messageCount, remaining: limit - messageCount };
         next();
     } catch (error) {
         console.error('AI limits check error:', error);
@@ -568,6 +605,7 @@ router.get('/session/:sessionId', authenticateToken, async (req, res) => {
 
         // Get messages
         const messages = await ChatMessage.find({ sessionId })
+            .where({ userId: req.userId })
             .sort({ createdAt: 1 })
             .limit(100);
 
@@ -653,7 +691,26 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
     };
 
     try {
-        const { sessionId, message, codeContext, enableActions = false, useAgentLoop = false, companyId } = req.body;
+        const { sessionId, message, codeContext = {}, enableActions = false, useAgentLoop = false, companyId, taskId, projectId, provider, model } = req.body || {};
+
+        if (typeof message !== 'string' || !message.trim()) {
+            return res.status(400).json({
+                success: false,
+                message: 'A non-empty message is required.'
+            });
+        }
+        if (codeContext === null || typeof codeContext !== 'object' || Array.isArray(codeContext)) {
+            return res.status(400).json({
+                success: false,
+                message: 'codeContext must be an object.'
+            });
+        }
+        if (!sessionId || typeof sessionId !== 'string') {
+            return res.status(400).json({
+                success: false,
+                message: 'sessionId is required.'
+            });
+        }
         
         // Verify session belongs to user
         const session = await AIPairSession.findOne({
@@ -666,6 +723,16 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
                 success: false,
                 message: 'Session not found'
             });
+        }
+
+        let selectedRouting = null;
+        try {
+            if (provider || model) {
+                selectedRouting = aiRouterService.resolveRequestProvider(provider);
+                await aiRouterService.validateModel(selectedRouting.provider, model);
+            }
+        } catch (error) {
+            return res.status(400).json({ success: false, message: error.message });
         }
 
         // Workspace/company ids drive server-side memory reads and agent file
@@ -681,13 +748,25 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
 
         let agentWorkspaceId = null;
         if (useAgentLoop) {
-            const requestedAgentWorkspaceId = codeContext?.workspace?.id || companyWorkspaceId || null;
+            const requestedAgentWorkspaceId = codeContext?.workspace?.id || companyWorkspaceId || session.companyId || null;
             if (requestedAgentWorkspaceId) {
                 const access = await assertWorkspaceAccess(requestedAgentWorkspaceId, req.userId);
                 if (!access.ok) {
                     return res.status(403).json({ success: false, message: access.reason || 'Workspace access denied' });
                 }
                 agentWorkspaceId = access.workspaceId;
+            }
+        }
+
+        let agentPerm = null;
+        if (useAgentLoop) {
+            agentPerm = await permissionMatrix.checkPermission(req.userId, 'basic', 'agent');
+            if (!agentPerm.allowed) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Agent loop not permitted for your subscription tier',
+                    reason: agentPerm.reason
+                });
             }
         }
 
@@ -698,19 +777,13 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
             role: 'user',
             content: message
         });
+        try {
+            const cacheInvalidator = require('../utils/cacheInvalidator');
+            cacheInvalidator.invalidateForUser(req.userId);
+        } catch (e) { /* ignore */ }
 
         // If agent loop is requested, use orchestrator
         if (useAgentLoop) {
-            // Enforce agent permission scope — gated by permission matrix
-            const agentPerm = await permissionMatrix.checkPermission(req.userId, 'basic', 'agent');
-            if (!agentPerm.allowed) {
-                return res.status(403).json({
-                    success: false,
-                    message: 'Agent loop not permitted for your subscription tier',
-                    reason: agentPerm.reason
-                });
-            }
-
             const credit = await CreditPoolService.deductCredits(req.userId, CreditPoolService.AGENT_JOB_CREDIT_COST);
             if (!credit.success) {
                 return res.status(403).json({
@@ -724,27 +797,58 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
             creditCharged = true;
 
             const agentOrchestrator = require('../utils/agentOrchestrator');
+            const agentContextService = require('../utils/agentContextService');
             const executionTaskTitle = message || 'Workspace task';
             const execution = await AgentExecution.create({
                 userId: req.userId,
                 sessionId,
                 taskTitle: executionTaskTitle,
                 status: 'running',
-                approvalRequired: true,
+                approvalRequired: false,
                 metadata: {
                     startedFrom: 'ai-pair/chat',
                     workspaceId: agentWorkspaceId,
                     currentFile: codeContext?.currentFile?.path || null,
+                    provider: selectedRouting?.provider || null,
+                    model: model || null,
                     creditsCharged: CreditPoolService.AGENT_JOB_CREDIT_COST
                 }
             });
 
+            // Build comprehensive context bundle
+            let agentContextBundle = null;
+            try {
+                agentContextBundle = await agentContextService.buildBundle({
+                    userId: req.userId,
+                    companyId: agentWorkspaceId,
+                    workspaceId: agentWorkspaceId,
+                    taskId: taskId,
+                    projectId: projectId,
+                    message: message,
+                    currentFile: codeContext?.currentFile,
+                    includeConversations: true,
+                    includeMeetings: true,
+                    includeFiles: true
+                });
+            } catch (ctxErr) {
+                console.error('Failed to build agent context bundle:', ctxErr.message);
+            }
+
             const context = {
                 userId: req.userId,
+                userTier: agentPerm.tier,
                 workspaceId: agentWorkspaceId,
                 workspaceName: codeContext?.workspace?.name,
-                files: codeContext?.files || [],
-                currentFile: codeContext?.currentFile
+                files: codeContext?.files?.length
+                    ? codeContext.files
+                    : agentContextBundle?.files?.projectSnapshot || [],
+                currentFile: codeContext?.currentFile,
+                repositoryOwner: session.repositoryOwner,
+                repositoryName: session.repositoryName,
+                repositoryBranch: session.branch,
+                agentContextBundle,
+                provider: selectedRouting?.provider,
+                model,
             };
 
             let result;
@@ -765,19 +869,34 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
                 throw error;
             }
 
-            const executionStatus = result?.success ? 'awaiting_approval' : 'failed';
+            const hasProposedMutations = Boolean(result?.success && result.iterations?.some((iteration) =>
+                iteration.result?.success &&
+                ['create_file', 'update_file', 'create_multiple_files', 'delete_file']
+                    .includes(iteration.action?.tool)
+            ));
+            const executionStatus = result?.success
+                ? (hasProposedMutations ? 'awaiting_approval' : 'completed')
+                : 'failed';
             if (executionStatus === 'failed') await refundCredit();
             await AgentExecution.findOneAndUpdate({ _id: execution._id, userId: req.userId }, {
                 status: executionStatus,
                 summary: result?.summary?.finalThought || result?.summary?.goal || 'Agent run complete',
-                approvalRequired: Boolean(result?.success),
+                approvalRequired: hasProposedMutations,
                 iterations: Array.isArray(result?.iterations) ? result.iterations.length : 0,
+                completedAt: executionStatus === 'completed' || executionStatus === 'failed'
+                    ? new Date()
+                    : null,
                 metadata: {
                     ...(execution.metadata?.toObject?.() || execution.metadata || {}),
                     finalStatus: executionStatus,
                     goal: message,
                     iterationCount: Array.isArray(result?.iterations) ? result.iterations.length : 0,
-                    summary: result?.summary || {}
+                    summary: result?.summary || {},
+                    contextMeta: agentContextBundle?.meta ? {
+                        sources: agentContextBundle.meta.sources,
+                        tokenEstimate: agentContextBundle.meta.tokenEstimate,
+                        hasActiveTask: !!agentContextBundle.tasks?.activeTask
+                    } : null
                 },
                 updatedAt: new Date()
             });
@@ -786,10 +905,16 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
                 sessionId,
                 userId: req.userId,
                 role: 'assistant',
-                content: JSON.stringify(result.summary),
+                content: result.summary?.finalThought ||
+                    result.error ||
+                    result.summary?.stopReason ||
+                    'Agent run complete.',
                 metadata: {
                     type: 'agent_summary',
-                    iterations: result.iterations.length
+                    iterations: result.iterations.length,
+                    success: result.success,
+                    stopReason: result.summary?.stopReason,
+                    error: result.error
                 }
             });
 
@@ -807,10 +932,16 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
         }
 
         // Standard chat mode (existing logic)
-        const history = await ChatMessage.find({ sessionId })
-            .sort({ createdAt: 1 })
+        const recentHistory = await ChatMessage.find({
+            sessionId,
+            userId: req.userId,
+            role: { $in: ['user', 'assistant'] }
+        })
+            .sort({ createdAt: -1, _id: -1 })
             .limit(20)
-            .select('role content');
+            .select('role content')
+            .lean();
+        const history = recentHistory.reverse();
 
         // Enhanced context with cross-tool AI context engine
         let teamConventionPrompt = '';
@@ -866,6 +997,8 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
 
         const enhancedContext = {
             ...codeContext,
+            provider: selectedRouting?.provider || codeContext.provider,
+            model: model || codeContext.model,
             agentMode: enableActions,
             instructions: `${baseInstructions}${teamConventionPrompt}`,
             crossToolContext: crossToolContext

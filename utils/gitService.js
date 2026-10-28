@@ -3,7 +3,8 @@
  * Provides Git operations for workspace repositories
  */
 
-const simpleGit = require('simple-git');
+const simpleGitModule = require('simple-git');
+const simpleGit = typeof simpleGitModule === 'function' ? simpleGitModule : (simpleGitModule.simpleGit || simpleGitModule.default || simpleGitModule);
 const path = require('path');
 const fs = require('fs').promises;
 const os = require('os');

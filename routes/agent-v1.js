@@ -19,6 +19,7 @@ const { assertWorkspaceAccess } = require('../utils/workspaceAuth');
 const realtimeBus = require('../utils/realtimeBus');
 const { Worker } = require('worker_threads');
 const path = require('path');
+const aiRouterService = require('../utils/aiRouterService');
 
 // Delegate is the expensive cloud AI path: one pool credit per job. Failed
 // jobs refund below so only executions that actually ran consume budget.
@@ -61,29 +62,74 @@ async function resolveExecutionWorkspace(execution, userId) {
   return { ok: true, workspaceId: access.workspaceId };
 }
 
-function spawnAgentWorker(executionId, taskId, workspaceId, specIds, provider, localPrivacyMode) {
+function spawnAgentWorker(executionId, taskId, workspaceId, specIds, provider, model, localPrivacyMode, timeoutMs = 900000) {
   return new Promise((resolve, reject) => {
+    let settled = false;
     const workerPath = path.join(__dirname, '../utils/agentWorker.js');
     const worker = new Worker(workerPath, {
-      workerData: { executionId, taskId, workspaceId, specIds, provider, localPrivacyMode },
+      workerData: { executionId, taskId, workspaceId, specIds, provider, model, localPrivacyMode },
     });
 
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      try {
+        worker.terminate();
+      } catch (e) {}
+      AgentExecution.findByIdAndUpdate(executionId, {
+        status: 'failed',
+        summary: `Agent execution timed out after ${Math.round(timeoutMs / 60000)} minutes`,
+        completedAt: new Date(),
+        $push: {
+          logs: { timestamp: new Date(), message: `Agent execution timed out after ${Math.round(timeoutMs / 60000)} minutes` },
+          terminalLog: { timestamp: new Date(), type: 'error', message: `Agent execution timed out after ${Math.round(timeoutMs / 60000)} minutes` },
+        },
+      }).catch((error) => console.error('[agent] could not persist timeout state:', error.message));
+      if (taskId) {
+        LocalTask.findByIdAndUpdate(taskId, {
+          'agentExecution.status': 'failed',
+          'agentExecution.error': `Agent execution timed out after ${Math.round(timeoutMs / 60000)} minutes`,
+          $push: { 'agentExecution.logs': { timestamp: new Date(), message: `Agent execution timed out after ${Math.round(timeoutMs / 60000)} minutes` } },
+          updatedAt: new Date(),
+        }).catch((error) => console.error('[agent] could not persist task timeout state:', error.message));
+      }
+      reject(new Error(`Agent execution timed out after ${Math.round(timeoutMs / 60000)} minutes`));
+    }, timeoutMs);
+
+    const cleanup = () => {
+      if (timeout) clearTimeout(timeout);
+    };
+
     worker.on('message', (msg) => {
+      if (settled) return;
       if (msg.type === 'progress') {
         realtimeBus.emitAgentProgress(executionId, msg.payload);
         AgentExecution.findByIdAndUpdate(executionId, {
           $push: { terminalLog: { timestamp: new Date(), type: msg.payload.phase || 'progress', message: msg.payload.message || msg.payload.status || 'Agent progress' } },
-        }).catch(() => {});
+        }).catch((error) => console.error('[agent] could not persist progress:', error.message));
       } else if (msg.type === 'complete') {
+        settled = true;
+        cleanup();
         resolve(msg.result);
       } else if (msg.type === 'error') {
+        settled = true;
+        cleanup();
         reject(new Error(msg.error));
       }
     });
 
-    worker.on('error', reject);
+    worker.on('error', (err) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      worker.terminate().catch((terminateError) => console.error('[agent] worker cleanup failed:', terminateError.message));
+      reject(err);
+    });
     worker.on('exit', (code) => {
-      if (code !== 0) reject(new Error(`Agent worker exited with code ${code}`));
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new Error(`Agent worker exited before reporting completion (code ${code})`));
     });
   });
 }
@@ -91,14 +137,24 @@ function spawnAgentWorker(executionId, taskId, workspaceId, specIds, provider, l
 router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurrentJobs(), enforceTaskTimeout(), enforceCreditPool(), enforceCloudComputeLimit(), async (req, res) => {
   let creditCharged = false;
   try {
-    const { taskId, taskTitle, sessionId, summary = '', provider = 'gemini', localPrivacyMode = false } = req.body;
+    const { taskId, taskTitle, sessionId, summary = '', provider: requestedProvider, model, localPrivacyMode: requestedLocalPrivacyMode = false } = req.body;
+    let provider;
+    let localPrivacyMode;
+    try {
+      const routing = aiRouterService.resolveRequestProvider(requestedProvider, requestedLocalPrivacyMode);
+      provider = routing.provider;
+      localPrivacyMode = routing.localPrivacyMode;
+      await aiRouterService.validateModel(provider, model);
+    } catch (error) {
+      return res.status(503).json({ success: false, message: error.message });
+    }
 
     if (!taskId && !taskTitle) {
       return res.status(400).json({ success: false, message: 'taskId or taskTitle is required' });
     }
 
     const { tier } = req.subscription;
-    if (tier === 'developer') {
+    if (tier === 'developer' && !aiRouterService.isLocalProvider(provider)) {
       return res.status(403).json({ success: false, message: 'Agent delegation requires Pro tier or higher. Use local BYOM.', requiresUpgrade: true });
     }
 
@@ -169,12 +225,32 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       return res.status(409).json({ success: false, message: `Could not create isolated branch: ${branchResult.error}` });
     }
 
+    // Build comprehensive context bundle for delegated agent
+    let agentContextBundle = null;
+    try {
+      const agentContextService = require('../utils/agentContextService');
+      agentContextBundle = await agentContextService.buildBundle({
+        userId: req.userId,
+        companyId: workspaceId,
+        workspaceId,
+        taskId: task?._id?.toString(),
+        projectId: task?.projectId?.toString(),
+        message: summary || taskTitleValue,
+        includeConversations: true,
+        includeMeetings: true,
+        includeFiles: true
+      });
+    } catch (ctxErr) {
+      console.error('Failed to build agent context bundle for delegation:', ctxErr.message);
+    }
+
     const contextSnapshot = {
       task: task ? { id: task._id.toString(), title: task.title, description: task.description, priority: task.priority, figmaNodeId: task.figmaNodeId } : { title: taskTitleValue, description: summary },
       specs: specs.map((spec) => ({ ...spec, _id: spec._id.toString() })),
       codebaseSnapshot: { branch: baseBranch, files: codeFiles.map((file) => ({ path: file.path, name: file.name, language: file.language, content: file.content })) },
       architecturalRules: specs.flatMap((spec) => spec.architecturalRules || []),
       figmaContext: null,
+      contextBundle: agentContextBundle,
       capturedAt: new Date(),
     };
 
@@ -203,7 +279,7 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       branch,
       baseBranch,
       contextSnapshot,
-      model: provider,
+      model: model || provider,
       startedAt: new Date(),
       metadata: {
         taskId: taskId || null,
@@ -212,6 +288,7 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
         agentBranch: branch,
         source: 'agent-v1/delegate',
         provider,
+        model: model || null,
         localPrivacyMode,
         creditsCharged: AGENT_JOB_CREDIT_COST,
       },
@@ -226,14 +303,25 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       task.agentExecution = {
         ...(task.agentExecution?.toObject?.() || task.agentExecution || {}),
         status: 'running',
+        error: '',
         agentBranch: branch,
         specRef: specs[0]?._id || null,
+        logs: [
+          ...(task.agentExecution?.logs || []),
+          { timestamp: new Date(), message: `Agent started on branch ${branch}` },
+        ],
       };
       await task.save();
       await LocalTask.findOneAndUpdate({ _id: taskId, userId: req.userId }, {
         'agentExecution.status': 'running',
         updatedAt: new Date(),
       });
+      try {
+        const cacheInvalidator = require('../utils/cacheInvalidator');
+        cacheInvalidator.invalidateForTask(taskId);
+        if (workspaceId) cacheInvalidator.invalidateForCompany(workspaceId);
+        if (task.userId) cacheInvalidator.invalidateForUser(task.userId);
+      } catch (e) { /* ignore */ }
     }
 
     realtimeBus.emitAgentProgress(req.userId, {
@@ -253,7 +341,9 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       workspaceId,
       specs.map((spec) => spec._id.toString()),
       provider,
-      localPrivacyMode
+      model,
+      localPrivacyMode,
+      1800000 // 30 minutes
     );
 
     workerPromise.then(async (result) => {
@@ -261,13 +351,38 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       execution.completedAt = new Date();
       execution.logs.push({ timestamp: new Date(), message: 'Agent execution completed, awaiting approval' });
       await execution.save();
-      if (task) await LocalTask.findOneAndUpdate({ _id: task._id, userId: req.userId }, { 'agentExecution.status': 'awaiting_approval', updatedAt: new Date() });
+      if (task) {
+        await LocalTask.findOneAndUpdate({ _id: task._id, userId: req.userId }, {
+          'agentExecution.status': 'awaiting_approval',
+          'agentExecution.error': '',
+          $push: { 'agentExecution.logs': { timestamp: new Date(), message: 'Agent completed; changes are ready for review' } },
+          updatedAt: new Date(),
+        });
+        try {
+          const cacheInvalidator = require('../utils/cacheInvalidator');
+          cacheInvalidator.invalidateForTask(task._id);
+        } catch (e) { /* ignore */ }
+      }
     }).catch(async (err) => {
+      const failureMessage = err.message || 'Agent execution failed without an error message';
       execution.status = 'failed';
       execution.completedAt = new Date();
-      execution.logs.push({ timestamp: new Date(), message: `Agent worker error: ${err.message}` });
+      execution.summary = failureMessage;
+      execution.terminalLog.push({ timestamp: new Date(), type: 'error', message: failureMessage });
+      execution.logs.push({ timestamp: new Date(), message: `Agent worker error: ${failureMessage}` });
       await execution.save();
-      if (task) await LocalTask.findOneAndUpdate({ _id: task._id, userId: req.userId }, { 'agentExecution.status': 'failed', updatedAt: new Date() });
+      if (task) {
+        await LocalTask.findOneAndUpdate({ _id: task._id, userId: req.userId }, {
+          'agentExecution.status': 'failed',
+          'agentExecution.error': failureMessage,
+          $push: { 'agentExecution.logs': { timestamp: new Date(), message: `Agent failed: ${failureMessage}` } },
+          updatedAt: new Date(),
+        });
+        try {
+          const cacheInvalidator = require('../utils/cacheInvalidator');
+          cacheInvalidator.invalidateForTask(task._id);
+        } catch (e) { /* ignore */ }
+      }
       if (creditCharged) {
         creditCharged = false;
         await refundAgentCredit(req.userId);
@@ -336,6 +451,23 @@ router.post('/approve', authenticateToken, async (req, res) => {
     if (taskId) {
       const task = await LocalTask.findOne({ _id: taskId, userId: req.userId });
       if (!task) return res.status(404).json({ success: false, message: 'Task not found' });
+    }
+    // Run auto-validation on changes before merge.
+    try {
+      const autoValidator = require('../utils/autoValidator');
+      const autoValidation = await autoValidator.validate({ workspaceId, timeoutMs: 60000 });
+      if (autoValidation && !autoValidation.success && autoValidation.errors.length > 0) {
+        execution.validationResult = { ...(execution.validationResult || {}), autoValidation, ranAt: new Date() };
+        await execution.save();
+        return res.status(409).json({
+          success: false,
+          message: `Auto-validation found ${autoValidation.errors.length} error(s). Fix them or review carefully.`,
+          execution,
+          autoValidation,
+        });
+      }
+    } catch (valErr) {
+      console.error('Auto-validation in approve:', valErr.message);
     }
 
     const result = await agentApprovalService.approveExecution({
@@ -436,7 +568,9 @@ router.post('/tweak', authenticateToken, async (req, res) => {
     await execution.save();
     const specIds = metaValue(execution, 'specIds') || [];
     const localPrivacyMode = metaValue(execution, 'localPrivacyMode') || false;
-    spawnAgentWorker(execution._id.toString(), execution.taskId?.toString(), workspaceId, specIds, execution.model || 'gemini', localPrivacyMode)
+    const provider = metaValue(execution, 'provider') || 'gemini';
+    const model = metaValue(execution, 'model') || execution.model || null;
+    spawnAgentWorker(execution._id.toString(), execution.taskId?.toString(), workspaceId, specIds, provider, model, localPrivacyMode)
       .then(async () => {
         execution.status = 'awaiting_review';
         execution.completedAt = new Date();

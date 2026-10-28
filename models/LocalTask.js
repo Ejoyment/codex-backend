@@ -43,6 +43,7 @@ const localTaskSchema = new mongoose.Schema({
             enum: ['idle', 'running', 'awaiting_approval', 'completed', 'failed', 'rejected'],
             default: 'idle'
         },
+        error: { type: String, default: '' },
         agentBranch: String,
         specRef: {
             type: mongoose.Schema.Types.ObjectId,
@@ -108,5 +109,7 @@ localTaskSchema.pre('save', function(next) {
 localTaskSchema.index({ userId: 1, status: 1 });
 localTaskSchema.index({ userId: 1, completedAt: 1 });
 localTaskSchema.index({ projectId: 1, status: 1 });
+localTaskSchema.index({ userId: 1, companyId: 1, assignee: 1, status: 1 });
+localTaskSchema.index({ assignee: 1, updatedAt: -1 });
 
 module.exports = mongoose.model('LocalTask', localTaskSchema);

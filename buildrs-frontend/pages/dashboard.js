@@ -254,7 +254,7 @@ export default function Dashboard() {
                 </div>
               </header>
 
-              <div className="workspace-content p-8 max-w-7xl mx-auto w-full space-y-6">
+              <div className="workspace-content dashboard-content p-8 max-w-[1680px] mx-auto w-full space-y-6">
                 <TrialBanner trial={trial} />
 
                 {/* Greeting */}
@@ -304,7 +304,7 @@ export default function Dashboard() {
                 )}
 
                 {!loading && projects?.length > 0 && (
-                  <section className="rounded-2xl border border-white/10 bg-[#111622] p-5">
+                  <section className="dashboard-projects-section rounded-2xl border border-white/10 bg-[#111622] p-5">
                     <div className="mb-4 flex items-center justify-between">
                       <div>
                         <h2 className="text-sm font-semibold text-white">Projects</h2>
@@ -318,7 +318,7 @@ export default function Dashboard() {
                         View all
                       </button>
                     </div>
-                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    <div className="dashboard-project-grid grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                       {projects.map((project, index) => (
                         <article
                           key={project.id || `${project.type}-${project.name}-${index}`}

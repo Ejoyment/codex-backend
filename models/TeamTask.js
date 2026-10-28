@@ -73,5 +73,7 @@ const teamTaskSchema = new mongoose.Schema({
 teamTaskSchema.index({ company: 1, status: 1 });
 teamTaskSchema.index({ assignedTo: 1 });
 teamTaskSchema.index({ project: 1 });
+teamTaskSchema.index({ company: 1, assignedTo: 1, status: 1 });
+teamTaskSchema.index({ assignedTo: 1, updatedAt: -1 });
 
 module.exports = mongoose.model('TeamTask', teamTaskSchema);

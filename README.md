@@ -110,7 +110,8 @@ The backend needs a few things configured. The minimum set:
 - `JWT_SECRET` — signing key for auth tokens
 - `RESEND_API_KEY` and `EMAIL_FROM` — email verification and notifications
 - `FRONTEND_URL` — CORS and OAuth redirects
-- `GROQ_API_KEY` and `AI_PROVIDER` — AI pair programming
+- At least one AI provider API key (`GROQ_API_KEY`, `GEMINI_API_KEY`, `MISTRAL_API_KEY`, or `HUGGINGFACE_API_KEY`) — AI pair programming
+- `AI_PROVIDER` — optional provider preference (`groq`, `gemini`, `mistral`, or `huggingface`); when unset or `auto`, the backend selects the first configured provider. An explicitly selected provider must have its API key configured.
 - OAuth client IDs/secrets for GitHub, Discord, Slack, Notion, and Figma
 - `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY` — billing (or Paystack/Flutterwave equivalents)
 
@@ -222,4 +223,3 @@ This is a private codebase, but if you’re reading this and want to help:
 ## License
 
 Proprietary — CODEX INC / BuildrsHQ. All rights reserved.
-
