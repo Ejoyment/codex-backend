@@ -3,9 +3,7 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import AuthGuard from '../components/AuthGuard';
 import Sidebar from '../components/Sidebar';
-import NotificationBell from '../components/NotificationBell';
 import useAuthStore from '../store/authStore';
-import { getAvatarUrl } from '../lib/utils';
 import { apiFetch, projectApi, API_BASE_URL, SOCKET_URL, agentApi, companyApi } from '../lib/api';
 import * as editorDrafts from '../lib/editorDrafts';
 import { registerEditorSnippets } from '../lib/monacoExtras';
@@ -3297,7 +3295,11 @@ export default function Editor() {
       </Head>
 
       <div className="workspace-container ed-workspace-shell">
-        <Sidebar user={user} subscription={subscription} />
+        <Sidebar
+          user={user}
+          subscription={subscription}
+          headerBranch={gitStatus?.branch || selectedRepo?.default_branch || selectedRepo?.defaultBranch || selectedProject?.defaultBranch || 'main'}
+        />
         <main className="workspace-main ed-workspace-main">
           <header className="ed-global-header">
             <div className="ed-global-context">
@@ -3335,34 +3337,7 @@ export default function Editor() {
               <span>Search specs, diff, agents</span>
               <kbd>⌘K</kbd>
             </button>
-            <div className="ed-global-actions">
-              <button
-                type="button"
-                className="btn-workspace btn-secondary"
-                onClick={() => router.push('/workspace')}
-              >
-                <Layers className="w-4 h-4" /> {hasCompany ? 'Workspaces' : 'Create Workspace'}
-              </button>
-              <button
-                type="button"
-                className="btn-workspace btn-primary"
-                onClick={() => startInlineCreate()}
-              >
-                <FilePlus className="w-4 h-4" /> New File
-              </button>
-              <NotificationBell look="header" />
-              <button
-                type="button"
-                className="ed-global-avatar"
-                onClick={() => router.push('/profile')}
-                title="Open profile"
-              >
-                <img
-                  src={getAvatarUrl(user, user?.fullName || user?.name || 'User')}
-                  alt={user?.fullName || user?.name || 'User'}
-                />
-              </button>
-            </div>
+
           </header>
           <div className="ed-page">
             {/* ---- Editor workspace ---- */}
