@@ -38,6 +38,9 @@ async function approveExecution({
   requireWorkspace = true,
   requireChanges = true,
 } = {}) {
+  if (execution.status === 'approved' || execution.status === 'completed') {
+    return { ok: true, execution, alreadyApproved: true };
+  }
   const branch = execution.branch || metaValue(execution, 'agentBranch');
   const hasChanges = Boolean((execution.proposedChanges || []).length || (execution.filesChanged || []).length);
   if (requireWorkspace && (!workspaceId || !branch)) {
@@ -61,8 +64,9 @@ async function approveExecution({
     }
   }
 
+  let applied = null;
   if (hasChanges) {
-    const applied = await agentChangeSet.applyExecutionChanges(execution);
+    applied = await agentChangeSet.applyExecutionChanges(execution);
     if (applied.applied) {
       execution.logs.push({
         timestamp: new Date(),
@@ -79,9 +83,20 @@ async function approveExecution({
     }
     const mergeResult = await gitService.merge(workspaceId, branch);
     if (!mergeResult.success) {
-      execution.logs.push({ timestamp: new Date(), message: `Merge failed: ${mergeResult.error}` });
+      let rollback = { restored: 0 };
+      if (applied?.snapshots?.length) {
+        try {
+          rollback = await agentChangeSet.rollbackVFS(applied.workspaceId || workspaceId, applied.snapshots);
+        } catch (rollbackError) {
+          rollback = { restored: 0, error: rollbackError.message };
+        }
+      }
+      execution.logs.push({
+        timestamp: new Date(),
+        message: `Merge failed: ${mergeResult.error}; rolled back ${rollback.restored || 0} applied file change(s)`,
+      });
       await execution.save();
-      return conflict(mergeResult.error, { execution });
+      return conflict(mergeResult.error, { execution, rollback });
     }
   }
 

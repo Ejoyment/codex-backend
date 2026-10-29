@@ -296,26 +296,46 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
     });
 
     if (task) {
-      task.status = 'in_progress';
-      task.companyId = workspaceId;
+      // Claim the task atomically. The pre-check above is advisory: two
+      // concurrent delegations can both pass it, so only one may attach an
+      // execution. The loser is rejected before any work starts.
+      const claimedTask = await LocalTask.findOneAndUpdate(
+        {
+          _id: task._id,
+          userId: req.userId,
+          $or: [{ agentSessionId: null }, { agentSessionId: { $exists: false } }],
+        },
+        {
+          $set: {
+            status: 'in_progress',
+            companyId: workspaceId,
+            agentSessionId: execution._id,
+            branch,
+            'agentExecution.status': 'running',
+            'agentExecution.error': '',
+            'agentExecution.agentBranch': branch,
+            'agentExecution.specRef': specs[0]?._id || null,
+            updatedAt: new Date(),
+          },
+          $push: { 'agentExecution.logs': { timestamp: new Date(), message: `Agent started on branch ${branch}` } },
+        },
+        { new: true }
+      );
+
+      if (!claimedTask) {
+        execution.status = 'failed';
+        execution.completedAt = new Date();
+        execution.summary = 'Task already has an active agent session';
+        await execution.save();
+        if (creditCharged) {
+          creditCharged = false;
+          await refundAgentCredit(req.userId);
+        }
+        return res.status(409).json({ success: false, message: 'This task already has an active agent session' });
+      }
+
       task.agentSessionId = execution._id;
-      task.branch = branch;
-      task.agentExecution = {
-        ...(task.agentExecution?.toObject?.() || task.agentExecution || {}),
-        status: 'running',
-        error: '',
-        agentBranch: branch,
-        specRef: specs[0]?._id || null,
-        logs: [
-          ...(task.agentExecution?.logs || []),
-          { timestamp: new Date(), message: `Agent started on branch ${branch}` },
-        ],
-      };
-      await task.save();
-      await LocalTask.findOneAndUpdate({ _id: taskId, userId: req.userId }, {
-        'agentExecution.status': 'running',
-        updatedAt: new Date(),
-      });
+      task.status = 'in_progress';
       try {
         const cacheInvalidator = require('../utils/cacheInvalidator');
         cacheInvalidator.invalidateForTask(taskId);

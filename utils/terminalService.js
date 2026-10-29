@@ -990,6 +990,7 @@ class TerminalService {
               language: EXT_LANG_MAP[path.extname(e.name).toLowerCase()] || 'text',
               company: terminal.workspaceId,
               path: vfsPath,
+              pathKey: CodeFile.pathKeyFor({ company: terminal.workspaceId, path: vfsPath, name: e.name }),
               createdBy: terminal.userId,
             },
           },

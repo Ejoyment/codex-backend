@@ -99,7 +99,7 @@ function notifyNewMessage({ message, channel, recipientId, mentions }) {
                 title: `${senderName} in #${channel?.name || 'a channel'}`,
                 message: body,
                 priority: 'low',
-                dedupeKey: `channel:${channel?._id || message.channel}`,
+                dedupeKey: `message:${message._id}`,
             });
         })(),
         'notifyNewMessage'

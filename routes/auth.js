@@ -861,9 +861,21 @@ router.delete('/delete-account', authenticateToken, async (req, res) => {
             if (typeof result === 'number') return count(name, result);
             count(name, result.deletedCount ?? result.modifiedCount ?? 0);
         };
+        const withRetry = async (fn) => {
+            let lastError;
+            for (let attempt = 0; attempt < 3; attempt += 1) {
+                try {
+                    return await fn();
+                } catch (err) {
+                    lastError = err;
+                    if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 25 * 2 ** attempt));
+                }
+            }
+            throw lastError;
+        };
         const safely = async (label, fn) => {
             try {
-                return await fn();
+                return await withRetry(fn);
             } catch (err) {
                 console.error(`Delete account — ${label} failed:`, err.message);
                 return null;
@@ -901,7 +913,7 @@ router.delete('/delete-account', authenticateToken, async (req, res) => {
         };
         const ownedResults = await Promise.allSettled(
             Object.entries(ownedModels).map(async ([name, model]) => {
-                const r = await model.deleteMany({ userId });
+                const r = await withRetry(() => model.deleteMany({ userId }));
                 return [name, r.deletedCount];
             })
         );

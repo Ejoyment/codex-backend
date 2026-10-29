@@ -1969,8 +1969,16 @@ export default function Editor() {
       try {
         const data = await apiFetch(`/api/code-editor/files/${file._id}`);
         baseline = typeof data?.file?.content === 'string' ? data.file.content : '';
-      } catch (_) {
-        baseline = '';
+      } catch (error) {
+        // A failed hydration must not become a saveable empty buffer: saving
+        // that would overwrite the real file with nothing.
+        setStatus({
+          type: 'error',
+          msg: error?.status === 404
+            ? 'That file no longer exists in this workspace.'
+            : 'Could not load the file. Please retry.',
+        });
+        return;
       }
       val = baseline;
     } else {

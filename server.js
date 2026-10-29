@@ -875,6 +875,11 @@ terminalNamespace.use(async (socket, next) => {
     }
 });
 
+function terminalPublicError(error) {
+    if (error?.message === 'Invalid session') return 'Invalid session';
+    return 'Terminal operation failed. Please retry.';
+}
+
 terminalNamespace.on('connection', (socket) => {
     console.log(`Terminal connected: ${socket.userId}`);
     let currentSession = null;
@@ -926,7 +931,7 @@ terminalNamespace.on('connection', (socket) => {
             console.log(`Terminal created: ${currentSession}`);
         } catch (error) {
             console.error('Terminal create error:', error);
-            socket.emit('terminal:error', { message: error.message });
+            socket.emit('terminal:error', { message: terminalPublicError(error) });
         }
     });
     
@@ -940,7 +945,7 @@ terminalNamespace.on('connection', (socket) => {
             terminalService.write(sessionId, data, currentToken);
         } catch (error) {
             console.error('Terminal input error:', error);
-            socket.emit('terminal:error', { message: error.message });
+            socket.emit('terminal:error', { message: terminalPublicError(error) });
         }
     });
     
@@ -954,7 +959,7 @@ terminalNamespace.on('connection', (socket) => {
             terminalService.resize(sessionId, cols, rows, currentToken);
         } catch (error) {
             console.error('Terminal resize error:', error);
-            socket.emit('terminal:error', { message: error.message });
+            socket.emit('terminal:error', { message: terminalPublicError(error) });
         }
     });
     
@@ -969,7 +974,7 @@ terminalNamespace.on('connection', (socket) => {
             socket.emit('terminal:history', { history });
         } catch (error) {
             console.error('Terminal history error:', error);
-            socket.emit('terminal:error', { message: error.message });
+            socket.emit('terminal:error', { message: terminalPublicError(error) });
         }
     });
     
@@ -987,7 +992,7 @@ terminalNamespace.on('connection', (socket) => {
             console.log(`Terminal destroyed: ${sessionId}`);
         } catch (error) {
             console.error('Terminal destroy error:', error);
-            socket.emit('terminal:error', { message: error.message });
+            socket.emit('terminal:error', { message: terminalPublicError(error) });
         }
     });
 

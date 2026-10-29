@@ -88,6 +88,7 @@ const mockMongoose = {
     this.post = jest.fn();
     this.methods = {};
     this.index = jest.fn();
+    this.add = jest.fn();
     this.virtual = jest.fn(() => ({
       get: jest.fn(),
       set: jest.fn(),

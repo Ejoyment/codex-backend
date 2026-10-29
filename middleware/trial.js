@@ -31,7 +31,7 @@ function createTrialSubscription(userId, startedAt = new Date()) {
 }
 
 function isTrialExpired(subscription, now = new Date()) {
-    if (!subscription?.trialEndsAt) return false;
+    if (!subscription?.trialEndsAt) return true;
     return subscription.trialEndsAt.getTime() < now.getTime();
 }
 
@@ -54,6 +54,11 @@ function downgradeExpiredTrial(subscription, now = new Date()) {
  */
 function repairTrialTier(subscription, now = new Date()) {
     if (subscription.status !== 'trial') return false;
+    if (!subscription.trialEndsAt) {
+        const startedAt = subscription.trialStartedAt || subscription.createdAt || now;
+        subscription.trialStartedAt = subscription.trialStartedAt || startedAt;
+        subscription.trialEndsAt = new Date(startedAt.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
+    }
     if (isTrialExpired(subscription, now)) {
         return downgradeExpiredTrial(subscription, now);
     }
