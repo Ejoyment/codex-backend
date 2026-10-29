@@ -364,7 +364,10 @@ router.post('/files/batch', authenticateToken, async (req, res) => {
                     console.error('VFS index update error:', vfsError);
                 }
             } catch (error) {
-                errors.push({ name: fileData.name, error: error.message });
+                errors.push({
+                    name: fileData.name,
+                    error: error.code === 11000 ? 'A file already exists at this path' : 'Failed to create file'
+                });
             }
         }
         

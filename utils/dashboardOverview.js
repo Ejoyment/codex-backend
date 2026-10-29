@@ -80,7 +80,7 @@ async function computeOverview(userId) {
             $or: [{ createdBy: userId }, ...(companyIds.length ? [{ companyId: { $in: companyIds } }] : [])],
         }).sort({ updatedAt: -1 }).limit(10).lean(),
         CodeChange.find({ userId }).sort({ createdAt: -1 }).limit(10).lean(),
-        Integration.find({ userId, isActive: true }).lean(),
+        Integration.find({ userId, isActive: true }).limit(50).lean(),
     ]);
 
     const [teamActivities, auditLogs, mcpServers] = await Promise.all([

@@ -5,6 +5,7 @@ const Pipeline = require('../models/Pipeline');
 const PipelineRun = require('../models/PipelineRun');
 const Company = require('../models/Company');
 const { addAuditLog } = require('../utils/auditLogService');
+const { boundedLimit } = require('../utils/queryLimits');
 
 const ensureCompanyMember = async (req, res, next) => {
     try {
@@ -188,7 +189,7 @@ router.get('/:id/runs', authenticateToken, async (req, res) => {
         if (!pipeline) return res.status(404).json({ success: false, message: 'Pipeline not found' });
         const runs = await PipelineRun.find({ pipeline: pipeline._id })
             .sort({ createdAt: -1 })
-            .limit(Math.min(parseInt(req.query.limit) || 25, 100))
+            .limit(boundedLimit(req.query.limit, 25, 100))
             .populate('triggeredBy', 'fullName email profilePicture');
         res.json({ success: true, runs });
     } catch (error) {
@@ -200,7 +201,7 @@ router.get('/company/:companyId/runs', authenticateToken, ensureCompanyMember, a
     try {
         const runs = await PipelineRun.find({ company: req.params.companyId })
             .sort({ createdAt: -1 })
-            .limit(Math.min(parseInt(req.query.limit) || 25, 100))
+            .limit(boundedLimit(req.query.limit, 25, 100))
             .populate('triggeredBy', 'fullName email profilePicture')
             .populate('pipeline', 'name');
         res.json({ success: true, runs });

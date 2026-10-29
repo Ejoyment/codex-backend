@@ -126,23 +126,21 @@ router.post('/send', otpLimiter, async (req, res) => {
             });
         }
 
-        // Delete any existing OTPs for this email
-        await OTP.deleteMany({ email: email.toLowerCase() });
-
-        // Generate new OTP
+        // Generate and persist the new OTP before sending. The previous code
+        // stays valid until delivery succeeds, so a provider outage does not
+        // strand the user without a usable code.
         const otpCode = generateOTP();
-
-        // Save OTP to database (sha256 hash only — never the plaintext code)
-        await OTP.create({
+        const otpDoc = await OTP.create({
             email: email.toLowerCase(),
             otp: hashOTP(otpCode)
         });
 
-        // Send OTP email
         const emailResult = await sendOTPEmail(email, otpCode, user.fullName);
         if (emailResult && emailResult.success === false) {
+            await OTP.deleteOne({ _id: otpDoc._id }).catch(() => {});
             return res.status(502).json({ success: false, message: 'Unable to send verification email right now. Please try again shortly.' });
         }
+        await OTP.deleteMany({ email: email.toLowerCase(), _id: { $ne: otpDoc._id } });
 
         res.json({
             success: true,
@@ -375,23 +373,18 @@ router.post('/resend', otpLimiter, async (req, res) => {
             });
         }
 
-        // Delete existing OTPs
-        await OTP.deleteMany({ email: email.toLowerCase() });
-
-        // Generate new OTP
         const otpCode = generateOTP();
-
-        // Save OTP (sha256 hash only — never the plaintext code)
-        await OTP.create({
+        const otpDoc = await OTP.create({
             email: email.toLowerCase(),
             otp: hashOTP(otpCode)
         });
 
-        // Send OTP email
         const emailResult = await sendOTPEmail(email, otpCode, user.fullName);
         if (emailResult && emailResult.success === false) {
+            await OTP.deleteOne({ _id: otpDoc._id }).catch(() => {});
             return res.status(502).json({ success: false, message: 'Unable to send verification email right now. Please try again shortly.' });
         }
+        await OTP.deleteMany({ email: email.toLowerCase(), _id: { $ne: otpDoc._id } });
 
         res.json({
             success: true,

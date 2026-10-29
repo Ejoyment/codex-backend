@@ -508,7 +508,10 @@ router.post('/files', authenticateToken, permissionMatrix.requirePermission('vfs
     });
   } catch (error) {
     console.error('VFS create file error:', error);
-    res.status(500).json({ error: error.message });
+    if (error.code === 11000) {
+      return res.status(409).json({ error: 'A file already exists at this path' });
+    }
+    res.status(500).json({ error: 'Failed to create file' });
   }
 });
 
