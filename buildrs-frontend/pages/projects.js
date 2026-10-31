@@ -281,6 +281,7 @@ export default function Projects() {
                         </span>
                         <span className="ml-3 flex shrink-0 items-center gap-2">
                           {project.provisioningStatus === 'failed' && <span className="text-rose-400">Setup failed</span>}
+                          {project.provisioningStatus === 'not_started' && <span className="text-amber-400">Setup not started</span>}
                           {['pending', 'provisioning'].includes(project.provisioningStatus) && <span className="text-cyan-400">Setting up</span>}
                           {project.visibility && <span className="capitalize">{project.visibility}</span>}
                           {updatedLabel && <span>{updatedLabel}</span>}

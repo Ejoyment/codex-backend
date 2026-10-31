@@ -416,6 +416,12 @@ function sanitizeFiles(rawFiles) {
     if (!rel || !/^[\w.\-]+(\/[\w.\-]+)*$/.test(rel) || rel.split('/').includes('..')) {
       return { error: `Invalid file path: ${f?.path}` };
     }
+    // Run/sandbox payloads must never carry workspace secrets. The editor
+    // filters some of these client-side, but a direct API call bypasses that.
+    const baseName = rel.split('/').pop();
+    if (/^\.env(\.|$)/i.test(baseName) || baseName === '.npmrc' || baseName === '.netrc') {
+      continue;
+    }
     if (typeof f?.content !== 'string') {
       return { error: `File ${rel} has no string content` };
     }

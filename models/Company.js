@@ -53,10 +53,11 @@ const companySchema = new mongoose.Schema({
             type: Boolean,
             default: true
         },
-        // Render-style auto-deploy: save republishes. ON by default.
+        // Render-style auto-deploy: save republishes. Off unless a workspace
+        // explicitly opts in, so a save cannot deploy code without consent.
         autoDeploy: {
             type: Boolean,
-            default: true
+            default: false
         },
         defaultRole: {
             type: String,
