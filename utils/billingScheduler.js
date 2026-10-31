@@ -580,6 +580,9 @@ class BillingScheduler {
         const now = new Date();
         return await BillingSchedule.find({
             status: 'pending',
+            // This scheduler owns Stripe; provider schedulers own their rows.
+            // Legacy rows without a provider field default to Stripe.
+            $or: [{ provider: 'stripe' }, { provider: { $exists: false } }, { provider: null }],
             scheduledFor: { $lte: now }
         }).populate('userId subscriptionId');
     }

@@ -17,12 +17,10 @@ const options = {
     },
     servers: [
       {
-        url: 'https://codex-backend-7utu.onrender.com',
-        description: 'Production Server'
-      },
-      {
-        url: 'http://localhost:3000',
-        description: 'Development Server'
+        url: process.env.BACKEND_URL || process.env.PUBLIC_API_URL || 'http://localhost:3000',
+        description: process.env.BACKEND_URL || process.env.PUBLIC_API_URL
+          ? 'Configured Server'
+          : 'Development Server'
       }
     ],
     components: {

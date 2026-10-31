@@ -73,10 +73,17 @@ function validateBootConfig({ includeJwtSecret = true } = {}) {
         );
     }
     if (!process.env.FRONTEND_URL) {
-        warnings.push(
-            'FRONTEND_URL is not set — Stripe/portal URLs will contain "undefined" ' +
-            'and emailed links will be broken. Set it to the public frontend origin.'
-        );
+        const message = 'FRONTEND_URL is not set — Stripe/portal URLs will contain "undefined" ' +
+            'and emailed links will be broken. Set it to the public frontend origin.';
+        if (process.env.NODE_ENV === 'production') fatals.push(message);
+        else warnings.push(message);
+    } else {
+        try {
+            const url = new URL(process.env.FRONTEND_URL);
+            if (!['http:', 'https:'].includes(url.protocol)) throw new Error('unsupported protocol');
+        } catch {
+            fatals.push('FRONTEND_URL must be a valid http(s) URL.');
+        }
     }
     if ((process.env.NEXT_PUBLIC_TURN_CREDENTIAL || process.env.NEXT_PUBLIC_TURN_USERNAME) && !process.env.TURN_STATIC_SECRET) {
         warnings.push(

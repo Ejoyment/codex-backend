@@ -12,7 +12,8 @@
  *   - Entitlement.plan
  *
  * Safe to re-run (filters only match legacy values).
- * Usage: node scripts/migrate-tier-names.js [--dry-run]
+ * Usage: node scripts/migrate-tier-names.js [--apply]
+ * Writes only with --apply; the default is a dry run.
  */
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
@@ -22,7 +23,7 @@ const Subscription = require('../models/Subscription');
 const Company = require('../models/Company');
 const { LEGACY_TIER_MAP } = require('../utils/tierNames');
 
-const dryRun = process.argv.includes('--dry-run');
+const dryRun = !process.argv.includes('--apply');
 
 async function countLegacy(Model, field) {
   const values = Object.keys(LEGACY_TIER_MAP).filter((k) => LEGACY_TIER_MAP[k] !== k);

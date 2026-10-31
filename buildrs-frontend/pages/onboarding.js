@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
+import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch } from '../lib/api';
 
 export default function Onboarding() {
   const router = useRouter();
-  const user = useAuthStore((s) => s.user);
   const setAuth = useAuthStore((s) => s.setAuth);
   const [step, setStep] = useState(1);
   const [fullName, setFullName] = useState('');
@@ -32,9 +32,8 @@ export default function Onboarding() {
         method: 'POST',
         body: JSON.stringify({ fullName, company, teamSize, role: roles, goals: [goal].filter(Boolean) }),
         returnErrorData: true,
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
-      if (res.user) {
+      if (res.user && token) {
         setAuth(token, res.user);
         router.replace('/dashboard');
       } else {
@@ -48,7 +47,7 @@ export default function Onboarding() {
   };
 
   return (
-    <>
+    <AuthGuard>
       <Head>
         <title>Welcome to BuildrsHQ</title>
         <link rel="icon" href="/buildrs.png" />
@@ -188,6 +187,6 @@ export default function Onboarding() {
           )}
         </div>
       </div>
-    </>
+    </AuthGuard>
   );
 }

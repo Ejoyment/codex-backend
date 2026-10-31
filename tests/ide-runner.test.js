@@ -104,6 +104,17 @@ describe('ideRunner — sanitizeFiles', () => {
     expect(v.files[0].path).toBe('src/app.js');
   });
 
+  test('drops secret files before execution', () => {
+    const v = ok([
+      { path: 'src/app.js', content: 'console.log(1)' },
+      { path: '.env', content: 'SECRET=1' },
+      { path: 'config/.env.local', content: 'TOKEN=1' },
+      { path: '.npmrc', content: '//registry/:_authToken=1' },
+    ]);
+    expect(v.error).toBeUndefined();
+    expect(v.files.map((file) => file.path)).toEqual(['src/app.js']);
+  });
+
   test('rejects empty/non-array input', () => {
     expect(ok([]).error).toMatch(/non-empty/);
     expect(ok('nope').error).toMatch(/non-empty/);

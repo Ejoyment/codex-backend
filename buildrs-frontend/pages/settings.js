@@ -626,11 +626,13 @@ function BillingTab({ router, toast }) {
           <button
             type="button"
             className="btn-workspace btn-secondary"
-            onClick={() => goToCheckout(state.isFree ? 'pro' : state.tier)}
-            disabled={state.tier === 'enterprise'}
-            title={state.tier === 'enterprise' ? 'Enterprise plans are managed via custom contract — contact support to change payment details' : undefined}
+            onClick={() => {
+              if (state.tier === 'enterprise') router.push('/contact?topic=enterprise-billing');
+              else goToCheckout(state.isFree ? 'pro' : state.tier);
+            }}
+            title={state.tier === 'enterprise' ? 'Enterprise plans are managed via custom contract — contact sales to change payment details' : undefined}
           >
-            {state.paymentProvider ? 'Update' : 'Add payment method'}
+            {state.tier === 'enterprise' ? 'Contact sales' : state.paymentProvider ? 'Update' : 'Add payment method'}
           </button>
         </div>
       </section>

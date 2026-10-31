@@ -1,7 +1,7 @@
 /**
  * Server-side auto-deploy setting (Render-style toggle).
  *
- * - Company.settings.autoDeploy defaults true (current behavior preserved).
+ * - Company.settings.autoDeploy defaults false; deployment requires opt-in.
  * - PUT /:companyId/settings persists it (owner/admin only, like the rest).
  */
 const express = require('express');
@@ -38,9 +38,9 @@ afterEach(() => {
 });
 
 describe('company autoDeploy setting', () => {
-  test('defaults to true on new documents', () => {
+  test('defaults to false on new documents', () => {
     const doc = new Company({ name: 'c', owner: new mongoose.Types.ObjectId() });
-    expect(doc.settings.autoDeploy).toBe(true);
+    expect(doc.settings.autoDeploy).toBe(false);
   });
 
   const companyDoc = (settings = {}) => ({

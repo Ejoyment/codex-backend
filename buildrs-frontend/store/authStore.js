@@ -1,12 +1,24 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+function readStoredJson(key, fallback = null) {
+  if (typeof window === 'undefined') return fallback;
+  try {
+    const parsed = JSON.parse(localStorage.getItem(key) || 'null');
+    return parsed ?? fallback;
+  } catch {
+    // Corrupted localStorage must not take the whole app down on boot.
+    localStorage.removeItem(key);
+    return fallback;
+  }
+}
+
 const useAuthStore = create(
   persist(
     (set, get) => ({
       token: typeof window !== 'undefined' ? localStorage.getItem('authToken') : null,
-      user: typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('user') || 'null') : null,
-      subscription: typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('subscription') || 'null') : null,
+      user: readStoredJson('user'),
+      subscription: readStoredJson('subscription'),
       isLoading: false,
       error: null,
 
