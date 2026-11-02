@@ -263,16 +263,16 @@ export default function Dashboard() {
                 )}
 
                 {!loading && projects?.length > 0 && (
-                  <section className="dashboard-projects-section rounded-xl border border-white/[0.07] bg-[#0d1119] p-5">
-                    <div className="mb-4 flex items-center justify-between">
+                  <section className="dashboard-projects-section rounded-xl border border-white/[0.07] bg-[#0d1119] p-4">
+                    <div className="mb-3 flex items-center justify-between">
                       <div>
                         <h2 className="text-sm font-semibold text-white">Projects</h2>
-                        <p className="mt-1 text-xs text-zinc-500">Projects available in your workspace</p>
+                        <p className="mt-1 text-[11px] text-zinc-500">Projects available in your workspace</p>
                       </div>
                       <button
                         type="button"
                         onClick={() => router.push('/projects')}
-                        className="text-xs font-medium text-cyan-400 transition hover:text-cyan-300"
+                        className="text-[11px] font-medium text-cyan-400 transition hover:text-cyan-300"
                       >
                         View all
                       </button>
@@ -281,20 +281,20 @@ export default function Dashboard() {
                       {projects.map((project, index) => (
                         <article
                           key={project.id || `${project.type}-${project.name}-${index}`}
-                          className="rounded-xl border border-white/5 bg-[#0d1119] p-4"
+                          className="rounded-md border border-white/5 bg-white/[0.02] p-4"
                         >
                           <div className="flex items-center gap-3">
-                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-400">
-                              <FolderKanban className="h-4 w-4" />
+                            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-400">
+                              <FolderKanban className="h-3.5 w-3.5" />
                             </div>
                             <div className="min-w-0">
-                              <h3 className="truncate text-sm font-medium text-white">{project.name}</h3>
+                              <h3 className="truncate text-xs font-semibold text-white">{project.name}</h3>
                               <p className="mt-0.5 text-[10px] capitalize text-zinc-500">
                                 {project.type || 'project'} · {project.status || 'active'}
                               </p>
                             </div>
                           </div>
-                          <p className="mt-3 line-clamp-2 min-h-8 text-xs leading-relaxed text-zinc-400">
+                          <p className="mt-2 line-clamp-2 min-h-8 text-[10px] leading-relaxed text-zinc-500">
                             {project.description || 'No description provided.'}
                           </p>
                         </article>
@@ -460,78 +460,80 @@ export default function Dashboard() {
                     </div>
                   </div>
                 ) : (
-                  <>
+                  <div className="space-y-4">
                     {/* Workspace overview */}
-                    <div className="rounded-xl border border-white/[0.07] bg-[#0d1119] p-5">
-                      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 pb-6 border-b border-white/10">
-                        <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
-                            <FolderKanban className="w-6 h-6" />
+                    <div className="rounded-xl border border-white/[0.07] bg-[#0d1119] p-4">
+                      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-white/5">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-cyan-500/10 text-cyan-400">
+                            <FolderKanban className="h-4 w-4" />
                           </div>
                           <div>
                             <div className="flex items-center gap-2.5">
-                              <h2 className="text-lg font-bold text-white">{ws?.name}</h2>
-                              <span className="flex items-center gap-1 text-xs bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/20 font-medium">
+                              <h2 className="text-sm font-semibold text-white">{ws?.name}</h2>
+                              <span className="flex items-center gap-1 text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/20 font-medium">
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> {ws?.status}
                               </span>
                             </div>
-                            <p className="text-xs text-zinc-400 mt-0.5">
+                            <p className="text-[10px] text-zinc-500 mt-1">
                               {ws?.fullName} · {ws?.branch} {ws?.updatedAt ? `· updated ${relativeTime(ws.updatedAt)}` : ''}
                             </p>
                           </div>
                         </div>
                         <button
                           type="button"
-                          className="bg-[#161b26] hover:bg-cyan-500 hover:text-slate-950 border border-white/10 text-white px-5 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 transition self-start lg:self-auto group"
+                          className="rounded-md bg-cyan-500 px-3 py-1.5 text-[11px] font-semibold text-slate-950 transition hover:bg-cyan-400 self-start lg:self-auto inline-flex items-center gap-1.5 group"
                           onClick={() => router.push('/editor')}
                         >
                           Continue building
-                          <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+                          <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
                         </button>
                       </div>
 
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-6 pt-6">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-4">
                         <div>
-                          <div className="text-2xl font-bold text-white">{ws?.openTasks ?? 0}</div>
-                          <div className="text-xs text-zinc-400 mt-0.5">Open tasks</div>
+                          <div className="text-lg font-bold text-white">{ws?.openTasks ?? 0}</div>
+                          <div className="text-[10px] text-zinc-500 mt-1">Open tasks</div>
                         </div>
                         <div>
-                          <div className="text-2xl font-bold text-white">{ws?.agentsRunning ?? 0}</div>
-                          <div className="text-xs text-zinc-400 mt-0.5">Agents running</div>
+                          <div className="text-lg font-bold text-white">{ws?.agentsRunning ?? 0}</div>
+                          <div className="text-[10px] text-zinc-500 mt-1">Agents running</div>
                         </div>
                         <div>
-                          <div className="text-2xl font-bold text-white">{ws?.validationPercent != null ? `${ws.validationPercent}%` : '—'}</div>
-                          <div className="text-xs text-zinc-400 mt-0.5">Validation</div>
+                          <div className="text-lg font-bold text-white">{ws?.validationPercent != null ? `${ws.validationPercent}%` : '—'}</div>
+                          <div className="text-[10px] text-zinc-500 mt-1">Validation</div>
                         </div>
                         <div>
-                          <div className="text-2xl font-bold text-white">{ws?.branch || 'main'}</div>
-                          <div className="text-xs text-zinc-400 mt-0.5">Active branch</div>
+                          <div className="text-lg font-bold text-white">{ws?.branch || 'main'}</div>
+                          <div className="text-[10px] text-zinc-500 mt-1">Active branch</div>
                         </div>
                       </div>
                     </div>
 
                     {/* Needs your attention */}
-                    <div className="rounded-xl border border-white/[0.07] bg-[#0d1119] p-5">
-                      <div className="flex items-center justify-between mb-4">
+                    <div className="rounded-xl border border-white/[0.07] bg-[#0d1119] p-4">
+                      <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-2">
                           <span className={`w-2.5 h-2.5 rounded-full ${openAttentionCount > 0 ? 'bg-amber-400 animate-ping' : 'bg-emerald-400'}`} />
-                          <h3 className="font-bold text-white text-base">Needs your attention</h3>
-                          <span className="bg-amber-400/10 text-amber-400 px-2 py-0.5 rounded-full text-xs font-bold border border-amber-400/20">
+                          <h3 className="text-sm font-semibold text-white">Needs your attention</h3>
+                          <span className="bg-amber-400/10 text-amber-400 px-2 py-0.5 rounded-full text-[10px] font-bold border border-amber-400/20">
                             {openAttentionCount}
                           </span>
                         </div>
                         {openAttentionCount > 0 && (
-                          <button type="button" className="text-xs text-zinc-400 hover:text-white font-medium flex items-center gap-1 transition" onClick={() => router.push('/tasks')}>
+                          <button type="button" className="text-[11px] text-cyan-400 hover:text-cyan-300 font-medium flex items-center gap-1 transition" onClick={() => router.push('/tasks')}>
                             View all <ChevronDown className="w-3.5 h-3.5 -rotate-90" />
                           </button>
                         )}
                       </div>
 
                       {overview.needsAttention.length === 0 ? (
-                        <div className="bg-[#161b26] border border-white/5 rounded-xl p-6 text-center">
-                          <CheckCircle2 className="w-6 h-6 text-emerald-400 mx-auto mb-2" />
-                          <p className="text-sm font-semibold text-white">Nothing needs your attention</p>
-                          <p className="text-xs text-zinc-400 mt-0.5">No blockers, failed builds, or approvals are waiting.</p>
+                        <div className="flex min-h-[100px] flex-col items-center justify-center rounded-md border border-white/5 bg-white/[0.02] px-4 py-3 text-center">
+                          <div className="mb-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-400">
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                          </div>
+                          <p className="text-xs font-semibold text-white">Nothing needs your attention</p>
+                          <p className="mt-1 text-[10px] text-zinc-500">No blockers, failed builds, or approvals are waiting.</p>
                         </div>
                       ) : (
                         <div className="space-y-3">
@@ -543,22 +545,22 @@ export default function Dashboard() {
                                 : { Icon: Sparkles, cls: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20' };
                             const ActionIcon = ic.Icon;
                             return (
-                              <div key={item.id} className="bg-[#161b26] border border-white/5 hover:border-white/15 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 transition">
-                                <div className="flex items-start gap-3.5">
-                                  <div className={`mt-0.5 w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border ${ic.cls}`}>
+                              <div key={item.id} className="rounded-md border border-white/5 bg-white/[0.02] p-3 flex flex-col md:flex-row md:items-center justify-between gap-3 transition">
+                                <div className="flex items-start gap-3">
+                                  <div className={`mt-0.5 h-7 w-7 rounded-lg flex items-center justify-center shrink-0 border ${ic.cls}`}>
                                     <ActionIcon className="w-4 h-4" />
                                   </div>
                                   <div>
                                     <span className="text-[10px] font-bold tracking-wider px-2 py-0.5 rounded bg-white/5 text-zinc-300 border border-white/10">
                                       {item.badge}
                                     </span>
-                                    <h4 className="font-semibold text-white text-sm mt-1">{item.title}</h4>
-                                    <p className="text-xs text-zinc-400 mt-0.5">{item.subtitle}</p>
+                                    <h4 className="text-xs font-semibold text-white mt-1">{item.title}</h4>
+                                    <p className="text-[10px] text-zinc-500 mt-1">{item.subtitle}</p>
                                   </div>
                                 </div>
                                 <button
                                   type="button"
-                                  className="bg-[#1f2636] hover:bg-cyan-500 hover:text-slate-950 border border-white/10 text-white px-4 py-2 rounded-lg text-xs font-semibold transition shrink-0 self-end md:self-auto"
+                                  className="rounded-md bg-[#171b23] px-3 py-1 text-[10px] font-medium text-cyan-400 hover:bg-[#202632] transition shrink-0 self-end md:self-auto"
                                   onClick={() => router.push(item.href || '/tasks')}
                                 >
                                   Review →
@@ -571,44 +573,48 @@ export default function Dashboard() {
                     </div>
 
                     {/* Active development */}
-                    <div className="rounded-xl border border-white/[0.07] bg-[#0d1119] p-5">
-                      <div className="flex items-center justify-between mb-4">
+                    <div className="rounded-xl border border-white/[0.07] bg-[#0d1119] p-4">
+                      <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-2">
-                          <Terminal className="w-5 h-5 text-cyan-400" />
-                          <h3 className="font-bold text-white text-base">Active Development</h3>
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-cyan-500/10 text-cyan-400">
+                            <Terminal className="h-4 w-4" />
+                          </div>
+                          <h3 className="text-sm font-semibold text-white">Active Development</h3>
                         </div>
                         {overview.activeDevelopment && (
-                          <span className="flex items-center gap-1.5 text-xs bg-emerald-500/10 text-emerald-400 px-2.5 py-1 rounded-full border border-emerald-500/20 font-medium">
+                          <span className="flex items-center gap-1 text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/20 font-medium">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Live
                           </span>
                         )}
                       </div>
 
                       {!overview.activeDevelopment ? (
-                        <div className="bg-[#161b26] border border-white/5 rounded-xl p-8 text-center">
-                          <Play className="w-6 h-6 text-cyan-400 mx-auto mb-2" />
-                          <p className="text-sm font-semibold text-white">No active development</p>
-                          <p className="text-xs text-zinc-400 mt-0.5">There are no running agents or builds right now. Delegate a task to see live progress here.</p>
+                        <div className="flex min-h-[100px] flex-col items-center justify-center rounded-md border border-white/5 bg-white/[0.02] px-4 py-3 text-center">
+                          <div className="mb-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-cyan-500/10 text-cyan-400">
+                            <Play className="h-3.5 w-3.5" />
+                          </div>
+                          <p className="text-xs font-semibold text-white">No active development</p>
+                          <p className="mt-1 text-[10px] text-zinc-500">There are no running agents or builds right now. Delegate a task to see live progress here.</p>
                         </div>
                       ) : (
                         <>
-                          <div className="bg-[#161b26] border border-white/10 rounded-xl p-5 mb-4">
+                          <div className="rounded-md border border-white/5 bg-white/[0.02] p-3 mb-3">
                             <div className="flex items-center justify-between mb-2">
                               <div>
-                                <div className="text-xs text-cyan-400 font-semibold">{overview.activeDevelopment.taskCode}</div>
-                                <h4 className="text-white font-bold text-base mt-0.5">{overview.activeDevelopment.taskTitle}</h4>
+                                <div className="text-[10px] text-cyan-400 font-semibold">{overview.activeDevelopment.taskCode}</div>
+                                <h4 className="text-xs font-semibold text-white mt-0.5">{overview.activeDevelopment.taskTitle}</h4>
                               </div>
-                              <span className="text-xs font-bold bg-cyan-500/10 text-cyan-400 px-2.5 py-1 rounded border border-cyan-500/20">
+                              <span className="text-[10px] font-bold bg-cyan-500/10 text-cyan-400 px-2 py-0.5 rounded border border-cyan-500/20">
                                 {overview.activeDevelopment.status}
                               </span>
                             </div>
-                            <div className="text-xs text-zinc-400 mb-3">{overview.activeDevelopment.stepText}</div>
+                            <div className="text-[11px] text-zinc-500 mb-3">{overview.activeDevelopment.stepText}</div>
 
-                            <div className="w-full bg-white/5 h-2 rounded-full overflow-hidden mb-4">
+                            <div className="w-full bg-white/5 h-1.5 rounded-full overflow-hidden mb-3">
                               <div className="bg-gradient-to-r from-cyan-500 to-emerald-400 h-full rounded-full transition-all duration-500" style={{ width: `${overview.activeDevelopment.progressPercent}%` }} />
                             </div>
 
-                            <div className="flex items-center gap-4 text-xs text-zinc-400">
+                            <div className="flex items-center gap-4 text-[11px] text-zinc-500">
                               <span className="flex items-center gap-1 text-zinc-300">
                                 <span className="w-2 h-2 rounded-full bg-cyan-400" /> {overview.activeDevelopment.branch || 'agent'}
                               </span>
@@ -619,20 +625,20 @@ export default function Dashboard() {
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-2 border-b border-white/10 pb-3 mb-4">
+                          <div className="flex items-center gap-4 border-b border-white/5 pb-2 mb-3 text-[11px] text-zinc-500">
                             {['Terminal', 'Logs'].map((tab) => (
                               <button
                                 key={tab}
                                 type="button"
                                 onClick={() => setShowDevTabNav(tab)}
-                                className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition ${showDevTabNav === tab ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/30' : 'text-zinc-400 hover:text-white hover:bg-white/5'}`}
+                                className={`pb-1 transition ${showDevTabNav === tab ? 'border-b border-cyan-400 text-cyan-400' : 'hover:text-white'}`}
                               >
                                 {tab}
                               </button>
                             ))}
                           </div>
 
-                          <div className="bg-[#0b0f17] border border-white/10 rounded-xl p-4 font-mono text-xs text-zinc-300 overflow-x-auto shadow-inner whitespace-pre-wrap min-h-[64px]">
+                          <div className="rounded-lg border border-cyan-500/10 bg-[#080d14] p-3 font-mono text-[10px] leading-relaxed text-zinc-500 overflow-x-auto whitespace-pre-wrap min-h-[64px]">
                             {overview.activeDevelopment.terminalLog || 'No output captured yet.'}
                           </div>
                         </>
@@ -640,45 +646,45 @@ export default function Dashboard() {
                     </div>
 
                     {/* Sprint + recent activity */}
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                      <div className="lg:col-span-2 rounded-xl border border-white/[0.07] bg-[#0d1119] p-5">
-                        <div className="flex items-center justify-between mb-4">
-                          <h3 className="font-bold text-white text-base">Current Sprint</h3>
-                          <button type="button" className="text-xs text-cyan-400 hover:underline font-medium" onClick={() => router.push('/tasks')}>
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+                      <div className="lg:col-span-2 rounded-xl border border-white/[0.07] bg-[#0d1119] p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <h3 className="text-sm font-semibold text-white">Current Sprint</h3>
+                          <button type="button" className="text-[11px] text-cyan-400 hover:text-cyan-300" onClick={() => router.push('/tasks')}>
                             Open Task Board →
                           </button>
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-3 mb-6">
-                          <div className="bg-[#161b26] border border-cyan-500/40 px-4 py-2 rounded-xl text-xs font-semibold text-cyan-400 flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-cyan-400" /> {overview.sprint.inProgress} In progress
-                          </div>
-                          <div className="bg-[#161b26] border border-amber-500/40 px-4 py-2 rounded-xl text-xs font-semibold text-amber-400 flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-amber-400" /> {overview.sprint.inReview} In review
-                          </div>
-                          <div className="bg-[#161b26] border border-emerald-500/40 px-4 py-2 rounded-xl text-xs font-semibold text-emerald-400 flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-emerald-400" /> {overview.sprint.completed} Completed
-                          </div>
+                        <div className="mb-3 grid grid-cols-3 gap-2">
+                          <div className="rounded-md border border-cyan-500/50 px-2 py-1.5 text-[10px] text-zinc-400"><strong className="mr-1 text-white">{overview.sprint.inProgress}</strong> In progress</div>
+                          <div className="rounded-md border border-amber-500/50 px-2 py-1.5 text-[10px] text-zinc-400"><strong className="mr-1 text-white">{overview.sprint.inReview}</strong> In review</div>
+                          <div className="rounded-md border border-emerald-500/50 px-2 py-1.5 text-[10px] text-zinc-400"><strong className="mr-1 text-white">{overview.sprint.completed}</strong> Completed</div>
                         </div>
 
                         {overview.sprint.items.length === 0 ? (
-                          <div className="bg-[#161b26] border border-white/5 rounded-xl p-8 text-center">
-                            <p className="text-sm font-semibold text-white">No tasks in this sprint</p>
-                            <p className="text-xs text-zinc-400 mt-0.5">Add a task to start tracking progress.</p>
+                          <div className="flex min-h-[82px] flex-col items-center justify-center rounded-md border border-white/5 bg-white/[0.02] px-4 py-2 text-center">
+                            <div className="mb-1 flex h-7 w-7 items-center justify-center rounded-full bg-cyan-500/10 text-cyan-400">
+                              <FolderKanban className="h-3.5 w-3.5" />
+                            </div>
+                            <p className="text-xs font-semibold text-white">No tasks in this sprint</p>
+                            <p className="mt-1 text-[10px] text-zinc-500">Add a task to start tracking progress, or open the task board to plan the next sprint.</p>
+                            <button type="button" className="mt-1.5 inline-flex items-center gap-1 rounded-full border border-cyan-500/60 px-2.5 py-0.5 text-[10px] font-medium text-cyan-400 hover:bg-cyan-500/10" onClick={() => router.push('/tasks')}>
+                              <Plus className="h-3 w-3" /> Add task
+                            </button>
                           </div>
                         ) : (
                           <div className="space-y-3">
                             {overview.sprint.items.map((task) => (
-                              <div key={task.id} className="bg-[#161b26] border border-white/5 hover:border-white/15 rounded-xl p-3.5 flex items-center justify-between transition">
+                              <div key={task.id} className="rounded-md border border-white/5 bg-white/[0.02] px-3 py-2 flex items-center justify-between transition">
                                 <div className="flex items-center gap-3 min-w-0">
-                                  <span className="text-xs font-bold font-mono text-zinc-400 shrink-0">{task.code}</span>
-                                  <span className="text-sm font-medium text-white truncate">{task.title}</span>
+                                  <span className="text-[10px] font-bold font-mono text-zinc-400 shrink-0">{task.code}</span>
+                                  <span className="text-xs font-medium text-white truncate">{task.title}</span>
                                 </div>
                                 <div className="flex items-center gap-3 shrink-0">
-                                  <span className={`text-[10px] font-bold px-2.5 py-1 rounded uppercase ${task.status === 'in_progress' ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'}`}>
+                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${task.status === 'in_progress' ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'}`}>
                                     {task.status === 'in_progress' ? 'AI running' : 'Review'}
                                   </span>
-                                  <span className="w-7 h-7 rounded-full bg-cyan-500/20 text-cyan-300 font-bold text-xs flex items-center justify-center border border-cyan-500/30">
+                                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-cyan-500/20 text-[10px] font-bold text-cyan-300 border border-cyan-500/30">
                                     {task.assignee}
                                   </span>
                                 </div>
@@ -688,21 +694,21 @@ export default function Dashboard() {
                         )}
                       </div>
 
-                      <div className="rounded-xl border border-white/[0.07] bg-[#0d1119] p-5">
-                        <div className="flex items-center justify-between mb-4">
-                          <h3 className="font-bold text-white text-base">Recent activity</h3>
-                          <button type="button" className="text-xs text-zinc-400 hover:text-white" onClick={() => router.push('/audit')}>
+                      <div className="rounded-xl border border-white/[0.07] bg-[#0d1119] p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <h3 className="text-sm font-semibold text-white">Recent activity</h3>
+                          <button type="button" className="text-[11px] text-cyan-400 hover:text-cyan-300" onClick={() => router.push('/audit')}>
                             View all
                           </button>
                         </div>
 
                         {overview.recentActivity.length === 0 ? (
-                          <div className="bg-[#161b26] border border-white/5 rounded-xl p-6 text-center">
-                            <p className="text-sm font-semibold text-white">No recent activities</p>
-                            <p className="text-xs text-zinc-400 mt-0.5">Recent activities will show up here.</p>
+                          <div className="flex min-h-[100px] flex-1 flex-col items-center justify-center text-center">
+                            <p className="text-xs font-semibold text-white">No recent activities</p>
+                            <p className="mt-1 text-[10px] text-zinc-500">Recent activities will show up here.</p>
                           </div>
                         ) : (
-                          <div className="space-y-4">
+                          <div className="space-y-3">
                             {overview.recentActivity.map((item) => {
                               const meta = ACTIVITY_ICON[item.type] || ACTIVITY_ICON.system;
                               const Icon = meta.Icon;
@@ -713,7 +719,7 @@ export default function Dashboard() {
                                   </div>
                                   <div className="min-w-0">
                                     <p className="text-xs font-semibold text-white truncate">{item.title}</p>
-                                    <p className="text-[11px] text-zinc-400 truncate">{item.subtitle} · {item.relativeTime}</p>
+                                    <p className="text-[10px] text-zinc-500 truncate">{item.subtitle} · {item.relativeTime}</p>
                                   </div>
                                 </div>
                               );
@@ -724,32 +730,35 @@ export default function Dashboard() {
                     </div>
 
                     {/* Ship readiness + debug rooms */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                      <div className="rounded-xl border border-white/[0.07] bg-[#0d1119] p-5">
-                        <div className="flex items-center justify-between mb-4">
-                          <h3 className="font-bold text-white text-base">Ship Readiness</h3>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                      <div className="rounded-xl border border-white/[0.07] bg-[#0d1119] p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <h3 className="text-sm font-semibold text-white">Ship Readiness</h3>
                           {overview.shipReadiness.percent != null && (
-                            <span className="text-cyan-400 font-bold text-sm">{overview.shipReadiness.percent}%</span>
+                            <span className="text-cyan-400 font-bold text-[11px]">{overview.shipReadiness.percent}%</span>
                           )}
                         </div>
 
                         {overview.shipReadiness.percent == null ? (
-                          <div className="bg-[#161b26] border border-white/5 rounded-xl p-8 text-center">
-                            <p className="text-sm font-semibold text-white">Nothing to ship yet</p>
-                            <p className="text-xs text-zinc-400 mt-0.5">Ship readiness appears once you have deployments or validations.</p>
+                          <div className="flex min-h-[100px] flex-col items-center justify-center rounded-md border border-white/5 bg-white/[0.02] px-4 py-3 text-center">
+                            <div className="mb-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-cyan-500/10 text-cyan-400">
+                              <Database className="h-3.5 w-3.5" />
+                            </div>
+                            <p className="text-xs font-semibold text-white">Nothing to ship yet</p>
+                            <p className="mt-1 text-[10px] text-zinc-500">Ship readiness appears once you have deployments or validations.</p>
                           </div>
                         ) : (
                           <>
-                            <div className="w-full bg-white/5 h-2 rounded-full overflow-hidden mb-6">
+                            <div className="w-full bg-white/5 h-1.5 rounded-full overflow-hidden mb-3">
                               <div className="bg-cyan-400 h-full rounded-full" style={{ width: `${overview.shipReadiness.percent}%` }} />
                             </div>
-                            <div className="space-y-3 mb-6">
+                            <div className="space-y-3 mb-3">
                               {overview.shipReadiness.checks.map((check) => (
-                                <div key={check.label} className="flex items-center justify-between text-xs">
-                                  <span className="flex items-center gap-2 text-zinc-300">
+                                <div key={check.label} className="flex items-center justify-between text-[11px]">
+                                  <span className="flex items-center gap-2 text-zinc-400">
                                     {check.ok
-                                      ? <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                                      : <AlertTriangle className="w-4 h-4 text-amber-400" />}
+                                      ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                                      : <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />}
                                     {check.label}
                                   </span>
                                   <span className={check.ok ? 'text-emerald-400 font-medium' : 'text-amber-400 font-medium'}>{check.value}</span>
@@ -758,7 +767,7 @@ export default function Dashboard() {
                             </div>
                             <button
                               type="button"
-                              className="w-full bg-[#161b26] hover:bg-cyan-500 hover:text-slate-950 border border-white/10 text-white py-2.5 rounded-xl text-sm font-semibold transition shadow"
+                              className="mt-1 inline-flex w-full items-center justify-center rounded-md bg-cyan-500 px-3 py-1.5 text-[11px] font-semibold text-slate-950 transition hover:bg-cyan-400"
                               onClick={() => router.push('/ci-cd')}
                             >
                               Prepare deployment
@@ -767,46 +776,51 @@ export default function Dashboard() {
                         )}
                       </div>
 
-                      <div className="rounded-xl border border-white/[0.07] bg-[#0d1119] p-5">
-                        <div className="flex items-center justify-between mb-4">
+                      <div className="rounded-xl border border-white/[0.07] bg-[#0d1119] p-4">
+                        <div className="flex items-center justify-between mb-3">
                           <div className="flex items-center gap-2">
-                            <Radio className="w-5 h-5 text-emerald-400" />
-                            <h3 className="font-bold text-white text-base">Debug Rooms</h3>
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-400">
+                              <Radio className="h-4 w-4" />
+                            </div>
+                            <h3 className="text-sm font-semibold text-white">Debug Rooms</h3>
                           </div>
                           {overview.debugRooms.length > 0 && (
-                            <span className="text-xs bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/20">LIVE</span>
+                            <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/20">LIVE</span>
                           )}
                         </div>
 
                         {overview.debugRooms.length === 0 ? (
-                          <div className="bg-[#161b26] border border-white/5 rounded-xl p-8 text-center">
-                            <p className="text-sm font-semibold text-white">No active debug rooms</p>
-                            <p className="text-xs text-zinc-400 mt-0.5 mb-4">Start a live session to collaborate with your team in real time.</p>
+                          <div className="flex min-h-[100px] flex-col items-center justify-center rounded-md border border-white/5 bg-white/[0.02] px-4 py-3 text-center">
+                            <div className="mb-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-400">
+                              <Radio className="h-3.5 w-3.5" />
+                            </div>
+                            <p className="text-xs font-semibold text-white">No active debug rooms</p>
+                            <p className="mt-1 text-[10px] text-zinc-500">Start a live session to collaborate with your team in real time.</p>
                             <button
                               type="button"
-                              className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 px-4 py-2 rounded-lg text-xs font-bold transition inline-flex items-center gap-2"
+                              className="mt-2 rounded-md bg-cyan-500 px-3 py-1 text-[10px] font-semibold text-slate-950 transition hover:bg-cyan-400"
                               onClick={() => router.push('/meeting-room')}
                             >
-                              <Plus className="w-3.5 h-3.5" /> Start session
+                              Start session
                             </button>
                           </div>
                         ) : (
                           <div className="space-y-3">
                             {overview.debugRooms.map((room) => (
-                              <div key={room.id} className="bg-[#161b26] border border-white/5 rounded-xl p-4 flex items-center justify-between">
+                              <div key={room.id} className="rounded-md border border-white/5 bg-white/[0.02] px-3 py-2 flex items-center justify-between">
                                 <div className="flex items-center gap-3 min-w-0">
                                   <div className="flex -space-x-2 shrink-0">
                                     {room.participants.map((p, idx) => (
-                                      <span key={idx} className="w-8 h-8 rounded-full bg-cyan-500/20 text-cyan-300 font-bold text-xs flex items-center justify-center border border-cyan-500/40">
+                                      <span key={idx} className="flex h-7 w-7 items-center justify-center rounded-full bg-cyan-500/20 text-[10px] font-bold text-cyan-300 border border-cyan-500/40">
                                         {p}
                                       </span>
                                     ))}
                                   </div>
-                                  <span className="text-xs text-zinc-300 truncate">{room.title}</span>
+                                  <span className="text-[11px] text-zinc-400 truncate">{room.title}</span>
                                 </div>
                                 <button
                                   type="button"
-                                  className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 px-4 py-2 rounded-lg text-xs font-bold transition shrink-0"
+                                  className="rounded-md bg-[#171b23] px-3 py-1 text-[10px] font-medium text-cyan-400 hover:bg-[#202632] transition shrink-0"
                                   onClick={() => router.push('/meeting-room')}
                                 >
                                   Join →
@@ -819,22 +833,25 @@ export default function Dashboard() {
                     </div>
 
                     {/* Recent code + connections */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                      <div className="rounded-xl border border-white/[0.07] bg-[#0d1119] p-5">
-                        <div className="flex items-center justify-between mb-4">
-                          <h3 className="font-bold text-white text-base">Recent Code Activities</h3>
-                          <button type="button" className="text-xs text-zinc-400 hover:text-white" onClick={() => router.push('/source-code')}>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                      <div className="rounded-xl border border-white/[0.07] bg-[#0d1119] p-4">
+                        <div className="flex items-center justify-between mb-3 border-b border-white/5 pb-2">
+                          <h3 className="text-sm font-semibold text-white">Recent Code Activities</h3>
+                          <button type="button" className="text-[11px] text-cyan-400 hover:text-cyan-300" onClick={() => router.push('/source-code')}>
                             View Repo
                           </button>
                         </div>
 
                         {overview.recentActivity.filter((a) => a.type === 'code' || a.type === 'git').length === 0 ? (
-                          <div className="bg-[#161b26] border border-white/5 rounded-xl p-8 text-center">
-                            <p className="text-sm font-semibold text-white">No code activity yet</p>
-                            <p className="text-xs text-zinc-400 mt-0.5">Commits and code changes will appear here.</p>
+                          <div className="flex min-h-[92px] flex-col items-center justify-center rounded-md border border-white/5 bg-white/[0.02] px-4 py-3 text-center">
+                            <div className="mb-1.5 flex h-7 w-7 items-center justify-center rounded-lg bg-white/5 text-zinc-400">
+                              <FileCode className="h-3.5 w-3.5" />
+                            </div>
+                            <p className="text-[11px] font-semibold text-white">No code activity yet</p>
+                            <p className="mt-1 max-w-[230px] text-[10px] text-zinc-500">Commits and code changes will appear here.</p>
                           </div>
                         ) : (
-                          <div className="space-y-4">
+                          <div className="space-y-3">
                             {overview.recentActivity.filter((a) => a.type === 'code' || a.type === 'git').slice(0, 4).map((item) => (
                               <div key={item.id} className="flex items-start justify-between gap-4">
                                 <div className="flex items-start gap-3 min-w-0">
@@ -843,7 +860,7 @@ export default function Dashboard() {
                                   </div>
                                   <div className="min-w-0">
                                     <p className="text-xs font-semibold text-white truncate">{item.title}</p>
-                                    <p className="text-[11px] text-zinc-400 truncate">{item.subtitle}</p>
+                                    <p className="text-[10px] text-zinc-500 truncate">{item.subtitle}</p>
                                   </div>
                                 </div>
                                 <span className="text-[11px] text-zinc-500 shrink-0">{item.relativeTime}</span>
@@ -853,21 +870,24 @@ export default function Dashboard() {
                         )}
                       </div>
 
-                      <div className="rounded-xl border border-white/[0.07] bg-[#0d1119] p-5">
-                        <div className="flex items-center justify-between mb-4">
-                          <h3 className="font-bold text-white text-base">Workspace Connections</h3>
-                          <button type="button" className="text-xs text-cyan-400 hover:underline" onClick={() => router.push('/integrations')}>
+                      <div className="rounded-xl border border-white/[0.07] bg-[#0d1119] p-4">
+                        <div className="flex items-center justify-between mb-3 border-b border-white/5 pb-2">
+                          <h3 className="text-sm font-semibold text-white">Workspace Connections</h3>
+                          <button type="button" className="text-[11px] text-cyan-400 hover:text-cyan-300" onClick={() => router.push('/integrations')}>
                             Manage
                           </button>
                         </div>
 
                         {overview.connections.length === 0 ? (
-                          <div className="bg-[#161b26] border border-white/5 rounded-xl p-8 text-center">
-                            <p className="text-sm font-semibold text-white">No connections yet</p>
-                            <p className="text-xs text-zinc-400 mt-0.5 mb-4">Connect GitHub, Slack, or an MCP server to enrich your workspace.</p>
+                          <div className="flex min-h-[116px] flex-col items-center justify-center px-4 py-3 text-center">
+                            <div className="mb-1.5 flex h-7 w-7 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-400">
+                              <Plug2 className="h-3.5 w-3.5" />
+                            </div>
+                            <p className="text-[11px] font-semibold text-white">No connections yet</p>
+                            <p className="mt-1 max-w-[220px] text-[10px] text-zinc-500">Connect GitHub, Slack, or an MCP server to enrich your workspace.</p>
                             <button
                               type="button"
-                              className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 px-4 py-2 rounded-lg text-xs font-bold transition inline-flex items-center gap-2"
+                              className="mt-2 rounded-md bg-cyan-500 px-3 py-1.5 text-[11px] font-semibold text-slate-950 transition hover:bg-cyan-400 inline-flex items-center gap-1"
                               onClick={() => router.push('/integrations')}
                             >
                               <Plug2 className="w-3.5 h-3.5" /> Add connection
@@ -879,14 +899,14 @@ export default function Dashboard() {
                               const meta = CONNECTION_ICON[conn.provider] || CONNECTION_ICON.deploy;
                               const Icon = meta.Icon;
                               return (
-                                <div key={conn.id} className="flex items-center justify-between bg-[#161b26] border border-white/5 rounded-xl p-3.5">
+                                <div key={conn.id} className="flex items-center justify-between rounded-md border border-white/5 bg-white/[0.02] px-3 py-2">
                                   <div className="flex items-center gap-3 min-w-0">
-                                    <div className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 ${meta.cls}`}>
-                                      <Icon className="w-4 h-4" />
+                                    <div className={`flex h-7 w-7 items-center justify-center rounded-lg border shrink-0 ${meta.cls}`}>
+                                      <Icon className="h-3.5 w-3.5" />
                                     </div>
                                     <div className="min-w-0">
                                       <p className="text-xs font-semibold text-white truncate">{conn.title}</p>
-                                      <p className="text-[11px] text-zinc-400 truncate">{conn.subtitle}</p>
+                                      <p className="text-[10px] text-zinc-500 truncate">{conn.subtitle}</p>
                                     </div>
                                   </div>
                                   {conn.status === 'warn' && (
@@ -899,7 +919,7 @@ export default function Dashboard() {
                         )}
                       </div>
                     </div>
-                  </>
+                  </div>
                 )}
               </div>
             </>
