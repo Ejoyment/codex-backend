@@ -137,8 +137,8 @@ export default function SpecEditor({ specId, workspaceId, projectId: projectIdPr
   const parsed = parseFrontmatter(content || '');
 
   return (
-    <div className="flex flex-col h-full bg-[#1d263b] rounded-lg border border-[#2e2e3e] overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-2 border-b border-[#2e2e3e] bg-[#161d29]">
+    <div className="flex flex-col h-full bg-[#1d263b] rounded-lg border border-[#2a3446] overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-[#2a3446] bg-[#161d29]">
         <div className="flex items-center gap-2">
           <FileCodeIcon className="w-4 h-4 text-purple-400" />
           <span className="text-sm font-semibold text-[#dee2f6]">
@@ -173,7 +173,7 @@ export default function SpecEditor({ specId, workspaceId, projectId: projectIdPr
         </div>
       </div>
 
-      <div className="flex border-b border-[#2e2e3e]">
+      <div className="flex border-b border-[#2a3446]">
         <button
           onClick={() => setActiveTab('spec')}
           className={`px-4 py-2 text-xs font-semibold border-b-2 transition-colors ${
@@ -197,7 +197,7 @@ export default function SpecEditor({ specId, workspaceId, projectId: projectIdPr
       <div className="flex-1 overflow-hidden">
         {activeTab === 'spec' && (
           <div className="flex h-full">
-            <div className="w-1/2 border-r border-[#2e2e3e]">
+            <div className="w-1/2 border-r border-[#2a3446]">
               <MonacoEditor
                 height="100%"
                 language="markdown"
@@ -212,10 +212,10 @@ export default function SpecEditor({ specId, workspaceId, projectId: projectIdPr
                   padding: { top: 10 },
                 }}
                 onMount={(editor) => { editorRef.current = editor; }}
-                style={{ background: '#0d0d1a' }}
+                style={{ background: '#121821' }}
               />
             </div>
-            <div className="w-1/2 p-4 overflow-auto bg-[#0d0d1a]">
+            <div className="w-1/2 p-4 overflow-auto bg-[#121821]">
               {parsed && (
                 <div className="space-y-4">
                   <div>
@@ -278,13 +278,13 @@ export default function SpecEditor({ specId, workspaceId, projectId: projectIdPr
               automaticLayout: true,
               padding: { top: 10 },
             }}
-            style={{ background: '#0d0d1a' }}
+            style={{ background: '#121821' }}
           />
         )}
       </div>
 
       {driftWarnings.length > 0 && (
-        <div className="border-t border-[#2e2e3e] p-3 bg-red-500/5">
+        <div className="border-t border-[#2a3446] p-3 bg-red-500/5">
           <div className="flex items-center gap-2 mb-2">
             <AlertTriangle className="w-4 h-4 text-yellow-400" />
             <span className="text-xs font-semibold text-yellow-400">AST Drift Warnings</span>

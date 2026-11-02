@@ -165,7 +165,7 @@ const agentSessionFixture = {
 export function isDemoTourActive() {
   if (typeof window === 'undefined') return false;
   return new URLSearchParams(window.location.search).get('tour') === '1'
-    || window.sessionStorage.getItem('buildrs-tour-demo') === '1';
+    || window.name === 'buildrs-product-tour';
 }
 
 export function getDemoApiResponse(path, options = {}) {

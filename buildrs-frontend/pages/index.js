@@ -295,7 +295,7 @@ export default function Index() {
             {BUILD.map((b) => (
               <StaggerItem key={b.title}>
               <div className="group h-full bg-[#121821] p-7 transition-colors hover:bg-[#161d29]">
-                <div className="mkt-mono mb-5 flex h-9 w-9 items-center justify-center rounded-md border border-[#ffffff12] text-[13px] text-[#12dce5]">
+                <div className="mkt-mono mb-5 flex h-9 w-9 items-center justify-center rounded-md border border-[#ffffff10] text-[13px] text-[#12dce5]">
                   {b.icon}
                 </div>
                 <h3 className="mkt-h3">{b.title}</h3>
@@ -308,7 +308,7 @@ export default function Index() {
         </section>
 
         {/* ── Collaborate ──────────────────────────────────── */}
-        <section className="border-y border-[#ffffff0f] bg-[#0a0a0d]">
+        <section className="border-y border-[#ffffff0f] bg-[#0a0d15]">
           <div className="mx-auto max-w-[1200px] px-5 py-24 sm:px-8">
             <div className="grid gap-12 lg:grid-cols-[0.9fr_1.1fr]">
               <div>
@@ -342,7 +342,7 @@ export default function Index() {
                     ].map(([name, act, color]) => (
                       <div key={name} className="flex items-center gap-3 text-[13px]">
                         <span
-                          className="mkt-mono flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-semibold text-[#04181b]"
+                          className="mkt-mono flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-semibold text-[#0a0d15]"
                           style={{ background: color }}
                         >
                           {name.slice(0, 1).toUpperCase()}

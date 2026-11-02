@@ -18,9 +18,6 @@ export default function AuthGuard({ children }) {
 
   useEffect(() => {
     setHasHydrated(true);
-    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('tour') === '1') {
-      window.sessionStorage.setItem('buildrs-tour-demo', '1');
-    }
   }, []);
 
   useEffect(() => {

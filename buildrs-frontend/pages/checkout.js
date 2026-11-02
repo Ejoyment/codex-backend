@@ -311,7 +311,7 @@ export default function Checkout() {
                       {selectedPlan === plan.id && (
                         <div className="absolute top-4 right-4">
                           <div className="w-5 h-5 rounded-full bg-[#12dce5] flex items-center justify-center">
-                            <Check className="w-3 h-3 text-[#04181b]" />
+                            <Check className="w-3 h-3 text-[#0a0d15]" />
                           </div>
                         </div>
                       )}

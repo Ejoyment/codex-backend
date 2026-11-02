@@ -1043,7 +1043,7 @@ export default function AiPair() {
                                 </span>
                                 <span className="ail-sess-time">{formatTime(sess.createdAt)}</span>
                               </span>
-                              <ChevronRight className="w-3.5 h-3.5 flex-shrink-0" style={{ color: isActive ? '#12dce5' : '#3a4050' }} />
+                              <ChevronRight className="w-3.5 h-3.5 flex-shrink-0" style={{ color: isActive ? '#12dce5' : '#3a4657' }} />
                             </button>
                           );
                         })

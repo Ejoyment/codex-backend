@@ -156,7 +156,7 @@ export default function About() {
               <div className="mkt-card max-w-[520px] p-7">
                 <div className="flex items-center gap-5">
                   <div
-                    className="mkt-mono flex h-14 w-14 items-center justify-center rounded-full text-[16px] font-semibold text-[#04181b]"
+                    className="mkt-mono flex h-14 w-14 items-center justify-center rounded-full text-[16px] font-semibold text-[#0a0d15]"
                     style={{ background: '#12dce5' }}
                   >
                     ED

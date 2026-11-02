@@ -43,7 +43,7 @@ function tierBadgeClass(t) {
 const ANSI_SGR_RE = /\x1b\[([0-9;]*)m/g;
 const ANSI_PALETTE = [
   '#000000', '#cd3131', '#0dbc79', '#e5e510', '#2472c8', '#bc3fbc', '#11a8cd', '#dee2f6',
-  '#666666', '#ec1414', '#23d18b', '#f5f543', '#3b8eea', '#d670d6', '#29b8db', '#ffffff',
+  '#59687a', '#ec1414', '#23d18b', '#f5f543', '#3b8eea', '#d670d6', '#29b8db', '#ffffff',
 ];
 
 function stripAnsi(text) {
@@ -1221,10 +1221,10 @@ export default function Editor() {
           // VS Code dark+ palette
           theme: {
             background: '#0a0d15',
-            foreground: '#cccccc',
-            cursor: '#aeafad',
+            foreground: '#c7d2dd',
+            cursor: '#9aaeba',
             cursorAccent: '#0a0d15',
-            selectionBackground: '#264f78',
+            selectionBackground: '#12dce533',
             black: '#000000',
             red: '#cd3131',
             green: '#0dbc79',
@@ -1233,7 +1233,7 @@ export default function Editor() {
             magenta: '#bc3fbc',
             cyan: '#11a8cd',
             white: '#dee2f6',
-            brightBlack: '#666666',
+            brightBlack: '#59687a',
             brightRed: '#ec1414',
             brightGreen: '#23d18b',
             brightYellow: '#f5f543',
@@ -2454,7 +2454,7 @@ export default function Editor() {
         'editorCursor.foreground': '#12dce5',
         'editor.selectionBackground': '#12dce533',
         'editor.inactiveSelectionBackground': '#12dce51a',
-        'editor.lineHighlightBackground': '#ffffff08',
+        'editor.lineHighlightBackground': '#ffffff0f',
         'editorIndentGuide.background1': '#ffffff10',
         'editorIndentGuide.activeBackground1': '#12dce54d',
         'editorWidget.background': '#101d2c',
@@ -2465,7 +2465,7 @@ export default function Editor() {
         'editorHoverWidget.background': '#101d2c',
         'editorHoverWidget.border': '#ffffff1a',
         'editorGutter.background': '#0a0d15',
-        'scrollbarSlider.background': '#ffffff14',
+        'scrollbarSlider.background': '#ffffff10',
         'scrollbarSlider.hoverBackground': '#ffffff24',
         'minimap.background': '#0a0d15',
       },
@@ -4102,11 +4102,11 @@ export default function Editor() {
                         <div style={{ marginTop: '0.3rem', color: '#9aaeba', fontSize: '0.64rem', lineHeight: 1.5 }}>
                           {agentExecution.goal || agentExecution.title}
                         </div>
-                        <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.75rem', fontSize: '0.68rem', color: '#a0a0a0' }}>
+                        <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.75rem', fontSize: '0.68rem', color: '#9aaeba' }}>
                           <span>+{agentExecution.diffSummary?.insertions || 0}</span>
                           <span>-{agentExecution.diffSummary?.deletions || 0}</span>
                         </div>
-                        <div style={{ marginTop: '0.6rem', display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.68rem', color: '#cfd4dc' }}>
+                        <div style={{ marginTop: '0.6rem', display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.68rem', color: '#c7d2dd' }}>
                           {agentExecution.logs.slice(-4).map((log, idx) => (
                             <div key={`${log}-${idx}`} style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.04)', borderRadius: 4, padding: '0.35rem 0.45rem' }}>
                               {log}
@@ -4463,7 +4463,7 @@ export default function Editor() {
                                 key={i}
                                 style={{
                                   whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.5,
-                                  color: l.kind === 'err' ? '#ec1414' : l.kind === 'sys' ? '#56e5a9' : '#c7d3df',
+                                  color: l.kind === 'err' ? '#ec1414' : l.kind === 'sys' ? '#56e5a9' : '#c7d2dd',
                                 }}
                               >
                                 {segs.length === 0 ? ' ' : segs.map((seg, j) => (
@@ -4604,7 +4604,7 @@ export default function Editor() {
                           aria-pressed={autoDeployOn}
                         >
                           Auto-Deploy
-                          <span className={`mkt-mono`} style={{ fontSize: '10px', marginLeft: '6px', padding: '1px 7px', borderRadius: 999, background: autoDeployOn ? 'rgba(47,214,100,0.15)' : 'rgba(255,255,255,0.08)', color: autoDeployOn ? '#4ade80' : '#9aaeba' }}>
+                          <span className={`mkt-mono`} style={{ fontSize: '10px', marginLeft: '6px', padding: '1px 7px', borderRadius: 999, background: autoDeployOn ? 'rgba(3,186,3,0.15)' : 'rgba(255,255,255,0.08)', color: autoDeployOn ? '#03ba03' : '#9aaeba' }}>
                             {autoDeployOn ? 'ON' : 'OFF'}
                           </span>
                         </button>

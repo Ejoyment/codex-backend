@@ -56,7 +56,7 @@ export default function SiteHeader() {
             type="button"
             aria-label="Toggle navigation"
             onClick={() => setOpen((v) => !v)}
-            className="flex h-9 w-9 items-center justify-center rounded-md border border-[#ffffff12] text-white md:hidden"
+            className="flex h-9 w-9 items-center justify-center rounded-md border border-[#ffffff10] text-white md:hidden"
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
               {open ? (
@@ -94,7 +94,7 @@ export default function SiteHeader() {
               <Link
                 href="/signup"
                 onClick={() => setOpen(false)}
-                className="mt-1 rounded-md px-3 py-2.5 text-center text-sm font-medium text-[#04181b]"
+                className="mt-1 rounded-md px-3 py-2.5 text-center text-sm font-medium text-[#0a0d15]"
                 style={{ background: '#12dce5' }}
               >
                 Start free →

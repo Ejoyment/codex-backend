@@ -83,15 +83,15 @@ export default function Onboarding() {
               <div className="space-y-5 mb-10">
                 <div>
                   <label className="block text-sm font-medium text-[#dee2f6] mb-2">What's your name?</label>
-                  <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} className="w-full px-4 py-4 bg-[#0f131c] border border-[#ffffff12] rounded-xl text-white placeholder-[#59687a] focus:outline-none focus:border-blue-500 transition" placeholder="John Doe" required />
+                  <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} className="w-full px-4 py-4 bg-[#0f131c] border border-[#ffffff10] rounded-xl text-white placeholder-[#59687a] focus:outline-none focus:border-blue-500 transition" placeholder="John Doe" required />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-[#dee2f6] mb-2">Company Name (Optional)</label>
-                  <input type="text" value={company} onChange={(e) => setCompany(e.target.value)} className="w-full px-4 py-4 bg-[#0f131c] border border-[#ffffff12] rounded-xl text-white placeholder-[#59687a] focus:outline-none focus:border-blue-500 transition" placeholder="Acme Inc" />
+                  <input type="text" value={company} onChange={(e) => setCompany(e.target.value)} className="w-full px-4 py-4 bg-[#0f131c] border border-[#ffffff10] rounded-xl text-white placeholder-[#59687a] focus:outline-none focus:border-blue-500 transition" placeholder="Acme Inc" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-[#dee2f6] mb-2">Team Size</label>
-                  <select value={teamSize} onChange={(e) => setTeamSize(e.target.value)} className="w-full px-4 py-4 bg-[#0f131c] border border-[#ffffff12] rounded-xl text-white focus:outline-none focus:border-blue-500 transition">
+                  <select value={teamSize} onChange={(e) => setTeamSize(e.target.value)} className="w-full px-4 py-4 bg-[#0f131c] border border-[#ffffff10] rounded-xl text-white focus:outline-none focus:border-blue-500 transition">
                     <option value="">Select team size</option>
                     <option value="Just me">Just me</option>
                     <option value="2-10">2-10 people</option>
@@ -117,7 +117,7 @@ export default function Onboarding() {
 
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-10">
                 {['CEO', 'Designer', 'Developer', 'Product Manager', 'Marketing', 'Executive'].map((role) => (
-                  <button key={role} type="button" onClick={() => toggleRole(role)} className={`role-btn p-6 border-2 rounded-xl hover:border-blue-500 transition text-center ${roles.includes(role) ? 'border-blue-500 bg-[#0f131c]' : 'border-[#ffffff12] bg-[#0f131c]'}`}>
+                  <button key={role} type="button" onClick={() => toggleRole(role)} className={`role-btn p-6 border-2 rounded-xl hover:border-blue-500 transition text-center ${roles.includes(role) ? 'border-blue-500 bg-[#0f131c]' : 'border-[#ffffff10] bg-[#0f131c]'}`}>
                     <div className="text-4xl mb-3">{role === 'Developer' ? '💻' : role === 'Designer' ? '🎨' : role === 'CEO' ? '👔' : role === 'Product Manager' ? '📋' : role === 'Marketing' ? '📈' : '🏢'}</div>
                     <div className="font-semibold text-white">{role}</div>
                   </button>
@@ -125,7 +125,7 @@ export default function Onboarding() {
               </div>
 
               <div className="flex justify-between">
-                <button type="button" onClick={prevStep} className="px-8 py-4 border border-[#ffffff12] text-[#a9b7c4] rounded-xl hover:bg-[#0f131c] transition font-semibold">← Back</button>
+                <button type="button" onClick={prevStep} className="px-8 py-4 border border-[#ffffff10] text-[#a9b7c4] rounded-xl hover:bg-[#0f131c] transition font-semibold">← Back</button>
                 <button type="button" onClick={nextStep} className="px-8 py-4 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition font-semibold">Continue →</button>
               </div>
             </div>
@@ -140,7 +140,7 @@ export default function Onboarding() {
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10">
                 {['Build faster', 'Collaborate better', 'Learn AI coding'].map((g) => (
-                  <button key={g} type="button" onClick={() => setGoal(g)} className={`p-6 border-2 rounded-xl hover:border-blue-500 transition text-center ${goal === g ? 'border-blue-500 bg-[#0f131c]' : 'border-[#ffffff12] bg-[#0f131c]'}`}>
+                  <button key={g} type="button" onClick={() => setGoal(g)} className={`p-6 border-2 rounded-xl hover:border-blue-500 transition text-center ${goal === g ? 'border-blue-500 bg-[#0f131c]' : 'border-[#ffffff10] bg-[#0f131c]'}`}>
                     <div className="text-4xl mb-3">{g === 'Build faster' ? '🚀' : g === 'Collaborate better' ? '🤝' : '🧠'}</div>
                     <div className="font-semibold text-white">{g}</div>
                   </button>
@@ -148,7 +148,7 @@ export default function Onboarding() {
               </div>
 
               <div className="flex justify-between">
-                <button type="button" onClick={prevStep} className="px-8 py-4 border border-[#ffffff12] text-[#a9b7c4] rounded-xl hover:bg-[#0f131c] transition font-semibold">← Back</button>
+                <button type="button" onClick={prevStep} className="px-8 py-4 border border-[#ffffff10] text-[#a9b7c4] rounded-xl hover:bg-[#0f131c] transition font-semibold">← Back</button>
                 <button type="button" onClick={nextStep} className="px-8 py-4 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition font-semibold">Continue →</button>
               </div>
             </div>
@@ -162,7 +162,7 @@ export default function Onboarding() {
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10">
                 {['Beginner', 'Intermediate', 'Expert'].map((level) => (
-                  <button key={level} type="button" onClick={() => setExperience(level)} className={`p-6 border-2 rounded-xl hover:border-blue-500 transition text-center ${experience === level ? 'border-blue-500 bg-[#0f131c]' : 'border-[#ffffff12] bg-[#0f131c]'}`}>
+                  <button key={level} type="button" onClick={() => setExperience(level)} className={`p-6 border-2 rounded-xl hover:border-blue-500 transition text-center ${experience === level ? 'border-blue-500 bg-[#0f131c]' : 'border-[#ffffff10] bg-[#0f131c]'}`}>
                     <div className="text-4xl mb-3">{level === 'Beginner' ? '🌱' : level === 'Intermediate' ? '🌿' : '🌳'}</div>
                     <div className="font-semibold text-white">{level}</div>
                   </button>
@@ -170,7 +170,7 @@ export default function Onboarding() {
               </div>
 
               <div className="flex justify-between">
-                <button type="button" onClick={prevStep} className="px-8 py-4 border border-[#ffffff12] text-[#a9b7c4] rounded-xl hover:bg-[#0f131c] transition font-semibold">← Back</button>
+                <button type="button" onClick={prevStep} className="px-8 py-4 border border-[#ffffff10] text-[#a9b7c4] rounded-xl hover:bg-[#0f131c] transition font-semibold">← Back</button>
                 <button type="button" onClick={nextStep} className="px-8 py-4 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition font-semibold">Continue →</button>
               </div>
             </div>
