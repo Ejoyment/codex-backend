@@ -101,6 +101,7 @@ jest.mock('../utils/aiRouterService', () => ({
     provider: provider || 'gemini',
     localPrivacyMode: Boolean(localPrivacyMode),
   })),
+  normalizeModel: jest.fn((provider, model) => (model && model !== provider ? model : null)),
   validateModel: jest.fn().mockResolvedValue(true),
   isLocalProvider: jest.fn(() => false),
 }));

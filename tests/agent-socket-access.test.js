@@ -34,6 +34,7 @@ jest.mock('../utils/aiRouterService', () => ({
     provider: provider || 'gemini',
     localPrivacyMode: Boolean(localPrivacyMode),
   })),
+  normalizeModel: jest.fn((provider, model) => (model && model !== provider ? model : null)),
   validateModel: jest.fn().mockResolvedValue(true),
 }));
 jest.mock('../utils/sddVerificationService', () => ({ verifySpec: jest.fn() }));
@@ -367,6 +368,7 @@ describe('approve / reject ownership', () => {
     expect(payload.message).toMatch(/approved/i);
     expect(CodeFile.find).toHaveBeenCalledWith({
       company: WORKSPACE_A,
+      project: null,
       $or: [{ name: 'a.js', path: '/src' }],
     });
     expect(doc.save).toHaveBeenCalled();

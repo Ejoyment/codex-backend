@@ -79,6 +79,17 @@ describe('AI provider selection', () => {
     expect(geminiChat).not.toHaveBeenCalled();
   });
 
+  test('normalizes stale or provider-shaped model preferences to the configured model', async () => {
+    process.env.GROQ_API_KEY = 'test-groq-key';
+    loadServices();
+
+    const configured = aiRouterService.providers.groq.model;
+    expect(aiRouterService.normalizeModel('groq', 'groq')).toBeNull();
+    expect(aiRouterService.normalizeModel('groq', 'retired-model')).toBeNull();
+    expect(aiRouterService.normalizeModel('groq', configured)).toBe(configured);
+    await expect(aiRouterService.validateModel('groq', 'retired-model')).resolves.toBe(true);
+  });
+
   test('does not replace an unavailable explicit provider with another configured provider', () => {
     process.env.GEMINI_API_KEY = 'test-gemini-key';
     process.env.GROQ_API_KEY = 'test-groq-key';

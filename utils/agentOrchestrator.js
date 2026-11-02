@@ -77,6 +77,9 @@ class AgentOrchestrator {
     async _findOwnedFile(CodeFile, fileId, context) {
         if (!mongoose.isValidObjectId(fileId)) return null;
         const query = { _id: fileId, company: context.workspaceId };
+        // Project isolation: a project-scoped agent may only touch files from
+        // its own project, even when it guesses a valid id from another one.
+        if (context.projectId) query.project = String(context.projectId);
         if (context.userId && context.createdBySelfOnly) {
             query.createdBy = context.userId;
         }
@@ -329,6 +332,7 @@ class AgentOrchestrator {
                         language: params.language,
                         path: params.path || '/',
                         company: context.workspaceId,
+                        ...(context.projectId ? { project: String(context.projectId) } : {}),
                         createdBy: context.userId,
                         lastModifiedBy: context.userId
                     });
@@ -431,6 +435,7 @@ class AgentOrchestrator {
                     } else if (context.workspaceId) {
                         const CodeFile = require('../models/CodeFile');
                         const query = { company: context.workspaceId };
+                        if (context.projectId) query.project = String(context.projectId);
                         if (params.path) query.path = params.path;
                         files = await CodeFile.find(query)
                             .select('name path language _id')
@@ -484,6 +489,7 @@ class AgentOrchestrator {
                         company: context.workspaceId,
                         content: { $regex: escaped, $options: 'i' }
                     };
+                    if (context.projectId) query.project = String(context.projectId);
                     if (params.language) query.language = params.language;
 
                     const files = await CodeFile.find(query)
@@ -544,10 +550,12 @@ class AgentOrchestrator {
                     
                     // If specific test file provided, run it
                     if (params.testFile) {
-                        const file = await CodeFile.findOne({
+                        const testFileQuery = {
                             company: context.workspaceId,
                             path: params.testFile
-                        });
+                        };
+                        if (context.projectId) testFileQuery.project = String(context.projectId);
+                        const file = await CodeFile.findOne(testFileQuery);
                         
                         if (!file) {
                             return {
@@ -571,14 +579,16 @@ class AgentOrchestrator {
                     }
                     
                     // Otherwise, find and run all test files
-                    const testFiles = await CodeFile.find({
+                    const testFilesQuery = {
                         company: context.workspaceId,
                         $or: [
                             { name: /\.test\.(js|ts)$/ },
                             { name: /\.spec\.(js|ts)$/ },
                             { path: /\/tests?\// }
                         ]
-                    });
+                    };
+                    if (context.projectId) testFilesQuery.project = String(context.projectId);
+                    const testFiles = await CodeFile.find(testFilesQuery);
                     
                     if (testFiles.length === 0) {
                         return {
@@ -628,6 +638,7 @@ class AgentOrchestrator {
                             language: fileData.language,
                             path: fileData.path || '/',
                             company: context.workspaceId,
+                            ...(context.projectId ? { project: String(context.projectId) } : {}),
                             createdBy: context.userId,
                             lastModifiedBy: context.userId
                         });

@@ -19,6 +19,7 @@ const { execSync } = require('child_process');
 const { notifyAgentEvent } = require('./notificationTriggers');
 const CreditPoolService = require('./creditPoolService');
 const { trimToLast, MAX_TWEAKS } = require('./retention');
+const { resolveProjectId, projectFileQuery } = require('./fileScope');
 
 // `metadata` is a Mongoose Map: prefer .get(), but tolerate plain objects too.
 function metaValue(execution, key) {
@@ -142,7 +143,8 @@ class AgentSocketHandler {
     try {
       const { provider, localPrivacyMode: effectiveLocalPrivacyMode } =
         aiRouterService.resolveRequestProvider(requestedProvider, localPrivacyMode);
-      await aiRouterService.validateModel(provider, model);
+      const effectiveModel = aiRouterService.normalizeModel(provider, model);
+      await aiRouterService.validateModel(provider, effectiveModel);
       // Access checks BEFORE any mutation (execution creation, task updates):
       // a client-supplied taskId/specId/workspaceId must belong to the caller.
       let task = null;
@@ -185,6 +187,7 @@ class AgentSocketHandler {
       if (project?.workspaceId && String(project.workspaceId) !== canonicalWorkspaceId) {
         return socket.emit('agent:error', { message: 'Project does not belong to this workspace' });
       }
+      const taskProjectId = resolveProjectId({ task });
 
       const credit = await CreditPoolService.deductCredits(socket.userId, CreditPoolService.AGENT_JOB_CREDIT_COST);
       if (!credit.success) {
@@ -200,18 +203,21 @@ class AgentSocketHandler {
       const execution = await AgentExecution.create({
         userId: socket.userId,
         sessionId: sessionId || 'standalone-task',
+        taskId: task?._id || null,
+        projectId: taskProjectId,
         taskTitle: taskTitle || 'Agent task',
         summary,
         status: 'running',
-        model: model || provider,
+        model: effectiveModel || provider,
         approvalRequired: true,
         metadata: {
           taskId: taskId || null,
           workspaceId: canonicalWorkspaceId || null,
+          projectId: taskProjectId,
           specId: specId || null,
           source: 'agent:delegate',
           provider,
-          model: model || null,
+          model: effectiveModel || null,
           localPrivacyMode: effectiveLocalPrivacyMode,
           creditsCharged: CreditPoolService.AGENT_JOB_CREDIT_COST,
         },
@@ -273,7 +279,7 @@ class AgentSocketHandler {
         taskId,
       });
 
-      this.executionLoop(execution, taskId, canonicalWorkspaceId, specId, provider, model, effectiveLocalPrivacyMode, socket, refundCredit);
+      this.executionLoop(execution, taskId, canonicalWorkspaceId, specId, provider, effectiveModel, effectiveLocalPrivacyMode, socket, refundCredit);
 
       // Provision container worker if Docker is available
       if (canonicalWorkspaceId) {
@@ -362,13 +368,18 @@ class AgentSocketHandler {
       }
 
       let project = null;
-      if (task?.projectId) {
-        project = await LocalProject.findById(task.projectId).lean();
+      const projectId = resolveProjectId({
+        projectId: metaValue(execution, 'projectId') || null,
+        task,
+        execution,
+      });
+      if (projectId) {
+        project = await LocalProject.findById(projectId).lean();
       }
 
       const snapshotFiles = execution.contextSnapshot?.codebaseSnapshot?.files || [];
       const codeFiles = workspaceId
-        ? await CodeFile.find({ company: workspaceId }).select('path name language content').lean()
+        ? await CodeFile.find(projectFileQuery(workspaceId, projectId)).select('path name language content').lean()
         : snapshotFiles;
 
       let contextSummary = '';
@@ -720,7 +731,7 @@ class AgentSocketHandler {
 
     try {
       const provider = metaValue(execution, 'provider') || 'gemini';
-      const model = metaValue(execution, 'model') || execution.model || null;
+      const model = aiRouterService.normalizeModel(provider, metaValue(execution, 'model') || execution.model || null);
       await aiRouterService.validateModel(provider, model);
 
       // Re-run through the shared context/retry pipeline so a follow-up keeps

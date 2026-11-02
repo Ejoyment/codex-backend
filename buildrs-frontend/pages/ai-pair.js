@@ -529,7 +529,15 @@ export default function AiPair() {
     fetchSessions();
     try {
       const savedPreference = localStorage.getItem(AI_MODEL_PREFERENCE_KEY);
-      if (savedPreference) setSelectedAiModel(JSON.parse(savedPreference));
+      if (savedPreference) {
+        const parsed = JSON.parse(savedPreference);
+        if (parsed && parsed.model && parsed.provider && parsed.model === parsed.provider) {
+          localStorage.removeItem(AI_MODEL_PREFERENCE_KEY);
+          setSelectedAiModel(null);
+        } else {
+          setSelectedAiModel(parsed);
+        }
+      }
     } catch (err) {
       localStorage.removeItem(AI_MODEL_PREFERENCE_KEY);
     }
@@ -655,7 +663,8 @@ export default function AiPair() {
           return null;
         }
       })();
-      const available = (data.providers || []).some((provider) =>
+      const savedIsValid = Boolean(saved?.provider && saved?.model && saved.model !== saved.provider);
+      const available = savedIsValid && (data.providers || []).some((provider) =>
         provider.key === saved?.provider &&
         (provider.type === 'cloud' ? provider.model === saved?.model : provider.models?.includes(saved?.model))
       );

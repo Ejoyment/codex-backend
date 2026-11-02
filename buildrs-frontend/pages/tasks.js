@@ -287,6 +287,13 @@ export default function Tasks() {
       let modelPreference = null;
       try {
         modelPreference = JSON.parse(window.localStorage.getItem('buildrs-ai-model-preference') || 'null');
+        // Older builds could persist the provider key in the model slot
+        // (e.g. {provider:'groq', model:'groq'}), which the API rejects.
+        // Treat that as "use the provider default".
+        if (modelPreference?.model && modelPreference.model === modelPreference.provider) {
+          modelPreference = null;
+          window.localStorage.removeItem('buildrs-ai-model-preference');
+        }
       } catch {
         window.localStorage.removeItem('buildrs-ai-model-preference');
       }
