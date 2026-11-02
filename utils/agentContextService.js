@@ -387,6 +387,12 @@ class AgentContextService {
             if (workspaceId) query.company = workspaceId;
             else if (companyId) query.company = companyId;
 
+            // A task-bound run may only see its own project. Without a project
+            // it sees unassigned files, never every project in the workspace:
+            // the other projects are unrelated applications.
+            if (projectId) query.project = String(projectId);
+            else if (taskId) query.project = null;
+
             // Get recently modified files
             const files = await CodeFile.find(query)
                 .sort({ updatedAt: -1 })

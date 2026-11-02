@@ -201,6 +201,29 @@ describe('applyToVFS', () => {
     expect(result).toMatchObject({ success: true, created: 1, updated: 1, deleted: 1, applied: 3 });
   });
 
+  test('only updates or creates files inside the execution project', async () => {
+    CodeFile.create.mockResolvedValue({ _id: 'c2', name: 'new.js', path: '/src' });
+    CodeFile.find.mockResolvedValue([]);
+
+    const result = await agentChangeSet.applyToVFS(
+      'ws',
+      [{ path: 'src/new.js', action: 'create', language: 'javascript', content: 'n' }],
+      { userId: 'user1', projectId: 'project-1' }
+    );
+
+    expect(CodeFile.find).toHaveBeenCalledWith({
+      company: 'ws',
+      project: 'project-1',
+      $or: [{ name: 'new.js', path: '/src' }],
+    });
+    expect(CodeFile.create).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'new.js',
+      company: 'ws',
+      project: 'project-1',
+    }));
+    expect(result).toMatchObject({ success: true, created: 1 });
+  });
+
   test('ignores unsafe paths', async () => {
     const result = await agentChangeSet.applyToVFS('ws', [{ path: '../evil', action: 'create', content: 'x' }], { userId: 'u' });
     expect(CodeFile.create).not.toHaveBeenCalled();

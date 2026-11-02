@@ -84,7 +84,29 @@ class AIRouterService {
     return Boolean(requestPreference || deploymentPreference);
   }
 
+  /**
+   * Normalize a model selection coming from a client. Older/stale UI
+   * preferences can store the provider key (for example `{provider:"groq",
+   * model:"groq"}`) in the model slot. That is not a real model, but treating
+   * it as "use this provider's configured model" lets the run continue instead
+   * of failing the whole chat with `Model "groq" is not configured for groq`.
+   */
+  normalizeModel(provider, model) {
+    if (model === undefined || model === null) return null;
+    const value = String(model).trim();
+    if (!value) return null;
+    if (provider && value.toLowerCase() === String(provider).toLowerCase()) return null;
+    // Cloud providers expose exactly one configured model. A saved preference
+    // from an older build/newer model list must not fail the whole request:
+    // fall back to the configured model instead.
+    if (provider && !this.isLocalProvider(provider) && this.providers[provider]?.model) {
+      if (value !== this.providers[provider].model) return null;
+    }
+    return value;
+  }
+
   async validateModel(provider, model) {
+    model = this.normalizeModel(provider, model);
     if (!model) return true;
     if (typeof model !== 'string' || !model.trim() || model.length > 200) {
       throw new Error('AI model must be a non-empty name of at most 200 characters.');
@@ -115,8 +137,10 @@ class AIRouterService {
       ...(options.signal ? { signal: options.signal } : {}),
     };
 
-    await this.validateModel(provider, options.model || codeContext.model);
-    if (options.model || codeContext.model) requestContext.model = options.model || codeContext.model;
+    const requestedModel = this.normalizeModel(provider, options.model || codeContext.model);
+    await this.validateModel(provider, requestedModel);
+    if (requestedModel) requestContext.model = requestedModel;
+    else delete requestContext.model;
 
     if (localPrivacyMode || this.isLocalProvider(provider)) {
       return this.routeLocal(messages, requestContext, provider);

@@ -22,6 +22,7 @@ const diff = require('diff');
 const CodeFile = require('../models/CodeFile');
 const gitService = require('./gitService');
 const codeSearchService = require('./codeSearchService');
+const { resolveProjectId } = require('./fileScope');
 
 const MARKER_RE = /^\s*(?:#{1,6}\s*)?(?:file|path|filename|filepath|target)\s*[:=]\s*(.+?)\s*$/i;
 const DELETE_RE = /^\s*(?:#{1,6}\s*)?(?:delete|remove)\s*[:=]\s*(.+?)\s*$/i;
@@ -556,7 +557,7 @@ async function stageChanges(workspaceId, changes, { message = 'Agent changes', b
  * Apply a change set to the VFS (CodeFile collection + search index). Called
  * only on approval, so agent work stays invisible until a human merges it.
  */
-async function applyToVFS(workspaceId, changes, { userId = null } = {}) {
+async function applyToVFS(workspaceId, changes, { userId = null, projectId = null } = {}) {
   let created = 0;
   let updated = 0;
   let deleted = 0;
@@ -570,6 +571,10 @@ async function applyToVFS(workspaceId, changes, { userId = null } = {}) {
   const existingFiles = uniquePaths.size
     ? await CodeFile.find({
       company: workspaceId,
+      // Only files in the execution's own project (or unassigned files for a
+      // task without a project) may be updated or deleted. Never touch another
+      // project's source that shares the workspace.
+      ...(projectId ? { project: String(projectId) } : { project: null }),
       $or: [...uniquePaths.values()],
     })
     : [];
@@ -621,6 +626,7 @@ async function applyToVFS(workspaceId, changes, { userId = null } = {}) {
         language,
         content,
         company: workspaceId,
+        ...(projectId ? { project: String(projectId) } : {}),
         createdBy: userId,
       });
       filesByPath.set(key, doc);
@@ -658,7 +664,8 @@ async function applyExecutionChanges(execution) {
     return { applied: false, reason: 'no proposed changes', changes: 0 };
   }
 
-  const result = await applyToVFS(workspaceId, changes, { userId: execution.userId });
+  const projectId = resolveProjectId({ execution });
+  const result = await applyToVFS(workspaceId, changes, { userId: execution.userId, projectId });
   return { applied: true, ...result, changes: changes.length };
 }
 

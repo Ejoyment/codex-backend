@@ -17,6 +17,7 @@ const permissionMatrix = require('../middleware/permissionMatrix');
 const { authenticateToken } = require('../middleware/auth');
 const { canonicalTier } = require('../utils/tierNames');
 const { assertWorkspaceAccess } = require('../utils/workspaceAuth');
+const { userCanAccessProject } = require('../utils/specAccess');
 const { boundedLimit } = require('../utils/queryLimits');
 
 async function resolveMemoryWorkspace(workspaceId, userId) {
@@ -730,10 +731,12 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
         }
 
         let selectedRouting = null;
+        let effectiveModel = model || null;
         try {
             if (provider || model) {
                 selectedRouting = aiRouterService.resolveRequestProvider(provider);
-                await aiRouterService.validateModel(selectedRouting.provider, model);
+                effectiveModel = aiRouterService.normalizeModel(selectedRouting.provider, model);
+                await aiRouterService.validateModel(selectedRouting.provider, effectiveModel);
             }
         } catch (error) {
             return res.status(400).json({ success: false, message: error.message });
@@ -751,6 +754,7 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
         }
 
         let agentWorkspaceId = null;
+        let agentProjectId = null;
         if (useAgentLoop) {
             // Prefer the session's own workspace/company binding so an agent
             // launched from a session always operates in the same project it
@@ -764,6 +768,26 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
                     return res.status(403).json({ success: false, message: access.reason || 'Workspace access denied' });
                 }
                 agentWorkspaceId = access.workspaceId;
+            }
+
+            // A task-bound agent may only see its own project. Resolve it from
+            // the task when the client did not send one, and reject projects
+            // the caller cannot reach.
+            agentProjectId = projectId || null;
+            if (agentProjectId && !(await userCanAccessProject(agentProjectId, req.userId))) {
+                return res.status(403).json({ success: false, message: 'Project access denied' });
+            }
+            if (taskId) {
+                const LocalTask = require('../models/LocalTask');
+                const task = await LocalTask.findOne({ _id: taskId, userId: req.userId })
+                    .select('projectId')
+                    .lean();
+                if (task?.projectId) {
+                    if (agentProjectId && String(agentProjectId) !== String(task.projectId)) {
+                        return res.status(403).json({ success: false, message: 'Task does not belong to this project' });
+                    }
+                    agentProjectId = String(task.projectId);
+                }
             }
         }
 
@@ -819,7 +843,7 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
                     workspaceId: agentWorkspaceId,
                     currentFile: codeContext?.currentFile?.path || null,
                     provider: selectedRouting?.provider || null,
-                    model: model || null,
+                    model: effectiveModel || null,
                     creditsCharged: CreditPoolService.AGENT_JOB_CREDIT_COST
                 }
             });
@@ -832,7 +856,7 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
                     companyId: agentWorkspaceId,
                     workspaceId: agentWorkspaceId,
                     taskId: taskId,
-                    projectId: projectId,
+                    projectId: agentProjectId,
                     message: message,
                     currentFile: codeContext?.currentFile,
                     includeConversations: true,
@@ -848,6 +872,7 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
                 userTier: agentPerm.tier,
                 workspaceId: agentWorkspaceId,
                 workspaceName: codeContext?.workspace?.name,
+                projectId: agentProjectId || null,
                 files: codeContext?.files?.length
                     ? codeContext.files
                     : agentContextBundle?.files?.projectSnapshot || [],
@@ -857,7 +882,7 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
                 repositoryBranch: session.branch,
                 agentContextBundle,
                 provider: selectedRouting?.provider,
-                model,
+                model: effectiveModel,
             };
 
             let result;
@@ -1007,7 +1032,7 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
         const enhancedContext = {
             ...codeContext,
             provider: selectedRouting?.provider || codeContext.provider,
-            model: model || codeContext.model,
+            model: effectiveModel || codeContext.model,
             agentMode: enableActions,
             instructions: `${baseInstructions}${teamConventionPrompt}`,
             crossToolContext: crossToolContext

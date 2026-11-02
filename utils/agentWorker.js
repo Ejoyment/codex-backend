@@ -9,7 +9,8 @@ const CodeFile = require('../models/CodeFile');
 const SpecModel = require('../models/SpecModel');
 const { slicedPush, trimToLast, MAX_AGENT_LOG } = require('./retention');
 const { connectWorkerDatabase } = require('./agentWorkerDatabase');
-const { executionId, taskId, workspaceId, specIds = [], provider, model, localPrivacyMode } = workerData;
+const { projectFileQuery, resolveProjectId } = require('./fileScope');
+const { executionId, taskId, workspaceId, projectId: workerProjectId, specIds = [], provider, model, localPrivacyMode } = workerData;
 
 const AI_TIMEOUT_MS = (() => {
   const configured = Number(process.env.AGENT_AI_TIMEOUT_MS);
@@ -64,8 +65,8 @@ function priorAttemptFrom(execution) {
   };
 }
 
-async function loadProject(execution, task) {
-  const projectId = execution.projectId || task?.projectId;
+async function loadProject(execution, task, explicitProjectId = null) {
+  const projectId = explicitProjectId || execution.projectId || task?.projectId;
   if (!projectId) return null;
   try {
     return await LocalProject.findById(projectId).lean();
@@ -102,16 +103,20 @@ async function loadSpecs(snapshotSpecs, specIds) {
   }
 }
 
-async function loadCodeFiles(workspaceId, snapshotFiles) {
-  if (workspaceId) {
-    try {
-      const files = await CodeFile.find({ company: workspaceId }).select('path name language content').lean();
-      if (files.length) return files;
-    } catch (error) {
-      console.error('[agent-worker] could not load live code files:', error.message);
-    }
+async function loadCodeFiles(workspaceId, projectId, snapshotFiles) {
+  if (!workspaceId) return snapshotFiles || [];
+  try {
+    // Strict project scoping: a delegated task only sees files from its own
+    // project. Without a project the query targets unassigned files, never the
+    // whole workspace (other projects are unrelated applications).
+    return await CodeFile.find(projectFileQuery(workspaceId, projectId))
+      .select('path name language content')
+      .lean();
+  } catch (error) {
+    console.error('[agent-worker] could not load live code files:', error.message);
+    // Do not fall back to a snapshot that may predate project scoping.
+    return [];
   }
-  return snapshotFiles || [];
 }
 
 async function runAgent() {
@@ -126,7 +131,6 @@ async function runAgent() {
     const snapshot = execution.contextSnapshot || {};
     const snapshotTask = snapshot.task || {};
     const specs = await loadSpecs(snapshot.specs || [], specIds);
-    const codeFiles = await loadCodeFiles(workspaceId, snapshot.codebaseSnapshot?.files || []);
     const liveTask = await loadLiveTask(taskId || execution.taskId);
     const task = {
       ...snapshotTask,
@@ -140,7 +144,13 @@ async function runAgent() {
         }
         : {}),
     };
-    const project = await loadProject(execution, task);
+    const projectId = resolveProjectId({
+      projectId: workerProjectId || snapshot.projectId || null,
+      task,
+      execution,
+    });
+    const codeFiles = await loadCodeFiles(workspaceId, projectId, snapshot.codebaseSnapshot?.files || []);
+    const project = await loadProject(execution, task, projectId);
 
     let contextSummary = '';
     if (snapshot.contextBundle) {

@@ -20,6 +20,7 @@ const realtimeBus = require('../utils/realtimeBus');
 const { Worker } = require('worker_threads');
 const path = require('path');
 const aiRouterService = require('../utils/aiRouterService');
+const { projectFileQuery, resolveProjectId } = require('../utils/fileScope');
 
 // Delegate is the expensive cloud AI path: one pool credit per job. Failed
 // jobs refund below so only executions that actually ran consume budget.
@@ -62,12 +63,12 @@ async function resolveExecutionWorkspace(execution, userId) {
   return { ok: true, workspaceId: access.workspaceId };
 }
 
-function spawnAgentWorker(executionId, taskId, workspaceId, specIds, provider, model, localPrivacyMode, timeoutMs = 900000) {
+function spawnAgentWorker(executionId, taskId, workspaceId, projectId, specIds, provider, model, localPrivacyMode, timeoutMs = 900000) {
   return new Promise((resolve, reject) => {
     let settled = false;
     const workerPath = path.join(__dirname, '../utils/agentWorker.js');
     const worker = new Worker(workerPath, {
-      workerData: { executionId, taskId, workspaceId, specIds, provider, model, localPrivacyMode },
+      workerData: { executionId, taskId, workspaceId, projectId: projectId || null, specIds, provider, model, localPrivacyMode },
     });
 
     const timeout = setTimeout(() => {
@@ -140,11 +141,13 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
     const { taskId, taskTitle, sessionId, summary = '', provider: requestedProvider, model, localPrivacyMode: requestedLocalPrivacyMode = false } = req.body;
     let provider;
     let localPrivacyMode;
+    let effectiveModel;
     try {
       const routing = aiRouterService.resolveRequestProvider(requestedProvider, requestedLocalPrivacyMode);
       provider = routing.provider;
       localPrivacyMode = routing.localPrivacyMode;
-      await aiRouterService.validateModel(provider, model);
+      effectiveModel = aiRouterService.normalizeModel(provider, model);
+      await aiRouterService.validateModel(provider, effectiveModel);
     } catch (error) {
       return res.status(503).json({ success: false, message: error.message });
     }
@@ -211,7 +214,11 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       return res.status(400).json({ success: false, message: resolvedSpecs.message });
     }
     const specs = resolvedSpecs.specs.map((spec) => (typeof spec.toObject === 'function' ? spec.toObject() : spec));
-    const codeFiles = await CodeFile.find({ company: workspaceId }).select('path name language content').lean();
+    // Only the task's own project is readable by the agent. A delegated task
+    // must never see another project's source just because both live in the
+    // same workspace; unlinked tasks see only unassigned files.
+    const taskProjectId = resolveProjectId({ task });
+    const codeFiles = await CodeFile.find(projectFileQuery(workspaceId, taskProjectId)).select('path name language content').lean();
     const taskTitleValue = taskTitle || task?.title || 'Workspace task';
     const slug = taskTitleValue.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'task';
     // Re-delegating a failed task must not collide with the branch left behind
@@ -248,6 +255,7 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
 
     const contextSnapshot = {
       task: task ? { id: task._id.toString(), title: task.title, description: task.description, priority: task.priority, figmaNodeId: task.figmaNodeId } : { title: taskTitleValue, description: summary },
+      projectId: taskProjectId,
       specs: specs.map((spec) => ({ ...spec, _id: spec._id.toString() })),
       codebaseSnapshot: { branch: baseBranch, files: codeFiles.map((file) => ({ path: file.path, name: file.name, language: file.language, content: file.content })) },
       architecturalRules: specs.flatMap((spec) => spec.architecturalRules || []),
@@ -272,7 +280,7 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       userId: req.userId,
       sessionId: sessionId || null,
       taskId: task?._id || null,
-      projectId: task?.projectId || null,
+      projectId: taskProjectId || null,
       taskTitle: taskTitleValue,
       summary,
       status: 'queued',
@@ -281,16 +289,17 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       branch,
       baseBranch,
       contextSnapshot,
-      model: model || provider,
+      model: effectiveModel || provider,
       startedAt: new Date(),
       metadata: {
         taskId: taskId || null,
         workspaceId,
+        projectId: taskProjectId,
         specIds: specs.map((spec) => spec._id.toString()),
         agentBranch: branch,
         source: 'agent-v1/delegate',
         provider,
-        model: model || null,
+        model: effectiveModel || null,
         localPrivacyMode,
         creditsCharged: AGENT_JOB_CREDIT_COST,
       },
@@ -341,9 +350,10 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       execution._id.toString(),
       taskId,
       workspaceId,
+      taskProjectId,
       specs.map((spec) => spec._id.toString()),
       provider,
-      model,
+      effectiveModel,
       localPrivacyMode,
       1800000 // 30 minutes
     );
@@ -591,9 +601,10 @@ router.post('/tweak', authenticateToken, async (req, res) => {
     const specIds = metaValue(execution, 'specIds') || [];
     const localPrivacyMode = metaValue(execution, 'localPrivacyMode') || false;
     const provider = metaValue(execution, 'provider') || 'gemini';
-    const model = metaValue(execution, 'model') || execution.model || null;
+    const model = aiRouterService.normalizeModel(provider, metaValue(execution, 'model') || execution.model || null);
     const targetTaskId = execution.taskId?.toString() || metaValue(execution, 'taskId') || null;
-    spawnAgentWorker(execution._id.toString(), targetTaskId, workspaceId, specIds, provider, model, localPrivacyMode)
+    const projectId = resolveProjectId({ execution });
+    spawnAgentWorker(execution._id.toString(), targetTaskId, workspaceId, projectId, specIds, provider, model, localPrivacyMode)
       .then(async () => {
         execution.status = 'awaiting_review';
         execution.completedAt = new Date();
