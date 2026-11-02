@@ -12,7 +12,14 @@ const STEPS = [
   { id: 4, title: 'Review', subtitle: 'Confirm configuration' },
 ];
 
-export default function CreateProjectWizard({ onClose, onCreated, initialSourceType = 'github' }) {
+export default function CreateProjectWizard({
+  onClose,
+  onCreated,
+  initialSourceType = 'github',
+  demoMode = false,
+  focusTargetRef,
+  onStepChange,
+}) {
   const [currentStep, setCurrentStep] = useState(1);
   const [showConfigurationReady, setShowConfigurationReady] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -47,6 +54,10 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
   const [showCustomTechnologyInput, setShowCustomTechnologyInput] = useState(false);
 
   const loadGitHubRepositories = useCallback(async () => {
+    if (demoMode) {
+      setGithubLoading(false);
+      return;
+    }
     setGithubLoading(true);
     setGithubError('');
     try {
@@ -66,13 +77,19 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
     } finally {
       setGithubLoading(false);
     }
-  }, []);
+  }, [demoMode]);
 
   const loadBranches = async (repo) => {
     if (!repo) return;
     setBranchesLoading(true);
     setGithubBranches([]);
     setGithubError('');
+    if (demoMode) {
+      setGithubBranches([repo.defaultBranch || 'main']);
+      setProject((current) => ({ ...current, branch: repo.defaultBranch || 'main' }));
+      setBranchesLoading(false);
+      return;
+    }
     try {
       const data = await githubApi.getBranches(repo.owner, repo.name);
       const branches = Array.isArray(data?.branches)
@@ -95,10 +112,16 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
   };
 
   useEffect(() => {
+    if (demoMode) {
+      setGithubConnected(false);
+      setGithubLoading(false);
+      return undefined;
+    }
     loadGitHubRepositories();
-  }, [loadGitHubRepositories]);
+  }, [demoMode, loadGitHubRepositories]);
 
   useEffect(() => {
+    if (demoMode) return undefined;
     const projectId = createdProject?.id || createdProject?._id;
     const status = createdProject?.provisioningStatus;
     if (!projectId || !['pending', 'provisioning'].includes(status)) return undefined;
@@ -126,10 +149,13 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
       active = false;
       clearTimeout(timer);
     };
-  }, [createdProject?.id, createdProject?._id, createdProject?.provisioningStatus]);
+  }, [createdProject?.id, createdProject?._id, createdProject?.provisioningStatus, demoMode]);
 
   const nextStep = () => setCurrentStep((prev) => Math.min(prev + 1, 4));
   const prevStep = () => setCurrentStep((prev) => Math.max(prev - 1, 1));
+  useEffect(() => {
+    onStepChange?.(showConfigurationReady ? 5 : currentStep);
+  }, [currentStep, onStepChange, showConfigurationReady]);
   const handleFinishReview = async () => {
     setSubmitError('');
     if (!project.name.trim()) {
@@ -143,6 +169,26 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
 
     setIsSaving(true);
     try {
+      if (demoMode) {
+        const mockProject = {
+          id: `demo-project-${Date.now()}`,
+          name: project.name.trim(),
+          description: project.description.trim(),
+          visibility: project.visibility,
+          sourceType: project.sourceType,
+          githubRepoName: project.repositoryFullName || '',
+          githubRepoUrl: project.repositoryUrl || '',
+          defaultBranch: project.branch.trim() || 'main',
+          template: project.sourceType === 'template' ? project.template : '',
+          technologies: [...project.technologies, ...project.customTechnologies],
+          intelligence: project.intelligence,
+          provisioningStatus: 'ready',
+          provisionedFileCount: 6,
+        };
+        setCreatedProject(mockProject);
+        onCreated?.(mockProject);
+        return;
+      }
       const response = await projectApi.create({
         name: project.name.trim(),
         description: project.description.trim(),
@@ -188,9 +234,17 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
       branch: repo.defaultBranch || 'main',
       name: current.name.trim() ? current.name : repo.name,
     }));
+    if (demoMode) {
+      setGithubBranches([repo.defaultBranch || 'main']);
+      return;
+    }
     loadBranches(repo);
   };
   const retryProvisioning = async () => {
+    if (demoMode) {
+      setCreatedProject((current) => ({ ...current, provisioningStatus: 'ready' }));
+      return;
+    }
     const projectId = createdProject?.id || createdProject?._id;
     if (!projectId) return;
     setRetryingProvisioning(true);
@@ -449,9 +503,31 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
                   ) : !githubConnected ? (
                     <div className="space-y-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">
                       <p className="text-[10px] text-amber-300">GitHub is not connected.</p>
-                      <a href="/integrations" className="inline-flex items-center gap-1 text-[10px] font-medium text-cyan-400 hover:text-cyan-300">
-                        <Github className="h-3 w-3" /> Connect GitHub
-                      </a>
+                      {demoMode ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setGithubConnected(true);
+                            setGithubAccount('acme-demo');
+                            setGithubRepos([{
+                              id: 'demo-repository',
+                              fullName: 'acme/demo-app',
+                              name: 'demo-app',
+                              url: 'https://github.com/acme/demo-app',
+                              defaultBranch: 'main',
+                              owner: { login: 'acme' },
+                            }]);
+                            setGithubError('');
+                          }}
+                          className="inline-flex items-center gap-1 text-[10px] font-medium text-cyan-400 hover:text-cyan-300"
+                        >
+                          <Github className="h-3 w-3" /> Connect GitHub
+                        </button>
+                      ) : (
+                        <a href="/integrations" className="inline-flex items-center gap-1 text-[10px] font-medium text-cyan-400 hover:text-cyan-300">
+                          <Github className="h-3 w-3" /> Connect GitHub
+                        </a>
+                      )}
                     </div>
                   ) : (
                     <>
@@ -824,6 +900,7 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
           )}
           {currentStep < 4 ? (
             <button
+              ref={focusTargetRef}
               type="button"
               onClick={nextStep}
               disabled={isSaving}
@@ -833,6 +910,7 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
             </button>
           ) : (
             <button
+              ref={focusTargetRef}
               onClick={handleFinishReview}
               type="button"
               disabled={isSaving}
@@ -919,6 +997,7 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
                 </button>
               )}
               <button
+                ref={focusTargetRef}
                 onClick={() => onCreated?.(createdProject)}
                 className="rounded-lg bg-cyan-400 px-4 py-2 text-xs font-bold text-slate-950 transition hover:bg-cyan-300"
               >
