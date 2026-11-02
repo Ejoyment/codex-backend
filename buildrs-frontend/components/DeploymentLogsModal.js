@@ -62,7 +62,7 @@ function StepTimeline({ steps }) {
               : <Circle className="w-3.5 h-3.5" />;
         const color = s.status === 'running' ? '#e5b84a'
           : s.status === 'done' ? '#28c840'
-            : s.status === 'failed' ? '#f87171' : '#6e6e6e';
+            : s.status === 'failed' ? '#ec1414' : '#748194';
         const dur = stepDuration(s);
         return (
           <span
@@ -77,7 +77,7 @@ function StepTimeline({ steps }) {
           >
             {icon}
             <span style={{ textTransform: 'capitalize' }}>{s.name}</span>
-            {dur && <span style={{ color: '#8c8c8c' }}>{dur}</span>}
+            {dur && <span style={{ color: '#9aaeba' }}>{dur}</span>}
             {i < steps.length - 1 && <span style={{ color: '#4a4a4a', marginLeft: '0.15rem' }}>→</span>}
           </span>
         );
@@ -167,19 +167,19 @@ export function DeploymentLogsModal({ deploymentId, onClose, onUpdate }) {
           <span
             className="pill pill-mono"
             style={
-              status === 'success' ? { background: 'rgba(52,211,153,0.12)', color: '#7bd197' } :
-              status === 'failed' ? { background: 'rgba(248,113,113,0.12)', color: '#f87171' } :
+              status === 'success' ? { background: 'rgba(3,186,3,0.12)', color: '#56e5a9' } :
+              status === 'failed' ? { background: 'rgba(236,20,20,0.12)', color: '#ec1414' } :
               inFlight ? { background: 'rgba(229,184,74,0.12)', color: '#e5b84a' } :
-              { background: 'rgba(255,255,255,0.06)', color: '#8c8c8c' }
+              { background: 'rgba(255,255,255,0.06)', color: '#9aaeba' }
             }
           >
             {status}
           </span>
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ color: '#d4d4d4', fontSize: '0.85rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <div style={{ color: '#c7d2dd', fontSize: '0.85rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {deployment?.subdomain ? `${deployment.subdomain}.buildrshq.dev` : 'Deployment'}
             </div>
-            <div style={{ color: '#6e6e6e', fontSize: '0.68rem' }}>
+            <div style={{ color: '#748194', fontSize: '0.68rem' }}>
               {deployment?.runtime && deployment.runtime !== 'unknown' ? deployment.runtime : ''}
               {deployment?.metadata?.contextDir ? ` · context ${deployment.metadata.contextDir}` : ''}
               {inFlight && runningStep ? ` · ${runningStep.name} running…` : ''}
@@ -201,15 +201,15 @@ export function DeploymentLogsModal({ deploymentId, onClose, onUpdate }) {
             style={{
               display: 'flex', gap: '0.6rem', alignItems: 'flex-start',
               padding: '0.7rem 1.1rem',
-              background: deployment.fault === 'platform' ? 'rgba(229,184,74,0.08)' : 'rgba(248,113,113,0.08)',
+              background: deployment.fault === 'platform' ? 'rgba(229,184,74,0.08)' : 'rgba(236,20,20,0.08)',
               borderBottom: '1px solid #2a2f3a',
             }}
           >
             {deployment.fault === 'platform'
               ? <ServerCrash className="w-4 h-4" style={{ color: '#e5b84a', flexShrink: 0, marginTop: 2 }} />
-              : <AlertTriangle className="w-4 h-4" style={{ color: '#f87171', flexShrink: 0, marginTop: 2 }} />}
+              : <AlertTriangle className="w-4 h-4" style={{ color: '#ec1414', flexShrink: 0, marginTop: 2 }} />}
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: '0.78rem', fontWeight: 600, color: deployment.fault === 'platform' ? '#e5b84a' : '#f87171' }}>
+              <div style={{ fontSize: '0.78rem', fontWeight: 600, color: deployment.fault === 'platform' ? '#e5b84a' : '#ec1414' }}>
                 {deployment.fault === 'platform'
                   ? 'BuildrsHQ infrastructure issue — not your code'
                   : `Your deployment failed in: ${STAGE_LABELS[deployment.failureStage] || deployment.failureStage || 'unknown stage'}`}
@@ -217,7 +217,7 @@ export function DeploymentLogsModal({ deploymentId, onClose, onUpdate }) {
               <div style={{ fontSize: '0.72rem', color: '#a0a0a0', marginTop: 2 }}>{failureBlurb(deployment)}</div>
               {deployment.errorMessage && (
                 <details style={{ marginTop: 6 }}>
-                  <summary style={{ fontSize: '0.7rem', color: '#8c8c8c', cursor: 'pointer' }}>Error message</summary>
+                  <summary style={{ fontSize: '0.7rem', color: '#9aaeba', cursor: 'pointer' }}>Error message</summary>
                   <pre style={{
                     marginTop: 6, fontSize: '0.68rem', color: '#e09292', whiteSpace: 'pre-wrap',
                     wordBreak: 'break-word', maxHeight: '9rem', overflow: 'auto', background: '#0d1117',
@@ -241,9 +241,9 @@ export function DeploymentLogsModal({ deploymentId, onClose, onUpdate }) {
               onClick={() => { setTab(key); setAutoScroll(true); }}
               style={{
                 padding: '0.3rem 0.8rem', fontSize: '0.72rem', borderRadius: 6, border: '1px solid',
-                borderColor: tab === key ? '#2fd6e6' : '#2a2f3a',
-                background: tab === key ? 'rgba(47,214,230,0.08)' : 'transparent',
-                color: tab === key ? '#2fd6e6' : '#8c8c8c',
+                borderColor: tab === key ? '#12dce5' : '#2a2f3a',
+                background: tab === key ? 'rgba(18,220,229,0.08)' : 'transparent',
+                color: tab === key ? '#12dce5' : '#9aaeba',
                 cursor: 'pointer',
               }}
             >
@@ -252,7 +252,7 @@ export function DeploymentLogsModal({ deploymentId, onClose, onUpdate }) {
             </button>
           ))}
           {inFlight && (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 'auto', fontSize: '0.7rem', color: '#6e6e6e' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 'auto', fontSize: '0.7rem', color: '#748194' }}>
               <RefreshCw className="w-3 h-3 animate-spin" /> live
             </span>
           )}
@@ -263,8 +263,8 @@ export function DeploymentLogsModal({ deploymentId, onClose, onUpdate }) {
           <div ref={logRef} onScroll={onLogScroll} style={{
             flex: 1, background: '#0d1117', border: '1px solid #2a2f3a', borderRadius: 8,
             padding: '0.7rem 0.85rem', overflow: 'auto', maxHeight: '46vh',
-            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-            fontSize: '0.7rem', lineHeight: 1.55, color: '#c9d1d9', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+            fontFamily: 'var(--figma-font-mono)',
+            fontSize: '0.7rem', lineHeight: 1.55, color: '#c7d2dd', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
           }}>
             {!deployment && (fetchError ? `Error: ${fetchError}` : 'Loading deployment…')}
             {deployment && !logText && tab === 'build' && (

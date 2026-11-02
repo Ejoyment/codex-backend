@@ -23,7 +23,7 @@ export default function Cookies() {
             <p className="mkt-sub mt-6 max-w-[560px]">
               Essential cookies and browser storage only — no advertising, no analytics, no trackers.
             </p>
-            <p className="mkt-mono mt-6 text-[12px] uppercase tracking-widest text-[#525764]">
+            <p className="mkt-mono mt-6 text-[12px] uppercase tracking-widest text-[#59687a]">
               last modified · october 18, 2026
             </p>
           </div>
@@ -32,7 +32,7 @@ export default function Cookies() {
         {/* Notice */}
         <section className="mx-auto max-w-[860px] px-5 pb-24 sm:px-8">
           <div
-            className="legal-prose rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-7 sm:p-10"
+            className="legal-prose rounded-xl border border-[#ffffff10] bg-[#121821] p-7 sm:p-10"
             dangerouslySetInnerHTML={{ __html: COOKIES_HTML }}
           />
         </section>

@@ -62,7 +62,7 @@ export default function PaymentSuccess() {
       <SiteShell footer={false}>
         <section className="flex min-h-[85vh] items-center justify-center px-5">
           <div className="mkt-card w-full max-w-md p-8 text-center">
-            <div className="mkt-mono mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-full border border-[#2fd6e680] text-[20px] text-[#2fd6e6]">
+            <div className="mkt-mono mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-full border border-[#12dce580] text-[20px] text-[#12dce5]">
               {failed ? '!' : '✓'}
             </div>
             <p className="mkt-eyebrow mb-3">
@@ -71,7 +71,7 @@ export default function PaymentSuccess() {
             <h1 className="mkt-h3 text-xl">
               {failed ? 'We couldn\u2019t confirm your payment' : verifying ? 'Confirming your payment' : 'Payment successful'}
             </h1>
-            <p className="mt-3 text-[13.5px] leading-relaxed text-[#a8adba]">
+            <p className="mt-3 text-[13.5px] leading-relaxed text-[#a9b7c4]">
               {failed
                 ? 'Your card may have been charged even though activation did not complete. Contact support with your payment reference and we will finish setting up your trial.'
                 : verifying

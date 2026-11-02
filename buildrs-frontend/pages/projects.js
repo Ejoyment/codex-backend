@@ -61,7 +61,7 @@ export default function Projects() {
 
   if (!hasHydrated) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0b0f17] text-white">
+      <div className="min-h-screen flex items-center justify-center bg-[#0e141d] text-white">
         <p>Loading...</p>
       </div>
     );
@@ -74,7 +74,7 @@ export default function Projects() {
         <link rel="icon" href="/buildrs.png" />
       </Head>
 
-      <div className="workspace-container min-h-screen bg-[#0b0f17] text-white">
+      <div className="workspace-container min-h-screen bg-[#0e141d] text-white">
         <Sidebar user={user} subscription={subscription} headerBranch="Feature/auth-flow-redesign" />
 
         <main className="workspace-main min-w-0">
@@ -241,7 +241,7 @@ export default function Projects() {
 
                       <div className="mt-4 flex min-h-6 flex-wrap gap-1.5">
                         {technologies.length ? technologies.slice(0, 5).map((technology) => (
-                          <span key={technology} className="rounded-md border border-cyan-500/10 bg-[#101722] px-2 py-1 text-[9px] text-cyan-300">
+                          <span key={technology} className="rounded-md border border-cyan-500/10 bg-[#101d2c] px-2 py-1 text-[9px] text-cyan-300">
                             {technology}
                           </span>
                         )) : (
@@ -255,21 +255,21 @@ export default function Projects() {
                       </div>
 
                       <div className="mt-3 grid grid-cols-3 gap-1.5">
-                        <div className="rounded-md bg-[#101722] px-2.5 py-2">
+                        <div className="rounded-md bg-[#101d2c] px-2.5 py-2">
                           <p className="text-[9px] text-zinc-500">Status</p>
                           <p className="mt-1 truncate text-[10px] font-medium capitalize text-white">{statusLabel}</p>
                         </div>
-                        <div className="rounded-md bg-[#101722] px-2.5 py-2">
+                        <div className="rounded-md bg-[#101d2c] px-2.5 py-2">
                           <p className="text-[9px] text-zinc-500">Priority</p>
                           <p className="mt-1 truncate text-[10px] font-medium capitalize text-white">{project.priority || 'medium'}</p>
                         </div>
-                        <div className="rounded-md bg-[#101722] px-2.5 py-2">
+                        <div className="rounded-md bg-[#101d2c] px-2.5 py-2">
                           <p className="text-[9px] text-zinc-500">Progress</p>
                           <p className="mt-1 text-[10px] font-medium text-emerald-400">{progress}%</p>
                         </div>
                       </div>
 
-                      <div className="mt-3 h-1 overflow-hidden rounded-full bg-[#252d3a]">
+                      <div className="mt-3 h-1 overflow-hidden rounded-full bg-[#2a3446]">
                         <div className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-teal-400 transition-all" style={{ width: `${progress}%` }} />
                       </div>
 

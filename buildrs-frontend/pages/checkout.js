@@ -78,12 +78,12 @@ export default function Checkout() {
         const card = elements.create('card', {
           style: {
             base: {
-              color: '#eceef1',
+              color: '#ffffff',
               fontFamily: 'ui-sans-serif, system-ui, sans-serif',
               fontSize: '14px',
-              '::placeholder': { color: '#565d6b' },
+              '::placeholder': { color: '#59687a' },
             },
-            invalid: { color: '#f87171' },
+            invalid: { color: '#ec1414' },
           },
         });
         setStripeElements({ stripe, elements, card });
@@ -247,13 +247,13 @@ export default function Checkout() {
           <div className="workspace-content">
             <div className="max-w-4xl mx-auto space-y-8">
               {subscription?.tier && normalizeTier(subscription.tier) !== 'developer' && (
-                <div className="flex items-center gap-3 p-4 rounded-xl border border-[rgba(47,214,230,0.2)] bg-[rgba(47,214,230,0.05)]">
-                  <Check className="w-5 h-5 text-[#2fd6e6] flex-shrink-0" />
+                <div className="flex items-center gap-3 p-4 rounded-xl border border-[rgba(18,220,229,0.2)] bg-[rgba(18,220,229,0.05)]">
+                  <Check className="w-5 h-5 text-[#12dce5] flex-shrink-0" />
                   <div className="flex-1">
                     <p className="text-sm font-medium text-white">
                       You're on the {normalizeTier(subscription.tier)} plan
                     </p>
-                    <p className="text-xs text-[#9aa1ae] mt-0.5">
+                    <p className="text-xs text-[#9aaeba] mt-0.5">
                       Status: {subscription.status || 'active'}
                     </p>
                   </div>
@@ -270,12 +270,12 @@ export default function Checkout() {
                 <p className="mkt-eyebrow mb-3">
                   <span className="dot">●</span> billing · interval
                 </p>
-                <div className="inline-flex items-center gap-1 rounded-lg border border-[#ffffff12] bg-[#0d0d12] p-1">
+                <div className="inline-flex items-center gap-1 rounded-lg border border-[#ffffff10] bg-[#121821] p-1">
                   <button
                     type="button"
                     onClick={() => setYearly(false)}
                     className={`mkt-mono rounded-md px-4 py-2 text-xs tracking-wide transition ${
-                      !yearly ? 'bg-[#1b1b22] text-white' : 'text-[#686e7c] hover:text-white'
+                      !yearly ? 'bg-[#1d263b] text-white' : 'text-[#748194] hover:text-white'
                     }`}
                   >
                     monthly
@@ -284,10 +284,10 @@ export default function Checkout() {
                     type="button"
                     onClick={() => setYearly(true)}
                     className={`mkt-mono flex items-center gap-2 rounded-md px-4 py-2 text-xs tracking-wide transition ${
-                      yearly ? 'bg-[#1b1b22] text-white' : 'text-[#686e7c] hover:text-white'
+                      yearly ? 'bg-[#1d263b] text-white' : 'text-[#748194] hover:text-white'
                     }`}
                   >
-                    yearly <span className="text-[#2fd6e6]">save ~17%</span>
+                    yearly <span className="text-[#12dce5]">save ~17%</span>
                   </button>
                 </div>
               </div>
@@ -304,39 +304,39 @@ export default function Checkout() {
                       onClick={() => setSelectedPlan(plan.id)}
                       className={`relative text-left p-6 rounded-xl border transition-all ${
                         selectedPlan === plan.id
-                          ? 'border-[#2fd6e6] bg-[rgba(47,214,230,0.05)] shadow-[0_0_40px_-15px_rgba(47,214,230,0.25)]'
-                          : 'border-[#ffffff12] bg-[#0d0d12] hover:border-[#ffffff24]'
+                          ? 'border-[#12dce5] bg-[rgba(18,220,229,0.05)] shadow-[0_0_40px_-15px_rgba(18,220,229,0.25)]'
+                          : 'border-[#ffffff10] bg-[#121821] hover:border-[#ffffff24]'
                       }`}
                     >
                       {selectedPlan === plan.id && (
                         <div className="absolute top-4 right-4">
-                          <div className="w-5 h-5 rounded-full bg-[#2fd6e6] flex items-center justify-center">
+                          <div className="w-5 h-5 rounded-full bg-[#12dce5] flex items-center justify-center">
                             <Check className="w-3 h-3 text-[#04181b]" />
                           </div>
                         </div>
                       )}
-                      <p className="mkt-mono text-[11px] uppercase tracking-widest text-[#686e7c]">
+                      <p className="mkt-mono text-[11px] uppercase tracking-widest text-[#748194]">
                         {plan.name}
                       </p>
-                      <p className="mt-2 text-[13.5px] text-[#a8adba]">{plan.blurb}</p>
+                      <p className="mt-2 text-[13.5px] text-[#a9b7c4]">{plan.blurb}</p>
                       <div className="mt-4 flex items-end gap-2">
                         <span className="text-3xl font-semibold text-white">
                           {plan.contactSales ? 'Custom' : yearly ? `$${Math.round(plan.yearlyPrice / 12)}` : `$${plan.monthlyPrice}`}
                         </span>
-                        <span className="mkt-mono pb-1 text-xs text-[#686e7c]">
+                        <span className="mkt-mono pb-1 text-xs text-[#748194]">
                           {plan.contactSales ? '' : yearly && plan.perSeat ? '/seat/mo' : plan.monthlyNote}
                         </span>
                       </div>
                       {yearly && !plan.contactSales && (
-                        <p className="mkt-mono mt-1 text-[11px] text-[#525764]">
+                        <p className="mkt-mono mt-1 text-[11px] text-[#59687a]">
                           or ${plan.yearlyPrice}/yr billed annually
                         </p>
                       )}
                       <ul className="mt-4 space-y-2">
                         {plan.features.slice(0, 4).map((f) => (
                           <li key={f} className="flex items-start gap-2 text-[12px]">
-                            <span className="text-[#2fd6e6] mt-0.5">✓</span>
-                            <span className="text-[#a8adba]">{f}</span>
+                            <span className="text-[#12dce5] mt-0.5">✓</span>
+                            <span className="text-[#a9b7c4]">{f}</span>
                           </li>
                         ))}
                       </ul>
@@ -347,12 +347,12 @@ export default function Checkout() {
 
               {selectedPlan === 'enterprise' ? (
                 <div className="space-y-4">
-                  <div className="p-6 rounded-xl border border-[#ffffff12] bg-[#0d0d12]">
+                  <div className="p-6 rounded-xl border border-[#ffffff10] bg-[#121821]">
                     <div className="flex items-center gap-3 mb-4">
-                      <Building2 className="w-5 h-5 text-[#2fd6e6]" />
+                      <Building2 className="w-5 h-5 text-[#12dce5]" />
                       <h3 className="text-sm font-semibold text-white">Enterprise Plan</h3>
                     </div>
-                    <p className="text-[13.5px] text-[#a8adba] mb-4">
+                    <p className="text-[13.5px] text-[#a9b7c4] mb-4">
                       Custom pricing for teams with compliance requirements. Contact our sales team for a tailored quote.
                     </p>
                     <button
@@ -367,7 +367,7 @@ export default function Checkout() {
                   <button
                     type="button"
                     onClick={() => setSelectedPlan('pro')}
-                    className="text-xs text-[#686e7c] hover:text-white transition"
+                    className="text-xs text-[#748194] hover:text-white transition"
                   >
                     ← Back to plans
                   </button>
@@ -386,45 +386,45 @@ export default function Checkout() {
                           onClick={() => setSelectedProvider(id)}
                           className={`text-left p-4 rounded-xl border transition-all ${
                             selectedProvider === id
-                              ? 'border-[#2fd6e6] bg-[rgba(47,214,230,0.05)]'
-                              : 'border-[#ffffff12] bg-[#0d0d12] hover:border-[#ffffff24]'
+                              ? 'border-[#12dce5] bg-[rgba(18,220,229,0.05)]'
+                              : 'border-[#ffffff10] bg-[#121821] hover:border-[#ffffff24]'
                           }`}
                         >
                           <div className="flex items-center gap-3 mb-2">
-                            <Icon className="w-4 h-4 text-[#2fd6e6]" />
+                            <Icon className="w-4 h-4 text-[#12dce5]" />
                             <span className="text-sm font-medium text-white">{label}</span>
                           </div>
-                          <p className="text-[12px] text-[#686e7c]">{desc}</p>
+                          <p className="text-[12px] text-[#748194]">{desc}</p>
                         </button>
                       ))}
                     </div>
                   </div>
 
                   {selectedProvider === 'stripe' && (
-                    <div className="p-6 rounded-xl border border-[#ffffff12] bg-[#0d0d12] space-y-4">
+                    <div className="p-6 rounded-xl border border-[#ffffff10] bg-[#121821] space-y-4">
                       <p className="text-sm font-medium text-white">Card Details</p>
                       {!stripeReady ? (
-                        <div className="flex items-center gap-2 py-4 text-[#686e7c]">
+                        <div className="flex items-center gap-2 py-4 text-[#748194]">
                           <Loader2 className="w-4 h-4 animate-spin" />
                           <span className="text-sm">Loading payment form...</span>
                         </div>
                       ) : (
-                        <div ref={stripeCardRef} className="p-3 rounded-lg border border-[#ffffff12] bg-[#0a0b10]" />
+                        <div ref={stripeCardRef} className="p-3 rounded-lg border border-[#ffffff10] bg-[#0a0d15]" />
                       )}
                     </div>
                   )}
 
                   {selectedProvider === 'paystack' && (
-                    <div className="p-6 rounded-xl border border-[#ffffff12] bg-[#0d0d12]">
-                      <p className="text-sm text-[#a8adba]">
+                    <div className="p-6 rounded-xl border border-[#ffffff10] bg-[#121821]">
+                      <p className="text-sm text-[#a9b7c4]">
                         You'll be redirected to Paystack to complete payment with card, bank transfer, or mobile money.
                       </p>
                     </div>
                   )}
 
                   {selectedProvider === 'flutterwave' && (
-                    <div className="p-6 rounded-xl border border-[#ffffff12] bg-[#0d0d12]">
-                      <p className="text-sm text-[#a8adba]">
+                    <div className="p-6 rounded-xl border border-[#ffffff10] bg-[#121821]">
+                      <p className="text-sm text-[#a9b7c4]">
                         You'll be redirected to Flutterwave to complete payment with card, bank, USSD, or mobile money.
                       </p>
                     </div>
@@ -463,16 +463,16 @@ export default function Checkout() {
                     </button>
                   </div>
 
-                  <p className="mkt-mono text-[11px] text-[#525764]">
+                  <p className="mkt-mono text-[11px] text-[#59687a]">
                     all prices in USD · billed via {selectedProvider === 'stripe' ? 'Stripe' : selectedProvider === 'paystack' ? 'Paystack' : 'Flutterwave'} · cancel anytime from settings
                   </p>
                 </div>
               )}
 
-              <div className="pt-4 border-t border-[#ffffff0d]">
+              <div className="pt-4 border-t border-[#ffffff0f]">
                 <Link
                   href="/pricing"
-                  className="inline-flex items-center gap-2 text-xs text-[#686e7c] hover:text-white transition"
+                  className="inline-flex items-center gap-2 text-xs text-[#748194] hover:text-white transition"
                 >
                   <ArrowLeft className="w-3 h-3" />
                   Back to pricing

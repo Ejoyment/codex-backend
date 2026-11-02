@@ -7,6 +7,7 @@ import {
   useNotificationStore,
 } from '../store/notificationStore';
 import { unlockAudio } from '../lib/notificationSound';
+import { isDemoTourActive } from '../lib/api';
 
 /**
  * Mounted once from _app. Owns the single /notifications socket for the whole
@@ -20,7 +21,7 @@ export default function NotificationProvider({ children }) {
   const count = useNotificationStore((s) => s.count);
 
   useEffect(() => {
-    if (!token) return undefined;
+    if (!token || isDemoTourActive()) return undefined;
 
     connectNotifications();
     loadNotifications();

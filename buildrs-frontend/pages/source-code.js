@@ -40,7 +40,7 @@ const LANG_COLORS = {
   scala: '#c22d40',
   haskell: '#5e5086',
   julia: '#a05fdd',
-  text: '#6e7681',
+  text: '#748194',
 };
 
 function detectLanguage(filename) {
@@ -194,7 +194,7 @@ function GroupNodes({ groupKey, node, depth, openDirs, setOpenDirs, forceOpen, s
         className={`src-file ${selectedKey === key ? 'is-active' : ''}`}
         style={{ paddingLeft: `${24 + depth * 12}px` }}
       >
-        <FileCode className="w-4 h-4 flex-shrink-0" style={{ color: LANG_COLORS[lang] || '#6e7681' }} />
+        <FileCode className="w-4 h-4 flex-shrink-0" style={{ color: LANG_COLORS[lang] || '#748194' }} />
         <span>{child.name}</span>
       </button>
     );
@@ -445,7 +445,7 @@ export default function SourceCode() {
                 {/* Left panel — file tree */}
                 <aside className="src-pane">
                   <div className="src-pane-head">
-                    <FolderTree className="w-4 h-4" style={{ color: '#2fd6e6' }} />
+                    <FolderTree className="w-4 h-4" style={{ color: '#12dce5' }} />
                     <span className="src-pane-title">Files</span>
                     {!loading && <span className="src-count">{totalVisible}</span>}
                   </div>
@@ -477,9 +477,9 @@ export default function SourceCode() {
                             groupKey="workspace"
                             icon={
                               openGroups.workspace || forceOpen ? (
-                                <FolderOpen className="w-3.5 h-3.5" style={{ color: '#2fd6e6' }} />
+                                <FolderOpen className="w-3.5 h-3.5" style={{ color: '#12dce5' }} />
                               ) : (
-                                <Folder className="w-3.5 h-3.5" style={{ color: '#2fd6e6' }} />
+                                <Folder className="w-3.5 h-3.5" style={{ color: '#12dce5' }} />
                               )
                             }
                             label="Workspace"
@@ -585,7 +585,7 @@ export default function SourceCode() {
                       <div className="src-viewer-head">
                         <FileCode
                           className="w-4 h-4 flex-shrink-0"
-                          style={{ color: LANG_COLORS[selectedLang] || '#6e7681' }}
+                          style={{ color: LANG_COLORS[selectedLang] || '#748194' }}
                         />
                         <span className="src-viewer-name">
                           {selectedFile.name}
@@ -593,8 +593,8 @@ export default function SourceCode() {
                         <span
                           className="src-lang-badge"
                           style={{
-                            background: (LANG_COLORS[selectedLang] || '#6e7681') + '22',
-                            color: LANG_COLORS[selectedLang] || '#6e7681',
+                            background: (LANG_COLORS[selectedLang] || '#748194') + '22',
+                            color: LANG_COLORS[selectedLang] || '#748194',
                           }}
                         >
                           {selectedLang.toUpperCase()}

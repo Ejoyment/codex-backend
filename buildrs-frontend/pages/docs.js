@@ -81,12 +81,12 @@ export default function Docs() {
 
         {/* Sections */}
         <section className="mx-auto max-w-[1200px] px-5 pb-20 sm:px-8">
-          <div className="grid gap-px overflow-hidden rounded-xl border border-[#ffffff12] bg-[#ffffff12] md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-px overflow-hidden rounded-xl border border-[#ffffff10] bg-[#ffffff10] md:grid-cols-2 lg:grid-cols-3">
             {DOCS.map((doc) => (
-              <Link key={doc.path} href="#" className="group bg-[#0d0d12] p-7 transition-colors hover:bg-[#121219]">
-                <p className="mkt-mono text-[11px] uppercase tracking-widest text-[#525764]">{doc.path}</p>
+              <Link key={doc.path} href="#" className="group bg-[#121821] p-7 transition-colors hover:bg-[#161d29]">
+                <p className="mkt-mono text-[11px] uppercase tracking-widest text-[#59687a]">{doc.path}</p>
                 <h3 className="mkt-h3 mt-3 group-hover:text-white">{doc.title}</h3>
-                <p className="mt-3 text-[13.5px] leading-relaxed text-[#a8adba]">{doc.desc}</p>
+                <p className="mt-3 text-[13.5px] leading-relaxed text-[#a9b7c4]">{doc.desc}</p>
                 <span className="mkt-link-arrow mt-5 inline-block text-[13px]">open →</span>
               </Link>
             ))}
@@ -94,7 +94,7 @@ export default function Docs() {
         </section>
 
         {/* Need help */}
-        <section className="relative overflow-hidden border-t border-[#ffffff0d]">
+        <section className="relative overflow-hidden border-t border-[#ffffff0f]">
           <div className="mkt-hero-bg" />
           <div className="relative mx-auto grid max-w-[1200px] gap-10 px-5 py-20 sm:px-8 lg:grid-cols-2">
             <div>

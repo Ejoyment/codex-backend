@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import { io } from 'socket.io-client';
 import useAuthStore from '../store/authStore';
 import { useAuth } from '../hooks/useAuth';
-import { subscriptionApi, SOCKET_URL } from '../lib/api';
+import { isDemoTourActive, subscriptionApi, SOCKET_URL } from '../lib/api';
 
 export default function AuthGuard({ children }) {
   const router = useRouter();
@@ -12,15 +12,20 @@ export default function AuthGuard({ children }) {
   const user = useAuthStore((s) => s.user);
   const subscription = useAuthStore((s) => s.subscription);
   const { fetchUser } = useAuth();
+  const demoTour = isDemoTourActive();
   const socketRef = useRef(null);
   const subscriptionLoadedForToken = useRef(null);
 
   useEffect(() => {
     setHasHydrated(true);
+    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('tour') === '1') {
+      window.sessionStorage.setItem('buildrs-tour-demo', '1');
+    }
   }, []);
 
   useEffect(() => {
     if (!hasHydrated) return;
+    if (demoTour) return;
     if (!token) {
       router.replace('/sign_in');
       return;
@@ -58,10 +63,10 @@ export default function AuthGuard({ children }) {
     };
 
     ensureUserAndRoute();
-  }, [token, router, fetchUser, user, subscription]);
+  }, [demoTour, token, router, fetchUser, user, subscription]);
 
   useEffect(() => {
-    if (!token || typeof window === 'undefined') return;
+    if (!token || demoTour || typeof window === 'undefined') return;
 
     const socket = io(SOCKET_URL, {
       auth: { token },
@@ -86,9 +91,9 @@ export default function AuthGuard({ children }) {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [token]);
+  }, [demoTour, token]);
 
-  if (!hasHydrated || !token) {
+  if (!hasHydrated || (!token && !demoTour)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-navy">
         <div className="text-white">Loading...</div>

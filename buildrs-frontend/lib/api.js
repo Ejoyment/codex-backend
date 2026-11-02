@@ -1,4 +1,6 @@
 import { isTokenExpired, rateLimit, sanitizeInput } from './security';
+import { getDemoApiResponse, isDemoTourActive } from './demoFixtures';
+export { isDemoTourActive };
 
 // Normalize the API origin: strip trailing slashes and a trailing `/api` so an
 // env value like `https://host/api` never doubles the prefix when combined with
@@ -20,6 +22,10 @@ const DEFAULT_TIMEOUT_MS = 15000;
 const MAX_RETRIES = 2;
 
 export async function apiFetch(path, options = {}) {
+  if (isDemoTourActive()) {
+    return getDemoApiResponse(path, options);
+  }
+
   const { timeoutMs = DEFAULT_TIMEOUT_MS, ...requestOptions } = options;
   const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
 

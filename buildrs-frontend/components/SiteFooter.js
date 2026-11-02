@@ -42,16 +42,16 @@ const COLUMNS = [
 
 export default function SiteFooter() {
   return (
-    <footer className="border-t border-[#ffffff12]">
+    <footer className="border-t border-[#ffffff10]">
       <div className="mx-auto max-w-[1200px] px-5 py-16 sm:px-8">
         <div className="grid grid-cols-2 gap-x-8 gap-y-12 lg:grid-cols-[1.3fr_1fr_1fr_1fr_1fr]">
           <div>
             <div className="flex items-center gap-2.5">
               <img src="/buildrs.png" alt="BuildrsHQ" className="h-6 w-6 rounded" />
               <span className="text-[15px] font-semibold tracking-tight text-white">Buildrs</span>
-              <span className="mkt-mono text-[10px] uppercase tracking-widest text-[#686e7c]">· hq</span>
+              <span className="mkt-mono text-[10px] uppercase tracking-widest text-[#748194]">· hq</span>
             </div>
-            <p className="mt-4 max-w-[240px] text-[13px] leading-relaxed text-[#686e7c]">
+            <p className="mt-4 max-w-[240px] text-[13px] leading-relaxed text-[#748194]">
               Your dev stack in one workspace — AI pair programming, live co-editing,
               tasks, and meetings. By CODEX INC.
             </p>
@@ -59,13 +59,13 @@ export default function SiteFooter() {
 
           {COLUMNS.map((col) => (
             <div key={col.title}>
-              <h4 className="mkt-mono mb-4 text-[11px] uppercase tracking-[0.14em] text-[#686e7c]">
+              <h4 className="mkt-mono mb-4 text-[11px] uppercase tracking-[0.14em] text-[#748194]">
                 {col.title}
               </h4>
               <ul className="space-y-2.5">
                 {col.links.map((link) => (
                   <li key={link.label}>
-                    <Link href={link.href} className="text-[13.5px] text-[#a8adba] transition-colors hover:text-white">
+                    <Link href={link.href} className="text-[13.5px] text-[#a9b7c4] transition-colors hover:text-white">
                       {link.label}
                     </Link>
                   </li>
@@ -75,12 +75,12 @@ export default function SiteFooter() {
           ))}
         </div>
 
-        <div className="mt-14 flex flex-col gap-4 border-t border-[#ffffff0d] pt-6 sm:flex-row sm:items-center sm:justify-between">
-          <p className="mkt-mono text-[11px] text-[#525764]">
+        <div className="mt-14 flex flex-col gap-4 border-t border-[#ffffff0f] pt-6 sm:flex-row sm:items-center sm:justify-between">
+          <p className="mkt-mono text-[11px] text-[#59687a]">
             © 2026 buildrs · CODEX INC ENTERPRISE · built to ship
           </p>
-          <div className="mkt-mono flex items-center gap-2 text-[11px] text-[#525764]">
-            <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: '#2fd6e6' }} />
+          <div className="mkt-mono flex items-center gap-2 text-[11px] text-[#59687a]">
+            <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: '#12dce5' }} />
             buildrshq.dev · status: stable
           </div>
         </div>

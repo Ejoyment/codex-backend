@@ -3,8 +3,8 @@ import { Sparkles, ArrowUpRight } from 'lucide-react';
 
 const TONES = {
   warning: { iconBg: 'rgba(229,184,74,0.1)', iconColor: '#e5b84a', accent: 'rgba(229,184,74,0.4)' },
-  info: { iconBg: 'rgba(47,214,230,0.1)', iconColor: '#2fd6e6', accent: 'rgba(47,214,230,0.4)' },
-  positive: { iconBg: 'rgba(52,211,153,0.1)', iconColor: '#34d399', accent: 'rgba(52,211,153,0.4)' },
+  info: { iconBg: 'rgba(18,220,229,0.1)', iconColor: '#12dce5', accent: 'rgba(18,220,229,0.4)' },
+  positive: { iconBg: 'rgba(3,186,3,0.1)', iconColor: '#03ba03', accent: 'rgba(3,186,3,0.4)' },
 };
 
 export default function AIInsights({ stats = {}, tasks = [], projects = [], meetings = [], integrations = [] }) {
