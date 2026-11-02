@@ -67,6 +67,14 @@ function normalizeTask(task) {
   return { ...task, id: task.id || task._id, status, specIds: (task.specIds || []).map((spec) => String(spec?._id || spec)) };
 }
 
+// Keep the last session id for logs, but let a failed/rejected run be retried.
+const AGENT_TERMINAL_STATUSES = new Set(['failed', 'rejected', 'completed', 'approved']);
+
+function agentIsActive(task) {
+  if (!task?.agentSessionId) return false;
+  return !AGENT_TERMINAL_STATUSES.has(task.agentExecution?.status);
+}
+
 export default function Tasks() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
@@ -470,6 +478,7 @@ export default function Tasks() {
                                 const assignee = typeof task.assignee === 'string' ? task.assignee : task.assignee?.fullName || task.assignee?.name;
                                 const taskShortId = String(task.id).slice(-4).toUpperCase();
                                 const isExpanded = expandedTaskId === task.id;
+                                const agentActive = agentIsActive(task);
                                 return (
                                   <article
                                     className={`tsk-card ${isExpanded ? 'is-expanded' : ''}`}
@@ -523,7 +532,7 @@ export default function Tasks() {
                                     </div>
                                     <div className="tsk-card-footer">
                                       <span className="tsk-assignee"><span className="tsk-assignee-avatar">{(assignee || (task.agentSessionId ? 'AI' : '?')).slice(0, 1).toUpperCase()}</span>{assignee || (task.agentSessionId ? 'AI Agent' : 'Unassigned')}</span>
-                                      <span className={`tsk-agent-state ${task.agentSessionId ? 'is-running' : ''}`}>{task.agentSessionId ? task.agentExecution?.status || 'Agent running' : 'Ready for agent'}</span>
+                                      <span className={`tsk-agent-state ${agentActive ? 'is-running' : ''}`}>{task.agentSessionId ? task.agentExecution?.status || (agentActive ? 'Agent running' : 'Agent idle') : 'Ready for agent'}</span>
                                     </div>
                                     {task.agentExecution?.status === 'failed' && <p className="tsk-create-error-note" role="alert">Agent failed: {task.agentExecution.error || 'Open task details for execution diagnostics.'}</p>}
                                     {isExpanded && <div className="tsk-card-details" onClick={(event) => event.stopPropagation()}>
@@ -561,8 +570,15 @@ export default function Tasks() {
                                           {task.agentSessionId && <p className="mb-3 text-xs text-[#9aa1ae]">Session {String(task.agentSessionId)} · {task.agentExecution?.status || 'active'}</p>}
                                           {task.pullRequestId && <p className="mb-3 text-sm text-[#c6cad2]">Pull request: {task.pullRequestId}</p>}
                                           <div className="flex flex-wrap gap-2">
-                                            <button type="button" className="btn-workspace btn-primary" onClick={() => delegateTask(task)} disabled={delegatingId === task.id || Boolean(task.agentSessionId) || task.status === 'blocked' || !selectedCompany?._id || contextSavingId === task.id}>
-                                              {delegatingId === task.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bot className="w-4 h-4" />}{delegatingId === task.id ? 'Delegating' : 'Delegate to AI Agent'}
+                                            <button type="button" className="btn-workspace btn-primary" onClick={() => delegateTask(task)} disabled={delegatingId === task.id || agentActive || task.status === 'blocked' || !selectedCompany?._id || contextSavingId === task.id} title={agentActive ? 'This task already has an active agent session' : undefined}>
+                                              {delegatingId === task.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bot className="w-4 h-4" />}
+                                              {delegatingId === task.id
+                                                ? 'Delegating'
+                                                : agentActive
+                                                  ? 'Agent assigned'
+                                                  : task.agentSessionId
+                                                    ? 'Retry agent'
+                                                    : 'Delegate to AI Agent'}
                                             </button>
                                             {task.agentSessionId && <button type="button" className="btn-workspace btn-secondary" onClick={() => window.location.assign(`/ai-pair?executionId=${task.agentSessionId}`)}><ExternalLink className="w-4 h-4" /> Open session</button>}
                                             {contextSavingId === task.id && <span className="self-center text-xs text-[#9aa1ae]">Saving context</span>}

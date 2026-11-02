@@ -40,6 +40,7 @@ async function approveExecution({
 } = {}) {
   const branch = execution.branch || metaValue(execution, 'agentBranch');
   const hasChanges = Boolean((execution.proposedChanges || []).length || (execution.filesChanged || []).length);
+  const planOnly = !hasChanges;
   if (requireWorkspace && (!workspaceId || !branch)) {
     return conflict('Session is missing its workspace branch');
   }
@@ -48,7 +49,7 @@ async function approveExecution({
   }
 
   let specResults = [];
-  if (verifySpecs) {
+  if (verifySpecs && hasChanges) {
     const verification = await verifySpecsForExecution(execution, taskId);
     specResults = verification.results;
     if (verification.blocking) {
@@ -71,7 +72,9 @@ async function approveExecution({
     }
   }
 
-  if (workspaceId && branch) {
+  // A plan-only run has no branch commit to merge. Accepting it records the
+  // human decision and closes the task without pretending files changed.
+  if (workspaceId && branch && hasChanges) {
     const branchList = await gitService.branches(workspaceId);
     const baseBranch = execution.baseBranch || 'main';
     if (branchList.success && branchList.branches.includes(baseBranch)) {
@@ -90,16 +93,25 @@ async function approveExecution({
   execution.approvedBy = userId;
   execution.approvedAt = new Date();
   execution.updatedAt = new Date();
-  execution.logs.push({ timestamp: new Date(), message: 'Agent changes approved and merged' });
+  execution.logs.push({
+    timestamp: new Date(),
+    message: planOnly
+      ? 'Agent plan accepted (no file changes were proposed)'
+      : 'Agent changes approved and merged',
+  });
   if (verifySpecs) execution.validationResult = { specs: specResults, ranAt: new Date() };
   await execution.save();
 
-  const targetTaskId = taskId || execution.taskId;
+  const targetTaskId = taskId || execution.taskId || metaValue(execution, 'taskId');
   if (targetTaskId) {
-    await LocalTask.findOneAndUpdate(
-      { _id: targetTaskId, userId },
-      { status: 'done', completedAt: new Date(), 'agentExecution.status': 'completed', updatedAt: new Date() }
-    );
+    try {
+      await LocalTask.findOneAndUpdate(
+        { _id: targetTaskId, userId },
+        { status: 'done', completedAt: new Date(), 'agentExecution.status': 'completed', updatedAt: new Date() }
+      );
+    } catch (error) {
+      console.error('[agent-approval] could not sync completed task:', error.message);
+    }
   }
   if (execution.metadata?.containerId) {
     try { await containerWorker.teardownWorker(targetTaskId); } catch { /* best effort */ }
@@ -127,7 +139,7 @@ async function rejectExecution({
   execution.logs.push({ timestamp: new Date(), message: 'Agent work rejected and task rolled back' });
   await execution.save();
 
-  const targetTaskId = taskId || execution.taskId;
+  const targetTaskId = taskId || execution.taskId || metaValue(execution, 'taskId');
   if (targetTaskId) {
     await LocalTask.findOneAndUpdate(
       { _id: targetTaskId, userId },
