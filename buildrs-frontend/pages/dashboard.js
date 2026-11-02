@@ -263,7 +263,7 @@ export default function Dashboard() {
                 )}
 
                 {!loading && projects?.length > 0 && (
-                  <section className="dashboard-projects-section rounded-2xl border border-white/10 bg-[#111622] p-5">
+                  <section className="dashboard-projects-section rounded-xl border border-white/[0.07] bg-[#0d1119] p-5">
                     <div className="mb-4 flex items-center justify-between">
                       <div>
                         <h2 className="text-sm font-semibold text-white">Projects</h2>
@@ -462,7 +462,7 @@ export default function Dashboard() {
                 ) : (
                   <>
                     {/* Workspace overview */}
-                    <div className="bg-[#111622] border border-white/10 rounded-2xl p-6 shadow-xl">
+                    <div className="rounded-xl border border-white/[0.07] bg-[#0d1119] p-5">
                       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 pb-6 border-b border-white/10">
                         <div className="flex items-center gap-4">
                           <div className="w-12 h-12 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
@@ -511,7 +511,7 @@ export default function Dashboard() {
                     </div>
 
                     {/* Needs your attention */}
-                    <div className="bg-[#111622] border border-white/10 rounded-2xl p-6 shadow-xl">
+                    <div className="rounded-xl border border-white/[0.07] bg-[#0d1119] p-5">
                       <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center gap-2">
                           <span className={`w-2.5 h-2.5 rounded-full ${openAttentionCount > 0 ? 'bg-amber-400 animate-ping' : 'bg-emerald-400'}`} />
@@ -571,7 +571,7 @@ export default function Dashboard() {
                     </div>
 
                     {/* Active development */}
-                    <div className="bg-[#111622] border border-white/10 rounded-2xl p-6 shadow-xl">
+                    <div className="rounded-xl border border-white/[0.07] bg-[#0d1119] p-5">
                       <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center gap-2">
                           <Terminal className="w-5 h-5 text-cyan-400" />
@@ -641,7 +641,7 @@ export default function Dashboard() {
 
                     {/* Sprint + recent activity */}
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                      <div className="lg:col-span-2 bg-[#111622] border border-white/10 rounded-2xl p-6 shadow-xl">
+                      <div className="lg:col-span-2 rounded-xl border border-white/[0.07] bg-[#0d1119] p-5">
                         <div className="flex items-center justify-between mb-4">
                           <h3 className="font-bold text-white text-base">Current Sprint</h3>
                           <button type="button" className="text-xs text-cyan-400 hover:underline font-medium" onClick={() => router.push('/tasks')}>
@@ -688,7 +688,7 @@ export default function Dashboard() {
                         )}
                       </div>
 
-                      <div className="bg-[#111622] border border-white/10 rounded-2xl p-6 shadow-xl">
+                      <div className="rounded-xl border border-white/[0.07] bg-[#0d1119] p-5">
                         <div className="flex items-center justify-between mb-4">
                           <h3 className="font-bold text-white text-base">Recent activity</h3>
                           <button type="button" className="text-xs text-zinc-400 hover:text-white" onClick={() => router.push('/audit')}>
@@ -725,7 +725,7 @@ export default function Dashboard() {
 
                     {/* Ship readiness + debug rooms */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                      <div className="bg-[#111622] border border-white/10 rounded-2xl p-6 shadow-xl">
+                      <div className="rounded-xl border border-white/[0.07] bg-[#0d1119] p-5">
                         <div className="flex items-center justify-between mb-4">
                           <h3 className="font-bold text-white text-base">Ship Readiness</h3>
                           {overview.shipReadiness.percent != null && (
@@ -767,7 +767,7 @@ export default function Dashboard() {
                         )}
                       </div>
 
-                      <div className="bg-[#111622] border border-white/10 rounded-2xl p-6 shadow-xl">
+                      <div className="rounded-xl border border-white/[0.07] bg-[#0d1119] p-5">
                         <div className="flex items-center justify-between mb-4">
                           <div className="flex items-center gap-2">
                             <Radio className="w-5 h-5 text-emerald-400" />
@@ -820,7 +820,7 @@ export default function Dashboard() {
 
                     {/* Recent code + connections */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                      <div className="bg-[#111622] border border-white/10 rounded-2xl p-6 shadow-xl">
+                      <div className="rounded-xl border border-white/[0.07] bg-[#0d1119] p-5">
                         <div className="flex items-center justify-between mb-4">
                           <h3 className="font-bold text-white text-base">Recent Code Activities</h3>
                           <button type="button" className="text-xs text-zinc-400 hover:text-white" onClick={() => router.push('/source-code')}>
@@ -853,7 +853,7 @@ export default function Dashboard() {
                         )}
                       </div>
 
-                      <div className="bg-[#111622] border border-white/10 rounded-2xl p-6 shadow-xl">
+                      <div className="rounded-xl border border-white/[0.07] bg-[#0d1119] p-5">
                         <div className="flex items-center justify-between mb-4">
                           <h3 className="font-bold text-white text-base">Workspace Connections</h3>
                           <button type="button" className="text-xs text-cyan-400 hover:underline" onClick={() => router.push('/integrations')}>
