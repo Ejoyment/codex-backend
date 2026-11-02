@@ -140,7 +140,7 @@ export default function SignUp() {
             <div className="quote-author">
               <div className="quote-avatar">BT</div>
               <div>
-                <div className="quote-name">Beulah Tobin West</div>
+                <div className="quote-name">Emmanuel Oyigocho</div>
                 <div className="quote-role">Co-Founder, BUILDRSHQ</div>
               </div>
             </div>
