@@ -71,6 +71,18 @@ describe('parseChangeSet', () => {
     expect(changes[0].path).toBe('src/ok.js');
     expect(changes[0].content).toBe('let x = 1;');
   });
+
+  test('salvages a truncated response whose last fence never closes', () => {
+    const changes = agentChangeSet.parseChangeSet('### file: src/truncated.js\n```js\nconst value = 1;');
+    expect(changes).toHaveLength(1);
+    expect(changes[0]).toMatchObject({ path: 'src/truncated.js', content: 'const value = 1;' });
+  });
+
+  test('recognises a prose path before an unlabelled fence', () => {
+    const changes = agentChangeSet.parseChangeSet('Here is the updated `src/prose.js`:\n```js\nconst p = 1;\n```');
+    expect(changes).toHaveLength(1);
+    expect(changes[0].path).toBe('src/prose.js');
+  });
 });
 
 describe('buildChangeset / summarize', () => {

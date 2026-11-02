@@ -214,7 +214,9 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
     const codeFiles = await CodeFile.find({ company: workspaceId }).select('path name language content').lean();
     const taskTitleValue = taskTitle || task?.title || 'Workspace task';
     const slug = taskTitleValue.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'task';
-    const branch = `feature/${task?._id || Date.now()}-${slug}`;
+    // Re-delegating a failed task must not collide with the branch left behind
+    // by the previous run, so each execution gets a unique suffix.
+    const branch = `feature/${task?._id || 'task'}-${Date.now().toString(36)}-${slug}`;
     await gitService.init(workspaceId);
     const baseBranch = 'main';
     // Seed the base branch with the current VFS so the feature branch has a real
@@ -347,15 +349,28 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
     );
 
     workerPromise.then(async (result) => {
+      const planOnly = Boolean(result?.planOnly);
       execution.status = 'awaiting_review';
       execution.completedAt = new Date();
-      execution.logs.push({ timestamp: new Date(), message: 'Agent execution completed, awaiting approval' });
+      execution.logs.push({
+        timestamp: new Date(),
+        message: planOnly
+          ? 'Agent returned a plan without file changes, awaiting approval'
+          : 'Agent execution completed, awaiting approval',
+      });
       await execution.save();
       if (task) {
         await LocalTask.findOneAndUpdate({ _id: task._id, userId: req.userId }, {
           'agentExecution.status': 'awaiting_approval',
           'agentExecution.error': '',
-          $push: { 'agentExecution.logs': { timestamp: new Date(), message: 'Agent completed; changes are ready for review' } },
+          $push: {
+            'agentExecution.logs': {
+              timestamp: new Date(),
+              message: planOnly
+                ? 'Agent returned a plan without file changes; review it or continue with feedback'
+                : 'Agent completed; changes are ready for review',
+            },
+          },
           updatedAt: new Date(),
         });
         try {
@@ -452,22 +467,27 @@ router.post('/approve', authenticateToken, async (req, res) => {
       const task = await LocalTask.findOne({ _id: taskId, userId: req.userId });
       if (!task) return res.status(404).json({ success: false, message: 'Task not found' });
     }
-    // Run auto-validation on changes before merge.
-    try {
-      const autoValidator = require('../utils/autoValidator');
-      const autoValidation = await autoValidator.validate({ workspaceId, timeoutMs: 60000 });
-      if (autoValidation && !autoValidation.success && autoValidation.errors.length > 0) {
-        execution.validationResult = { ...(execution.validationResult || {}), autoValidation, ranAt: new Date() };
-        await execution.save();
-        return res.status(409).json({
-          success: false,
-          message: `Auto-validation found ${autoValidation.errors.length} error(s). Fix them or review carefully.`,
-          execution,
-          autoValidation,
-        });
+    const planOnly = Boolean(metaValue(execution, 'planOnly'))
+      || !((execution.proposedChanges || []).length || (execution.filesChanged || []).length);
+    // Run auto-validation on changes before merge. A plan-only run has nothing
+    // to validate and should still be acceptable by a human.
+    if (!planOnly) {
+      try {
+        const autoValidator = require('../utils/autoValidator');
+        const autoValidation = await autoValidator.validate({ workspaceId, timeoutMs: 60000 });
+        if (autoValidation && !autoValidation.success && autoValidation.errors.length > 0) {
+          execution.validationResult = { ...(execution.validationResult || {}), autoValidation, ranAt: new Date() };
+          await execution.save();
+          return res.status(409).json({
+            success: false,
+            message: `Auto-validation found ${autoValidation.errors.length} error(s). Fix them or review carefully.`,
+            execution,
+            autoValidation,
+          });
+        }
+      } catch (valErr) {
+        console.error('Auto-validation in approve:', valErr.message);
       }
-    } catch (valErr) {
-      console.error('Auto-validation in approve:', valErr.message);
     }
 
     const result = await agentApprovalService.approveExecution({
@@ -477,6 +497,7 @@ router.post('/approve', authenticateToken, async (req, res) => {
       workspaceId,
       source: 'rest',
       verifySpecs: true,
+      requireChanges: !planOnly,
     });
     if (!result.ok) {
       return res.status(result.status).json({
@@ -489,7 +510,7 @@ router.post('/approve', authenticateToken, async (req, res) => {
     res.json({
       success: true,
       execution: result.execution,
-      message: 'Agent branch merged',
+      message: planOnly ? 'Agent plan accepted' : 'Agent branch merged',
       sddVerification: result.sddVerification,
     });
   } catch (error) {
@@ -560,6 +581,7 @@ router.post('/tweak', authenticateToken, async (req, res) => {
 
     execution.tweaks.push({ instruction: instruction.trim(), addedAt: new Date() });
     trimToLast(execution.tweaks, MAX_TWEAKS);
+    execution.retryCount = (execution.retryCount || 0) + 1;
     execution.status = 'running';
     execution.startedAt = new Date();
     execution.completedAt = null;
@@ -570,17 +592,34 @@ router.post('/tweak', authenticateToken, async (req, res) => {
     const localPrivacyMode = metaValue(execution, 'localPrivacyMode') || false;
     const provider = metaValue(execution, 'provider') || 'gemini';
     const model = metaValue(execution, 'model') || execution.model || null;
-    spawnAgentWorker(execution._id.toString(), execution.taskId?.toString(), workspaceId, specIds, provider, model, localPrivacyMode)
+    const targetTaskId = execution.taskId?.toString() || metaValue(execution, 'taskId') || null;
+    spawnAgentWorker(execution._id.toString(), targetTaskId, workspaceId, specIds, provider, model, localPrivacyMode)
       .then(async () => {
         execution.status = 'awaiting_review';
         execution.completedAt = new Date();
         await execution.save();
+        if (targetTaskId) {
+          await LocalTask.findOneAndUpdate({ _id: targetTaskId, userId: req.userId }, {
+            'agentExecution.status': 'awaiting_approval',
+            'agentExecution.error': '',
+            $push: { 'agentExecution.logs': { timestamp: new Date(), message: 'Agent follow-up completed; changes are ready for review' } },
+            updatedAt: new Date(),
+          }).catch((error) => console.error('[agent] could not sync tweak task:', error.message));
+        }
       })
       .catch(async (error) => {
         execution.status = 'failed';
         execution.completedAt = new Date();
         execution.terminalLog.push({ timestamp: new Date(), type: 'error', message: error.message });
         await execution.save();
+        if (targetTaskId) {
+          await LocalTask.findOneAndUpdate({ _id: targetTaskId, userId: req.userId }, {
+            'agentExecution.status': 'failed',
+            'agentExecution.error': error.message,
+            $push: { 'agentExecution.logs': { timestamp: new Date(), message: `Agent follow-up failed: ${error.message}` } },
+            updatedAt: new Date(),
+          }).catch((taskError) => console.error('[agent] could not sync tweak failure:', taskError.message));
+        }
         if (creditCharged) {
           creditCharged = false;
           await refundAgentCredit(req.userId);

@@ -447,10 +447,10 @@ function AgentRunsPanel({ sessions, selected, loading, error, followUp, setFollo
                 <button type="submit" className="btn-workspace btn-secondary" disabled={!followUp.trim() || Boolean(actionId)}><Send className="h-4 w-4" /><span className="hidden sm:inline">Continue</span></button>
               </form>}
               <div><span>Agent work always waits for a human decision.</span><div className="ail-agent-review-actions">
-                {reviewable && <><button type="button" className="btn-workspace btn-secondary" onClick={() => { const reason = window.prompt('Reason for rejecting this run?') || ''; onAction('reject', selected, { reason }); }} disabled={Boolean(actionId)}><XCircle className="h-4 w-4" />Reject &amp; Rollback</button><button type="button" className="btn-workspace btn-primary" onClick={() => onAction('approve', selected)} disabled={Boolean(actionId) || !hasAppliedChanges} title={!hasAppliedChanges ? 'The agent has not applied file changes to its branch' : 'Approve and merge the branch'}><CheckCircle2 className="h-4 w-4" />Approve &amp; Merge</button></>}
+                {reviewable && <><button type="button" className="btn-workspace btn-secondary" onClick={() => { const reason = window.prompt('Reason for rejecting this run?') || ''; onAction('reject', selected, { reason }); }} disabled={Boolean(actionId)}><XCircle className="h-4 w-4" />Reject &amp; Rollback</button><button type="button" className="btn-workspace btn-primary" onClick={() => onAction('approve', selected)} disabled={Boolean(actionId)} title={hasAppliedChanges ? 'Approve and merge the branch' : 'Accept this plan and close the task'}><CheckCircle2 className="h-4 w-4" />{hasAppliedChanges ? 'Approve & Merge' : 'Accept Plan'}</button></>}
                 {actionId === selected._id && <Loader2 className="h-4 w-4 animate-spin text-[#2fd6e6]" />}
               </div></div>
-              {reviewable && !hasAppliedChanges && <p className="ail-agent-review-note">This worker has returned a plan and response, but has not written files to the branch. Merge stays disabled until branch edits are supported.</p>}
+              {reviewable && !hasAppliedChanges && <p className="ail-agent-review-note">This run returned a plan but no file changes. Accept the plan, continue with a follow-up instruction, or delegate the task again.</p>}
             </footer>}
           </>}
         </section>

@@ -8,6 +8,7 @@ const { assertWorkspaceAccess } = require('./workspaceAuth');
 const aiRouterService = require('./aiRouterService');
 const sddVerificationService = require('./sddVerificationService');
 const agentChangeSet = require('./agentChangeSet');
+const agentRunner = require('./agentRunner');
 const agentApprovalService = require('./agentApprovalService');
 const realtimeBus = require('./realtimeBus');
 const gitService = require('./gitService');
@@ -17,6 +18,7 @@ const containerWorker = require('./containerWorker');
 const { execSync } = require('child_process');
 const { notifyAgentEvent } = require('./notificationTriggers');
 const CreditPoolService = require('./creditPoolService');
+const { trimToLast, MAX_TWEAKS } = require('./retention');
 
 // `metadata` is a Mongoose Map: prefer .get(), but tolerate plain objects too.
 function metaValue(execution, key) {
@@ -34,6 +36,13 @@ function setMetaValue(execution, key, value) {
   }
   if (typeof meta.set === 'function') meta.set(key, value);
   else meta[key] = value;
+}
+
+function extractPlanText(content) {
+  const text = String(content || '').trim();
+  if (!text) return '';
+  const match = text.match(/(?:^|\n)(?:#{1,4}\s*)?(?:implementation\s+)?plan\b[\s\S]*/i);
+  return (match ? match[0] : text).slice(0, 8000).trim();
 }
 
 // Re-check the execution's stored workspace at approval time. Membership can
@@ -295,126 +304,244 @@ class AgentSocketHandler {
     }
   }
 
-  async executionLoop(execution, taskId, workspaceId, specId, provider, model, localPrivacyMode, socket, refundCredit = async () => {}) {
+  async syncTaskExecution(taskId, userId, status, { error = '', message = '' } = {}) {
+    if (!taskId) return;
+    try {
+      const update = {
+        'agentExecution.status': status,
+        'agentExecution.error': error,
+        updatedAt: new Date(),
+      };
+      if (message) {
+        update.$push = { 'agentExecution.logs': { timestamp: new Date(), message } };
+      }
+      await LocalTask.findOneAndUpdate({ _id: taskId, userId }, update);
+    } catch (taskError) {
+      console.error('Agent task status sync error:', taskError.message);
+    }
+  }
+
+  async executionLoop(execution, taskId, workspaceId, specId, provider, model, localPrivacyMode, socket, refundCredit = async () => {}, options = {}) {
+    const priorAttempt = {
+      status: execution.status,
+      error: execution.status === 'failed' ? execution.summary : '',
+      summary: execution.summary,
+      filesChanged: execution.filesChanged,
+      logs: execution.logs,
+    };
+    const hasPriorAttempt = Boolean(options.feedback)
+      || (execution.retryCount || 0) > 0
+      || (execution.tweaks || []).length > 0
+      || execution.status === 'failed'
+      || (execution.logs || []).some((entry) => /error|fail/i.test(String(entry?.message || '')));
     try {
       execution.status = 'running';
-      execution.logs = [{ timestamp: new Date(), message: 'Agent execution started' }];
+      if (!options.keepLogs) {
+        execution.logs = [{ timestamp: new Date(), message: 'Agent execution started' }];
+      } else if (options.feedback) {
+        execution.logs.push({ timestamp: new Date(), message: `Re-running agent with feedback: ${options.feedback}` });
+      }
       await execution.save();
 
       const task = taskId ? await LocalTask.findById(taskId) : null;
-      const spec = specId ? await SpecModel.findById(specId) : null;
-      // Spec content is fed to the model below, so never read one the socket
-      // user cannot reach.
-      if (spec && !await userCanAccessSpec(spec, socket.userId)) {
+      const requestedSpecIds = [...new Set([
+        ...(options.specIds || []),
+        ...(specId ? [String(specId)] : []),
+        ...(metaValue(execution, 'specIds') || []),
+      ])];
+      const specs = [];
+      for (const id of requestedSpecIds) {
+        const spec = await SpecModel.findById(id);
+        // Spec content is fed to the model below, so never read one the socket
+        // user cannot reach.
+        if (spec && await userCanAccessSpec(spec, socket.userId)) specs.push(spec);
+      }
+      if (specId && !specs.length) {
         await refundCredit();
         return socket.emit('agent:error', { message: 'Spec not found or project access denied' });
       }
 
+      let project = null;
+      if (task?.projectId) {
+        project = await LocalProject.findById(task.projectId).lean();
+      }
+
+      const snapshotFiles = execution.contextSnapshot?.codebaseSnapshot?.files || [];
       const codeFiles = workspaceId
         ? await CodeFile.find({ company: workspaceId }).select('path name language content').lean()
-        : [];
+        : snapshotFiles;
 
-      const messages = [
-        { role: 'system', content: `You are an autonomous AI agent executing a task. Task: ${execution.taskTitle}\n\n${agentChangeSet.CHANGE_FORMAT_INSTRUCTIONS}` },
-      ];
-      if (spec && spec.content) {
-        messages.push({ role: 'system', content: `Spec contract: ${spec.content}` });
-      }
-      if (task && task.description) {
-        messages.push({ role: 'user', content: task.description });
+      let contextSummary = '';
+      const contextBundle = execution.contextSnapshot?.contextBundle;
+      if (contextBundle) {
+        try {
+          const agentContextService = require('./agentContextService');
+          contextSummary = agentContextService.toPromptSummary(contextBundle);
+        } catch (error) {
+          console.error('Agent context summary error:', error.message);
+        }
       }
 
-      const codeContext = {
+      const taskDetails = task ? task.toObject() : { title: execution.taskTitle, description: '' };
+      if (options.feedback) {
+        taskDetails.description = [taskDetails.description, `Follow-up instruction: ${options.feedback}`]
+          .filter(Boolean)
+          .join('\n');
+      }
+
+      const { messages, codeContext } = agentRunner.buildAgentContext({
+        task: taskDetails,
+        taskTitle: execution.taskTitle,
+        project,
+        specs,
+        codeFiles,
+        contextSummary,
+        priorAttempt: hasPriorAttempt ? priorAttempt : null,
+        branch: metaValue(execution, 'agentBranch') || execution.branch,
+        baseBranch: execution.baseBranch,
         workspaceId,
-        files: codeFiles,
-        agentMode: true,
         provider,
         model,
-        instructions: spec ? `Follow the spec contract: ${spec.specId}` : undefined,
+      });
+
+      const emitProgress = (message) => {
+        realtimeBus.emitAgentProgress(socket.userId, {
+          type: 'progress',
+          executionId: execution._id,
+          status: 'running',
+          message,
+        });
+        socket.emit('agent:progress', { executionId: execution._id, status: 'running', message });
       };
+      emitProgress(`Assembling context (${codeContext.files.length} relevant file(s), ${codeContext.fileManifest.total} in manifest)...`);
 
-      const result = await aiRouterService.routeChat(messages, codeContext, { provider, model, localPrivacyMode });
+      const result = await agentRunner.requestChangeSet({
+        messages,
+        codeContext,
+        codeFiles,
+        provider,
+        model,
+        localPrivacyMode,
+        onAttempt: ({ attempt, maxAttempts }) => emitProgress(
+          attempt === 1
+            ? 'Agent is generating the implementation...'
+            : `Agent response had no applicable changes; retrying (${attempt}/${maxAttempts})...`
+        ),
+      });
 
-      if (result.success) {
-        // Stage the proposal on the isolated agent branch; VFS stays untouched
-        // until the user approves.
-        const changes = agentChangeSet.buildChangeset(result.content || '', codeFiles);
-        if (changes.length === 0) {
-          throw new Error('The AI responded but did not return any parseable file changes. Retry with a clearer implementation task or include the target files and expected behavior.');
-        }
-        const { filesChanged, diffSummary } = agentChangeSet.summarize(changes, codeFiles);
-        if (workspaceId) {
-          const staged = await agentChangeSet.stageChanges(workspaceId, changes, {
-            message: `Agent: ${execution.taskTitle}`.slice(0, 200),
-            branch: metaValue(execution, 'agentBranch') || execution.branch,
-          });
-          if (!staged.success || !staged.committed) {
-            throw new Error(`Could not stage agent changes on branch ${metaValue(execution, 'agentBranch') || execution.branch}: ${staged.error || staged.reason || 'commit did not complete'}`);
-          }
-        }
+      if (!result.success) {
+        throw new Error(result.error || 'Agent execution failed without an error message');
+      }
 
+      if (result.planOnly) {
+        // Prose-only answers stay reviewable: the user can accept the plan,
+        // continue the run with feedback, or delegate the task again.
         execution.status = 'awaiting_approval';
-        execution.logs.push({ timestamp: new Date(), message: `Agent completed execution (${changes.length} file(s) staged), awaiting approval` });
-        execution.filesChanged = filesChanged;
-        execution.proposedChanges = changes.map((change) => ({
-          path: change.path,
-          action: change.action,
-          language: change.language,
-          content: change.content,
-        }));
-        execution.diffSummary = diffSummary;
+        execution.summary = result.content || 'The agent returned a plan without file changes.';
+        execution.plan = extractPlanText(result.content);
+        execution.filesChanged = [];
+        execution.proposedChanges = [];
+        execution.diffSummary = { filesChanged: 0, insertions: 0, deletions: 0 };
+        execution.validationResult = {
+          specs: [],
+          command: { status: 'skipped', reason: 'No file changes were proposed; nothing to verify.' },
+        };
+        setMetaValue(execution, 'planOnly', true);
+        setMetaValue(execution, 'attemptsUsed', result.attemptsUsed);
+        execution.logs.push({
+          timestamp: new Date(),
+          message: `Agent returned a reviewable plan without file changes after ${result.attemptsUsed} attempt(s). Review it, continue with feedback, or delegate again.`,
+        });
+        await execution.save();
+        await this.syncTaskExecution(taskId, socket.userId, 'awaiting_approval', {
+          message: 'Agent returned a plan without file changes; review the run or continue with feedback',
+        });
 
         realtimeBus.emitAgentProgress(socket.userId, {
           type: 'complete',
           executionId: execution._id,
           status: 'awaiting_approval',
+          planOnly: true,
           result,
         });
-
         socket.emit('agent:execution-complete', {
           execution,
           result,
           status: 'awaiting_approval',
+          planOnly: true,
         });
-
         notifyAgentEvent({
           type: 'agent_needs_input',
           execution,
           userId: socket.userId,
-          detail: 'The agent finished and is waiting for your approval before applying changes.',
+          detail: 'The agent returned a plan without file changes. Review it or continue the run with feedback.',
         });
-      } else {
-        execution.status = 'failed';
-        execution.logs.push({ timestamp: new Date(), message: `Agent execution failed: ${result.error}` });
-        await refundCredit();
-
-        realtimeBus.emitAgentProgress(socket.userId, {
-          type: 'error',
-          executionId: execution._id,
-          status: 'failed',
-          error: result.error,
-        });
-
-        socket.emit('agent:execution-error', {
-          execution,
-          error: result.error,
-          status: 'failed',
-        });
-        notifyAgentEvent({
-          type: 'agent_failed',
-          execution,
-          userId: socket.userId,
-          detail: String(result.error || 'The agent run failed').slice(0, 200),
-        });
+        return;
       }
 
+      // Stage the proposal on the isolated agent branch; VFS stays untouched
+      // until the user approves.
+      const changes = result.changes;
+      const { filesChanged, diffSummary } = agentChangeSet.summarize(changes, codeFiles);
+      if (workspaceId) {
+        const staged = await agentChangeSet.stageChanges(workspaceId, changes, {
+          message: `Agent: ${execution.taskTitle}`.slice(0, 200),
+          branch: metaValue(execution, 'agentBranch') || execution.branch,
+        });
+        if (!staged.success || !staged.committed) {
+          throw new Error(`Could not stage agent changes on branch ${metaValue(execution, 'agentBranch') || execution.branch}: ${staged.error || staged.reason || 'commit did not complete'}`);
+        }
+      }
+
+      execution.status = 'awaiting_approval';
+      execution.logs.push({
+        timestamp: new Date(),
+        message: `Agent completed execution (${changes.length} file(s) staged) after ${result.attemptsUsed} attempt(s), awaiting approval`,
+      });
+      execution.filesChanged = filesChanged;
+      execution.proposedChanges = changes.map((change) => ({
+        path: change.path,
+        action: change.action,
+        language: change.language,
+        content: change.content,
+      }));
+      execution.diffSummary = diffSummary;
+      execution.summary = result.content || result.summary || '';
+      execution.plan = extractPlanText(result.content);
+      setMetaValue(execution, 'planOnly', false);
+      setMetaValue(execution, 'attemptsUsed', result.attemptsUsed);
       await execution.save();
+      await this.syncTaskExecution(taskId, socket.userId, 'awaiting_approval', {
+        message: `Agent staged ${changes.length} file change(s); awaiting approval`,
+      });
+
+      realtimeBus.emitAgentProgress(socket.userId, {
+        type: 'complete',
+        executionId: execution._id,
+        status: 'awaiting_approval',
+        result,
+      });
+      socket.emit('agent:execution-complete', {
+        execution,
+        result,
+        status: 'awaiting_approval',
+      });
+      notifyAgentEvent({
+        type: 'agent_needs_input',
+        execution,
+        userId: socket.userId,
+        detail: 'The agent finished and is waiting for your approval before applying changes.',
+      });
     } catch (error) {
       execution.status = 'failed';
       execution.summary = error.message;
       execution.logs.push({ timestamp: new Date(), message: `Execution error: ${error.message}` });
       await refundCredit();
       await execution.save();
+      await this.syncTaskExecution(taskId, socket.userId, 'failed', {
+        error: error.message,
+        message: `Agent failed: ${error.message}`,
+      });
       realtimeBus.emitAgentProgress(socket.userId, {
         type: 'error',
         executionId: execution._id,
@@ -427,6 +554,12 @@ class AgentSocketHandler {
         status: 'failed',
       });
       socket.emit('agent:error', { message: error.message });
+      notifyAgentEvent({
+        type: 'agent_failed',
+        execution,
+        userId: socket.userId,
+        detail: String(error.message || 'The agent run failed').slice(0, 200),
+      });
     }
   }
 
@@ -586,25 +719,37 @@ class AgentSocketHandler {
     };
 
     try {
-      execution.status = 'running';
-      execution.logs.push({ timestamp: new Date(), message: `Re-running agent with feedback: ${feedback}` });
-      await execution.save();
-
-      const messages = [
-        { role: 'system', content: `Re-running agent with feedback: ${feedback}` },
-        { role: 'user', content: feedback },
-      ];
-      const provider = execution.metadata?.provider;
-      const model = execution.metadata?.model;
+      const provider = metaValue(execution, 'provider') || 'gemini';
+      const model = metaValue(execution, 'model') || execution.model || null;
       await aiRouterService.validateModel(provider, model);
-      const result = await aiRouterService.routeChat(messages, {}, { provider, model });
 
-      if (result.success) {
-        execution.logs.push({ timestamp: new Date(), message: 'Agent re-execution completed with feedback' });
-        socket.emit('agent:tweak-result', { execution, result });
-      } else {
-        await refundCredit();
-        socket.emit('agent:error', { message: result.error });
+      // Re-run through the shared context/retry pipeline so a follow-up keeps
+      // the task brief, repository manifest, specs, and prior attempt instead
+      // of starting from the feedback text alone.
+      if (feedback) {
+        execution.tweaks.push({ instruction: feedback, addedAt: new Date() });
+        trimToLast(execution.tweaks, MAX_TWEAKS);
+      }
+      execution.retryCount = (execution.retryCount || 0) + 1;
+      await this.executionLoop(
+        execution,
+        taskId || execution.taskId?.toString(),
+        workspaceAccess.workspaceId,
+        metaValue(execution, 'specId') || null,
+        provider,
+        model,
+        metaValue(execution, 'localPrivacyMode') || false,
+        socket,
+        refundCredit,
+        {
+          feedback,
+          keepLogs: true,
+          specIds: metaValue(execution, 'specIds') || [],
+        }
+      );
+
+      if (execution.status !== 'failed') {
+        socket.emit('agent:tweak-result', { execution });
       }
     } catch (error) {
       await refundCredit();
