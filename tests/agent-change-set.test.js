@@ -4,7 +4,7 @@
  *
  * Models and services are mocked so nothing touches git or MongoDB.
  */
-jest.mock('../models/CodeFile', () => ({ findOne: jest.fn(), create: jest.fn() }));
+jest.mock('../models/CodeFile', () => ({ find: jest.fn(), create: jest.fn() }));
 jest.mock('../utils/codeSearchService', () => ({ updateFile: jest.fn(), deleteFile: jest.fn() }));
 jest.mock('../utils/gitService', () => ({ writeWorkingTree: jest.fn(), commitWorkingTree: jest.fn() }));
 
@@ -170,12 +170,7 @@ describe('applyToVFS', () => {
     const updatable = { _id: 'u1', name: 'a.js', path: '/src', content: 'old', save: jest.fn(async function () { return this; }) };
     const deletable = { _id: 'd1', name: 'dead.js', path: '/src', deleteOne: jest.fn(async () => {}) };
 
-    CodeFile.findOne.mockImplementation(({ name }) => {
-      if (name === 'new.js') return Promise.resolve(null);
-      if (name === 'a.js') return Promise.resolve(updatable);
-      if (name === 'dead.js') return Promise.resolve(deletable);
-      return Promise.resolve(null);
-    });
+    CodeFile.find.mockResolvedValue([updatable, deletable]);
 
     const result = await agentChangeSet.applyToVFS('ws', [
       { path: 'src/new.js', action: 'create', language: 'javascript', content: 'n' },
@@ -184,6 +179,8 @@ describe('applyToVFS', () => {
     ], { userId: 'user1' });
 
     expect(CodeFile.create).toHaveBeenCalledWith(expect.objectContaining({ name: 'new.js', path: '/src', company: 'ws', createdBy: 'user1' }));
+    expect(CodeFile.find).toHaveBeenCalledTimes(1);
+    expect(CodeFile.find.mock.calls[0][0].$or).toHaveLength(3);
     expect(updatable.save).toHaveBeenCalled();
     expect(updatable.content).toBe('new body');
     expect(deletable.deleteOne).toHaveBeenCalled();
@@ -195,6 +192,7 @@ describe('applyToVFS', () => {
   test('ignores unsafe paths', async () => {
     const result = await agentChangeSet.applyToVFS('ws', [{ path: '../evil', action: 'create', content: 'x' }], { userId: 'u' });
     expect(CodeFile.create).not.toHaveBeenCalled();
+    expect(CodeFile.find).not.toHaveBeenCalled();
     expect(result.applied).toBe(0);
   });
 });

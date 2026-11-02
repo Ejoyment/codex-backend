@@ -340,31 +340,46 @@ router.post('/files/batch', authenticateToken, async (req, res) => {
                     lastModifiedBy: req.userId,
                     path: path || '/'
                 });
-                
-                await codeFile.populate('createdBy', 'fullName email profilePicture');
                 createdFiles.push(codeFile);
-                
-                // Update VFS index (keyed by full path: dir + name)
-                try {
-                    const existingIndex = vfs.indexes.get(effectiveCompanyId);
-                    if (existingIndex) {
-                        const full = vfs.fullPathOf(codeFile);
-                        existingIndex.set(full, {
-                            id: codeFile._id.toString(),
-                            name: codeFile.name,
-                            path: full,
-                            dirPath: codeFile.path,
-                            size: codeFile.size,
-                            language: codeFile.language,
-                            lastModified: codeFile.updatedAt,
-                            createdBy: codeFile.createdBy
-                        });
-                    }
-                } catch (vfsError) {
-                    console.error('VFS index update error:', vfsError);
-                }
             } catch (error) {
                 errors.push({ name: fileData.name, error: error.message });
+            }
+        }
+
+        if (createdFiles.length > 0) {
+            try {
+                await CodeFile.populate(createdFiles, {
+                    path: 'createdBy',
+                    select: 'fullName email profilePicture'
+                });
+            } catch (error) {
+                for (const codeFile of createdFiles) {
+                    errors.push({ name: codeFile.name, error: error.message });
+                }
+                createdFiles.length = 0;
+            }
+        }
+
+        // Update the VFS index (keyed by full path: dir + name) after the
+        // shared creator population query has completed.
+        for (const codeFile of createdFiles) {
+            try {
+                const existingIndex = vfs.indexes.get(effectiveCompanyId);
+                if (existingIndex) {
+                    const full = vfs.fullPathOf(codeFile);
+                    existingIndex.set(full, {
+                        id: codeFile._id.toString(),
+                        name: codeFile.name,
+                        path: full,
+                        dirPath: codeFile.path,
+                        size: codeFile.size,
+                        language: codeFile.language,
+                        lastModified: codeFile.updatedAt,
+                        createdBy: codeFile.createdBy
+                    });
+                }
+            } catch (vfsError) {
+                console.error('VFS index update error:', vfsError);
             }
         }
         

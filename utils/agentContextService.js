@@ -5,6 +5,7 @@
 
 const Company = require('../models/Company');
 const User = require('../models/User');
+const mongoose = require('mongoose');
 const TeamTask = require('../models/TeamTask');
 const LocalTask = require('../models/LocalTask');
 const Message = require('../models/Message');
@@ -440,24 +441,95 @@ class AgentContextService {
     async expandThreads(bundle, userId, companyId) {
         try {
             const Message = require('../models/Message');
-            const contextPermissions = require('./permissions/contextPermissions');
             const topMessages = bundle.conversations.relevantMessages.slice(0, 5);
+            const messageIds = topMessages
+                .filter(msg => msg.id)
+                .map(msg => new mongoose.Types.ObjectId(msg.id));
+            const parentsWithReplies = messageIds.length
+                ? await Message.aggregate([
+                    { $match: { _id: { $in: messageIds } } },
+                    {
+                        $lookup: {
+                            from: Message.collection.name,
+                            let: { parentId: '$_id' },
+                            pipeline: [
+                                { $match: { $expr: { $eq: ['$parentMessage', '$$parentId'] } } },
+                                { $sort: { createdAt: 1 } },
+                                { $limit: 5 },
+                                {
+                                    $lookup: {
+                                        from: User.collection.name,
+                                        localField: 'sender',
+                                        foreignField: '_id',
+                                        as: 'senderUser'
+                                    }
+                                },
+                                { $unwind: { path: '$senderUser', preserveNullAndEmptyArrays: true } },
+                                {
+                                    $project: {
+                                        _id: 1,
+                                        content: 1,
+                                        createdAt: 1,
+                                        sender: { name: '$senderUser.name' }
+                                    }
+                                }
+                            ],
+                            as: 'threadReplies'
+                        }
+                    },
+                    { $project: { _id: 1, channel: 1, recipient: 1, threadReplies: 1 } }
+                ])
+                : [];
+            const parentsById = new Map(
+                parentsWithReplies.map(parent => [parent._id.toString(), parent])
+            );
+            const channelsById = new Map();
+            const channelIds = [...new Set(
+                parentsWithReplies.filter(parent => parent.channel).map(parent => parent.channel.toString())
+            )];
+            if (channelIds.length > 0) {
+                const channels = await Channel.find({ _id: { $in: channelIds } })
+                    .select('company members isPrivate')
+                    .lean();
+                for (const channel of channels) {
+                    channelsById.set(channel._id.toString(), channel);
+                }
+            }
+
+            const companyIds = [...new Set([
+                ...(companyId ? [companyId.toString()] : []),
+                ...[...channelsById.values()].map(channel => channel.company.toString())
+            ])];
+            const companies = companyIds.length > 0
+                ? await Company.find({ _id: { $in: companyIds } }).select('owner members.user').lean()
+                : [];
+            const membersByCompany = new Map(companies.map(company => {
+                const members = new Set([
+                    company.owner?.toString(),
+                    ...(company.members || []).map(member => (member.user?._id || member.user)?.toString())
+                ].filter(Boolean));
+                return [company._id.toString(), members];
+            }));
+            const isCompanyMember = (memberId, targetCompanyId) =>
+                membersByCompany.get(targetCompanyId?.toString())?.has(memberId?.toString()) || false;
+
             for (const msg of topMessages) {
                 if (msg.id) {
-                    const parent = await Message.findById(msg.id).populate('sender', 'name').lean();
+                    const parent = parentsById.get(msg.id.toString());
                     if (parent && parent.channel) {
-                        const canAccess = await contextPermissions.canAccessChannel(userId, parent.channel, companyId);
-                        if (!canAccess) continue;
+                        const channel = channelsById.get(parent.channel.toString());
+                        if (!channel) continue;
+                        if (companyId && channel.company.toString() !== companyId.toString()) continue;
+                        if (!isCompanyMember(userId, channel.company)) continue;
+                        if (channel.isPrivate && !channel.members?.some(member =>
+                            (member.user?._id || member.user)?.toString() === userId.toString()
+                        )) continue;
                     }
                     if (parent && parent.recipient) {
-                        const canAccessDm = await contextPermissions.canAccessDM(userId, parent.recipient, companyId);
-                        if (!canAccessDm) continue;
+                        if (!companyId || parent.recipient.toString() === userId.toString()) continue;
+                        if (!isCompanyMember(userId, companyId) || !isCompanyMember(parent.recipient, companyId)) continue;
                     }
-                    const replies = await Message.find({ parentMessage: msg.id })
-                        .populate('sender', 'name')
-                        .sort({ createdAt: 1 })
-                        .limit(5)
-                        .lean();
+                    const replies = parent?.threadReplies || [];
                     if (replies.length > 0) {
                         msg.threadReplies = replies.map(r => ({
                             id: r._id,

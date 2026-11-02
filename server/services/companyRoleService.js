@@ -58,19 +58,15 @@ async function backfillMissingRoles({ dryRun = true } = {}) {
   };
   if (dryRun || findings.length === 0) return result;
 
-  for (const finding of findings) {
-    const company = await Company.findById(finding.companyId);
-    if (!company) continue;
-    let changed = false;
-    for (const member of missingRoleMembers(company)) {
-      member.role = 'viewer';
-      changed = true;
-    }
-    if (changed) {
-      await company.save();
-      result.updatedCompanies += 1;
-    }
-  }
+  const updateResult = await Company.updateMany(
+    {
+      _id: { $in: findings.map((finding) => finding.companyId) },
+      'members.role': { $nin: COMPANY_ROLES },
+    },
+    { $set: { 'members.$[member].role': 'viewer' } },
+    { arrayFilters: [{ 'member.role': { $nin: COMPANY_ROLES } }] }
+  );
+  result.updatedCompanies = updateResult.modifiedCount;
   return result;
 }
 
