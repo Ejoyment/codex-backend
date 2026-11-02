@@ -12,19 +12,22 @@ jest.mock('../utils/emailServiceResend', () => ({
 
 const BillingCron = require('../utils/billingCron');
 const Subscription = require('../models/Subscription');
-const User = require('../models/User');
 const emailService = require('../utils/emailServiceResend');
 
 const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
 
 let findSpy;
+let populateMock;
 let sortMock;
 let limitMock;
 
 function makeSubscription(overrides = {}) {
     return {
         _id: 'sub-1',
-        userId: 'user-1',
+        userId: {
+            email: 'trial@example.com',
+            fullName: 'Trial User'
+        },
         status: 'trial',
         metadata: {},
         daysLeft: 3,
@@ -45,11 +48,8 @@ beforeEach(() => {
     jest.clearAllMocks();
     limitMock = jest.fn().mockResolvedValue([]);
     sortMock = jest.fn(() => ({ limit: limitMock }));
-    findSpy = jest.spyOn(Subscription, 'find').mockReturnValue({ sort: sortMock });
-    jest.spyOn(User, 'findById').mockResolvedValue({
-        email: 'trial@example.com',
-        fullName: 'Trial User'
-    });
+    populateMock = jest.fn(() => ({ sort: sortMock }));
+    findSpy = jest.spyOn(Subscription, 'find').mockReturnValue({ populate: populateMock });
 });
 
 afterEach(() => {
@@ -71,6 +71,7 @@ describe('checkTrialLifecycle scan is bounded', () => {
 
         expect(sortMock).toHaveBeenCalledWith({ trialEndsAt: 1 });
         expect(limitMock).toHaveBeenCalledWith(200);
+        expect(populateMock).toHaveBeenCalledWith('userId', 'email fullName');
     });
 
     test('warns when the batch cap is saturated so leftovers are not silent', async () => {

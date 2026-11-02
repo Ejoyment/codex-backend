@@ -296,14 +296,32 @@ async function applyToVFS(workspaceId, changes, { userId = null } = {}) {
   let updated = 0;
   let deleted = 0;
 
-  for (const change of changes || []) {
-    if (!isSafeRelativePath(change.path)) continue;
-    const { name, dir } = splitPath(change.path);
+  const safeChanges = (changes || [])
+    .filter((change) => isSafeRelativePath(change.path))
+    .map((change) => ({ change, ...splitPath(change.path) }));
+  const uniquePaths = new Map(
+    safeChanges.map(({ name, dir }) => [JSON.stringify([name, dir]), { name, path: dir }])
+  );
+  const existingFiles = uniquePaths.size
+    ? await CodeFile.find({
+      company: workspaceId,
+      $or: [...uniquePaths.values()],
+    })
+    : [];
+  const filesByPath = new Map();
+  for (const file of existingFiles) {
+    const key = JSON.stringify([file.name, file.path]);
+    if (!filesByPath.has(key)) filesByPath.set(key, file);
+  }
+
+  for (const { change, name, dir } of safeChanges) {
+    const key = JSON.stringify([name, dir]);
 
     if (change.action === 'delete') {
-      const existing = await CodeFile.findOne({ company: workspaceId, name, path: dir });
+      const existing = filesByPath.get(key);
       if (existing) {
         await existing.deleteOne();
+        filesByPath.delete(key);
         try {
           await codeSearchService.deleteFile(existing._id);
         } catch (error) {
@@ -317,7 +335,7 @@ async function applyToVFS(workspaceId, changes, { userId = null } = {}) {
     const content = change.content || '';
     const size = Buffer.byteLength(content, 'utf8');
     const language = change.language || languageFor(change.path);
-    const existing = await CodeFile.findOne({ company: workspaceId, name, path: dir });
+    const existing = filesByPath.get(key);
 
     if (existing) {
       existing.content = content;
@@ -340,6 +358,7 @@ async function applyToVFS(workspaceId, changes, { userId = null } = {}) {
         company: workspaceId,
         createdBy: userId,
       });
+      filesByPath.set(key, doc);
       try {
         await codeSearchService.updateFile(doc);
       } catch (error) {
