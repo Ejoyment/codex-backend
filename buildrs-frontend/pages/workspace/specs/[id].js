@@ -105,15 +105,15 @@ export default function SpecWorkspace() {
           </div>
 
           <div className="grid grid-cols-3 gap-4 mb-6">
-            <div className="p-4 bg-[#1d263b] rounded-lg border border-[#2e2e3e]">
+            <div className="p-4 bg-[#1d263b] rounded-lg border border-[#2a3446]">
               <div className="text-xs text-[#59687a] mb-1">Target Modules</div>
               <div className="text-lg font-bold text-[#dee2f6]">{spec?.targetModules?.length || 0}</div>
             </div>
-            <div className="p-4 bg-[#1d263b] rounded-lg border border-[#2e2e3e]">
+            <div className="p-4 bg-[#1d263b] rounded-lg border border-[#2a3446]">
               <div className="text-xs text-[#59687a] mb-1">Assertions</div>
               <div className="text-lg font-bold text-[#dee2f6]">{spec?.assertions?.length || 0}</div>
             </div>
-            <div className="p-4 bg-[#1d263b] rounded-lg border border-[#2e2e3e]">
+            <div className="p-4 bg-[#1d263b] rounded-lg border border-[#2a3446]">
               <div className="text-xs text-[#59687a] mb-1">Verification</div>
               <div className={`text-lg font-bold ${verificationResult?.passed ? 'text-green-400' : 'text-yellow-400'}`}>
                 {verificationResult ? (verificationResult.passed ? 'Passed' : 'Failed') : 'Pending'}
@@ -134,7 +134,7 @@ export default function SpecWorkspace() {
                 setDriftReport(null);
                 setVerificationResult(null);
               }}
-              className="flex items-center gap-2 px-4 py-2 bg-[#2e2e3e] hover:bg-[#3e3e4e] text-[#dee2f6] text-sm font-semibold rounded-lg"
+              className="flex items-center gap-2 px-4 py-2 bg-[#2a3446] hover:bg-[#2a3446] text-[#dee2f6] text-sm font-semibold rounded-lg"
             >
               <AlertTriangle className="w-4 h-4" />
               Check Drift

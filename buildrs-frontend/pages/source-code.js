@@ -163,9 +163,9 @@ function GroupNodes({ groupKey, node, depth, openDirs, setOpenDirs, forceOpen, s
               <ChevronRight className="w-3 h-3 src-dir-chev" />
             )}
             {open ? (
-              <FolderOpen className="w-3.5 h-3.5" style={{ color: '#9aa7b8' }} />
+              <FolderOpen className="w-3.5 h-3.5" style={{ color: '#9aaeba' }} />
             ) : (
-              <Folder className="w-3.5 h-3.5" style={{ color: '#9aa7b8' }} />
+              <Folder className="w-3.5 h-3.5" style={{ color: '#9aaeba' }} />
             )}
             <span>{child.name}</span>
           </button>

@@ -163,7 +163,7 @@ export function DeploymentLogsModal({ deploymentId, onClose, onUpdate }) {
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.9rem 1.1rem', borderBottom: '1px solid #2a2f3a' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.9rem 1.1rem', borderBottom: '1px solid #2a3446' }}>
           <span
             className="pill pill-mono"
             style={
@@ -202,7 +202,7 @@ export function DeploymentLogsModal({ deploymentId, onClose, onUpdate }) {
               display: 'flex', gap: '0.6rem', alignItems: 'flex-start',
               padding: '0.7rem 1.1rem',
               background: deployment.fault === 'platform' ? 'rgba(229,184,74,0.08)' : 'rgba(236,20,20,0.08)',
-              borderBottom: '1px solid #2a2f3a',
+              borderBottom: '1px solid #2a3446',
             }}
           >
             {deployment.fault === 'platform'
@@ -214,13 +214,13 @@ export function DeploymentLogsModal({ deploymentId, onClose, onUpdate }) {
                   ? 'BuildrsHQ infrastructure issue — not your code'
                   : `Your deployment failed in: ${STAGE_LABELS[deployment.failureStage] || deployment.failureStage || 'unknown stage'}`}
               </div>
-              <div style={{ fontSize: '0.72rem', color: '#a0a0a0', marginTop: 2 }}>{failureBlurb(deployment)}</div>
+              <div style={{ fontSize: '0.72rem', color: '#9aaeba', marginTop: 2 }}>{failureBlurb(deployment)}</div>
               {deployment.errorMessage && (
                 <details style={{ marginTop: 6 }}>
                   <summary style={{ fontSize: '0.7rem', color: '#9aaeba', cursor: 'pointer' }}>Error message</summary>
                   <pre style={{
                     marginTop: 6, fontSize: '0.68rem', color: '#e09292', whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word', maxHeight: '9rem', overflow: 'auto', background: '#0d1117',
+                    wordBreak: 'break-word', maxHeight: '9rem', overflow: 'auto', background: '#0a0d15',
                     padding: '0.5rem', borderRadius: 6,
                   }}>{deployment.errorMessage}</pre>
                 </details>
@@ -241,7 +241,7 @@ export function DeploymentLogsModal({ deploymentId, onClose, onUpdate }) {
               onClick={() => { setTab(key); setAutoScroll(true); }}
               style={{
                 padding: '0.3rem 0.8rem', fontSize: '0.72rem', borderRadius: 6, border: '1px solid',
-                borderColor: tab === key ? '#12dce5' : '#2a2f3a',
+                borderColor: tab === key ? '#12dce5' : '#2a3446',
                 background: tab === key ? 'rgba(18,220,229,0.08)' : 'transparent',
                 color: tab === key ? '#12dce5' : '#9aaeba',
                 cursor: 'pointer',
@@ -261,7 +261,7 @@ export function DeploymentLogsModal({ deploymentId, onClose, onUpdate }) {
         {/* Log body */}
         <div style={{ flex: 1, minHeight: '14rem', padding: '0 0.9rem 0.9rem', display: 'flex' }}>
           <div ref={logRef} onScroll={onLogScroll} style={{
-            flex: 1, background: '#0d1117', border: '1px solid #2a2f3a', borderRadius: 8,
+            flex: 1, background: '#0a0d15', border: '1px solid #2a3446', borderRadius: 8,
             padding: '0.7rem 0.85rem', overflow: 'auto', maxHeight: '46vh',
             fontFamily: 'var(--figma-font-mono)',
             fontSize: '0.7rem', lineHeight: 1.55, color: '#c7d2dd', whiteSpace: 'pre-wrap', wordBreak: 'break-word',

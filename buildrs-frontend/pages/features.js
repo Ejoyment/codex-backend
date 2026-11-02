@@ -145,7 +145,7 @@ export default function Features() {
           <StaggerChildren className="space-y-px overflow-hidden rounded-xl border border-[#ffffff10]" stagger={0.08}>
             {LAYERS.map((layer) => (
               <StaggerItem key={layer.num}>
-              <div className="border-b border-[#ffffff10] bg-[#0a0a0d] last:border-b-0">
+              <div className="border-b border-[#ffffff10] bg-[#0a0d15] last:border-b-0">
                 <div className="flex flex-col gap-4 p-7 sm:flex-row sm:items-start sm:justify-between sm:gap-8 sm:p-9">
                   <div className="sm:w-[300px] sm:shrink-0">
                     <div className="flex items-center gap-3">

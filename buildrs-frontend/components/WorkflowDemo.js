@@ -94,7 +94,6 @@ export default function WorkflowDemo() {
     if (!frameDocument || !frameWindow) return;
 
     try {
-      frameWindow.sessionStorage.setItem('buildrs-tour-demo', '1');
       const currentScreen = screenForLocation(frameWindow.location);
       const currentIndex = screens.findIndex((screen) => screen.id === currentScreen);
       if (currentIndex >= 0 && currentIndex !== activeIndex) visit(currentIndex);
@@ -171,6 +170,7 @@ export default function WorkflowDemo() {
             ref={frameRef}
             key={activeScreen.id}
             src={activeScreen.route}
+            name="buildrs-product-tour"
             title={`BuildrsHQ ${activeScreen.label} production screen`}
             onLoad={handleFrameLoad}
             loading="eager"
