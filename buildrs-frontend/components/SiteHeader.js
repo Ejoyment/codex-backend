@@ -23,7 +23,7 @@ export default function SiteHeader() {
             <span className="text-[15px] font-semibold tracking-tight text-white">
               Buildrs
             </span>
-            <span className="mkt-mono text-[10px] uppercase tracking-widest text-[#686e7c]">
+            <span className="mkt-mono text-[10px] uppercase tracking-widest text-[#748194]">
               · hq
             </span>
           </Link>
@@ -56,7 +56,7 @@ export default function SiteHeader() {
             type="button"
             aria-label="Toggle navigation"
             onClick={() => setOpen((v) => !v)}
-            className="flex h-9 w-9 items-center justify-center rounded-md border border-[#ffffff14] text-white md:hidden"
+            className="flex h-9 w-9 items-center justify-center rounded-md border border-[#ffffff12] text-white md:hidden"
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
               {open ? (
@@ -70,7 +70,7 @@ export default function SiteHeader() {
       </div>
 
       {open && (
-        <div className="border-t border-[#ffffff12] bg-[#08080b] md:hidden">
+        <div className="border-t border-[#ffffff10] bg-[#0f131c] md:hidden">
           <div className="mx-auto max-w-[1200px] px-5 py-4">
             <div className="flex flex-col gap-1">
               {NAV.map((item) => (
@@ -78,16 +78,16 @@ export default function SiteHeader() {
                   key={item.href}
                   href={item.href}
                   onClick={() => setOpen(false)}
-                  className="rounded-md px-3 py-2.5 text-sm text-[#a8adba] hover:bg-white/5 hover:text-white"
+                  className="rounded-md px-3 py-2.5 text-sm text-[#a9b7c4] hover:bg-white/5 hover:text-white"
                 >
                   {item.label}
                 </Link>
               ))}
-              <div className="h-px bg-[#ffffff12] my-2" />
+              <div className="h-px bg-[#ffffff10] my-2" />
               <Link
                 href="/sign_in"
                 onClick={() => setOpen(false)}
-                className="rounded-md px-3 py-2.5 text-sm text-[#a8adba]"
+                className="rounded-md px-3 py-2.5 text-sm text-[#a9b7c4]"
               >
                 Sign in
               </Link>
@@ -95,7 +95,7 @@ export default function SiteHeader() {
                 href="/signup"
                 onClick={() => setOpen(false)}
                 className="mt-1 rounded-md px-3 py-2.5 text-center text-sm font-medium text-[#04181b]"
-                style={{ background: '#2fd6e6' }}
+                style={{ background: '#12dce5' }}
               >
                 Start free →
               </Link>

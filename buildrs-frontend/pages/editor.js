@@ -4,7 +4,7 @@ import Head from 'next/head';
 import AuthGuard from '../components/AuthGuard';
 import Sidebar from '../components/Sidebar';
 import useAuthStore from '../store/authStore';
-import { apiFetch, projectApi, API_BASE_URL, SOCKET_URL, agentApi, companyApi } from '../lib/api';
+import { apiFetch, projectApi, API_BASE_URL, SOCKET_URL, agentApi, companyApi, isDemoTourActive } from '../lib/api';
 import * as editorDrafts from '../lib/editorDrafts';
 import { registerEditorSnippets } from '../lib/monacoExtras';
 import { normalizeMarkers, countProblems, setRunProblems } from '../lib/monacoDiagnostics';
@@ -42,8 +42,8 @@ function tierBadgeClass(t) {
 // --- ANSI output handling (run output can carry terminal color codes) -------
 const ANSI_SGR_RE = /\x1b\[([0-9;]*)m/g;
 const ANSI_PALETTE = [
-  '#000000', '#cd3131', '#0dbc79', '#e5e510', '#2472c8', '#bc3fbc', '#11a8cd', '#e5e5e5',
-  '#666666', '#f14c4c', '#23d18b', '#f5f543', '#3b8eea', '#d670d6', '#29b8db', '#ffffff',
+  '#000000', '#cd3131', '#0dbc79', '#e5e510', '#2472c8', '#bc3fbc', '#11a8cd', '#dee2f6',
+  '#666666', '#ec1414', '#23d18b', '#f5f543', '#3b8eea', '#d670d6', '#29b8db', '#ffffff',
 ];
 
 function stripAnsi(text) {
@@ -137,7 +137,7 @@ function detectLanguage(filename) {
 
 function getFileIcon(name) {
   const lang = detectLanguage(name);
-  return LANG_COLORS()[lang] || '#565d6b';
+  return LANG_COLORS()[lang] || '#59687a';
 }
 
 function LANG_COLORS() {
@@ -146,7 +146,7 @@ function LANG_COLORS() {
     java: '#ed8b00', go: '#00add8', rust: '#dea584', cpp: '#00599c',
     c: '#555555', ruby: '#cc342d', php: '#777bb4', html: '#e34c26',
     css: '#563d7c', json: '#292929', yaml: '#cb171e', markdown: '#083fa1',
-    shell: '#89e051', sql: '#e38c00', text: '#6e7681',
+    shell: '#89e051', sql: '#e38c00', text: '#748194',
     lua: '#000080', groovy: '#4298b4', perl: '#0298c3', r: '#276dc3',
     elixir: '#4b275f', csharp: '#68217a', dart: '#0175c2', swift: '#f05138',
     powershell: '#012456', kotlin: '#7f52ff', scala: '#dc322f', haskell: '#5e5086',
@@ -155,7 +155,7 @@ function LANG_COLORS() {
 
 function getLanguageGlyph(name) {
   const lang = detectLanguage(name);
-  const color = LANG_COLORS()[lang] || '#6e7681';
+  const color = LANG_COLORS()[lang] || '#748194';
   const iconProps = {
     stroke: '#0b1020',
     strokeWidth: 1.6,
@@ -933,7 +933,7 @@ export default function Editor() {
   // Real-time collaboration socket
   useEffect(() => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
-    if (!token) return;
+    if (!token || isDemoTourActive()) return;
     const socket = io(SOCKET_URL, { auth: { token }, transports: ['websocket', 'polling'] });
     socketRef.current = socket;
 
@@ -1220,10 +1220,10 @@ export default function Editor() {
         const term = new xtermMod.Terminal({
           // VS Code dark+ palette
           theme: {
-            background: '#1e1e1e',
+            background: '#0a0d15',
             foreground: '#cccccc',
             cursor: '#aeafad',
-            cursorAccent: '#1e1e1e',
+            cursorAccent: '#0a0d15',
             selectionBackground: '#264f78',
             black: '#000000',
             red: '#cd3131',
@@ -1232,15 +1232,15 @@ export default function Editor() {
             blue: '#2472c8',
             magenta: '#bc3fbc',
             cyan: '#11a8cd',
-            white: '#e5e5e5',
+            white: '#dee2f6',
             brightBlack: '#666666',
-            brightRed: '#f14c4c',
+            brightRed: '#ec1414',
             brightGreen: '#23d18b',
             brightYellow: '#f5f543',
             brightBlue: '#3b8eea',
             brightMagenta: '#d670d6',
             brightCyan: '#29b8db',
-            brightWhite: '#e5e5e5',
+            brightWhite: '#dee2f6',
           },
           fontFamily: "Menlo, Monaco, 'Courier New', monospace",
           fontSize: 13,
@@ -1256,7 +1256,7 @@ export default function Editor() {
         term.open(terminalRef.current);
         try { fit.fit(); } catch (_) { /* ignore */ }
 
-        if (!token) {
+        if (!token || isDemoTourActive()) {
           term.writeln('\x1b[31mNot authenticated — sign in to open a shell.\x1b[0m');
           return;
         }
@@ -1327,7 +1327,7 @@ export default function Editor() {
         }
       })
       .catch(() => {
-        if (terminalRef.current) terminalRef.current.innerHTML = '<div style="padding:1rem;color:#8c8c8c;font-size:0.76rem">Terminal failed to load. Refresh to retry.</div>';
+        if (terminalRef.current) terminalRef.current.innerHTML = '<div style="padding:1rem;color:#9aaeba;font-size:0.76rem">Terminal failed to load. Refresh to retry.</div>';
       });
 
     return () => {
@@ -2428,6 +2428,50 @@ export default function Editor() {
     });
   }
 
+  function handleEditorWillMount(monaco) {
+    monaco.editor.defineTheme('buildrs-figma', {
+      base: 'vs-dark',
+      inherit: true,
+      rules: [
+        { token: 'comment', foreground: '59687a', fontStyle: 'italic' },
+        { token: 'keyword', foreground: '12dce5' },
+        { token: 'keyword.control', foreground: '12dce5' },
+        { token: 'string', foreground: '56e5a9' },
+        { token: 'number', foreground: 'c795e8' },
+        { token: 'regexp', foreground: 'e5b84a' },
+        { token: 'type', foreground: 'b0c6ff' },
+        { token: 'type.identifier', foreground: 'b0c6ff' },
+        { token: 'function', foreground: '68f7ff' },
+        { token: 'variable', foreground: 'c7d2dd' },
+        { token: 'attribute.name', foreground: 'e5b84a' },
+        { token: 'tag', foreground: '12dce5' },
+      ],
+      colors: {
+        'editor.background': '#0a0d15',
+        'editor.foreground': '#c7d2dd',
+        'editorLineNumber.foreground': '#59687a',
+        'editorLineNumber.activeForeground': '#9aaeba',
+        'editorCursor.foreground': '#12dce5',
+        'editor.selectionBackground': '#12dce533',
+        'editor.inactiveSelectionBackground': '#12dce51a',
+        'editor.lineHighlightBackground': '#ffffff08',
+        'editorIndentGuide.background1': '#ffffff10',
+        'editorIndentGuide.activeBackground1': '#12dce54d',
+        'editorWidget.background': '#101d2c',
+        'editorWidget.border': '#ffffff1a',
+        'editorSuggestWidget.background': '#101d2c',
+        'editorSuggestWidget.border': '#ffffff1a',
+        'editorSuggestWidget.selectedBackground': '#1d263b',
+        'editorHoverWidget.background': '#101d2c',
+        'editorHoverWidget.border': '#ffffff1a',
+        'editorGutter.background': '#0a0d15',
+        'scrollbarSlider.background': '#ffffff14',
+        'scrollbarSlider.hoverBackground': '#ffffff24',
+        'minimap.background': '#0a0d15',
+      },
+    });
+  }
+
   function handleEditorMount(editor, monaco) {
     editorRef.current = editor;
     monacoRef.current = monaco;
@@ -3400,7 +3444,7 @@ export default function Editor() {
                       <button type="button" className="ed-project-btn" onClick={() => setShowProjectSelector(!showProjectSelector)}>
                         <FolderOpen className="w-3.5 h-3.5" />
                         <span className="ed-project-label">{selectedProject ? selectedProject.name : selectedRepo ? (selectedRepo.fullName || selectedRepo.name) : 'Workspace'}</span>
-                        <ChevronDown className={`w-3 h-3 transition-transform ${showProjectSelector ? 'rotate-180' : ''}`} style={{ color: '#6e6e6e' }} />
+                        <ChevronDown className={`w-3 h-3 transition-transform ${showProjectSelector ? 'rotate-180' : ''}`} style={{ color: '#748194' }} />
                       </button>
                       {showProjectSelector && (
                         <div className="ed-drop">
@@ -3594,7 +3638,7 @@ export default function Editor() {
                   </div>
                   <div className="ed-sidebar-body ed-scm-body">
                     <div className="ed-scm-summary">
-                      <span className="ed-badge-dot" style={{ background: '#2fd6e6' }} />
+                      <span className="ed-badge-dot" style={{ background: '#12dce5' }} />
                       <b>{gitStatus?.branch || 'main'}</b>
                       <span className="ed-scm-remote">
                         {gitStatus?.repo
@@ -3650,9 +3694,9 @@ export default function Editor() {
                     ) : (
                       <div className="ed-scm-files">
                         {[
-                          ...(gitStatus?.modified || []).map((n) => ({ n, letter: 'M', color: '#fbbf24' })),
-                          ...(gitStatus?.created || []).map((n) => ({ n, letter: 'A', color: '#34d399' })),
-                          ...(gitStatus?.deleted || []).map((n) => ({ n, letter: 'D', color: '#f87171' })),
+                          ...(gitStatus?.modified || []).map((n) => ({ n, letter: 'M', color: '#e5b84a' })),
+                          ...(gitStatus?.created || []).map((n) => ({ n, letter: 'A', color: '#03ba03' })),
+                          ...(gitStatus?.deleted || []).map((n) => ({ n, letter: 'D', color: '#ec1414' })),
                         ].map(({ n, letter, color }) => (
                           <button
                             key={`${letter}:${n}`}
@@ -3782,7 +3826,7 @@ export default function Editor() {
                     </div>
                     {showSubdomainInput && (
                       <form onSubmit={confirmDeploy} className="ed-stat" style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                        <label className="ws-label" style={{ color: '#8c8c8c' }}>Choose a subdomain</label>
+                        <label className="ws-label" style={{ color: '#9aaeba' }}>Choose a subdomain</label>
                         {(() => {
                           const secretFiles = gatherDeploymentFiles().filter((f) =>
                             /(^|\/)\.env(\.|$)/i.test(`${f.path || ''}/${f.name || ''}`));
@@ -3800,11 +3844,11 @@ export default function Editor() {
                             onChange={(e) => setDeploySubdomain(e.target.value.replace(/[^a-z0-9-]/g, '-').toLowerCase())}
                             placeholder="my-app"
                             className="ws-input"
-                            style={{ minWidth: 0, flex: 1, fontFamily: 'ui-monospace, Menlo, Consolas, monospace', background: '#1e1e1e', borderColor: '#3c3c3c' }}
+                            style={{ minWidth: 0, flex: 1, fontFamily: 'var(--figma-font-mono)', background: '#0a0d15', borderColor: '#2a3446' }}
                             required
                             minLength={2}
                           />
-                          <span className="text-xs whitespace-nowrap" style={{ color: '#6e6e6e' }}>.buildrshq.dev</span>
+                          <span className="text-xs whitespace-nowrap" style={{ color: '#748194' }}>.buildrshq.dev</span>
                           <button type="submit" disabled={deploying || deploySubdomain.length < 2} className="btn-workspace btn-primary">
                             {deploying ? 'Deploying...' : 'Deploy'}
                           </button>
@@ -3816,7 +3860,7 @@ export default function Editor() {
                     )}
                     <div className="ed-sidebar-title" style={{ padding: '0.1rem 0.55rem' }}>Deployments</div>
                     {deployments.length === 0 ? (
-                      <p className="text-xs" style={{ color: '#6e6e6e', padding: '0.2rem 0.55rem' }}>Nothing deployed yet</p>
+                      <p className="text-xs" style={{ color: '#748194', padding: '0.2rem 0.55rem' }}>Nothing deployed yet</p>
                     ) : (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                         {deployments.slice(0, 4).map((d, i) => (
@@ -3827,7 +3871,7 @@ export default function Editor() {
                             title="View build & runtime logs"
                             onClick={() => setLogDeployId(d._id)}
                           >
-                            <span className="ed-badge-dot" style={{ background: d.status === 'success' ? '#28c840' : d.status === 'failed' ? '#f87171' : '#e5b84a' }} />
+                            <span className="ed-badge-dot" style={{ background: d.status === 'success' ? '#28c840' : d.status === 'failed' ? '#ec1414' : '#e5b84a' }} />
                             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.subdomain ? `${d.subdomain}.buildrshq.dev` : d._id || 'Deployment'}</span>
                           </div>
                         ))}
@@ -3852,12 +3896,12 @@ export default function Editor() {
                       {collaborators.length} collaborator(s) · {Object.keys(remoteCursors).length} remote cursor(s)
                     </div>
                     <div className="ed-stat" style={{ lineHeight: 1.8 }}>
-                      <span style={{ color: '#6e6e6e' }}>Invite link</span>
+                      <span style={{ color: '#748194' }}>Invite link</span>
                       <input
                         readOnly
                         value={selectedFile ? `${window.location.origin}/editor?file=${selectedFile._id}` : `${window.location.origin}/editor`}
                         onFocus={(e) => e.target.select()}
-                        style={{ width: '100%', background: 'transparent', border: 'none', outline: 'none', color: '#d4d4d4', fontSize: '0.68rem' }}
+                        style={{ width: '100%', background: 'transparent', border: 'none', outline: 'none', color: '#c7d2dd', fontSize: '0.68rem' }}
                       />
                     </div>
                     <button
@@ -3875,25 +3919,25 @@ export default function Editor() {
                       <>
                         <div className="ed-sidebar-title" style={{ padding: '0.1rem 0.55rem' }}>File access</div>
                         {!fileAccess?.canManage && (
-                          <p className="text-xs" style={{ color: '#6e6e6e', padding: '0.2rem 0.55rem', lineHeight: 1.5 }}>
+                          <p className="text-xs" style={{ color: '#748194', padding: '0.2rem 0.55rem', lineHeight: 1.5 }}>
                             {fileAccess
                               ? 'Only the file owner or workspace admins can change who can edit this file.'
                               : 'Checking file permissions…'}
                           </p>
                         )}
                         {fileSharingRows.length === 0 ? (
-                          <p className="text-xs" style={{ color: '#6e6e6e', padding: '0.2rem 0.55rem' }}>
+                          <p className="text-xs" style={{ color: '#748194', padding: '0.2rem 0.55rem' }}>
                             No teammates to share this file with.
                           </p>
                         ) : (
                           fileSharingRows.map((row) => (
                             <div key={row.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.3rem 0.55rem' }}>
                               <div style={{ minWidth: 0, flex: 1 }}>
-                                <div className="text-xs" style={{ color: '#d4d4d4', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                <div className="text-xs" style={{ color: '#c7d2dd', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                   {row.name}
                                 </div>
                                 {row.email && (
-                                  <div className="text-xs" style={{ color: '#6e6e6e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  <div className="text-xs" style={{ color: '#748194', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                     {row.email}
                                   </div>
                                 )}
@@ -3904,8 +3948,8 @@ export default function Editor() {
                                 disabled={!fileAccess?.canManage || sharingBusy === row.id}
                                 onChange={(e) => updateFileCollaborator(row.id, e.target.value)}
                                 style={{
-                                  background: '#1e1e1e',
-                                  color: '#d4d4d4',
+                                  background: '#0a0d15',
+                                  color: '#c7d2dd',
                                   border: '1px solid rgba(255,255,255,0.12)',
                                   borderRadius: 6,
                                   fontSize: '0.66rem',
@@ -3925,22 +3969,22 @@ export default function Editor() {
                     )}
                     <div className="ed-sidebar-title" style={{ padding: '0.1rem 0.55rem' }}>Active</div>
                     {collaborators.length === 0 ? (
-                      <p className="text-xs" style={{ color: '#6e6e6e', padding: '0.2rem 0.55rem' }}>No active collaborators yet</p>
+                      <p className="text-xs" style={{ color: '#748194', padding: '0.2rem 0.55rem' }}>No active collaborators yet</p>
                     ) : (
                       collaborators.map((c, i) => (
                         <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.35rem 0.55rem' }}>
-                          <div className="ed-member-av" style={{ background: 'rgba(47,214,230,0.15)', color: '#2fd6e6', width: 26, height: 26, fontSize: '0.7rem' }}>{c.name?.[0] || 'U'}</div>
+                          <div className="ed-member-av" style={{ background: 'rgba(18,220,229,0.15)', color: '#12dce5', width: 26, height: 26, fontSize: '0.7rem' }}>{c.name?.[0] || 'U'}</div>
                           <div style={{ minWidth: 0 }}>
-                            <div className="text-xs" style={{ color: '#d4d4d4', fontWeight: 600 }}>{c.name || 'Anonymous'}</div>
-                            {c.email && <div className="text-xs" style={{ color: '#6e6e6e' }}>{c.email}</div>}
+                            <div className="text-xs" style={{ color: '#c7d2dd', fontWeight: 600 }}>{c.name || 'Anonymous'}</div>
+                            {c.email && <div className="text-xs" style={{ color: '#748194' }}>{c.email}</div>}
                           </div>
                         </div>
                       ))
                     )}
                     {Object.values(remoteCursors).filter((rc) => rc.userName !== (user?.fullName || user?.name)).map((rc, i) => (
                       <div key={`cursor-${i}`} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.35rem 0.55rem' }}>
-                        <div className="ed-member-av" style={{ background: 'rgba(167,139,250,0.15)', color: '#a78bfa', width: 26, height: 26, fontSize: '0.7rem' }}>{(rc.userName || 'U')[0]}</div>
-                        <div className="text-xs" style={{ color: '#8c8c8c' }}>{rc.userName} @ line {rc.cursor?.line}, col {rc.cursor?.column}</div>
+                        <div className="ed-member-av" style={{ background: 'rgba(138,56,245,0.15)', color: '#8a38f5', width: 26, height: 26, fontSize: '0.7rem' }}>{(rc.userName || 'U')[0]}</div>
+                        <div className="text-xs" style={{ color: '#9aaeba' }}>{rc.userName} @ line {rc.cursor?.line}, col {rc.cursor?.column}</div>
                       </div>
                     ))}
                   </div>
@@ -3957,7 +4001,7 @@ export default function Editor() {
                     {pendingConfirmations.length > 0 && (
                       <div className="ed-ai-intel" style={{ marginBottom: '0.75rem', borderColor: 'rgba(245,158,11,0.5)' }}>
                         <div className="ed-ai-intel-header">
-                          <AlertCircle className="w-4 h-4" style={{ color: '#fbbf24' }} />
+                          <AlertCircle className="w-4 h-4" style={{ color: '#e5b84a' }} />
                           <span>Pending approvals</span>
                         </div>
                         <div className="ed-ai-suggestions" style={{ gap: '0.5rem' }}>
@@ -3981,9 +4025,9 @@ export default function Editor() {
                       </div>
                     )}
 
-                    <div className="ed-ai-intel" style={{ marginBottom: '0.75rem', borderColor: 'rgba(59,130,246,0.35)' }}>
+                    <div className="ed-ai-intel" style={{ marginBottom: '0.75rem', borderColor: 'rgba(18,220,229,0.35)' }}>
                       <div className="ed-ai-intel-header">
-                        <Bot className="w-4 h-4" style={{ color: '#60a5fa' }} />
+                        <Bot className="w-4 h-4" style={{ color: '#68f7ff' }} />
                         <span>Phase 2 task board</span>
                       </div>
                       <div style={{ display: 'grid', gap: '0.45rem', marginTop: '0.5rem' }}>
@@ -4001,7 +4045,7 @@ export default function Editor() {
                           >
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
                               <strong>{task.title}</strong>
-                              <span className="pill pill-mono" style={{ background: task.priority === 'high' ? 'rgba(248,113,113,0.12)' : task.priority === 'medium' ? 'rgba(234,179,8,0.12)' : 'rgba(52,211,153,0.12)', color: task.priority === 'high' ? '#fca5a5' : task.priority === 'medium' ? '#facc15' : '#7bd197' }}>
+                              <span className="pill pill-mono" style={{ background: task.priority === 'high' ? 'rgba(236,20,20,0.12)' : task.priority === 'medium' ? 'rgba(234,179,8,0.12)' : 'rgba(3,186,3,0.12)', color: task.priority === 'high' ? '#ec8f8f' : task.priority === 'medium' ? '#facc15' : '#56e5a9' }}>
                                 {task.priority}
                               </span>
                             </div>
@@ -4019,8 +4063,8 @@ export default function Editor() {
                       </div>
                       {specMode && (
                         <div style={{ marginTop: '0.6rem', border: '1px solid rgba(96,165,250,0.25)', borderRadius: 8, background: 'rgba(96,165,250,0.05)', padding: '0.6rem' }}>
-                          <div style={{ color: '#d4d4d4', fontWeight: 600, marginBottom: '0.35rem' }}>Implementation contract</div>
-                          <div style={{ color: '#8c8c8c', fontSize: '0.68rem', lineHeight: 1.5 }}>
+                          <div style={{ color: '#c7d2dd', fontWeight: 600, marginBottom: '0.35rem' }}>Implementation contract</div>
+                          <div style={{ color: '#9aaeba', fontSize: '0.68rem', lineHeight: 1.5 }}>
                             Scope: {selectedTask?.title || 'current task'}{selectedFile ? ` • file: ${selectedFile.name}` : ''}<br />
                             Safety: require approval for destructive actions, validate changes, and keep the public contract stable.
                           </div>
@@ -4030,7 +4074,7 @@ export default function Editor() {
                         <button type="button" className="btn-workspace btn-secondary" style={{ flex: 1 }} onClick={() => setByomOpen((prev) => !prev)}>
                           BYOM model
                         </button>
-                        <span style={{ color: '#8c8c8c', fontSize: '0.68rem' }}>{customModel}</span>
+                        <span style={{ color: '#9aaeba', fontSize: '0.68rem' }}>{customModel}</span>
                       </div>
                       {byomOpen && (
                         <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.4rem' }}>
@@ -4046,16 +4090,16 @@ export default function Editor() {
                     </div>
 
                     {agentExecution && (
-                      <div className="ed-ai-intel" style={{ marginBottom: '0.75rem', borderColor: 'rgba(47,214,230,0.5)' }}>
+                      <div className="ed-ai-intel" style={{ marginBottom: '0.75rem', borderColor: 'rgba(18,220,229,0.5)' }}>
                         <div className="ed-ai-intel-header">
-                          <Bot className="w-4 h-4" style={{ color: '#2fd6e6' }} />
+                          <Bot className="w-4 h-4" style={{ color: '#12dce5' }} />
                           <span>{agentExecution.title}</span>
                         </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', marginTop: '0.35rem', color: '#d4d4d4', fontSize: '0.7rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', marginTop: '0.35rem', color: '#c7d2dd', fontSize: '0.7rem' }}>
                           <span style={{ textTransform: 'capitalize' }}>{agentExecution.status}</span>
-                          <span style={{ color: '#7bd197' }}>{agentExecution.diffSummary?.filesChanged || 0} files</span>
+                          <span style={{ color: '#56e5a9' }}>{agentExecution.diffSummary?.filesChanged || 0} files</span>
                         </div>
-                        <div style={{ marginTop: '0.3rem', color: '#8c8c8c', fontSize: '0.64rem', lineHeight: 1.5 }}>
+                        <div style={{ marginTop: '0.3rem', color: '#9aaeba', fontSize: '0.64rem', lineHeight: 1.5 }}>
                           {agentExecution.goal || agentExecution.title}
                         </div>
                         <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.75rem', fontSize: '0.68rem', color: '#a0a0a0' }}>
@@ -4076,7 +4120,7 @@ export default function Editor() {
                           <button type="button" className="btn-workspace btn-secondary" style={{ flex: 1, minHeight: 0, padding: '0.38rem 0.6rem' }} onClick={() => setTweaking((v) => !v)} disabled={agentExecution.status === 'completed' || agentExecution.status === 'rejected'}>
                             Tweak
                           </button>
-                          <button type="button" className="btn-workspace btn-secondary" style={{ flex: 1, minHeight: 0, padding: '0.38rem 0.6rem', color: '#fca5a5' }} onClick={rejectAgentExecution} disabled={agentExecution.status === 'completed' || agentExecution.status === 'rejected'}>
+                          <button type="button" className="btn-workspace btn-secondary" style={{ flex: 1, minHeight: 0, padding: '0.38rem 0.6rem', color: '#ec8f8f' }} onClick={rejectAgentExecution} disabled={agentExecution.status === 'completed' || agentExecution.status === 'rejected'}>
                             Reject
                           </button>
                         </div>
@@ -4091,7 +4135,7 @@ export default function Editor() {
                               onChange={(e) => setTweakFeedback(e.target.value)}
                               placeholder="What should the agent change?"
                               autoComplete="off"
-                              style={{ flex: 1, minWidth: 0, padding: '0.35rem 0.5rem', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.05)', color: '#eceef1', fontSize: '0.7rem', outline: 'none' }}
+                              style={{ flex: 1, minWidth: 0, padding: '0.35rem 0.5rem', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.05)', color: '#ffffff', fontSize: '0.7rem', outline: 'none' }}
                             />
                             <button type="submit" className="btn-workspace btn-primary" style={{ padding: '0.35rem 0.7rem' }}>
                               Send
@@ -4134,7 +4178,7 @@ export default function Editor() {
                           {m.content}
                         </div>
                       ))}
-                      {aiLoading && <div className="ed-chat-gap" style={{ color: '#2fd6e6' }}>Thinking...</div>}
+                      {aiLoading && <div className="ed-chat-gap" style={{ color: '#12dce5' }}>Thinking...</div>}
                     </div>
                     <form onSubmit={handleAiHelperSend} className="ed-composer">
                       <input value={aiInput} onChange={(e) => setAiInput(e.target.value)} placeholder="Ask AI to explain or refactor..." />
@@ -4165,15 +4209,15 @@ export default function Editor() {
                           <div className="ed-ext-name">{m.name}</div>
                           <div className="ed-ext-sub">{m.sub}</div>
                         </div>
-                        <span className="pill pill-mono" style={{ marginLeft: 'auto', background: 'rgba(52,211,153,0.12)', color: '#7bd197' }}>on</span>
+                        <span className="pill pill-mono" style={{ marginLeft: 'auto', background: 'rgba(3,186,3,0.12)', color: '#56e5a9' }}>on</span>
                       </div>
                     ))}
                     <div className="ed-sidebar-title" style={{ padding: '0.1rem 0.55rem' }}>Languages</div>
                     {languages.length === 0 ? (
-                      <p className="text-xs" style={{ color: '#6e6e6e', padding: '0.2rem 0.55rem' }}>No language catalog yet</p>
+                      <p className="text-xs" style={{ color: '#748194', padding: '0.2rem 0.55rem' }}>No language catalog yet</p>
                     ) : (
                       languages.map((l) => {
-                        const glyphColor = LANG_COLORS()[l.name] || '#8c8c8c';
+                        const glyphColor = LANG_COLORS()[l.name] || '#9aaeba';
                         const glyphText = (l.name || '').slice(0, 2).toUpperCase() || 'FILE';
                         return (
                           <div key={l.name} className="ed-ext-item" style={{ padding: '0.4rem 0.55rem' }}>
@@ -4184,7 +4228,7 @@ export default function Editor() {
                             <div>
                               <div className="ed-ext-name" style={{ fontSize: '0.74rem' }}>{l.name}</div>
                             </div>
-                            <span className={`pill pill-mono ${l.allowed === false ? 'is-free' : ''}`} style={{ marginLeft: 'auto', ...(l.allowed === false ? { background: 'rgba(248,113,113,0.12)', color: '#f87171' } : { background: 'rgba(52,211,153,0.12)', color: '#7bd197' }) }}>
+                            <span className={`pill pill-mono ${l.allowed === false ? 'is-free' : ''}`} style={{ marginLeft: 'auto', ...(l.allowed === false ? { background: 'rgba(236,20,20,0.12)', color: '#ec1414' } : { background: 'rgba(3,186,3,0.12)', color: '#56e5a9' }) }}>
                               {l.allowed === false ? 'locked' : 'active'}
                             </span>
                           </div>
@@ -4228,7 +4272,7 @@ export default function Editor() {
                       {running ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
                       {running ? 'Stop' : 'Run'}
                     </button>
-                    <button type="button" className="btn-workspace btn-secondary" onClick={() => handleDelete(selectedFile)} title="Delete file" style={{ color: '#f87171' }}>
+                    <button type="button" className="btn-workspace btn-secondary" onClick={() => handleDelete(selectedFile)} title="Delete file" style={{ color: '#ec1414' }}>
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                     <button type="button" className="btn-workspace btn-primary" onClick={handleSave} disabled={saving || !dirty}>
@@ -4242,17 +4286,17 @@ export default function Editor() {
             <div className="ed-breadcrumb">
               {selectedFile ? (
                 <>
-                  <FolderOpen className="w-3 h-3" style={{ color: '#2fd6e6' }} />
+                  <FolderOpen className="w-3 h-3" style={{ color: '#12dce5' }} />
                   <span>{selectedProject ? selectedProject.name : selectedRepo ? (selectedRepo.fullName || selectedRepo.name) : 'workspace'}</span>
                   {filePathSegs.map((seg, i) => (
                     <span key={`${seg}-${i}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
                       <span className="ed-breadcrumb-sep">›</span>
-                      <span style={i === filePathSegs.length - 1 ? { color: '#d4d4d4' } : undefined}>{seg}</span>
+                      <span style={i === filePathSegs.length - 1 ? { color: '#c7d2dd' } : undefined}>{seg}</span>
                     </span>
                   ))}
                 </>
               ) : (
-                <span style={{ color: '#6e6e6e' }}>No file open — select a file from the Explorer</span>
+                <span style={{ color: '#748194' }}>No file open — select a file from the Explorer</span>
               )}
             </div>
 
@@ -4277,7 +4321,8 @@ export default function Editor() {
                     value={content}
                     onChange={handleEditorChange}
                     onMount={handleEditorMount}
-                    theme="vs-dark"
+                    beforeMount={handleEditorWillMount}
+                    theme="buildrs-figma"
                     options={monacoOptions}
                     loading={<div className="ed-ide-empty">Loading editor...</div>}
                   />
@@ -4297,7 +4342,7 @@ export default function Editor() {
                     <button key={t.id} type="button" className={`ed-panel-tab ${panel === t.id ? 'is-active' : ''}`} onClick={() => setPanel(t.id)}>
                       <t.icon className="w-3.5 h-3.5" /> {t.label}
                       {t.id === 'problems' && (problemCounts.error > 0 || blockCount > 0) && (
-                        <span style={{ color: problemCounts.error > 0 ? '#f87171' : '#e5b84a' }}> {problemCounts.error || blockCount}</span>
+                        <span style={{ color: problemCounts.error > 0 ? '#ec1414' : '#e5b84a' }}> {problemCounts.error || blockCount}</span>
                       )}
                     </button>
                   ))}
@@ -4353,7 +4398,7 @@ export default function Editor() {
                           </>
                         ) : (
                           <>
-                            <AlertCircle className="w-3.5 h-3.5" style={{ color: problemCounts.error ? '#f87171' : '#e5b84a', verticalAlign: '-2px', marginRight: '0.4rem' }} />
+                            <AlertCircle className="w-3.5 h-3.5" style={{ color: problemCounts.error ? '#ec1414' : '#e5b84a', verticalAlign: '-2px', marginRight: '0.4rem' }} />
                             {problemCounts.error} error(s) · {problemCounts.warning} warning(s) · {problemCounts.info} info
                           </>
                         )}
@@ -4367,7 +4412,7 @@ export default function Editor() {
                               className="ed-scm-file ed-scm-file-btn"
                               style={{
                                 width: '100%', textAlign: 'left',
-                                color: p.severity === 'error' ? '#f87171' : p.severity === 'warning' ? '#e5b84a' : '#7bd197',
+                                color: p.severity === 'error' ? '#ec1414' : p.severity === 'warning' ? '#e5b84a' : '#56e5a9',
                               }}
                               onClick={() => {
                                 if (p.line) jumpToProblem(p);
@@ -4375,7 +4420,7 @@ export default function Editor() {
                               title={p.message}
                             >
                               <span style={{ display: 'flex', gap: '0.4rem', alignItems: 'baseline' }}>
-                                <span style={{ color: '#6e6e6e', fontSize: '0.66rem', whiteSpace: 'nowrap' }}>
+                                <span style={{ color: '#748194', fontSize: '0.66rem', whiteSpace: 'nowrap' }}>
                                   {p.file ? `${p.file}:` : ''}{p.line || 1}:{p.column || 1}
                                 </span>
                                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.message}</span>
@@ -4403,7 +4448,7 @@ export default function Editor() {
                   )}
 
                   {panel === 'tests' && (
-                    <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', fontSize: '0.72rem' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1, fontFamily: 'var(--figma-font-mono)', fontSize: '0.72rem' }}>
                       {outputLines.length === 0 ? (
                         <div className="ed-empty" style={{ flex: 1 }}>
                           <Play className="w-6 h-6" />
@@ -4418,7 +4463,7 @@ export default function Editor() {
                                 key={i}
                                 style={{
                                   whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.5,
-                                  color: l.kind === 'err' ? '#f87171' : l.kind === 'sys' ? '#7bd197' : '#c7d3df',
+                                  color: l.kind === 'err' ? '#ec1414' : l.kind === 'sys' ? '#56e5a9' : '#c7d3df',
                                 }}
                               >
                                 {segs.length === 0 ? ' ' : segs.map((seg, j) => (
@@ -4471,7 +4516,7 @@ export default function Editor() {
                             {!selectedFigmaFile ? (
                               figmaFiles.length === 0 ? (
                                 <div className="ed-stat" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.6rem' }}>
-                                  <Layers className="w-6 h-6" style={{ color: '#6e6e6e' }} />
+                                  <Layers className="w-6 h-6" style={{ color: '#748194' }} />
                                   <span>No Figma files connected</span>
                                   <a href="/integrations" className="btn-workspace btn-secondary">Connect Figma</a>
                                 </div>
@@ -4482,7 +4527,7 @@ export default function Editor() {
                                       <Layers className="w-3.5 h-3.5" />
                                       <span style={{ minWidth: 0 }}>
                                         <span className="block truncate text-xs">{f.name || f.key}</span>
-                                        <span className="block text-xs" style={{ color: '#6e6e6e' }}>{f.last_modified ? new Date(f.last_modified).toLocaleDateString() : ''}</span>
+                                        <span className="block text-xs" style={{ color: '#748194' }}>{f.last_modified ? new Date(f.last_modified).toLocaleDateString() : ''}</span>
                                       </span>
                                     </button>
                                   ))}
@@ -4491,14 +4536,14 @@ export default function Editor() {
                             ) : (
                               <div className="ed-design-pane" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                                 <div className="ed-stat" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.4rem' }}>
-                                  <button type="button" onClick={() => setSelectedFigmaFile(null)} style={{ color: '#2fd6e6', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.66rem' }}>← All files</button>
-                                  <span className="truncate" style={{ color: '#bbbbbb' }}>{selectedFigmaFile.name || selectedFigmaFile.key}</span>
+                                  <button type="button" onClick={() => setSelectedFigmaFile(null)} style={{ color: '#12dce5', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.66rem' }}>← All files</button>
+                                  <span className="truncate" style={{ color: '#c7d2dd' }}>{selectedFigmaFile.name || selectedFigmaFile.key}</span>
                                 </div>
-                                <div style={{ flex: 1, minHeight: 0, overflow: 'auto', background: '#1e1e1e', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <div style={{ flex: 1, minHeight: 0, overflow: 'auto', background: '#0a0d15', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                   {selectedFigmaFile.thumbnail_url ? (
                                     <img src={selectedFigmaFile.thumbnail_url} alt={selectedFigmaFile.name || 'design'} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
                                   ) : (
-                                    <Layers className="w-8 h-8" style={{ color: '#3c3c3c' }} />
+                                    <Layers className="w-8 h-8" style={{ color: '#2a3446' }} />
                                   )}
                                 </div>
                                 <button type="button" className="btn-workspace btn-primary" onClick={generateFromDesign}>
@@ -4511,7 +4556,8 @@ export default function Editor() {
                             <span className="ed-sidebar-title">Code</span>
                             <div className="ed-code-wrap">
                               {selectedFile ? (
-                                <MonacoEditor height="100%" language={monacoLanguage} value={content} onChange={handleEditorChange} theme="vs-dark"
+                                <MonacoEditor height="100%" language={monacoLanguage} value={content} onChange={handleEditorChange} theme="buildrs-figma"
+                                  beforeMount={handleEditorWillMount}
                                   options={monacoPreviewOptions} />
                               ) : (
                                 <div className="ed-ide-empty">Select a file to preview</div>
@@ -4558,17 +4604,17 @@ export default function Editor() {
                           aria-pressed={autoDeployOn}
                         >
                           Auto-Deploy
-                          <span className={`mkt-mono`} style={{ fontSize: '10px', marginLeft: '6px', padding: '1px 7px', borderRadius: 999, background: autoDeployOn ? 'rgba(47,214,100,0.15)' : 'rgba(255,255,255,0.08)', color: autoDeployOn ? '#4ade80' : '#8c8c8c' }}>
+                          <span className={`mkt-mono`} style={{ fontSize: '10px', marginLeft: '6px', padding: '1px 7px', borderRadius: 999, background: autoDeployOn ? 'rgba(47,214,100,0.15)' : 'rgba(255,255,255,0.08)', color: autoDeployOn ? '#4ade80' : '#9aaeba' }}>
                             {autoDeployOn ? 'ON' : 'OFF'}
                           </span>
                         </button>
                         )}
-                        <span className="text-xs" style={{ color: '#6e6e6e' }}>One-click static deploy → .buildrshq.dev</span>
+                        <span className="text-xs" style={{ color: '#748194' }}>One-click static deploy → .buildrshq.dev</span>
                       </div>
 
                       {showSubdomainInput && (
                         <form onSubmit={confirmDeploy} className="ed-stat" style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                          <label className="ws-label" style={{ color: '#8c8c8c' }}>Choose a subdomain</label>
+                          <label className="ws-label" style={{ color: '#9aaeba' }}>Choose a subdomain</label>
                           {(() => {
                             const secretFiles = gatherDeploymentFiles().filter((f) =>
                               /(^|\/)\.env(\.|$)/i.test(`${f.path || ''}/${f.name || ''}`));
@@ -4581,9 +4627,9 @@ export default function Editor() {
                           })()}                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                             <input type="text" value={deploySubdomain} onChange={(e) => setDeploySubdomain(e.target.value.replace(/[^a-z0-9-]/g, '-').toLowerCase())}
                               placeholder="my-app" className="ws-input"
-                              style={{ fontFamily: 'ui-monospace, Menlo, Consolas, monospace', background: '#1e1e1e', borderColor: '#3c3c3c' }}
+                              style={{ fontFamily: 'var(--figma-font-mono)', background: '#0a0d15', borderColor: '#2a3446' }}
                               autoFocus required minLength={2} />
-                            <span className="text-sm whitespace-nowrap" style={{ color: '#6e6e6e' }}>.buildrshq.dev</span>
+                            <span className="text-sm whitespace-nowrap" style={{ color: '#748194' }}>.buildrshq.dev</span>
                             <button type="submit" disabled={deploying || deploySubdomain.length < 2} className="btn-workspace btn-primary">
                               {deploying ? 'Deploying...' : 'Deploy'}
                             </button>
@@ -4600,31 +4646,31 @@ export default function Editor() {
                         deployments.map((d, i) => (
                           <div key={i} className="ed-stat" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
                             <div style={{ minWidth: 0 }}>
-                              <div className="text-sm" style={{ color: d.deployedUrl ? '#2fd6e6' : '#d4d4d4' }}>
+                              <div className="text-sm" style={{ color: d.deployedUrl ? '#12dce5' : '#c7d2dd' }}>
                                 {d.deployedUrl ? (
-                                  <a href={d.deployedUrl} target="_blank" rel="noreferrer" style={{ color: '#2fd6e6' }}>{d.deployedUrl}</a>
+                                  <a href={d.deployedUrl} target="_blank" rel="noreferrer" style={{ color: '#12dce5' }}>{d.deployedUrl}</a>
                                 ) : d.subdomain ? (
                                   <span>{d.subdomain}.buildrshq.dev</span>
                                 ) : (
                                   <span>{d._id || `Deploy #${i + 1}`}</span>
                                 )}
                               </div>
-                              <div className="text-xs" style={{ color: '#6e6e6e' }}>
+                              <div className="text-xs" style={{ color: '#748194' }}>
                                 {d.status} {(d.projectId?.name ? `• ${d.projectId.name}` : '')} • {d.createdAt ? new Date(d.createdAt).toLocaleString() : ''}
                               </div>
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexShrink: 0 }}>
                               <span className="pill pill-mono" style={
-                                d.status === 'success' ? { background: 'rgba(52,211,153,0.12)', color: '#7bd197' } :
-                                d.status === 'failed' ? { background: 'rgba(248,113,113,0.12)', color: '#f87171' } :
+                                d.status === 'success' ? { background: 'rgba(3,186,3,0.12)', color: '#56e5a9' } :
+                                d.status === 'failed' ? { background: 'rgba(236,20,20,0.12)', color: '#ec1414' } :
                                 d.status === 'building' || d.status === 'deploying' ? { background: 'rgba(229,184,74,0.12)', color: '#e5b84a' } :
-                                { background: 'rgba(255,255,255,0.06)', color: '#8c8c8c' }
+                                { background: 'rgba(255,255,255,0.06)', color: '#9aaeba' }
                               }>{d.status}</span>
-                              <button type="button" onClick={() => setLogDeployId(d._id)} className="text-xs" style={{ color: '#8c8c8c' }} title="View logs">
+                              <button type="button" onClick={() => setLogDeployId(d._id)} className="text-xs" style={{ color: '#9aaeba' }} title="View logs">
                                 Logs
                               </button>
                               {(d.status === 'success' || d.status === 'failed') && (
-                                <button type="button" onClick={() => handleStop(d._id, d.subdomain)} className="text-xs" style={{ color: '#f87171' }}>Stop</button>
+                                <button type="button" onClick={() => handleStop(d._id, d.subdomain)} className="text-xs" style={{ color: '#ec1414' }}>Stop</button>
                               )}
                             </div>
                           </div>
@@ -4691,11 +4737,11 @@ export default function Editor() {
                 <label className="ws-label">Description</label>
                 <textarea value={repoCreateDescription} onChange={(e) => setRepoCreateDescription(e.target.value)} placeholder="Project summary and purpose" className="ws-textarea w-full font-mono text-sm" rows={3} />
               </div>
-              <label className="flex items-center gap-2 text-sm" style={{ color: '#d4d4d4' }}>
+              <label className="flex items-center gap-2 text-sm" style={{ color: '#c7d2dd' }}>
                 <input type="checkbox" checked={repoCreatePrivate} onChange={(e) => setRepoCreatePrivate(e.target.checked)} />
                 Make this repository private
               </label>
-              {repoCreateError && <p className="text-xs text-[#f87171]">{repoCreateError}</p>}
+              {repoCreateError && <p className="text-xs text-[#ec1414]">{repoCreateError}</p>}
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', paddingTop: '0.5rem' }}>
                 <button type="button" className="btn-workspace btn-secondary" onClick={() => { setRepoCreateOpen(false); setRepoCreateError(null); }}>Cancel</button>
                 <button type="submit" className="btn-workspace btn-primary flex items-center gap-2" disabled={repoCreateBusy || !repoCreateName.trim()}>
@@ -4761,8 +4807,8 @@ export default function Editor() {
             </div>
             <div className="p-5 space-y-4">
               <div>
-                <p className="text-sm font-medium mb-1" style={{ color: '#eceef1' }}>Version 1.0 · Code editor with Live Share</p>
-                <p className="text-xs" style={{ color: '#9aa1ae', lineHeight: 1.6 }}>
+                <p className="text-sm font-medium mb-1" style={{ color: '#ffffff' }}>Version 1.0 · Code editor with Live Share</p>
+                <p className="text-xs" style={{ color: '#9aaeba', lineHeight: 1.6 }}>
                   Enterprise editor: version control, one-click deploys, sandboxed terminal,
                   AI assistance and real-time collaboration.
                 </p>
@@ -4857,7 +4903,7 @@ export default function Editor() {
               ) : diffData && diffData.length > 0 ? (
                 diffData.map((file, i) => (
                   <div key={i} className="mb-4">
-                    <p className="ed-stat" style={{ color: '#9aa1ae', marginBottom: 6 }}>
+                    <p className="ed-stat" style={{ color: '#9aaeba', marginBottom: 6 }}>
                       {file.oldPath !== file.newPath ? `${file.oldPath} → ${file.newPath}` : file.newPath}
                     </p>
                     {file.hunks.map((hunk, j) => (
@@ -4870,10 +4916,10 @@ export default function Editor() {
                             key={k}
                             className="ws-diff-line"
                             style={{
-                              color: chg.type === 'add' ? '#7ee787' : chg.type === 'remove' ? '#ff7b72' : '#c9d1d9',
+                              color: chg.type === 'add' ? '#7ee787' : chg.type === 'remove' ? '#ff7b72' : '#c7d2dd',
                               background: chg.type === 'add' ? 'rgba(46,160,67,0.15)' : chg.type === 'remove' ? 'rgba(248,81,73,0.15)' : 'transparent',
                               whiteSpace: 'pre-wrap',
-                              fontFamily: 'ui-monospace, Menlo, Consolas, monospace',
+                              fontFamily: 'var(--figma-font-mono)',
                               fontSize: '0.72rem',
                               lineHeight: 1.5,
                               padding: '0.1rem 0.5rem',
@@ -4916,7 +4962,7 @@ export default function Editor() {
                   head: <b className="text-white">{gitStatus?.branch || 'main'}</b>
                 </p>
               ) : (
-                <p className="text-xs text-[#f87171]">Select a GitHub repository in the Explorer first.</p>
+                <p className="text-xs text-[#ec1414]">Select a GitHub repository in the Explorer first.</p>
               )}
               <div>
                 <label className="ws-label">Title *</label>
@@ -4936,7 +4982,7 @@ export default function Editor() {
                   <input type="text" value={gitStatus?.branch || 'main'} className="ws-input" disabled />
                 </div>
               </div>
-              {prError && <p className="text-xs text-[#f87171]">{prError}</p>}
+              {prError && <p className="text-xs text-[#ec1414]">{prError}</p>}
               {prDone && <p className="text-xs text-[#7ee787]">{prDone}</p>}
               <div className="flex justify-end gap-3">
                 <button type="button" className="btn-workspace btn-secondary" onClick={() => { setPrOpen(false); setPrError(null); setPrDone(null); }}>Cancel</button>
@@ -4968,7 +5014,7 @@ export default function Editor() {
                   <Loader2 className="w-4 h-4 animate-spin" /> Reading design and generating code...
                 </div>
               ) : codegenError ? (
-                <p className="text-sm text-[#f87171]">{codegenError}</p>
+                <p className="text-sm text-[#ec1414]">{codegenError}</p>
               ) : codegenResult ? (
                 <div className="space-y-4">
                   <p className="text-xs text-muted">
@@ -4983,11 +5029,11 @@ export default function Editor() {
                             Save to project
                           </button>
                         </div>
-                        <textarea readOnly value={f.content} style={{ width: '100%', minHeight: 180, background: '#111', color: '#c9d1d9', border: 'none', outline: 'none', fontFamily: 'ui-monospace, Menlo, Consolas, monospace', fontSize: '0.72rem', lineHeight: 1.5, padding: '0.6rem', resize: 'vertical', whiteSpace: 'pre', overflow: 'auto' }} />
+                        <textarea readOnly value={f.content} style={{ width: '100%', minHeight: 180, background: '#111', color: '#c7d2dd', border: 'none', outline: 'none', fontFamily: 'var(--figma-font-mono)', fontSize: '0.72rem', lineHeight: 1.5, padding: '0.6rem', resize: 'vertical', whiteSpace: 'pre', overflow: 'auto' }} />
                       </div>
                     ))
                   ) : (
-                    <pre className="text-xs" style={{ color: '#c9d1d9', whiteSpace: 'pre-wrap', fontFamily: 'ui-monospace, Menlo, Consolas, monospace' }}>{codegenResult.content}</pre>
+                    <pre className="text-xs" style={{ color: '#c7d2dd', whiteSpace: 'pre-wrap', fontFamily: 'var(--figma-font-mono)' }}>{codegenResult.content}</pre>
                   )}
                 </div>
               ) : null}

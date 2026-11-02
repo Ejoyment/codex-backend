@@ -142,7 +142,7 @@ export default function Dashboard() {
 
   if (!hasHydrated) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0b0f17] text-white">
+      <div className="min-h-screen flex items-center justify-center bg-[#0e141d] text-white">
         <p>Loading...</p>
       </div>
     );
@@ -155,7 +155,7 @@ export default function Dashboard() {
         <link rel="icon" href="/buildrs.png" />
       </Head>
 
-      <div className="workspace-container bg-[#0b0f17] text-white min-h-screen flex">
+      <div className="workspace-container bg-[#0e141d] text-white min-h-screen flex">
         <Sidebar
           user={user}
           subscription={subscription}
@@ -176,7 +176,7 @@ export default function Dashboard() {
                 aria-label="Search tasks and projects"
               />
               {searchOpen && searchQuery.trim().length >= 2 && (
-                <div className="absolute top-full mt-2 left-0 right-0 bg-[#161b26] border border-white/10 rounded-lg shadow-2xl overflow-hidden z-40">
+                <div className="absolute top-full mt-2 left-0 right-0 bg-[#182130] border border-white/10 rounded-lg shadow-2xl overflow-hidden z-40">
                   {searchResults.length === 0 ? (
                     <div className="px-4 py-3 text-xs text-zinc-500">No matches for “{searchQuery}”</div>
                   ) : (
@@ -232,10 +232,10 @@ export default function Dashboard() {
                             : 'Your workspace is up to date.'}
                       </p>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-wrap items-center gap-3">
                       <button
                         type="button"
-                        className="bg-[#161b26] hover:bg-[#1f2636] border border-white/10 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition"
+                        className="bg-[#182130] hover:bg-[#1f2636] border border-white/10 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition"
                         onClick={handleRefresh}
                         disabled={refreshing}
                       >
@@ -252,7 +252,7 @@ export default function Dashboard() {
                       </button>
                       <button
                         type="button"
-                        className="bg-[#161b26] hover:bg-[#1f2636] border border-white/10 text-cyan-400 px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition"
+                        className="bg-[#182130] hover:bg-[#1f2636] border border-white/10 text-cyan-400 px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition"
                         onClick={() => router.push('/ai-pair')}
                       >
                         <Sparkles className="w-4 h-4" />
@@ -403,11 +403,11 @@ export default function Dashboard() {
                           </div>
                           <Terminal className="h-4 w-4 text-cyan-400" />
                         </div>
-                        <div className="mt-3 flex min-h-[88px] flex-col items-center justify-center rounded-lg border border-cyan-500/10 bg-[#080d14] px-4 py-3 text-center">
+                        <div className="mt-3 flex min-h-[88px] flex-col items-center justify-center rounded-lg border border-cyan-500/10 bg-[#0a0d15] px-4 py-3 text-center">
                           <Database className="mb-2 h-6 w-6 text-cyan-400/70" />
                           <p className="text-xs font-medium text-white">No recent activity</p>
                           <p className="mt-1 max-w-xs text-[10px] text-zinc-500">Your project is currently in a quiet state. Run a command or trigger a build to populate this dashboard.</p>
-                          <button type="button" className="mt-2 rounded-md bg-[#171b23] px-3 py-1 text-[10px] font-medium text-cyan-400 hover:bg-[#202632]" onClick={() => router.push('/editor')}>Run Build Command</button>
+                          <button type="button" className="mt-2 rounded-md bg-[#1a2230] px-3 py-1 text-[10px] font-medium text-cyan-400 hover:bg-[#1d263b]" onClick={() => router.push('/editor')}>Run Build Command</button>
                         </div>
                       </section>
 
@@ -419,13 +419,13 @@ export default function Dashboard() {
                             <p className="text-[10px] text-zinc-500">No active debug sessions found.</p>
                           </div>
                         </div>
-                        <div className="mt-3 flex min-h-[88px] flex-col items-center justify-center rounded-lg border border-cyan-500/10 bg-[#080d14] p-3">
+                        <div className="mt-3 flex min-h-[88px] flex-col items-center justify-center rounded-lg border border-cyan-500/10 bg-[#0a0d15] p-3">
                           <div className="w-full max-w-[180px] rounded-md border border-cyan-500/15 px-3 py-2 font-mono text-[9px] leading-relaxed text-zinc-500">
                             <p><span className="text-cyan-400">$</span> npm debug</p>
                             <p><span className="text-cyan-400">›</span> Waiting for connection...</p>
                           </div>
                           <span className="mt-2 h-1 w-1 rounded-full bg-emerald-400" />
-                          <button type="button" className="mt-2 rounded-md bg-[#171b23] px-3 py-1 text-[10px] font-medium text-cyan-400 hover:bg-[#202632]" onClick={() => router.push('/meeting-room')}>
+                          <button type="button" className="mt-2 rounded-md bg-[#1a2230] px-3 py-1 text-[10px] font-medium text-cyan-400 hover:bg-[#1d263b]" onClick={() => router.push('/meeting-room')}>
                             <Plus className="mr-1 inline h-3 w-3" /> Start New Session
                           </button>
                         </div>
@@ -454,7 +454,7 @@ export default function Dashboard() {
                           <div className="mb-1.5 flex h-7 w-7 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-400"><Plug2 className="h-3.5 w-3.5" /></div>
                           <h4 className="text-[11px] font-semibold text-white">No workspace connections yet</h4>
                           <p className="mt-1 max-w-[220px] text-[10px] text-zinc-500">Connect a repository or service to start seeing sync status and workspace activity here.</p>
-                          <button type="button" className="mt-2 rounded-md bg-[#171b23] px-3 py-1 text-[10px] font-medium text-cyan-400 hover:bg-[#202632]" onClick={() => router.push('/integrations')}>Connect a workspace</button>
+                          <button type="button" className="mt-2 rounded-md bg-[#1a2230] px-3 py-1 text-[10px] font-medium text-cyan-400 hover:bg-[#1d263b]" onClick={() => router.push('/integrations')}>Connect a workspace</button>
                         </div>
                       </section>
                     </div>
@@ -560,7 +560,7 @@ export default function Dashboard() {
                                 </div>
                                 <button
                                   type="button"
-                                  className="rounded-md bg-[#171b23] px-3 py-1 text-[10px] font-medium text-cyan-400 hover:bg-[#202632] transition shrink-0 self-end md:self-auto"
+                                  className="rounded-md bg-[#1a2230] px-3 py-1 text-[10px] font-medium text-cyan-400 hover:bg-[#1d263b] transition shrink-0 self-end md:self-auto"
                                   onClick={() => router.push(item.href || '/tasks')}
                                 >
                                   Review →
@@ -638,7 +638,7 @@ export default function Dashboard() {
                             ))}
                           </div>
 
-                          <div className="rounded-lg border border-cyan-500/10 bg-[#080d14] p-3 font-mono text-[10px] leading-relaxed text-zinc-500 overflow-x-auto whitespace-pre-wrap min-h-[64px]">
+                          <div className="rounded-lg border border-cyan-500/10 bg-[#0a0d15] p-3 font-mono text-[10px] leading-relaxed text-zinc-500 overflow-x-auto whitespace-pre-wrap min-h-[64px]">
                             {overview.activeDevelopment.terminalLog || 'No output captured yet.'}
                           </div>
                         </>
@@ -820,7 +820,7 @@ export default function Dashboard() {
                                 </div>
                                 <button
                                   type="button"
-                                  className="rounded-md bg-[#171b23] px-3 py-1 text-[10px] font-medium text-cyan-400 hover:bg-[#202632] transition shrink-0"
+                                  className="rounded-md bg-[#1a2230] px-3 py-1 text-[10px] font-medium text-cyan-400 hover:bg-[#1d263b] transition shrink-0"
                                   onClick={() => router.push('/meeting-room')}
                                 >
                                   Join →

@@ -4,7 +4,7 @@ import { useRouter } from 'next/router';
 import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
-import { apiFetch, subscriptionApi, integrationApi } from '../lib/api';
+import { apiFetch, isDemoTourActive, subscriptionApi, integrationApi } from '../lib/api';
 import { rateLimit, validate, createSubmitGuard } from '../lib/security';
 import { getAvatarUrl } from '../lib/utils';
 import { normalizeTier } from '../lib/tier';
@@ -685,6 +685,10 @@ export default function Settings() {
         body: JSON.stringify({ confirm: 'DELETE' }),
       });
       if (data.success) {
+        if (isDemoTourActive()) {
+          toast.success('Demo mode — no account changes were made');
+          return;
+        }
         clearAuth();
         router.replace('/sign_in');
       } else {
@@ -756,8 +760,10 @@ export default function Settings() {
         body: JSON.stringify({ fullName: name, email: user.email }),
       });
       if (data.user) {
-        const token = localStorage.getItem('authToken');
-        setAuth(token, { ...user, ...data.user });
+        if (!isDemoTourActive()) {
+          const token = localStorage.getItem('authToken');
+          setAuth(token, { ...user, ...data.user });
+        }
       }
       toast.success('Profile updated successfully');
     } catch {
@@ -776,9 +782,11 @@ export default function Settings() {
       body: form,
     });
     if (data.profilePicture) {
-      const token = localStorage.getItem('authToken');
-      const updated = { ...user, profilePicture: data.profilePicture };
-      setAuth(token, updated);
+      if (!isDemoTourActive()) {
+        const token = localStorage.getItem('authToken');
+        const updated = { ...user, profilePicture: data.profilePicture };
+        setAuth(token, updated);
+      }
       toast.success('Profile picture updated');
     } else {
       throw new Error(data.message || 'Upload failed');
@@ -1066,12 +1074,12 @@ export default function Settings() {
                       </div>
                     </div>
 
-                    <div className="set-gate" style={{ borderColor: 'rgba(248,113,113,0.3)', background: 'rgba(248,113,113,0.04)' }}>
-                      <div className="set-gate-ico" style={{ background: 'rgba(248,113,113,0.12)', color: '#f87171' }}>
+                    <div className="set-gate" style={{ borderColor: 'rgba(236,20,20,0.3)', background: 'rgba(236,20,20,0.04)' }}>
+                      <div className="set-gate-ico" style={{ background: 'rgba(236,20,20,0.12)', color: '#ec1414' }}>
                         <AlertTriangle className="w-4 h-4" />
                       </div>
                       <div className="flex-1">
-                        <h3 className="mem-rule" style={{ marginBottom: '0.15rem', color: '#f87171' }}>Delete Account</h3>
+                        <h3 className="mem-rule" style={{ marginBottom: '0.15rem', color: '#ec1414' }}>Delete Account</h3>
                         <p className="set-hint" style={{ marginBottom: '0.75rem' }}>
                           Permanently deletes your profile, projects, files, AI sessions, messages, deployments
                           and usage data. Your integration connections (GitHub, Figma, Slack, Notion, Discord)
@@ -1090,7 +1098,7 @@ export default function Settings() {
                           type="button"
                           onClick={handleDeleteAccount}
                           disabled={deleteText !== 'DELETE' || deleting}
-                          className="btn-workspace btn-secondary text-[#f87171] border-[rgba(248,113,113,0.3)] hover:bg-[rgba(248,113,113,0.08)] opacity-60 cursor-not-allowed"
+                          className="btn-workspace btn-secondary text-[#ec1414] border-[rgba(236,20,20,0.3)] hover:bg-[rgba(236,20,20,0.08)] opacity-60 cursor-not-allowed"
                           style={
                             deleteText === 'DELETE' && !deleting
                               ? { opacity: 1, cursor: 'pointer' }
@@ -1140,7 +1148,7 @@ export default function Settings() {
                             </div>
                             <div className="flex items-center gap-3 flex-shrink-0">
                               {connected && (
-                                <span className="pill" style={{ background: 'rgba(52,211,153,0.12)', color: '#34d399' }}>
+                                <span className="pill" style={{ background: 'rgba(3,186,3,0.12)', color: '#03ba03' }}>
                                   Connected
                                 </span>
                               )}

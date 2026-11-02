@@ -119,7 +119,7 @@ export default function SpecEditor({ specId, workspaceId, projectId: projectIdPr
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center p-8 text-[#565d6b]">
+      <div className="flex items-center justify-center p-8 text-[#59687a]">
         Loading spec...
       </div>
     );
@@ -137,11 +137,11 @@ export default function SpecEditor({ specId, workspaceId, projectId: projectIdPr
   const parsed = parseFrontmatter(content || '');
 
   return (
-    <div className="flex flex-col h-full bg-[#1e1e2e] rounded-lg border border-[#2e2e3e] overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-2 border-b border-[#2e2e3e] bg-[#14141e]">
+    <div className="flex flex-col h-full bg-[#1d263b] rounded-lg border border-[#2e2e3e] overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-[#2e2e3e] bg-[#161d29]">
         <div className="flex items-center gap-2">
           <FileCodeIcon className="w-4 h-4 text-purple-400" />
-          <span className="text-sm font-semibold text-[#e2e2ea]">
+          <span className="text-sm font-semibold text-[#dee2f6]">
             {spec?.title || 'Spec Editor'}
           </span>
           {spec?.specId && (
@@ -177,7 +177,7 @@ export default function SpecEditor({ specId, workspaceId, projectId: projectIdPr
         <button
           onClick={() => setActiveTab('spec')}
           className={`px-4 py-2 text-xs font-semibold border-b-2 transition-colors ${
-            activeTab === 'spec' ? 'border-purple-500 text-purple-400' : 'border-transparent text-[#565d6b]'
+            activeTab === 'spec' ? 'border-purple-500 text-purple-400' : 'border-transparent text-[#59687a]'
           }`}
         >
           .spec.md
@@ -186,7 +186,7 @@ export default function SpecEditor({ specId, workspaceId, projectId: projectIdPr
           <button
             onClick={() => setActiveTab('code')}
             className={`px-4 py-2 text-xs font-semibold border-b-2 transition-colors ${
-              activeTab === 'code' ? 'border-blue-500 text-blue-400' : 'border-transparent text-[#565d6b]'
+              activeTab === 'code' ? 'border-blue-500 text-blue-400' : 'border-transparent text-[#59687a]'
             }`}
           >
             {targetFile.split('/').pop()}
@@ -219,14 +219,14 @@ export default function SpecEditor({ specId, workspaceId, projectId: projectIdPr
               {parsed && (
                 <div className="space-y-4">
                   <div>
-                    <h4 className="text-xs font-semibold text-[#9aa1ae] mb-2">Frontmatter</h4>
-                    <div className="text-xs text-[#e2e2ea] bg-[#14141e] p-3 rounded font-mono">
+                    <h4 className="text-xs font-semibold text-[#9aaeba] mb-2">Frontmatter</h4>
+                    <div className="text-xs text-[#dee2f6] bg-[#161d29] p-3 rounded font-mono">
                       {parsed.frontmatter}
                     </div>
                   </div>
                   {spec?.assertions && spec.assertions.length > 0 && (
                     <div>
-                      <h4 className="text-xs font-semibold text-[#9aa1ae] mb-2">Assertions</h4>
+                      <h4 className="text-xs font-semibold text-[#9aaeba] mb-2">Assertions</h4>
                       <div className="space-y-1">
                         {spec.assertions.map((a, i) => (
                           <div key={i} className="flex items-center gap-2 text-xs">
@@ -235,8 +235,8 @@ export default function SpecEditor({ specId, workspaceId, projectId: projectIdPr
                             ) : (
                               <XCircle className="w-3 h-3 text-red-400" />
                             )}
-                            <span className="text-[#e2e2ea]">{a.rule}</span>
-                            <span className="text-[#565d6b]">→ {a.target}</span>
+                            <span className="text-[#dee2f6]">{a.rule}</span>
+                            <span className="text-[#59687a]">→ {a.target}</span>
                           </div>
                         ))}
                       </div>
@@ -244,13 +244,13 @@ export default function SpecEditor({ specId, workspaceId, projectId: projectIdPr
                   )}
                   {spec?.targetModules && spec.targetModules.length > 0 && (
                     <div>
-                      <h4 className="text-xs font-semibold text-[#9aa1ae] mb-2">Target Modules</h4>
+                      <h4 className="text-xs font-semibold text-[#9aaeba] mb-2">Target Modules</h4>
                       <div className="space-y-1">
                         {spec.targetModules.map((m, i) => (
                           <button
                             key={i}
                             onClick={() => handleTargetFileChange(m)}
-                            className="w-full text-left text-xs text-blue-400 hover:text-blue-300 bg-[#14141e] p-2 rounded"
+                            className="w-full text-left text-xs text-blue-400 hover:text-blue-300 bg-[#161d29] p-2 rounded"
                           >
                             {m}
                           </button>
@@ -290,10 +290,10 @@ export default function SpecEditor({ specId, workspaceId, projectId: projectIdPr
             <span className="text-xs font-semibold text-yellow-400">AST Drift Warnings</span>
           </div>
           {driftWarnings.map((w, i) => (
-            <div key={i} className="text-xs text-[#e2e2ea] bg-[#14141e] p-2 rounded mb-1 flex items-center gap-2">
+            <div key={i} className="text-xs text-[#dee2f6] bg-[#161d29] p-2 rounded mb-1 flex items-center gap-2">
               <XCircle className="w-3 h-3 text-red-400 flex-shrink-0" />
               <span>{w.message}</span>
-              <span className="text-[#565d6b] ml-auto">{w.file}</span>
+              <span className="text-[#59687a] ml-auto">{w.file}</span>
             </div>
           ))}
         </div>

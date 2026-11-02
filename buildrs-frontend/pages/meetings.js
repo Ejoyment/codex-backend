@@ -22,10 +22,10 @@ import {
 } from 'lucide-react';
 
 const STATUS_TINTS = {
-  scheduled: { bg: 'rgba(47, 214, 230, 0.1)', text: '#2fd6e6', dot: '#2fd6e6' },
-  ongoing: { bg: 'rgba(52, 211, 153, 0.12)', text: '#34d399', dot: '#34d399' },
-  completed: { bg: 'rgba(154, 161, 174, 0.1)', text: '#9aa1ae', dot: '#6b7280' },
-  cancelled: { bg: 'rgba(248, 113, 113, 0.1)', text: '#f87171', dot: '#f87171' },
+  scheduled: { bg: 'rgba(18,220,229,0.1)', text: '#12dce5', dot: '#12dce5' },
+  ongoing: { bg: 'rgba(3,186,3,0.12)', text: '#03ba03', dot: '#03ba03' },
+  completed: { bg: 'rgba(154,174,186,0.1)', text: '#9aaeba', dot: '#748194' },
+  cancelled: { bg: 'rgba(236,20,20,0.1)', text: '#ec1414', dot: '#ec1414' },
 };
 
 function formatScheduledAt(iso) {
@@ -91,7 +91,7 @@ function MeetingCard({ meeting, onJoin }) {
       <div className="mtg-good">
         <div className="mtg-badge-row">
           {meeting.roomId ? (
-            <span className="pill-mono pill" style={{ background: 'rgba(255,255,255,0.05)', color: '#9aa1ae' }}>
+            <span className="pill-mono pill" style={{ background: 'rgba(255,255,255,0.05)', color: '#9aaeba' }}>
               room {meeting.roomId}
             </span>
           ) : (

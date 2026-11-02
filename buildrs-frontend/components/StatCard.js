@@ -8,10 +8,10 @@ const DEFAULT_ICONS = {
 };
 
 const TINTS = {
-  blue: '#2fd6e6',
-  green: '#34d399',
+  blue: '#12dce5',
+  green: '#03ba03',
   orange: '#e5b84a',
-  purple: '#a78bfa',
+  purple: '#8a38f5',
 };
 
 export default function StatCard({ value, label, color = 'blue', icon, trend, subtext, onClick }) {

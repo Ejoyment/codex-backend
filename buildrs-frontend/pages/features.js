@@ -142,27 +142,27 @@ export default function Features() {
 
         {/* Layers */}
         <section className="mx-auto max-w-[1200px] px-5 sm:px-8">
-          <StaggerChildren className="space-y-px overflow-hidden rounded-xl border border-[#ffffff12]" stagger={0.08}>
+          <StaggerChildren className="space-y-px overflow-hidden rounded-xl border border-[#ffffff10]" stagger={0.08}>
             {LAYERS.map((layer) => (
               <StaggerItem key={layer.num}>
-              <div className="border-b border-[#ffffff12] bg-[#0a0a0d] last:border-b-0">
+              <div className="border-b border-[#ffffff10] bg-[#0a0a0d] last:border-b-0">
                 <div className="flex flex-col gap-4 p-7 sm:flex-row sm:items-start sm:justify-between sm:gap-8 sm:p-9">
                   <div className="sm:w-[300px] sm:shrink-0">
                     <div className="flex items-center gap-3">
-                      <p className="mkt-num text-sm text-[#525764]">{layer.num}</p>
+                      <p className="mkt-num text-sm text-[#59687a]">{layer.num}</p>
                       <h2 className="mkt-h3">{layer.name}</h2>
                       <span className={`mkt-pill ${layer.status}`}>{layer.status}</span>
                     </div>
-                    <p className="mt-3 hidden max-w-[220px] text-[13px] leading-relaxed text-[#686e7c] sm:block">
+                    <p className="mt-3 hidden max-w-[220px] text-[13px] leading-relaxed text-[#748194] sm:block">
                       {layer.blurb}
                     </p>
                   </div>
                   <div className="grid flex-1 gap-px overflow-hidden rounded-lg border border-[#ffffff10] sm:grid-cols-2">
                     {layer.features.map(([title, desc, tag]) => (
-                      <div key={title} className="group bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+                      <div key={title} className="group bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
                         <h3 className="text-[14px] font-semibold tracking-tight text-white">{title}</h3>
-                        <p className="mt-1.5 text-[13px] leading-relaxed text-[#a8adba]">{desc}</p>
-                        <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">{tag}</p>
+                        <p className="mt-1.5 text-[13px] leading-relaxed text-[#a9b7c4]">{desc}</p>
+                        <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">{tag}</p>
                       </div>
                     ))}
                   </div>
@@ -189,173 +189,173 @@ export default function Features() {
             </div>
           </ScrollReveal>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+            <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">Spec-driven agents (proposed changes + approvals)</p>
                 <span className="mkt-pill partial">Partial</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">agent-v1 · agentSocket · agentChangeSet</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">agent-v1 · agentSocket · agentChangeSet</p>
             </div>
-            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+            <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">Branch-isolated execution (agent branches)</p>
                 <span className="mkt-pill partial">Partial</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">gitService · agentChangeSet</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">gitService · agentChangeSet</p>
             </div>
-            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+            <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">SDD/spec verification (AST)</p>
                 <span className="mkt-pill partial">Partial</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">sddVerificationService</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">sddVerificationService</p>
             </div>
-            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+            <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">Specs CRUD</p>
                 <span className="mkt-pill partial">Partial</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">routes/specs.js</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">routes/specs.js</p>
             </div>
-            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+            <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">VFS + editor integration</p>
                 <span className="mkt-pill partial">Partial</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">CodeFile · editor routes</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">CodeFile · editor routes</p>
             </div>
-            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+            <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">Real-time co-editing (Yjs)</p>
                 <span className="mkt-pill live">Live</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">yjs CRDT</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">yjs CRDT</p>
             </div>
-            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+            <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">Terminal (node-pty)</p>
                 <span className="mkt-pill live">Live</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">terminal routes · pty</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">terminal routes · pty</p>
             </div>
-            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+            <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">Git operations (branches/commits/diff)</p>
                 <span className="mkt-pill live">Live</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">git routes · simple-git</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">git routes · simple-git</p>
             </div>
-            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+            <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">LSP + smart completions</p>
                 <span className="mkt-pill live">Live</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">lspManager</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">lspManager</p>
             </div>
-            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+            <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">Debug adapter (DAP)</p>
                 <span className="mkt-pill partial">Partial</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">debugAdapter</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">debugAdapter</p>
             </div>
-            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+            <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">IDE runner + sandbox execution</p>
                 <span className="mkt-pill live">Live</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">sandboxSecurity · docker</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">sandboxSecurity · docker</p>
             </div>
-            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+            <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">Meetings / RTC (WebRTC)</p>
                 <span className="mkt-pill live">Live</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">rtc routes · meetings</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">rtc routes · meetings</p>
             </div>
-            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+            <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">AI Pair (chat/session)</p>
                 <span className="mkt-pill live">Live</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">ai-pair routes</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">ai-pair routes</p>
             </div>
-            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+            <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">AI providers (Groq/Gemini/etc)</p>
                 <span className="mkt-pill live">Live</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">aiService</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">aiService</p>
             </div>
-            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+            <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">Multi-rail billing (Stripe/Paystack/Flutterwave)</p>
                 <span className="mkt-pill partial">Partial</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">paymentRouter · billingCron</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">paymentRouter · billingCron</p>
             </div>
-            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+            <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">Verified webhooks (3 rails, raw-body + timing-safe)</p>
                 <span className="mkt-pill live">Live</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">webhookSecurity</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">webhookSecurity</p>
             </div>
-            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+            <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">Entitlements & credit pool</p>
                 <span className="mkt-pill partial">Partial</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">subscription routes · creditPoolService</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">subscription routes · creditPoolService</p>
             </div>
-            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+            <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">Authentication (JWT/OAuth)</p>
                 <span className="mkt-pill live">Live</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">auth routes · middleware</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">auth routes · middleware</p>
             </div>
-            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+            <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">Projects / Tasks / Teams / Companies</p>
                 <span className="mkt-pill live">Live</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">projects · tasks · teams routes</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">projects · tasks · teams routes</p>
             </div>
-            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+            <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">Notifications</p>
                 <span className="mkt-pill live">Live</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">notificationService</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">notificationService</p>
             </div>
-            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+            <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">Deployments + VPS/SSH + Docker sandbox</p>
                 <span className="mkt-pill partial">Partial</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">deployments · vps routes</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">deployments · vps routes</p>
             </div>
-            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+            <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">Pipelines / CI</p>
                 <span className="mkt-pill partial">Partial</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">routes/pipelines.js</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">routes/pipelines.js</p>
             </div>
-            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+            <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">Support tickets + dashboard</p>
                 <span className="mkt-pill partial">Partial</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">support routes · dashboard</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">support routes · dashboard</p>
             </div>
-            <div className="group rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-5 transition-colors hover:bg-[#121219]">
+            <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">GitHub / Slack / Discord / Figma / Notion / MCP</p>
                 <span className="mkt-pill partial">Partial</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#525764]">integration routes</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">integration routes</p>
             </div>
           </div>
         </section>
@@ -363,24 +363,24 @@ export default function Features() {
       <section className="mx-auto max-w-[1200px] px-5 sm:px-8 py-14">
         <p className="mkt-eyebrow mb-3"><span className="dot">●</span> comparison</p>
         <h2 className="mkt-h2 text-2xl sm:text-3xl md:text-4xl">vs Cursor · Continue · Aider · Cline</h2>
-        <p className="mt-3 max-w-2xl text-[14px] sm:text-[15px] text-[#a8adba]">Fact-based comparison of key differentiators. Maturity reflects BuildrsHQ implementation.</p>
+        <p className="mt-3 max-w-2xl text-[14px] sm:text-[15px] text-[#a9b7c4]">Fact-based comparison of key differentiators. Maturity reflects BuildrsHQ implementation.</p>
         <div className="mt-6 overflow-x-auto">
           <table className="w-full min-w-[800px] text-left text-[13px]">
-            <thead><tr className="border-b border-[#ffffff12] text-[#686e7c]"><th className="py-2">Capability</th><th className="py-2">BuildrsHQ</th><th className="py-2">Cursor</th><th className="py-2">Continue</th><th className="py-2">Aider</th><th className="py-2">Cline</th></tr></thead>
+            <thead><tr className="border-b border-[#ffffff10] text-[#748194]"><th className="py-2">Capability</th><th className="py-2">BuildrsHQ</th><th className="py-2">Cursor</th><th className="py-2">Continue</th><th className="py-2">Aider</th><th className="py-2">Cline</th></tr></thead>
             <tbody>
-              <tr className="border-b border-[#ffffff12]"><td className="py-2 text-[#a8adba]">Spec-driven agents (isolated branch + approval gate)</td><td className="py-2 text-[#2fd6e6]">Partial</td><td className="py-2 text-[#686e7c]">Varies</td><td className="py-2 text-[#686e7c]">Varies</td><td className="py-2 text-[#686e7c]">CLI-focused</td><td className="py-2 text-[#686e7c]">Varies</td></tr>
-              <tr className="border-b border-[#ffffff12]"><td className="py-2 text-[#a8adba]">Proposed changes review before merge (VFS)</td><td className="py-2 text-[#2fd6e6]">Partial</td><td className="py-2 text-[#686e7c]">Inline edits</td><td className="py-2 text-[#686e7c]">Editor-based</td><td className="py-2 text-[#686e7c]">Diff-based</td><td className="py-2 text-[#686e7c]">Plan/act</td></tr>
-              <tr className="border-b border-[#ffffff12]"><td className="py-2 text-[#a8adba]">SDD/spec verification (AST)</td><td className="py-2 text-[#2fd6e6]">Partial</td><td className="py-2 text-[#686e7c]">N/A</td><td className="py-2 text-[#686e7c]">N/A</td><td className="py-2 text-[#686e7c]">N/A</td><td className="py-2 text-[#686e7c]">N/A</td></tr>
-              <tr className="border-b border-[#ffffff12]"><td className="py-2 text-[#a8adba]">All-in-one workspace (editor+terminal+meetings+git)</td><td className="py-2 text-[#2fd6e6]">Partial</td><td className="py-2 text-[#686e7c]">IDE-focused</td><td className="py-2 text-[#686e7c]">IDE extension</td><td className="py-2 text-[#686e7c]">CLI</td><td className="py-2 text-[#686e7c]">IDE extension</td></tr>
-              <tr className="border-b border-[#ffffff12]"><td className="py-2 text-[#a8adba]">Multi-rail billing for emerging markets</td><td className="py-2 text-[#2fd6e6]">Partial</td><td className="py-2 text-[#686e7c]">Stripe-centric</td><td className="py-2 text-[#686e7c]">Varies</td><td className="py-2 text-[#686e7c]">Self-host</td><td className="py-2 text-[#686e7c]">Varies</td></tr>
-              <tr className="border-b border-[#ffffff12]"><td className="py-2 text-[#a8adba]">Verified webhooks + operator safety</td><td className="py-2 text-[#2fd6e6]">Partial</td><td className="py-2 text-[#686e7c]">N/A</td><td className="py-2 text-[#686e7c]">N/A</td><td className="py-2 text-[#686e7c]">N/A</td><td className="py-2 text-[#686e7c]">N/A</td></tr>
+              <tr className="border-b border-[#ffffff10]"><td className="py-2 text-[#a9b7c4]">Spec-driven agents (isolated branch + approval gate)</td><td className="py-2 text-[#12dce5]">Partial</td><td className="py-2 text-[#748194]">Varies</td><td className="py-2 text-[#748194]">Varies</td><td className="py-2 text-[#748194]">CLI-focused</td><td className="py-2 text-[#748194]">Varies</td></tr>
+              <tr className="border-b border-[#ffffff10]"><td className="py-2 text-[#a9b7c4]">Proposed changes review before merge (VFS)</td><td className="py-2 text-[#12dce5]">Partial</td><td className="py-2 text-[#748194]">Inline edits</td><td className="py-2 text-[#748194]">Editor-based</td><td className="py-2 text-[#748194]">Diff-based</td><td className="py-2 text-[#748194]">Plan/act</td></tr>
+              <tr className="border-b border-[#ffffff10]"><td className="py-2 text-[#a9b7c4]">SDD/spec verification (AST)</td><td className="py-2 text-[#12dce5]">Partial</td><td className="py-2 text-[#748194]">N/A</td><td className="py-2 text-[#748194]">N/A</td><td className="py-2 text-[#748194]">N/A</td><td className="py-2 text-[#748194]">N/A</td></tr>
+              <tr className="border-b border-[#ffffff10]"><td className="py-2 text-[#a9b7c4]">All-in-one workspace (editor+terminal+meetings+git)</td><td className="py-2 text-[#12dce5]">Partial</td><td className="py-2 text-[#748194]">IDE-focused</td><td className="py-2 text-[#748194]">IDE extension</td><td className="py-2 text-[#748194]">CLI</td><td className="py-2 text-[#748194]">IDE extension</td></tr>
+              <tr className="border-b border-[#ffffff10]"><td className="py-2 text-[#a9b7c4]">Multi-rail billing for emerging markets</td><td className="py-2 text-[#12dce5]">Partial</td><td className="py-2 text-[#748194]">Stripe-centric</td><td className="py-2 text-[#748194]">Varies</td><td className="py-2 text-[#748194]">Self-host</td><td className="py-2 text-[#748194]">Varies</td></tr>
+              <tr className="border-b border-[#ffffff10]"><td className="py-2 text-[#a9b7c4]">Verified webhooks + operator safety</td><td className="py-2 text-[#12dce5]">Partial</td><td className="py-2 text-[#748194]">N/A</td><td className="py-2 text-[#748194]">N/A</td><td className="py-2 text-[#748194]">N/A</td><td className="py-2 text-[#748194]">N/A</td></tr>
             </tbody>
           </table>
         </div>
       </section>
 
         {/* CTA */}
-        <section className="relative overflow-hidden mt-24 border-t border-[#ffffff0d]">
+        <section className="relative overflow-hidden mt-24 border-t border-[#ffffff0f]">
           <div className="mkt-hero-bg" />
           <div className="relative mx-auto max-w-[1200px] px-5 py-24 text-center sm:px-8">
             <ScrollReveal>

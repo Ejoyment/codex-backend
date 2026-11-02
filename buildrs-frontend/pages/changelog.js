@@ -45,10 +45,10 @@ const VERSIONS = [
 ];
 
 const KIND_COLOR = {
-  feature: 'text-[#2fd6e6]',
+  feature: 'text-[#12dce5]',
   perf: 'text-[#e5b84a]',
-  fix: 'text-[#a8adba]',
-  docs: 'text-[#686e7c]',
+  fix: 'text-[#a9b7c4]',
+  docs: 'text-[#748194]',
 };
 
 export default function Changelog() {
@@ -82,7 +82,7 @@ export default function Changelog() {
 
         {/* Versions */}
         <section className="mx-auto max-w-[820px] px-5 sm:px-8">
-          <div className="divide-y divide-[#ffffff0d] overflow-hidden rounded-xl border border-[#ffffff12] bg-[#0d0d12]">
+          <div className="divide-y divide-[#ffffff0f] overflow-hidden rounded-xl border border-[#ffffff10] bg-[#121821]">
             {VERSIONS.map((v) => (
               <div key={v.version} className="flex flex-col gap-6 p-7 sm:flex-row sm:gap-10 sm:p-8">
                 <div className="sm:w-[150px] sm:shrink-0">
@@ -90,13 +90,13 @@ export default function Changelog() {
                     <p className="mkt-num text-lg text-white">v{v.version}</p>
                     {v.latest && <span className="mkt-pill live">latest</span>}
                   </div>
-                  <p className="mkt-mono mt-2 text-[11px] uppercase tracking-widest text-[#525764]">{v.date}</p>
+                  <p className="mkt-mono mt-2 text-[11px] uppercase tracking-widest text-[#59687a]">{v.date}</p>
                 </div>
                 <ul className="flex-1 space-y-3">
                   {v.changes.map(([kind, text]) => (
                     <li key={text} className="flex items-start gap-3 text-[13.5px]">
                       <span className={`mkt-mono mt-0.5 text-[12px] ${KIND_COLOR[kind]}`}>+</span>
-                      <span className="leading-relaxed text-[#a8adba]">{text}</span>
+                      <span className="leading-relaxed text-[#a9b7c4]">{text}</span>
                     </li>
                   ))}
                 </ul>
@@ -104,14 +104,14 @@ export default function Changelog() {
             ))}
           </div>
 
-          <p className="mkt-mono mt-6 text-center text-[11px] text-[#525764]">
+          <p className="mkt-mono mt-6 text-center text-[11px] text-[#59687a]">
             earlier releases · chronicled in the docs →{' '}
-            <Link href="/docs" className="text-[#2fd6e6]">docs/buildrs/changelog</Link>
+            <Link href="/docs" className="text-[#12dce5]">docs/buildrs/changelog</Link>
           </p>
         </section>
 
         {/* CTA */}
-        <section className="relative overflow-hidden mt-20 border-t border-[#ffffff0d]">
+        <section className="relative overflow-hidden mt-20 border-t border-[#ffffff0f]">
           <div className="mkt-hero-bg" />
           <div className="relative mx-auto max-w-[1200px] px-5 py-24 text-center sm:px-8">
             <h2 className="mkt-h2 mx-auto max-w-[560px]">New this week is shipping fast.</h2>

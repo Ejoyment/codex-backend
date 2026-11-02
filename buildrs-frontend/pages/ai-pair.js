@@ -3,7 +3,7 @@ import Head from 'next/head';
 import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
-import { apiFetch, SOCKET_URL } from '../lib/api';
+import { apiFetch, SOCKET_URL, isDemoTourActive } from '../lib/api';
 import {
   Bot,
   Send,
@@ -39,8 +39,8 @@ const LANGUAGES = ['JavaScript', 'TypeScript', 'Python', 'Java', 'Go', 'Rust', '
 const AI_MODEL_PREFERENCE_KEY = 'buildrs-ai-model-preference';
 
 const ACTION_TINTS = {
-  create: { bg: 'rgba(52, 211, 153, 0.12)', text: '#34d399' },
-  delete: { bg: 'rgba(248, 113, 113, 0.12)', text: '#f87171' },
+  create: { bg: 'rgba(3,186,3,0.12)', text: '#03ba03' },
+  delete: { bg: 'rgba(236,20,20,0.12)', text: '#ec1414' },
   edit: { bg: 'rgba(229, 184, 74, 0.12)', text: '#e5b84a' },
 };
 
@@ -313,7 +313,7 @@ function AgentRunsPanel({ sessions, selected, loading, error, followUp, setFollo
   const reviewable = selected && ['awaiting_review', 'awaiting_approval'].includes(selected.status);
   const hasAppliedChanges = Boolean((selected?.filesChanged || []).length || selected?.diffSummary?.filesChanged > 0);
   const validation = selected?.validationResult;
-  const statusColor = selected?.status === 'failed' ? '#f87171' : reviewable ? '#e5b84a' : ['running', 'in_progress'].includes(selected?.status) ? '#2fd6e6' : '#9aa1ae';
+  const statusColor = selected?.status === 'failed' ? '#ec1414' : reviewable ? '#e5b84a' : ['running', 'in_progress'].includes(selected?.status) ? '#12dce5' : '#9aaeba';
   const activeCount = sessions.filter((session) => ['running', 'in_progress'].includes(session.status)).length;
   const reviewCount = sessions.filter((session) => ['awaiting_review', 'awaiting_approval'].includes(session.status)).length;
   const rawProgress = Number(selected?.progress);
@@ -336,7 +336,7 @@ function AgentRunsPanel({ sessions, selected, loading, error, followUp, setFollo
           </div>
           <div className="ail-agent-session-list">
             {sessions.length ? sessions.map((session) => {
-              const sessionStatusColor = session.status === 'failed' ? '#f87171' : ['awaiting_review', 'awaiting_approval'].includes(session.status) ? '#a78bfa' : ['running', 'in_progress'].includes(session.status) ? '#2fd6e6' : '#34d399';
+              const sessionStatusColor = session.status === 'failed' ? '#ec1414' : ['awaiting_review', 'awaiting_approval'].includes(session.status) ? '#8a38f5' : ['running', 'in_progress'].includes(session.status) ? '#12dce5' : '#03ba03';
               return (
                 <button key={session._id} type="button" onClick={() => onSelect(session)} className={`ail-agent-session ${selected?._id === session._id ? 'is-selected' : ''}`}>
                   <span className="ail-agent-session-dot" style={{ background: sessionStatusColor }} />
@@ -430,9 +430,9 @@ function AgentRunsPanel({ sessions, selected, loading, error, followUp, setFollo
                 <div className="ail-agent-validation">
                   {validation?.specs?.length ? validation.specs.map((spec, index) => (
                     <section key={spec.specId || index}>
-                      <header><strong>{spec.title || `Spec ${index + 1}`}</strong><span style={{ color: spec.passed ? '#34d399' : '#e5b84a' }}>{spec.passed ? 'requirements passing' : 'review needed'}</span></header>
+                      <header><strong>{spec.title || `Spec ${index + 1}`}</strong><span style={{ color: spec.passed ? '#03ba03' : '#e5b84a' }}>{spec.passed ? 'requirements passing' : 'review needed'}</span></header>
                       {(spec.requirements || []).map((requirement, requirementIndex) => (
-                        <p key={requirement.id || requirementIndex}><span style={{ color: requirement.status === 'pass' ? '#34d399' : requirement.status === 'fail' ? '#f87171' : '#e5b84a' }}>{requirement.status}</span><span>{requirement.id}: {requirement.text} <small>{requirement.evidence}</small></span></p>
+                        <p key={requirement.id || requirementIndex}><span style={{ color: requirement.status === 'pass' ? '#03ba03' : requirement.status === 'fail' ? '#ec1414' : '#e5b84a' }}>{requirement.status}</span><span>{requirement.id}: {requirement.text} <small>{requirement.evidence}</small></span></p>
                       ))}
                       {spec.verificationCommand && <p className="ail-agent-validation-command">Command pending: {spec.verificationCommand.command}</p>}
                     </section>
@@ -448,7 +448,7 @@ function AgentRunsPanel({ sessions, selected, loading, error, followUp, setFollo
               </form>}
               <div><span>Agent work always waits for a human decision.</span><div className="ail-agent-review-actions">
                 {reviewable && <><button type="button" className="btn-workspace btn-secondary" onClick={() => { const reason = window.prompt('Reason for rejecting this run?') || ''; onAction('reject', selected, { reason }); }} disabled={Boolean(actionId)}><XCircle className="h-4 w-4" />Reject &amp; Rollback</button><button type="button" className="btn-workspace btn-primary" onClick={() => onAction('approve', selected)} disabled={Boolean(actionId)} title={hasAppliedChanges ? 'Approve and merge the branch' : 'Accept this plan and close the task'}><CheckCircle2 className="h-4 w-4" />{hasAppliedChanges ? 'Approve & Merge' : 'Accept Plan'}</button></>}
-                {actionId === selected._id && <Loader2 className="h-4 w-4 animate-spin text-[#2fd6e6]" />}
+                {actionId === selected._id && <Loader2 className="h-4 w-4 animate-spin text-[#12dce5]" />}
               </div></div>
               {reviewable && !hasAppliedChanges && <p className="ail-agent-review-note">This run returned a plan but no file changes. Accept the plan, continue with a follow-up instruction, or delegate the task again.</p>}
             </footer>}
@@ -567,7 +567,7 @@ export default function AiPair() {
 
   useEffect(() => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
-    if (!token) return;
+    if (!token || isDemoTourActive()) return;
     const socketUrl = SOCKET_URL;
     const sock = io(`${socketUrl}/collab`, { auth: { token }, transports: ['websocket', 'polling'] });
     agentSocketRef.current = sock;
@@ -988,7 +988,7 @@ export default function AiPair() {
                   <aside className="ail-rail">
                     <div className="ail-rail-head">
                       <span className="ail-rail-title">
-                        <MessageSquare className="w-4 h-4" style={{ color: '#2fd6e6' }} />
+                        <MessageSquare className="w-4 h-4" style={{ color: '#12dce5' }} />
                         Sessions
                       </span>
                       <button type="button" className="ail-new" onClick={openNewSessionModal} title="New session">
@@ -1034,8 +1034,8 @@ export default function AiPair() {
                                     className="ail-sess-status"
                                     style={
                                       sess.status === 'active'
-                                        ? { background: 'rgba(52,211,153,0.12)', color: '#34d399' }
-                                        : { background: 'rgba(255,255,255,0.05)', color: '#9aa1ae' }
+                                        ? { background: 'rgba(3,186,3,0.12)', color: '#03ba03' }
+                                        : { background: 'rgba(255,255,255,0.05)', color: '#9aaeba' }
                                     }
                                   >
                                     {sess.status}
@@ -1043,7 +1043,7 @@ export default function AiPair() {
                                 </span>
                                 <span className="ail-sess-time">{formatTime(sess.createdAt)}</span>
                               </span>
-                              <ChevronRight className="w-3.5 h-3.5 flex-shrink-0" style={{ color: isActive ? '#2fd6e6' : '#3a4050' }} />
+                              <ChevronRight className="w-3.5 h-3.5 flex-shrink-0" style={{ color: isActive ? '#12dce5' : '#3a4050' }} />
                             </button>
                           );
                         })
@@ -1065,7 +1065,7 @@ export default function AiPair() {
                         <div className="std-alert std-alert-error mx-4 mt-4">
                           <AlertCircle className="w-4 h-4 flex-shrink-0" />
                           <p className="flex-1">{error}</p>
-                          <button type="button" onClick={() => setError(null)} className="text-[#fca5a5] hover:text-white">
+                          <button type="button" onClick={() => setError(null)} className="text-[#ec8f8f] hover:text-white">
                             <X className="w-4 h-4" />
                           </button>
                         </div>
@@ -1111,15 +1111,15 @@ export default function AiPair() {
                                 <div key={i} className="ail-msg-row">
                                   <div className="ail-bubble ail-bubble-ai">
                                     <div className="ail-msg-head">
-                                      <Bot className="w-3.5 h-3.5" style={{ color: '#2fd6e6' }} />
+                                      <Bot className="w-3.5 h-3.5" style={{ color: '#12dce5' }} />
                                       <span className="ail-msg-who">AI</span>
                                     </div>
                                     {renderCodeBlocks(msg.content, `a${i}`)}
                                     {msg.agentSteps && msg.agentSteps.length > 0 && (
                                       <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                                         {msg.agentSteps.map((s, si) => (
-                                          <div key={si} style={{ fontSize: '0.75rem', color: '#a8adba', display: 'flex', gap: '0.4rem' }}>
-                                            <span className="mkt-mono" style={{ color: s.success === false ? '#f87171' : '#2fd6e6' }}>
+                                          <div key={si} style={{ fontSize: '0.75rem', color: '#a9b7c4', display: 'flex', gap: '0.4rem' }}>
+                                            <span className="mkt-mono" style={{ color: s.success === false ? '#ec1414' : '#12dce5' }}>
                                               {s.success === false ? '✕' : '✓'}
                                             </span>
                                             <span>Step {s.step}: {s.tool || 'Agent action'} {s.success === false ? 'needs attention' : 'completed'}</span>
@@ -1140,7 +1140,7 @@ export default function AiPair() {
                                   <div className="ail-msg-row">
                                     <div className="ail-bubble ail-bubble-ai" style={{ width: '100%' }}>
                                       <div className="ail-msg-head">
-                                        <Bot className="w-3.5 h-3.5" style={{ color: '#2fd6e6' }} />
+                                        <Bot className="w-3.5 h-3.5" style={{ color: '#12dce5' }} />
                                         <span className="ail-msg-who">Agent working...</span>
                                       </div>
                                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.5rem' }}>
@@ -1151,8 +1151,8 @@ export default function AiPair() {
                                             ? (succeeded ? CheckCircle2 : XCircle)
                                             : Loader2;
                                           return (
-                                            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.78rem', color: isCompleteEvent && !succeeded ? '#f87171' : '#c8ccd4' }}>
-                                              <ProgressIcon className={`w-3 h-3 ${!isCompleteEvent ? 'animate-spin' : ''}`} style={{ color: isCompleteEvent ? (succeeded ? '#34d399' : '#f87171') : '#2fd6e6' }} />
+                                            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.78rem', color: isCompleteEvent && !succeeded ? '#ec1414' : '#c8ccd4' }}>
+                                              <ProgressIcon className={`w-3 h-3 ${!isCompleteEvent ? 'animate-spin' : ''}`} style={{ color: isCompleteEvent ? (succeeded ? '#03ba03' : '#ec1414') : '#12dce5' }} />
                                               <span className="mkt-mono">
                                                 {s.iteration ? `step ${s.iteration} · ` : ''}{getAgentProgressLabel(s)}
                                               </span>
@@ -1165,7 +1165,7 @@ export default function AiPair() {
                                 ) : (
                                   <div className="ail-msg-row">
                                     <div className="ail-thinking ail-typing">
-                                      <Loader2 className="w-4 h-4 animate-spin" style={{ color: '#2fd6e6' }} />
+                                      <Loader2 className="w-4 h-4 animate-spin" style={{ color: '#12dce5' }} />
                                       <span className="ail-msg-who">{agentMode ? 'Agent thinking...' : 'Thinking...'}</span>
                                     </div>
                                   </div>

@@ -81,7 +81,7 @@ export default function About() {
         </section>
 
         {/* Story / timeline */}
-        <section className="border-t border-[#ffffff0d]">
+        <section className="border-t border-[#ffffff0f]">
           <div className="mx-auto grid max-w-[1200px] gap-12 px-5 py-20 sm:px-8 lg:grid-cols-[0.8fr_1.2fr]">
             <div>
               <ScrollReveal>
@@ -98,7 +98,7 @@ export default function About() {
                   side, a terminal buried somewhere. Feedback loops break, context evaporates,
                   and the actual building gets the leftovers.
                 </p>
-                <p className="mt-4 text-[14px] leading-relaxed text-[#a8adba]">
+                <p className="mt-4 text-[14px] leading-relaxed text-[#a9b7c4]">
                   Buildrs was built so the loop never breaks — an AI pair programmer that has
                   read your repo, co-editing that cannot conflict, and standups that live where
                   the code is.
@@ -106,14 +106,14 @@ export default function About() {
               </ScrollReveal>
             </div>
 
-            <StaggerChildren className="grid gap-px overflow-hidden rounded-xl border border-[#ffffff12] bg-[#ffffff12]" stagger={0.08}>
+            <StaggerChildren className="grid gap-px overflow-hidden rounded-xl border border-[#ffffff10] bg-[#ffffff10]" stagger={0.08}>
               {TIMELINE.map(([tag, text], i) => (
                 <StaggerItem key={tag}>
-                <div className="flex gap-5 bg-[#0d0d12] p-6">
-                  <p className="mkt-num text-sm text-[#525764]">{`0${i + 1}`}</p>
+                <div className="flex gap-5 bg-[#121821] p-6">
+                  <p className="mkt-num text-sm text-[#59687a]">{`0${i + 1}`}</p>
                   <div>
-                    <p className="mkt-mono text-[10.5px] uppercase tracking-widest text-[#2fd6e6]">{tag}</p>
-                    <p className="mt-2 text-[13.5px] leading-relaxed text-[#a8adba]">{text}</p>
+                    <p className="mkt-mono text-[10.5px] uppercase tracking-widest text-[#12dce5]">{tag}</p>
+                    <p className="mt-2 text-[13.5px] leading-relaxed text-[#a9b7c4]">{text}</p>
                   </div>
                 </div>
                 </StaggerItem>
@@ -123,7 +123,7 @@ export default function About() {
         </section>
 
         {/* Values */}
-        <section className="border-t border-[#ffffff0d]">
+        <section className="border-t border-[#ffffff0f]">
           <div className="mx-auto max-w-[1200px] px-5 py-20 sm:px-8">
             <ScrollReveal>
               <p className="mkt-eyebrow mb-4">
@@ -133,13 +133,13 @@ export default function About() {
             <ScrollReveal delay={0.1}>
               <h2 className="mkt-h2 mb-12">What we optimize for.</h2>
             </ScrollReveal>
-            <StaggerChildren className="grid gap-px overflow-hidden rounded-xl border border-[#ffffff12] bg-[#ffffff12] sm:grid-cols-2" stagger={0.08}>
+            <StaggerChildren className="grid gap-px overflow-hidden rounded-xl border border-[#ffffff10] bg-[#ffffff10] sm:grid-cols-2" stagger={0.08}>
               {VALUES.map((v) => (
                 <StaggerItem key={v.num}>
-                <div className="bg-[#0d0d12] p-7 h-full">
-                  <p className="mkt-num text-sm text-[#2fd6e6]">{v.num}</p>
+                <div className="bg-[#121821] p-7 h-full">
+                  <p className="mkt-num text-sm text-[#12dce5]">{v.num}</p>
                   <h3 className="mkt-h3 mt-4">{v.title}</h3>
-                  <p className="mt-3 text-[13.5px] leading-relaxed text-[#a8adba]">{v.desc}</p>
+                  <p className="mt-3 text-[13.5px] leading-relaxed text-[#a9b7c4]">{v.desc}</p>
                 </div>
                 </StaggerItem>
               ))}
@@ -157,18 +157,18 @@ export default function About() {
                 <div className="flex items-center gap-5">
                   <div
                     className="mkt-mono flex h-14 w-14 items-center justify-center rounded-full text-[16px] font-semibold text-[#04181b]"
-                    style={{ background: '#2fd6e6' }}
+                    style={{ background: '#12dce5' }}
                   >
                     ED
                   </div>
                   <div>
                     <h3 className="mkt-h3">Ejoymene David</h3>
-                    <p className="mkt-mono mt-1 text-[11px] uppercase tracking-widest text-[#686e7c]">
+                    <p className="mkt-mono mt-1 text-[11px] uppercase tracking-widest text-[#748194]">
                       CEO & founder · codex inc
                     </p>
                   </div>
                 </div>
-                <p className="mt-5 text-[13.5px] leading-relaxed text-[#a8adba]">
+                <p className="mt-5 text-[13.5px] leading-relaxed text-[#a9b7c4]">
                   Oracle AI-certified professional with a security background. Built Buildrs to
                   give every team — from Lagos to San Francisco — the same ability to ship that
                   big platforms have.
@@ -180,7 +180,7 @@ export default function About() {
         </section>
 
         {/* CTA */}
-        <section className="relative overflow-hidden border-t border-[#ffffff0d]">
+        <section className="relative overflow-hidden border-t border-[#ffffff0f]">
           <div className="mkt-hero-bg" />
           <div className="relative mx-auto max-w-[1200px] px-5 py-24 text-center sm:px-8">
             <ScrollReveal>

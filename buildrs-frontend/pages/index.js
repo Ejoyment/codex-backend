@@ -206,7 +206,7 @@ export default function Index() {
                     Explore the platform <span className="mkt-arrow">↗</span>
                   </Link>
                 </div>
-                <p className="mkt-mono mt-8 text-xs text-[#525764]">
+                <p className="mkt-mono mt-8 text-xs text-[#59687a]">
                   free plan · no credit card · ready in under a minute
                 </p>
               </ScrollReveal>
@@ -220,7 +220,7 @@ export default function Index() {
         </section>
 
         {/* ── Live strip ───────────────────────────────────── */}
-        <section className="border-y border-[#ffffff0d]">
+        <section className="border-y border-[#ffffff0f]">
           <StaggerChildren className="mx-auto grid max-w-[1200px] grid-cols-2 gap-px px-5 py-0 sm:px-8 lg:grid-cols-4" stagger={0.08}>
             {[
               { k: '10+', v: 'tools replaced by one workspace', note: 'github · slack · figma · notion' },
@@ -231,8 +231,8 @@ export default function Index() {
               <StaggerItem key={s.k}>
               <div className="px-2 py-8 sm:px-4">
                 <p className="mkt-num text-3xl text-white sm:text-4xl">{s.k}</p>
-                <p className="mt-3 text-[13px] leading-snug text-[#a8adba]">{s.v}</p>
-                <p className="mkt-mono mt-2 text-[10.5px] text-[#525764]">{s.note}</p>
+                <p className="mt-3 text-[13px] leading-snug text-[#a9b7c4]">{s.v}</p>
+                <p className="mkt-mono mt-2 text-[10.5px] text-[#59687a]">{s.note}</p>
               </div>
               </StaggerItem>
             ))}
@@ -249,7 +249,7 @@ export default function Index() {
                 </p>
                 <h2 className="mkt-h2">One workspace, every layer.</h2>
               </div>
-              <p className="mkt-mono hidden text-[11px] uppercase tracking-widest text-[#525764] lg:block">
+              <p className="mkt-mono hidden text-[11px] uppercase tracking-widest text-[#59687a] lg:block">
                 click a layer
               </p>
             </div>
@@ -261,16 +261,16 @@ export default function Index() {
               <Link href="/features" className="mkt-cell group block h-full">
                 <div className="flex items-center justify-between gap-3">
                   <h3 className="mkt-h3 flex items-center gap-3">
-                    <span className="mkt-mono text-sm text-[#525764]">▸</span>
+                    <span className="mkt-mono text-sm text-[#59687a]">▸</span>
                     {s.name}
                   </h3>
                   <span className={`mkt-pill ${s.status}`}>{s.status}</span>
                 </div>
-                <p className="mt-3 text-[13.5px] leading-relaxed text-[#a8adba]">
-                  <span className="mkt-mono text-[10.5px] uppercase tracking-widest text-[#686e7c]">it can: </span>
+                <p className="mt-3 text-[13.5px] leading-relaxed text-[#a9b7c4]">
+                  <span className="mkt-mono text-[10.5px] uppercase tracking-widest text-[#748194]">it can: </span>
                   {s.desc}
                 </p>
-                <p className="mkt-mono mt-4 text-[10.5px] uppercase tracking-widest text-[#525764]">
+                <p className="mkt-mono mt-4 text-[10.5px] uppercase tracking-widest text-[#59687a]">
                   {s.badge}
                 </p>
               </Link>
@@ -291,16 +291,16 @@ export default function Index() {
               </h2>
             </div>
           </ScrollReveal>
-          <StaggerChildren className="grid gap-px overflow-hidden rounded-xl border border-[#ffffff12] bg-[#ffffff12] sm:grid-cols-2" stagger={0.08}>
+          <StaggerChildren className="grid gap-px overflow-hidden rounded-xl border border-[#ffffff10] bg-[#ffffff10] sm:grid-cols-2" stagger={0.08}>
             {BUILD.map((b) => (
               <StaggerItem key={b.title}>
-              <div className="group h-full bg-[#0d0d12] p-7 transition-colors hover:bg-[#121219]">
-                <div className="mkt-mono mb-5 flex h-9 w-9 items-center justify-center rounded-md border border-[#ffffff14] text-[13px] text-[#2fd6e6]">
+              <div className="group h-full bg-[#121821] p-7 transition-colors hover:bg-[#161d29]">
+                <div className="mkt-mono mb-5 flex h-9 w-9 items-center justify-center rounded-md border border-[#ffffff12] text-[13px] text-[#12dce5]">
                   {b.icon}
                 </div>
                 <h3 className="mkt-h3">{b.title}</h3>
-                <p className="mkt-mono mt-1 text-[10.5px] uppercase tracking-widest text-[#525764]">{b.tag}</p>
-                <p className="mt-3 text-[13.5px] leading-relaxed text-[#a8adba]">{b.desc}</p>
+                <p className="mkt-mono mt-1 text-[10.5px] uppercase tracking-widest text-[#59687a]">{b.tag}</p>
+                <p className="mt-3 text-[13.5px] leading-relaxed text-[#a9b7c4]">{b.desc}</p>
               </div>
               </StaggerItem>
             ))}
@@ -308,7 +308,7 @@ export default function Index() {
         </section>
 
         {/* ── Collaborate ──────────────────────────────────── */}
-        <section className="border-y border-[#ffffff0d] bg-[#0a0a0d]">
+        <section className="border-y border-[#ffffff0f] bg-[#0a0a0d]">
           <div className="mx-auto max-w-[1200px] px-5 py-24 sm:px-8">
             <div className="grid gap-12 lg:grid-cols-[0.9fr_1.1fr]">
               <div>
@@ -326,19 +326,19 @@ export default function Index() {
                     not a relay of file drops.
                   </p>
                 </ScrollReveal>
-                <div className="mt-8 rounded-lg border border-[#ffffff12] bg-[#0d0d12] p-5">
+                <div className="mt-8 rounded-lg border border-[#ffffff10] bg-[#121821] p-5">
                   <div className="mkt-live mb-3">
                     <span className="dot" />
-                    <span className="mkt-mono text-[11px] uppercase tracking-widest text-[#686e7c]">
+                    <span className="mkt-mono text-[11px] uppercase tracking-widest text-[#748194]">
                       4 teammates online in acme/core
                     </span>
                   </div>
                   <div className="space-y-2">
                     {[
-                      ['ada', 'src/components/dashboard.tsx', '#2fd6e6'],
+                      ['ada', 'src/components/dashboard.tsx', '#12dce5'],
                       ['rowan', 'reviewing PR #128', '#e5b84a'],
-                      ['kai', 'room: standup in 12m', '#686e7c'],
-                      ['you', 'editing cards.tsx', '#2fd6e6'],
+                      ['kai', 'room: standup in 12m', '#748194'],
+                      ['you', 'editing cards.tsx', '#12dce5'],
                     ].map(([name, act, color]) => (
                       <div key={name} className="flex items-center gap-3 text-[13px]">
                         <span
@@ -347,21 +347,21 @@ export default function Index() {
                         >
                           {name.slice(0, 1).toUpperCase()}
                         </span>
-                        <span className="mkt-mono text-[#a8adba]">{name}</span>
-                        <span className="mkt-mono text-[#525764]">{act}</span>
+                        <span className="mkt-mono text-[#a9b7c4]">{name}</span>
+                        <span className="mkt-mono text-[#59687a]">{act}</span>
                       </div>
                     ))}
                   </div>
                 </div>
               </div>
 
-              <StaggerChildren className="grid gap-px overflow-hidden rounded-xl border border-[#ffffff12] bg-[#ffffff12] sm:grid-cols-2" stagger={0.08}>
+              <StaggerChildren className="grid gap-px overflow-hidden rounded-xl border border-[#ffffff10] bg-[#ffffff10] sm:grid-cols-2" stagger={0.08}>
                 {COLLAB.map((c) => (
                   <StaggerItem key={c.num}>
-                  <div className="bg-[#0d0d12] p-7 h-full transition-colors hover:bg-[#121219]">
-                    <p className="mkt-num text-sm text-[#2fd6e6]">{c.num}</p>
+                  <div className="bg-[#121821] p-7 h-full transition-colors hover:bg-[#161d29]">
+                    <p className="mkt-num text-sm text-[#12dce5]">{c.num}</p>
                     <h3 className="mkt-h3 mt-4">{c.title}</h3>
-                    <p className="mt-3 text-[13.5px] leading-relaxed text-[#a8adba]">{c.desc}</p>
+                    <p className="mt-3 text-[13.5px] leading-relaxed text-[#a9b7c4]">{c.desc}</p>
                   </div>
                   </StaggerItem>
                 ))}
@@ -383,13 +383,13 @@ export default function Index() {
               </p>
             </div>
           </ScrollReveal>
-          <StaggerChildren className="grid gap-px overflow-hidden rounded-xl border border-[#ffffff12] bg-[#ffffff12] md:grid-cols-3" stagger={0.08}>
+          <StaggerChildren className="grid gap-px overflow-hidden rounded-xl border border-[#ffffff10] bg-[#ffffff10] md:grid-cols-3" stagger={0.08}>
             {RUN.map((r) => (
               <StaggerItem key={r.title}>
-              <div className="bg-[#0d0d12] p-7 h-full transition-colors hover:bg-[#121219]">
-                <p className="mkt-mono text-[10.5px] uppercase tracking-widest text-[#686e7c]">{r.tag}</p>
+              <div className="bg-[#121821] p-7 h-full transition-colors hover:bg-[#161d29]">
+                <p className="mkt-mono text-[10.5px] uppercase tracking-widest text-[#748194]">{r.tag}</p>
                 <h3 className="mkt-h3 mt-4">{r.title}</h3>
-                <p className="mt-3 text-[13.5px] leading-relaxed text-[#a8adba]">{r.desc}</p>
+                <p className="mt-3 text-[13.5px] leading-relaxed text-[#a9b7c4]">{r.desc}</p>
               </div>
               </StaggerItem>
             ))}
@@ -403,7 +403,7 @@ export default function Index() {
               <span className="title mkt-mono">buildrs — live status</span>
               <span className="mkt-live ml-auto">
                 <span className="dot" />
-                <span className="text-[11px] capitalize text-[#2fd6e6]">live</span>
+                <span className="text-[11px] capitalize text-[#12dce5]">live</span>
               </span>
             </div>
             <div className="mkt-term-body grid gap-x-8 gap-y-1 sm:grid-cols-2">
@@ -418,7 +418,7 @@ export default function Index() {
         </section>
 
         {/* ── Why ──────────────────────────────────────────── */}
-        <section className="border-t border-[#ffffff0d]">
+        <section className="border-t border-[#ffffff0f]">
           <div className="mx-auto max-w-[1200px] px-5 py-24 sm:px-8">
             <ScrollReveal>
               <div className="mb-12">
@@ -431,11 +431,11 @@ export default function Index() {
             <StaggerChildren className="grid gap-x-16 gap-y-12 md:grid-cols-2" stagger={0.08}>
               {WHY.map((w) => (
                 <StaggerItem key={w.num}>
-                <div className="flex gap-6 border-t border-[#ffffff12] pt-6">
-                  <p className="mkt-num text-sm text-[#525764]">{w.num}</p>
+                <div className="flex gap-6 border-t border-[#ffffff10] pt-6">
+                  <p className="mkt-num text-sm text-[#59687a]">{w.num}</p>
                   <div>
                     <h3 className="mkt-h3">{w.title}</h3>
-                    <p className="mt-2.5 text-[14px] leading-relaxed text-[#a8adba]">{w.desc}</p>
+                    <p className="mt-2.5 text-[14px] leading-relaxed text-[#a9b7c4]">{w.desc}</p>
                   </div>
                 </div>
                 </StaggerItem>
@@ -466,8 +466,8 @@ export default function Index() {
                   <h3 className="mkt-h3">{c.name}</h3>
                   <span className="mkt-link-arrow">↗</span>
                 </div>
-                <p className="mkt-mono mt-1.5 text-xs text-[#686e7c]">{c.handle}</p>
-                <p className="mt-3 text-[13.5px] leading-relaxed text-[#a8adba]">{c.desc}</p>
+                <p className="mkt-mono mt-1.5 text-xs text-[#748194]">{c.handle}</p>
+                <p className="mt-3 text-[13.5px] leading-relaxed text-[#a9b7c4]">{c.desc}</p>
               </div>
               </StaggerItem>
             ))}
@@ -475,7 +475,7 @@ export default function Index() {
         </section>
 
         {/* ── Final CTA ────────────────────────────────────── */}
-        <section className="relative overflow-hidden border-t border-[#ffffff0d]">
+        <section className="relative overflow-hidden border-t border-[#ffffff0f]">
           <div className="mkt-hero-bg" />
           <div className="relative mx-auto max-w-[1200px] px-5 py-28 text-center sm:px-8">
             <ScrollReveal>
@@ -508,29 +508,29 @@ export default function Index() {
       <section className="mx-auto max-w-[1200px] px-5 sm:px-8 py-14">
         <p className="mkt-eyebrow mb-3"><span className="dot">●</span> platform · full feature set</p>
         <h2 className="mkt-h2 text-2xl sm:text-3xl md:text-4xl">All features</h2>
-        <p className="mt-3 max-w-2xl text-[14px] sm:text-[15px] text-[#a8adba]">Straight from our codebase — everything we have built, complete or in progress. <span className="mkt-pill live">live</span> is ready today; <span className="mkt-pill partial">partial</span> ships but is still being hardened. Nothing hidden.</p>
+        <p className="mt-3 max-w-2xl text-[14px] sm:text-[15px] text-[#a9b7c4]">Straight from our codebase — everything we have built, complete or in progress. <span className="mkt-pill live">live</span> is ready today; <span className="mkt-pill partial">partial</span> ships but is still being hardened. Nothing hidden.</p>
         <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Spec-driven agents (proposed changes + approvals)</p><span className="mkt-pill partial">Partial</span></div></div>
-          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Branch-isolated execution (agent branches)</p><span className="mkt-pill partial">Partial</span></div></div>
-          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">SDD/spec verification (AST)</p><span className="mkt-pill partial">Partial</span></div></div>
-          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">VFS + editor integration</p><span className="mkt-pill partial">Partial</span></div></div>
-          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Real-time co-editing (Yjs)</p><span className="mkt-pill live">Live</span></div></div>
-          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Terminal (node-pty)</p><span className="mkt-pill live">Live</span></div></div>
-          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Git operations (branches/commits/diff)</p><span className="mkt-pill live">Live</span></div></div>
-          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Meetings / RTC</p><span className="mkt-pill live">Live</span></div></div>
-          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">AI Pair (chat/session)</p><span className="mkt-pill live">Live</span></div></div>
-          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">AI providers (Groq/Gemini/etc)</p><span className="mkt-pill live">Live</span></div></div>
-          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Multi-rail billing (Stripe/Paystack/Flutterwave)</p><span className="mkt-pill partial">Partial</span></div></div>
-          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Verified webhooks (3 rails)</p><span className="mkt-pill live">Live</span></div></div>
-          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Entitlements & credit pool</p><span className="mkt-pill partial">Partial</span></div></div>
-          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Authentication (JWT/OAuth)</p><span className="mkt-pill live">Live</span></div></div>
-          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Projects / Tasks / Teams / Companies</p><span className="mkt-pill live">Live</span></div></div>
-          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Notifications</p><span className="mkt-pill live">Live</span></div></div>
-          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Deployments + VPS/SSH + Docker sandbox</p><span className="mkt-pill partial">Partial</span></div></div>
-          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Pipelines / CI</p><span className="mkt-pill partial">Partial</span></div></div>
-          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Specs CRUD</p><span className="mkt-pill partial">Partial</span></div></div>
-          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Support tickets + dashboard</p><span className="mkt-pill partial">Partial</span></div></div>
-          <div className="rounded-xl border border-[#ffffff12] bg-[#0d0d12] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">GitHub / Slack / Discord / Figma / Notion / MCP</p><span className="mkt-pill partial">Partial</span></div></div>
+          <div className="rounded-xl border border-[#ffffff10] bg-[#121821] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Spec-driven agents (proposed changes + approvals)</p><span className="mkt-pill partial">Partial</span></div></div>
+          <div className="rounded-xl border border-[#ffffff10] bg-[#121821] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Branch-isolated execution (agent branches)</p><span className="mkt-pill partial">Partial</span></div></div>
+          <div className="rounded-xl border border-[#ffffff10] bg-[#121821] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">SDD/spec verification (AST)</p><span className="mkt-pill partial">Partial</span></div></div>
+          <div className="rounded-xl border border-[#ffffff10] bg-[#121821] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">VFS + editor integration</p><span className="mkt-pill partial">Partial</span></div></div>
+          <div className="rounded-xl border border-[#ffffff10] bg-[#121821] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Real-time co-editing (Yjs)</p><span className="mkt-pill live">Live</span></div></div>
+          <div className="rounded-xl border border-[#ffffff10] bg-[#121821] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Terminal (node-pty)</p><span className="mkt-pill live">Live</span></div></div>
+          <div className="rounded-xl border border-[#ffffff10] bg-[#121821] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Git operations (branches/commits/diff)</p><span className="mkt-pill live">Live</span></div></div>
+          <div className="rounded-xl border border-[#ffffff10] bg-[#121821] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Meetings / RTC</p><span className="mkt-pill live">Live</span></div></div>
+          <div className="rounded-xl border border-[#ffffff10] bg-[#121821] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">AI Pair (chat/session)</p><span className="mkt-pill live">Live</span></div></div>
+          <div className="rounded-xl border border-[#ffffff10] bg-[#121821] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">AI providers (Groq/Gemini/etc)</p><span className="mkt-pill live">Live</span></div></div>
+          <div className="rounded-xl border border-[#ffffff10] bg-[#121821] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Multi-rail billing (Stripe/Paystack/Flutterwave)</p><span className="mkt-pill partial">Partial</span></div></div>
+          <div className="rounded-xl border border-[#ffffff10] bg-[#121821] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Verified webhooks (3 rails)</p><span className="mkt-pill live">Live</span></div></div>
+          <div className="rounded-xl border border-[#ffffff10] bg-[#121821] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Entitlements & credit pool</p><span className="mkt-pill partial">Partial</span></div></div>
+          <div className="rounded-xl border border-[#ffffff10] bg-[#121821] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Authentication (JWT/OAuth)</p><span className="mkt-pill live">Live</span></div></div>
+          <div className="rounded-xl border border-[#ffffff10] bg-[#121821] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Projects / Tasks / Teams / Companies</p><span className="mkt-pill live">Live</span></div></div>
+          <div className="rounded-xl border border-[#ffffff10] bg-[#121821] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Notifications</p><span className="mkt-pill live">Live</span></div></div>
+          <div className="rounded-xl border border-[#ffffff10] bg-[#121821] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Deployments + VPS/SSH + Docker sandbox</p><span className="mkt-pill partial">Partial</span></div></div>
+          <div className="rounded-xl border border-[#ffffff10] bg-[#121821] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Pipelines / CI</p><span className="mkt-pill partial">Partial</span></div></div>
+          <div className="rounded-xl border border-[#ffffff10] bg-[#121821] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Specs CRUD</p><span className="mkt-pill partial">Partial</span></div></div>
+          <div className="rounded-xl border border-[#ffffff10] bg-[#121821] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">Support tickets + dashboard</p><span className="mkt-pill partial">Partial</span></div></div>
+          <div className="rounded-xl border border-[#ffffff10] bg-[#121821] p-4"><div className="flex items-center justify-between"><p className="text-[13.5px] font-medium text-white">GitHub / Slack / Discord / Figma / Notion / MCP</p><span className="mkt-pill partial">Partial</span></div></div>
         </div>
       </section>
 
