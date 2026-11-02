@@ -1884,7 +1884,7 @@ export default function Editor() {
     setAiLoading(true);
     try {
       const session = await ensureAiSession();
-      const companyId = selectedCompany?._id;
+      const companyId = selectedProject?.workspaceId || selectedCompany?._id;
       const shouldUseAgentLoop = /fix|refactor|review|debug|ship|patch|build|deploy/i.test(input);
       // Never ship secrets to the model: .env* files are stripped from AI
       // context (paste values explicitly if the question needs them).
@@ -1915,11 +1915,11 @@ export default function Editor() {
           companyId,
           enableActions: shouldUseAgentLoop,
           useAgentLoop: shouldUseAgentLoop,
-          codeContext: {
-            workspace: {
-              id: workspaceId || selectedProject?._id || selectedRepo?._id || 'local-workspace',
-              name: selectedProject?.name || selectedRepo?.name || 'workspace',
-            },
+            codeContext: {
+              workspace: {
+                id: selectedProject?.workspaceId || workspaceId || selectedRepo?._id || 'local-workspace',
+                name: selectedProject?.name || selectedRepo?.name || 'workspace',
+              },
             files: safeFiles.map((file) => ({ id: file._id || file.id, name: file.name, path: file.path, language: file.language })),
             currentFile: safeCurrent,
             repository: selectedRepo ? {
@@ -2690,6 +2690,13 @@ export default function Editor() {
       const p = fileFullPath(f);
       if (seenPaths.has(p)) return false;
       seenPaths.add(p);
+      const key = getFileKey(f);
+      const hasBuffer = key in openContentsRef.current;
+      const hasParked = key in parkedRef.current;
+      // For GitHub repo entries that were never opened or parked, there is no
+      // resolvable content — pushing them with empty content would wipe the
+      // remote file. Workspace CodeFiles always carry content in file.content.
+      if (selectedRepo && !selectedProject && !hasBuffer && !hasParked && file.content === undefined) return false;
       return true;
     }).map((file) => {
       const key = getFileKey(file);
@@ -2835,9 +2842,18 @@ export default function Editor() {
         }
 
         if (action === 'commit' || action === 'push') {
-          const filesToPush = gatherDeploymentFiles().filter(
-            (file) => !!file.name && typeof file.content === 'string'
-          );
+          const allFiles = gatherDeploymentFiles();
+          // Only push files that actually differ from the remote baseline, or
+          // that have no baseline yet (newly created files). This prevents
+          // re-uploading unchanged files and turning every push into a
+          // repo-wide rewrite.
+          const filesToPush = allFiles.filter((file) => {
+            if (!file.name || typeof file.content !== 'string') return false;
+            const key = getFileKey(file);
+            const remote = remoteBaselineRef.current[key];
+            if (remote === undefined) return true; // new file — always push
+            return file.content !== remote; // skip unchanged files
+          });
           if (!filesToPush.length) {
             setStatus({ type: 'error', msg: 'No file changes to push to the selected repository.' });
             return;

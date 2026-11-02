@@ -367,6 +367,8 @@ router.post('/session', authenticateToken, async (req, res) => {
             branch: branch || 'main',
             sessionName: sessionName || `Session ${new Date().toLocaleString()}`,
             language,
+            companyId: req.body.companyId || null,
+            workspaceId: req.body.workspaceId || null,
             status: 'active'
         });
 
@@ -750,7 +752,12 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
 
         let agentWorkspaceId = null;
         if (useAgentLoop) {
-            const requestedAgentWorkspaceId = codeContext?.workspace?.id || companyWorkspaceId || session.companyId || null;
+            // Prefer the session's own workspace/company binding so an agent
+            // launched from a session always operates in the same project it
+            // was created for. codeContext.workspace.id is only a fallback
+            // for sessions without a workspace binding.
+            const sessionWorkspaceId = session.workspaceId || session.companyId || null;
+            const requestedAgentWorkspaceId = sessionWorkspaceId || codeContext?.workspace?.id || companyWorkspaceId || null;
             if (requestedAgentWorkspaceId) {
                 const access = await assertWorkspaceAccess(requestedAgentWorkspaceId, req.userId);
                 if (!access.ok) {
