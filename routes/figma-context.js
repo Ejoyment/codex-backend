@@ -1,3 +1,4 @@
+const { sendInternalError } = require('../utils/httpErrors');
 const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../middleware/auth');
@@ -46,7 +47,7 @@ router.post('/tokens/ingest', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Figma token ingest error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -82,7 +83,7 @@ router.get('/tokens', authenticateToken, async (req, res) => {
         res.json({ success: true, ...tokens });
     } catch (error) {
         console.error('Figma tokens error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -388,7 +389,7 @@ router.post('/cross-tool', authenticateToken, async (req, res) => {
         res.json({ success: true, context });
     } catch (error) {
         console.error('Cross-tool context error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 

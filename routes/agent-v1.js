@@ -1,3 +1,4 @@
+const { sendInternalError } = require('../utils/httpErrors');
 const express = require('express');
 const { trimToLast, MAX_TWEAKS, MAX_AGENT_LOG } = require('../utils/retention');
 const { agentDelegateLimiter } = require('../middleware/rateLimits');
@@ -423,7 +424,7 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       await refundAgentCredit(req.userId);
     }
     console.error('Delegate task error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    return sendInternalError(req, res, error);
   }
 });
 
@@ -432,7 +433,7 @@ router.get('/sessions', authenticateToken, async (req, res) => {
     const sessions = await AgentExecution.find({ userId: req.userId }).sort({ createdAt: -1 }).limit(100).lean();
     res.json({ success: true, sessions });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendInternalError(req, res, error);
   }
 });
 
@@ -448,7 +449,7 @@ router.get('/status/:taskId', authenticateToken, async (req, res) => {
     res.json({ success: true, execution });
   } catch (error) {
     console.error('Get execution status error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    return sendInternalError(req, res, error);
   }
 });
 
@@ -514,7 +515,7 @@ router.post('/approve', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('Approve execution error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    return sendInternalError(req, res, error);
   }
 });
 
@@ -547,7 +548,7 @@ router.post('/reject', authenticateToken, async (req, res) => {
     res.json({ success: true, execution: result.execution, message: 'Agent work rejected and task rolled back' });
   } catch (error) {
     console.error('Reject execution error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    return sendInternalError(req, res, error);
   }
 });
 
@@ -612,7 +613,7 @@ router.post('/tweak', authenticateToken, async (req, res) => {
       creditCharged = false;
       await refundAgentCredit(req.userId);
     }
-    res.status(500).json({ success: false, message: error.message });
+    return sendInternalError(req, res, error);
   }
 });
 
@@ -641,7 +642,7 @@ router.post('/verify', authenticateToken, async (req, res) => {
     res.json({ success: true, verification: result });
   } catch (error) {
     console.error('Verify spec error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    return sendInternalError(req, res, error);
   }
 });
 

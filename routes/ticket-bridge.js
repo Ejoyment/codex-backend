@@ -1,3 +1,4 @@
+const { sendInternalError } = require('../utils/httpErrors');
 const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../middleware/auth');
@@ -31,7 +32,7 @@ router.post('/tickets/:ticketId/analyze', authenticateToken, async (req, res) =>
         res.json({ success: true, analysis });
     } catch (error) {
         console.error('Ticket analysis error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -62,7 +63,7 @@ router.post('/tickets/:ticketId/fix', authenticateToken, async (req, res) => {
         res.json({ success: true, analysis });
     } catch (error) {
         console.error('Ticket fix error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -93,7 +94,7 @@ router.post('/tickets/:ticketId/sandbox', authenticateToken, async (req, res) =>
         res.json({ success: true, sandbox });
     } catch (error) {
         console.error('Sandbox creation error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -125,7 +126,7 @@ router.get('/tickets/analyses', authenticateToken, async (req, res) => {
         res.json({ success: true, analyses });
     } catch (error) {
         console.error('Get analyses error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
