@@ -93,6 +93,46 @@ const deploymentSchema = new mongoose.Schema({
         type: String,
         default: null
     },
+    // Background self-healing state. A failed deployment is scheduled here by
+    // the deploy route / redeploy path and picked up by the self-heal worker,
+    // which either retries platform faults or runs an agent to fix user-code
+    // failures before redeploying. Null status = never scheduled.
+    selfHeal: {
+        status: {
+            type: String,
+            enum: ['pending', 'running', 'succeeded', 'failed', 'gave_up'],
+            default: null
+        },
+        attempts: {
+            type: Number,
+            default: 0
+        },
+        lastAttemptAt: {
+            type: Date,
+            default: null
+        },
+        nextAttemptAt: {
+            type: Date,
+            default: null
+        },
+        completedAt: {
+            type: Date,
+            default: null
+        },
+        agentExecutionId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'AgentExecution',
+            default: null
+        },
+        summary: {
+            type: String,
+            default: null
+        },
+        lastError: {
+            type: String,
+            default: null
+        }
+    },
     metadata: {
         type: Map,
         of: mongoose.Schema.Types.Mixed
@@ -109,5 +149,7 @@ const deploymentSchema = new mongoose.Schema({
 deploymentSchema.index({ userId: 1, createdAt: -1 });
 deploymentSchema.index({ subdomain: 1 }, { unique: true });
 deploymentSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+// Self-heal poller: due failures, scoped to the recent lookback window.
+deploymentSchema.index({ status: 1, 'selfHeal.status': 1, 'selfHeal.nextAttemptAt': 1 });
 
 module.exports = mongoose.model('Deployment', deploymentSchema);

@@ -7,26 +7,55 @@ const depService = require('./deploymentService');
 const { validateDeployFiles, backfillFileContent, limits: deployLimits } = require('./deployContent');
 const { notifyDeploymentEvent } = require('./notificationTriggers');
 
-async function redeployApprovedProject({ execution, userId, workspaceId }) {
-  const projectId = execution.projectId ? String(execution.projectId) : null;
-  if (!projectId) return { skipped: true, reason: 'Execution is not linked to a project.' };
+function resetSelfHealState(deployment) {
+  deployment.selfHeal = {
+    status: null,
+    attempts: 0,
+    lastAttemptAt: null,
+    nextAttemptAt: null,
+    completedAt: null,
+    agentExecutionId: null,
+    summary: null,
+    lastError: null,
+  };
+}
 
-  const project = await LocalProject.findById(projectId).select('workspaceId').lean()
-    || await TeamProject.findById(projectId).select('company').lean();
-  const resolvedWorkspaceId = workspaceId || project?.workspaceId || project?.company || null;
-  if (resolvedWorkspaceId) {
-    const company = await Company.findById(resolvedWorkspaceId).select('settings.autoDeploy').lean();
-    if (company?.settings?.autoDeploy === false) {
-      return { skipped: true, reason: 'Auto-deploy is disabled for this workspace.' };
-    }
+function scheduleSelfHeal(deploymentId) {
+  if (!deploymentId) return;
+  try {
+    const selfHeal = require('./deploymentSelfHeal');
+    Promise.resolve(selfHeal.schedule(deploymentId)).catch((error) => {
+      console.error('[agent-auto-deploy] could not schedule self-heal:', error.message);
+    });
+  } catch (error) {
+    console.error('[agent-auto-deploy] could not load self-heal worker:', error.message);
   }
+}
 
-  const deployment = await Deployment.findOne({
-    projectKey: projectId,
-    status: 'success',
-    containerId: { $ne: null },
-  }).sort({ updatedAt: -1 });
-  if (!deployment) return { skipped: true, reason: 'No active deployment exists for this project.' };
+/**
+ * Redeploy an existing deployment row from the project's current CodeFiles.
+ *
+ * Shared by approved-change auto-deploy and the background self-heal worker.
+ * The caller owns the deployment document; this function only mutates and
+ * saves it (plus the container on the deploy host).
+ */
+async function redeployDeployment({
+  deployment,
+  userId,
+  workspaceId = null,
+  projectId = null,
+  reason = null,
+  preserveSelfHeal = false,
+  scheduleOnFailure = true,
+  fallbackFault = null,
+  fallbackStage = null,
+} = {}) {
+  if (!deployment) throw new Error('A deployment is required to redeploy.');
+
+  const resolvedProjectId = projectId
+    || deployment.projectKey
+    || (deployment.projectId ? String(deployment.projectId) : null);
+  if (!resolvedProjectId) throw new Error('The deployment is not linked to a project.');
 
   const subdomain = deployment.subdomain;
   let buildLogs = '';
@@ -54,6 +83,7 @@ async function redeployApprovedProject({ execution, userId, workspaceId }) {
     },
   };
 
+  if (!preserveSelfHeal) resetSelfHealState(deployment);
   deployment.status = 'building';
   deployment.errorMessage = null;
   deployment.fault = null;
@@ -64,13 +94,13 @@ async function redeployApprovedProject({ execution, userId, workspaceId }) {
   await deployment.save();
   notifyDeploymentEvent({
     type: 'deployment_started',
-    deployment: { _id: deployment._id, environment: subdomain, company: resolvedWorkspaceId },
+    deployment: { _id: deployment._id, environment: subdomain, company: workspaceId },
     userId,
-    detail: `Redeploying ${subdomain}.buildrshq.dev after approved changes.`,
+    detail: reason || `Redeploying ${subdomain}.buildrshq.dev.`,
   });
 
   try {
-    const files = await CodeFile.find({ project: projectId })
+    const files = await CodeFile.find({ project: resolvedProjectId })
       .select('name path content language')
       .lean();
     if (!files.length) throw new Error('The approved project has no files to deploy.');
@@ -84,8 +114,8 @@ async function redeployApprovedProject({ execution, userId, workspaceId }) {
     validateDeployFiles(normalizedFiles);
     await backfillFileContent({
       userId,
-      projectId,
-      workspaceId: resolvedWorkspaceId,
+      projectId: resolvedProjectId,
+      workspaceId,
       source: 'project',
       repo: null,
       files: normalizedFiles,
@@ -109,7 +139,7 @@ async function redeployApprovedProject({ execution, userId, workspaceId }) {
     await deployment.save();
     notifyDeploymentEvent({
       type: 'deployment_succeeded',
-      deployment: { _id: deployment._id, environment: subdomain, company: resolvedWorkspaceId },
+      deployment: { _id: deployment._id, environment: subdomain, company: workspaceId },
       userId,
       detail: `${subdomain}.buildrshq.dev is live.`,
     });
@@ -117,20 +147,55 @@ async function redeployApprovedProject({ execution, userId, workspaceId }) {
   } catch (error) {
     deployment.status = 'failed';
     deployment.errorMessage = String(error.message || 'Redeployment failed').slice(0, 1000);
-    deployment.fault = error.fault || 'platform';
-    deployment.failureStage = error.stage || 'platform';
+    deployment.fault = error.fault || fallbackFault || 'platform';
+    deployment.failureStage = error.stage || fallbackStage || 'platform';
     deployment.steps = steps;
     deployment.buildLogs = depService.capLogTail(`${buildLogs}\n--- REDEPLOYMENT FAILED ---\n${deployment.errorMessage}\n`);
     deployment.expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     await deployment.save();
     notifyDeploymentEvent({
       type: 'deployment_failed',
-      deployment: { _id: deployment._id, environment: subdomain, company: resolvedWorkspaceId },
+      deployment: { _id: deployment._id, environment: subdomain, company: workspaceId },
       userId,
       detail: deployment.errorMessage,
     });
+    if (scheduleOnFailure) scheduleSelfHeal(deployment._id);
     throw error;
   }
 }
 
-module.exports = { redeployApprovedProject };
+async function redeployApprovedProject({ execution, userId, workspaceId }) {
+  const projectId = execution.projectId ? String(execution.projectId) : null;
+  if (!projectId) return { skipped: true, reason: 'Execution is not linked to a project.' };
+
+  const project = await LocalProject.findById(projectId).select('workspaceId').lean()
+    || await TeamProject.findById(projectId).select('company').lean();
+  const resolvedWorkspaceId = workspaceId || project?.workspaceId || project?.company || null;
+  if (resolvedWorkspaceId) {
+    const company = await Company.findById(resolvedWorkspaceId).select('settings.autoDeploy').lean();
+    if (company?.settings?.autoDeploy === false) {
+      return { skipped: true, reason: 'Auto-deploy is disabled for this workspace.' };
+    }
+  }
+
+  const deployment = await Deployment.findOne({
+    projectKey: projectId,
+    status: 'success',
+    containerId: { $ne: null },
+  }).sort({ updatedAt: -1 });
+  if (!deployment) return { skipped: true, reason: 'No active deployment exists for this project.' };
+
+  return redeployDeployment({
+    deployment,
+    userId,
+    workspaceId: resolvedWorkspaceId,
+    projectId,
+    reason: `Redeploying ${deployment.subdomain}.buildrshq.dev after approved changes.`,
+  });
+}
+
+module.exports = {
+  redeployApprovedProject,
+  redeployDeployment,
+  resetSelfHealState,
+};

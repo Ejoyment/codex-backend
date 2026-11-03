@@ -709,7 +709,11 @@ class AgentOrchestrator {
         let goalAchieved = false;
         let stopReason = null;
         let reasoningError = null;
-        context.agentDeadlineAt = Date.now() + this.maxRuntimeMs;
+        context.agentDeadlineAt = Date.now() + (
+            Number(context.maxRuntimeMs) > 0
+                ? Math.min(Number(context.maxRuntimeMs), this.maxRuntimeMs)
+                : this.maxRuntimeMs
+        );
         let lastObservation = await this.observe(context, goal);
 
         while (iteration < this.maxIterations && !goalAchieved && Date.now() < context.agentDeadlineAt) {
@@ -822,8 +826,10 @@ class AgentOrchestrator {
                 }
             }
 
-            // Auto-validation after mutations (self-healing)
-            if (session.mutations.length > 0 && context && context.workspaceId) {
+            // Auto-validation after mutations (self-healing). Background runs
+            // opt out: their file edits live in CodeFile, not necessarily on
+            // the validator's disk workspace, and nobody is watching the run.
+            if (session.mutations.length > 0 && context && context.workspaceId && !context.skipAutoValidation) {
                 try {
                     const autoValidator = require('./autoValidator');
                     const validationResult = await autoValidator.validate({
@@ -927,6 +933,16 @@ class AgentOrchestrator {
     }
 
     /**
+     * Tool names visible to the model for this run. Autonomous/background
+     * runs pass an allow-list; without one every registered tool is visible.
+     */
+    toolNames(context = null) {
+        const names = Object.keys(this.tools);
+        if (!Array.isArray(context?.allowedTools)) return names;
+        return names.filter((name) => context.allowedTools.includes(name));
+    }
+
+    /**
      * OBSERVATION - Parse current environment state
      */
     async observe(context, goal) {
@@ -937,7 +953,7 @@ class AgentOrchestrator {
             },
             files: context.files || [],
             currentFile: context.currentFile || null,
-            availableTools: Object.keys(this.tools),
+            availableTools: this.toolNames(context),
             timestamp: new Date()
         };
 
@@ -991,7 +1007,7 @@ class AgentOrchestrator {
                 agentMode: true,
                 agentReasoning: true,
                 instructions: 'You are in ReAct agent mode. Respond with JSON only.',
-                availableTools: Object.keys(this.tools),
+                availableTools: this.toolNames(context),
                 timeoutMs,
                 provider: context.provider,
                 model: context.model,
@@ -1033,10 +1049,24 @@ class AgentOrchestrator {
         }
 
         try {
+            // Background/autonomous runs pass an explicit tool allow-list and
+            // the set of write tools they may perform without a human. There
+            // is nobody watching a self-heal run, so anything outside the
+            // policy must fail closed instead of waiting on a HITL gate.
+            if (Array.isArray(context.allowedTools) && !context.allowedTools.includes(action.tool)) {
+                return {
+                    success: false,
+                    error: `Tool "${action.tool}" is not permitted for this run.`,
+                    toolNotAllowed: true
+                };
+            }
+            const autoApproved = Array.isArray(context.autoApproveTools)
+                && context.autoApproveTools.includes(action.tool);
+
             // Check if HITL confirmation is required
             const userTier = context.userTier || 'developer';
             
-            if (this.hitlGates.requiresConfirmation(action.tool, action.parameters, userTier)) {
+            if (!autoApproved && this.hitlGates.requiresConfirmation(action.tool, action.parameters, userTier)) {
                 console.log(`🔒 HITL Gate: Requesting confirmation for ${action.tool}`);
                 
                 try {
@@ -1130,7 +1160,7 @@ class AgentOrchestrator {
 **Parameters**: ${JSON.stringify(action.parameters, null, 2)}
 **Error**: ${error}
 
-**Available Tools**: ${Object.keys(this.tools).join(', ')}
+**Available Tools**: ${this.toolNames(context).join(', ')}
 
 Analyze the error and respond with JSON:
 {
@@ -1332,7 +1362,10 @@ ${observation.previousActions.map((a, i) => {
 Tool results are evidence. Use them to answer the user's request; do not repeat an identical successful action.
 
 **AVAILABLE TOOLS**:
-${Object.entries(this.tools).map(([name, tool]) => `- ${name}: ${tool.description}`).join('\n')}
+${Object.entries(this.tools)
+    .filter(([name]) => this.toolNames(context).includes(name))
+    .map(([name, tool]) => `- ${name}: ${tool.description}`)
+    .join('\n')}
 
 **YOUR TASK**:
 Analyze the current state and decide the next action to achieve the goal.

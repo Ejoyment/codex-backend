@@ -163,6 +163,9 @@ async function startServer(port = process.env.PORT || 3000) {
         ),
     ]);
     require('./utils/emailJobWorker').startEmailJobWorker();
+    // Background repair for failed deployments (platform retries + agent
+    // edits for user-code failures).
+    require('./utils/deploymentSelfHeal').startSelfHealWorker();
 
     // createServer() is idempotent but the namespace wiring below is not
     // (io.of() returns the same namespace, so a second call would stack
@@ -652,6 +655,7 @@ const stopServer = async () => {
         const BillingCron = require('./utils/billingCron');
         if (BillingCron && BillingCron.stop) BillingCron.stop();
         await require('./utils/emailJobWorker').stopEmailJobWorker();
+        await require('./utils/deploymentSelfHeal').stopSelfHealWorker();
 
         if (CreditPoolService && CreditPoolService.stop) CreditPoolService.stop();
 
