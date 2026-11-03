@@ -142,8 +142,8 @@ export default function Sidebar({
             </div>
           </div>
           {tierDisplayLabel(subscription, user?.subscription?.tier) && (
-            <div id="subscriptionBadge" className="sidebar-badge mt-2" title={tierDisplayDetail(subscription, user?.subscription?.tier)}>
-              <span className="text-[#03ba03] bg-[#03ba03]/10 px-2 py-0.5 rounded text-[11px] font-medium">{tierDisplayLabel(subscription, user?.subscription?.tier)}</span>
+            <div id="subscriptionBadge" className="sidebar-badge" title={tierDisplayDetail(subscription, user?.subscription?.tier)}>
+              {tierDisplayLabel(subscription, user?.subscription?.tier)}
             </div>
           )}
         </div>

@@ -428,6 +428,16 @@ class GitService {
         const git = await this.getGit(workspaceId, projectId);
         const branches = await git.branchLocal();
         if (branches.all.includes(branchName)) throw new Error(`Branch ${branchName} already exists`);
+        try {
+          await fs.lstat(worktreePath);
+          const worktrees = await git.raw(['worktree', 'list', '--porcelain']);
+          if (worktrees.split('\n').some((line) => line === `worktree ${worktreePath}`)) {
+            throw new Error(`Agent worktree is already registered: ${worktreePath}`);
+          }
+          await fs.rm(worktreePath, { recursive: true, force: true });
+        } catch (error) {
+          if (error.code !== 'ENOENT') throw error;
+        }
         await fs.mkdir(path.dirname(worktreePath), { recursive: true });
         await git.raw(['worktree', 'add', '-b', branchName, worktreePath, baseBranch]);
         return { success: true, branch: branchName, worktreePath };
@@ -438,17 +448,23 @@ class GitService {
     }
   }
 
-  async removeAgentWorktree(workspaceId, projectId, executionId) {
+  async removeAgentWorktree(workspaceId, projectId, executionId, { branchName = null, deleteBranch = false } = {}) {
     try {
       assertValidWorkspaceId(workspaceId);
       this.repositoryKey(workspaceId, projectId, executionId);
       const worktreePath = this.agentWorktreePath(workspaceId, projectId, executionId);
-      const git = await this.getGit(workspaceId, projectId);
-      const worktrees = await git.raw(['worktree', 'list', '--porcelain']);
-      const registered = worktrees.split('\n').some((line) => line === `worktree ${worktreePath}`);
-      if (!registered) return { success: true, removed: false };
-      await git.raw(['worktree', 'remove', '--force', worktreePath]);
-      return { success: true, removed: true };
+      return await this.withRepositoryLock(workspaceId, projectId, async () => {
+        const git = await this.getGit(workspaceId, projectId);
+        const worktrees = await git.raw(['worktree', 'list', '--porcelain']);
+        const registered = worktrees.split('\n').some((line) => line === `worktree ${worktreePath}`);
+        if (registered) await git.raw(['worktree', 'remove', '--force', worktreePath]);
+        if (deleteBranch && branchName) {
+          assertSafeBranch(branchName, 'branchName');
+          const branches = await git.branchLocal();
+          if (branches.all.includes(branchName)) await git.deleteLocalBranch(branchName, true);
+        }
+        return { success: true, removed: registered };
+      });
     } catch (error) {
       console.error('Git remove agent worktree error:', error);
       return { success: false, error: error.message };

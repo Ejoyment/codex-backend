@@ -20,7 +20,6 @@ import {
   GitBranch,
   ChevronDown,
   Search,
-  ArrowLeft,
   CheckCircle2,
   XCircle,
   RefreshCw,
@@ -891,10 +890,6 @@ export default function AiPair() {
           subscription={subscription}
           headerBranch={selectedExecution?.branch || 'Feature/auth-flow-redesign'}
         />
-        <button type="button" className="ail-sidebar-back" onClick={() => router.back()} aria-label="Go back" title="Go back">
-          <ArrowLeft />
-        </button>
-
         <main className="workspace-main">
           <header className="workspace-header dash-header">
             <div>

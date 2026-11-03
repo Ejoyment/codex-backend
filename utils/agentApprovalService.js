@@ -89,11 +89,78 @@ async function approveExecution({
   let appliedChanges = null;
   if (workspaceId && branch && hasChanges) {
     const baseBranch = execution.baseBranch || 'main';
-    const mergeResult = await gitService.withRepositoryLock(workspaceId, execution.projectId, async () => {
-      const branchList = await gitService.branches(workspaceId, execution.projectId);
-      if (!branchList.success || !branchList.branches.includes(baseBranch)) {
-        return { success: false, error: branchList.error || `Base branch ${baseBranch} does not exist` };
+    const repositoryReady = await gitService.withRepositoryLock(workspaceId, execution.projectId, async () => {
+      let branchList = await gitService.branches(workspaceId, execution.projectId);
+      if (!branchList.success && /not a git repository/i.test(branchList.error || '')) {
+        const initializedRepo = await gitService.init(workspaceId, {}, execution.projectId);
+        if (!initializedRepo.success) return { success: false, error: initializedRepo.error || 'Could not initialize project Git repository' };
+        const initializedBase = await gitService.ensureBaseCommit(
+          workspaceId,
+          baseBranch,
+          'Initialize project from VFS',
+          execution.projectId
+        );
+        if (!initializedBase.success) return { success: false, error: initializedBase.error || 'Could not initialize project base branch' };
+        branchList = await gitService.branches(workspaceId, execution.projectId);
       }
+      if (!branchList.success) return { success: false, error: branchList.error || 'Could not inspect project Git repository' };
+      if (!branchList.branches.includes(baseBranch)) {
+        const initializedBase = await gitService.ensureBaseCommit(
+          workspaceId,
+          baseBranch,
+          'Initialize project from VFS',
+          execution.projectId
+        );
+        if (!initializedBase.success) return { success: false, error: initializedBase.error || `Base branch ${baseBranch} does not exist` };
+        branchList = await gitService.branches(workspaceId, execution.projectId);
+      }
+      return branchList.success && branchList.branches.includes(baseBranch)
+        ? { success: true, branchList }
+        : { success: false, error: branchList.error || `Base branch ${baseBranch} does not exist` };
+    });
+    if (!repositoryReady.success) {
+      execution.status = previousStatus;
+      execution.logs.push({ timestamp: new Date(), message: `Merge failed: ${repositoryReady.error}` });
+      await execution.save();
+      return conflict(repositoryReady.error, { execution });
+    }
+
+    if (!repositoryReady.branchList.branches.includes(branch)) {
+      const worktree = await gitService.createAgentWorktree(
+        workspaceId,
+        branch,
+        baseBranch,
+        execution.projectId,
+        String(execution._id)
+      );
+      if (!worktree.success) {
+        execution.status = previousStatus;
+        execution.logs.push({ timestamp: new Date(), message: `Merge failed: ${worktree.error}` });
+        await execution.save();
+        return conflict(worktree.error || `Could not restore agent branch ${branch}`, { execution });
+      }
+      const staged = await agentChangeSet.stageChanges(workspaceId, execution.proposedChanges || [], {
+        message: `Agent changes for ${execution.taskTitle || 'task'}`,
+        branch,
+        projectId: execution.projectId,
+        executionId: String(execution._id),
+      });
+      if (!staged.success) {
+        const cleanup = await gitService.removeAgentWorktree(
+          workspaceId,
+          execution.projectId,
+          String(execution._id),
+          { branchName: branch, deleteBranch: true }
+        );
+        execution.status = previousStatus;
+        const cleanupFailure = cleanup.success ? '' : `; cleanup failed: ${cleanup.error}`;
+        execution.logs.push({ timestamp: new Date(), message: `Merge failed: ${staged.error || staged.reason || 'Could not restore agent changes'}${cleanupFailure}` });
+        await execution.save();
+        return conflict(staged.error || staged.reason || 'Could not restore agent changes', { execution });
+      }
+    }
+
+    const mergeResult = await gitService.withRepositoryLock(workspaceId, execution.projectId, async () => {
       const checkout = await gitService.checkout(workspaceId, baseBranch, execution.projectId);
       if (!checkout.success) return { success: false, error: checkout.error || `Could not check out ${baseBranch}` };
       const current = await gitService.getGit(workspaceId, execution.projectId);

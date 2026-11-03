@@ -13,7 +13,7 @@ import { startRun, streamRun, runLanguageFor } from '../lib/ideRun';
 import { lspApi, docUri, lspKindToMonaco, lspRangeToMonaco } from '../lib/lspClient';
 import {
   Save, ChevronDown, ChevronRight, FileCode, Terminal, Bot, Layers, Rocket, Box,
-  Users, GitBranch, Eye, Bug, X, FolderOpen, Search, Settings, Folder, Trash2,
+  Users, GitBranch, Eye, Bug, X, FolderOpen, Search, Folder, Trash2,
   FolderPlus, AlertCircle, CheckCircle, XCircle, RefreshCw, Puzzle, HelpCircle,
   FilePlus, Play, Loader2, GitPullRequestArrow, Copy, GitCommit, Plus, Minus,
 } from 'lucide-react';
@@ -401,6 +401,8 @@ export default function Editor() {
   const pollTimersRef = useRef({});
   const pollWhenDoneRef = useRef({});
   const [content, setContent] = useState('');
+  const [fileLoading, setFileLoading] = useState(false);
+  const fileLoadSequenceRef = useRef(0);
   const [languages, setLanguages] = useState([]);
   const [tier, setTier] = useState('');
   const [loading, setLoading] = useState(true);
@@ -2019,47 +2021,61 @@ export default function Editor() {
     return file?.content || '';
   }, [selectedRepo, selectedBranch]);
 
-  const loadFile = useCallback(async (file) => {
+  const loadFile = useCallback((file) => {
+    const requestId = ++fileLoadSequenceRef.current;
     const fileKey = getFileKey(file);
     const sourceFile = file && file.path && selectedRepo ? { ...file, _id: fileKey, id: fileKey, source: 'github', owner: selectedRepo.owner?.login || selectedRepo.owner, repo: selectedRepo.name } : file;
     const saved = openContentsRef.current[fileKey];
-    let val;
-    let baseline;
-    if (saved !== undefined) {
-      // Buffer already in memory (open tab, restored session, or local draft).
-      val = saved;
-      baseline = openOriginalsRef.current[fileKey] ?? saved;
-    } else if (sourceFile?.source === 'github') {
-      baseline = await fetchGithubFileContent(sourceFile);
-      val = baseline;
-    } else if (file?.content !== undefined && file?.content !== null) {
-      baseline = file.content;
-      val = file.content;
-    } else if (/^[0-9a-f]{24}$/i.test(String(file?._id || ''))) {
-      // Project file lists are metadata-only — hydrate the real content so
-      // opening a project file (and saving it) actually works.
-      try {
-        const data = await apiFetch(`/api/code-editor/files/${file._id}`);
-        baseline = typeof data?.file?.content === 'string' ? data.file.content : '';
-      } catch (_) {
-        baseline = '';
-      }
-      val = baseline;
-    } else {
-      baseline = '';
-      val = '';
-    }
-    if (sourceFile?.source === 'github' && remoteBaselineRef.current[fileKey] === undefined) {
-      remoteBaselineRef.current[fileKey] = baseline;
-    }
+    const hasInlineContent = file?.content !== undefined && file?.content !== null;
+    const needsFetch = saved === undefined && (
+      sourceFile?.source === 'github'
+      || (!hasInlineContent && /^[0-9a-f]{24}$/i.test(String(file?._id || '')))
+    );
+    const baseline = saved !== undefined
+      ? openOriginalsRef.current[fileKey] ?? saved
+      : hasInlineContent ? file.content : '';
+    const initialContent = saved !== undefined ? saved : baseline;
+
     setSelectedFile(sourceFile || file);
-    setContent(val);
-    openContentsRef.current[fileKey] = val;
-    openOriginalsRef.current[fileKey] = baseline;
-    schedulePersist();
+    setContent(initialContent);
+    setFileLoading(needsFetch);
     refreshProblems();
     setShowProjectSelector(false);
     setStatus(null);
+    if (!needsFetch) {
+      openContentsRef.current[fileKey] = initialContent;
+      openOriginalsRef.current[fileKey] = baseline;
+      if (sourceFile?.source === 'github' && remoteBaselineRef.current[fileKey] === undefined) {
+        remoteBaselineRef.current[fileKey] = baseline;
+      }
+      schedulePersist();
+    } else {
+      const requestContent = sourceFile?.source === 'github'
+        ? fetchGithubFileContent(sourceFile)
+        : apiFetch(`/api/code-editor/files/${file._id}`).then((data) => {
+          if (typeof data?.file?.content !== 'string') {
+            throw new Error('The file response did not include content.');
+          }
+          return data.file.content;
+        });
+      Promise.resolve(requestContent).then((loadedContent) => {
+        if (requestId !== fileLoadSequenceRef.current) return;
+        const resolvedContent = String(loadedContent ?? '');
+        if (sourceFile?.source === 'github' && remoteBaselineRef.current[fileKey] === undefined) {
+          remoteBaselineRef.current[fileKey] = resolvedContent;
+        }
+        openContentsRef.current[fileKey] = resolvedContent;
+        openOriginalsRef.current[fileKey] = resolvedContent;
+        setContent(resolvedContent);
+        setFileLoading(false);
+        schedulePersist();
+        refreshProblems();
+      }).catch((error) => {
+        if (requestId !== fileLoadSequenceRef.current) return;
+        setFileLoading(false);
+        setStatus({ type: 'error', msg: `Could not load ${file.name || 'file'}: ${error.message}` });
+      });
+    }
     if (sourceFile?._id) {
       apiFetch(`/api/collaboration/file/${sourceFile._id}/join`, { method: 'POST' }).catch(() => {});
     }
@@ -3399,6 +3415,10 @@ export default function Editor() {
   })();
 
   function showSidebar(view) {
+    if (sidebarVisible && activeSidebar === view) {
+      setSidebarVisible(false);
+      return;
+    }
     setActiveSidebar(view);
     setSidebarVisible(true);
   }
@@ -3630,9 +3650,6 @@ export default function Editor() {
             <div className="ed-actbar-grow" />
             <button type="button" className="ed-actbtn" onClick={() => setAboutOpen(true)} title="Help & shortcuts">
               <HelpCircle className="w-5 h-5" />
-            </button>
-            <button type="button" className="ed-actbtn" onClick={() => router.push('/settings')} title="Settings">
-              <Settings className="w-5 h-5" />
             </button>
           </nav>
 
@@ -4538,6 +4555,12 @@ export default function Editor() {
                 </div>
               ) : (
                 <div className="ed-code-wrap">
+                  {fileLoading && (
+                    <div className="ed-file-loading" role="status">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Loading file…
+                    </div>
+                  )}
                   <MonacoEditor
                     height="100%"
                     language={monacoLanguage}
