@@ -73,6 +73,16 @@ router.get('/', authenticateToken, async (req, res) => {
                     errorMessage: 'Deployment timed out. Please try again.',
                     fault: 'platform',
                     failureStage: 'platform',
+                    selfHeal: {
+                        status: null,
+                        attempts: 0,
+                        lastAttemptAt: null,
+                        nextAttemptAt: null,
+                        completedAt: null,
+                        agentExecutionId: null,
+                        summary: null,
+                        lastError: null,
+                    },
                     expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
                 },
                 $unset: { buildRunId: 1 }
@@ -250,6 +260,17 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
                         runtimeLogs: '',
                         steps: INITIAL_STEPS(),
                         expiresAt: null,
+                        // A fresh manual deploy starts a fresh self-heal budget.
+                        selfHeal: {
+                            status: null,
+                            attempts: 0,
+                            lastAttemptAt: null,
+                            nextAttemptAt: null,
+                            completedAt: null,
+                            agentExecutionId: null,
+                            summary: null,
+                            lastError: null,
+                        },
                     },
                 },
                 { new: true }
@@ -404,8 +425,9 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
                 const logTail = buildLog
                     ? `${buildLog}\n--- DEPLOYMENT FAILED ---\n${depErr.message}\n`
                     : `--- DEPLOYMENT FAILED ---\n${depErr.message}\n`;
+                let failedDeployment = null;
                 try {
-                    const failed = await Deployment.findOneAndUpdate(
+                    failedDeployment = await Deployment.findOneAndUpdate(
                         activeRunFilter,
                         {
                             $set: {
@@ -422,7 +444,7 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
                         },
                         { new: true }
                     );
-                    if (!failed) {
+                    if (!failedDeployment) {
                         await finishCancelledBuild();
                         return;
                     }
@@ -435,6 +457,19 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
                     userId: req.userId,
                     detail: capErrorMessage(depErr.message) || 'The deployment failed.',
                 });
+                // Hand the failure to the background repair worker. This is
+                // fire-and-forget: scheduling must never fail the request.
+                if (failedDeployment) {
+                    try {
+                        require('../utils/deploymentSelfHeal')
+                            .schedule(failedDeployment._id)
+                            .catch((healErr) => {
+                                console.error('[deploy] could not schedule self-heal:', healErr.message);
+                            });
+                    } catch (healErr) {
+                        console.error('[deploy] could not load self-heal worker:', healErr.message);
+                    }
+                }
             };
 
             const finishCancelledBuild = async () => {

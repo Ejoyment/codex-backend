@@ -1013,7 +1013,7 @@ router.put('/:companyId/members/:userId/role', authenticateToken, permissionMatr
 // Update company settings
 router.put('/:companyId/settings', authenticateToken, permissionMatrix.requirePermission('company', 'update'), async (req, res) => {
     try {
-        const { allowMemberInvites, requireApproval, defaultRole, autoDeploy } = req.body;
+        const { allowMemberInvites, requireApproval, defaultRole, autoDeploy, selfHeal } = req.body;
         
         const company = await Company.findById(req.params.companyId);
         
@@ -1031,6 +1031,7 @@ router.put('/:companyId/settings', authenticateToken, permissionMatrix.requirePe
         if (requireApproval !== undefined) company.settings.requireApproval = requireApproval;
         if (defaultRole !== undefined) company.settings.defaultRole = defaultRole;
         if (autoDeploy !== undefined) company.settings.autoDeploy = autoDeploy;
+        if (selfHeal !== undefined) company.settings.selfHeal = selfHeal;
         
         await company.save();
         

@@ -58,6 +58,12 @@ const companySchema = new mongoose.Schema({
             type: Boolean,
             default: true
         },
+        // Background agent repairs failed deployments. ON by default; a
+        // workspace can opt out without disabling deploys themselves.
+        selfHeal: {
+            type: Boolean,
+            default: true
+        },
         defaultRole: {
             type: String,
             enum: ['member', 'viewer'],
