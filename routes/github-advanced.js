@@ -1,3 +1,4 @@
+const { sendInternalError } = require('../utils/httpErrors');
 const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../middleware/auth');
@@ -137,7 +138,7 @@ router.post('/push', authenticateToken, async (req, res) => {
         }
     } catch (error) {
         console.error('Push error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -191,7 +192,7 @@ router.post('/pull-request', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Create PR error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -219,7 +220,7 @@ router.post('/branch', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Create branch error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -237,7 +238,7 @@ router.get('/branches/:owner/:repo', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('List branches error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -263,7 +264,7 @@ router.get('/commits/:owner/:repo', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Get commits error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -295,7 +296,7 @@ router.get('/diff/:owner/:repo', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Get diff error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -320,7 +321,7 @@ router.get('/pull-requests/:owner/:repo', authenticateToken, async (req, res) =>
         });
     } catch (error) {
         console.error('List PRs error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -342,7 +343,7 @@ router.get('/pull-request/:owner/:repo/:number', authenticateToken, async (req, 
         });
     } catch (error) {
         console.error('Get PR error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -368,7 +369,7 @@ router.post('/merge/:owner/:repo/:number', authenticateToken, async (req, res) =
         });
     } catch (error) {
         console.error('Merge PR error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -397,7 +398,7 @@ router.post('/comment/:owner/:repo/:number', authenticateToken, async (req, res)
         });
     } catch (error) {
         console.error('Add comment error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -426,7 +427,7 @@ router.post('/request-review/:owner/:repo/:number', authenticateToken, async (re
         });
     } catch (error) {
         console.error('Request review error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -490,7 +491,7 @@ Explain what and why, not how`;
         });
     } catch (error) {
         console.error('AI commit message error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -537,7 +538,7 @@ Use markdown formatting.`;
         });
     } catch (error) {
         console.error('AI PR description error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -597,7 +598,7 @@ Return only the resolved code without conflict markers.`;
         });
     } catch (error) {
         console.error('AI conflict resolution error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 

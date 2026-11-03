@@ -1,3 +1,4 @@
+const { sendInternalError } = require('../utils/httpErrors');
 const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../middleware/auth');
@@ -22,7 +23,7 @@ const ensureCompanyMember = async (req, res, next) => {
         req.company = company;
         next();
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 };
 
@@ -31,7 +32,7 @@ router.get('/company/:companyId', authenticateToken, ensureCompanyMember, async 
         const pipelines = await Pipeline.find({ company: req.params.companyId }).sort({ updatedAt: -1 });
         res.json({ success: true, pipelines });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -60,7 +61,7 @@ router.post('/', authenticateToken, ensureCompanyMember, async (req, res) => {
         });
         res.json({ success: true, pipeline });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -91,7 +92,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
         });
         res.json({ success: true, pipeline });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -118,7 +119,7 @@ router.delete('/:id', authenticateToken, async (req, res) => {
         });
         res.json({ success: true, message: 'Pipeline deleted' });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -179,7 +180,7 @@ router.post('/:id/run', authenticateToken, async (req, res) => {
 
         res.json({ success: true, run, message: `Pipeline "${pipeline.name}" started` });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -193,7 +194,7 @@ router.get('/:id/runs', authenticateToken, async (req, res) => {
             .populate('triggeredBy', 'fullName email profilePicture');
         res.json({ success: true, runs });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -206,7 +207,7 @@ router.get('/company/:companyId/runs', authenticateToken, ensureCompanyMember, a
             .populate('pipeline', 'name');
         res.json({ success: true, runs });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -238,7 +239,7 @@ router.get('/:id/yaml', authenticateToken, async (req, res) => {
         res.setHeader('Content-Type', 'text/yaml');
         res.send(yamlFor(pipeline));
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 

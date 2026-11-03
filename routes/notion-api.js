@@ -1,3 +1,4 @@
+const { sendInternalError } = require('../utils/httpErrors');
 const express = require('express');
 const router = express.Router();
 const axios = require('axios');
@@ -88,7 +89,7 @@ router.post('/search', authenticateToken, async (req, res) => {
         const results = await notionAPI(integration.accessToken, '/search', 'POST', { query, filter, sort, page_size });
         res.json({ success: true, results: results.results });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -102,7 +103,7 @@ router.get('/databases', authenticateToken, async (req, res) => {
         });
         res.json({ success: true, databases: results.results });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -113,7 +114,7 @@ router.get('/databases/:databaseId', authenticateToken, async (req, res) => {
         const database = await notionAPI(integration.accessToken, `/databases/${req.params.databaseId}`);
         res.json({ success: true, database });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -125,7 +126,7 @@ router.post('/databases/:databaseId/query', authenticateToken, async (req, res) 
         const results = await notionAPI(integration.accessToken, `/databases/${req.params.databaseId}/query`, 'POST', { filter, sorts, page_size });
         res.json({ success: true, results: results.results });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -136,7 +137,7 @@ router.get('/pages/:pageId', authenticateToken, async (req, res) => {
         const page = await notionAPI(integration.accessToken, `/pages/${req.params.pageId}`);
         res.json({ success: true, page });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -148,7 +149,7 @@ router.post('/pages', authenticateToken, async (req, res) => {
         const page = await notionAPI(integration.accessToken, '/pages', 'POST', { parent, properties, children });
         res.json({ success: true, page });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -160,7 +161,7 @@ router.patch('/pages/:pageId', authenticateToken, async (req, res) => {
         const page = await notionAPI(integration.accessToken, `/pages/${req.params.pageId}`, 'PATCH', { properties });
         res.json({ success: true, page });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -172,7 +173,7 @@ router.get('/blocks/:blockId/children', authenticateToken, async (req, res) => {
         const blocks = await notionAPI(integration.accessToken, `/blocks/${req.params.blockId}/children?page_size=${page_size}`);
         res.json({ success: true, blocks: blocks.results });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -184,7 +185,7 @@ router.patch('/blocks/:blockId/children', authenticateToken, async (req, res) =>
         const result = await notionAPI(integration.accessToken, `/blocks/${req.params.blockId}/children`, 'PATCH', { children });
         res.json({ success: true, blocks: result.results });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -195,7 +196,7 @@ router.get('/users/:userId', authenticateToken, async (req, res) => {
         const user = await notionAPI(integration.accessToken, `/users/${req.params.userId}`);
         res.json({ success: true, user });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -207,7 +208,7 @@ router.get('/users', authenticateToken, async (req, res) => {
         const users = await notionAPI(integration.accessToken, `/users?page_size=${page_size}`);
         res.json({ success: true, users: users.results });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -366,7 +367,7 @@ router.get('/status', authenticateToken, async (req, res) => {
             workspace: integration ? integration.workspaceName : null
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -394,7 +395,7 @@ router.delete('/disconnect', authenticateToken, async (req, res) => {
 
         res.json({ success: true, message: 'Notion disconnected' });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 

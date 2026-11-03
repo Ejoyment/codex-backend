@@ -1,3 +1,4 @@
+const { sendInternalError } = require('../utils/httpErrors');
 const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../middleware/auth');
@@ -148,7 +149,7 @@ router.post('/handoff', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Create handoff error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -190,7 +191,7 @@ router.post('/handoff/:handoffId/resolve', authenticateToken, async (req, res) =
         res.json({ success: true, message: 'Handoff resolved' });
     } catch (error) {
         console.error('Resolve handoff error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -247,7 +248,7 @@ router.get('/handoff', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Get handoffs error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -293,7 +294,7 @@ router.post('/handoff/:handoffId/provision', authenticateToken, async (req, res)
         });
     } catch (error) {
         console.error('Provision sandbox error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -343,7 +344,7 @@ router.get('/handoff/:handoffId/sandbox', authenticateToken, async (req, res) =>
         });
     } catch (error) {
         console.error('Get sandbox error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -392,7 +393,7 @@ router.post('/handoff/:handoffId/invite', authenticateToken, async (req, res) =>
         res.json({ success: true, invitedUserIds: handoff.access.invitedUserIds });
     } catch (error) {
         console.error('Invite error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -499,7 +500,7 @@ router.post('/handoff/from-chat', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Handoff from chat error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -548,7 +549,7 @@ router.get('/sandbox/:sandboxKey', authenticateToken, async (req, res) => {
             }
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 

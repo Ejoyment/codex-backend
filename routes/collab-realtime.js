@@ -1,3 +1,4 @@
+const { sendInternalError } = require('../utils/httpErrors');
 const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../middleware/auth');
@@ -53,7 +54,7 @@ router.post('/session', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Create session error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -90,7 +91,7 @@ router.get('/session/:sessionId', authenticateToken, async (req, res) => {
             }
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -124,7 +125,7 @@ router.post('/session/:sessionId/end', authenticateToken, async (req, res) => {
         await session.save();
         res.json({ success: true, message: 'Session ended' });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 

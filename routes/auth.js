@@ -16,24 +16,17 @@ const {
 } = require('../middleware/auth');
 const { isLockedOut, recordFailure, clearLockout } = require('../models/AuthLockout');
 const { createTrialSubscription, getOrCreateSubscription } = require('../middleware/trial');
+const {
+    saveProfilePicture,
+    deleteProfilePicture,
+    deleteProfilePicturesForUser,
+} = require('../utils/profilePictureStorage');
+const { sendInternalError } = require('../utils/httpErrors');
 
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        const uploadDir = 'uploads/profiles';
-        if (!fs.existsSync(uploadDir)) {
-            fs.mkdirSync(uploadDir, { recursive: true });
-        }
-        cb(null, uploadDir);
-    },
-    filename: function (req, file, cb) {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, 'profile-' + uniqueSuffix + path.extname(file.originalname));
-    }
-});
-
+// Keep uploads in memory so the storage helper can choose R2 or the local
+// uploads directory (tests/development) without changing the route.
 const upload = multer({
-    storage: storage,
+    storage: multer.memoryStorage(),
     limits: {
         fileSize: 5 * 1024 * 1024 // 5MB limit
     },
@@ -561,17 +554,17 @@ router.post('/upload-photo', authenticateToken, upload.single('profilePhoto'), a
             });
         }
 
-        // Delete old profile picture if exists
-        if (user.profilePicture && user.profilePicture.startsWith('/uploads/')) {
-            const oldPath = path.join(__dirname, '..', user.profilePicture);
-            if (fs.existsSync(oldPath)) {
-                fs.unlinkSync(oldPath);
+        const previousPicture = user.profilePicture;
+        const stored = await saveProfilePicture(req.file, req.userId);
+        user.profilePicture = stored.url;
+        await user.save();
+        if (previousPicture) {
+            try {
+                await deleteProfilePicture(previousPicture);
+            } catch (cleanupError) {
+                console.error('Profile photo cleanup failed:', cleanupError.message);
             }
         }
-
-        // Update user profile picture
-        user.profilePicture = '/uploads/profiles/' + req.file.filename;
-        await user.save();
 
         res.json({
             success: true,
@@ -581,11 +574,7 @@ router.post('/upload-photo', authenticateToken, upload.single('profilePhoto'), a
 
     } catch (error) {
         console.error('Upload photo error:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Error uploading photo',
-            error: error.message 
-        });
+        return sendInternalError(req, res, error, { message: 'Error uploading photo' });
     }
 });
 
@@ -882,14 +871,13 @@ router.delete('/delete-account', authenticateToken, async (req, res) => {
             }
         };
 
-        // Profile photo on disk
-        if (user.profilePicture && user.profilePicture.startsWith('/uploads/')) {
-            try {
-                const photoPath = path.join(__dirname, '..', user.profilePicture);
-                if (fs.existsSync(photoPath)) fs.unlinkSync(photoPath);
-            } catch (err) {
-                console.error('Delete account — photo removal failed:', err.message);
-            }
+        // Profile photos: current object plus any orphaned objects for this
+        // user (R2 prefixes by user id; local legacy URLs are handled too).
+        try {
+            if (user.profilePicture) await deleteProfilePicture(user.profilePicture);
+            await deleteProfilePicturesForUser(userId);
+        } catch (err) {
+            console.error('Delete account — photo removal failed:', err.message);
         }
 
         // Every account-owned collection (models with a userId field).

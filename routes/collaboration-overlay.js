@@ -1,3 +1,4 @@
+const { sendInternalError } = require('../utils/httpErrors');
 const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../middleware/auth');
@@ -28,7 +29,7 @@ const ensureCompanyMember = async (req, res, next) => {
         next();
     } catch (error) {
         console.error('Company membership check error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 };
 
@@ -140,7 +141,7 @@ router.post('/overlay/start', authenticateToken, ensureCompanyMember, async (req
         });
     } catch (error) {
         console.error('Start overlay error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -224,7 +225,7 @@ router.post('/overlay/:overlayId/join', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Join overlay error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -272,7 +273,7 @@ router.post('/overlay/:overlayId/end', authenticateToken, async (req, res) => {
         res.json({ success: true, message: 'Overlay ended' });
     } catch (error) {
         console.error('End overlay error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 

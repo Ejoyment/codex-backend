@@ -1,3 +1,4 @@
+const { sendInternalError } = require('../utils/httpErrors');
 const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../middleware/auth');
@@ -69,7 +70,7 @@ router.post('/', authenticateToken, async (req, res) => {
     res.status(201).json({ success: true, spec });
   } catch (error) {
     console.error('Create/update spec error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    return sendInternalError(req, res, error);
   }
 });
 
@@ -85,7 +86,7 @@ router.get('/project/:projectId', authenticateToken, async (req, res) => {
     res.json({ success: true, specs });
   } catch (error) {
     console.error('Get project specs error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    return sendInternalError(req, res, error);
   }
 });
 
@@ -110,7 +111,7 @@ router.get('/workspace/:workspaceId', authenticateToken, async (req, res) => {
     res.json({ success: true, specs });
   } catch (error) {
     console.error('Get workspace specs error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    return sendInternalError(req, res, error);
   }
 });
 
@@ -126,7 +127,7 @@ router.delete('/:specId', authenticateToken, async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     console.error('Delete spec error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    return sendInternalError(req, res, error);
   }
 });
 
@@ -148,7 +149,7 @@ router.post('/verify', authenticateToken, async (req, res) => {
     res.json({ success: true, ...result });
   } catch (error) {
     console.error('Verify spec error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    return sendInternalError(req, res, error);
   }
 });
 
@@ -178,7 +179,7 @@ router.post('/drift-report', authenticateToken, async (req, res) => {
     res.json({ success: true, report });
   } catch (error) {
     console.error('Drift report error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    return sendInternalError(req, res, error);
   }
 });
 
@@ -194,7 +195,7 @@ router.get('/:specId', authenticateToken, async (req, res) => {
     res.json({ success: true, spec });
   } catch (error) {
     console.error('Get spec error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    return sendInternalError(req, res, error);
   }
 });
 
