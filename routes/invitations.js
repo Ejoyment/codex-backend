@@ -4,8 +4,19 @@ const Invitation = require('../models/Invitation');
 const Company = require('../models/Company');
 const User = require('../models/User');
 const { authenticateToken } = require('../middleware/auth');
-const { sendInvitationEmail } = require('../utils/emailServiceResend');
 const { addAuditLog } = require('../utils/auditLogService');
+const invitationService = require('../utils/invitationService');
+const { enqueueEmailJob } = require('../utils/emailJobWorker');
+
+async function canManageInvitations(companyId, userId) {
+    const company = await Company.findById(companyId);
+    if (!company) return { company: null, allowed: false };
+    const member = company.members.find((item) => item.user.toString() === String(userId));
+    return {
+        company,
+        allowed: Boolean(member && ['owner', 'admin'].includes(member.role))
+    };
+}
 
 /**
  * @swagger
@@ -68,8 +79,8 @@ router.post('/', authenticateToken, async (req, res) => {
             return res.status(404).json({ success: false, message: 'Company not found' });
         }
         
-        const member = company.members.find(m => m.user.toString() === req.userId);
-        if (!member || (member.role !== 'owner' && member.role !== 'admin')) {
+        const member = company.members.find((item) => item.user.toString() === String(req.userId));
+        if (!member || !['owner', 'admin'].includes(member.role)) {
             return res.status(403).json({ success: false, message: 'Permission denied' });
         }
         
@@ -110,11 +121,14 @@ router.post('/', authenticateToken, async (req, res) => {
         await invitation.populate('invitedBy', 'fullName email');
         await invitation.populate('company', 'name description');
         
-        // Send email
         try {
-            await sendInvitationEmail(invitation);
-        } catch (emailError) {
-            console.error('Failed to send invitation email:', emailError);
+            await enqueueEmailJob(
+                'invitation',
+                `invitation:${invitation._id}:${invitation.metadata.sentCount}`,
+                { invitationId: invitation._id }
+            );
+        } catch (queueError) {
+            console.error('Failed to queue invitation email:', queueError.message);
         }
 
         addAuditLog({
@@ -165,6 +179,9 @@ router.post('/', authenticateToken, async (req, res) => {
 // Get all invitations for a company
 router.get('/company/:companyId', authenticateToken, async (req, res) => {
     try {
+        const access = await canManageInvitations(req.params.companyId, req.userId);
+        if (!access.company) return res.status(404).json({ success: false, message: 'Company not found' });
+        if (!access.allowed) return res.status(403).json({ success: false, message: 'Permission denied' });
         const invitations = await Invitation.find({
             company: req.params.companyId
         })
@@ -245,67 +262,26 @@ router.get('/my-invitations', authenticateToken, async (req, res) => {
 // Accept invitation
 router.post('/:token/accept', authenticateToken, async (req, res) => {
     try {
-        const invitation = await Invitation.findOne({ token: req.params.token });
-        
-        if (!invitation) {
-            return res.status(404).json({ success: false, message: 'Invitation not found' });
-        }
-        
-        if (invitation.status === 'accepted') {
-            const alreadyCompany = await Company.findById(invitation.company);
-            if (alreadyCompany && alreadyCompany.members.some(m => m.user.toString() === req.userId)) {
-                return res.json({
-                    success: true,
-                    message: 'You are already a member',
-                    company: alreadyCompany
-                });
-            }
-        }
+        const result = await invitationService.acceptInvitation(req.params.token, req.userId);
+        if (!result.success) return res.status(result.status).json(result);
+        const { invitation, user, company } = result;
 
-        if (invitation.isExpired()) {
-            return res.status(400).json({ success: false, message: 'Invitation expired' });
-        }
-        
-        if (invitation.status !== 'pending') {
-            return res.status(400).json({ success: false, message: 'Invitation already processed' });
-        }
-        
-        const user = await User.findById(req.userId);
-        if (user.email !== invitation.email) {
-            return res.status(403).json({ success: false, message: 'This invitation is for a different email' });
-        }
-        
-        // Add user to company
-        const company = await Company.findById(invitation.company);
-        const isMember = company.members.some(m => m.user.toString() === req.userId);
-        
-        if (!isMember) {
-            company.members.push({
-                user: req.userId,
-                role: invitation.role
+        if (!result.alreadyAccepted) {
+            addAuditLog({
+                companyId: company._id,
+                actorId: req.userId,
+                email: user.email,
+                event: 'invitation.accepted',
+                category: 'team',
+                target: `${user.email} added as ${invitation.role}`,
+                details: { invitationId: invitation._id.toString(), role: invitation.role },
+                req
             });
-            await company.save();
         }
-        
-        invitation.status = 'accepted';
-        invitation.acceptedAt = new Date();
-        invitation.acceptedBy = req.userId;
-        await invitation.save();
-
-        addAuditLog({
-            companyId: company._id,
-            actorId: req.userId,
-            email: user.email,
-            event: 'invitation.accepted',
-            category: 'team',
-            target: `${user.email} added as ${invitation.role}`,
-            details: { invitationId: invitation._id.toString(), role: invitation.role },
-            req
-        });
         
         res.json({
             success: true,
-            message: 'Invitation accepted',
+            message: result.alreadyAccepted ? 'You are already a member' : 'Invitation accepted',
             company
         });
     } catch (error) {
@@ -337,14 +313,8 @@ router.post('/:token/accept', authenticateToken, async (req, res) => {
 // Decline invitation
 router.post('/:token/decline', authenticateToken, async (req, res) => {
     try {
-        const invitation = await Invitation.findOne({ token: req.params.token });
-        
-        if (!invitation) {
-            return res.status(404).json({ success: false, message: 'Invitation not found' });
-        }
-        
-        invitation.status = 'declined';
-        await invitation.save();
+        const result = await invitationService.declineInvitation(req.params.token, req.userId);
+        if (!result.success) return res.status(result.status).json(result);
         
         res.json({
             success: true,
@@ -381,28 +351,40 @@ router.post('/:token/decline', authenticateToken, async (req, res) => {
 // Resend invitation
 router.post('/:id/resend', authenticateToken, async (req, res) => {
     try {
-        const invitation = await Invitation.findById(req.params.id);
+        const current = await Invitation.findById(req.params.id);
         
-        if (!invitation) {
+        if (!current) {
             return res.status(404).json({ success: false, message: 'Invitation not found' });
         }
+
+        const access = await canManageInvitations(current.company, req.userId);
+        if (!access.company) return res.status(404).json({ success: false, message: 'Company not found' });
+        if (!access.allowed) return res.status(403).json({ success: false, message: 'Permission denied' });
         
-        if (invitation.status !== 'pending') {
+        if (current.status !== 'pending') {
             return res.status(400).json({ success: false, message: 'Can only resend pending invitations' });
         }
         
-        invitation.metadata.sentCount += 1;
-        invitation.metadata.lastSentAt = new Date();
-        await invitation.save();
+        const invitation = await Invitation.findOneAndUpdate(
+            { _id: current._id, status: 'pending' },
+            { $inc: { 'metadata.sentCount': 1 }, $set: { 'metadata.lastSentAt': new Date() } },
+            { new: true }
+        );
+        if (!invitation) {
+            return res.status(400).json({ success: false, message: 'Can only resend pending invitations' });
+        }
         
         await invitation.populate('invitedBy', 'fullName email');
         await invitation.populate('company', 'name description');
         
-        // Send email
         try {
-            await sendInvitationEmail(invitation);
-        } catch (emailError) {
-            console.error('Failed to send invitation email:', emailError);
+            await enqueueEmailJob(
+                'invitation',
+                `invitation:${invitation._id}:${invitation.metadata.sentCount}`,
+                { invitationId: invitation._id }
+            );
+        } catch (queueError) {
+            console.error('Failed to queue invitation email:', queueError.message);
         }
         
         res.json({
@@ -439,10 +421,17 @@ router.post('/:id/resend', authenticateToken, async (req, res) => {
 // Cancel invitation
 router.delete('/:id', authenticateToken, async (req, res) => {
     try {
-        const invitation = await Invitation.findByIdAndDelete(req.params.id);
-        
-        if (!invitation) {
+        const current = await Invitation.findById(req.params.id);
+        if (!current) {
             return res.status(404).json({ success: false, message: 'Invitation not found' });
+        }
+
+        const access = await canManageInvitations(current.company, req.userId);
+        if (!access.company) return res.status(404).json({ success: false, message: 'Company not found' });
+        if (!access.allowed) return res.status(403).json({ success: false, message: 'Permission denied' });
+        const invitation = await Invitation.findOneAndDelete({ _id: current._id, status: 'pending' });
+        if (!invitation) {
+            return res.status(400).json({ success: false, message: 'Only pending invitations can be cancelled' });
         }
         
         res.json({

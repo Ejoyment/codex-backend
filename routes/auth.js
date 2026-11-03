@@ -16,6 +16,7 @@ const {
 } = require('../middleware/auth');
 const { isLockedOut, recordFailure, clearLockout } = require('../models/AuthLockout');
 const { createTrialSubscription, getOrCreateSubscription } = require('../middleware/trial');
+const { enqueueEmailJob } = require('../utils/emailJobWorker');
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -155,11 +156,15 @@ router.post('/signup', authLimiter, async (req, res) => {
         await user.save();
         const trialEndsAt = subscription.trialEndsAt;
 
-        // Send trial welcome email (non-blocking)
+        // Persist an email job so delivery never holds the signup request open.
         try {
-            await emailService.sendTrialWelcomeEmail(email, fullName, trialEndsAt);
-        } catch (emailError) {
-            console.error('Trial welcome email error:', emailError);
+            await enqueueEmailJob(
+                'trial_welcome',
+                `trial-welcome:${user._id}`,
+                { email: user.email, fullName: user.fullName, trialEndsAt }
+            );
+        } catch (queueError) {
+            console.error('Trial welcome email queue error:', queueError.message);
         }
 
         res.status(201).json({

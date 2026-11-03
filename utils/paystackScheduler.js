@@ -2,35 +2,22 @@ const BillingSchedule = require('../models/BillingSchedule');
 const Subscription = require('../models/Subscription');
 const paystack = require('../config/paystack');
 const { planAmountCents } = require('../utils/billingPricing');
+const { scheduleFirstCharge } = require('./firstChargeSchedule');
 
 class PaystackScheduler {
     /**
      * Schedule first charge (14 days after card added - when trial ends)
      */
     static async scheduleFirstCharge(userId, subscriptionId, cardAddedAt, tier = 'pro') {
-        // Idempotent: repeated /verify or webhook replays must not stack
-        // duplicate charges on the same trial.
-        const existing = await BillingSchedule.findOne({
-            subscriptionId,
-            chargeType: 'first_charge',
-            status: 'pending'
-        });
-        if (existing) return existing;
-
         const scheduledFor = new Date(cardAddedAt.getTime() + (14 * 24 * 60 * 60 * 1000)); // 14 days
-        const amount = planAmountCents(tier);
-
-        const billingSchedule = new BillingSchedule({
+        const billingSchedule = await scheduleFirstCharge({
             userId,
             subscriptionId,
+            cardAddedAt,
+            tier,
             provider: 'paystack',
-            chargeType: 'first_charge',
-            scheduledFor,
-            amount,
-            status: 'pending'
         });
 
-        await billingSchedule.save();
         console.log(`✓ First charge scheduled for user ${userId} at ${scheduledFor}`);
         return billingSchedule;
     }

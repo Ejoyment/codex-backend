@@ -27,6 +27,7 @@ jest.mock('../utils/auditLogService', () => ({ addAuditLog: jest.fn() }));
 jest.mock('../utils/notificationTriggers', () => ({ notifyDeploymentEvent: jest.fn() }));
 
 const Company = require('../models/Company');
+const Deployment = require('../models/Deployment');
 const LocalProject = require('../models/LocalProject');
 const CodeFile = require('../models/CodeFile');
 const deploymentsRouter = require('../routes/deployments');
@@ -117,6 +118,7 @@ describe('deployment tenant scoping', () => {
         LocalProject.findOne.mockReturnValue({
             lean: async () => ({ _id: projectId, workspaceId }),
         });
+
         CodeFile.find.mockReturnValue({ lean: async () => [] });
 
         const response = await request(app)
@@ -127,6 +129,35 @@ describe('deployment tenant scoping', () => {
         expect(CodeFile.find).toHaveBeenCalledTimes(1);
         expect(CodeFile.find).toHaveBeenCalledWith({ project: projectId });
         expect(CodeFile.find).not.toHaveBeenCalledWith({ company: workspaceId });
+    });
+
+    test('rejects a deployment run that loses the atomic claim', async () => {
+        Deployment.findOne.mockResolvedValue({
+            _id: '507f1f77bcf86cd799439015',
+            userId: { toString: () => '507f1f77bcf86cd799439011' },
+            status: 'success',
+            buildRunId: null,
+        });
+        Deployment.findOneAndUpdate.mockResolvedValue(null);
+
+        const response = await request(app)
+            .post('/api/deployments')
+            .send({
+                subdomain: 'my-app',
+                files: [{ name: 'index.html', path: '/', content: '<h1>x</h1>' }],
+            });
+
+        expect(response.status).toBe(409);
+        expect(Deployment.findOneAndUpdate).toHaveBeenCalledWith(
+            expect.objectContaining({
+                status: { $nin: ['building', 'deploying'] },
+                buildRunId: { $in: [null] },
+            }),
+            expect.objectContaining({
+                $set: expect.objectContaining({ status: 'building', buildRunId: expect.any(String) }),
+            }),
+            { new: true }
+        );
     });
 
     test('content backfill reads only the selected project', async () => {

@@ -55,6 +55,7 @@ jest.mock('../models/AgentExecution', () => {
       findOne: jest.fn(),
       findOneAndUpdate: jest.fn(),
       findByIdAndUpdate: jest.fn(),
+      deleteOne: jest.fn(),
     }
   );
 });
@@ -225,6 +226,7 @@ beforeEach(() => {
   AgentExecution.findOne.mockResolvedValue(null);
   AgentExecution.findOneAndUpdate.mockResolvedValue({});
   AgentExecution.findByIdAndUpdate.mockResolvedValue({});
+  AgentExecution.deleteOne.mockResolvedValue({ deletedCount: 1 });
   AgentExecution.create.mockImplementation(async (doc) => execution({
     ...doc,
     metadata: doc.metadata || {},
@@ -320,6 +322,7 @@ describe('agent-v1 workspace authorization', () => {
       projectId: PROJECT_A,
       save: jest.fn(async function () { return this; }),
     });
+
     LocalProject.findById.mockReturnValue(leanDoc({ workspaceId: null }));
     findPersonalWorkspace.mockResolvedValue(company());
     Company.findById.mockReturnValue(leanDoc(company()));
@@ -341,6 +344,41 @@ describe('agent-v1 workspace authorization', () => {
       PROJECT_A,
       EXEC_A
     );
+  });
+
+  test('delegate releases resources when the atomic task claim loses a race', async () => {
+    Company.findById.mockReturnValue(leanDoc(company()));
+    ensurePersonalWorkspace.mockResolvedValue(company());
+    LocalTask.findOne.mockResolvedValue({
+      _id: TASK_A,
+      userId: USER_A,
+      title: 'Race-safe task',
+      status: 'backlog',
+      blockedBy: [],
+      agentSessionId: null,
+    });
+    LocalTask.findOneAndUpdate.mockResolvedValueOnce(null);
+
+    const res = await request(app)
+      .post('/api/v1/agent/delegate')
+      .send({ taskId: TASK_A });
+
+    expect(res.status).toBe(409);
+    expect(LocalTask.findOneAndUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        _id: TASK_A,
+        userId: USER_A,
+        status: 'backlog',
+        agentSessionId: null,
+      }),
+      expect.objectContaining({
+        $set: expect.objectContaining({ agentSessionId: expect.anything() }),
+      }),
+      { new: true }
+    );
+    expect(AgentExecution.deleteOne).toHaveBeenCalledTimes(1);
+    expect(gitService.removeAgentWorktree).toHaveBeenCalledTimes(1);
+    expect(CreditPoolService.refundCredits).toHaveBeenCalledWith(USER_A, 1);
   });
 
   test('approve rejects an execution whose stored workspace is no longer accessible', async () => {

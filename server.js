@@ -134,6 +134,17 @@ async function startServer(port = process.env.PORT || 3000) {
     if (mongoose.connection.readyState !== 1) {
         await mongoose.connect(process.env.MONGODB_URI, mongooseOptions);
     }
+    await Promise.all([
+        require('./models/BillingSchedule').collection.createIndex(
+            { idempotencyKey: 1 },
+            { unique: true, sparse: true }
+        ),
+        require('./models/EmailJob').collection.createIndex(
+            { dedupeKey: 1 },
+            { unique: true }
+        ),
+    ]);
+    require('./utils/emailJobWorker').startEmailJobWorker();
 
     // createServer() is idempotent but the namespace wiring below is not
     // (io.of() returns the same namespace, so a second call would stack
@@ -626,6 +637,7 @@ const stopServer = async () => {
     try {
         const BillingCron = require('./utils/billingCron');
         if (BillingCron && BillingCron.stop) BillingCron.stop();
+        await require('./utils/emailJobWorker').stopEmailJobWorker();
 
         if (CreditPoolService && CreditPoolService.stop) CreditPoolService.stop();
 
