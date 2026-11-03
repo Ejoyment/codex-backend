@@ -30,8 +30,7 @@ import {
   Rocket,
   Plug2,
   Activity,
-  Bell,
-  Loader2
+  Bell
 } from 'lucide-react';
 
 function formatGreeting() {
@@ -69,7 +68,8 @@ export default function Dashboard() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const subscription = useAuthStore((s) => s.subscription);
-  const { trial, overview, projects, tasks, loading, loadStats, loadOverview, loadProjects, loadTasks } = useDashboard();
+  const dashboardUserId = user?._id || user?.id || user?.userId || null;
+  const { trial, overview, projects, tasks, loading, loadStats, loadOverview, loadProjects, loadTasks } = useDashboard(dashboardUserId);
 
   const [hasHydrated, setHasHydrated] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -304,12 +304,21 @@ export default function Dashboard() {
                 )}
 
                 {loading ? (
-                  <>
-                    {/* <DashboardSkeleton /> */}
-                    <div className="flex min-h-64 items-center justify-center" role="status" aria-label="Loading dashboard">
-                      <Loader2 className="h-7 w-7 animate-spin text-cyan-400" />
+                  <div className="space-y-4" role="status" aria-label="Loading dashboard">
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                      {[0, 1, 2].map((item) => (
+                        <div key={item} className="h-24 animate-pulse rounded-xl border border-white/[0.07] bg-white/[0.03]" />
+                      ))}
                     </div>
-                  </>
+                    <div className="min-h-64 animate-pulse rounded-xl border border-white/[0.07] bg-[#0d1119] p-5">
+                      <div className="mb-5 h-4 w-36 rounded bg-white/[0.06]" />
+                      <div className="space-y-3">
+                        {[0, 1, 2, 3].map((item) => (
+                          <div key={item} className="h-10 rounded-md bg-white/[0.035]" />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                 ) : isEmpty ? (
                   /* Empty state */
                   <div className="space-y-4">
