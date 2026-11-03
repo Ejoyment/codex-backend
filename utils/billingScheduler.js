@@ -5,6 +5,7 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const paystack = require('../config/paystack');
 const flutterwave = require('../config/flutterwave');
 const { planAmountCents } = require('../utils/billingPricing');
+const { scheduleFirstCharge } = require('./firstChargeSchedule');
 
 // A charge row left in `processing` longer than this crashed (or lost its
 // worker) between the atomic claim and the completion write. The reaper
@@ -28,30 +29,14 @@ class BillingScheduler {
      * Schedule first charge when the 14-day trial ends
      */
     static async scheduleFirstCharge(userId, subscriptionId, cardAddedAt, tier = 'pro') {
-        // Idempotent: repeated /setup-payment calls must not stack duplicate
-        // charges on the same trial.
-        const existing = await BillingSchedule.findOne({
-            subscriptionId,
-            chargeType: 'first_charge',
-            status: 'pending'
-        });
-        if (existing) return existing;
-
-        const firstChargeTime = new Date(cardAddedAt.getTime() + (14 * 24 * 60 * 60 * 1000)); // 14 days
-        
-        const schedule = new BillingSchedule({
+        const schedule = await scheduleFirstCharge({
             userId,
             subscriptionId,
+            cardAddedAt,
+            tier,
             provider: 'stripe',
-            chargeType: 'first_charge',
-            scheduledFor: firstChargeTime,
-            amount: planAmountCents(tier),
-            status: 'pending'
         });
-        
-        await schedule.save();
-        console.log(`First charge scheduled for user ${userId} at ${firstChargeTime}`);
-        
+        console.log(`First charge scheduled for user ${userId} at ${schedule.scheduledFor}`);
         return schedule;
     }
 

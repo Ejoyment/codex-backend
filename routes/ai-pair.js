@@ -952,9 +952,10 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
                 }
             });
 
-            session.totalMessages += 2;
-            session.lastActivityAt = new Date();
-            await session.save();
+            await AIPairSession.updateOne(
+                { _id: session._id, userId: req.userId },
+                { $inc: { totalMessages: 2 }, $set: { lastActivityAt: new Date() } }
+            );
 
             return res.json({
                 success: true,
@@ -1084,9 +1085,10 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
         });
 
         // Update session
-        session.totalMessages += 2;
-        session.lastActivityAt = new Date();
-        await session.save();
+        await AIPairSession.updateOne(
+            { _id: session._id, userId: req.userId },
+            { $inc: { totalMessages: 2 }, $set: { lastActivityAt: new Date() } }
+        );
 
         res.json({
             success: true,
@@ -1433,10 +1435,14 @@ router.post('/commit', authenticateToken, permissionMatrix.requirePermission('gi
         }
 
         // Update session
-        session.totalCommits += results.filter(r => r.success).length;
-        session.totalEdits += results.filter(r => r.success).length;
-        session.lastActivityAt = new Date();
-        await session.save();
+        const appliedCount = results.filter(r => r.success).length;
+        await AIPairSession.updateOne(
+            { _id: session._id, userId: req.userId },
+            {
+                $inc: { totalCommits: appliedCount, totalEdits: appliedCount },
+                $set: { lastActivityAt: new Date() }
+            }
+        );
 
         res.json({
             success: true,
@@ -1491,11 +1497,17 @@ router.patch('/session/:sessionId', authenticateToken, async (req, res) => {
     try {
         const { sessionId } = req.params;
         const { status } = req.body;
-        
-        const session = await AIPairSession.findOne({
-            _id: sessionId,
-            userId: req.userId
-        });
+        if (!['active', 'paused', 'completed', 'archived'].includes(status)) {
+            return res.status(400).json({ success: false, message: 'Invalid session status' });
+        }
+
+        const update = { status };
+        if (status === 'completed') update.completedAt = new Date();
+        const session = await AIPairSession.findOneAndUpdate(
+            { _id: sessionId, userId: req.userId },
+            { $set: update },
+            { new: true, runValidators: true }
+        );
 
         if (!session) {
             return res.status(404).json({
@@ -1503,12 +1515,6 @@ router.patch('/session/:sessionId', authenticateToken, async (req, res) => {
                 message: 'Session not found'
             });
         }
-
-        session.status = status;
-        if (status === 'completed') {
-            session.completedAt = new Date();
-        }
-        await session.save();
 
         res.json({
             success: true,

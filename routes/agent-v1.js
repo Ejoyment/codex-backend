@@ -139,6 +139,9 @@ function spawnAgentWorker(executionId, taskId, workspaceId, projectId, specIds, 
 router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurrentJobs(), enforceTaskTimeout(), enforceCreditPool(), enforceCloudComputeLimit(), async (req, res) => {
   let creditCharged = false;
   let agentWorktree = null;
+  let taskClaim = null;
+  let execution = null;
+  let workerStarted = false;
   try {
     const { taskId, taskTitle, sessionId, summary = '', provider: requestedProvider, model, localPrivacyMode: requestedLocalPrivacyMode = false } = req.body;
     let provider;
@@ -292,7 +295,7 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
     }
     agentWorktree = { workspaceId, projectId: taskProjectId, executionId: executionId.toString() };
 
-    const execution = await AgentExecution.create({
+    execution = await AgentExecution.create({
       _id: executionId,
       userId: req.userId,
       sessionId: sessionId || null,
@@ -324,26 +327,53 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
     });
 
     if (task) {
-      task.status = 'in_progress';
-      task.companyId = workspaceId;
-      task.agentSessionId = execution._id;
-      task.branch = branch;
-      task.agentExecution = {
-        ...(task.agentExecution?.toObject?.() || task.agentExecution || {}),
-        status: 'running',
-        error: '',
-        agentBranch: branch,
-        specRef: specs[0]?._id || null,
-        logs: [
-          ...(task.agentExecution?.logs || []),
-          { timestamp: new Date(), message: `Agent started on branch ${branch}` },
-        ],
+      const previousTaskState = {
+        status: task.status,
+        companyId: task.companyId,
+        agentSessionId: task.agentSessionId,
+        branch: task.branch,
+        agentExecution: task.agentExecution?.toObject?.() || task.agentExecution,
       };
-      await task.save();
-      await LocalTask.findOneAndUpdate({ _id: taskId, userId: req.userId }, {
-        'agentExecution.status': 'running',
-        updatedAt: new Date(),
-      });
+      const claimedTask = await LocalTask.findOneAndUpdate(
+        {
+          _id: task._id,
+          userId: req.userId,
+          status: previousTaskState.status,
+          agentSessionId: previousTaskState.agentSessionId ?? null,
+        },
+        {
+          $set: {
+            status: 'in_progress',
+            companyId: workspaceId,
+            agentSessionId: execution._id,
+            branch,
+            'agentExecution.status': 'running',
+            'agentExecution.error': '',
+            'agentExecution.agentBranch': branch,
+            'agentExecution.specRef': specs[0]?._id || null,
+            updatedAt: new Date(),
+          },
+          $push: {
+            'agentExecution.logs': {
+              timestamp: new Date(),
+              message: `Agent started on branch ${branch}`,
+            },
+          },
+        },
+        { new: true }
+      );
+      if (!claimedTask) {
+        const conflict = new Error('This task was delegated by another request. Refresh and try again.');
+        conflict.status = 409;
+        throw conflict;
+      }
+      taskClaim = {
+        taskId: task._id,
+        executionId: execution._id,
+        userId: req.userId,
+        previousTaskState,
+      };
+      task = claimedTask;
       try {
         const cacheInvalidator = require('../utils/cacheInvalidator');
         cacheInvalidator.invalidateForTask(taskId);
@@ -374,6 +404,7 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       localPrivacyMode,
       1800000 // 30 minutes
     );
+    workerStarted = true;
 
     workerPromise.then(async (result) => {
       const planOnly = Boolean(result?.planOnly);
@@ -387,7 +418,7 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       });
       await execution.save();
       if (task) {
-        await LocalTask.findOneAndUpdate({ _id: task._id, userId: req.userId }, {
+        await LocalTask.findOneAndUpdate({ _id: task._id, userId: req.userId, agentSessionId: execution._id }, {
           'agentExecution.status': 'awaiting_approval',
           'agentExecution.error': '',
           $push: {
@@ -414,7 +445,7 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       execution.logs.push({ timestamp: new Date(), message: `Agent worker error: ${failureMessage}` });
       await execution.save();
       if (task) {
-        await LocalTask.findOneAndUpdate({ _id: task._id, userId: req.userId }, {
+        await LocalTask.findOneAndUpdate({ _id: task._id, userId: req.userId, agentSessionId: execution._id }, {
           'agentExecution.status': 'failed',
           'agentExecution.error': failureMessage,
           $push: { 'agentExecution.logs': { timestamp: new Date(), message: `Agent failed: ${failureMessage}` } },
@@ -440,6 +471,36 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       agentBranch: branch,
     });
   } catch (error) {
+    if (taskClaim) {
+      const { previousTaskState } = taskClaim;
+      const restore = {
+        $set: {
+          status: previousTaskState.status,
+          companyId: previousTaskState.companyId,
+          agentSessionId: previousTaskState.agentSessionId,
+          branch: previousTaskState.branch,
+        },
+      };
+      if (previousTaskState.agentExecution === undefined) {
+        restore.$unset = { agentExecution: 1 };
+      } else {
+        restore.$set.agentExecution = previousTaskState.agentExecution;
+      }
+      try {
+        const released = await LocalTask.findOneAndUpdate(
+          { _id: taskClaim.taskId, userId: taskClaim.userId, agentSessionId: taskClaim.executionId },
+          restore
+        );
+        if (!released) console.warn('[agent-delegate] task claim changed before failed request cleanup');
+      } catch (releaseError) {
+        console.error('[agent-delegate] failed to release task claim:', releaseError.message);
+      }
+    }
+    if (execution && !workerStarted) {
+      await AgentExecution.deleteOne({ _id: execution._id, userId: req.userId }).catch((deleteError) => {
+        console.error('[agent-delegate] failed to remove unstarted execution:', deleteError.message);
+      });
+    }
     if (agentWorktree) {
       const cleanup = await gitService.removeAgentWorktree(
         agentWorktree.workspaceId,
@@ -453,7 +514,7 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       await refundAgentCredit(req.userId);
     }
     console.error('Delegate task error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(error.status || 500).json({ success: false, message: error.message });
   }
 });
 

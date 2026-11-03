@@ -512,14 +512,6 @@ router.post('/:companyId/invite', authenticateToken, permissionMatrix.requirePer
             });
         }
         
-        // Check member limit
-        if (company.members.length >= company.subscription.memberLimit) {
-            return res.status(403).json({
-                success: false,
-                message: `Member limit reached (${company.subscription.memberLimit}). Upgrade your plan to add more members.`
-            });
-        }
-        
         // Find user by email
         if (typeof email !== 'string' || !email.includes('@')) {
             return res.status(400).json({
@@ -544,15 +536,51 @@ router.post('/:companyId/invite', authenticateToken, permissionMatrix.requirePer
             });
         }
         
-        // Add member
-        company.members.push({
-            user: invitedUser._id,
-            role,
-            joinedAt: new Date(),
-            invitedBy: req.userId
-        });
-        
-        await company.save();
+        const memberLimit = company.subscription.memberLimit;
+        if (company.members.length >= memberLimit) {
+            return res.status(403).json({
+                success: false,
+                message: `Member limit reached (${memberLimit}). Upgrade your plan to add more members.`
+            });
+        }
+
+        const joinedAt = new Date();
+        const updatedCompany = await Company.findOneAndUpdate(
+            {
+                _id: company._id,
+                'members.user': { $ne: invitedUser._id },
+                $expr: {
+                    $lt: [
+                        { $size: { $ifNull: ['$members', []] } },
+                        { $ifNull: ['$subscription.memberLimit', 1] }
+                    ]
+                }
+            },
+            {
+                $addToSet: {
+                    members: {
+                        user: invitedUser._id,
+                        role,
+                        joinedAt,
+                        invitedBy: req.userId
+                    }
+                }
+            },
+            { new: true }
+        );
+        if (!updatedCompany) {
+            const latestCompany = await Company.findById(company._id);
+            if (latestCompany?.members.some((item) => item.user.toString() === invitedUser._id.toString())) {
+                return res.status(400).json({ success: false, message: 'User is already a member' });
+            }
+            if (!latestCompany || latestCompany.members.length >= latestCompany.subscription.memberLimit) {
+                return res.status(403).json({
+                    success: false,
+                    message: `Member limit reached (${latestCompany?.subscription?.memberLimit || memberLimit}). Upgrade your plan to add more members.`
+                });
+            }
+            return res.status(409).json({ success: false, message: 'Team membership changed. Refresh and try again.' });
+        }
         
         // Log activity
         await TeamActivity.create({

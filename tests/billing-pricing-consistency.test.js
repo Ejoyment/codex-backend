@@ -13,6 +13,7 @@ const paystackScheduler = require('../utils/paystackScheduler');
 const stripeScheduler = require('../utils/billingScheduler');
 
 const FOURTEEN_DAYS_MS = 14 * 24 * 60 * 60 * 1000;
+const USER_ID = new mongoose.Types.ObjectId();
 
 afterEach(() => {
   jest.restoreAllMocks();
@@ -39,27 +40,30 @@ describe.each([
     const scheduler = getScheduler();
     const cardAddedAt = new Date('2026-10-01T00:00:00.000Z');
     jest.spyOn(BillingSchedule, 'findOne').mockResolvedValue(null);
-    const saved = [];
-    jest.spyOn(BillingSchedule.prototype, 'save').mockImplementation(async function save() {
-      saved.push(this);
-      return this;
+    const inserted = [];
+    jest.spyOn(BillingSchedule, 'findOneAndUpdate').mockImplementation(async (filter, update) => {
+      const document = { ...update.$setOnInsert, _id: new mongoose.Types.ObjectId() };
+      inserted.push({ filter, document });
+      return document;
     });
 
     const schedule = await scheduler.scheduleFirstCharge(
-      'user-1',
+      USER_ID,
       new mongoose.Types.ObjectId(),
       cardAddedAt,
       'team_premium'
     );
 
-    expect(saved).toHaveLength(1);
+    expect(inserted).toHaveLength(1);
+    expect(inserted[0].filter).toEqual({ idempotencyKey: `first_charge:${schedule.subscriptionId}` });
+    expect(schedule.idempotencyKey).toBe(`first_charge:${schedule.subscriptionId}`);
     expect(schedule.amount).toBe(12000);
     expect(schedule.scheduledFor.getTime() - cardAddedAt.getTime()).toBe(FOURTEEN_DAYS_MS);
   });
 
-  test('reuses an existing pending first charge', async () => {
+  test('reuses an existing first charge even after completion', async () => {
     const scheduler = getScheduler();
-    const existing = { _id: 'existing', status: 'pending' };
+    const existing = { _id: 'existing', status: 'completed' };
     jest.spyOn(BillingSchedule, 'findOne').mockResolvedValue(existing);
     const save = jest.spyOn(BillingSchedule.prototype, 'save');
 
