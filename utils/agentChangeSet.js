@@ -540,10 +540,15 @@ function applyChangesToFileList(changes = [], originalFiles = []) {
  * Write staged changes into the isolated agent working tree and commit them on
  * the current (agent) branch. Never touches the VFS.
  */
-async function stageChanges(workspaceId, changes, { message = 'Agent changes', branch = null } = {}) {
-  const write = await gitService.writeWorkingTree(workspaceId, changes);
+async function stageChanges(workspaceId, changes, {
+  message = 'Agent changes',
+  branch = null,
+  projectId = null,
+  executionId = null,
+} = {}) {
+  const write = await gitService.writeWorkingTree(workspaceId, changes, projectId, executionId);
   if (!write.success) return { success: false, error: write.error };
-  const commit = await gitService.commitWorkingTree(workspaceId, message, branch);
+  const commit = await gitService.commitWorkingTree(workspaceId, message, branch, projectId, executionId);
   return {
     success: Boolean(commit.success),
     committed: Boolean(commit.success),

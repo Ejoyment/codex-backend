@@ -23,7 +23,7 @@ const agentExecutionSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['queued', 'idle', 'running', 'awaiting_review', 'awaiting_approval', 'approved', 'rejected', 'completed', 'failed'],
+    enum: ['queued', 'idle', 'running', 'awaiting_review', 'awaiting_approval', 'approving', 'approved', 'rejected', 'completed', 'failed'],
     default: 'idle',
   },
   model: { type: String, default: '' },

@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
+import { diffLines } from 'diff';
 import AuthGuard from '../components/AuthGuard';
 import Sidebar from '../components/Sidebar';
 import useAuthStore from '../store/authStore';
-import { apiFetch, projectApi, API_BASE_URL, SOCKET_URL, agentApi, companyApi, isDemoTourActive } from '../lib/api';
+import { apiFetch, projectApi, API_BASE_URL, SOCKET_URL, agentApi, companyApi, githubApi, isDemoTourActive } from '../lib/api';
 import * as editorDrafts from '../lib/editorDrafts';
 import { registerEditorSnippets } from '../lib/monacoExtras';
 import { normalizeMarkers, countProblems, setRunProblems } from '../lib/monacoDiagnostics';
@@ -14,7 +15,7 @@ import {
   Save, ChevronDown, ChevronRight, FileCode, Terminal, Bot, Layers, Rocket, Box,
   Users, GitBranch, Eye, Bug, X, FolderOpen, Search, Settings, Folder, Trash2,
   FolderPlus, AlertCircle, CheckCircle, XCircle, RefreshCw, Puzzle, HelpCircle,
-  FilePlus, Play, Loader2, GitPullRequestArrow, Copy, GitCommit,
+  FilePlus, Play, Loader2, GitPullRequestArrow, Copy, GitCommit, Plus, Minus,
 } from 'lucide-react';
 import MonacoEditor from '@monaco-editor/react';
 import { io } from 'socket.io-client';
@@ -586,8 +587,15 @@ export default function Editor() {
 
   const [projects, setProjects] = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
+  const gitWorkspaceId = selectedProject?.workspaceId || workspaceId;
+  const gitProjectId = selectedProject?._id || selectedProject?.id || null;
   const [githubRepos, setGithubRepos] = useState([]);
   const [selectedRepo, setSelectedRepo] = useState(null);
+  const [selectedBranch, setSelectedBranch] = useState('main');
+  const [availableBranches, setAvailableBranches] = useState([]);
+  const [branchMenuOpen, setBranchMenuOpen] = useState(false);
+  const [branchError, setBranchError] = useState('');
+  const [repoStaged, setRepoStaged] = useState(() => new Set());
   const [showProjectSelector, setShowProjectSelector] = useState(false);
   const [repoCreateOpen, setRepoCreateOpen] = useState(false);
   const [repoCreateName, setRepoCreateName] = useState('');
@@ -598,6 +606,62 @@ export default function Editor() {
   const [expandedFolders, setExpandedFolders] = useState({});
   const [fileFilter, setFileFilter] = useState('');
   const [commitMsg, setCommitMsg] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    const defaultBranch = selectedRepo
+      ? selectedRepo.default_branch || selectedRepo.defaultBranch || 'main'
+      : selectedProject?.defaultBranch || 'main';
+    setSelectedBranch(defaultBranch);
+    setAvailableBranches([]);
+    setBranchError('');
+    setRepoStaged(new Set());
+
+    async function loadBranches() {
+      try {
+        let data;
+        if (selectedRepo) {
+          const owner = selectedRepo.owner?.login || selectedRepo.owner || selectedRepo.ownerName;
+          data = await githubApi.getBranches(owner, selectedRepo.name);
+        } else if (gitWorkspaceId) {
+          const projectQuery = gitProjectId ? `?projectId=${encodeURIComponent(gitProjectId)}` : '';
+          data = await apiFetch(`/api/git/branches/${encodeURIComponent(gitWorkspaceId)}${projectQuery}`);
+        } else {
+          setAvailableBranches([defaultBranch]);
+          return;
+        }
+
+        if (cancelled) return;
+        const branches = (data.branches || [])
+          .map((branch) => typeof branch === 'string' ? branch : branch.name)
+          .filter(Boolean);
+        const currentBranch = data.current || data.currentBranch || defaultBranch;
+        setAvailableBranches(branches.length ? branches : [currentBranch]);
+        setSelectedBranch(currentBranch);
+        if (selectedRepo) {
+          await loadGithubRepoFiles(selectedRepo, currentBranch);
+          await loadRepoGitStatus(selectedRepo, currentBranch);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setAvailableBranches([defaultBranch]);
+          setBranchError(error.message || 'Unable to load branches');
+        }
+      }
+    }
+
+    loadBranches();
+    return () => { cancelled = true; };
+  }, [
+    selectedRepo?.owner,
+    selectedRepo?.name,
+    selectedRepo?.default_branch,
+    selectedRepo?.defaultBranch,
+    selectedProject?.workspaceId,
+    selectedProject?.defaultBranch,
+    gitProjectId,
+    gitWorkspaceId,
+  ]);
 
   const selectedFileRef = useRef(null);
   selectedFileRef.current = selectedFile;
@@ -708,7 +772,7 @@ export default function Editor() {
     // path in two repos never collides into one buffer/dirty state.
     const repoScope = selectedRepo
       ? (selectedRepo.fullName || `${selectedRepo.owner?.login || selectedRepo.owner || selectedRepo.ownerName || 'gh'}/${selectedRepo.name}`) +
-        (selectedRepo.default_branch ? `@${selectedRepo.default_branch}` : '')
+        (selectedBranch ? `@${selectedBranch}` : '')
       : 'none';
     if (file.path) return `github:${repoScope}:${file.path}`;
     if (file.name) return `github:${repoScope}:${file.name}`;
@@ -721,7 +785,7 @@ export default function Editor() {
       fileKeyCacheRef.current.set(file, key);
     }
     return key;
-  }, [selectedRepo]);
+  }, [selectedRepo, selectedBranch]);
 
   // Single source of truth for dirty state: current buffer vs the file's own
   // last-saved baseline. Read at render/interaction time; never stored, so a
@@ -782,7 +846,12 @@ export default function Editor() {
   function refreshGitModified() {
     setGitStatus((prev) => {
       if (!prev || !prev.isGithub) return prev;
-      return { ...prev, modified: computeLocalModified(prev.repo) };
+      return {
+        ...prev,
+        modified: computeLocalModified(prev.repo),
+        created: repoPending.filter((file) => file.pending).map((file) => fileFullPath(file).replace(/^\/+/, '')),
+        staged: Array.from(repoStaged),
+      };
     });
   }
 
@@ -1583,11 +1652,11 @@ export default function Editor() {
     }
   }
 
-  async function loadGithubRepoFiles(repo) {
+  async function loadGithubRepoFiles(repo, branch = selectedBranch) {
     const seq = ++filesSeqRef.current;
     setLoading(true);
     try {
-      const ref = repo.default_branch || repo.defaultBranch;
+      const ref = branch || repo.default_branch || repo.defaultBranch;
       const qs = `recursive=1${ref ? `&ref=${encodeURIComponent(ref)}` : ''}`;
       const data = await apiFetch(`/api/github/repos/${repo.owner}/${repo.name}/git/tree?${qs}`);
       if (seq !== filesSeqRef.current) return;
@@ -1609,9 +1678,10 @@ export default function Editor() {
   }
 
   async function loadGitStatus() {
-    if (!workspaceId) return;
+    if (!gitWorkspaceId) return;
     try {
-      const data = await apiFetch(`/api/git/status/${workspaceId}`).catch(() => null);
+      const projectQuery = gitProjectId ? `?projectId=${encodeURIComponent(gitProjectId)}` : '';
+      const data = await apiFetch(`/api/git/status/${encodeURIComponent(gitWorkspaceId)}${projectQuery}`).catch(() => null);
       // success:false = repo not initialised yet (or git error) — show the
       // empty state instead of a fake clean tree.
       if (data && data.success !== false) setGitStatus(data);
@@ -1622,7 +1692,7 @@ export default function Editor() {
   // Branch + recent commits + local changes for the selected GitHub repo.
   // Local changes = dirty buffers, locally-saved-but-unpushed files, and
   // parked drafts that differ from the last-known remote content.
-  async function loadRepoGitStatus(repo) {
+  async function loadRepoGitStatus(repo, branch = selectedBranch, stagedFiles = repoStaged) {
     if (!repo) return;
     const owner = repo.owner?.login || repo.owner || repo.ownerName || '';
     const fullName = repo.fullName || `${owner}/${repo.name}`;
@@ -1633,10 +1703,12 @@ export default function Editor() {
     } catch {}
     setGitStatus({
       success: true,
-      branch: repo.default_branch || repo.defaultBranch || 'main',
+      branch: branch || repo.default_branch || repo.defaultBranch || 'main',
       ahead: 0,
       behind: 0,
       modified: computeLocalModified(fullName),
+      created: repoPending.filter((file) => file.pending).map((file) => fileFullPath(file).replace(/^\/+/, '')),
+      staged: Array.from(stagedFiles),
       commits,
       isGithub: true,
       repo: fullName,
@@ -1653,12 +1725,12 @@ export default function Editor() {
       const buf = openContentsRef.current[k];
       const remote = remoteBaselineRef.current[k];
       const unpushed = repoFull && typeof buf === 'string' && typeof remote === 'string' && buf !== remote;
-      if (dirtyBuffer || unpushed) push(f.name || k, k);
+      if (dirtyBuffer || unpushed) push((fileFullPath(f) || f.name || k).replace(/^\/+/, ''), k);
     });
     Object.entries(parkedRef.current).forEach(([k, e]) => {
       if (e?.s !== 'gh' || typeof e.c !== 'string') return;
       const remote = e.g;
-      if (remote === undefined || e.c !== remote) push(e.n || k, k);
+      if (remote === undefined || e.c !== remote) push(String(e.p || e.n || k).replace(/^\/+/, ''), k);
     });
     return out;
   }
@@ -1677,7 +1749,7 @@ export default function Editor() {
       repositoryId: selectedRepo?._id || selectedProject?._id || 'local-workspace',
       repositoryName: selectedRepo?.name || selectedProject?.name || 'workspace',
       repositoryOwner: selectedRepo?.owner?.login || selectedRepo?.owner || selectedProject?.owner || user?.username || 'local',
-      branch: selectedRepo?.default_branch || selectedProject?.defaultBranch || 'main',
+      branch: selectedBranch || selectedRepo?.default_branch || selectedProject?.defaultBranch || 'main',
     };
 
     const data = await apiFetch('/api/ai-pair/session', {
@@ -1909,7 +1981,7 @@ export default function Editor() {
               id: selectedRepo._id || selectedRepo.id,
               name: selectedRepo.name,
               owner: selectedRepo.owner?.login || selectedRepo.owner || 'local',
-              defaultBranch: selectedRepo.default_branch || 'main',
+              defaultBranch: selectedBranch || selectedRepo.default_branch || 'main',
             } : undefined,
           },
         }),
@@ -1936,7 +2008,7 @@ export default function Editor() {
     const owner = selectedRepo.owner?.login || selectedRepo.owner || selectedRepo.ownerName;
     const repo = selectedRepo.name;
     const path = String(file.path).replace(/^\/+/, '');
-    const ref = selectedRepo.default_branch ? `?ref=${encodeURIComponent(selectedRepo.default_branch)}` : '';
+    const ref = selectedBranch ? `?ref=${encodeURIComponent(selectedBranch)}` : '';
     try {
       const data = await apiFetch(`/api/github/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}${ref}`);
       const content = data?.file?.content ?? '';
@@ -1945,7 +2017,7 @@ export default function Editor() {
       console.warn('GitHub repo file content load failed:', err);
     }
     return file?.content || '';
-  }, [selectedRepo]);
+  }, [selectedRepo, selectedBranch]);
 
   const loadFile = useCallback(async (file) => {
     const fileKey = getFileKey(file);
@@ -2799,7 +2871,7 @@ export default function Editor() {
         repo: selectedRepo ? {
           owner: selectedRepo.owner?.login || selectedRepo.owner || selectedRepo.ownerName,
           name: selectedRepo.name,
-          defaultBranch: selectedRepo.default_branch || 'main',
+          defaultBranch: selectedBranch || selectedRepo.default_branch || 'main',
           fullName: selectedRepo.fullName || selectedRepo.name,
         } : null,
         files: deploymentFiles,
@@ -2859,19 +2931,20 @@ export default function Editor() {
 
         if (action === 'commit' || action === 'push') {
           const allFiles = gatherDeploymentFiles();
-          // Only push files that actually differ from the remote baseline, or
-          // that have no baseline yet (newly created files). This prevents
-          // re-uploading unchanged files and turning every push into a
-          // repo-wide rewrite.
+          const stagedPaths = repoStaged;
           const filesToPush = allFiles.filter((file) => {
             if (!file.name || typeof file.content !== 'string') return false;
+            const filePath = fileFullPath(file).replace(/^\/+/, '');
+            if (!stagedPaths.has(filePath)) return false;
             const key = getFileKey(file);
             const remote = remoteBaselineRef.current[key];
             if (remote === undefined) return true; // new file — always push
             return file.content !== remote; // skip unchanged files
           });
           if (!filesToPush.length) {
-            setStatus({ type: 'error', msg: 'No file changes to push to the selected repository.' });
+            setStatus({ type: 'error', msg: stagedPaths.size
+              ? 'The staged files have no content changes to push.'
+              : 'Stage at least one changed file before committing.' });
             return;
           }
 
@@ -2884,7 +2957,7 @@ export default function Editor() {
             body: JSON.stringify({
               owner: repoOwner,
               repo: repoName,
-              branch: selectedRepo.default_branch || selectedRepo.defaultBranch || 'main',
+              branch: selectedBranch || selectedRepo.default_branch || selectedRepo.defaultBranch || 'main',
               files: filesToPush.map((file) => ({
                 path: (file.fullPath || fileFullPath(file)).replace(/^\/+/, ''),
                 content: file.content,
@@ -2897,26 +2970,29 @@ export default function Editor() {
             throw new Error(data.message || 'GitHub push failed');
           }
 
-          // Push published everything — local drafts now match the remote.
           const fullName = selectedRepo.fullName || `${repoOwner}/${repoName}`;
-          Object.keys(openContentsRef.current).forEach((k) => {
-            if (String(k).startsWith('github:')) {
-              remoteBaselineRef.current[k] = openContentsRef.current[k];
+          const pushedKeys = new Set(filesToPush.map((file) => getFileKey(file)));
+          filesToPush.forEach((file) => {
+            const key = getFileKey(file);
+            remoteBaselineRef.current[key] = file.content;
+            openOriginalsRef.current[key] = file.content;
+            if (typeof openContentsRef.current[key] === 'string') {
+              openContentsRef.current[key] = file.content;
             }
           });
-          Object.keys(parkedRef.current).forEach((k) => {
-            const e = parkedRef.current[k];
-            if (e?.s === 'gh' && (!e.r || e.r === fullName)) delete parkedRef.current[k];
-          });
-          openFiles.forEach((f) => {
-            const k = getFileKey(f);
-            if (String(k).startsWith('github:')) openOriginalsRef.current[k] = openContentsRef.current[k];
+          Object.keys(parkedRef.current).forEach((key) => {
+            if (pushedKeys.has(key)) delete parkedRef.current[key];
           });
           schedulePersist();
           refreshGitModified();
           setCommitMsg('');
-          setRepoPending([]); // staged entries are on the remote now
-          await loadRepoGitStatus(selectedRepo).catch(() => {});
+          const pushedPaths = new Set(filesToPush.map((file) => fileFullPath(file).replace(/^\/+/, '')));
+          setRepoPending((pending) => pending.filter((file) => !pushedPaths.has(fileFullPath(file).replace(/^\/+/, ''))));
+          const remainingStaged = new Set(
+            [...repoStaged].filter((filePath) => !pushedPaths.has(filePath))
+          );
+          setRepoStaged(remainingStaged);
+          await loadRepoGitStatus(selectedRepo, selectedBranch, remainingStaged).catch(() => {});
 
           setStatus({
             type: 'success',
@@ -2930,13 +3006,14 @@ export default function Editor() {
       }
     }
 
-    if (!workspaceId) {
+    if (!gitWorkspaceId) {
       setStatus({ type: 'error', msg: 'Join a workspace or select a GitHub repo to use version control.' });
       return;
     }
     try {
       if (action === 'status') {
-        const data = await apiFetch(`/api/git/status/${workspaceId}`);
+        const projectQuery = gitProjectId ? `?projectId=${encodeURIComponent(gitProjectId)}` : '';
+        const data = await apiFetch(`/api/git/status/${encodeURIComponent(gitWorkspaceId)}${projectQuery}`);
         setGitStatus(data);
         setStatus({ type: 'success', msg: 'Git status refreshed' });
         return;
@@ -2948,9 +3025,14 @@ export default function Editor() {
           setStatus({ type: 'error', msg: 'Write a commit message first.' });
           return;
         }
+        const files = gitStatus?.staged || [];
+        if (!files.length) {
+          setStatus({ type: 'error', msg: 'Stage at least one changed file before committing.' });
+          return;
+        }
         const commit = () => apiFetch('/api/git/commit', {
           method: 'POST',
-          body: JSON.stringify({ workspaceId, message }),
+          body: JSON.stringify({ workspaceId: gitWorkspaceId, projectId: gitProjectId, message, files }),
         });
         let data = await commit();
         if (data?.success === false && /not a git repository/i.test(String(data.error || ''))) {
@@ -2958,7 +3040,8 @@ export default function Editor() {
           await apiFetch('/api/git/init', {
             method: 'POST',
             body: JSON.stringify({
-              workspaceId,
+              workspaceId: gitWorkspaceId,
+              projectId: gitProjectId,
               userName: user?.fullName || 'CODEX User',
               userEmail: user?.email || 'user@codex.dev',
             }),
@@ -2967,7 +3050,8 @@ export default function Editor() {
         }
         if (data?.success === false) throw new Error(data.error || 'Commit failed');
         setCommitMsg('');
-        const st = await apiFetch(`/api/git/status/${workspaceId}`).catch(() => null);
+        const projectQuery = gitProjectId ? `?projectId=${encodeURIComponent(gitProjectId)}` : '';
+        const st = await apiFetch(`/api/git/status/${encodeURIComponent(gitWorkspaceId)}${projectQuery}`).catch(() => null);
         if (st && st.success !== false) setGitStatus(st);
         setStatus({
           type: 'success',
@@ -2978,7 +3062,7 @@ export default function Editor() {
 
       const data = await apiFetch(`/api/git/${action}`, {
         method: 'POST',
-        body: JSON.stringify({ workspaceId, fileId: selectedFile?._id }),
+        body: JSON.stringify({ workspaceId: gitWorkspaceId, fileId: selectedFile?._id }),
       });
       if (data?.success === false) throw new Error(data.error || `Git ${action} failed`);
       setGitStatus((prev) => (data && (data.branch !== undefined || data.modified !== undefined)
@@ -2994,13 +3078,47 @@ export default function Editor() {
   }
 
   async function loadFileDiff(file) {
-    if (!workspaceId) return;
+    if (selectedRepo) {
+      const fileEntry = [...files, ...repoPending].find((item) => fileFullPath(item).replace(/^\/+/, '') === file);
+      if (!fileEntry) return;
+      const key = getFileKey(fileEntry);
+      const current = key === getFileKey(selectedFile)
+        ? content
+        : openContentsRef.current[key] ?? fileEntry.content ?? '';
+      const original = remoteBaselineRef.current[key] ?? '';
+      const changes = diffLines(original, String(current));
+      const diffChanges = changes.flatMap((part) => {
+        const lines = part.value.split('\n');
+        if (part.value.endsWith('\n')) lines.pop();
+        const type = part.added ? 'add' : part.removed ? 'remove' : 'context';
+        return lines.map((line) => ({ type, content: line }));
+      });
+      setDiffFile(file);
+      setDiffData(diffChanges.length ? [{
+        oldPath: file,
+        newPath: file,
+        hunks: [{
+          oldStart: 1,
+          oldLines: changes.filter((part) => !part.added).reduce((count, part) => count + part.count, 0),
+          newStart: 1,
+          newLines: changes.filter((part) => !part.removed).reduce((count, part) => count + part.count, 0),
+          header: '',
+          changes: diffChanges,
+        }],
+      }] : []);
+      setDiffOpen(true);
+      setDiffLoading(false);
+      return;
+    }
+    if (!gitWorkspaceId) return;
     setDiffOpen(true);
     setDiffLoading(true);
     setDiffFile(file);
     setDiffData(null);
     try {
-      const data = await apiFetch(`/api/git/diff/${workspaceId}?file=${encodeURIComponent(file)}`);
+      const query = new URLSearchParams({ file });
+      if (gitProjectId) query.set('projectId', gitProjectId);
+      const data = await apiFetch(`/api/git/diff/${encodeURIComponent(gitWorkspaceId)}?${query}`);
       setDiffData(data.parsed || []);
     } catch {
       setDiffData([]);
@@ -3089,7 +3207,7 @@ export default function Editor() {
         repo: selectedRepo ? {
           owner: selectedRepo.owner?.login || selectedRepo.owner || selectedRepo.ownerName,
           name: selectedRepo.name,
-          defaultBranch: selectedRepo.default_branch || 'main',
+          defaultBranch: selectedBranch || selectedRepo.default_branch || 'main',
           fullName: selectedRepo.fullName || selectedRepo.name,
         } : null,
         files: deploymentFiles,
@@ -3224,7 +3342,7 @@ export default function Editor() {
           body: JSON.stringify({
             owner: repoOwner,
             repo: selectedRepo.name,
-            branch: selectedRepo.default_branch || selectedRepo.defaultBranch || 'main',
+            branch: selectedBranch || selectedRepo.default_branch || selectedRepo.defaultBranch || 'main',
             path: (file.fullPath || fileFullPath(file)).replace(/^\/+/, ''),
           }),
         });
@@ -3285,6 +3403,63 @@ export default function Editor() {
     setSidebarVisible(true);
   }
 
+  async function chooseBranch(branch) {
+    setBranchMenuOpen(false);
+    if (!branch || branch === selectedBranch) return;
+
+    try {
+      if (selectedRepo) {
+        setSelectedBranch(branch);
+        setRepoStaged(new Set());
+        setSelectedFile(null);
+        setContent('');
+        await loadGithubRepoFiles(selectedRepo, branch);
+        await loadRepoGitStatus(selectedRepo, branch);
+      } else if (gitWorkspaceId) {
+        const data = await apiFetch('/api/git/checkout', {
+          method: 'POST',
+          body: JSON.stringify({ workspaceId: gitWorkspaceId, projectId: gitProjectId, branchName: branch }),
+        });
+        if (data?.success === false) throw new Error(data.error || 'Branch checkout failed');
+        setSelectedBranch(branch);
+        await loadGitStatus();
+      } else {
+        setSelectedBranch(branch);
+      }
+      setStatus({ type: 'success', msg: `Switched to ${branch}` });
+    } catch (error) {
+      setBranchError(error.message || 'Unable to switch branches');
+      setStatus({ type: 'error', msg: `Branch switch failed: ${error.message}` });
+    }
+  }
+
+  async function toggleFileStage(filePath, currentlyStaged) {
+    if (!filePath) return;
+    if (selectedRepo) {
+      const normalizedPath = String(filePath).replace(/^\/+/, '');
+      const next = new Set(repoStaged);
+      if (currentlyStaged) next.delete(normalizedPath);
+      else next.add(normalizedPath);
+      setRepoStaged(next);
+      setGitStatus((prev) => prev?.isGithub ? { ...prev, staged: Array.from(next) } : prev);
+      return;
+    }
+    if (!gitWorkspaceId) {
+      setStatus({ type: 'error', msg: 'Select a project or workspace before staging files.' });
+      return;
+    }
+    try {
+      const data = await apiFetch(`/api/git/${currentlyStaged ? 'reset' : 'add'}`, {
+        method: 'POST',
+        body: JSON.stringify({ workspaceId: gitWorkspaceId, projectId: gitProjectId, files: [filePath] }),
+      });
+      if (data?.success === false) throw new Error(data.error || 'Unable to update staged files');
+      await loadGitStatus();
+    } catch (error) {
+      setStatus({ type: 'error', msg: `Could not ${currentlyStaged ? 'unstage' : 'stage'} ${filePath}: ${error.message}` });
+    }
+  }
+
   const runPaletteEntry = (entry) => {
     if (entry.file) selectFile(entry.file);
     else if (entry.run) entry.run();
@@ -3293,9 +3468,25 @@ export default function Editor() {
   };
 
   const extList = languages.filter((l) => l.allowed !== false);
-  const modifiedCount = (gitStatus?.modified?.length || 0)
-    + (gitStatus?.created?.length || 0)
-    + (gitStatus?.deleted?.length || 0);
+  const scmEntryMap = new Map();
+  [
+    ...(gitStatus?.modified || []).map((name) => ({ name, letter: 'M', color: '#e5b84a' })),
+    ...(gitStatus?.created || []).map((name) => ({ name, letter: 'A', color: '#03ba03' })),
+    ...(gitStatus?.deleted || []).map((name) => ({ name, letter: 'D', color: '#ec1414' })),
+    ...(gitStatus?.staged || []).map((name) => ({
+      name,
+      letter: (gitStatus?.created || []).includes(name) ? 'A' : 'M',
+      color: (gitStatus?.created || []).includes(name) ? '#03ba03' : '#e5b84a',
+    })),
+  ].forEach((entry) => {
+    if (!scmEntryMap.has(entry.name)) scmEntryMap.set(entry.name, entry);
+  });
+  const scmEntries = Array.from(scmEntryMap.values());
+  const modifiedCount = scmEntries.length;
+  const stagedPaths = selectedRepo ? repoStaged : new Set(gitStatus?.staged || []);
+  const stagedEntries = scmEntries.filter(({ name }) => stagedPaths.has(name));
+  const unstagedEntries = scmEntries.filter(({ name }) => !stagedPaths.has(name));
+  const stagedCount = selectedRepo ? repoStaged.size : (gitStatus?.staged?.length || 0);
   const blockCount = languages.filter((l) => l.allowed === false).length;
   const problemCounts = useMemo(
     () => countProblems([...externalProblems, ...problemList]),
@@ -3358,24 +3549,43 @@ export default function Editor() {
         <Sidebar
           user={user}
           subscription={subscription}
-          headerBranch={gitStatus?.branch || selectedRepo?.default_branch || selectedRepo?.defaultBranch || selectedProject?.defaultBranch || 'main'}
+          headerBranch={selectedBranch || gitStatus?.branch || selectedRepo?.default_branch || selectedRepo?.defaultBranch || selectedProject?.defaultBranch || 'main'}
         />
         <main className="workspace-main ed-workspace-main">
           <header className="ed-global-header">
             <div className="ed-global-context">
+              <div className="ed-branch-wrap">
               <button
                 type="button"
                 className="ed-global-branch"
-                onClick={() => {
-                  showSidebar('explorer');
-                  setShowProjectSelector(true);
-                }}
-                title="Switch workspace, project, or repository"
+                onClick={() => setBranchMenuOpen((open) => !open)}
+                title="Switch branch"
               >
                 <GitBranch className="w-3.5 h-3.5" />
-                <span>{gitStatus?.branch || selectedRepo?.default_branch || selectedRepo?.defaultBranch || selectedProject?.defaultBranch || 'main'}</span>
-                <ChevronDown className="w-3.5 h-3.5" />
+                <span>{selectedBranch || gitStatus?.branch || 'main'}</span>
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${branchMenuOpen ? 'rotate-180' : ''}`} />
               </button>
+              {branchMenuOpen && (
+                <div className="ed-branch-menu">
+                  {branchError && <div className="ed-drop-section">{branchError}</div>}
+                  {availableBranches.map((branch) => (
+                    <button
+                      key={branch}
+                      type="button"
+                      className={`ed-drop-item ${branch === selectedBranch ? 'is-active' : ''}`}
+                      onClick={() => chooseBranch(branch)}
+                    >
+                      <GitBranch className="w-3.5 h-3.5" />
+                      <span>{branch}</span>
+                      {branch === selectedBranch && <CheckCircle className="w-3.5 h-3.5 ml-auto" />}
+                    </button>
+                  ))}
+                  {!availableBranches.length && !branchError && (
+                    <div className="ed-drop-section">No branches available</div>
+                  )}
+                </div>
+              )}
+              </div>
               {gitStatus && (
                 <span className={`ed-global-status ${modifiedCount ? 'is-changed' : 'is-clean'}`}>
                   <span />
@@ -3667,9 +3877,9 @@ export default function Editor() {
                         type="button"
                         className="btn-workspace btn-primary ed-scm-commit-btn"
                         onClick={() => handleGitAction('commit')}
-                        disabled={modifiedCount === 0 || !(commitMsg || '').trim()}
-                        title={modifiedCount === 0
-                          ? 'No changes to commit'
+                        disabled={stagedCount === 0 || !(commitMsg || '').trim()}
+                        title={stagedCount === 0
+                          ? 'Stage changes before committing'
                           : (commitMsg || '').trim() ? 'Commit (Ctrl+Enter)' : 'Write a commit message'}
                       >
                         <GitCommit className="w-3.5 h-3.5 mr-1 inline" />
@@ -3684,33 +3894,46 @@ export default function Editor() {
                       </div>
                     )}
 
-                    <div className="ed-scm-section">
-                      <span>Changes{modifiedCount > 0 ? ` (${modifiedCount})` : ''}</span>
-                    </div>
-                    {modifiedCount === 0 ? (
+                    {scmEntries.length === 0 && (
                       <p className="ed-scm-clean">
                         {gitStatus ? 'Working tree clean' : 'No changes'}
                       </p>
-                    ) : (
-                      <div className="ed-scm-files">
-                        {[
-                          ...(gitStatus?.modified || []).map((n) => ({ n, letter: 'M', color: '#e5b84a' })),
-                          ...(gitStatus?.created || []).map((n) => ({ n, letter: 'A', color: '#03ba03' })),
-                          ...(gitStatus?.deleted || []).map((n) => ({ n, letter: 'D', color: '#ec1414' })),
-                        ].map(({ n, letter, color }) => (
-                          <button
-                            key={`${letter}:${n}`}
-                            type="button"
-                            className="ed-scm-file ed-scm-file-btn"
-                            onClick={() => loadFileDiff(n)}
-                            title={`View diff — ${letter}`}
-                          >
-                            <span className="ed-scm-status" style={{ color }}>{letter}</span>
-                            <span className="ed-scm-name">{n}</span>
-                          </button>
-                        ))}
-                      </div>
                     )}
+                    {[
+                      { title: 'Staged Changes', entries: stagedEntries, isStaged: true },
+                      { title: 'Changes', entries: unstagedEntries, isStaged: false },
+                    ].map(({ title, entries, isStaged }) => (
+                      <div key={title}>
+                        <div className="ed-scm-section">
+                          <span>{title} ({entries.length})</span>
+                        </div>
+                        <div className="ed-scm-files">
+                          {entries.map(({ name, letter, color }) => (
+                            <div key={`${title}:${letter}:${name}`} className="ed-scm-file-row">
+                              <button
+                                type="button"
+                                className="ed-scm-file ed-scm-file-btn"
+                                onClick={() => loadFileDiff(name)}
+                                title={`View diff — ${letter}`}
+                              >
+                                <span className="ed-scm-status" style={{ color }}>{letter}</span>
+                                <span className="ed-scm-name">{name}</span>
+                              </button>
+                              <button
+                                type="button"
+                                className="ed-scm-stage-btn"
+                                onClick={() => toggleFileStage(name, isStaged)}
+                                aria-label={`${isStaged ? 'Unstage' : 'Stage'} ${name}`}
+                                title={`${isStaged ? 'Unstage' : 'Stage'} changes`}
+                              >
+                                {isStaged ? <Minus className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
+                              </button>
+                            </div>
+                          ))}
+                          {!entries.length && <p className="ed-scm-clean">No files</p>}
+                        </div>
+                      </div>
+                    ))}
 
                     {(gitStatus?.commits || []).length > 0 && (
                       <div className="ed-scm-commits">

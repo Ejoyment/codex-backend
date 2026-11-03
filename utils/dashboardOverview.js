@@ -12,7 +12,7 @@ const Integration = require('../models/Integration');
 
 const OPEN_TASK_STATUSES = ['pending', 'in-progress', 'in_progress', 'in_review', 'backlog', 'blocked'];
 const DONE_TASK_STATUSES = ['completed', 'done'];
-const RUNNING_AGENT_STATUSES = ['queued', 'running', 'awaiting_review', 'awaiting_approval'];
+const RUNNING_AGENT_STATUSES = ['queued', 'running', 'awaiting_review', 'awaiting_approval', 'approving'];
 
 function initialsOf(name) {
     if (!name) return '··';
