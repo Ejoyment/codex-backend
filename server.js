@@ -131,8 +131,14 @@ async function startServer(port = process.env.PORT || 3000) {
 
     // No database, no traffic: a listening server with no DB serves 500s on
     // every route. Wait for the connection (bounded) instead.
-    if (mongoose.connection.readyState !== 1) {
+    // NOTE: don't re-call mongoose.connect() while the module-level connect is
+    // still in flight — openUri() returns immediately in that state, so the
+    // awaited promise can resolve before the driver is ready. `bufferCommands`
+    // is disabled, which makes the createIndex() calls below throw.
+    if (mongoose.connection.readyState === 0) {
         await mongoose.connect(process.env.MONGODB_URI, mongooseOptions);
+    } else if (mongoose.connection.readyState !== 1) {
+        await mongoose.connection.asPromise();
     }
     await Promise.all([
         require('./models/BillingSchedule').collection.createIndex(
