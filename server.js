@@ -3,6 +3,7 @@ const cors = require('cors');
 const session = require('express-session');
 const passport = require('passport');
 const mongoose = require('mongoose');
+const mongoConnection = require('./utils/mongoConnection');
 const swaggerUi = require('swagger-ui-express');
 const swaggerSpecs = require('./config/swagger');
 require('dotenv').config();
@@ -84,6 +85,20 @@ const { enforceCreditPool, enforceCloudComputeLimit, enforceDeploymentLimit, enf
 const CreditPoolService = require('./utils/creditPoolService');
 const { enforceSecurityHeaders } = require('./utils/securityHeaders');
 
+// Post-connect initialization must run exactly once, whether the first
+// connection attempt succeeded (module-level .then below) or succeeded on the
+// retry inside mongoConnection.ensureConnected().
+let _postConnectInitStarted = false;
+function initAfterMongoConnect() {
+    if (_postConnectInitStarted) return;
+    _postConnectInitStarted = true;
+    CreditPoolService.resetMonthlyCredits();
+    if (process.env.NODE_ENV !== 'test') {
+        require('./middleware/auth').initLivenessRevocationSubscriber()
+            .catch((error) => console.warn('Auth revocation subscriber failed:', error.message));
+    }
+}
+
 let server = null;
 let io = null;
 
@@ -130,16 +145,13 @@ async function startServer(port = process.env.PORT || 3000) {
     const { server: srv, io: socket } = createServer();
 
     // No database, no traffic: a listening server with no DB serves 500s on
-    // every route. Wait for the connection (bounded) instead.
-    // NOTE: don't re-call mongoose.connect() while the module-level connect is
-    // still in flight — openUri() returns immediately in that state, so the
-    // awaited promise can resolve before the driver is ready. `bufferCommands`
-    // is disabled, which makes the createIndex() calls below throw.
-    if (mongoose.connection.readyState === 0) {
-        await mongoose.connect(process.env.MONGODB_URI, mongooseOptions);
-    } else if (mongoose.connection.readyState !== 1) {
-        await mongoose.connection.asPromise();
-    }
+    // every route. Wait for the connection (bounded) instead. This awaits the
+    // module-level connect promise rather than calling mongoose.connect()
+    // again — a second call while the first is in flight returns immediately,
+    // and with bufferCommands disabled the createIndex() calls below would
+    // then throw "before initial connection is complete".
+    await mongoConnection.ensureConnected();
+    initAfterMongoConnect();
     await Promise.all([
         require('./models/BillingSchedule').collection.createIndex(
             { idempotencyKey: 1 },
@@ -328,15 +340,11 @@ require('./config/passport')(passport);
 // Note: useNewUrlParser and useUnifiedTopology are deprecated in Mongoose 8+
 const mongooseOptions = require('./config/mongoOptions');
 
-mongoose.connect(process.env.MONGODB_URI, mongooseOptions)
+mongoConnection.startInitialConnection()
 .then(() => {
     console.log('✓ MongoDB connected successfully');
     console.log('✓ Database:', mongoose.connection.name);
-    CreditPoolService.resetMonthlyCredits();
-    if (process.env.NODE_ENV !== 'test') {
-        require('./middleware/auth').initLivenessRevocationSubscriber()
-            .catch((error) => console.warn('Auth revocation subscriber failed:', error.message));
-    }
+    initAfterMongoConnect();
 })
 .catch(err => {
     console.error('✗ MongoDB connection error:', err.message);
