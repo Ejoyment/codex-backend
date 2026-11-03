@@ -16,6 +16,7 @@ const agentApprovalService = require('../utils/agentApprovalService');
 const sddVerificationService = require('../utils/sddVerificationService');
 const { userCanAccessProject, userCanAccessSpec, resolveAccessibleSpecs } = require('../utils/specAccess');
 const { assertWorkspaceAccess } = require('../utils/workspaceAuth');
+const { ensurePersonalWorkspace } = require('../utils/personalWorkspace');
 const realtimeBus = require('../utils/realtimeBus');
 const { Worker } = require('worker_threads');
 const path = require('path');
@@ -137,6 +138,7 @@ function spawnAgentWorker(executionId, taskId, workspaceId, projectId, specIds, 
 
 router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurrentJobs(), enforceTaskTimeout(), enforceCreditPool(), enforceCloudComputeLimit(), async (req, res) => {
   let creditCharged = false;
+  let agentWorktree = null;
   try {
     const { taskId, taskTitle, sessionId, summary = '', provider: requestedProvider, model, localPrivacyMode: requestedLocalPrivacyMode = false } = req.body;
     let provider;
@@ -168,7 +170,7 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       if (task.agentSessionId) {
         const activeExecution = await AgentExecution.findOne({
           _id: task.agentSessionId,
-          status: { $in: ['queued', 'running', 'awaiting_review', 'awaiting_approval'] },
+          status: { $in: ['queued', 'running', 'awaiting_review', 'awaiting_approval', 'approving'] },
         }).select('_id');
         if (activeExecution) return res.status(409).json({ success: false, message: 'This task already has an active agent session' });
       }
@@ -181,9 +183,28 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       if (unresolvedBlockers) return res.status(409).json({ success: false, message: 'Resolve blocking tasks before delegation' });
     }
 
-    const requestedWorkspaceId = req.body.workspaceId || task?.companyId?.toString();
+    const taskProjectId = resolveProjectId({ task });
+    let taskProject = null;
+    if (taskProjectId) {
+      taskProject = await LocalProject.findById(taskProjectId).select('workspaceId').lean();
+      if (!taskProject) {
+        return res.status(404).json({ success: false, message: 'Project not found' });
+      }
+      if (!(await userCanAccessProject(taskProjectId, req.userId))) {
+        return res.status(403).json({ success: false, message: 'Project access denied' });
+      }
+    }
+    let requestedWorkspaceId = req.body.workspaceId
+      || task?.companyId?.toString()
+      || taskProject?.workspaceId?.toString();
     if (!requestedWorkspaceId) {
-      return res.status(400).json({ success: false, message: 'A workspace is required to create an isolated agent branch' });
+      requestedWorkspaceId = String((await ensurePersonalWorkspace(req.userId))._id);
+      if (taskProjectId) {
+        await LocalProject.updateOne(
+          { _id: taskProjectId, $or: [{ workspaceId: null }, { workspaceId: { $exists: false } }] },
+          { $set: { workspaceId: requestedWorkspaceId } }
+        );
+      }
     }
     const workspaceAccess = await assertWorkspaceAccess(requestedWorkspaceId, req.userId);
     if (!workspaceAccess.ok) {
@@ -193,17 +214,8 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
     if (task?.companyId && String(task.companyId) !== workspaceId) {
       return res.status(403).json({ success: false, message: 'Task is linked to a different workspace' });
     }
-    if (task?.projectId) {
-      const project = await LocalProject.findById(task.projectId).select('workspaceId').lean();
-      if (!project) {
-        return res.status(404).json({ success: false, message: 'Project not found' });
-      }
-      if (!(await userCanAccessProject(task.projectId, req.userId))) {
-        return res.status(403).json({ success: false, message: 'Project access denied' });
-      }
-      if (project.workspaceId && String(project.workspaceId) !== workspaceId) {
-        return res.status(403).json({ success: false, message: 'Project does not belong to this workspace' });
-      }
+    if (taskProject?.workspaceId && String(taskProject.workspaceId) !== workspaceId) {
+      return res.status(403).json({ success: false, message: 'Project does not belong to this workspace' });
     }
 
     const requestedSpecIds = [...new Set([...(req.body.specIds || []), ...(req.body.specId ? [req.body.specId] : []), ...(task?.specIds || []).map(String)])];
@@ -217,22 +229,14 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
     // Only the task's own project is readable by the agent. A delegated task
     // must never see another project's source just because both live in the
     // same workspace; unlinked tasks see only unassigned files.
-    const taskProjectId = resolveProjectId({ task });
     const codeFiles = await CodeFile.find(projectFileQuery(workspaceId, taskProjectId)).select('path name language content').lean();
     const taskTitleValue = taskTitle || task?.title || 'Workspace task';
     const slug = taskTitleValue.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'task';
     // Re-delegating a failed task must not collide with the branch left behind
     // by the previous run, so each execution gets a unique suffix.
     const branch = `feature/${task?._id || 'task'}-${Date.now().toString(36)}-${slug}`;
-    await gitService.init(workspaceId);
     const baseBranch = 'main';
-    // Seed the base branch with the current VFS so the feature branch has a real
-    // parent to merge back into (a fresh tmpdir repo is otherwise unborn).
-    await gitService.ensureBaseCommit(workspaceId, baseBranch);
-    const branchResult = await gitService.createBranch(workspaceId, branch);
-    if (!branchResult.success) {
-      return res.status(409).json({ success: false, message: `Could not create isolated branch: ${branchResult.error}` });
-    }
+    const executionId = new AgentExecution()._id;
 
     // Build comprehensive context bundle for delegated agent
     let agentContextBundle = null;
@@ -276,7 +280,20 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
     }
     creditCharged = true;
 
+    const branchResult = await gitService.createAgentWorktree(
+      workspaceId,
+      branch,
+      baseBranch,
+      taskProjectId,
+      executionId.toString()
+    );
+    if (!branchResult.success) {
+      throw new Error(`Could not create isolated branch: ${branchResult.error}`);
+    }
+    agentWorktree = { workspaceId, projectId: taskProjectId, executionId: executionId.toString() };
+
     const execution = await AgentExecution.create({
+      _id: executionId,
       userId: req.userId,
       sessionId: sessionId || null,
       taskId: task?._id || null,
@@ -423,6 +440,14 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       agentBranch: branch,
     });
   } catch (error) {
+    if (agentWorktree) {
+      const cleanup = await gitService.removeAgentWorktree(
+        agentWorktree.workspaceId,
+        agentWorktree.projectId,
+        agentWorktree.executionId
+      );
+      if (!cleanup.success) console.error('[agent-delegate] worktree cleanup failed:', cleanup.error);
+    }
     if (creditCharged) {
       creditCharged = false;
       await refundAgentCredit(req.userId);

@@ -105,10 +105,7 @@ export default function CreateTaskWizard({
       setError('Enter a task title before creating the task.');
       return;
     }
-    if (task.delegateToAgent && !companyId) {
-      setError('Join a workspace before delegating this task to an agent.');
-      return;
-    }
+    const taskWorkspaceId = companyId || selectedProject?.workspaceId || selectedProject?.companyId || null;
 
     setSubmitting(true);
     setError('');
@@ -121,7 +118,7 @@ export default function CreateTaskWizard({
         priority: task.priority,
         dueDate: task.dueDate || null,
         projectId: task.projectId || null,
-        companyId: companyId || null,
+        companyId: taskWorkspaceId,
         specIds: task.specIds,
         figmaNodeId: task.figmaNodeId.trim() || null,
         labels: task.labels,
@@ -147,7 +144,7 @@ export default function CreateTaskWizard({
         try {
           delegationResult = await agentApi.delegate({
             taskId: getId(result.task),
-            workspaceId: companyId,
+            workspaceId: taskWorkspaceId,
             specIds: task.specIds,
           });
           if (delegationResult.success === false) {

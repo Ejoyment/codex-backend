@@ -130,6 +130,8 @@ class AgentSocketHandler {
   async handleDelegate(socket, data = {}) {
     const { taskId, taskTitle, sessionId, workspaceId, summary = '', specId, provider: requestedProvider, model, localPrivacyMode = false } = data;
     let creditCharged = false;
+    let agentWorktree = null;
+    let createdExecution = null;
     const refundCredit = async () => {
       if (!creditCharged) return;
       creditCharged = false;
@@ -222,6 +224,7 @@ class AgentSocketHandler {
           creditsCharged: CreditPoolService.AGENT_JOB_CREDIT_COST,
         },
       });
+      createdExecution = execution;
 
       // Create the isolated agent branch so every execution has a real base to
       // merge back into. Without a workspace there is nowhere to branch.
@@ -229,19 +232,29 @@ class AgentSocketHandler {
         try {
           const slug = String(taskTitle || 'task').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'task';
           const agentBranch = `feature/${execution._id}-${slug}`;
-          await gitService.init(canonicalWorkspaceId);
-          await gitService.ensureBaseCommit(canonicalWorkspaceId, 'main');
-          const branchResult = await gitService.createBranch(canonicalWorkspaceId, agentBranch);
+          await gitService.init(canonicalWorkspaceId, {}, taskProjectId);
+          const branchResult = await gitService.createAgentWorktree(
+            canonicalWorkspaceId,
+            agentBranch,
+            'main',
+            taskProjectId,
+            execution._id.toString()
+          );
           if (branchResult.success) {
+            agentWorktree = {
+              workspaceId: canonicalWorkspaceId,
+              projectId: taskProjectId,
+              executionId: execution._id.toString(),
+            };
             execution.branch = agentBranch;
             execution.baseBranch = 'main';
             if (typeof execution.metadata?.set === 'function') execution.metadata.set('agentBranch', agentBranch);
             await execution.save();
           } else {
-            console.error('Agent branch creation failed:', branchResult.error);
+            throw new Error(`Could not create isolated branch: ${branchResult.error}`);
           }
         } catch (error) {
-          console.error('Agent branch setup error:', error.message);
+          throw new Error(`Agent branch setup failed: ${error.message}`);
         }
       }
 
@@ -304,6 +317,20 @@ class AgentSocketHandler {
       }
 
     } catch (error) {
+      if (agentWorktree) {
+        const cleanup = await gitService.removeAgentWorktree(
+          agentWorktree.workspaceId,
+          agentWorktree.projectId,
+          agentWorktree.executionId
+        );
+        if (!cleanup.success) console.error('[agent-socket] worktree cleanup failed:', cleanup.error);
+      }
+      if (createdExecution) {
+        createdExecution.status = 'failed';
+        createdExecution.summary = error.message || 'Agent branch setup failed';
+        createdExecution.completedAt = new Date();
+        await createdExecution.save();
+      }
       await refundCredit();
       console.error('Agent delegate error:', error);
       socket.emit('agent:error', { message: error.message });
@@ -498,6 +525,8 @@ class AgentSocketHandler {
         const staged = await agentChangeSet.stageChanges(workspaceId, changes, {
           message: `Agent: ${execution.taskTitle}`.slice(0, 200),
           branch: metaValue(execution, 'agentBranch') || execution.branch,
+          projectId,
+          executionId: execution._id.toString(),
         });
         if (!staged.success || !staged.committed) {
           throw new Error(`Could not stage agent changes on branch ${metaValue(execution, 'agentBranch') || execution.branch}: ${staged.error || staged.reason || 'commit did not complete'}`);

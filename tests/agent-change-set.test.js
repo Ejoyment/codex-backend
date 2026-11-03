@@ -140,14 +140,18 @@ describe('buildChangeset / summarize', () => {
 describe('stageChanges', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  test('writes then commits on the agent branch', async () => {
+  test('writes and commits on the originating project branch', async () => {
     gitService.writeWorkingTree.mockResolvedValue({ success: true, written: 1 });
     gitService.commitWorkingTree.mockResolvedValue({ success: true, commit: 'abc123' });
 
-    const result = await agentChangeSet.stageChanges('ws', [{ path: 'src/a.js', action: 'update', content: 'x' }], { message: 'msg', branch: 'feature/x' });
+    const result = await agentChangeSet.stageChanges(
+      'ws',
+      [{ path: 'src/a.js', action: 'update', content: 'x' }],
+      { message: 'msg', branch: 'feature/x', projectId: 'project-id' }
+    );
 
-    expect(gitService.writeWorkingTree).toHaveBeenCalledWith('ws', expect.any(Array));
-    expect(gitService.commitWorkingTree).toHaveBeenCalledWith('ws', 'msg', 'feature/x');
+    expect(gitService.writeWorkingTree).toHaveBeenCalledWith('ws', expect.any(Array), 'project-id', null);
+    expect(gitService.commitWorkingTree).toHaveBeenCalledWith('ws', 'msg', 'feature/x', 'project-id', null);
     expect(result).toMatchObject({ success: true, committed: true, commit: 'abc123' });
   });
 

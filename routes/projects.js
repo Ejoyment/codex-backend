@@ -415,6 +415,22 @@ router.post('/tasks', authenticateToken, async (req, res) => {
             }
         }
 
+        let resolvedCompanyId = companyId || null;
+        if (projectId) {
+            const project = await LocalProject.findById(projectId).select('workspaceId').lean();
+            if (!project) {
+                return res.status(404).json({ success: false, message: 'Project not found' });
+            }
+            if (!(await userCanAccessProject(projectId, userId))) {
+                return res.status(403).json({ success: false, message: 'Project access denied' });
+            }
+            const projectWorkspaceId = project.workspaceId ? String(project.workspaceId) : null;
+            if (resolvedCompanyId && projectWorkspaceId && String(resolvedCompanyId) !== projectWorkspaceId) {
+                return res.status(403).json({ success: false, message: 'Project does not belong to this workspace' });
+            }
+            resolvedCompanyId = projectWorkspaceId || resolvedCompanyId;
+        }
+
         const task = await LocalTask.create({
             userId,
             title,
@@ -423,7 +439,7 @@ router.post('/tasks', authenticateToken, async (req, res) => {
             taskType: ['github', 'gitlab'].includes(taskType) ? taskType : 'local',
             dueDate: dueDate ? new Date(dueDate) : null,
             projectId: projectId || null,
-            companyId: companyId || null,
+            companyId: resolvedCompanyId,
             specIds,
             figmaNodeId: figmaNodeId || null,
             blockedBy,

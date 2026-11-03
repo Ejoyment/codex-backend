@@ -281,6 +281,8 @@ async function runAgent() {
       staged = await agentChangeSet.stageChanges(workspaceId, changes, {
         message: `Agent: ${task.title || execution.taskTitle}`.slice(0, 200),
         branch: execution.branch,
+        projectId,
+        executionId,
       });
       if (!staged.success || !staged.committed) {
         throw new Error(`Could not stage agent changes on branch ${execution.branch}: ${staged.error || staged.reason || 'commit did not complete'}`);
