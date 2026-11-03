@@ -14,7 +14,18 @@ const BRANCH_RE = /^[A-Za-z0-9._\/-]{1,128}$/;
 function assertSafeBranch(v, name='branch') { if (typeof v !== 'string' || !BRANCH_RE.test(v) || v.startsWith('-') || v.includes('..') || v.includes('@{') || v.includes(':')) throw new Error(`Invalid ${name}`); }
 function assertSafeCommit(v) { if (typeof v !== 'string' || !/^[0-9a-f]{4,40}$/i.test(v)) throw new Error('Invalid commit'); }
 function assertSafeRemote(v) { if (typeof v !== 'string' || !/^\w[\w.-]{0,63}$/.test(v)) throw new Error('Invalid remote'); }
-function assertSafePath(v) { if (typeof v !== 'string' || v.includes('..') || /(^|\/)-/.test(v)) throw new Error('Invalid path'); for (const s of v.split('/')) { if (s.length && !/^[a-zA-Z0-9._-]+$/.test(s)) throw new Error('Invalid path'); } }
+function assertSafePath(v) {
+  if (typeof v !== 'string' || !v || v.includes('\\') || v.includes(':') || /[\u0000-\u001f\u007f]/.test(v)) {
+    throw new Error('Invalid path');
+  }
+  const relativePath = v.replace(/^\/+/, '');
+  const segments = relativePath.split('/');
+  if (!relativePath || segments.some((segment) => (
+    !segment || segment === '.' || segment === '..' || segment.startsWith('-')
+  ))) {
+    throw new Error('Invalid path');
+  }
+}
 function clampLimit(v, def=50, max=200) { const n = parseInt(v, 10); if (!Number.isFinite(n)) return def; return Math.min(Math.max(n, 1), max); }
 function assertSafeMessage(v, name='message') { if (typeof v !== 'string') throw new Error(`Invalid ${name}`); if (v.length > 500) throw new Error(`Invalid ${name}`); if (v.trim().startsWith('-')) throw new Error(`Invalid ${name}`); }
 function toFileArray(files) { const arr = Array.isArray(files) ? files : [files]; for (const f of arr) assertSafePath(f); return ['--', ...arr]; }
