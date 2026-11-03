@@ -37,7 +37,7 @@ const supportTicketSchema = new mongoose.Schema({
     },
     assignedTo: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
+        ref: 'SupportAgent',
         default: null
     },
     messages: [{

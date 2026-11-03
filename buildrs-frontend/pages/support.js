@@ -188,7 +188,7 @@ function TicketCard({ ticket, onReply }) {
                         <span>{new Date(msg.createdAt).toLocaleString()}</span>
                       )}
                     </div>
-                    <p className="sup-bubble-text">{msg.content || msg.text}</p>
+                    <p className="sup-bubble-text">{msg.message || msg.content || msg.text}</p>
                   </div>
                 );
               })

@@ -115,6 +115,99 @@ router.post('/agent/login', supportLoginLimiter, async (req, res) => {
  *       401:
  *         description: Unauthorized
  */
+// Support Agent Signup (public)
+router.post('/agent/signup', async (req, res) => {
+    try {
+        const { name, email, password } = req.body;
+
+        if (!name || !email || !password) {
+            return res.status(400).json({ success: false, error: 'Name, email and password are required' });
+        }
+        if (password.length < 6) {
+            return res.status(400).json({ success: false, error: 'Password must be at least 6 characters long' });
+        }
+
+        const normalizedEmail = String(email).trim().toLowerCase();
+        const existing = await SupportAgent.findOne({ email: normalizedEmail });
+        if (existing) {
+            return res.status(400).json({ success: false, error: 'An agent account with this email already exists' });
+        }
+
+        const agent = new SupportAgent({
+            name: String(name).trim(),
+            email: normalizedEmail,
+            password,
+            role: 'agent',
+            status: 'offline'
+        });
+        await agent.save();
+
+        const token = jwt.sign(
+            { agentId: agent._id, role: agent.role },
+            process.env.JWT_SECRET,
+            { expiresIn: '8h' }
+        );
+
+        agent.status = 'online';
+        agent.lastActive = new Date();
+        await agent.save();
+
+        res.status(201).json({
+            success: true,
+            message: 'Agent account created successfully',
+            token,
+            agent: {
+                id: agent._id,
+                name: agent.name,
+                email: agent.email,
+                role: agent.role,
+                status: agent.status
+            }
+        });
+    } catch (error) {
+        console.error('Agent signup error:', error);
+        res.status(500).json({ success: false, error: 'Signup failed' });
+    }
+});
+
+// Support Agent Profile (me)
+router.get('/agent/me', verifySupportAgent, async (req, res) => {
+    try {
+        const agent = req.agent;
+        res.json({
+            success: true,
+            agent: {
+                id: agent._id,
+                name: agent.name,
+                email: agent.email,
+                role: agent.role,
+                status: agent.status,
+                averageRating: agent.averageRating,
+                resolvedTickets: agent.resolvedTickets
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, error: 'Failed to fetch profile' });
+    }
+});
+
+// Support Agent Status Update
+router.put('/agent/status', verifySupportAgent, async (req, res) => {
+    try {
+        const { status } = req.body;
+        const allowed = ['online', 'offline', 'away', 'busy'];
+        if (!allowed.includes(status)) {
+            return res.status(400).json({ success: false, error: 'Invalid status' });
+        }
+        req.agent.status = status;
+        req.agent.lastActive = new Date();
+        await req.agent.save();
+        res.json({ success: true, status: req.agent.status });
+    } catch (error) {
+        res.status(500).json({ success: false, error: 'Failed to update status' });
+    }
+});
+
 // Support Agent Logout
 router.post('/agent/logout', verifySupportAgent, async (req, res) => {
     try {
