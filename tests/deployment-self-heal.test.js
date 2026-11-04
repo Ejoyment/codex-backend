@@ -480,5 +480,22 @@ describe('deployment self-heal worker', () => {
     expect(goal).toContain('may use any language, framework, or build system');
     expect(goal).toContain('dockerfile');
     expect(goal).toContain('edit_file');
+    expect(goal).toContain('Detected runtime: docker');
+    expect(goal).toContain('create a correct Dockerfile');
+  });
+
+  test('tells the agent when an unsupported stack was detected as static', () => {
+    const goal = selfHeal.buildHealingGoal(
+      deployment({ fault: 'user', failureStage: 'build', buildLogs: 'Main.java:4: error: cannot find symbol' }),
+      'project-id',
+      [
+        { _id: 'f1', name: 'Main.java', path: '/src', language: 'java', content: 'class Main {}' },
+        { _id: 'f2', name: 'pom.xml', path: '/', language: 'xml', content: '<project/>' },
+      ]
+    );
+
+    expect(goal).toContain('Detected runtime: static');
+    expect(goal).toContain('create a correct Dockerfile');
+    expect(goal).toContain('pom.xml');
   });
 });
