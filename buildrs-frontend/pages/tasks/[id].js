@@ -61,6 +61,15 @@ function taskStatus(task) {
   return STATUS_LABELS[task?.status] || task?.status || 'To do';
 }
 
+// A task keeps its last agentSessionId after a failed/rejected run (for logs),
+// but it is no longer an active session and must be re-delegatable.
+const AGENT_TERMINAL_STATUSES = new Set(['failed', 'rejected', 'completed', 'approved']);
+
+function agentIsActive(task) {
+  if (!task?.agentSessionId) return false;
+  return !AGENT_TERMINAL_STATUSES.has(task.agentExecution?.status);
+}
+
 function formatDate(value, options = { dateStyle: 'medium', timeStyle: 'short' }) {
   if (!value) return 'Not set';
   const date = new Date(value);
@@ -340,6 +349,14 @@ export default function TaskDetails() {
     if (event.key === 'Escape') setEditing(false);
   };
 
+  const agentActive = agentIsActive(task);
+  const canDelegate = Boolean(task) && !agentActive && task.status !== 'blocked';
+  const delegateLabel = agentActive
+    ? 'Agent assigned'
+    : task?.agentSessionId
+      ? 'Retry agent'
+      : 'Delegate to AI';
+
   return (
     <AuthGuard>
       <Head>
@@ -369,9 +386,9 @@ export default function TaskDetails() {
                 Review PR
                 {pullRequestUrl && <ExternalLink className="w-3.5 h-3.5" />}
               </a>
-              <button type="button" className="btn-workspace btn-primary" onClick={delegateTask} disabled={delegating || Boolean(task?.agentSessionId) || !task}>
+              <button type="button" className="btn-workspace btn-primary" onClick={delegateTask} disabled={delegating || !canDelegate} title={agentActive ? 'This task already has an active agent session' : task?.status === 'blocked' ? 'Blocked tasks cannot be delegated' : undefined}>
                 {delegating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bot className="w-4 h-4" />}
-                {delegating ? 'Delegating' : task?.agentSessionId ? 'Agent assigned' : 'Delegate to AI'}
+                {delegating ? 'Delegating' : delegateLabel}
               </button>
             </div>
           </header>
@@ -383,6 +400,9 @@ export default function TaskDetails() {
                 <Bot className="h-4 w-4 flex-shrink-0" />
                 <span className="flex-1">Agent execution failed: {task.agentExecution.error || 'No failure details were saved.'}</span>
                 {task.agentSessionId && <Link href={`/ai-pair?executionId=${task.agentSessionId}`} className="text-xs underline">Open run logs</Link>}
+                <button type="button" className="text-xs underline whitespace-nowrap" onClick={delegateTask} disabled={delegating || task.status === 'blocked'}>
+                  {delegating ? 'Retrying…' : 'Retry agent'}
+                </button>
               </div>
             )}
             {loading ? (

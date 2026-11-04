@@ -45,7 +45,7 @@ export default function CreateTaskModal({ onClose, onCreated }) {
       >
         <div className="flex justify-between items-center mb-6">
           <h3 className="ws-modal-title">Create New Task</h3>
-          <button type="button" onClick={onClose} className="text-[#565d6b] hover:text-[#eceef1] text-2xl leading-none">
+          <button type="button" onClick={onClose} className="text-[#59687a] hover:text-[#ffffff] text-2xl leading-none">
             <X className="w-5 h-5" />
           </button>
         </div>

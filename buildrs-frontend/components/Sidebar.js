@@ -96,7 +96,7 @@ export default function Sidebar({
             <span className="sidebar-logo-text text-[17px] font-semibold tracking-tight text-white">
               Buildrs
             </span>
-            <span className="mkt-mono text-[10px] uppercase tracking-[0.18em] text-[#686e7c]">· hq</span>
+            <span className="mkt-mono text-[10px] uppercase tracking-[0.18em] text-[#748194]">· hq</span>
           </Link>
         </div> */}
 
@@ -142,8 +142,8 @@ export default function Sidebar({
             </div>
           </div>
           {tierDisplayLabel(subscription, user?.subscription?.tier) && (
-            <div id="subscriptionBadge" className="sidebar-badge mt-2" title={tierDisplayDetail(subscription, user?.subscription?.tier)}>
-              <span className="text-[#34d399] bg-[#34d399]/10 px-2 py-0.5 rounded text-[11px] font-medium">{tierDisplayLabel(subscription, user?.subscription?.tier)}</span>
+            <div id="subscriptionBadge" className="sidebar-badge" title={tierDisplayDetail(subscription, user?.subscription?.tier)}>
+              {tierDisplayLabel(subscription, user?.subscription?.tier)}
             </div>
           )}
         </div>

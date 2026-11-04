@@ -1,6 +1,7 @@
 jest.mock('../models/Company', () => ({
   find: jest.fn(),
   findById: jest.fn(),
+  updateMany: jest.fn(),
 }));
 
 const Company = require('../models/Company');
@@ -58,14 +59,19 @@ describe('company role backfill', () => {
   test('applies viewer to every missing/invalid role', async () => {
     const doc = company();
     Company.find.mockResolvedValue([doc]);
-    Company.findById.mockResolvedValue(doc);
+    Company.updateMany.mockResolvedValue({ modifiedCount: 1 });
 
     const result = await backfillMissingRoles({ dryRun: false });
 
-    expect(doc.members.find((m) => m.user === 'legacy-1').role).toBe('viewer');
-    expect(doc.members.find((m) => m.user === 'invalid-1').role).toBe('viewer');
-    expect(doc.members.find((m) => m.user === 'viewer-1').role).toBe('viewer');
-    expect(doc.save).toHaveBeenCalledTimes(1);
+    expect(Company.updateMany).toHaveBeenCalledWith(
+      {
+        _id: { $in: ['company-1'] },
+        'members.role': { $nin: ['owner', 'admin', 'member', 'viewer'] },
+      },
+      { $set: { 'members.$[member].role': 'viewer' } },
+      { arrayFilters: [{ 'member.role': { $nin: ['owner', 'admin', 'member', 'viewer'] } }] }
+    );
+    expect(doc.save).not.toHaveBeenCalled();
     expect(result).toMatchObject({ dryRun: false, updatedCompanies: 1 });
   });
 });

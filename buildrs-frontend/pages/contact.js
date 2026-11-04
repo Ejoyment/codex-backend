@@ -104,15 +104,15 @@ export default function Contact() {
             {CHANNELS.map((c) => (
               <StaggerItem key={c.title}>
               <div className="mkt-cell h-full">
-                <p className="mkt-mono text-[10.5px] uppercase tracking-widest text-[#525764]">{c.tag}</p>
+                <p className="mkt-mono text-[10.5px] uppercase tracking-widest text-[#59687a]">{c.tag}</p>
                 <h3 className="mkt-h3 mt-3">{c.title}</h3>
-                <p className="mt-2 text-[13.5px] leading-relaxed text-[#a8adba]">{c.desc}</p>
+                <p className="mt-2 text-[13.5px] leading-relaxed text-[#a9b7c4]">{c.desc}</p>
                 {c.href.startsWith('mailto:') ? (
-                  <a href={c.href} className="mkt-mono mt-4 inline-block text-[12px] text-[#2fd6e6]">
+                  <a href={c.href} className="mkt-mono mt-4 inline-block text-[12px] text-[#12dce5]">
                     {c.label}
                   </a>
                 ) : (
-                  <Link href={c.href} className="mkt-mono mt-4 inline-block text-[12px] text-[#2fd6e6]">
+                  <Link href={c.href} className="mkt-mono mt-4 inline-block text-[12px] text-[#12dce5]">
                     {c.label}
                   </Link>
                 )}
@@ -174,13 +174,13 @@ export default function Contact() {
           <ScrollReveal direction="right">
           <div>
             <h2 className="mkt-h3">Other ways to reach us</h2>
-            <StaggerChildren className="mt-6 space-y-px overflow-hidden rounded-xl border border-[#ffffff12] bg-[#ffffff12]" stagger={0.08}>
+            <StaggerChildren className="mt-6 space-y-px overflow-hidden rounded-xl border border-[#ffffff10] bg-[#ffffff10]" stagger={0.08}>
               {OTHER.map(([name, desc, email]) => (
                 <StaggerItem key={name}>
-                <div className="bg-[#0d0d12] p-6">
-                  <p className="mkt-mono text-[10.5px] uppercase tracking-widest text-[#2fd6e6]">{name}</p>
-                  <p className="mt-2 text-[13.5px] text-[#a8adba]">{desc}</p>
-                  <a href={`mailto:${email}`} className="mkt-mono mt-2 inline-block text-[12px] text-[#a8adba] hover:text-white">
+                <div className="bg-[#121821] p-6">
+                  <p className="mkt-mono text-[10.5px] uppercase tracking-widest text-[#12dce5]">{name}</p>
+                  <p className="mt-2 text-[13.5px] text-[#a9b7c4]">{desc}</p>
+                  <a href={`mailto:${email}`} className="mkt-mono mt-2 inline-block text-[12px] text-[#a9b7c4] hover:text-white">
                     {email}
                   </a>
                 </div>
@@ -190,7 +190,7 @@ export default function Contact() {
 
             <div className="mkt-card mt-6 p-6">
               <h3 className="mkt-h3">Prefer async?</h3>
-              <p className="mt-2 text-[13.5px] leading-relaxed text-[#a8adba]">
+              <p className="mt-2 text-[13.5px] leading-relaxed text-[#a9b7c4]">
                 File it in the support center and an AI agent with workspace access starts triaging in seconds.
               </p>
               <Link href="/support" className="mkt-btn mt-5 !text-[14px]">

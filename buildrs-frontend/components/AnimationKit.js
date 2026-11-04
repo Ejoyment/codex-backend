@@ -56,7 +56,7 @@ export function StaggerItem({ children, className = '' }) {
   );
 }
 
-export function FloatingOrb({ className = '', color = 'rgba(59,130,246,0.15)', size = 300, delay = 0 }) {
+export function FloatingOrb({ className = '', color = 'rgba(18,220,229,0.15)', size = 300, delay = 0 }) {
   return (
     <motion.div
       className={`absolute rounded-full blur-3xl pointer-events-none ${className}`}
@@ -73,9 +73,9 @@ export function FloatingOrb({ className = '', color = 'rgba(59,130,246,0.15)', s
 export function GradientMesh() {
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      <FloatingOrb color="rgba(59,130,246,0.10)" size={400} className="top-[-10%] left-[-5%]" delay={0} />
-      <FloatingOrb color="rgba(139,92,246,0.08)" size={350} className="top-[20%] right-[-8%]" delay={3} />
-      <FloatingOrb color="rgba(16,185,129,0.06)" size={300} className="bottom-[10%] left-[15%]" delay={6} />
+      <FloatingOrb color="rgba(18,220,229,0.10)" size={400} className="top-[-10%] left-[-5%]" delay={0} />
+      <FloatingOrb color="rgba(138,56,245,0.08)" size={350} className="top-[20%] right-[-8%]" delay={3} />
+      <FloatingOrb color="rgba(3,186,3,0.06)" size={300} className="bottom-[10%] left-[15%]" delay={6} />
     </div>
   );
 }
@@ -95,7 +95,7 @@ export function GridLines() {
   );
 }
 
-export function GlowCard({ children, className = '', glowColor = 'rgba(59,130,246,0.15)' }) {
+export function GlowCard({ children, className = '', glowColor = 'rgba(18,220,229,0.15)' }) {
   return (
     <div className={`relative group ${className}`}>
       <div
@@ -381,7 +381,7 @@ export function IDEBackground({ children }) {
         spotlightRef.current.style.background = `radial-gradient(400px circle at ${x}px ${y}px, rgba(99,102,241,0.05), transparent 55%)`;
       }
       if (glowRef.current) {
-        glowRef.current.style.background = `radial-gradient(250px circle at ${x}px ${y}px, rgba(139,92,246,0.06), transparent 45%)`;
+        glowRef.current.style.background = `radial-gradient(250px circle at ${x}px ${y}px, rgba(138,56,245,0.06), transparent 45%)`;
       }
       rafRef.current = null;
     };

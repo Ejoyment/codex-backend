@@ -96,7 +96,11 @@ describe('write-through bridge (3.1)', () => {
     });
     expect(res.applied).toBe(false);
     expect(res.reason).toMatch(/duplicate/i);
-    expect(mirror).not.toHaveBeenCalled();
+    expect(mirror).toHaveBeenCalledWith(
+      { userId: '507f1f77bcf86cd799439011' },
+      expect.objectContaining({ tier: 'pro', status: 'active' }),
+      expect.anything()
+    );
   });
 
   test('missing userId resolves via providerCustomerId', async () => {

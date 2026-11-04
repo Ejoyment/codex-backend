@@ -2,10 +2,10 @@ import { useRouter } from 'next/router';
 import { Video, Calendar, Clock, Users, ChevronRight } from 'lucide-react';
 
 const STATUS_STYLES = {
-  scheduled: { bg: 'rgba(47,214,230,0.1)', text: '#2fd6e6', label: 'Scheduled' },
-  ongoing: { bg: 'rgba(52,211,153,0.12)', text: '#34d399', label: 'Ongoing' },
-  completed: { bg: 'rgba(255,255,255,0.06)', text: '#9aa1ae', label: 'Completed' },
-  cancelled: { bg: 'rgba(248,113,113,0.1)', text: '#f87171', label: 'Cancelled' },
+  scheduled: { bg: 'rgba(18,220,229,0.1)', text: '#12dce5', label: 'Scheduled' },
+  ongoing: { bg: 'rgba(3,186,3,0.12)', text: '#03ba03', label: 'Ongoing' },
+  completed: { bg: 'rgba(255,255,255,0.06)', text: '#9aaeba', label: 'Completed' },
+  cancelled: { bg: 'rgba(236,20,20,0.1)', text: '#ec1414', label: 'Cancelled' },
 };
 
 function formatMeetingTime(iso) {
@@ -68,12 +68,12 @@ export default function UpcomingMeetings({ meetings = [] }) {
                   {status.label}
                 </span>
                 <span className="queue-due">
-                  <Calendar className="w-3 h-3 inline mr-1 align-text-top" style={{ color: '#565d6b' }} />
+                  <Calendar className="w-3 h-3 inline mr-1 align-text-top" style={{ color: '#59687a' }} />
                   {formatMeetingTime(meeting.scheduledAt)}
                 </span>
                 <span className="queue-due">{meeting.duration || 30} min</span>
                 <span className="queue-due">
-                  <Users className="w-3 h-3 inline mr-1 align-text-top" style={{ color: '#565d6b' }} />
+                  <Users className="w-3 h-3 inline mr-1 align-text-top" style={{ color: '#59687a' }} />
                   {meeting.participants?.length || 0}
                 </span>
               </div>

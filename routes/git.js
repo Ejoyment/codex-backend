@@ -10,6 +10,64 @@ const { authenticateToken } = require('../middleware/auth');
 const permissionMatrix = require('../middleware/permissionMatrix');
 const { addAuditLog } = require('../utils/auditLogService');
 const Company = require('../models/Company');
+const LocalProject = require('../models/LocalProject');
+const TeamProject = require('../models/TeamProject');
+const { userCanAccessProject } = require('../utils/specAccess');
+
+async function requireGitAccess(req, res, next) {
+  const workspaceId = req.params.workspaceId || req.body?.workspaceId || req.query.workspaceId;
+  const projectId = req.params.projectId || req.body?.projectId || req.query.projectId;
+  if (projectId) {
+    try {
+      const localProject = await LocalProject.findById(projectId).select('workspaceId').lean();
+      const project = localProject || await TeamProject.findById(projectId)
+        .select('workspaceId company owner members')
+        .lean();
+      if (!project) return res.status(404).json({ error: 'Project not found' });
+      if (localProject) {
+        if (!(await userCanAccessProject(projectId, req.userId))) {
+          return res.status(403).json({ error: 'Access denied to project' });
+        }
+      } else {
+        const teamWorkspaceId = project.workspaceId || project.company;
+        const company = teamWorkspaceId
+          ? await Company.findById(teamWorkspaceId).select('members owner')
+          : null;
+        const isWorkspaceMember = company && (
+          String(company.owner) === String(req.userId)
+          || company.members.some((member) => String(member.user || member.userId) === String(req.userId))
+        );
+        if (!isWorkspaceMember) return res.status(403).json({ error: 'Access denied to project' });
+      }
+      const projectWorkspaceId = project.workspaceId || project.company;
+      if (workspaceId && projectWorkspaceId && String(projectWorkspaceId) !== String(workspaceId)) {
+        return res.status(403).json({ error: 'Project does not belong to this workspace' });
+      }
+      req.gitWorkspaceId = workspaceId || projectWorkspaceId;
+      req.gitProjectId = String(projectId);
+      if (!req.gitWorkspaceId) {
+        return res.status(400).json({ error: 'A project workspace is required for Git operations' });
+      }
+      return next();
+    } catch (error) {
+      console.error('Git project access check error:', error);
+      return res.status(500).json({ error: 'Failed to verify project access' });
+    }
+  }
+  if (!workspaceId) return next();
+  try {
+    const company = await Company.findById(workspaceId).select('members owner');
+    if (!company) return res.status(404).json({ error: 'Workspace not found' });
+    const isMember = company.members.some(m => m.user?.toString() === req.userId) || company.owner?.toString() === req.userId;
+    if (!isMember) return res.status(403).json({ error: 'Access denied: not a workspace member' });
+    req.gitWorkspaceId = workspaceId;
+    req.gitProjectId = null;
+    next();
+  } catch (error) {
+    console.error('Git workspace access check error:', error);
+    res.status(500).json({ error: 'Failed to verify workspace access' });
+  }
+}
 
 // Verify user is a member of the company/workspace before operating
 async function requireWorkspaceAccess(req, res, next) {
@@ -72,7 +130,7 @@ async function requireWorkspaceAccess(req, res, next) {
  *       500:
  *         description: Internal server error
  */
-router.post('/init', authenticateToken, requireWorkspaceAccess, async (req, res) => {
+router.post('/init', authenticateToken, requireGitAccess, async (req, res) => {
   try {
     const { workspaceId, userName, userEmail } = req.body;
 
@@ -80,7 +138,7 @@ router.post('/init', authenticateToken, requireWorkspaceAccess, async (req, res)
       return res.status(400).json({ error: 'workspaceId is required' });
     }
 
-    const result = await gitService.init(workspaceId, { userName, userEmail });
+    const result = await gitService.init(workspaceId, { userName, userEmail }, req.gitProjectId);
     res.json(result);
   } catch (error) {
     console.error('Git init error:', error);
@@ -111,10 +169,10 @@ router.post('/init', authenticateToken, requireWorkspaceAccess, async (req, res)
  *       500:
  *         description: Internal server error
  */
-router.get('/status/:workspaceId', authenticateToken, requireWorkspaceAccess, permissionMatrix.requirePermission('git', 'read'), async (req, res) => {
+router.get('/status/:workspaceId', authenticateToken, requireGitAccess, permissionMatrix.requirePermission('git', 'read'), async (req, res) => {
   try {
     const { workspaceId } = req.params;
-    const result = await gitService.status(workspaceId);
+    const result = await gitService.status(workspaceId, req.gitProjectId);
     res.json(result);
   } catch (error) {
     console.error('Git status error:', error);
@@ -149,12 +207,12 @@ router.get('/status/:workspaceId', authenticateToken, requireWorkspaceAccess, pe
  *       500:
  *         description: Internal server error
  */
-router.get('/diff/:workspaceId', authenticateToken, requireWorkspaceAccess, permissionMatrix.requirePermission('git', 'read'), async (req, res) => {
+router.get('/diff/:workspaceId', authenticateToken, requireGitAccess, permissionMatrix.requirePermission('git', 'read'), async (req, res) => {
   try {
     const { workspaceId } = req.params;
     const { file } = req.query;
     
-    const result = await gitService.diff(workspaceId, file);
+    const result = await gitService.diff(workspaceId, file, req.gitProjectId);
     res.json(result);
   } catch (error) {
     console.error('Git diff error:', error);
@@ -185,6 +243,8 @@ router.get('/diff/:workspaceId', authenticateToken, requireWorkspaceAccess, perm
  *                 type: string
  *               files:
  *                 type: array
+ *                 deprecated: true
+ *                 description: Ignored; stage files with POST /api/git/add before committing.
  *                 items:
  *                   type: string
  *     responses:
@@ -197,7 +257,7 @@ router.get('/diff/:workspaceId', authenticateToken, requireWorkspaceAccess, perm
  *       500:
  *         description: Internal server error
  */
-router.post('/add', authenticateToken, requireWorkspaceAccess, async (req, res) => {
+router.post('/add', authenticateToken, requireGitAccess, async (req, res) => {
   try {
     const { workspaceId, files } = req.body;
 
@@ -205,7 +265,7 @@ router.post('/add', authenticateToken, requireWorkspaceAccess, async (req, res) 
       return res.status(400).json({ error: 'workspaceId and files are required' });
     }
 
-    const result = await gitService.add(workspaceId, files);
+    const result = await gitService.add(workspaceId, files, req.gitProjectId);
     res.json(result);
   } catch (error) {
     console.error('Git add error:', error);
@@ -248,7 +308,7 @@ router.post('/add', authenticateToken, requireWorkspaceAccess, async (req, res) 
  *       500:
  *         description: Internal server error
  */
-router.post('/reset', authenticateToken, requireWorkspaceAccess, async (req, res) => {
+router.post('/reset', authenticateToken, requireGitAccess, async (req, res) => {
   try {
     const { workspaceId, files } = req.body;
 
@@ -256,7 +316,7 @@ router.post('/reset', authenticateToken, requireWorkspaceAccess, async (req, res
       return res.status(400).json({ error: 'workspaceId and files are required' });
     }
 
-    const result = await gitService.reset(workspaceId, files);
+    const result = await gitService.reset(workspaceId, files, req.gitProjectId);
     res.json(result);
   } catch (error) {
     console.error('Git reset error:', error);
@@ -301,7 +361,7 @@ router.post('/reset', authenticateToken, requireWorkspaceAccess, async (req, res
  *       500:
  *         description: Internal server error
  */
-router.post('/commit', authenticateToken, requireWorkspaceAccess, permissionMatrix.requirePermission('git', 'commit'), async (req, res) => {
+router.post('/commit', authenticateToken, requireGitAccess, permissionMatrix.requirePermission('git', 'commit'), async (req, res) => {
   try {
     const { workspaceId, message, files } = req.body;
 
@@ -309,7 +369,7 @@ router.post('/commit', authenticateToken, requireWorkspaceAccess, permissionMatr
       return res.status(400).json({ error: 'workspaceId and message are required' });
     }
 
-    const result = await gitService.commit(workspaceId, message, files);
+    const result = await gitService.commit(workspaceId, message, req.gitProjectId);
     addAuditLog({
       companyId: workspaceId,
       actorId: req.userId,
@@ -357,14 +417,15 @@ router.post('/commit', authenticateToken, requireWorkspaceAccess, permissionMatr
  *       500:
  *         description: Internal server error
  */
-router.get('/log/:workspaceId', authenticateToken, requireWorkspaceAccess, permissionMatrix.requirePermission('git', 'read'), async (req, res) => {
+router.get('/log/:workspaceId', authenticateToken, requireGitAccess, permissionMatrix.requirePermission('git', 'read'), async (req, res) => {
   try {
     const { workspaceId } = req.params;
     const { limit, file } = req.query;
 
     const result = await gitService.log(workspaceId, {
       limit: parseInt(limit) || 50,
-      file
+      file,
+      projectId: req.gitProjectId,
     });
     res.json(result);
   } catch (error) {
@@ -396,10 +457,10 @@ router.get('/log/:workspaceId', authenticateToken, requireWorkspaceAccess, permi
  *       500:
  *         description: Internal server error
  */
-router.get('/branches/:workspaceId', authenticateToken, requireWorkspaceAccess, permissionMatrix.requirePermission('git', 'read'), async (req, res) => {
+router.get('/branches/:workspaceId', authenticateToken, requireGitAccess, permissionMatrix.requirePermission('git', 'read'), async (req, res) => {
   try {
     const { workspaceId } = req.params;
-    const result = await gitService.branches(workspaceId);
+    const result = await gitService.branches(workspaceId, req.gitProjectId);
     res.json(result);
   } catch (error) {
     console.error('Git branches error:', error);
@@ -440,7 +501,7 @@ router.get('/branches/:workspaceId', authenticateToken, requireWorkspaceAccess, 
  *       500:
  *         description: Internal server error
  */
-router.post('/branch', authenticateToken, requireWorkspaceAccess, permissionMatrix.requirePermission('git', 'branch'), async (req, res) => {
+router.post('/branch', authenticateToken, requireGitAccess, permissionMatrix.requirePermission('git', 'branch'), async (req, res) => {
   try {
     const { workspaceId, branchName } = req.body;
 
@@ -448,7 +509,7 @@ router.post('/branch', authenticateToken, requireWorkspaceAccess, permissionMatr
       return res.status(400).json({ error: 'workspaceId and branchName are required' });
     }
 
-    const result = await gitService.createBranch(workspaceId, branchName);
+    const result = await gitService.createBranch(workspaceId, branchName, req.gitProjectId);
     res.json(result);
   } catch (error) {
     console.error('Git create branch error:', error);
@@ -489,7 +550,7 @@ router.post('/branch', authenticateToken, requireWorkspaceAccess, permissionMatr
  *       500:
  *         description: Internal server error
  */
-router.post('/checkout', authenticateToken, requireWorkspaceAccess, async (req, res) => {
+router.post('/checkout', authenticateToken, requireGitAccess, async (req, res) => {
   try {
     const { workspaceId, branchName } = req.body;
 
@@ -497,7 +558,7 @@ router.post('/checkout', authenticateToken, requireWorkspaceAccess, async (req, 
       return res.status(400).json({ error: 'workspaceId and branchName are required' });
     }
 
-    const result = await gitService.checkout(workspaceId, branchName);
+    const result = await gitService.checkout(workspaceId, branchName, req.gitProjectId);
     res.json(result);
   } catch (error) {
     console.error('Git checkout error:', error);
@@ -538,7 +599,7 @@ router.post('/checkout', authenticateToken, requireWorkspaceAccess, async (req, 
  *       500:
  *         description: Internal server error
  */
-router.post('/merge', authenticateToken, requireWorkspaceAccess, async (req, res) => {
+router.post('/merge', authenticateToken, requireGitAccess, async (req, res) => {
   try {
     const { workspaceId, branchName } = req.body;
 
@@ -546,7 +607,7 @@ router.post('/merge', authenticateToken, requireWorkspaceAccess, async (req, res
       return res.status(400).json({ error: 'workspaceId and branchName are required' });
     }
 
-    const result = await gitService.merge(workspaceId, branchName);
+    const result = await gitService.merge(workspaceId, branchName, req.gitProjectId);
     res.json(result);
   } catch (error) {
     console.error('Git merge error:', error);

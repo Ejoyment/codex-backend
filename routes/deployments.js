@@ -5,6 +5,7 @@
 
 const express = require('express');
 const router = express.Router();
+const { randomUUID } = require('crypto');
 const Deployment = require('../models/Deployment');
 const TeamProject = require('../models/TeamProject');
 const LocalProject = require('../models/LocalProject');
@@ -67,11 +68,24 @@ router.get('/', authenticateToken, async (req, res) => {
                 updatedAt: { $lt: staleThreshold }
             },
             {
-                status: 'failed',
-                errorMessage: 'Deployment timed out. Please try again.',
-                fault: 'platform',
-                failureStage: 'platform',
-                expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+                $set: {
+                    status: 'failed',
+                    errorMessage: 'Deployment timed out. Please try again.',
+                    fault: 'platform',
+                    failureStage: 'platform',
+                    selfHeal: {
+                        status: null,
+                        attempts: 0,
+                        lastAttemptAt: null,
+                        nextAttemptAt: null,
+                        completedAt: null,
+                        agentExecutionId: null,
+                        summary: null,
+                        lastError: null,
+                    },
+                    expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+                },
+                $unset: { buildRunId: 1 }
             }
         );
 
@@ -220,34 +234,77 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
             ? (repo.fullName || (repo.owner && repo.name ? `${repo.owner}/${repo.name}` : null))
             : null;
         const projectKey = projectId ? String(projectId) : null;
+        const buildRunId = randomUUID();
         if (deployment) {
-            deployment.userId = req.userId;
-            deployment.projectId = projectId || null;
-            deployment.projectKey = projectKey;
-            deployment.repoFullName = repoFullName;
-            deployment.status = 'building';
-            deployment.errorMessage = null;
-            deployment.deployedUrl = null;
-            deployment.containerId = null;
-            deployment.fault = null;
-            deployment.failureStage = null;
-            deployment.buildLogs = '';
-            deployment.runtimeLogs = '';
-            deployment.steps = INITIAL_STEPS();
-            await deployment.save();
+            deployment = await Deployment.findOneAndUpdate(
+                {
+                    _id: deployment._id,
+                    userId: req.userId,
+                    status: { $nin: ['building', 'deploying'] },
+                    buildRunId: { $in: [null] },
+                },
+                {
+                    $set: {
+                        userId: req.userId,
+                        projectId: projectId || null,
+                        projectKey,
+                        repoFullName,
+                        status: 'building',
+                        buildRunId,
+                        errorMessage: null,
+                        deployedUrl: null,
+                        containerId: null,
+                        fault: null,
+                        failureStage: null,
+                        buildLogs: '',
+                        runtimeLogs: '',
+                        steps: INITIAL_STEPS(),
+                        expiresAt: null,
+                        // A fresh manual deploy starts a fresh self-heal budget.
+                        selfHeal: {
+                            status: null,
+                            attempts: 0,
+                            lastAttemptAt: null,
+                            nextAttemptAt: null,
+                            completedAt: null,
+                            agentExecutionId: null,
+                            summary: null,
+                            lastError: null,
+                        },
+                    },
+                },
+                { new: true }
+            );
+            if (!deployment) {
+                return res.status(409).json({ error: 'A deployment for this subdomain is already running.' });
+            }
         } else {
-            deployment = await Deployment.create({
-                userId: req.userId,
-                projectId: projectId || null,
-                projectKey,
-                repoFullName,
-                subdomain: sanitized,
-                status: 'building',
-                steps: INITIAL_STEPS()
-            });
+            try {
+                deployment = await Deployment.create({
+                    userId: req.userId,
+                    projectId: projectId || null,
+                    projectKey,
+                    repoFullName,
+                    subdomain: sanitized,
+                    status: 'building',
+                    buildRunId,
+                    steps: INITIAL_STEPS()
+                });
+            } catch (error) {
+                if (error.code === 11000) {
+                    return res.status(409).json({ error: 'A deployment for this subdomain is already starting.' });
+                }
+                throw error;
+            }
         }
 
         const deployId = deployment._id;
+        const activeRunFilter = {
+            _id: deployId,
+            userId: req.userId,
+            buildRunId,
+            status: { $in: ['building', 'deploying'] },
+        };
 
         addAuditLog({
             companyId: workspaceId || null,
@@ -280,7 +337,10 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
                 logFlushTimer = null;
                 if (finished || !buildLog) return;
                 try {
-                    await Deployment.updateOne({ _id: deployId }, { buildLogs: depService.capLogTail(buildLog) });
+                    await Deployment.updateOne(
+                        activeRunFilter,
+                        { $set: { buildLogs: depService.capLogTail(buildLog) } }
+                    );
                 } catch (flushErr) {
                     console.warn('[deploy] build log flush failed:', flushErr.message);
                 }
@@ -288,7 +348,7 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
             const persistSteps = async (extra = {}) => {
                 if (finished) return;
                 try {
-                    await Deployment.updateOne({ _id: deployId }, { steps: liveSteps, ...extra });
+                    await Deployment.updateOne(activeRunFilter, { $set: { steps: liveSteps, ...extra } });
                 } catch (e) {
                     console.warn('[deploy] steps persist failed:', e.message);
                 }
@@ -368,19 +428,29 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
                 const logTail = buildLog
                     ? `${buildLog}\n--- DEPLOYMENT FAILED ---\n${depErr.message}\n`
                     : `--- DEPLOYMENT FAILED ---\n${depErr.message}\n`;
+                let failedDeployment = null;
                 try {
-                    await Deployment.findByIdAndUpdate(deployId, {
-                        status: 'failed',
-                        errorMessage: publicErrorMessage,
-                        fault,
-                        failureStage: failureStage || 'platform',
-                        steps: liveSteps,
-                        buildLogs: depService.capLogTail(logTail),
-                        // Failed deployments expire via the TTL index so the
-                        // collection doesn't accumulate dead build records.
-                        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-                        ...(depErr.runtimeLogs ? { runtimeLogs: String(depErr.runtimeLogs).slice(-200000) } : {}),
-                    });
+                    failedDeployment = await Deployment.findOneAndUpdate(
+                        activeRunFilter,
+                        {
+                            $set: {
+                                status: 'failed',
+                                errorMessage: publicErrorMessage,
+                                fault,
+                                failureStage: failureStage || 'platform',
+                                steps: liveSteps,
+                                buildLogs: depService.capLogTail(logTail),
+                                expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+                                ...(depErr.runtimeLogs ? { runtimeLogs: String(depErr.runtimeLogs).slice(-200000) } : {}),
+                            },
+                            $unset: { buildRunId: 1 },
+                        },
+                        { new: true }
+                    );
+                    if (!failedDeployment) {
+                        await finishCancelledBuild();
+                        return;
+                    }
                 } catch (saveErr) {
                     console.error('[deploy] failed to persist failure state:', saveErr.message);
                 }
@@ -390,6 +460,35 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
                     userId: req.userId,
                     detail: publicErrorMessage || 'The deployment failed.',
                 });
+                // Hand the failure to the background repair worker. This is
+                // fire-and-forget: scheduling must never fail the request.
+                if (failedDeployment) {
+                    try {
+                        require('../utils/deploymentSelfHeal')
+                            .schedule(failedDeployment._id)
+                            .catch((healErr) => {
+                                console.error('[deploy] could not schedule self-heal:', healErr.message);
+                            });
+                    } catch (healErr) {
+                        console.error('[deploy] could not load self-heal worker:', healErr.message);
+                    }
+                }
+            };
+
+            const finishCancelledBuild = async () => {
+                const cancelled = await Deployment.findOne({
+                    _id: deployId,
+                    userId: req.userId,
+                    buildRunId,
+                    status: 'stopped',
+                }).select('_id').lean();
+                if (!cancelled) return false;
+                await depService.stopDeployment(sanitized);
+                await Deployment.updateOne(
+                    { _id: deployId, userId: req.userId, buildRunId, status: 'stopped' },
+                    { $unset: { buildRunId: 1 } }
+                );
+                return true;
             };
 
             try {
@@ -420,12 +519,18 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
                 // leaving runtime: 'unknown'.
                 try {
                     const detected = depService.detectRuntime(normalizedFiles);
-                    await Deployment.findByIdAndUpdate(deployId, {
-                        runtime: detected.runtime,
-                        'metadata.contextDir': detected.contextDir
+                    await Deployment.updateOne(activeRunFilter, {
+                        $set: { runtime: detected.runtime, 'metadata.contextDir': detected.contextDir }
                     });
                 } catch (detectErr) {
                     console.warn('[deploy] runtime detection persist failed:', detectErr.message);
+                }
+
+                const stillActive = await Deployment.exists(activeRunFilter);
+                if (!stillActive) {
+                    finished = true;
+                    await finishCancelledBuild();
+                    return;
                 }
 
                 let containerId = null;
@@ -459,18 +564,30 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
                         s.finishedAt = new Date();
                     }
                 });
-                await Deployment.findByIdAndUpdate(deployId, {
-                    containerId,
-                    deployedUrl: url,
-                    httpUrl,
-                    status: 'success',
-                    fault: null,
-                    failureStage: null,
-                    errorMessage: null,
-                    steps: liveSteps,
-                    buildLogs: depService.capLogTail(buildLog),
-                    runtimeLogs: String(runtimeLogs).slice(-200000),
-                });
+                const completed = await Deployment.findOneAndUpdate(
+                    activeRunFilter,
+                    {
+                        $set: {
+                            containerId,
+                            deployedUrl: url,
+                            httpUrl,
+                            status: 'success',
+                            fault: null,
+                            failureStage: null,
+                            errorMessage: null,
+                            steps: liveSteps,
+                            buildLogs: depService.capLogTail(buildLog),
+                            runtimeLogs: String(runtimeLogs).slice(-200000),
+                        },
+                        $unset: { buildRunId: 1 },
+                    },
+                    { new: true }
+                );
+                if (!completed) {
+                    finished = true;
+                    await finishCancelledBuild();
+                    return;
+                }
                 console.log(`[deploy] ${sanitized}.buildrshq.dev is live`);
                 notifyDeploymentEvent({
                     type: 'deployment_succeeded',
@@ -508,7 +625,30 @@ router.delete('/:id', authenticateToken, async (req, res) => {
             return res.status(404).json({ message: 'Deployment not found' });
         }
 
-        // Stop the Docker container (best-effort — never block the DB update on it)
+        const stopRunId = deployment.buildRunId || randomUUID();
+        const stopping = await Deployment.findOneAndUpdate(
+            {
+                _id: id,
+                userId: req.userId,
+                status: deployment.status,
+                buildRunId: deployment.buildRunId ?? null,
+            },
+            {
+                $set: {
+                    status: 'stopped',
+                    deployedUrl: null,
+                    expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+                    buildRunId: stopRunId,
+                },
+            },
+            { new: true }
+        );
+        if (!stopping) {
+            return res.status(409).json({ message: 'Deployment state changed. Refresh and try again.' });
+        }
+
+        // Mark stopped before contacting Docker so a late build completion
+        // cannot publish over the user's stop action.
         if (deployment.subdomain) {
             try {
                 await depService.stopDeployment(deployment.subdomain);
@@ -517,11 +657,12 @@ router.delete('/:id', authenticateToken, async (req, res) => {
             }
         }
 
-        // Mark as stopped in DB (expires in 30d via TTL index)
-        deployment.status = 'stopped';
-        deployment.deployedUrl = null;
-        deployment.expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-        await deployment.save();
+        if (!deployment.buildRunId) {
+            await Deployment.updateOne(
+                { _id: id, userId: req.userId, buildRunId: stopRunId, status: 'stopped' },
+                { $unset: { buildRunId: 1 } }
+            );
+        }
 
         let stopCompanyId = null;
         try {

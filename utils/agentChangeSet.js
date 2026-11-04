@@ -22,10 +22,13 @@ const diff = require('diff');
 const CodeFile = require('../models/CodeFile');
 const gitService = require('./gitService');
 const codeSearchService = require('./codeSearchService');
+const { resolveProjectId } = require('./fileScope');
 
-const MARKER_RE = /^\s*(?:#{1,6}\s*)?(?:file|path|filename)\s*[:=]\s*(.+?)\s*$/i;
+const MARKER_RE = /^\s*(?:#{1,6}\s*)?(?:file|path|filename|filepath|target)\s*[:=]\s*(.+?)\s*$/i;
 const DELETE_RE = /^\s*(?:#{1,6}\s*)?(?:delete|remove)\s*[:=]\s*(.+?)\s*$/i;
 const FENCE_RE = /```([^\n`]*)\n([\s\S]*?)```/g;
+const UNCLOSED_FENCE_RE = /```([^\n`]*)\n([\s\S]*)$/;
+const PATH_TOKEN_RE = /(?:^|[\s("'`])([A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*\.[A-Za-z0-9]{1,12})(?=$|[\s)"'`,;:])/g;
 
 const LANGUAGE_BY_EXT = {
   js: 'javascript',
@@ -103,6 +106,8 @@ function normalizeFullPath(file) {
   return `${base.replace(/^\/+/, '')}/${name}`;
 }
 
+const DOC_EXTENSIONS = new Set([...Object.keys(LANGUAGE_BY_EXT), 'txt', 'csv', 'env', 'lock']);
+
 function lastMarkerLine(before) {
   const lines = before.split('\n');
   for (let i = lines.length - 1; i >= 0; i--) {
@@ -111,15 +116,109 @@ function lastMarkerLine(before) {
   return '';
 }
 
+function firstMarkerLine(after) {
+  const lines = String(after || '').split('\n');
+  for (const line of lines) {
+    if (line.trim()) return line;
+  }
+  return '';
+}
+
+function stripPathDecorations(value) {
+  return String(value || '')
+    .trim()
+    .replace(/\*\*/g, '')
+    .replace(/`/g, '')
+    .replace(/^[\s>#*+\-[\]]+/, '')
+    .replace(/^\(|\)$/g, '')
+    .replace(/[).,;:]+$/g, '')
+    .trim();
+}
+
+function normalizePathCandidate(raw) {
+  let value = stripPathDecorations(raw)
+    .replace(/^["'`]+|["'`]+$/g, '')
+    .replace(/^(?:file|path|filename|filepath|target)\s*[:=]\s*/i, '')
+    .replace(/^(?:update|modify|create|add|edit|change|replace|write|delete|remove)\s+/i, '')
+    .trim();
+  if (!value) return null;
+  if (value.includes('://')) return null;
+  if (/\s/.test(value)) return null;
+  if (!isSafeRelativePath(value)) return null;
+  const extension = value.split('.').pop().toLowerCase();
+  // A bare token like "v1.2" should not be treated as a file. Require either
+  // a directory segment or an extension we recognise.
+  if (!value.includes('/') && !DOC_EXTENSIONS.has(extension)) return null;
+  return cleanPath(value).replace(/^\/+/, '');
+}
+
+/**
+ * Pull a path out of a heading, bullet, `**File:**` line, or a prose sentence
+ * such as "Here is the updated `src/foo.js`:".
+ */
+function pathFromLine(line) {
+  const text = String(line || '');
+  if (!text.trim()) return null;
+
+  const keyed = text.match(/(?:file|path|filename|filepath|target)\s*[:=]\s*(.+)$/i);
+  if (keyed) {
+    const candidate = normalizePathCandidate(keyed[1].trim().split(/\s+/)[0]);
+    if (candidate) return candidate;
+  }
+
+  PATH_TOKEN_RE.lastIndex = 0;
+  let match;
+  while ((match = PATH_TOKEN_RE.exec(text)) !== null) {
+    const candidate = normalizePathCandidate(match[1]);
+    if (candidate) return candidate;
+  }
+  return null;
+}
+
+function knownPathIndex(originalFiles = []) {
+  const map = new Map();
+  for (const file of originalFiles || []) {
+    const full = normalizeFullPath(file);
+    if (full) map.set(full.toLowerCase(), full);
+  }
+  return map;
+}
+
+function resolveKnownPath(candidate, knownPaths) {
+  if (!candidate || !knownPaths?.size) return candidate;
+  const lower = candidate.toLowerCase();
+  if (knownPaths.has(lower)) return knownPaths.get(lower);
+  const suffixed = [...knownPaths.entries()].filter(([path]) => path.endsWith(`/${lower}`));
+  return suffixed.length === 1 ? suffixed[0][1] : candidate;
+}
+
 /**
  * Parse fenced code blocks out of model output, pairing each with the nearest
- * preceding `### file:` / `### delete:` marker (or an inline `file=` hint).
+ * preceding marker, an inline `file=` hint, or a path mentioned in prose.
+ * This is deliberately forgiving: real models say "### src/foo.js",
+ * "**File:** src/foo.js", or "Here is the updated `src/foo.js`:" far more
+ * often than they use one exact marker style.
  */
-function parseChangeSet(modelText) {
+function parseChangeSet(modelText, originalFiles = []) {
   if (!modelText || typeof modelText !== 'string') return [];
   const changes = [];
   const seen = new Set();
+  const knownPaths = knownPathIndex(originalFiles);
   let match;
+
+  const pushChange = (rawPath, body, action = 'update') => {
+    const candidate = normalizePathCandidate(rawPath);
+    if (!candidate) return;
+    const filePath = resolveKnownPath(candidate, knownPaths);
+    if (!isSafeRelativePath(filePath) || seen.has(filePath)) return;
+    seen.add(filePath);
+    changes.push({
+      path: filePath,
+      language: languageFor(filePath),
+      action,
+      content: action === 'delete' ? '' : body,
+    });
+  };
 
   FENCE_RE.lastIndex = 0;
   while ((match = FENCE_RE.exec(modelText)) !== null) {
@@ -129,8 +228,12 @@ function parseChangeSet(modelText) {
     let rawPath = null;
     let action = 'update';
 
-    const infoMatch = info.match(/(?:file|path|filename)\s*[:=]\s*(\S+)/i);
-    if (infoMatch) rawPath = infoMatch[1];
+    const infoMatch = info.match(/(?:file|path|filename|filepath|target)\s*[:=]\s*(\S+)/i);
+    if (infoMatch) {
+      rawPath = infoMatch[1];
+    } else if (info && !info.includes('=') && /[/.]/.test(info) && !/\s/.test(info)) {
+      rawPath = info;
+    }
 
     if (!rawPath) {
       const line = lastMarkerLine(modelText.slice(0, match.index));
@@ -141,20 +244,180 @@ function parseChangeSet(modelText) {
       } else if (deleteMatch) {
         rawPath = deleteMatch[1];
         action = 'delete';
+      } else {
+        rawPath = pathFromLine(line);
       }
     }
 
-    if (!rawPath || !isSafeRelativePath(rawPath)) continue;
+    // Some models put the filename after the code block instead of before it.
+    if (!rawPath) {
+      const after = firstMarkerLine(modelText.slice(match.index + match[0].length));
+      rawPath = pathFromLine(after);
+    }
 
-    const filePath = cleanPath(rawPath).replace(/^\/+/, '');
-    if (seen.has(filePath)) continue;
+    if (!rawPath) continue;
+    pushChange(rawPath, body, action);
+  }
+
+  // A truncated response may never close its last fence. Salvage it when the
+  // marker still names a usable path.
+  if (!changes.length) {
+    const unclosed = modelText.match(UNCLOSED_FENCE_RE);
+    if (unclosed) {
+      const info = (unclosed[1] || '').trim();
+      const body = unclosed[2].replace(/\n$/, '');
+      let rawPath = null;
+      const infoMatch = info.match(/(?:file|path|filename|filepath|target)\s*[:=]\s*(\S+)/i);
+      if (infoMatch) rawPath = infoMatch[1];
+      else if (info && !info.includes('=') && /[/.]/.test(info) && !/\s/.test(info)) rawPath = info;
+      if (!rawPath) rawPath = pathFromLine(lastMarkerLine(modelText.slice(0, unclosed.index)));
+      if (rawPath) pushChange(rawPath, body);
+    }
+  }
+
+  return changes;
+}
+
+function jsonPayloads(modelText) {
+  const payloads = [];
+  const trimmed = String(modelText || '').trim();
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) payloads.push(trimmed);
+  const fenceRe = /```(?:json|JSON)?\s*\n([\s\S]*?)```/g;
+  let match;
+  while ((match = fenceRe.exec(String(modelText || ''))) !== null) {
+    const body = match[1].trim();
+    if (body.startsWith('{') || body.startsWith('[')) payloads.push(body);
+  }
+  return payloads;
+}
+
+function changesFromJsonValue(value) {
+  const changes = [];
+  if (!value) return changes;
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (!item || typeof item !== 'object') continue;
+      const path = item.path || item.file || item.filename || item.filePath || item.name;
+      const content = item.content ?? item.code ?? item.newContent ?? item.new_content ?? item.contents;
+      if (!path || typeof content !== 'string') continue;
+      changes.push({
+        path,
+        action: String(item.action || item.type || 'update').toLowerCase(),
+        content,
+        language: item.language || languageFor(path),
+      });
+    }
+    return changes;
+  }
+
+  if (typeof value !== 'object') return changes;
+  const nested = value.files || value.changes || value.edits || value.operations;
+  if (nested) return changesFromJsonValue(nested);
+
+  for (const [path, content] of Object.entries(value)) {
+    if (typeof content === 'string') {
+      changes.push({ path, action: 'update', content, language: languageFor(path) });
+    } else if (content && typeof content === 'object') {
+      const body = content.content ?? content.code ?? content.newContent;
+      if (typeof body === 'string') {
+        changes.push({
+          path: content.path || path,
+          action: String(content.action || content.type || 'update').toLowerCase(),
+          content: body,
+          language: content.language || languageFor(content.path || path),
+        });
+      }
+    }
+  }
+  return changes;
+}
+
+/**
+ * Accept JSON-shaped change sets (`{"files":[{"path":...,"content":...}]}`)
+ * because several providers drift into JSON when asked for structured output.
+ */
+function parseJsonChangeSet(modelText) {
+  for (const payload of jsonPayloads(modelText)) {
+    try {
+      const parsed = JSON.parse(payload);
+      const changes = changesFromJsonValue(parsed);
+      if (changes.length) {
+        const seen = new Set();
+        return changes.filter((change) => {
+          if (!isSafeRelativePath(change.path) || seen.has(change.path)) return false;
+          seen.add(change.path);
+          return true;
+        }).map((change) => ({
+          ...change,
+          path: cleanPath(change.path).replace(/^\/+/, ''),
+          action: ['delete', 'remove'].includes(change.action) ? 'delete' : 'update',
+        }));
+      }
+    } catch (error) {
+      // Not JSON; try the next candidate.
+    }
+  }
+  return [];
+}
+
+function stripDiffPrefix(value) {
+  const cleaned = stripPathDecorations(String(value || '').split('\t')[0]);
+  if (!cleaned || cleaned === '/dev/null') return cleaned;
+  return cleaned.replace(/^[ab]\//, '').replace(/^\/+/, '');
+}
+
+/**
+ * Apply unified diffs emitted directly by a model. Requires the original file
+ * content so a bad or partial diff is skipped rather than guessed at.
+ */
+function parseDiffChangeSet(modelText, originalFiles = []) {
+  const text = String(modelText || '');
+  const start = text.search(/^(?:diff --git |--- )/m);
+  if (start === -1) return [];
+
+  let patches;
+  try {
+    patches = diff.parsePatch(text.slice(start));
+  } catch (error) {
+    return [];
+  }
+
+  const originals = indexOriginals(originalFiles);
+  const changes = [];
+  const seen = new Set();
+
+  for (const patch of patches) {
+    const oldPath = stripDiffPrefix(patch.oldFileName);
+    const newPath = stripDiffPrefix(patch.newFileName);
+    if (!oldPath && !newPath) continue;
+
+    const isDelete = newPath === '/dev/null' || patch.newFileName === '/dev/null';
+    const isCreate = oldPath === '/dev/null' || patch.oldFileName === '/dev/null';
+    const filePath = isDelete ? oldPath : (newPath || oldPath);
+    if (!filePath || filePath === '/dev/null' || !isSafeRelativePath(filePath) || seen.has(filePath)) continue;
+
+    if (isDelete) {
+      seen.add(filePath);
+      changes.push({ path: filePath, action: 'delete', language: languageFor(filePath), content: '' });
+      continue;
+    }
+
+    const oldContent = isCreate ? '' : (originals.get(filePath)?.content || '');
+    if (!isCreate && !originals.has(filePath)) continue;
+    let content;
+    try {
+      content = diff.applyPatch(oldContent, patch);
+    } catch (error) {
+      content = null;
+    }
+    if (typeof content !== 'string') continue;
     seen.add(filePath);
-
     changes.push({
       path: filePath,
+      action: isCreate ? 'create' : 'update',
       language: languageFor(filePath),
-      action,
-      content: action === 'delete' ? '' : body,
+      content: content.replace(/\n$/, ''),
     });
   }
 
@@ -176,7 +439,10 @@ function indexOriginals(originalFiles = []) {
  */
 function buildChangeset(modelText, originalFiles = []) {
   const originals = indexOriginals(originalFiles);
-  return parseChangeSet(modelText).map((change) => {
+  let parsed = parseChangeSet(modelText, originalFiles);
+  if (!parsed.length) parsed = parseJsonChangeSet(modelText);
+  if (!parsed.length) parsed = parseDiffChangeSet(modelText, originalFiles);
+  return parsed.map((change) => {
     const action =
       change.action === 'delete'
         ? 'delete'
@@ -274,10 +540,15 @@ function applyChangesToFileList(changes = [], originalFiles = []) {
  * Write staged changes into the isolated agent working tree and commit them on
  * the current (agent) branch. Never touches the VFS.
  */
-async function stageChanges(workspaceId, changes, { message = 'Agent changes', branch = null } = {}) {
-  const write = await gitService.writeWorkingTree(workspaceId, changes);
+async function stageChanges(workspaceId, changes, {
+  message = 'Agent changes',
+  branch = null,
+  projectId = null,
+  executionId = null,
+} = {}) {
+  const write = await gitService.writeWorkingTree(workspaceId, changes, projectId, executionId);
   if (!write.success) return { success: false, error: write.error };
-  const commit = await gitService.commitWorkingTree(workspaceId, message, branch);
+  const commit = await gitService.commitWorkingTree(workspaceId, message, branch, projectId, executionId);
   return {
     success: Boolean(commit.success),
     committed: Boolean(commit.success),
@@ -291,21 +562,43 @@ async function stageChanges(workspaceId, changes, { message = 'Agent changes', b
  * Apply a change set to the VFS (CodeFile collection + search index). Called
  * only on approval, so agent work stays invisible until a human merges it.
  */
-async function applyToVFS(workspaceId, changes, { userId = null } = {}) {
+async function applyToVFS(workspaceId, changes, { userId = null, projectId = null } = {}) {
   let created = 0;
   let updated = 0;
   let deleted = 0;
   const snapshots = [];
 
-  for (const change of changes || []) {
-    if (!isSafeRelativePath(change.path)) continue;
-    const { name, dir } = splitPath(change.path);
+  const safeChanges = (changes || [])
+    .filter((change) => isSafeRelativePath(change.path))
+    .map((change) => ({ change, ...splitPath(change.path) }));
+  const uniquePaths = new Map(
+    safeChanges.map(({ name, dir }) => [JSON.stringify([name, dir]), { name, path: dir }])
+  );
+  const existingFiles = uniquePaths.size
+    ? await CodeFile.find({
+      company: workspaceId,
+      // Only files in the execution's own project (or unassigned files for a
+      // task without a project) may be updated or deleted. Never touch another
+      // project's source that shares the workspace.
+      ...(projectId ? { project: String(projectId) } : { project: null }),
+      $or: [...uniquePaths.values()],
+    })
+    : [];
+  const filesByPath = new Map();
+  for (const file of existingFiles) {
+    const key = JSON.stringify([file.name, file.path]);
+    if (!filesByPath.has(key)) filesByPath.set(key, file);
+  }
+
+  for (const { change, name, dir } of safeChanges) {
+    const key = JSON.stringify([name, dir]);
 
     if (change.action === 'delete') {
-      const existing = await CodeFile.findOne({ company: workspaceId, name, path: dir });
+      const existing = filesByPath.get(key);
       if (existing) {
         snapshots.push({ change, existing: typeof existing.toObject === 'function' ? existing.toObject() : existing });
         await existing.deleteOne();
+        filesByPath.delete(key);
         try {
           await codeSearchService.deleteFile(existing._id);
         } catch (error) {
@@ -319,7 +612,7 @@ async function applyToVFS(workspaceId, changes, { userId = null } = {}) {
     const content = change.content || '';
     const size = Buffer.byteLength(content, 'utf8');
     const language = change.language || languageFor(change.path);
-    const existing = await CodeFile.findOne({ company: workspaceId, name, path: dir });
+    const existing = filesByPath.get(key);
 
     if (existing) {
       snapshots.push({ change, existing: typeof existing.toObject === 'function' ? existing.toObject() : existing });
@@ -342,8 +635,10 @@ async function applyToVFS(workspaceId, changes, { userId = null } = {}) {
         language,
         content,
         company: workspaceId,
+        ...(projectId ? { project: String(projectId) } : {}),
         createdBy: userId,
       });
+      filesByPath.set(key, doc);
       try {
         await codeSearchService.updateFile(doc);
       } catch (error) {
@@ -408,7 +703,8 @@ async function applyExecutionChanges(execution) {
     return { applied: false, reason: 'no proposed changes', changes: 0 };
   }
 
-  const result = await applyToVFS(workspaceId, changes, { userId: execution.userId });
+  const projectId = resolveProjectId({ execution });
+  const result = await applyToVFS(workspaceId, changes, { userId: execution.userId, projectId });
   return { applied: true, ...result, changes: changes.length, workspaceId };
 }
 
@@ -424,6 +720,8 @@ const CHANGE_FORMAT_INSTRUCTIONS = [
 module.exports = {
   CHANGE_FORMAT_INSTRUCTIONS,
   parseChangeSet,
+  parseJsonChangeSet,
+  parseDiffChangeSet,
   buildChangeset,
   summarize,
   applyChangesToFileList,

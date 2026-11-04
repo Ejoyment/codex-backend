@@ -279,15 +279,40 @@ module.exports = (io) => {
         });
 
         socket.on('disconnect', async () => {
-            for (const sessionId of joinedSessions) {
+            const sessionIds = [...joinedSessions];
+            if (sessionIds.length === 0) return;
+
+            let sessions;
+            try {
+                sessions = await CollaborationSession.find({ sessionId: { $in: sessionIds } });
+            } catch (err) {
+                console.error('disconnect cleanup error', err.message);
+                return;
+            }
+
+            const savedSessionIds = [];
+            for (const session of sessions) {
                 try {
-                    const session = await CollaborationSession.findOne({ sessionId });
-                    if (session) {
-                        session.participants = session.participants.filter(p => p.userId?.toString() !== socket.userId);
-                        await session.save();
-                        await broadcastPresence(session);
-                    }
+                    session.participants = session.participants.filter(p => p.userId?.toString() !== socket.userId);
+                    await session.save();
+                    savedSessionIds.push(session.sessionId);
                 } catch (err) { console.error('disconnect cleanup error', err.message); }
+            }
+
+            if (savedSessionIds.length > 0) {
+                try {
+                    const updatedSessions = await CollaborationSession.find({
+                        sessionId: { $in: savedSessionIds }
+                    });
+                    for (const session of updatedSessions) {
+                        ns.to(`session:${session.sessionId}`).emit('presence:update', {
+                            sessionId: session.sessionId,
+                            participants: session.participants.map(participantView)
+                        });
+                    }
+                } catch (err) {
+                    console.error('disconnect cleanup error', err.message);
+                }
             }
         });
     });
