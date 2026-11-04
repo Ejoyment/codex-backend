@@ -22,6 +22,7 @@ const AgentExecution = require('../models/AgentExecution');
 const agentOrchestrator = require('./agentOrchestrator');
 const { ensurePersonalWorkspace } = require('./personalWorkspace');
 const { redeployDeployment } = require('./agentAutoDeploy');
+const { detectRuntime } = require('./deploymentService');
 const { notifyDeploymentEvent } = require('./notificationTriggers');
 
 function readInt(name, fallback) {
@@ -502,6 +503,15 @@ function buildHealingGoal(deployment, projectId, files = [], previewFiles = [], 
   let digestText = buildErrorDigest(deployment, compact ? 2200 : 3500);
   const hints = buildRepairHints(digestText, files);
   const manifests = detectManifests(files);
+  // The platform picks a runtime from the files. Telling the agent which one it
+  // picked lets it notice "this is a Java project but it was treated as static"
+  // and add a Dockerfile instead of guessing.
+  let runtime = null;
+  try {
+    runtime = detectRuntime(files)?.runtime || null;
+  } catch (error) {
+    logError('could not detect runtime for self-heal prompt', error);
+  }
   const logTail = compact ? '' : truncateMiddle(stripAnsi(deployment.buildLogs || ''), 1800);
   const manifest = buildFileManifest(files, compact ? 1600 : 2200);
   const previews = (compact ? [] : previewFiles)
@@ -527,8 +537,9 @@ function buildHealingGoal(deployment, projectId, files = [], previewFiles = [], 
       `Project: ${projectId}`,
       `Deployment: ${subdomain}.buildrshq.dev`,
       `Failure stage: ${deployment.failureStage || 'unknown'}`,
+      runtime ? `Detected runtime: ${runtime}` : '',
       `Error: ${truncateMiddle(deployment.errorMessage || 'Unknown deployment failure', compact ? 600 : 1200)}`,
-    ];
+    ].filter(Boolean);
     const manifestsSection = manifests.length
       ? ['Detected project manifests:', ...manifests.map((item) => `- ${item}`)]
       : [];
@@ -545,6 +556,7 @@ function buildHealingGoal(deployment, projectId, files = [], previewFiles = [], 
       'edit_file parameters: fileId, oldText, newText, replaceAll. create_file parameters: name, path, language, content. update_file parameters: fileId, content.',
       'If the log names a missing file, create it. If a dependency is missing, add it to the manifest that this project actually has (package.json, requirements.txt, pyproject.toml, go.mod, Cargo.toml, pom.xml, build.gradle, Gemfile, composer.json, pubspec.yaml, mix.exs, or the Dockerfile).',
       'If the project uses a Dockerfile, fix the failing COPY/RUN/CMD step or the base image. If it does not, fix the source so the detected runtime can build it.',
+      'If the detected runtime does not match the project (for example a Java, Rust, .NET, Elixir, or C/C++ project detected as static) or the log shows the platform cannot build this stack, create a correct Dockerfile that installs the toolchain, builds the project, and runs it on the PORT environment variable.',
       'Do not delete files, run tests, or execute code. The deployment is redeployed automatically after your edit.',
       'When the fix is in place, set goalAchieved=true. Do not set goalAchieved=true before you have changed a file.',
     ];
