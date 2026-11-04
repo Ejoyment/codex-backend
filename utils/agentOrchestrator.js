@@ -87,6 +87,138 @@ class AgentOrchestrator {
     }
 
     /**
+     * Archive-relative path for a CodeFile. CodeFile.path is a directory for
+     * editor-created files ('/' or '/src') but a full path for some importers
+     * ('/src/app.js' with name 'app.js'), so normalise both shapes.
+     */
+    _fileRelPath(file) {
+        const rawPath = String(file?.path || '')
+            .replace(/\\/g, '/')
+            .replace(/^\/+/, '')
+            .replace(/\/+$/, '');
+        const name = String(file?.name || '')
+            .replace(/\\/g, '/')
+            .replace(/^\/+/, '');
+        if (!rawPath) return name;
+        if (rawPath === name || rawPath.endsWith('/' + name)) return rawPath;
+        return `${rawPath}/${name}`;
+    }
+
+    /**
+     * Accept the many shapes an LLM uses for a new file: name with a nested
+     * path ("app/globals.css"), a leading slash, or a separate directory.
+     */
+    _normalizeFileTarget(name, pathValue) {
+        let cleanName = String(name || '')
+            .trim()
+            .replace(/\\/g, '/')
+            .replace(/^\.?\//, '')
+            .replace(/\/+$/, '');
+        let cleanPath = String(pathValue || '')
+            .trim()
+            .replace(/\\/g, '/')
+            .replace(/^\/+/, '')
+            .replace(/\/+$/, '');
+        if (!cleanName) throw new Error('File name is required');
+        if (cleanName.includes('/')) {
+            const parts = cleanName.split('/').filter(Boolean);
+            cleanName = parts.pop();
+            const dir = parts.join('/');
+            if (dir) {
+                cleanPath = cleanPath
+                    ? (cleanPath === dir || cleanPath.endsWith('/' + dir) ? cleanPath : `${cleanPath}/${dir}`)
+                    : dir;
+            }
+        }
+        return { name: cleanName, path: cleanPath ? `/${cleanPath}` : '/' };
+    }
+
+    async _findProjectFileByRelPath(CodeFile, context, relPath) {
+        const query = { company: context.workspaceId };
+        if (context.projectId) query.project = String(context.projectId);
+        const files = await CodeFile.find(query).select('name path').lean();
+        const target = String(relPath || '').replace(/^\/+/, '').toLowerCase();
+        return files.find((file) => this._fileRelPath(file).toLowerCase() === target) || null;
+    }
+
+    /**
+     * Create a file, or update the file already at that path. Models often
+     * re-create a file they saw in the manifest; without this the deploy would
+     * contain two files at the same archive path and the build would be
+     * ambiguous. Works for any language/framework.
+     */
+    async _createOrUpdateCodeFile(params, context, index = null) {
+        const CodeFile = require('../models/CodeFile');
+        const target = this._normalizeFileTarget(params.name, params.path);
+        const rel = target.path === '/' ? target.name : `${target.path.replace(/^\/+/, '')}/${target.name}`;
+        const key = rel.toLowerCase();
+
+        let existing = index ? index.get(key) : null;
+        if (!existing) existing = await this._findProjectFileByRelPath(CodeFile, context, rel);
+
+        if (existing) {
+            // Scoped lookup: never load a file by id alone (tenant isolation).
+            const file = await CodeFile.findOne({
+                _id: existing._id,
+                company: context.workspaceId,
+                ...(context.projectId ? { project: String(context.projectId) } : {})
+            });
+            if (!file) throw new Error(`Could not load the existing file ${rel}`);
+            file.versions.push({
+                content: file.content,
+                modifiedBy: file.lastModifiedBy,
+                modifiedAt: file.updatedAt,
+                comment: 'AI Agent Update'
+            });
+            trimToLast(file.versions, MAX_VERSIONS);
+            if (typeof params.content === 'string') file.content = params.content;
+            if (params.language) file.language = params.language;
+            file.lastModifiedBy = context.userId;
+            await file.save();
+            if (index) index.set(key, { _id: file._id, name: file.name, path: file.path });
+            return {
+                success: true,
+                fileId: file._id,
+                created: false,
+                name: file.name,
+                path: file.path,
+                message: `Updated existing file ${rel}`
+            };
+        }
+
+        const file = await CodeFile.create({
+            name: target.name,
+            content: params.content || '',
+            language: params.language,
+            path: target.path,
+            company: context.workspaceId,
+            ...(context.projectId ? { project: String(context.projectId) } : {}),
+            createdBy: context.userId,
+            lastModifiedBy: context.userId
+        });
+        if (index) index.set(key, { _id: file._id, name: file.name, path: file.path });
+        return {
+            success: true,
+            fileId: file._id,
+            created: true,
+            name: file.name,
+            path: file.path,
+            message: `Created ${rel}`
+        };
+    }
+
+    async _loadProjectFileIndex(CodeFile, context) {
+        const query = { company: context.workspaceId };
+        if (context.projectId) query.project = String(context.projectId);
+        const files = await CodeFile.find(query).select('name path').lean();
+        const index = new Map();
+        for (const file of files) {
+            index.set(this._fileRelPath(file).toLowerCase(), file);
+        }
+        return index;
+    }
+
+    /**
      * Initialize available tools that the agent can use
      * Each tool has a schema that the LLM can understand
      */
@@ -271,12 +403,34 @@ class AgentOrchestrator {
             },
             read_file: {
                 name: 'read_file',
-                description: 'Read a file by path from the connected GitHub repository or by ID from the workspace',
+                description: 'Read a file by path from the connected GitHub repository or by ID from the workspace. Use offset/limit to page through a large file.',
                 parameters: {
                     fileId: 'string - The ID of the file to read',
-                    path: 'string - The path of the file'
+                    path: 'string - The path of the file',
+                    offset: 'number - Optional character offset to start reading from (default 0)',
+                    limit: 'number - Optional maximum characters to return (default: whole file, max 12000)'
                 },
                 execute: async (params, context) => {
+                    const page = (content, extra = {}) => {
+                        const text = String(content || '');
+                        const offset = Math.max(0, Number(params.offset) || 0);
+                        const requested = Number(params.limit);
+                        const limit = Number.isFinite(requested) && requested > 0
+                            ? Math.min(Math.floor(requested), 12000)
+                            : text.length;
+                        const slice = text.slice(offset, offset + limit);
+                        const nextOffset = offset + limit < text.length ? offset + limit : null;
+                        return {
+                            success: true,
+                            content: slice,
+                            offset,
+                            totalLength: text.length,
+                            truncated: nextOffset !== null,
+                            nextOffset,
+                            ...extra
+                        };
+                    };
+
                     if (context.repositoryOwner && context.repositoryName && params.path) {
                         const githubService = require('./githubService');
                         const file = await githubService.getFileContent(
@@ -289,13 +443,11 @@ class AgentOrchestrator {
                         const extension = file.path.includes('.')
                             ? file.path.split('.').pop().toLowerCase()
                             : 'text';
-                        return {
-                            success: true,
-                            content: file.content,
+                        return page(file.content, {
                             language: extension,
                             path: file.path,
                             source: 'github'
-                        };
+                        });
                     }
 
                     const CodeFile = require('../models/CodeFile');
@@ -306,12 +458,11 @@ class AgentOrchestrator {
                             error: `File not found in this workspace: ${params.fileId}`
                         };
                     }
-                    return {
-                        success: true,
-                        content: file.content,
+                    return page(file.content, {
                         language: file.language,
-                        path: file.path
-                    };
+                        path: file.path,
+                        fileId: file._id
+                    });
                 }
             },
             
@@ -324,24 +475,7 @@ class AgentOrchestrator {
                     language: 'string - Programming language',
                     path: 'string - Directory path'
                 },
-                execute: async (params, context) => {
-                    const CodeFile = require('../models/CodeFile');
-                    const file = await CodeFile.create({
-                        name: params.name,
-                        content: params.content || '',
-                        language: params.language,
-                        path: params.path || '/',
-                        company: context.workspaceId,
-                        ...(context.projectId ? { project: String(context.projectId) } : {}),
-                        createdBy: context.userId,
-                        lastModifiedBy: context.userId
-                    });
-                    return {
-                        success: true,
-                        fileId: file._id,
-                        message: `Created ${params.name}`
-                    };
-                }
+                execute: async (params, context) => this._createOrUpdateCodeFile(params, context)
             },
             
             update_file: {
@@ -377,6 +511,69 @@ class AgentOrchestrator {
                     return {
                         success: true,
                         message: `Updated ${file.name}`
+                    };
+                }
+            },
+
+            edit_file: {
+                name: 'edit_file',
+                description: 'Replace an exact snippet in an existing file. Prefer this over update_file for small fixes; it does not require rewriting the whole file and works for any language.',
+                parameters: {
+                    fileId: 'string - File ID',
+                    oldText: 'string - Exact text to replace, including whitespace',
+                    newText: 'string - Replacement text',
+                    replaceAll: 'boolean - Replace every occurrence (default false)'
+                },
+                execute: async (params, context) => {
+                    const CodeFile = require('../models/CodeFile');
+                    const file = await this._findOwnedFile(CodeFile, params.fileId, context);
+                    if (!file) {
+                        return {
+                            success: false,
+                            error: `File not found in this workspace: ${params.fileId}`
+                        };
+                    }
+
+                    const oldText = typeof params.oldText === 'string' ? params.oldText : '';
+                    if (!oldText) {
+                        return { success: false, error: 'oldText is required' };
+                    }
+                    const content = String(file.content || '');
+                    const first = content.indexOf(oldText);
+                    if (first === -1) {
+                        return {
+                            success: false,
+                            error: 'oldText was not found in the file. Call read_file and copy the exact text, including whitespace.'
+                        };
+                    }
+                    const occurrences = content.split(oldText).length - 1;
+                    if (occurrences > 1 && params.replaceAll !== true) {
+                        return {
+                            success: false,
+                            error: `oldText occurs ${occurrences} times. Provide more surrounding context or set replaceAll=true.`
+                        };
+                    }
+
+                    const replacement = typeof params.newText === 'string' ? params.newText : '';
+                    const updated = params.replaceAll === true
+                        ? content.split(oldText).join(replacement)
+                        : content.slice(0, first) + replacement + content.slice(first + oldText.length);
+
+                    file.versions.push({
+                        content: file.content,
+                        modifiedBy: file.lastModifiedBy,
+                        modifiedAt: file.updatedAt,
+                        comment: 'AI Agent Edit'
+                    });
+                    trimToLast(file.versions, MAX_VERSIONS);
+                    file.content = updated;
+                    file.lastModifiedBy = context.userId;
+                    await file.save();
+
+                    return {
+                        success: true,
+                        message: `Edited ${file.name} (${params.replaceAll === true ? occurrences : 1} replacement(s))`,
+                        replacements: params.replaceAll === true ? occurrences : 1
                     };
                 }
             },
@@ -629,30 +826,25 @@ class AgentOrchestrator {
                 },
                 execute: async (params, context) => {
                     const CodeFile = require('../models/CodeFile');
-                    const created = [];
-                    
+                    if (!Array.isArray(params.files) || params.files.length === 0) {
+                        return { success: false, error: 'files must be a non-empty array' };
+                    }
+                    const index = await this._loadProjectFileIndex(CodeFile, context);
+                    const files = [];
                     for (const fileData of params.files) {
-                        const file = await CodeFile.create({
-                            name: fileData.name,
-                            content: fileData.content || '',
-                            language: fileData.language,
-                            path: fileData.path || '/',
-                            company: context.workspaceId,
-                            ...(context.projectId ? { project: String(context.projectId) } : {}),
-                            createdBy: context.userId,
-                            lastModifiedBy: context.userId
-                        });
-                        created.push({
-                            id: file._id,
-                            name: file.name,
-                            path: file.path
+                        const result = await this._createOrUpdateCodeFile(fileData, context, index);
+                        files.push({
+                            id: result.fileId,
+                            name: result.name,
+                            path: result.path,
+                            created: result.created
                         });
                     }
-                    
                     return {
                         success: true,
-                        created: created.length,
-                        files: created
+                        created: files.filter((file) => file.created).length,
+                        updated: files.filter((file) => !file.created).length,
+                        files
                     };
                 }
             },
@@ -850,7 +1042,7 @@ class AgentOrchestrator {
 
             // Track mutations for auto-validation
             if (actionResult.success && reasoning.action) {
-                const mutatingTools = ['create_file', 'update_file', 'create_multiple_files', 'delete_file'];
+                const mutatingTools = ['create_file', 'update_file', 'edit_file', 'create_multiple_files', 'delete_file'];
                 if (mutatingTools.includes(reasoning.action.tool)) {
                     session.mutations.push({
                         tool: reasoning.action.tool,
@@ -1357,12 +1549,20 @@ RESPOND WITH JSON ONLY.`;
 
         // Background/autonomous runs keep a tight history so the prompt cannot
         // grow past the provider's tokens-per-minute limit after a few tool
-        // calls. Interactive runs keep the richer history.
+        // calls. Interactive runs keep the richer history. read_file gets a
+        // larger slice than other tools because the model needs exact source
+        // text to call edit_file; it can page with offset/limit.
         const autonomous = context?.autonomous === true;
         const previousActions = autonomous
-            ? observation.previousActions.slice(-4)
+            ? observation.previousActions.slice(-3)
             : observation.previousActions;
-        const resultLimit = autonomous ? 1500 : 6000;
+        const resultLimit = autonomous ? 1200 : 6000;
+        const limitForAction = (action) => {
+            if (!autonomous) return resultLimit;
+            if (action?.tool === 'read_file') return 3000;
+            if (action?.tool === 'list_files' || action?.tool === 'search_code') return 1800;
+            return resultLimit;
+        };
         const memories = autonomous
             ? (observation.state.relevantMemories || []).slice(0, 2)
             : (observation.state.relevantMemories || []);
@@ -1400,8 +1600,9 @@ ${previousActions.map((a, i) => {
     } catch (error) {
         result = `Unable to serialize tool result: ${error.message}`;
     }
-    const resultText = result.length > resultLimit
-        ? `${result.slice(0, resultLimit)}… [result truncated]`
+    const actionLimit = limitForAction(a.action);
+    const resultText = result.length > actionLimit
+        ? `${result.slice(0, actionLimit)}… [result truncated]`
         : result;
     return `${i + 1}. ${a.action?.tool}: ${a.result?.success ? '✓' : '✗'}\n   Result: ${resultText}`;
 }).join('\n')}
@@ -1591,6 +1792,7 @@ RESPOND WITH JSON ONLY - NO MARKDOWN, NO EXPLANATIONS.`;
             execute_code: 'Running code in the sandbox',
             create_file: 'Creating a file',
             update_file: 'Updating a file',
+            edit_file: 'Editing a file',
             create_multiple_files: 'Creating project files',
             delete_file: 'Deleting a file'
         };
