@@ -138,6 +138,13 @@ const deploymentSchema = new mongoose.Schema({
         lastError: {
             type: String,
             default: null
+        },
+        // One-shot marker used by the poller to recover runs that failed for a
+        // now-fixed reason (missing workspace, oversized prompt). It prevents
+        // the same row from being requeued forever.
+        recoveredAt: {
+            type: Date,
+            default: null
         }
     },
     metadata: {

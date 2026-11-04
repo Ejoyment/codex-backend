@@ -17,6 +17,7 @@ function resetSelfHealState(deployment) {
     agentExecutionId: null,
     summary: null,
     lastError: null,
+    recoveredAt: null,
   };
 }
 
