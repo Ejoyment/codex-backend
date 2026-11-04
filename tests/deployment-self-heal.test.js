@@ -292,7 +292,19 @@ describe('deployment self-heal worker', () => {
 
     const result = await selfHeal.runTick();
 
-    expect(Deployment.updateMany).toHaveBeenCalledTimes(3);
+    expect(Deployment.updateMany).toHaveBeenCalledTimes(4);
+    expect(Deployment.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        'selfHeal.status': 'gave_up',
+        'selfHeal.summary': expect.objectContaining({ $regex: 'no resolvable workspace' }),
+      }),
+      expect.objectContaining({
+        $set: expect.objectContaining({
+          'selfHeal.status': 'pending',
+          'selfHeal.attempts': 0,
+        }),
+      })
+    );
     expect(result).toMatchObject({ processed: 1 });
   });
 });

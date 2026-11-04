@@ -586,6 +586,26 @@ async function runTick() {
     }
   );
 
+  // Recovery for failures the old resolver gave up on because it required a
+  // workspace. Requeue them once so the workspace-optional resolver can try;
+  // the summary changes after the next attempt, so this cannot loop.
+  await Deployment.updateMany(
+    {
+      'selfHeal.status': 'gave_up',
+      'selfHeal.summary': { $regex: 'no resolvable workspace', $options: 'i' },
+      createdAt: { $gte: new Date(now.getTime() - LOOKBACK_MS) },
+    },
+    {
+      $set: {
+        'selfHeal.status': 'pending',
+        'selfHeal.attempts': 0,
+        'selfHeal.nextAttemptAt': now,
+        'selfHeal.completedAt': null,
+        'selfHeal.lastError': null,
+      },
+    }
+  );
+
   // Backstop for failures recorded before the worker started (or by a code
   // path that forgot to schedule): pick up recent untracked failures.
   await Deployment.updateMany(
