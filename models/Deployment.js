@@ -24,6 +24,13 @@ const deploymentSchema = new mongoose.Schema({
         type: String,
         default: null
     },
+    // Workspace this deploy was launched from. Optional: a local project can
+    // be deployed without any workspace. Stored so background self-heal can
+    // scope its file edits without needing a live user/session.
+    workspaceId: {
+        type: String,
+        default: null
+    },
     subdomain: {
         type: String,
         required: true,

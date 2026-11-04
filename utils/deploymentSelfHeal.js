@@ -20,6 +20,7 @@ const LocalProject = require('../models/LocalProject');
 const TeamProject = require('../models/TeamProject');
 const AgentExecution = require('../models/AgentExecution');
 const agentOrchestrator = require('./agentOrchestrator');
+const { ensurePersonalWorkspace } = require('./personalWorkspace');
 const { redeployDeployment } = require('./agentAutoDeploy');
 const { notifyDeploymentEvent } = require('./notificationTriggers');
 
@@ -71,12 +72,43 @@ function deploymentNotificationTarget(deployment, workspaceId) {
   };
 }
 
-async function resolveProjectWorkspace(projectId) {
-  const local = await LocalProject.findById(projectId).select('workspaceId').lean();
-  if (local) return { workspaceId: local.workspaceId || null };
-  const team = await TeamProject.findById(projectId).select('company').lean();
-  if (team) return { workspaceId: team.company ? String(team.company) : null };
-  return null;
+async function resolveRepairWorkspaces(deployment, projectId, files = []) {
+  const candidates = [];
+
+  // CodeFile.company is the authoritative scope for the repair agent's file
+  // tools, so it comes first.
+  for (const file of files) {
+    if (file?.company) candidates.push(String(file.company));
+  }
+  if (deployment.workspaceId) candidates.push(String(deployment.workspaceId));
+
+  if (projectId) {
+    try {
+      const local = await LocalProject.findById(projectId).select('workspaceId').lean();
+      if (local?.workspaceId) candidates.push(String(local.workspaceId));
+      if (!local) {
+        const team = await TeamProject.findById(projectId).select('company').lean();
+        if (team?.company) candidates.push(String(team.company));
+      }
+    } catch (error) {
+      logError('could not resolve the project workspace', error);
+    }
+  }
+
+  const unique = [...new Set(candidates.filter(Boolean))];
+  if (unique.length) return unique;
+
+  // A deployment does not require a workspace: local projects can be deployed
+  // without one, and the owner may not belong to any company. Give the repair
+  // a private scope so file tools stay tenant-safe, mirroring how projects are
+  // created. The agent then has a real workspace even when the user has none.
+  try {
+    const personal = await ensurePersonalWorkspace(deployment.userId);
+    if (personal?._id) return [String(personal._id)];
+  } catch (error) {
+    logError('could not create a personal workspace for self-heal', error);
+  }
+  return [];
 }
 
 async function markGaveUp(deployment, summary, lastError, workspaceId, { notify = true } = {}) {
@@ -154,10 +186,56 @@ async function markRetry(deployment, error, workspaceId) {
   return { retry: true, attempts, nextAttemptAt };
 }
 
-function buildHealingGoal(deployment, projectId) {
+function buildFileManifest(files = []) {
+  if (!files.length) return '(no project files were found for this deployment)';
+  return files
+    .slice(0, 200)
+    .map((file) => {
+      const dir = file.path && file.path !== '/' ? String(file.path).replace(/\/+$/, '') : '';
+      const name = `${dir ? `${dir}/` : ''}${file.name}`;
+      return `- ${name} (id: ${file._id})`;
+    })
+    .join('\n');
+}
+
+const ENTRY_FILE_NAMES = new Set([
+  'package.json', 'dockerfile', 'index.js', 'server.js', 'app.js', 'main.js',
+  'main.py', 'requirements.txt', 'pyproject.toml', 'go.mod', 'go.sum',
+  'gemfile', 'composer.json', 'nginx.conf', '.env.example', 'vite.config.js',
+  'next.config.js', 'tsconfig.json',
+]);
+
+// Pick a handful of files whose contents are worth putting directly in the
+// repair prompt: files named in the build error first, then common entrypoints.
+function pickPreviewFiles(files = [], deployment = {}) {
+  const haystack = `${deployment.errorMessage || ''}\n${deployment.buildLogs || ''}`.toLowerCase();
+  return files
+    .map((file) => {
+      const name = String(file.name || '').toLowerCase();
+      let score = 0;
+      if (name && haystack.includes(name)) score += 10;
+      if (ENTRY_FILE_NAMES.has(name)) score += 5;
+      return { file, score };
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 8)
+    .map(({ file }) => file);
+}
+
+function buildHealingGoal(deployment, projectId, files = [], previewFiles = []) {
   const logs = String(deployment.buildLogs || '').slice(-12000);
   const runtimeLogs = String(deployment.runtimeLogs || '').slice(-4000);
   const subdomain = deployment.subdomain;
+  const previews = previewFiles
+    .filter((file) => typeof file.content === 'string' && file.content.length)
+    .map((file) => {
+      const dir = file.path && file.path !== '/' ? String(file.path).replace(/\/+$/, '') : '';
+      const label = `${dir ? `${dir}/` : ''}${file.name}`;
+      const body = file.content.length > 4000
+        ? `${file.content.slice(0, 4000)}\n... [truncated]`
+        : file.content;
+      return `--- ${label} ---\n${body}`;
+    });
   return [
     'A deployment failed and must be repaired automatically, without asking a human.',
     '',
@@ -170,17 +248,33 @@ function buildHealingGoal(deployment, projectId) {
     logs || '(no build log captured)',
     ...(runtimeLogs ? ['', 'Runtime log tail:', runtimeLogs] : []),
     '',
+    'Project files (read them with read_file using the id):',
+    buildFileManifest(files),
+    ...(previews.length ? ['', 'Relevant file contents (truncated):', ...previews] : []),
+    '',
     'Diagnose the root cause in this project and edit the project files to fix it.',
     'Make the smallest correct change. Do not delete files, run tests, or execute code.',
     'Read the relevant files before editing them. When the fix is in place, set goalAchieved=true.',
   ].join('\n');
 }
 
-async function runHealingAgent(deployment, { projectId, workspaceId }) {
-  const files = await CodeFile.find({ project: String(projectId) })
-    .select('name path language')
-    .limit(400)
-    .lean();
+async function runHealingAgent(deployment, { projectId, workspaceId, files = [] }) {
+  // Feed the prompt the most relevant file bodies too, so the repair does not
+  // depend on the model choosing to read them first. Bounded: a handful of
+  // files, 4KB each.
+  let previewFiles = [];
+  const previewCandidates = pickPreviewFiles(files, deployment);
+  if (previewCandidates.length) {
+    try {
+      previewFiles = await CodeFile.find({
+        _id: { $in: previewCandidates.map((file) => file._id) },
+      })
+        .select('name path content')
+        .lean();
+    } catch (error) {
+      logError('could not load file previews for self-heal', error);
+    }
+  }
 
   const execution = await AgentExecution.create({
     userId: deployment.userId,
@@ -218,7 +312,7 @@ async function runHealingAgent(deployment, { projectId, workspaceId }) {
   let result;
   try {
     result = await agentOrchestrator.executeAgenticLoop(
-      buildHealingGoal(deployment, projectId),
+      buildHealingGoal(deployment, projectId, files, previewFiles),
       context,
       execution._id
     );
@@ -308,25 +402,51 @@ async function processDeployment(deploymentId) {
     );
   }
 
-  const resolved = await resolveProjectWorkspace(projectId);
-  const workspaceId = resolved?.workspaceId || null;
-  if (!workspaceId) {
+  const files = await CodeFile.find({ project: String(projectId) })
+    .select('name path language company')
+    .limit(400)
+    .lean();
+
+  // Workspace is optional. Prefer the CodeFiles' own company (the scope the
+  // agent's file tools use), then the deployment/project workspace, then the
+  // owner's personal workspace. Self-heal must never require the user to be in
+  // a workspace.
+  const workspaces = await resolveRepairWorkspaces(deployment, projectId, files);
+  const workspaceId = workspaces[0] || null;
+
+  for (const candidate of workspaces) {
+    let company = null;
+    try {
+      company = await Company.findById(candidate).select('settings.selfHeal').lean();
+    } catch (error) {
+      logError(`could not read workspace ${candidate}`, error);
+    }
+    if (company?.settings?.selfHeal === false) {
+      return markGaveUp(
+        deployment,
+        'Deployment self-heal is disabled for this workspace.',
+        null,
+        candidate,
+        { notify: false }
+      );
+    }
+  }
+
+  if (deployment.fault === 'user' && files.length === 0) {
     return markGaveUp(
       deployment,
-      'Deployment self-heal skipped: the project has no resolvable workspace.',
+      'Deployment self-heal stopped: the project has no files to repair.',
       null,
-      null
+      workspaceId
     );
   }
 
-  const company = await Company.findById(workspaceId).select('settings.selfHeal').lean();
-  if (company?.settings?.selfHeal === false) {
+  if (deployment.fault === 'user' && !workspaceId) {
     return markGaveUp(
       deployment,
-      'Deployment self-heal is disabled for this workspace.',
+      'Deployment self-heal stopped: no workspace is available to scope the repair.',
       null,
-      workspaceId,
-      { notify: false }
+      null
     );
   }
 
@@ -340,7 +460,7 @@ async function processDeployment(deploymentId) {
 
   try {
     if (deployment.fault === 'user') {
-      const agentResult = await runHealingAgent(deployment, { projectId, workspaceId });
+      const agentResult = await runHealingAgent(deployment, { projectId, workspaceId, files });
       if (!agentResult.success) {
         return await markRetry(
           deployment,
@@ -535,6 +655,8 @@ module.exports = {
   runTick,
   processDeployment,
   buildHealingGoal,
+  buildFileManifest,
+  resolveRepairWorkspaces,
   // exported for tests
   _config: {
     ENABLED,
