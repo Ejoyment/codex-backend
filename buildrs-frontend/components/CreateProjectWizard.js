@@ -12,7 +12,14 @@ const STEPS = [
   { id: 4, title: 'Review', subtitle: 'Confirm configuration' },
 ];
 
-export default function CreateProjectWizard({ onClose, onCreated, initialSourceType = 'github' }) {
+export default function CreateProjectWizard({
+  onClose,
+  onCreated,
+  initialSourceType = 'github',
+  demoMode = false,
+  focusTargetRef,
+  onStepChange,
+}) {
   const [currentStep, setCurrentStep] = useState(1);
   const [showConfigurationReady, setShowConfigurationReady] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -47,6 +54,10 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
   const [showCustomTechnologyInput, setShowCustomTechnologyInput] = useState(false);
 
   const loadGitHubRepositories = useCallback(async () => {
+    if (demoMode) {
+      setGithubLoading(false);
+      return;
+    }
     setGithubLoading(true);
     setGithubError('');
     try {
@@ -66,13 +77,19 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
     } finally {
       setGithubLoading(false);
     }
-  }, []);
+  }, [demoMode]);
 
   const loadBranches = async (repo) => {
     if (!repo) return;
     setBranchesLoading(true);
     setGithubBranches([]);
     setGithubError('');
+    if (demoMode) {
+      setGithubBranches([repo.defaultBranch || 'main']);
+      setProject((current) => ({ ...current, branch: repo.defaultBranch || 'main' }));
+      setBranchesLoading(false);
+      return;
+    }
     try {
       const data = await githubApi.getBranches(repo.owner, repo.name);
       const branches = Array.isArray(data?.branches)
@@ -95,10 +112,16 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
   };
 
   useEffect(() => {
+    if (demoMode) {
+      setGithubConnected(false);
+      setGithubLoading(false);
+      return undefined;
+    }
     loadGitHubRepositories();
-  }, [loadGitHubRepositories]);
+  }, [demoMode, loadGitHubRepositories]);
 
   useEffect(() => {
+    if (demoMode) return undefined;
     const projectId = createdProject?.id || createdProject?._id;
     const status = createdProject?.provisioningStatus;
     if (!projectId || !['pending', 'provisioning'].includes(status)) return undefined;
@@ -126,10 +149,13 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
       active = false;
       clearTimeout(timer);
     };
-  }, [createdProject?.id, createdProject?._id, createdProject?.provisioningStatus]);
+  }, [createdProject?.id, createdProject?._id, createdProject?.provisioningStatus, demoMode]);
 
   const nextStep = () => setCurrentStep((prev) => Math.min(prev + 1, 4));
   const prevStep = () => setCurrentStep((prev) => Math.max(prev - 1, 1));
+  useEffect(() => {
+    onStepChange?.(showConfigurationReady ? 5 : currentStep);
+  }, [currentStep, onStepChange, showConfigurationReady]);
   const handleFinishReview = async () => {
     setSubmitError('');
     if (!project.name.trim()) {
@@ -143,6 +169,26 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
 
     setIsSaving(true);
     try {
+      if (demoMode) {
+        const mockProject = {
+          id: `demo-project-${Date.now()}`,
+          name: project.name.trim(),
+          description: project.description.trim(),
+          visibility: project.visibility,
+          sourceType: project.sourceType,
+          githubRepoName: project.repositoryFullName || '',
+          githubRepoUrl: project.repositoryUrl || '',
+          defaultBranch: project.branch.trim() || 'main',
+          template: project.sourceType === 'template' ? project.template : '',
+          technologies: [...project.technologies, ...project.customTechnologies],
+          intelligence: project.intelligence,
+          provisioningStatus: 'ready',
+          provisionedFileCount: 6,
+        };
+        setCreatedProject(mockProject);
+        onCreated?.(mockProject);
+        return;
+      }
       const response = await projectApi.create({
         name: project.name.trim(),
         description: project.description.trim(),
@@ -188,9 +234,17 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
       branch: repo.defaultBranch || 'main',
       name: current.name.trim() ? current.name : repo.name,
     }));
+    if (demoMode) {
+      setGithubBranches([repo.defaultBranch || 'main']);
+      return;
+    }
     loadBranches(repo);
   };
   const retryProvisioning = async () => {
+    if (demoMode) {
+      setCreatedProject((current) => ({ ...current, provisioningStatus: 'ready' }));
+      return;
+    }
     const projectId = createdProject?.id || createdProject?._id;
     if (!projectId) return;
     setRetryingProvisioning(true);
@@ -254,7 +308,7 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
   }[provisioningStatus] || provisioningStatus;
 
   return (
-    <div className="min-h-screen bg-[#0b0f17] text-white flex flex-col p-6">
+    <div className="min-h-screen bg-[#0e141d] text-white flex flex-col p-6">
       {/* Header */}
       <div className="mb-8">
         <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-400">
@@ -324,7 +378,7 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
                     onChange={(event) => updateProject('name', event.target.value)}
                     placeholder="e.g acme customer portal"
                     aria-label="Project name"
-                    className="w-full rounded-lg border border-white/10 bg-[#161b26] px-3 py-2 text-sm text-white placeholder-zinc-500 focus:border-cyan-500 focus:outline-none"
+                    className="w-full rounded-lg border border-white/10 bg-[#182130] px-3 py-2 text-sm text-white placeholder-zinc-500 focus:border-cyan-500 focus:outline-none"
                   />
                   <p className="mt-1 text-[10px] text-zinc-500">This name appears across tasks, specs, agents, and connected tools.</p>
                 </div>
@@ -336,7 +390,7 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
                     onChange={(event) => updateProject('description', event.target.value)}
                     placeholder="A unified customer workspace for onboarding, billing, support, and account administration."
                     aria-label="Project description"
-                    className="w-full rounded-lg border border-white/10 bg-[#161b26] px-3 py-2 text-sm text-white placeholder-zinc-500 focus:border-cyan-500 focus:outline-none resize-none"
+                    className="w-full rounded-lg border border-white/10 bg-[#182130] px-3 py-2 text-sm text-white placeholder-zinc-500 focus:border-cyan-500 focus:outline-none resize-none"
                   />
                   <p className="mt-1 text-[10px] text-zinc-500">Optional - Add the outcome or product surface this project owns.</p>
                 </div>
@@ -357,7 +411,7 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
                     type="button"
                     aria-pressed={project.visibility === 'private'}
                     onClick={() => updateProject('visibility', 'private')}
-                    className={`flex w-full items-start gap-3 rounded-xl border p-4 text-left transition ${project.visibility === 'private' ? 'border-cyan-500/50 bg-cyan-500/5' : 'border-white/10 bg-[#161b26] hover:border-white/20'}`}
+                    className={`flex w-full items-start gap-3 rounded-xl border p-4 text-left transition ${project.visibility === 'private' ? 'border-cyan-500/50 bg-cyan-500/5' : 'border-white/10 bg-[#182130] hover:border-white/20'}`}
                   >
                     <div className={`mt-0.5 flex h-5 w-5 items-center justify-center rounded-full border-2 ${project.visibility === 'private' ? 'border-cyan-400' : 'border-zinc-600'}`}>
                       {project.visibility === 'private' && <div className="h-2.5 w-2.5 rounded-full bg-cyan-400" />}
@@ -372,7 +426,7 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
                     type="button"
                     aria-pressed={project.visibility === 'public'}
                     onClick={() => updateProject('visibility', 'public')}
-                    className={`flex w-full items-start gap-3 rounded-xl border p-4 text-left transition ${project.visibility === 'public' ? 'border-cyan-500/50 bg-cyan-500/5' : 'border-white/10 bg-[#161b26] hover:border-white/20'}`}
+                    className={`flex w-full items-start gap-3 rounded-xl border p-4 text-left transition ${project.visibility === 'public' ? 'border-cyan-500/50 bg-cyan-500/5' : 'border-white/10 bg-[#182130] hover:border-white/20'}`}
                   >
                     <div className={`mt-0.5 flex h-5 w-5 items-center justify-center rounded-full border-2 ${project.visibility === 'public' ? 'border-cyan-400' : 'border-zinc-600'}`}>
                       {project.visibility === 'public' && <div className="h-2.5 w-2.5 rounded-full bg-cyan-400" />}
@@ -384,7 +438,7 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
                   </button>
                 </div>
 
-                <div className="mt-4 flex items-center gap-2 rounded-lg border border-white/5 bg-[#161b26] p-3">
+                <div className="mt-4 flex items-center gap-2 rounded-lg border border-white/5 bg-[#182130] p-3">
                   <Check className="h-3 w-3 text-emerald-400" />
                   <p className="text-[10px] text-zinc-400">
                     {project.visibility === 'private'
@@ -412,7 +466,7 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {/* Option 1: Scratch */}
-              <div className={`rounded-xl border p-4 flex flex-col ${project.sourceType === 'scratch' ? 'border-cyan-500 bg-cyan-500/5' : 'border-white/10 bg-[#161b26]'}`}>
+              <div className={`rounded-xl border p-4 flex flex-col ${project.sourceType === 'scratch' ? 'border-cyan-500 bg-cyan-500/5' : 'border-white/10 bg-[#182130]'}`}>
                 <button type="button" aria-pressed={project.sourceType === 'scratch'} onClick={() => updateProject('sourceType', 'scratch')} className="flex w-full items-center justify-between mb-4 text-left">
                   <div className="flex items-center gap-2">
                     <FileText className={`h-4 w-4 ${project.sourceType === 'scratch' ? 'text-cyan-400' : 'text-zinc-400'}`} />
@@ -425,13 +479,13 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
                 <p className="text-[10px] text-zinc-500 mb-4">Create an empty project context and connect code later.</p>
                 <div className="mt-auto space-y-2">
                   <label className="text-[10px] text-zinc-400">Default branch</label>
-                  <input type="text" value={project.branch} onChange={(event) => updateProject('branch', event.target.value)} aria-label="Default branch" className="w-full rounded-lg border border-white/10 bg-[#0b0f17] px-3 py-1.5 text-xs text-white" />
+                  <input type="text" value={project.branch} onChange={(event) => updateProject('branch', event.target.value)} aria-label="Default branch" className="w-full rounded-lg border border-white/10 bg-[#0e141d] px-3 py-1.5 text-xs text-white" />
                   <p className="text-[10px] text-zinc-600 flex items-center gap-1"><Bot className="h-3 w-3" /> A clean workspace with no indexed source.</p>
                 </div>
               </div>
 
               {/* Option 2: GitHub (Active) */}
-              <div className={`rounded-xl border p-4 flex flex-col ${project.sourceType === 'github' ? 'border-2 border-cyan-500 bg-cyan-500/5' : 'border-white/10 bg-[#161b26]'}`}>
+              <div className={`rounded-xl border p-4 flex flex-col ${project.sourceType === 'github' ? 'border-2 border-cyan-500 bg-cyan-500/5' : 'border-white/10 bg-[#182130]'}`}>
                 <button type="button" aria-pressed={project.sourceType === 'github'} onClick={() => updateProject('sourceType', 'github')} className="flex w-full items-center justify-between mb-4 text-left">
                   <div className="flex items-center gap-2">
                     <Github className={`h-4 w-4 ${project.sourceType === 'github' ? 'text-cyan-400' : 'text-zinc-400'}`} />
@@ -444,22 +498,44 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
                 <p className="text-[10px] text-zinc-400 mb-4">Import a repository from your connected GitHub account. Files become editable in the project workspace.</p>
                 <div className="mt-auto space-y-3">
                   {githubLoading ? (
-                    <div className="flex items-center gap-2 rounded-lg border border-white/5 bg-[#161b26] px-3 py-2 text-[10px] text-zinc-400">
+                    <div className="flex items-center gap-2 rounded-lg border border-white/5 bg-[#182130] px-3 py-2 text-[10px] text-zinc-400">
                       <Loader2 className="h-3 w-3 animate-spin" />
                       Loading GitHub account...
                     </div>
                   ) : !githubConnected ? (
                     <div className="space-y-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">
                       <p className="text-[10px] text-amber-300">GitHub is not connected.</p>
-                      <a href="/integrations" className="inline-flex items-center gap-1 text-[10px] font-medium text-cyan-400 hover:text-cyan-300">
-                        <Github className="h-3 w-3" /> Connect GitHub
-                      </a>
+                      {demoMode ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setGithubConnected(true);
+                            setGithubAccount('acme-demo');
+                            setGithubRepos([{
+                              id: 'demo-repository',
+                              fullName: 'acme/demo-app',
+                              name: 'demo-app',
+                              url: 'https://github.com/acme/demo-app',
+                              defaultBranch: 'main',
+                              owner: { login: 'acme' },
+                            }]);
+                            setGithubError('');
+                          }}
+                          className="inline-flex items-center gap-1 text-[10px] font-medium text-cyan-400 hover:text-cyan-300"
+                        >
+                          <Github className="h-3 w-3" /> Connect GitHub
+                        </button>
+                      ) : (
+                        <a href="/integrations" className="inline-flex items-center gap-1 text-[10px] font-medium text-cyan-400 hover:text-cyan-300">
+                          <Github className="h-3 w-3" /> Connect GitHub
+                        </a>
+                      )}
                     </div>
                   ) : (
                     <>
                       <div>
                         <label className="text-[10px] text-zinc-400">Repository *</label>
-                        <div className="mt-1 flex items-center gap-2 rounded-lg border border-white/10 bg-[#0b0f17] px-2 py-1.5">
+                        <div className="mt-1 flex items-center gap-2 rounded-lg border border-white/10 bg-[#0e141d] px-2 py-1.5">
                           <Github className="h-3 w-3 shrink-0 text-zinc-500" />
                           <select
                             value={project.repositoryFullName}
@@ -481,7 +557,7 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
                       </div>
                       <div>
                         <label className="text-[10px] text-zinc-400">Branch</label>
-                        <div className="mt-1 flex items-center gap-2 rounded-lg border border-white/10 bg-[#0b0f17] px-2 py-1.5">
+                        <div className="mt-1 flex items-center gap-2 rounded-lg border border-white/10 bg-[#0e141d] px-2 py-1.5">
                           <GitBranch className="h-3 w-3 shrink-0 text-zinc-500" />
                           <select
                             value={project.branch}
@@ -505,7 +581,7 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
                           </select>
                         </div>
                       </div>
-                      <div className="flex items-center justify-between gap-2 rounded-lg border border-white/5 bg-[#161b26] px-3 py-1.5">
+                      <div className="flex items-center justify-between gap-2 rounded-lg border border-white/5 bg-[#182130] px-3 py-1.5">
                         <p className="text-[10px] text-zinc-400">
                           {githubAccount ? `Connected as ${githubAccount}` : 'GitHub connected'}
                         </p>
@@ -522,7 +598,7 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
               </div>
 
               {/* Option 3: Template */}
-              <div className={`rounded-xl border p-4 flex flex-col ${project.sourceType === 'template' ? 'border-cyan-500 bg-cyan-500/5' : 'border-white/10 bg-[#161b26]'}`}>
+              <div className={`rounded-xl border p-4 flex flex-col ${project.sourceType === 'template' ? 'border-cyan-500 bg-cyan-500/5' : 'border-white/10 bg-[#182130]'}`}>
                 <button type="button" aria-pressed={project.sourceType === 'template'} onClick={() => updateProject('sourceType', 'template')} className="flex w-full items-center justify-between mb-4 text-left">
                   <div className="flex items-center gap-2">
                     <Layout className={`h-4 w-4 ${project.sourceType === 'template' ? 'text-cyan-400' : 'text-zinc-400'}`} />
@@ -536,7 +612,7 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
                 <div className="mt-auto space-y-3">
                   <div>
                     <label className="text-[10px] text-zinc-400">Template</label>
-                    <select value={project.template} onChange={(event) => updateProject('template', event.target.value)} className="w-full rounded-lg border border-white/10 bg-[#0b0f17] px-2 py-1.5 text-xs text-white mt-1 focus:outline-none focus:border-cyan-500">
+                    <select value={project.template} onChange={(event) => updateProject('template', event.target.value)} className="w-full rounded-lg border border-white/10 bg-[#0e141d] px-2 py-1.5 text-xs text-white mt-1 focus:outline-none focus:border-cyan-500">
                       <option>Full-stack web application</option>
                       <option>TypeScript API Service</option>
                       <option>React Native application</option>
@@ -544,7 +620,7 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
                   </div>
                   <div>
                     <label className="text-[10px] text-zinc-400">Default branch</label>
-                    <input type="text" value={project.branch} onChange={(event) => updateProject('branch', event.target.value)} aria-label="Template default branch" className="w-full rounded-lg border border-white/10 bg-[#0b0f17] px-3 py-1.5 text-xs text-white mt-1" />
+                    <input type="text" value={project.branch} onChange={(event) => updateProject('branch', event.target.value)} aria-label="Template default branch" className="w-full rounded-lg border border-white/10 bg-[#0e141d] px-3 py-1.5 text-xs text-white mt-1" />
                   </div>
                 </div>
               </div>
@@ -582,7 +658,7 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
                         onClick={() => toggleTechnology(tech)}
                         className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs transition-colors ${isSelected
                             ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-300'
-                            : 'border-white/10 bg-[#161b26] text-zinc-400 hover:border-white/20'
+                            : 'border-white/10 bg-[#182130] text-zinc-400 hover:border-white/20'
                           }`}
                       >
                         {tech === 'TypeScript' && <Code className="h-3 w-3" />}
@@ -615,7 +691,7 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
                     type="button"
                     onClick={() => setShowCustomTechnologyInput((shown) => !shown)}
                     aria-expanded={showCustomTechnologyInput}
-                    className="flex items-center gap-2 rounded-lg border border-white/10 bg-[#161b26] px-3 py-1.5 text-xs text-zinc-400 hover:border-white/20"
+                    className="flex items-center gap-2 rounded-lg border border-white/10 bg-[#182130] px-3 py-1.5 text-xs text-zinc-400 hover:border-white/20"
                   >
                     + Other
                   </button>
@@ -635,7 +711,7 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
                       onChange={(event) => updateProject('customTechnology', event.target.value)}
                       aria-label="Other technology"
                       placeholder="Technology name"
-                      className="min-w-0 flex-1 rounded-lg border border-white/10 bg-[#161b26] px-3 py-1.5 text-xs text-white placeholder-zinc-500 focus:border-cyan-500 focus:outline-none"
+                      className="min-w-0 flex-1 rounded-lg border border-white/10 bg-[#182130] px-3 py-1.5 text-xs text-white placeholder-zinc-500 focus:border-cyan-500 focus:outline-none"
                     />
                     <button type="submit" className="rounded-lg border border-cyan-500/40 px-3 py-1.5 text-xs text-cyan-300 hover:bg-cyan-500/10">
                       Add
@@ -643,7 +719,7 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
                   </form>
                 )}
 
-                <div className="mt-4 flex items-center gap-2 rounded-lg border border-white/5 bg-[#161b26] p-3">
+                <div className="mt-4 flex items-center gap-2 rounded-lg border border-white/5 bg-[#182130] p-3">
                   <Check className="h-3 w-3 text-cyan-400" />
                   <p className="text-[10px] text-zinc-400">{selectedTechnologies.length} {selectedTechnologies.length === 1 ? 'technology' : 'technologies'} selected. <span className="text-zinc-500">Stack tags stay editable in project settings.</span></p>
                 </div>
@@ -656,7 +732,7 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
 
                 <div className="space-y-3">
                   {/* Setting 1 */}
-                  <div className="flex items-center justify-between rounded-xl border border-white/10 bg-[#161b26] p-3">
+                  <div className="flex items-center justify-between rounded-xl border border-white/10 bg-[#182130] p-3">
                     <div className="flex items-center gap-3">
                       <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-800 text-zinc-400">
                         <Figma className="h-4 w-4" />
@@ -679,7 +755,7 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
                   </div>
 
                   {/* Setting 2 */}
-                  <div className={`flex items-center justify-between rounded-xl border p-3 ${project.intelligence.starterSpec ? 'border-cyan-500/30 bg-cyan-500/5' : 'border-white/10 bg-[#161b26]'}`}>
+                  <div className={`flex items-center justify-between rounded-xl border p-3 ${project.intelligence.starterSpec ? 'border-cyan-500/30 bg-cyan-500/5' : 'border-white/10 bg-[#182130]'}`}>
                     <div className="flex items-center gap-3">
                       <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${project.intelligence.starterSpec ? 'bg-cyan-500/20 text-cyan-400' : 'bg-zinc-800 text-zinc-400'}`}>
                         <FileText className="h-4 w-4" />
@@ -702,7 +778,7 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
                   </div>
 
                   {/* Setting 3 */}
-                  <div className={`flex items-center justify-between rounded-xl border p-3 ${project.intelligence.aiAgents ? 'border-cyan-500/30 bg-cyan-500/5' : 'border-white/10 bg-[#161b26]'}`}>
+                  <div className={`flex items-center justify-between rounded-xl border p-3 ${project.intelligence.aiAgents ? 'border-cyan-500/30 bg-cyan-500/5' : 'border-white/10 bg-[#182130]'}`}>
                     <div className="flex items-center gap-3">
                       <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${project.intelligence.aiAgents ? 'bg-cyan-500/20 text-cyan-400' : 'bg-zinc-800 text-zinc-400'}`}>
                         <Bot className="h-4 w-4" />
@@ -739,7 +815,7 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
               {/* Product Details Summary */}
-              <div className="rounded-xl border border-white/10 bg-[#161b26] p-4">
+              <div className="rounded-xl border border-white/10 bg-[#182130] p-4">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-xs font-medium text-white">Product details</h3>
                   <button type="button" onClick={() => setCurrentStep(1)} className="text-[10px] text-cyan-400 hover:underline">Edit</button>
@@ -752,7 +828,7 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
               </div>
 
               {/* Source Summary */}
-              <div className="rounded-xl border border-white/10 bg-[#161b26] p-4">
+              <div className="rounded-xl border border-white/10 bg-[#182130] p-4">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-xs font-medium text-white">Source</h3>
                   <button type="button" onClick={() => setCurrentStep(2)} className="text-[10px] text-cyan-400 hover:underline">Edit</button>
@@ -766,7 +842,7 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
               </div>
 
               {/* Stack Summary */}
-              <div className="rounded-xl border border-white/10 bg-[#161b26] p-4">
+              <div className="rounded-xl border border-white/10 bg-[#182130] p-4">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-xs font-medium text-white">Stack</h3>
                   <button type="button" onClick={() => setCurrentStep(3)} className="text-[10px] text-cyan-400 hover:underline">Edit</button>
@@ -778,7 +854,7 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
               </div>
 
               {/* Intelligence Summary */}
-              <div className="rounded-xl border border-white/10 bg-[#161b26] p-4">
+              <div className="rounded-xl border border-white/10 bg-[#182130] p-4">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-xs font-medium text-white">Intelligence</h3>
                   <button type="button" onClick={() => setCurrentStep(3)} className="text-[10px] text-cyan-400 hover:underline">Edit</button>
@@ -792,7 +868,7 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
             </div>
 
             {/* What happens next */}
-            <div className="rounded-xl border border-white/5 bg-[#0b0f17] p-4 mt-auto">
+            <div className="rounded-xl border border-white/5 bg-[#0e141d] p-4 mt-auto">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-xs font-medium text-white">Configuration status</h3>
                 <span className="text-[10px] text-zinc-500">Saved when you create the project</span>
@@ -826,6 +902,7 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
           )}
           {currentStep < 4 ? (
             <button
+              ref={focusTargetRef}
               type="button"
               onClick={nextStep}
               disabled={isSaving}
@@ -835,6 +912,7 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
             </button>
           ) : (
             <button
+              ref={focusTargetRef}
               onClick={handleFinishReview}
               type="button"
               disabled={isSaving}
@@ -873,7 +951,7 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
               </button>
             </div>
 
-            <div className="mb-4 rounded-xl border border-white/5 bg-[#161b26] p-4">
+            <div className="mb-4 rounded-xl border border-white/5 bg-[#182130] p-4">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <h3 className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Setup status</h3>
                 <span className={`text-[10px] font-medium ${provisioningReady ? 'text-emerald-400' : provisioningFailed ? 'text-rose-400' : 'text-cyan-400'}`}>
@@ -899,7 +977,7 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
               )}
             </div>
 
-            <div className="mb-6 rounded-xl border border-white/5 bg-[#161b26] p-4">
+            <div className="mb-6 rounded-xl border border-white/5 bg-[#182130] p-4">
               <h3 className="mb-3 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Project configuration</h3>
               <div className="space-y-3 text-xs">
                 <div className="flex justify-between gap-4"><span className="text-zinc-400">Name</span><span className="text-right font-medium text-white">{createdProject?.name || projectName}</span></div>
@@ -925,6 +1003,7 @@ export default function CreateProjectWizard({ onClose, onCreated, initialSourceT
                 </button>
               )}
               <button
+                ref={focusTargetRef}
                 onClick={() => onCreated?.(createdProject)}
                 className="rounded-lg bg-cyan-400 px-4 py-2 text-xs font-bold text-slate-950 transition hover:bg-cyan-300"
               >

@@ -63,12 +63,12 @@ export default function AcceptInvitation() {
             <div className="relative mx-auto mb-6 flex h-14 w-14 items-center justify-center">
               {status === 'processing' && (
                 <div
-                  className="absolute inset-0 rounded-full border-2 border-[#2fd6e6] border-t-transparent"
+                  className="absolute inset-0 rounded-full border-2 border-[#12dce5] border-t-transparent"
                   style={{ animation: 'mkt-spin 1s linear infinite' }}
                 />
               )}
               {status === 'success' && (
-                <div className="mkt-mono flex h-14 w-14 items-center justify-center rounded-full border border-[#2fd6e680] text-[20px] text-[#2fd6e6]">✓</div>
+                <div className="mkt-mono flex h-14 w-14 items-center justify-center rounded-full border border-[#12dce580] text-[20px] text-[#12dce5]">✓</div>
               )}
               {status === 'error' && (
                 <div className="mkt-mono flex h-14 w-14 items-center justify-center rounded-full border border-[#e5b84a80] text-[20px] text-[#e5b84a]">!</div>
@@ -82,7 +82,7 @@ export default function AcceptInvitation() {
               {status === 'success' && 'Invitation accepted'}
               {status === 'error' && 'Something went wrong'}
             </h1>
-            <p className="mt-3 text-[13.5px] text-[#a8adba]">{message}</p>
+            <p className="mt-3 text-[13.5px] text-[#a9b7c4]">{message}</p>
             {status === 'error' && (
               <button
                 type="button"

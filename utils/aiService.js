@@ -10,9 +10,11 @@ const { parsePrivacyMode } = require('./aiPrivacy');
 
 // Outbound LLM calls must stay bounded, including provider failover.
 const AI_REQUEST_TIMEOUT_MS = parseInt(process.env.AI_REQUEST_TIMEOUT_MS, 10) || 60000;
-const MAX_CONTEXT_FILES = 10;
-const MAX_FILE_CONTEXT_CHARS = 12000;
-const MAX_TOTAL_FILE_CONTEXT_CHARS = 60000;
+// Agent runs need enough of the repo to make real cross-file changes. Keep the
+// bounds configurable so a deployment can trade context for cost/latency.
+const MAX_CONTEXT_FILES = parseInt(process.env.AI_CONTEXT_FILES, 10) || 16;
+const MAX_FILE_CONTEXT_CHARS = parseInt(process.env.AI_CONTEXT_FILE_CHARS, 10) || 20000;
+const MAX_TOTAL_FILE_CONTEXT_CHARS = parseInt(process.env.AI_CONTEXT_TOTAL_CHARS, 10) || 120000;
 
 class AIService {
     constructor() {
@@ -496,7 +498,17 @@ Your capabilities:
             prompt += `Language: ${currentFile.language || 'unknown'}\n`;
         }
 
-        if (files && files.length > 0) {
+        if (codeContext.fileManifest?.paths?.length) {
+            // The manifest is the full repository shape; the files passed in
+            // `files` are only the most relevant subset whose contents fit.
+            prompt += `\nRepository Manifest (${codeContext.fileManifest.total || codeContext.fileManifest.paths.length} files):\n`;
+            codeContext.fileManifest.paths.forEach((filePath) => {
+                prompt += `- ${filePath}\n`;
+            });
+            if (codeContext.fileManifest.truncated) {
+                prompt += '- [manifest truncated to keep the request bounded]\n';
+            }
+        } else if (files && files.length > 0) {
             prompt += `\nAvailable Files:\n`;
             files.slice(0, MAX_CONTEXT_FILES).forEach(file => {
                 prompt += `- ${file.path}\n`;

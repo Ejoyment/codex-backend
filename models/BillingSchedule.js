@@ -36,6 +36,7 @@ const billingScheduleSchema = new mongoose.Schema({
         type: String,
         enum: ['stripe', 'paystack', 'flutterwave']
     },
+    idempotencyKey: String,
     stripePaymentIntentId: String,
     // These were written by the provider schedulers but never declared, so
     // Mongoose strict mode silently dropped them. The reaper needs them to
@@ -63,5 +64,6 @@ const billingScheduleSchema = new mongoose.Schema({
 billingScheduleSchema.index({ scheduledFor: 1, status: 1 });
 billingScheduleSchema.index({ userId: 1, status: 1 });
 billingScheduleSchema.index({ status: 1, lastAttempt: 1 });
+billingScheduleSchema.index({ idempotencyKey: 1 }, { unique: true, sparse: true });
 
 module.exports = mongoose.model('BillingSchedule', billingScheduleSchema);

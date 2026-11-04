@@ -34,6 +34,7 @@ jest.mock('../utils/aiRouterService', () => ({
     provider: provider || 'gemini',
     localPrivacyMode: Boolean(localPrivacyMode),
   })),
+  normalizeModel: jest.fn((provider, model) => (model && model !== provider ? model : null)),
   validateModel: jest.fn().mockResolvedValue(true),
 }));
 jest.mock('../utils/sddVerificationService', () => ({ verifySpec: jest.fn() }));
@@ -347,7 +348,7 @@ describe('approve / reject ownership', () => {
     const err = once(s, 'agent:error');
     s.emit('agent:approve', { executionId: EXEC_A });
     expect((await err).message).toMatch(/access denied/i);
-    expect(CodeFile.findOne).not.toHaveBeenCalled();
+    expect(CodeFile.find).not.toHaveBeenCalled();
     expect(execution.save).not.toHaveBeenCalled();
     s.disconnect();
   });
@@ -359,13 +360,17 @@ describe('approve / reject ownership', () => {
     });
     AgentExecution.findById.mockResolvedValue(execution);
     const doc = { _id: 'f1', name: 'a.js', path: '/src', content: 'old', save: jest.fn(async function () { return this; }) };
-    CodeFile.findOne.mockResolvedValue(doc);
+    CodeFile.find.mockResolvedValue([doc]);
     const s = await connect(USER_A);
     const done = once(s, 'agent:approved');
     s.emit('agent:approve', { executionId: EXEC_A });
     const payload = await done;
     expect(payload.message).toMatch(/approved/i);
-    expect(CodeFile.findOne).toHaveBeenCalledWith({ company: WORKSPACE_A, name: 'a.js', path: '/src' });
+    expect(CodeFile.find).toHaveBeenCalledWith({
+      company: WORKSPACE_A,
+      project: null,
+      $or: [{ name: 'a.js', path: '/src' }],
+    });
     expect(doc.save).toHaveBeenCalled();
     expect(doc.content).toBe('new body');
     s.disconnect();

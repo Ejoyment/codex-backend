@@ -4,6 +4,7 @@ import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch, API_BASE_URL } from '../lib/api';
+import { getDemoApiResponse, isDemoTourActive } from '../lib/demoFixtures';
 import useToastStore from '../store/toastStore';
 import { MessageSquare, User, RefreshCw, Send } from 'lucide-react';
 
@@ -67,6 +68,10 @@ export default function SupportAdmin() {
   }, []);
 
   useEffect(() => {
+    if (isDemoTourActive()) {
+      setAgent({ id: 'demo-support-agent', name: 'Buildrs Support' });
+      return;
+    }
     const saved = typeof window !== 'undefined' ? localStorage.getItem('supportAgent') : null;
     if (saved) {
       try {
@@ -85,6 +90,7 @@ export default function SupportAdmin() {
   };
 
   const agentFetch = async (path, options = {}) => {
+    if (isDemoTourActive()) return getDemoApiResponse(path, options);
     const token = getAgentToken();
     const headers = {
       'Content-Type': 'application/json',
@@ -115,8 +121,8 @@ export default function SupportAdmin() {
         body: JSON.stringify({ email: loginEmail, password: loginPassword }),
       });
       setAgent(data.agent);
-      localStorage.setItem('supportAgent', JSON.stringify(data.agent));
-      if (data.token) {
+      if (!isDemoTourActive()) localStorage.setItem('supportAgent', JSON.stringify(data.agent));
+      if (data.token && !isDemoTourActive()) {
         localStorage.setItem('supportAgentToken', data.token);
       }
       setShowLogin(false);
@@ -136,8 +142,10 @@ export default function SupportAdmin() {
       }
     } catch {}
     setAgent(null);
-    localStorage.removeItem('supportAgent');
-    localStorage.removeItem('supportAgentToken');
+    if (!isDemoTourActive()) {
+      localStorage.removeItem('supportAgent');
+      localStorage.removeItem('supportAgentToken');
+    }
   };
 
   const handleStatusChange = async (ticketId, status) => {

@@ -39,6 +39,9 @@ const NOTIFICATION_TYPES = [
     'deployment_started',
     'deployment_succeeded',
     'deployment_failed',
+    'deployment_healing',
+    'deployment_healed',
+    'deployment_heal_failed',
     // Billing
     'payment_succeeded',
     'payment_failed',

@@ -1,0 +1,127 @@
+/* ==========================================================================
+   Buildrs.HQ — Figma design tokens
+   Source: Figma file tnCiDorshTlhYYrFkhNpI1 (root node 0:1), global vars.
+   These are the canonical values for the whole product. Component styles
+   should reference these variables instead of hard-coded colours.
+   ========================================================================== */
+
+:root {
+  /* ---- Surfaces -------------------------------------------------------- */
+  --figma-bg: #0f131c;
+  --figma-bg-deep: #0a0d15;
+  --figma-bg-alt: #090e16;
+  --figma-surface: #101d2c;
+  --figma-surface-raised: #1d263b;
+  --figma-surface-blue: #1a3345;
+  --figma-overlay: rgba(5, 8, 13, 0.5);
+
+  /* ---- Accents --------------------------------------------------------- */
+  --figma-accent: #12dce5;
+  --figma-accent-bright: #68f7ff;
+  --figma-accent-soft: #a4edf0;
+  --figma-accent-dim: #0fb9c1;
+  --figma-accent-deep: #0c969c;
+  --figma-purple: #8a38f5;
+  --figma-purple-soft: #c795e8;
+  --figma-blue-text: #b0c6ff;
+
+  /* ---- Text ------------------------------------------------------------ */
+  --figma-text: #ffffff;
+  --figma-text-secondary: rgba(255, 255, 255, 0.6);
+  --figma-text-soft: #c7d2dd;
+  --figma-text-alt: #dee2f6;
+  --figma-text-muted: #9aaeba;
+  --figma-text-faint: #748194;
+  --figma-text-ghost: #59687a;
+
+  /* ---- Status ---------------------------------------------------------- */
+  --figma-success: #03ba03;
+  --figma-success-deep: #039503;
+  --figma-success-light: #56e5a9;
+  --figma-success-soft: rgba(3, 186, 3, 0.2);
+  --figma-error: #ec1414;
+  --figma-error-soft: #ec8f8f;
+  --figma-warning: #e5b84a;
+  --figma-info: #1478e8;
+  --figma-info-deep: #014c85;
+
+  /* ---- Borders & translucent fills ------------------------------------ */
+  --figma-border: rgba(255, 255, 255, 0.1);
+  --figma-border-soft: rgba(255, 255, 255, 0.06);
+  --figma-border-faint: rgba(255, 255, 255, 0.03);
+  --figma-border-accent: rgba(18, 220, 229, 0.1);
+  --figma-border-accent-strong: rgba(18, 220, 229, 0.35);
+  --figma-panel: rgba(29, 38, 59, 0.6);
+  --figma-panel-deep: rgba(1, 15, 31, 0.2);
+
+  /* ---- Gradients ------------------------------------------------------- */
+  --figma-gradient-accent: linear-gradient(180deg, #12dce5 0%, #a4edf0 100%);
+  --figma-gradient-surface: linear-gradient(145deg, #0a0d15 0%, #0f131c 100%);
+  --figma-gradient-spectrum: linear-gradient(
+    90deg,
+    #002d70 0%,
+    #003978 7%,
+    #004581 14%,
+    #005189 21%,
+    #005d92 29%,
+    #00699a 36%,
+    #0076a2 43%,
+    #0082ab 50%,
+    #008eb3 57%,
+    #009bbb 64%,
+    #00a8c4 71%,
+    #00b5cc 79%,
+    #02c2d4 86%,
+    #0acfdd 93%,
+    #12dce5 100%
+  );
+
+  /* ---- Effects --------------------------------------------------------- */
+  --figma-glow: 0 0 24px rgba(18, 220, 229, 0.35);
+  --figma-glow-soft: 0 0 22px rgba(18, 220, 229, 0.28);
+  --figma-glow-faint: 0 0 26px rgba(18, 220, 229, 0.2);
+  --figma-glow-success: 0 0 8px rgba(86, 229, 169, 0.8);
+  --figma-glow-info: 0 0 16px rgba(56, 189, 248, 0.12);
+  --figma-elevation-sm: 0 14px 34px rgba(0, 0, 0, 0.18);
+  --figma-elevation: 0 18px 50px rgba(0, 0, 0, 0.24);
+  --figma-elevation-lg: 0 28px 90px rgba(0, 0, 0, 0.55);
+  --figma-blur: blur(6px);
+  --figma-blur-sm: blur(4px);
+
+  /* ---- Radii ----------------------------------------------------------- */
+  --figma-radius-xs: 4px;
+  --figma-radius-sm: 6px;
+  --figma-radius: 8px;
+  --figma-radius-md: 12px;
+  --figma-radius-lg: 16px;
+  --figma-radius-xl: 20px;
+  --figma-radius-pill: 999px;
+
+  /* ---- Spacing --------------------------------------------------------- */
+  --figma-space-1: 4px;
+  --figma-space-2: 6px;
+  --figma-space-3: 8px;
+  --figma-space-4: 10px;
+  --figma-space-5: 12px;
+  --figma-space-6: 14px;
+  --figma-space-7: 16px;
+  --figma-space-8: 20px;
+  --figma-space-9: 24px;
+
+  /* ---- Typography ------------------------------------------------------ */
+  --figma-font-sans: var(--font-inter, 'Inter'), 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --figma-font-mono: var(--font-roboto-mono, 'Roboto Mono'), 'Roboto Mono', ui-monospace, 'SF Mono', SFMono-Regular, Menlo, monospace;
+
+  --figma-text-micro: 10px;
+  --figma-text-xs: 11px;
+  --figma-text-sm: 12px;
+  --figma-text-body: 14px;
+  --figma-text-body-lg: 16px;
+  --figma-text-section: 20px;
+  --figma-text-page: 32px;
+  --figma-leading-body: 1.18;
+  --figma-leading-section: 1.275;
+  --figma-leading-page: 1.125;
+  --figma-tracking-page: -0.0234em;
+  --figma-tracking-eyebrow: 0.16em;
+}

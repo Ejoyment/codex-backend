@@ -217,6 +217,12 @@ async function applyWebhookEvent(normalized) {
   if (!userId) throw new Error('userId required (must be in webhook metadata)');
   if (!prior) prior = await findEntitlement({ userId });
   if (prior && Array.isArray(prior.appliedEventIds) && prior.appliedEventIds.includes(eventId)) {
+    await mirrorToSubscription(userId, {
+      plan: prior.plan,
+      status: prior.status,
+      provider: prior.provider,
+      customerId: prior.providerCustomerId,
+    });
     return { applied: false, entitlement: prior, reason: 'duplicate event' };
   }
   const paidMinor = amountMinor != null
@@ -248,6 +254,7 @@ async function applyWebhookEvent(normalized) {
     }
   }
   if (provider) set.provider = provider;
+  if (status) set.status = status;
   if (customerId) set.providerCustomerId = String(customerId);
   if (subscriptionId) set.providerSubscriptionId = String(subscriptionId);
   if (currency) set.currency = String(currency).toUpperCase();
@@ -260,6 +267,14 @@ async function applyWebhookEvent(normalized) {
   );
   if (!entitlement) {
     const current = await Entitlement.findOne({ userId });
+    if (current) {
+      await mirrorToSubscription(userId, {
+        plan: current.plan,
+        status: current.status,
+        provider: current.provider,
+        customerId: current.providerCustomerId,
+      });
+    }
     return { applied: false, entitlement: current, reason: 'duplicate event' };
   }
   if (!status) {
@@ -268,8 +283,6 @@ async function applyWebhookEvent(normalized) {
     await mirrorToSubscription(userId, { plan: set.plan, provider, customerId });
     return { applied: false, entitlement, reason: `unmapped event type: ${type || 'unknown'}` };
   }
-  entitlement.status = status;
-  await entitlement.save();
   await mirrorToSubscription(userId, { plan: set.plan, status, provider, customerId });
   return { applied: true, entitlement };
 }

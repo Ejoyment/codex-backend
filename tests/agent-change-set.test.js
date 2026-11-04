@@ -4,7 +4,7 @@
  *
  * Models and services are mocked so nothing touches git or MongoDB.
  */
-jest.mock('../models/CodeFile', () => ({ findOne: jest.fn(), create: jest.fn() }));
+jest.mock('../models/CodeFile', () => ({ find: jest.fn(), create: jest.fn() }));
 jest.mock('../utils/codeSearchService', () => ({ updateFile: jest.fn(), deleteFile: jest.fn() }));
 jest.mock('../utils/gitService', () => ({ writeWorkingTree: jest.fn(), commitWorkingTree: jest.fn() }));
 
@@ -71,6 +71,18 @@ describe('parseChangeSet', () => {
     expect(changes[0].path).toBe('src/ok.js');
     expect(changes[0].content).toBe('let x = 1;');
   });
+
+  test('salvages a truncated response whose last fence never closes', () => {
+    const changes = agentChangeSet.parseChangeSet('### file: src/truncated.js\n```js\nconst value = 1;');
+    expect(changes).toHaveLength(1);
+    expect(changes[0]).toMatchObject({ path: 'src/truncated.js', content: 'const value = 1;' });
+  });
+
+  test('recognises a prose path before an unlabelled fence', () => {
+    const changes = agentChangeSet.parseChangeSet('Here is the updated `src/prose.js`:\n```js\nconst p = 1;\n```');
+    expect(changes).toHaveLength(1);
+    expect(changes[0].path).toBe('src/prose.js');
+  });
 });
 
 describe('buildChangeset / summarize', () => {
@@ -128,14 +140,18 @@ describe('buildChangeset / summarize', () => {
 describe('stageChanges', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  test('writes then commits on the agent branch', async () => {
+  test('writes and commits on the originating project branch', async () => {
     gitService.writeWorkingTree.mockResolvedValue({ success: true, written: 1 });
     gitService.commitWorkingTree.mockResolvedValue({ success: true, commit: 'abc123' });
 
-    const result = await agentChangeSet.stageChanges('ws', [{ path: 'src/a.js', action: 'update', content: 'x' }], { message: 'msg', branch: 'feature/x' });
+    const result = await agentChangeSet.stageChanges(
+      'ws',
+      [{ path: 'src/a.js', action: 'update', content: 'x' }],
+      { message: 'msg', branch: 'feature/x', projectId: 'project-id' }
+    );
 
-    expect(gitService.writeWorkingTree).toHaveBeenCalledWith('ws', expect.any(Array));
-    expect(gitService.commitWorkingTree).toHaveBeenCalledWith('ws', 'msg', 'feature/x');
+    expect(gitService.writeWorkingTree).toHaveBeenCalledWith('ws', expect.any(Array), 'project-id', null);
+    expect(gitService.commitWorkingTree).toHaveBeenCalledWith('ws', 'msg', 'feature/x', 'project-id', null);
     expect(result).toMatchObject({ success: true, committed: true, commit: 'abc123' });
   });
 
@@ -170,12 +186,7 @@ describe('applyToVFS', () => {
     const updatable = { _id: 'u1', name: 'a.js', path: '/src', content: 'old', save: jest.fn(async function () { return this; }) };
     const deletable = { _id: 'd1', name: 'dead.js', path: '/src', deleteOne: jest.fn(async () => {}) };
 
-    CodeFile.findOne.mockImplementation(({ name }) => {
-      if (name === 'new.js') return Promise.resolve(null);
-      if (name === 'a.js') return Promise.resolve(updatable);
-      if (name === 'dead.js') return Promise.resolve(deletable);
-      return Promise.resolve(null);
-    });
+    CodeFile.find.mockResolvedValue([updatable, deletable]);
 
     const result = await agentChangeSet.applyToVFS('ws', [
       { path: 'src/new.js', action: 'create', language: 'javascript', content: 'n' },
@@ -184,6 +195,8 @@ describe('applyToVFS', () => {
     ], { userId: 'user1' });
 
     expect(CodeFile.create).toHaveBeenCalledWith(expect.objectContaining({ name: 'new.js', path: '/src', company: 'ws', createdBy: 'user1' }));
+    expect(CodeFile.find).toHaveBeenCalledTimes(1);
+    expect(CodeFile.find.mock.calls[0][0].$or).toHaveLength(3);
     expect(updatable.save).toHaveBeenCalled();
     expect(updatable.content).toBe('new body');
     expect(deletable.deleteOne).toHaveBeenCalled();
@@ -192,9 +205,33 @@ describe('applyToVFS', () => {
     expect(result).toMatchObject({ success: true, created: 1, updated: 1, deleted: 1, applied: 3 });
   });
 
+  test('only updates or creates files inside the execution project', async () => {
+    CodeFile.create.mockResolvedValue({ _id: 'c2', name: 'new.js', path: '/src' });
+    CodeFile.find.mockResolvedValue([]);
+
+    const result = await agentChangeSet.applyToVFS(
+      'ws',
+      [{ path: 'src/new.js', action: 'create', language: 'javascript', content: 'n' }],
+      { userId: 'user1', projectId: 'project-1' }
+    );
+
+    expect(CodeFile.find).toHaveBeenCalledWith({
+      company: 'ws',
+      project: 'project-1',
+      $or: [{ name: 'new.js', path: '/src' }],
+    });
+    expect(CodeFile.create).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'new.js',
+      company: 'ws',
+      project: 'project-1',
+    }));
+    expect(result).toMatchObject({ success: true, created: 1 });
+  });
+
   test('ignores unsafe paths', async () => {
     const result = await agentChangeSet.applyToVFS('ws', [{ path: '../evil', action: 'create', content: 'x' }], { userId: 'u' });
     expect(CodeFile.create).not.toHaveBeenCalled();
+    expect(CodeFile.find).not.toHaveBeenCalled();
     expect(result.applied).toBe(0);
   });
 });

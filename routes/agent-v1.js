@@ -17,10 +17,12 @@ const agentApprovalService = require('../utils/agentApprovalService');
 const sddVerificationService = require('../utils/sddVerificationService');
 const { userCanAccessProject, userCanAccessSpec, resolveAccessibleSpecs } = require('../utils/specAccess');
 const { assertWorkspaceAccess } = require('../utils/workspaceAuth');
+const { ensurePersonalWorkspace } = require('../utils/personalWorkspace');
 const realtimeBus = require('../utils/realtimeBus');
 const { Worker } = require('worker_threads');
 const path = require('path');
 const aiRouterService = require('../utils/aiRouterService');
+const { projectFileQuery, resolveProjectId } = require('../utils/fileScope');
 
 // Delegate is the expensive cloud AI path: one pool credit per job. Failed
 // jobs refund below so only executions that actually ran consume budget.
@@ -63,12 +65,12 @@ async function resolveExecutionWorkspace(execution, userId) {
   return { ok: true, workspaceId: access.workspaceId };
 }
 
-function spawnAgentWorker(executionId, taskId, workspaceId, specIds, provider, model, localPrivacyMode, timeoutMs = 900000) {
+function spawnAgentWorker(executionId, taskId, workspaceId, projectId, specIds, provider, model, localPrivacyMode, timeoutMs = 900000) {
   return new Promise((resolve, reject) => {
     let settled = false;
     const workerPath = path.join(__dirname, '../utils/agentWorker.js');
     const worker = new Worker(workerPath, {
-      workerData: { executionId, taskId, workspaceId, specIds, provider, model, localPrivacyMode },
+      workerData: { executionId, taskId, workspaceId, projectId: projectId || null, specIds, provider, model, localPrivacyMode },
     });
 
     const timeout = setTimeout(() => {
@@ -137,15 +139,21 @@ function spawnAgentWorker(executionId, taskId, workspaceId, specIds, provider, m
 
 router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurrentJobs(), enforceTaskTimeout(), enforceCreditPool(), enforceCloudComputeLimit(), async (req, res) => {
   let creditCharged = false;
+  let agentWorktree = null;
+  let taskClaim = null;
+  let execution = null;
+  let workerStarted = false;
   try {
     const { taskId, taskTitle, sessionId, summary = '', provider: requestedProvider, model, localPrivacyMode: requestedLocalPrivacyMode = false } = req.body;
     let provider;
     let localPrivacyMode;
+    let effectiveModel;
     try {
       const routing = aiRouterService.resolveRequestProvider(requestedProvider, requestedLocalPrivacyMode);
       provider = routing.provider;
       localPrivacyMode = routing.localPrivacyMode;
-      await aiRouterService.validateModel(provider, model);
+      effectiveModel = aiRouterService.normalizeModel(provider, model);
+      await aiRouterService.validateModel(provider, effectiveModel);
     } catch (error) {
       return res.status(503).json({ success: false, message: error.message });
     }
@@ -166,7 +174,7 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       if (task.agentSessionId) {
         const activeExecution = await AgentExecution.findOne({
           _id: task.agentSessionId,
-          status: { $in: ['queued', 'running', 'awaiting_review', 'awaiting_approval'] },
+          status: { $in: ['queued', 'running', 'awaiting_review', 'awaiting_approval', 'approving'] },
         }).select('_id');
         if (activeExecution) return res.status(409).json({ success: false, message: 'This task already has an active agent session' });
       }
@@ -179,9 +187,28 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       if (unresolvedBlockers) return res.status(409).json({ success: false, message: 'Resolve blocking tasks before delegation' });
     }
 
-    const requestedWorkspaceId = req.body.workspaceId || task?.companyId?.toString();
+    const taskProjectId = resolveProjectId({ task });
+    let taskProject = null;
+    if (taskProjectId) {
+      taskProject = await LocalProject.findById(taskProjectId).select('workspaceId').lean();
+      if (!taskProject) {
+        return res.status(404).json({ success: false, message: 'Project not found' });
+      }
+      if (!(await userCanAccessProject(taskProjectId, req.userId))) {
+        return res.status(403).json({ success: false, message: 'Project access denied' });
+      }
+    }
+    let requestedWorkspaceId = req.body.workspaceId
+      || task?.companyId?.toString()
+      || taskProject?.workspaceId?.toString();
     if (!requestedWorkspaceId) {
-      return res.status(400).json({ success: false, message: 'A workspace is required to create an isolated agent branch' });
+      requestedWorkspaceId = String((await ensurePersonalWorkspace(req.userId))._id);
+      if (taskProjectId) {
+        await LocalProject.updateOne(
+          { _id: taskProjectId, $or: [{ workspaceId: null }, { workspaceId: { $exists: false } }] },
+          { $set: { workspaceId: requestedWorkspaceId } }
+        );
+      }
     }
     const workspaceAccess = await assertWorkspaceAccess(requestedWorkspaceId, req.userId);
     if (!workspaceAccess.ok) {
@@ -191,17 +218,8 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
     if (task?.companyId && String(task.companyId) !== workspaceId) {
       return res.status(403).json({ success: false, message: 'Task is linked to a different workspace' });
     }
-    if (task?.projectId) {
-      const project = await LocalProject.findById(task.projectId).select('workspaceId').lean();
-      if (!project) {
-        return res.status(404).json({ success: false, message: 'Project not found' });
-      }
-      if (!(await userCanAccessProject(task.projectId, req.userId))) {
-        return res.status(403).json({ success: false, message: 'Project access denied' });
-      }
-      if (project.workspaceId && String(project.workspaceId) !== workspaceId) {
-        return res.status(403).json({ success: false, message: 'Project does not belong to this workspace' });
-      }
+    if (taskProject?.workspaceId && String(taskProject.workspaceId) !== workspaceId) {
+      return res.status(403).json({ success: false, message: 'Project does not belong to this workspace' });
     }
 
     const requestedSpecIds = [...new Set([...(req.body.specIds || []), ...(req.body.specId ? [req.body.specId] : []), ...(task?.specIds || []).map(String)])];
@@ -212,19 +230,17 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       return res.status(400).json({ success: false, message: resolvedSpecs.message });
     }
     const specs = resolvedSpecs.specs.map((spec) => (typeof spec.toObject === 'function' ? spec.toObject() : spec));
-    const codeFiles = await CodeFile.find({ company: workspaceId }).select('path name language content').lean();
+    // Only the task's own project is readable by the agent. A delegated task
+    // must never see another project's source just because both live in the
+    // same workspace; unlinked tasks see only unassigned files.
+    const codeFiles = await CodeFile.find(projectFileQuery(workspaceId, taskProjectId)).select('path name language content').lean();
     const taskTitleValue = taskTitle || task?.title || 'Workspace task';
     const slug = taskTitleValue.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'task';
-    const branch = `feature/${task?._id || Date.now()}-${slug}`;
-    await gitService.init(workspaceId);
+    // Re-delegating a failed task must not collide with the branch left behind
+    // by the previous run, so each execution gets a unique suffix.
+    const branch = `feature/${task?._id || 'task'}-${Date.now().toString(36)}-${slug}`;
     const baseBranch = 'main';
-    // Seed the base branch with the current VFS so the feature branch has a real
-    // parent to merge back into (a fresh tmpdir repo is otherwise unborn).
-    await gitService.ensureBaseCommit(workspaceId, baseBranch);
-    const branchResult = await gitService.createBranch(workspaceId, branch);
-    if (!branchResult.success) {
-      return res.status(409).json({ success: false, message: `Could not create isolated branch: ${branchResult.error}` });
-    }
+    const executionId = new AgentExecution()._id;
 
     // Build comprehensive context bundle for delegated agent
     let agentContextBundle = null;
@@ -247,6 +263,7 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
 
     const contextSnapshot = {
       task: task ? { id: task._id.toString(), title: task.title, description: task.description, priority: task.priority, figmaNodeId: task.figmaNodeId } : { title: taskTitleValue, description: summary },
+      projectId: taskProjectId,
       specs: specs.map((spec) => ({ ...spec, _id: spec._id.toString() })),
       codebaseSnapshot: { branch: baseBranch, files: codeFiles.map((file) => ({ path: file.path, name: file.name, language: file.language, content: file.content })) },
       architecturalRules: specs.flatMap((spec) => spec.architecturalRules || []),
@@ -267,11 +284,24 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
     }
     creditCharged = true;
 
-    const execution = await AgentExecution.create({
+    const branchResult = await gitService.createAgentWorktree(
+      workspaceId,
+      branch,
+      baseBranch,
+      taskProjectId,
+      executionId.toString()
+    );
+    if (!branchResult.success) {
+      throw new Error(`Could not create isolated branch: ${branchResult.error}`);
+    }
+    agentWorktree = { workspaceId, projectId: taskProjectId, executionId: executionId.toString() };
+
+    execution = await AgentExecution.create({
+      _id: executionId,
       userId: req.userId,
       sessionId: sessionId || null,
       taskId: task?._id || null,
-      projectId: task?.projectId || null,
+      projectId: taskProjectId || null,
       taskTitle: taskTitleValue,
       summary,
       status: 'queued',
@@ -280,16 +310,17 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       branch,
       baseBranch,
       contextSnapshot,
-      model: model || provider,
+      model: effectiveModel || provider,
       startedAt: new Date(),
       metadata: {
         taskId: taskId || null,
         workspaceId,
+        projectId: taskProjectId,
         specIds: specs.map((spec) => spec._id.toString()),
         agentBranch: branch,
         source: 'agent-v1/delegate',
         provider,
-        model: model || null,
+        model: effectiveModel || null,
         localPrivacyMode,
         creditsCharged: AGENT_JOB_CREDIT_COST,
       },
@@ -297,9 +328,13 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
     });
 
     if (task) {
-      // Claim the task atomically. The pre-check above is advisory: two
-      // concurrent delegations can both pass it, so only one may attach an
-      // execution. The loser is rejected before any work starts.
+      const previousTaskState = {
+        status: task.status,
+        companyId: task.companyId,
+        agentSessionId: task.agentSessionId,
+        branch: task.branch,
+        agentExecution: task.agentExecution?.toObject?.() || task.agentExecution,
+      };
       const claimedTask = await LocalTask.findOneAndUpdate(
         {
           _id: task._id,
@@ -318,7 +353,12 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
             'agentExecution.specRef': specs[0]?._id || null,
             updatedAt: new Date(),
           },
-          $push: { 'agentExecution.logs': { timestamp: new Date(), message: `Agent started on branch ${branch}` } },
+          $push: {
+            'agentExecution.logs': {
+              timestamp: new Date(),
+              message: `Agent started on branch ${branch}`,
+            },
+          },
         },
         { new: true }
       );
@@ -335,8 +375,13 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
         return res.status(409).json({ success: false, message: 'This task already has an active agent session' });
       }
 
-      task.agentSessionId = execution._id;
-      task.status = 'in_progress';
+      taskClaim = {
+        taskId: task._id,
+        executionId: execution._id,
+        userId: req.userId,
+        previousTaskState,
+      };
+      task = claimedTask;
       try {
         const cacheInvalidator = require('../utils/cacheInvalidator');
         cacheInvalidator.invalidateForTask(taskId);
@@ -360,23 +405,38 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       execution._id.toString(),
       taskId,
       workspaceId,
+      taskProjectId,
       specs.map((spec) => spec._id.toString()),
       provider,
-      model,
+      effectiveModel,
       localPrivacyMode,
       1800000 // 30 minutes
     );
+    workerStarted = true;
 
     workerPromise.then(async (result) => {
+      const planOnly = Boolean(result?.planOnly);
       execution.status = 'awaiting_review';
       execution.completedAt = new Date();
-      execution.logs.push({ timestamp: new Date(), message: 'Agent execution completed, awaiting approval' });
+      execution.logs.push({
+        timestamp: new Date(),
+        message: planOnly
+          ? 'Agent returned a plan without file changes, awaiting approval'
+          : 'Agent execution completed, awaiting approval',
+      });
       await execution.save();
       if (task) {
-        await LocalTask.findOneAndUpdate({ _id: task._id, userId: req.userId }, {
+        await LocalTask.findOneAndUpdate({ _id: task._id, userId: req.userId, agentSessionId: execution._id }, {
           'agentExecution.status': 'awaiting_approval',
           'agentExecution.error': '',
-          $push: { 'agentExecution.logs': { timestamp: new Date(), message: 'Agent completed; changes are ready for review' } },
+          $push: {
+            'agentExecution.logs': {
+              timestamp: new Date(),
+              message: planOnly
+                ? 'Agent returned a plan without file changes; review it or continue with feedback'
+                : 'Agent completed; changes are ready for review',
+            },
+          },
           updatedAt: new Date(),
         });
         try {
@@ -393,7 +453,7 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       execution.logs.push({ timestamp: new Date(), message: `Agent worker error: ${failureMessage}` });
       await execution.save();
       if (task) {
-        await LocalTask.findOneAndUpdate({ _id: task._id, userId: req.userId }, {
+        await LocalTask.findOneAndUpdate({ _id: task._id, userId: req.userId, agentSessionId: execution._id }, {
           'agentExecution.status': 'failed',
           'agentExecution.error': failureMessage,
           $push: { 'agentExecution.logs': { timestamp: new Date(), message: `Agent failed: ${failureMessage}` } },
@@ -419,11 +479,52 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       agentBranch: branch,
     });
   } catch (error) {
+    if (taskClaim) {
+      const { previousTaskState } = taskClaim;
+      const restore = {
+        $set: {
+          status: previousTaskState.status,
+          companyId: previousTaskState.companyId,
+          agentSessionId: previousTaskState.agentSessionId,
+          branch: previousTaskState.branch,
+        },
+      };
+      if (previousTaskState.agentExecution === undefined) {
+        restore.$unset = { agentExecution: 1 };
+      } else {
+        restore.$set.agentExecution = previousTaskState.agentExecution;
+      }
+      try {
+        const released = await LocalTask.findOneAndUpdate(
+          { _id: taskClaim.taskId, userId: taskClaim.userId, agentSessionId: taskClaim.executionId },
+          restore
+        );
+        if (!released) console.warn('[agent-delegate] task claim changed before failed request cleanup');
+      } catch (releaseError) {
+        console.error('[agent-delegate] failed to release task claim:', releaseError.message);
+      }
+    }
+    if (execution && !workerStarted) {
+      await AgentExecution.deleteOne({ _id: execution._id, userId: req.userId }).catch((deleteError) => {
+        console.error('[agent-delegate] failed to remove unstarted execution:', deleteError.message);
+      });
+    }
+    if (agentWorktree) {
+      const cleanup = await gitService.removeAgentWorktree(
+        agentWorktree.workspaceId,
+        agentWorktree.projectId,
+        agentWorktree.executionId
+      );
+      if (!cleanup.success) console.error('[agent-delegate] worktree cleanup failed:', cleanup.error);
+    }
     if (creditCharged) {
       creditCharged = false;
       await refundAgentCredit(req.userId);
     }
     console.error('Delegate task error:', error);
+    if (error && error.status && error.status >= 400 && error.status < 500) {
+      return res.status(error.status).json({ success: false, message: error.message });
+    }
     return sendInternalError(req, res, error);
   }
 });
@@ -473,22 +574,27 @@ router.post('/approve', authenticateToken, async (req, res) => {
       const task = await LocalTask.findOne({ _id: taskId, userId: req.userId });
       if (!task) return res.status(404).json({ success: false, message: 'Task not found' });
     }
-    // Run auto-validation on changes before merge.
-    try {
-      const autoValidator = require('../utils/autoValidator');
-      const autoValidation = await autoValidator.validate({ workspaceId, timeoutMs: 60000 });
-      if (autoValidation && !autoValidation.success && autoValidation.errors.length > 0) {
-        execution.validationResult = { ...(execution.validationResult || {}), autoValidation, ranAt: new Date() };
-        await execution.save();
-        return res.status(409).json({
-          success: false,
-          message: `Auto-validation found ${autoValidation.errors.length} error(s). Fix them or review carefully.`,
-          execution,
-          autoValidation,
-        });
+    const planOnly = Boolean(metaValue(execution, 'planOnly'))
+      || !((execution.proposedChanges || []).length || (execution.filesChanged || []).length);
+    // Run auto-validation on changes before merge. A plan-only run has nothing
+    // to validate and should still be acceptable by a human.
+    if (!planOnly) {
+      try {
+        const autoValidator = require('../utils/autoValidator');
+        const autoValidation = await autoValidator.validate({ workspaceId, timeoutMs: 60000 });
+        if (autoValidation && !autoValidation.success && autoValidation.errors.length > 0) {
+          execution.validationResult = { ...(execution.validationResult || {}), autoValidation, ranAt: new Date() };
+          await execution.save();
+          return res.status(409).json({
+            success: false,
+            message: `Auto-validation found ${autoValidation.errors.length} error(s). Fix them or review carefully.`,
+            execution,
+            autoValidation,
+          });
+        }
+      } catch (valErr) {
+        console.error('Auto-validation in approve:', valErr.message);
       }
-    } catch (valErr) {
-      console.error('Auto-validation in approve:', valErr.message);
     }
 
     const result = await agentApprovalService.approveExecution({
@@ -498,6 +604,7 @@ router.post('/approve', authenticateToken, async (req, res) => {
       workspaceId,
       source: 'rest',
       verifySpecs: true,
+      requireChanges: !planOnly,
     });
     if (!result.ok) {
       return res.status(result.status).json({
@@ -510,7 +617,7 @@ router.post('/approve', authenticateToken, async (req, res) => {
     res.json({
       success: true,
       execution: result.execution,
-      message: 'Agent branch merged',
+      message: planOnly ? 'Agent plan accepted' : 'Agent branch merged',
       sddVerification: result.sddVerification,
     });
   } catch (error) {
@@ -581,6 +688,7 @@ router.post('/tweak', authenticateToken, async (req, res) => {
 
     execution.tweaks.push({ instruction: instruction.trim(), addedAt: new Date() });
     trimToLast(execution.tweaks, MAX_TWEAKS);
+    execution.retryCount = (execution.retryCount || 0) + 1;
     execution.status = 'running';
     execution.startedAt = new Date();
     execution.completedAt = null;
@@ -590,18 +698,36 @@ router.post('/tweak', authenticateToken, async (req, res) => {
     const specIds = metaValue(execution, 'specIds') || [];
     const localPrivacyMode = metaValue(execution, 'localPrivacyMode') || false;
     const provider = metaValue(execution, 'provider') || 'gemini';
-    const model = metaValue(execution, 'model') || execution.model || null;
-    spawnAgentWorker(execution._id.toString(), execution.taskId?.toString(), workspaceId, specIds, provider, model, localPrivacyMode)
+    const model = aiRouterService.normalizeModel(provider, metaValue(execution, 'model') || execution.model || null);
+    const targetTaskId = execution.taskId?.toString() || metaValue(execution, 'taskId') || null;
+    const projectId = resolveProjectId({ execution });
+    spawnAgentWorker(execution._id.toString(), targetTaskId, workspaceId, projectId, specIds, provider, model, localPrivacyMode)
       .then(async () => {
         execution.status = 'awaiting_review';
         execution.completedAt = new Date();
         await execution.save();
+        if (targetTaskId) {
+          await LocalTask.findOneAndUpdate({ _id: targetTaskId, userId: req.userId }, {
+            'agentExecution.status': 'awaiting_approval',
+            'agentExecution.error': '',
+            $push: { 'agentExecution.logs': { timestamp: new Date(), message: 'Agent follow-up completed; changes are ready for review' } },
+            updatedAt: new Date(),
+          }).catch((error) => console.error('[agent] could not sync tweak task:', error.message));
+        }
       })
       .catch(async (error) => {
         execution.status = 'failed';
         execution.completedAt = new Date();
         execution.terminalLog.push({ timestamp: new Date(), type: 'error', message: error.message });
         await execution.save();
+        if (targetTaskId) {
+          await LocalTask.findOneAndUpdate({ _id: targetTaskId, userId: req.userId }, {
+            'agentExecution.status': 'failed',
+            'agentExecution.error': error.message,
+            $push: { 'agentExecution.logs': { timestamp: new Date(), message: `Agent follow-up failed: ${error.message}` } },
+            updatedAt: new Date(),
+          }).catch((taskError) => console.error('[agent] could not sync tweak failure:', taskError.message));
+        }
         if (creditCharged) {
           creditCharged = false;
           await refundAgentCredit(req.userId);

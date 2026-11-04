@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
 const Integration = require('../models/Integration');
 const IntegrationData = require('../models/IntegrationData');
 const Subscription = require('../models/Subscription');
@@ -47,9 +48,10 @@ router.get('/data', authenticateToken, async (req, res) => {
         const tier = canonicalTier(subscription?.tier);
         const status = subscription?.status || 'trial';
 
-        // Get user's connected integrations
-        const integrations = await Integration.find({ userId: req.userId, isActive: true });
-        
+        // Load integrations once; active ones drive the connected-platform view.
+        const allUserIntegrations = await Integration.find({ userId: req.userId });
+        const integrations = allUserIntegrations.filter(i => i.isActive);
+
         console.log(`Found ${integrations.length} active integrations for user ${req.userId}`);
         
         // Define which integrations each tier can access
@@ -64,7 +66,6 @@ router.get('/data', authenticateToken, async (req, res) => {
         const allowedIntegrations = allowedIntegrationsMap[tier] || ['discord'];
 
         // Get all integrations the user has connected (regardless of tier)
-        const allUserIntegrations = await Integration.find({ userId: req.userId });
         const connectedUserPlatforms = allUserIntegrations
             .filter(i => i.isActive)
             .map(i => i.provider);
@@ -83,16 +84,35 @@ router.get('/data', authenticateToken, async (req, res) => {
             tierAllowed: allowedIntegrations.includes(hub.platform)
         }));
 
-        // Get integration data for connected platforms
-        const integrationData = {};
-        for (const integration of integrations) {
-            const data = await IntegrationData.find({
-                userId: req.userId,
-                platform: integration.provider
-            }).sort({ lastSynced: -1 }).limit(10);
-            
-            integrationData[integration.provider] = data;
-        }
+        // Join each active integration to its ten most recently synced records.
+        const integrationDataRows = await Integration.aggregate([
+            { $match: { userId: new mongoose.Types.ObjectId(req.userId), isActive: true } },
+            {
+                $lookup: {
+                    from: IntegrationData.collection.name,
+                    let: { integrationUserId: '$userId', platform: '$provider' },
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: {
+                                    $and: [
+                                        { $eq: ['$userId', '$$integrationUserId'] },
+                                        { $eq: ['$platform', '$$platform'] }
+                                    ]
+                                }
+                            }
+                        },
+                        { $sort: { lastSynced: -1 } },
+                        { $limit: 10 }
+                    ],
+                    as: 'recentData'
+                }
+            },
+            { $project: { _id: 0, provider: 1, recentData: 1 } }
+        ]);
+        const integrationData = Object.fromEntries(
+            integrationDataRows.map(row => [row.provider, row.recentData])
+        );
 
         // ===== REAL Stats from Local Models =====
         const LocalProject = require('../models/LocalProject');
@@ -128,24 +148,52 @@ router.get('/data', authenticateToken, async (req, res) => {
         let teamMembersCount = 0;
 
         try {
-            const userCompanies = await Company.find({
-                $or: [
-                    { 'members.userId': req.userId },
-                    { owner: req.userId }
-                ]
-            });
-            
-            teamMembersCount = userCompanies.reduce((sum, c) => sum + (c.members?.length || 0), 0);
-            
-            for (const company of userCompanies) {
-                const teamProjects = await TeamProject.countDocuments({ companyId: company._id });
-                const completedTeamTasks = await TeamTask.countDocuments({ 
-                    companyId: company._id, 
-                    status: 'completed' 
-                });
-                teamProjectCount += teamProjects;
-                teamCompletedTasks += completedTeamTasks;
-            }
+            const userId = new mongoose.Types.ObjectId(req.userId);
+            const companyStats = await Company.aggregate([
+                { $match: { $or: [{ 'members.user': userId }, { owner: userId }] } },
+                {
+                    $lookup: {
+                        from: TeamProject.collection.name,
+                        let: { companyId: '$_id' },
+                        pipeline: [
+                            { $match: { $expr: { $eq: ['$company', '$$companyId'] } } },
+                            { $count: 'count' }
+                        ],
+                        as: 'projectStats'
+                    }
+                },
+                {
+                    $lookup: {
+                        from: TeamTask.collection.name,
+                        let: { companyId: '$_id' },
+                        pipeline: [
+                            {
+                                $match: {
+                                    $expr: {
+                                        $and: [
+                                            { $eq: ['$company', '$$companyId'] },
+                                            { $eq: ['$status', 'done'] }
+                                        ]
+                                    }
+                                }
+                            },
+                            { $count: 'count' }
+                        ],
+                        as: 'completedTaskStats'
+                    }
+                },
+                {
+                    $project: {
+                        memberCount: { $size: { $ifNull: ['$members', []] } },
+                        projectCount: { $ifNull: [{ $arrayElemAt: ['$projectStats.count', 0] }, 0] },
+                        completedTaskCount: { $ifNull: [{ $arrayElemAt: ['$completedTaskStats.count', 0] }, 0] }
+                    }
+                }
+            ]);
+
+            teamMembersCount = companyStats.reduce((sum, company) => sum + company.memberCount, 0);
+            teamProjectCount = companyStats.reduce((sum, company) => sum + company.projectCount, 0);
+            teamCompletedTasks = companyStats.reduce((sum, company) => sum + company.completedTaskCount, 0);
         } catch (companyError) {
             console.error('Company stats error:', companyError);
         }
@@ -186,11 +234,14 @@ router.get('/data', authenticateToken, async (req, res) => {
                 status,
                 allowedIntegrations,
                 integrationsHub: hubs,
-                connectedIntegrations: connectedUserPlatforms.map(p => ({
-                    platform: p,
-                    username: integrations.find(i => i.provider === p)?.providerUsername || null,
-                    connectedAt: integrations.find(i => i.provider === p)?.createdAt || null
-                })),
+                connectedIntegrations: connectedUserPlatforms.map(p => {
+                    const integration = integrations.find(i => i.provider === p);
+                    return {
+                        platform: p,
+                        username: integration?.providerUsername || null,
+                        connectedAt: integration?.createdAt || null
+                    };
+                }),
                 integrationData,
                 stats,
                 trial: trialInfo,

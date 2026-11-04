@@ -10,10 +10,10 @@ export default function TrialBanner({ trial }) {
   const isLastDay = trial.isLastDay;
 
   const theme = isLastDay
-    ? { bg: 'rgba(248,113,113,0.08)', border: 'rgba(248,113,113,0.32)', tint: '#f87171', Icon: AlertTriangle }
+    ? { bg: 'rgba(236,20,20,0.08)', border: 'rgba(236,20,20,0.32)', tint: '#ec1414', Icon: AlertTriangle }
     : isUrgent
     ? { bg: 'rgba(229,184,74,0.08)', border: 'rgba(229,184,74,0.32)', tint: '#e5b84a', Icon: Clock3 }
-    : { bg: 'rgba(47,214,230,0.08)', border: 'rgba(47,214,230,0.3)', tint: '#2fd6e6', Icon: CheckCircle2 };
+    : { bg: 'rgba(18,220,229,0.08)', border: 'rgba(18,220,229,0.3)', tint: '#12dce5', Icon: CheckCircle2 };
 
   const { Icon } = theme;
 
@@ -45,14 +45,14 @@ export default function TrialBanner({ trial }) {
           </div>
           <div>
             <p className="font-semibold text-sm" style={{ color: theme.tint }}>{title}</p>
-            <p className="text-xs text-[#a8adba]">{text}</p>
+            <p className="text-xs text-[#a9b7c4]">{text}</p>
           </div>
         </div>
         <button
           type="button"
           onClick={() => router.push('/settings?tab=billing')}
           className="px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
-          style={{ background: '#2fd6e6', color: '#06141a' }}
+          style={{ background: '#12dce5', color: '#0a0d15' }}
         >
           Add Payment Method
         </button>

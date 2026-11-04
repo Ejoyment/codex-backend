@@ -76,17 +76,17 @@ export default function DevGate({ title, children }) {
         <div style={{ maxWidth: '440px', width: '100%' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '9px', marginBottom: '28px' }}>
             <img src="/buildrs.png" alt="Buildrs" style={{ width: '32px', height: '32px', borderRadius: '8px' }} />
-            <span style={{ fontSize: '18px', fontWeight: 650, color: '#eceef1' }}>Buildrs</span>
-            <span className="mkt-mono" style={{ fontSize: '10px', letterSpacing: '0.16em', textTransform: 'uppercase', color: '#686e7c' }}>· hq</span>
+            <span style={{ fontSize: '18px', fontWeight: 650, color: '#ffffff' }}>Buildrs</span>
+            <span className="mkt-mono" style={{ fontSize: '10px', letterSpacing: '0.16em', textTransform: 'uppercase', color: '#748194' }}>· hq</span>
           </div>
 
-          <p className="mkt-mono" style={{ fontSize: '11px', letterSpacing: '0.16em', textTransform: 'uppercase', color: '#2fd6e6', margin: '0 0 12px' }}>
+          <p className="mkt-mono" style={{ fontSize: '11px', letterSpacing: '0.16em', textTransform: 'uppercase', color: '#12dce5', margin: '0 0 12px' }}>
             Dev preview
           </p>
-          <h1 style={{ fontSize: 'clamp(28px,5vw,40px)', fontWeight: 700, letterSpacing: '-0.02em', color: '#eceef1', margin: '0 0 14px' }}>
+          <h1 style={{ fontSize: 'clamp(28px,5vw,40px)', fontWeight: 700, letterSpacing: '-0.02em', color: '#ffffff', margin: '0 0 14px' }}>
             Welcome to Buildrs HQ
           </h1>
-          <p style={{ fontSize: '15px', color: '#a8adba', lineHeight: 1.7, margin: '0 0 28px' }}>
+          <p style={{ fontSize: '15px', color: '#a9b7c4', lineHeight: 1.7, margin: '0 0 28px' }}>
             We&apos;re still in development, so {title.toLowerCase()} isn&apos;t open yet.
             Add yourself to the waitlist and we&apos;ll let you in on launch day.
           </p>
@@ -99,7 +99,7 @@ export default function DevGate({ title, children }) {
             <button
               type="button"
               onClick={() => { setShowPass((v) => !v); setError(''); }}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '12.5px', color: '#686e7c', textDecoration: 'underline', textUnderlineOffset: '3px' }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '12.5px', color: '#748194', textDecoration: 'underline', textUnderlineOffset: '3px' }}
             >
               {showPass ? 'Hide dev access' : 'Dev access'}
             </button>
@@ -115,7 +115,7 @@ export default function DevGate({ title, children }) {
                   style={{
                     flex: 1, minWidth: 0, height: '44px', padding: '10px 16px',
                     borderRadius: '10px', border: '1px solid rgba(255,255,255,0.12)',
-                    background: 'rgba(255,255,255,0.05)', color: '#eceef1',
+                    background: 'rgba(255,255,255,0.05)', color: '#ffffff',
                     fontSize: '14px', outline: 'none',
                   }}
                 />
@@ -128,7 +128,7 @@ export default function DevGate({ title, children }) {
                 </button>
               </form>
             )}
-            {error && <p style={{ fontSize: '13px', color: '#f87171', marginTop: '10px' }}>{error}</p>}
+            {error && <p style={{ fontSize: '13px', color: '#ec1414', marginTop: '10px' }}>{error}</p>}
           </div>
         </div>
       </div>

@@ -47,19 +47,25 @@ jest.mock('../middleware/permissionMatrix', () => ({
   requirePermission: () => (_req, _res, next) => next(),
 }));
 
-jest.mock('../models/AgentExecution', () => ({
-  create: jest.fn(),
-  findOne: jest.fn(),
-  findOneAndUpdate: jest.fn(),
-  findByIdAndUpdate: jest.fn(),
-}));
+jest.mock('../models/AgentExecution', () => {
+  return Object.assign(
+    jest.fn(function AgentExecution() { this._id = '5'.repeat(24); }),
+    {
+      create: jest.fn(),
+      findOne: jest.fn(),
+      findOneAndUpdate: jest.fn(),
+      findByIdAndUpdate: jest.fn(),
+      deleteOne: jest.fn(),
+    }
+  );
+});
 jest.mock('../models/LocalTask', () => ({
   findOne: jest.fn(),
   findOneAndUpdate: jest.fn(),
   findByIdAndUpdate: jest.fn(),
   countDocuments: jest.fn(),
 }));
-jest.mock('../models/LocalProject', () => ({ findById: jest.fn() }));
+jest.mock('../models/LocalProject', () => ({ findById: jest.fn(), updateOne: jest.fn() }));
 jest.mock('../models/SpecModel', () => ({ findById: jest.fn() }));
 jest.mock('../models/Company', () => ({ findById: jest.fn() }));
 jest.mock('../models/CodeFile', () => ({ find: jest.fn() }));
@@ -72,11 +78,16 @@ jest.mock('../models/ChatMessage', () => ({
 jest.mock('../models/CodeChange', () => ({ find: jest.fn() }));
 jest.mock('../models/Subscription', () => ({ findOne: jest.fn() }));
 
-jest.mock('../utils/personalWorkspace', () => ({ findPersonalWorkspace: jest.fn() }));
+jest.mock('../utils/personalWorkspace', () => ({
+  findPersonalWorkspace: jest.fn(),
+  ensurePersonalWorkspace: jest.fn(),
+}));
 jest.mock('../utils/gitService', () => ({
   init: jest.fn(),
   ensureBaseCommit: jest.fn(),
   createBranch: jest.fn(),
+  createAgentWorktree: jest.fn(),
+  removeAgentWorktree: jest.fn(),
   branches: jest.fn(),
   checkout: jest.fn(),
   merge: jest.fn(),
@@ -101,6 +112,7 @@ jest.mock('../utils/aiRouterService', () => ({
     provider: provider || 'gemini',
     localPrivacyMode: Boolean(localPrivacyMode),
   })),
+  normalizeModel: jest.fn((provider, model) => (model && model !== provider ? model : null)),
   validateModel: jest.fn().mockResolvedValue(true),
   isLocalProvider: jest.fn(() => false),
 }));
@@ -136,7 +148,7 @@ const CodeFile = require('../models/CodeFile');
 const AIPairSession = require('../models/AIPairSession');
 const ChatMessage = require('../models/ChatMessage');
 const Subscription = require('../models/Subscription');
-const { findPersonalWorkspace } = require('../utils/personalWorkspace');
+const { findPersonalWorkspace, ensurePersonalWorkspace } = require('../utils/personalWorkspace');
 const gitService = require('../utils/gitService');
 const agentChangeSet = require('../utils/agentChangeSet');
 const sddVerificationService = require('../utils/sddVerificationService');
@@ -195,6 +207,8 @@ beforeEach(() => {
   gitService.init.mockResolvedValue({ success: true });
   gitService.ensureBaseCommit.mockResolvedValue({ success: true });
   gitService.createBranch.mockResolvedValue({ success: true });
+  gitService.createAgentWorktree.mockResolvedValue({ success: true });
+  gitService.removeAgentWorktree.mockResolvedValue({ success: true, removed: true });
   gitService.branches.mockResolvedValue({ success: true, branches: ['main'] });
   gitService.checkout.mockResolvedValue({ success: true });
   gitService.merge.mockResolvedValue({ success: true });
@@ -212,11 +226,13 @@ beforeEach(() => {
   AgentExecution.findOne.mockResolvedValue(null);
   AgentExecution.findOneAndUpdate.mockResolvedValue({});
   AgentExecution.findByIdAndUpdate.mockResolvedValue({});
+  AgentExecution.deleteOne.mockResolvedValue({ deletedCount: 1 });
   AgentExecution.create.mockImplementation(async (doc) => execution({
     ...doc,
     metadata: doc.metadata || {},
     status: doc.status || 'queued',
   }));
+  ensurePersonalWorkspace.mockResolvedValue(company());
 
   Subscription.findOne.mockResolvedValue({ tier: 'pro' });
   ChatMessage.countDocuments.mockResolvedValue(0);
@@ -286,11 +302,83 @@ describe('agent-v1 workspace authorization', () => {
       .send({ taskTitle: 'personal workspace task', workspaceId: USER_A });
 
     expect(res.status).toBe(202);
-    expect(gitService.init).toHaveBeenCalledWith(WORKSPACE_A);
+    expect(gitService.createAgentWorktree).toHaveBeenCalledWith(
+      WORKSPACE_A,
+      expect.any(String),
+      'main',
+      null,
+      expect.any(String)
+    );
     expect(AgentExecution.create).toHaveBeenCalledWith(expect.objectContaining({
       userId: USER_A,
       metadata: expect.objectContaining({ workspaceId: WORKSPACE_A }),
     }));
+  });
+
+  test('delegate assigns a legacy project to a personal workspace when none exists', async () => {
+    LocalTask.findOne.mockResolvedValue({
+      _id: TASK_A,
+      userId: USER_A,
+      projectId: PROJECT_A,
+      save: jest.fn(async function () { return this; }),
+    });
+
+    LocalProject.findById.mockReturnValue(leanDoc({ workspaceId: null }));
+    findPersonalWorkspace.mockResolvedValue(company());
+    Company.findById.mockReturnValue(leanDoc(company()));
+
+    const res = await request(app)
+      .post('/api/v1/agent/delegate')
+      .send({ taskId: TASK_A, taskTitle: 'legacy project task' });
+
+    expect(res.status).toBe(202);
+    expect(ensurePersonalWorkspace).toHaveBeenCalledWith(USER_A);
+    expect(LocalProject.updateOne).toHaveBeenCalledWith(
+      { _id: PROJECT_A, $or: [{ workspaceId: null }, { workspaceId: { $exists: false } }] },
+      { $set: { workspaceId: WORKSPACE_A } }
+    );
+    expect(gitService.createAgentWorktree).toHaveBeenCalledWith(
+      WORKSPACE_A,
+      expect.any(String),
+      'main',
+      PROJECT_A,
+      EXEC_A
+    );
+  });
+
+  test('delegate releases resources when the atomic task claim loses a race', async () => {
+    Company.findById.mockReturnValue(leanDoc(company()));
+    ensurePersonalWorkspace.mockResolvedValue(company());
+    LocalTask.findOne.mockResolvedValue({
+      _id: TASK_A,
+      userId: USER_A,
+      title: 'Race-safe task',
+      status: 'backlog',
+      blockedBy: [],
+      agentSessionId: null,
+    });
+    LocalTask.findOneAndUpdate.mockResolvedValueOnce(null);
+
+    const res = await request(app)
+      .post('/api/v1/agent/delegate')
+      .send({ taskId: TASK_A });
+
+    expect(res.status).toBe(409);
+    expect(LocalTask.findOneAndUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        _id: TASK_A,
+        userId: USER_A,
+        status: 'backlog',
+        agentSessionId: null,
+      }),
+      expect.objectContaining({
+        $set: expect.objectContaining({ agentSessionId: expect.anything() }),
+      }),
+      { new: true }
+    );
+    expect(AgentExecution.deleteOne).toHaveBeenCalledTimes(1);
+    expect(gitService.removeAgentWorktree).toHaveBeenCalledTimes(1);
+    expect(CreditPoolService.refundCredits).toHaveBeenCalledWith(USER_A, 1);
   });
 
   test('approve rejects an execution whose stored workspace is no longer accessible', async () => {

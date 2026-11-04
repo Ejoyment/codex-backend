@@ -2,6 +2,7 @@ const figmaContextService = require('./figmaContextService');
 const teamMemoryService = require('./teamMemoryService');
 const ticketCodeBridge = require('./ticketCodeBridge');
 const aiService = require('./aiService');
+const mongoose = require('mongoose');
 const IntegrationData = require('../models/IntegrationData');
 const vectorMemory = require('./vectorMemory');
 
@@ -62,22 +63,42 @@ async function buildCrossToolContext(userId, companyId, options = {}) {
     try {
         if (options.includeIntegrations) {
             const Integration = require('../models/Integration');
-            const integrations = await Integration.find({ userId, isActive: true }).select('provider status lastSyncAt');
-            const integrationData = [];
-            
-            for (const integration of integrations) {
-                const data = await IntegrationData.find({ userId, platform: integration.provider })
-                    .sort({ lastSynced: -1 })
-                    .limit(5);
-                integrationData.push({
-                    provider: integration.provider,
-                    status: integration.status,
-                    lastSyncAt: integration.lastSyncAt,
-                    recentData: data.map(d => ({ dataType: d.dataType, summary: d.summary }))
-                });
-            }
-            
-            context.integrations = integrationData;
+            const integrationData = await Integration.aggregate([
+                { $match: { userId: new mongoose.Types.ObjectId(userId), isActive: true } },
+                {
+                    $lookup: {
+                        from: IntegrationData.collection.name,
+                        let: { integrationUserId: '$userId', platform: '$provider' },
+                        pipeline: [
+                            {
+                                $match: {
+                                    $expr: {
+                                        $and: [
+                                            { $eq: ['$userId', '$$integrationUserId'] },
+                                            { $eq: ['$platform', '$$platform'] }
+                                        ]
+                                    }
+                                }
+                            },
+                            { $sort: { lastSynced: -1 } },
+                            { $limit: 5 },
+                            { $project: { dataType: 1, summary: 1 } }
+                        ],
+                        as: 'recentData'
+                    }
+                },
+                { $project: { provider: 1, status: 1, lastSyncAt: 1, recentData: 1 } }
+            ]);
+
+            context.integrations = integrationData.map(integration => ({
+                provider: integration.provider,
+                status: integration.status,
+                lastSyncAt: integration.lastSyncAt,
+                recentData: integration.recentData.map(data => ({
+                    dataType: data.dataType,
+                    summary: data.summary
+                }))
+            }));
             if (integrationData.length > 0) {
                 context.sources.push('integrations');
             }

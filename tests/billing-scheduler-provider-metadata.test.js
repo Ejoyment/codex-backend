@@ -6,7 +6,18 @@ jest.mock('../models/BillingSchedule', () => {
         docs.push(this);
     });
     Model.__docs = docs;
-    Model.findOne = jest.fn(async () => null);
+    Model.findOne = jest.fn(async (query) => docs.find((doc) => (
+        (query.idempotencyKey && doc.idempotencyKey === query.idempotencyKey) ||
+        (query.subscriptionId && String(doc.subscriptionId) === String(query.subscriptionId) &&
+            doc.chargeType === query.chargeType)
+    )) || null);
+    Model.findOneAndUpdate = jest.fn(async (filter, update) => {
+        let doc = docs.find((row) => row.idempotencyKey === filter.idempotencyKey);
+        if (!doc) {
+            doc = new Model(update.$setOnInsert);
+        }
+        return doc;
+    });
     return Model;
 });
 jest.mock('../models/Subscription', () => ({

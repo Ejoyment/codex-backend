@@ -98,7 +98,7 @@ export default function ProjectDetails({ projectId, onBack, onCreateTask }) {
 
   if (loading) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center gap-3 bg-[#0b0f17] text-sm text-zinc-400">
+      <div className="flex min-h-[60vh] items-center justify-center gap-3 bg-[#0e141d] text-sm text-zinc-400">
         <Loader2 className="h-4 w-4 animate-spin text-cyan-400" /> Loading project...
       </div>
     );
@@ -106,7 +106,7 @@ export default function ProjectDetails({ projectId, onBack, onCreateTask }) {
 
   if (error || !project) {
     return (
-      <div className="flex min-h-[60vh] flex-col items-center justify-center bg-[#0b0f17] px-6 text-center">
+      <div className="flex min-h-[60vh] flex-col items-center justify-center bg-[#0e141d] px-6 text-center">
         <p role="alert" className="text-sm text-rose-400">{error || 'Project not found.'}</p>
         <div className="mt-4 flex gap-2">
           <button type="button" onClick={onBack} className="rounded-lg border border-white/10 px-4 py-2 text-xs text-white hover:bg-white/5">
@@ -133,7 +133,7 @@ export default function ProjectDetails({ projectId, onBack, onCreateTask }) {
   const updatedLabel = formatRelativeTime(project.updatedAt);
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-[#0b0f17] p-6 text-white">
+    <div className="min-h-screen overflow-x-hidden bg-[#0e141d] p-6 text-white">
       <div className="mb-6">
         <div className="mb-5 flex items-center gap-3">
           <button type="button" onClick={onBack} aria-label="Back to projects" className="rounded-lg p-1.5 text-zinc-400 transition hover:bg-white/5 hover:text-white">
@@ -166,7 +166,7 @@ export default function ProjectDetails({ projectId, onBack, onCreateTask }) {
             <div className="flex shrink-0 flex-col gap-3 md:items-end">
               <div className="flex items-center gap-2">
                 {project.githubRepoUrl && (
-                  <a href={project.githubRepoUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-[#161b26] px-3 py-2 text-xs font-semibold text-white transition hover:bg-white/5">
+                  <a href={project.githubRepoUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-[#182130] px-3 py-2 text-xs font-semibold text-white transition hover:bg-white/5">
                     <Github className="h-3.5 w-3.5" /> Open repository
                   </a>
                 )}
@@ -278,31 +278,31 @@ export default function ProjectDetails({ projectId, onBack, onCreateTask }) {
             <p className="mb-4 text-xs leading-relaxed text-zinc-400">{project.description || 'No project description provided.'}</p>
             <div className="flex flex-wrap gap-2">
               {technologies.length ? technologies.map((technology) => (
-                <span key={technology} className="rounded-md border border-cyan-500/10 bg-[#101722] px-2.5 py-1 text-[10px] text-cyan-300">{technology}</span>
+                <span key={technology} className="rounded-md border border-cyan-500/10 bg-[#101d2c] px-2.5 py-1 text-[10px] text-cyan-300">{technology}</span>
               )) : <span className="text-[10px] text-zinc-500">No technology stack configured.</span>}
             </div>
             <div className="mt-5 grid grid-cols-2 gap-3 text-xs">
-              <div className="rounded-lg bg-[#161b26] p-3">
+              <div className="rounded-lg bg-[#182130] p-3">
                 <p className="text-[10px] text-zinc-500">Source</p>
                 <p className="mt-1 capitalize text-white">{project.sourceType || (project.githubRepoUrl ? 'github' : 'scratch')}</p>
               </div>
-              <div className="rounded-lg bg-[#161b26] p-3">
+              <div className="rounded-lg bg-[#182130] p-3">
                 <p className="text-[10px] text-zinc-500">Template</p>
                 <p className="mt-1 text-white">{project.template || 'None'}</p>
               </div>
-              <div className="rounded-lg bg-[#161b26] p-3">
+              <div className="rounded-lg bg-[#182130] p-3">
                 <p className="text-[10px] text-zinc-500">Figma context</p>
                 <p className="mt-1 text-white">{project.intelligence?.figma ? 'Enabled' : 'Disabled'}</p>
               </div>
-              <div className="rounded-lg bg-[#161b26] p-3">
+              <div className="rounded-lg bg-[#182130] p-3">
                 <p className="text-[10px] text-zinc-500">Starter specification</p>
                 <p className="mt-1 text-white">{project.intelligence?.starterSpec ? 'Enabled' : 'Disabled'}</p>
               </div>
-              <div className="rounded-lg bg-[#161b26] p-3">
+              <div className="rounded-lg bg-[#182130] p-3">
                 <p className="text-[10px] text-zinc-500">AI agents</p>
                 <p className="mt-1 text-white">{project.intelligence?.aiAgents ? 'Enabled' : 'Disabled'}</p>
               </div>
-              <div className="rounded-lg bg-[#161b26] p-3">
+              <div className="rounded-lg bg-[#182130] p-3">
                 <p className="text-[10px] text-zinc-500">Members</p>
                 <p className="mt-1 text-white">{project.members?.length || 0}</p>
               </div>
@@ -323,11 +323,11 @@ export default function ProjectDetails({ projectId, onBack, onCreateTask }) {
               </div>
             </div>
             <div className="mt-4 grid grid-cols-2 gap-2">
-              <div className="rounded-lg border border-white/5 bg-[#161b26] p-3">
+              <div className="rounded-lg border border-white/5 bg-[#182130] p-3">
                 <p className="text-[9px] text-zinc-500">Branch</p>
                 <p className="mt-1 flex items-center gap-1 text-xs text-white"><GitBranch className="h-3 w-3 text-cyan-400" />{project.defaultBranch || 'main'}</p>
               </div>
-              <div className="rounded-lg border border-white/5 bg-[#161b26] p-3">
+              <div className="rounded-lg border border-white/5 bg-[#182130] p-3">
                 <p className="text-[9px] text-zinc-500">Updated</p>
                 <p className="mt-1 flex items-center gap-1 text-xs text-white"><Clock className="h-3 w-3 text-cyan-400" />{updatedLabel || 'Unknown'}</p>
               </div>

@@ -22,6 +22,7 @@ const {
     deleteProfilePicturesForUser,
 } = require('../utils/profilePictureStorage');
 const { sendInternalError } = require('../utils/httpErrors');
+const { enqueueEmailJob } = require('../utils/emailJobWorker');
 
 // Keep uploads in memory so the storage helper can choose R2 or the local
 // uploads directory (tests/development) without changing the route.
@@ -148,11 +149,15 @@ router.post('/signup', authLimiter, async (req, res) => {
         await user.save();
         const trialEndsAt = subscription.trialEndsAt;
 
-        // Send trial welcome email (non-blocking)
+        // Persist an email job so delivery never holds the signup request open.
         try {
-            await emailService.sendTrialWelcomeEmail(email, fullName, trialEndsAt);
-        } catch (emailError) {
-            console.error('Trial welcome email error:', emailError);
+            await enqueueEmailJob(
+                'trial_welcome',
+                `trial-welcome:${user._id}`,
+                { email: user.email, fullName: user.fullName, trialEndsAt }
+            );
+        } catch (queueError) {
+            console.error('Trial welcome email queue error:', queueError.message);
         }
 
         res.status(201).json({

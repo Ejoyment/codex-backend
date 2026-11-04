@@ -2,33 +2,21 @@ const BillingSchedule = require('../models/BillingSchedule');
 const Subscription = require('../models/Subscription');
 const flw = require('../config/flutterwave');
 const { planAmountCents } = require('../utils/billingPricing');
+const { scheduleFirstCharge: createFirstChargeSchedule } = require('./firstChargeSchedule');
 
 /**
  * Schedule first charge when the 14-day trial ends
  */
 async function scheduleFirstCharge(userId, subscriptionId, cardAddedAt, tier = 'pro') {
-    // Idempotent: repeated /verify or webhook replays must not stack duplicate
-    // charges on the same trial.
-    const existing = await BillingSchedule.findOne({
-        subscriptionId,
-        chargeType: 'first_charge',
-        status: 'pending'
-    });
-    if (existing) return existing;
-
     const firstChargeTime = new Date(cardAddedAt.getTime() + (14 * 24 * 60 * 60 * 1000)); // 14 days
-
-    const billingSchedule = new BillingSchedule({
+    const billingSchedule = await createFirstChargeSchedule({
         userId,
         subscriptionId,
+        cardAddedAt,
+        tier,
         provider: 'flutterwave',
-        chargeType: 'first_charge',
-        scheduledFor: firstChargeTime,
-        amount: planAmountCents(tier),
-        status: 'pending'
     });
 
-    await billingSchedule.save();
     console.log(`✓ First charge scheduled for user ${userId} at ${firstChargeTime}`);
     
     return billingSchedule;

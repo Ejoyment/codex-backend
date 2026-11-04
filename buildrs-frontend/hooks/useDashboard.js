@@ -12,6 +12,33 @@ import {
 } from '../lib/api';
 
 const REFRESH_INTERVAL_MS = 30000;
+const DASHBOARD_CACHE_KEY = 'buildrs-dashboard-cache-v1';
+
+function dashboardCacheKey(userId) {
+  return userId ? `${DASHBOARD_CACHE_KEY}:${userId}` : null;
+}
+
+function readDashboardCache(userId) {
+  const key = dashboardCacheKey(userId);
+  if (typeof window === 'undefined' || !key) return {};
+  try {
+    const cached = JSON.parse(window.sessionStorage.getItem(key) || '{}');
+    return cached && typeof cached === 'object' ? cached : {};
+  } catch {
+    return {};
+  }
+}
+
+function cacheDashboardValue(userId, key, value) {
+  const storageKey = dashboardCacheKey(userId);
+  if (typeof window === 'undefined' || !storageKey) return;
+  try {
+    const cached = readDashboardCache(userId);
+    window.sessionStorage.setItem(storageKey, JSON.stringify({ ...cached, [key]: value }));
+  } catch {
+    // Continue with network data when browser storage is unavailable.
+  }
+}
 
 const INTEGRATION_CATALOG = [
   { platform: 'github', name: 'GitHub' },
@@ -122,66 +149,117 @@ async function fetchSlackActivity() {
   }
 }
 
-export function useDashboard() {
-  const [stats, setStats] = useState(null);
-  const [trial, setTrial] = useState(null);
-  const [overview, setOverview] = useState(null);
-  const [integrations, setIntegrations] = useState(null); // null = loading, [] = empty
-  const [activity, setActivity] = useState(null);
-  const [projects, setProjects] = useState(null);
-  const [tasks, setTasks] = useState(null);
-  const [companies, setCompanies] = useState(null);
-  const [meetings, setMeetings] = useState(null);
-  const [loading, setLoading] = useState(true);
+export function useDashboard(userId) {
+  const currentUserId = userId ? String(userId) : null;
+  const [stats, setStats] = useState(() => readDashboardCache(currentUserId).stats ?? null);
+  const [trial, setTrial] = useState(() => readDashboardCache(currentUserId).trial ?? null);
+  const [overview, setOverview] = useState(() => readDashboardCache(currentUserId).overview ?? null);
+  const [integrations, setIntegrations] = useState(() => readDashboardCache(currentUserId).integrations ?? null);
+  const [activity, setActivity] = useState(() => readDashboardCache(currentUserId).activity ?? null);
+  const [projects, setProjects] = useState(() => readDashboardCache(currentUserId).projects ?? null);
+  const [tasks, setTasks] = useState(() => readDashboardCache(currentUserId).tasks ?? null);
+  const [companies, setCompanies] = useState(() => readDashboardCache(currentUserId).companies ?? null);
+  const [meetings, setMeetings] = useState(() => readDashboardCache(currentUserId).meetings ?? null);
+  const [loading, setLoading] = useState(() => readDashboardCache(currentUserId).overview == null);
   const mounted = useRef(true);
+  const dashboardDataRequest = useRef(null);
+  const cacheUserId = useRef(currentUserId);
+  const saveCache = useCallback((key, value) => {
+    cacheDashboardValue(currentUserId, key, value);
+  }, [currentUserId]);
+  const isCurrentUser = useCallback(
+    () => mounted.current && cacheUserId.current === currentUserId,
+    [currentUserId]
+  );
+
+  useEffect(() => {
+    if (cacheUserId.current === currentUserId) return;
+    cacheUserId.current = currentUserId;
+    const cached = readDashboardCache(currentUserId);
+    setStats(cached.stats ?? null);
+    setTrial(cached.trial ?? null);
+    setOverview(cached.overview ?? null);
+    setIntegrations(cached.integrations ?? null);
+    setActivity(cached.activity ?? null);
+    setProjects(cached.projects ?? null);
+    setTasks(cached.tasks ?? null);
+    setCompanies(cached.companies ?? null);
+    setMeetings(cached.meetings ?? null);
+    setLoading(cached.overview == null);
+  }, [currentUserId]);
+
+  const loadDashboardData = useCallback(() => {
+    if (!dashboardDataRequest.current || dashboardDataRequest.current.userId !== currentUserId) {
+      const request = { userId: currentUserId, promise: dashboardApi.getData() };
+      dashboardDataRequest.current = request;
+      request.promise.then(
+        () => {
+          if (dashboardDataRequest.current === request) dashboardDataRequest.current = null;
+        },
+        () => {
+          if (dashboardDataRequest.current === request) dashboardDataRequest.current = null;
+        }
+      );
+    }
+    return dashboardDataRequest.current.promise;
+  }, [currentUserId]);
 
   const loadStats = useCallback(async () => {
     try {
-      const result = await dashboardApi.getData();
+      const result = await loadDashboardData();
       if (result.success && result.data?.stats) {
-        if (!mounted.current) return;
+        if (!isCurrentUser()) return;
         setStats(result.data.stats);
         setTrial(result.data.trial || null);
-      } else if (mounted.current) {
-        setStats({ activeProjects: 0, totalCompleted: 0, teamMembers: 0, integrations: 0 });
+        saveCache('stats', result.data.stats);
+        saveCache('trial', result.data.trial || null);
+      } else if (isCurrentUser()) {
+        const emptyStats = { activeProjects: 0, totalCompleted: 0, teamMembers: 0, integrations: 0 };
+        setStats(emptyStats);
+        saveCache('stats', emptyStats);
       }
     } catch {
-      if (mounted.current) {
-        setStats({ activeProjects: 0, totalCompleted: 0, teamMembers: 0, integrations: 0 });
+      if (isCurrentUser()) {
+        const emptyStats = { activeProjects: 0, totalCompleted: 0, teamMembers: 0, integrations: 0 };
+        setStats(emptyStats);
+        saveCache('stats', emptyStats);
       }
     }
-  }, []);
+  }, [isCurrentUser, loadDashboardData, saveCache]);
 
   const loadOverview = useCallback(async () => {
     try {
       const result = await dashboardApi.getOverview();
-      if (!mounted.current) return;
-      setOverview(result.success && result.data ? result.data : null);
+      if (!isCurrentUser()) return;
+      const nextOverview = result.success && result.data ? result.data : null;
+      setOverview(nextOverview);
+      if (nextOverview) saveCache('overview', nextOverview);
     } catch {
-      if (mounted.current) setOverview(null);
+      if (isCurrentUser()) setOverview(null);
     }
-  }, []);
+  }, [isCurrentUser, saveCache]);
 
   const loadIntegrationsHub = useCallback(async () => {
     try {
-      const result = await dashboardApi.getData();
-      if (!mounted.current) return;
+      const result = await loadDashboardData();
+      if (!isCurrentUser()) return;
       if (result.success && result.data) {
         const connected = result.data.connectedIntegrations || [];
         const connectedPlatforms = connected.map((i) => i.platform || i);
-        setIntegrations(
-          INTEGRATION_CATALOG.map((entry) => ({
-            ...entry,
-            connected: connectedPlatforms.includes(entry.platform),
-          }))
-        );
+        const nextIntegrations = INTEGRATION_CATALOG.map((entry) => ({
+          ...entry,
+          connected: connectedPlatforms.includes(entry.platform),
+        }));
+        setIntegrations(nextIntegrations);
+        saveCache('integrations', nextIntegrations);
       } else {
         setIntegrations([]);
+        saveCache('integrations', []);
       }
     } catch {
       // keep previous state on transient errors
     }
-  }, []);
+  }, [isCurrentUser, loadDashboardData, saveCache]);
 
   const loadActivity = useCallback(async () => {
     try {
@@ -191,7 +269,7 @@ export function useDashboard() {
         fetchFigmaActivity(),
         fetchSlackActivity(),
       ]);
-      if (!mounted.current) return;
+      if (!isCurrentUser()) return;
       const all = results
         .flat()
         .filter(Boolean)
@@ -199,10 +277,14 @@ export function useDashboard() {
         .slice(0, 10)
         .map((item) => ({ ...item, relativeTime: formatTime(item.timestamp) }));
       setActivity(all);
+      saveCache('activity', all);
     } catch {
-      if (mounted.current) setActivity([]);
+      if (isCurrentUser()) {
+        setActivity([]);
+        saveCache('activity', []);
+      }
     }
-  }, []);
+  }, [isCurrentUser, saveCache]);
 
   const loadProjects = useCallback(async () => {
     try {
@@ -210,7 +292,6 @@ export function useDashboard() {
 
       try {
         const localData = await projectApi.list();
-        console.log('[Dashboard] GET /api/projects response:', localData);
         if (localData.success && localData.projects) {
           collected.push(
             ...localData.projects.map((project) => ({
@@ -280,33 +361,50 @@ export function useDashboard() {
       }
 
       collected.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
-      if (mounted.current) setProjects(collected.slice(0, 5));
+      if (isCurrentUser()) {
+        const nextProjects = collected.slice(0, 5);
+        setProjects(nextProjects);
+        saveCache('projects', nextProjects);
+      }
     } catch {
-      if (mounted.current) setProjects([]);
+      if (isCurrentUser()) {
+        setProjects([]);
+        saveCache('projects', []);
+      }
     }
-  }, []);
+  }, [isCurrentUser, saveCache]);
 
   const loadTasks = useCallback(async () => {
     try {
       const data = await projectApi.listTasks();
-      if (mounted.current) {
-        setTasks(data.success ? (data.tasks || []) : []);
+      if (isCurrentUser()) {
+        const nextTasks = data.success ? (data.tasks || []) : [];
+        setTasks(nextTasks);
+        saveCache('tasks', nextTasks);
       }
     } catch {
-      if (mounted.current) setTasks([]);
+      if (isCurrentUser()) {
+        setTasks([]);
+        saveCache('tasks', []);
+      }
     }
-  }, []);
+  }, [isCurrentUser, saveCache]);
 
   const loadCompanies = useCallback(async () => {
     try {
       const data = await companyApi.getMyCompanies();
-      if (mounted.current) {
-        setCompanies(data.success ? (data.companies || []) : []);
+      if (isCurrentUser()) {
+        const nextCompanies = data.success ? (data.companies || []) : [];
+        setCompanies(nextCompanies);
+        saveCache('companies', nextCompanies);
       }
     } catch {
-      if (mounted.current) setCompanies([]);
+      if (isCurrentUser()) {
+        setCompanies([]);
+        saveCache('companies', []);
+      }
     }
-  }, []);
+  }, [isCurrentUser, saveCache]);
 
   const loadMeetings = useCallback(async () => {
     try {
@@ -326,22 +424,41 @@ export function useDashboard() {
       }
 
       upcoming.sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt));
-      if (mounted.current) setMeetings(upcoming);
+      if (isCurrentUser()) {
+        setMeetings(upcoming);
+        saveCache('meetings', upcoming);
+      }
     } catch {
-      if (mounted.current) setMeetings([]);
+      if (isCurrentUser()) {
+        setMeetings([]);
+        saveCache('meetings', []);
+      }
     }
-  }, []);
+  }, [isCurrentUser, saveCache]);
 
   const refreshAll = useCallback(async () => {
+    if (!currentUserId) return;
     await Promise.all([loadStats(), loadOverview(), loadIntegrationsHub(), loadActivity(), loadProjects(), loadTasks(), loadCompanies(), loadMeetings()]);
-  }, [loadStats, loadOverview, loadIntegrationsHub, loadActivity, loadProjects, loadTasks, loadCompanies, loadMeetings]);
+  }, [currentUserId, loadStats, loadOverview, loadIntegrationsHub, loadActivity, loadProjects, loadTasks, loadCompanies, loadMeetings]);
 
   useEffect(() => {
     mounted.current = true;
-    (async () => {
-      await refreshAll();
-      if (mounted.current) setLoading(false);
-    })();
+    if (!currentUserId) return undefined;
+    const overviewRequest = loadOverview().finally(() => {
+      if (isCurrentUser()) setLoading(false);
+    });
+    const supportingRequests = Promise.all([
+      loadStats(),
+      loadIntegrationsHub(),
+      loadActivity(),
+      loadProjects(),
+      loadTasks(),
+      loadCompanies(),
+      loadMeetings(),
+    ]);
+    Promise.all([overviewRequest, supportingRequests]).catch((error) => {
+      console.error('[Dashboard] initial data load failed:', error);
+    });
 
     const onVisible = () => {
       if (document.visibilityState === 'visible') refreshAll();
@@ -354,7 +471,25 @@ export function useDashboard() {
       document.removeEventListener('visibilitychange', onVisible);
       clearInterval(interval);
     };
-  }, [refreshAll]);
+  }, [currentUserId, isCurrentUser, loadOverview, loadStats, loadIntegrationsHub, loadActivity, loadProjects, loadTasks, loadCompanies, loadMeetings, refreshAll]);
 
-  return { stats, trial, overview, integrations, activity, projects, tasks, companies, meetings, loading, refreshAll, loadStats, loadOverview, loadProjects, loadTasks, loadMeetings };
+  const dataBelongsToCurrentUser = cacheUserId.current === currentUserId;
+  return {
+    stats: dataBelongsToCurrentUser ? stats : null,
+    trial: dataBelongsToCurrentUser ? trial : null,
+    overview: dataBelongsToCurrentUser ? overview : null,
+    integrations: dataBelongsToCurrentUser ? integrations : null,
+    activity: dataBelongsToCurrentUser ? activity : null,
+    projects: dataBelongsToCurrentUser ? projects : null,
+    tasks: dataBelongsToCurrentUser ? tasks : null,
+    companies: dataBelongsToCurrentUser ? companies : null,
+    meetings: dataBelongsToCurrentUser ? meetings : null,
+    loading: !dataBelongsToCurrentUser || loading,
+    refreshAll,
+    loadStats,
+    loadOverview,
+    loadProjects,
+    loadTasks,
+    loadMeetings,
+  };
 }
