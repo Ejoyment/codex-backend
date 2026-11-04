@@ -18,6 +18,9 @@ jest.mock('../utils/agentOrchestrator', () => ({
 jest.mock('../utils/agentAutoDeploy', () => ({
   redeployDeployment: jest.fn(),
 }));
+jest.mock('../utils/personalWorkspace', () => ({
+  ensurePersonalWorkspace: jest.fn(),
+}));
 jest.mock('../utils/notificationTriggers', () => ({
   notifyDeploymentEvent: jest.fn(),
 }));
@@ -30,17 +33,22 @@ const TeamProject = require('../models/TeamProject');
 const AgentExecution = require('../models/AgentExecution');
 const agentOrchestrator = require('../utils/agentOrchestrator');
 const { redeployDeployment } = require('../utils/agentAutoDeploy');
+const { ensurePersonalWorkspace } = require('../utils/personalWorkspace');
 const { notifyDeploymentEvent } = require('../utils/notificationTriggers');
 const selfHeal = require('../utils/deploymentSelfHeal');
 
 const leanQuery = (value) => ({
   select: jest.fn(() => ({ lean: jest.fn().mockResolvedValue(value) })),
 });
-const filesQuery = (value) => ({
-  select: jest.fn(() => ({
-    limit: jest.fn(() => ({ lean: jest.fn().mockResolvedValue(value) })),
-  })),
-});
+const filesQuery = (value) => {
+  const lean = jest.fn().mockResolvedValue(value);
+  return {
+    select: jest.fn(() => ({
+      limit: jest.fn(() => ({ lean })),
+      lean,
+    })),
+  };
+};
 
 function deployment(overrides = {}) {
   return {
@@ -66,13 +74,14 @@ beforeEach(() => {
   TeamProject.findById.mockReturnValue(leanQuery(null));
   Company.findById.mockReturnValue(leanQuery({ settings: { selfHeal: true } }));
   CodeFile.find.mockReturnValue(filesQuery([
-    { _id: 'file-id', name: 'index.js', path: '/', language: 'javascript' },
+    { _id: 'file-id', name: 'index.js', path: '/', language: 'javascript', content: 'require("missing-module")' },
   ]));
   AgentExecution.create.mockResolvedValue({ _id: 'execution-id' });
   AgentExecution.updateOne.mockResolvedValue({});
   Deployment.updateOne.mockResolvedValue({ modifiedCount: 1 });
   Deployment.updateMany.mockResolvedValue({ modifiedCount: 0 });
   redeployDeployment.mockResolvedValue({ success: true });
+  ensurePersonalWorkspace.mockResolvedValue({ _id: 'personal-workspace-id' });
   notifyDeploymentEvent.mockReturnValue(undefined);
 });
 
@@ -149,6 +158,58 @@ describe('deployment self-heal worker', () => {
         $set: expect.objectContaining({ status: 'completed' }),
       })
     );
+    // The agent is fed the project file manifest, build logs and file bodies.
+    const goal = agentOrchestrator.executeAgenticLoop.mock.calls[0][0];
+    expect(goal).toContain('index.js');
+    expect(goal).toContain('npm ERR! missing module');
+    expect(goal).toContain('require("missing-module")');
+  });
+
+  test('heals a project that has no workspace by using the files own company', async () => {
+    Deployment.findOneAndUpdate.mockResolvedValue(deployment({ fault: 'user', failureStage: 'build' }));
+    LocalProject.findById.mockReturnValue(leanQuery({}));
+    TeamProject.findById.mockReturnValue(leanQuery(null));
+    CodeFile.find.mockReturnValue(filesQuery([
+      { _id: 'file-id', name: 'index.js', path: '/', language: 'javascript', company: 'file-workspace-id' },
+    ]));
+    agentOrchestrator.executeAgenticLoop.mockResolvedValue({
+      success: true,
+      iterations: [{
+        action: { tool: 'update_file', parameters: { fileId: 'file-id' } },
+        result: { success: true },
+      }],
+      summary: { finalThought: 'Fixed it.' },
+    });
+
+    const result = await selfHeal.processDeployment('deployment-id');
+
+    expect(result).toMatchObject({ healed: true });
+    const context = agentOrchestrator.executeAgenticLoop.mock.calls[0][1];
+    expect(context.workspaceId).toBe('file-workspace-id');
+    expect(redeployDeployment).toHaveBeenCalledWith(expect.objectContaining({
+      workspaceId: 'file-workspace-id',
+    }));
+  });
+
+  test('falls back to the owner personal workspace when no workspace is set anywhere', async () => {
+    Deployment.findOneAndUpdate.mockResolvedValue(deployment({ fault: 'user', failureStage: 'build' }));
+    LocalProject.findById.mockReturnValue(leanQuery({}));
+    TeamProject.findById.mockReturnValue(leanQuery(null));
+    agentOrchestrator.executeAgenticLoop.mockResolvedValue({
+      success: true,
+      iterations: [{
+        action: { tool: 'update_file', parameters: { fileId: 'file-id' } },
+        result: { success: true },
+      }],
+      summary: { finalThought: 'Fixed it.' },
+    });
+
+    const result = await selfHeal.processDeployment('deployment-id');
+
+    expect(result).toMatchObject({ healed: true });
+    expect(ensurePersonalWorkspace).toHaveBeenCalledWith('user-id');
+    const context = agentOrchestrator.executeAgenticLoop.mock.calls[0][1];
+    expect(context.workspaceId).toBe('personal-workspace-id');
   });
 
   test('gives up when the agent completes without changing any files', async () => {
