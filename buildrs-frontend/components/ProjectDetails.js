@@ -90,7 +90,7 @@ export default function ProjectDetails({ projectId, onBack, onCreateTask }) {
         setProject((current) => ({ ...current, ...response.project }));
       }
     } catch (retryError) {
-      setProvisioningError(retryError.message || 'Could not retry project setup.');
+      setProvisioningError(retryError.message || 'Could not start project setup.');
     } finally {
       setRetryingProvisioning(false);
     }
@@ -184,21 +184,27 @@ export default function ProjectDetails({ projectId, onBack, onCreateTask }) {
         </section>
       </div>
 
-      {['pending', 'provisioning', 'failed'].includes(project.provisioningStatus) && (
+      {['not_started', 'pending', 'provisioning', 'failed'].includes(project.provisioningStatus) && (
         <section className={`mb-6 rounded-xl border p-4 ${project.provisioningStatus === 'failed' ? 'border-rose-500/20 bg-rose-500/5' : 'border-cyan-500/20 bg-cyan-500/5'}`}>
           <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
             <div>
               <p className={`text-xs font-semibold ${project.provisioningStatus === 'failed' ? 'text-rose-300' : 'text-cyan-300'}`}>
-                {project.provisioningStatus === 'failed' ? 'Project setup failed' : 'Preparing project files'}
+                {project.provisioningStatus === 'failed'
+                  ? 'Project setup failed'
+                  : project.provisioningStatus === 'not_started'
+                    ? 'Project setup has not started'
+                    : 'Preparing project files'}
               </p>
               <p className={`mt-1 text-[11px] ${project.provisioningStatus === 'failed' ? 'text-rose-200/80' : 'text-cyan-100/70'}`}>
                 {project.provisioningStatus === 'failed'
                   ? (project.provisioningError || 'The workspace could not be prepared.')
-                  : `${project.provisionedFileCount || 0} files written so far. This can take a moment for larger repositories.`}
+                  : project.provisioningStatus === 'not_started'
+                    ? 'Start setup to import the repository or write the project template into this workspace.'
+                    : `${project.provisionedFileCount || 0} files written so far. This can take a moment for larger repositories.`}
               </p>
               {provisioningError && <p role="alert" className="mt-1 text-[11px] text-rose-300">{provisioningError}</p>}
             </div>
-            {project.provisioningStatus === 'failed' && (
+            {['failed', 'not_started'].includes(project.provisioningStatus) && (
               <button
                 type="button"
                 onClick={retryProjectSetup}
@@ -206,7 +212,7 @@ export default function ProjectDetails({ projectId, onBack, onCreateTask }) {
                 className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold text-white transition hover:bg-white/5 disabled:cursor-wait disabled:opacity-60"
               >
                 <RefreshCw className={`h-3.5 w-3.5 ${retryingProvisioning ? 'animate-spin' : ''}`} />
-                {retryingProvisioning ? 'Retrying...' : 'Retry setup'}
+                {retryingProvisioning ? 'Starting...' : project.provisioningStatus === 'not_started' ? 'Start setup' : 'Retry setup'}
               </button>
             )}
           </div>

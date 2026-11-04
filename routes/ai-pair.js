@@ -1,3 +1,4 @@
+const { sendInternalError } = require('../utils/httpErrors');
 const express = require('express');
 const { aiChatLimiter } = require('../middleware/rateLimits');
 const router = express.Router();
@@ -142,10 +143,7 @@ router.get('/repos', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('List repos error:', error);
-        res.status(500).json({
-            success: false,
-            message: error.message
-        });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -190,10 +188,7 @@ router.get('/repo/:owner/:repo', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Get repo error:', error);
-        res.status(500).json({
-            success: false,
-            message: error.message
-        });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -246,10 +241,7 @@ router.get('/files/:owner/:repo', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('List files error:', error);
-        res.status(500).json({
-            success: false,
-            message: error.message
-        });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -304,10 +296,7 @@ router.get('/file/:owner/:repo/*', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Get file error:', error);
-        res.status(500).json({
-            success: false,
-            message: error.message
-        });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -379,10 +368,7 @@ router.post('/session', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Create session error:', error);
-        res.status(500).json({
-            success: false,
-            message: error.message
-        });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -443,10 +429,7 @@ router.get('/sessions', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Get sessions error:', error);
-        res.status(500).json({
-            success: false,
-            message: error.message
-        });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -469,7 +452,7 @@ router.get('/executions', authenticateToken, async (req, res) => {
         res.json({ success: true, executions });
     } catch (error) {
         console.error('Get executions error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -510,7 +493,7 @@ router.post('/executions', authenticateToken, async (req, res) => {
         res.status(201).json({ success: true, execution });
     } catch (error) {
         console.error('Create execution error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -564,7 +547,7 @@ router.patch('/executions/:executionId', authenticateToken, async (req, res) => 
         res.json({ success: true, execution });
     } catch (error) {
         console.error('Update execution error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -627,10 +610,7 @@ router.get('/session/:sessionId', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Get session error:', error);
-        res.status(500).json({
-            success: false,
-            message: error.message
-        });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -1099,10 +1079,7 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
     } catch (error) {
         await refundCredit();
         console.error('Chat error:', error);
-        res.status(500).json({
-            success: false,
-            message: error.message
-        });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -1290,10 +1267,7 @@ router.post('/apply-change', authenticateToken, permissionMatrix.requirePermissi
         });
     } catch (error) {
         console.error('Apply change error:', error);
-        res.status(500).json({
-            success: false,
-            message: error.message
-        });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -1452,10 +1426,7 @@ router.post('/commit', authenticateToken, permissionMatrix.requirePermission('gi
         });
     } catch (error) {
         console.error('Commit error:', error);
-        res.status(500).json({
-            success: false,
-            message: error.message
-        });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -1522,10 +1493,7 @@ router.patch('/session/:sessionId', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Update session error:', error);
-        res.status(500).json({
-            success: false,
-            message: error.message
-        });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -1594,10 +1562,7 @@ router.post('/memory/store', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Store memory error:', error);
-        res.status(500).json({
-            success: false,
-            message: error.message
-        });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -1664,10 +1629,7 @@ router.get('/memory/retrieve', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Retrieve memory error:', error);
-        res.status(500).json({
-            success: false,
-            message: error.message
-        });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -1713,10 +1675,7 @@ router.delete('/memory/clear', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Clear memory error:', error);
-        res.status(500).json({
-            success: false,
-            message: error.message
-        });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -1762,10 +1721,7 @@ router.get('/memory/stats', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Memory stats error:', error);
-        res.status(500).json({
-            success: false,
-            message: error.message
-        });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -1854,10 +1810,7 @@ router.post('/execute', authenticateToken, permissionMatrix.requirePermission('a
         });
     } catch (error) {
         console.error('Execute code error:', error);
-        res.status(500).json({
-            success: false,
-            message: error.message
-        });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -1888,10 +1841,7 @@ router.get('/sandbox/stats', authenticateToken, permissionMatrix.requirePermissi
         });
     } catch (error) {
         console.error('Sandbox stats error:', error);
-        res.status(500).json({
-            success: false,
-            message: error.message
-        });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -1964,10 +1914,7 @@ router.post('/review', authenticateToken, checkAILimits, permissionMatrix.requir
         });
     } catch (error) {
         console.error('Code review error:', error);
-        res.status(500).json({
-            success: false,
-            message: error.message
-        });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -2042,10 +1989,7 @@ router.post('/debug', authenticateToken, checkAILimits, permissionMatrix.require
         });
     } catch (error) {
         console.error('AI debugging error:', error);
-        res.status(500).json({
-            success: false,
-            message: error.message
-        });
+        return sendInternalError(req, res, error);
     }
 });
 

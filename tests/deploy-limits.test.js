@@ -137,6 +137,17 @@ describe('validateDeployFiles', () => {
             .not.toThrow();
     });
 
+    test('rejects secret files but allows checked-in examples', () => {
+        expect(() => validateDeployFiles([{ name: '.env', path: '/', content: 'SECRET=1' }]))
+            .toThrow(/Refusing to deploy secret file/);
+        expect(() => validateDeployFiles([{ name: '.env.production', path: '/', content: 'SECRET=1' }]))
+            .toThrow(/Refusing to deploy secret file/);
+        expect(() => validateDeployFiles([{ name: '.npmrc', path: '/', content: 'token=1' }]))
+            .toThrow(/Refusing to deploy secret file/);
+        expect(() => validateDeployFiles([{ name: '.env.example', path: '/', content: 'SECRET=' }]))
+            .not.toThrow();
+    });
+
     test('rejects empty payloads', () => {
         expect(() => validateDeployFiles([])).toThrow(/no deployable files/);
     });

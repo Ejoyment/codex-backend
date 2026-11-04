@@ -6,6 +6,7 @@
  * without the env var every call 403s. Strictly rate-limited (static secret
  * guessing surface). Currently: user ban/unban (ToS termination enforcement).
  */
+const { sendInternalError } = require('../utils/httpErrors');
 const express = require('express');
 const crypto = require('crypto');
 const mongoose = require('mongoose');
@@ -83,7 +84,7 @@ router.post('/users/:id/ban', adminLimiter, requireAdminKey, async (req, res) =>
         });
         res.json({ success: true, userId: String(user._id), isBanned: true });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -99,7 +100,7 @@ router.post('/users/:id/unban', adminLimiter, requireAdminKey, async (req, res) 
         });
         res.json({ success: true, userId: String(user._id), isBanned: false });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 

@@ -25,13 +25,30 @@ const MAX_CHUNK_BYTES = 64 * 1024;
 // In-memory terminal ring buffers: roomId -> { seq, chunks: [{ seq, chunk, ts }] }
 const terminalBuffers = new Map();
 const TERMINAL_BUFFER_CAP = 500;
+const TERMINAL_BUFFER_TTL_MS = 30 * 60 * 1000;
+const MAX_TERMINAL_BUFFERS = 200;
+
+function pruneBuffers(now = Date.now()) {
+  for (const [roomId, buffer] of terminalBuffers) {
+    if (now - (buffer.touchedAt || 0) > TERMINAL_BUFFER_TTL_MS) {
+      terminalBuffers.delete(roomId);
+    }
+  }
+}
 
 function getBuffer(roomId) {
+  const now = Date.now();
+  pruneBuffers(now);
   let b = terminalBuffers.get(roomId);
   if (!b) {
-    b = { seq: 0, chunks: [] };
+    if (terminalBuffers.size >= MAX_TERMINAL_BUFFERS) {
+      const oldest = terminalBuffers.keys().next().value;
+      if (oldest !== undefined) terminalBuffers.delete(oldest);
+    }
+    b = { seq: 0, chunks: [], touchedAt: now };
     terminalBuffers.set(roomId, b);
   }
+  b.touchedAt = now;
   return b;
 }
 
@@ -90,7 +107,8 @@ module.exports = (io) => {
         socket.emit('room:joined', { roomId, role, terminalSeq: seq });
         socket.to(`room:${roomId}`).emit('room:presence', { userId: socket.userId, role, joined: true });
       } catch (err) {
-        socket.emit('room:error', { message: err.message });
+        console.error('[rooms] socket operation failed:', err.message);
+        socket.emit('room:error', { message: 'Room operation failed. Please retry.' });
       }
     });
 
@@ -111,7 +129,8 @@ module.exports = (io) => {
           socket.to(`room:${roomId}`).emit('room:signal', payload);
         }
       } catch (err) {
-        socket.emit('room:error', { message: err.message });
+        console.error('[rooms] socket operation failed:', err.message);
+        socket.emit('room:error', { message: 'Room operation failed. Please retry.' });
       }
     });
 
@@ -138,7 +157,8 @@ module.exports = (io) => {
           chunk: entry.chunk,
         });
       } catch (err) {
-        socket.emit('room:error', { message: err.message });
+        console.error('[rooms] socket operation failed:', err.message);
+        socket.emit('room:error', { message: 'Room operation failed. Please retry.' });
       }
     });
 
@@ -152,7 +172,8 @@ module.exports = (io) => {
         const { seq, chunks } = chunksFrom(roomId, fromSeq || 0);
         socket.emit('room:terminal-resync', { roomId, seq, chunks });
       } catch (err) {
-        socket.emit('room:error', { message: err.message });
+        console.error('[rooms] socket operation failed:', err.message);
+        socket.emit('room:error', { message: 'Room operation failed. Please retry.' });
       }
     });
 
@@ -170,7 +191,8 @@ module.exports = (io) => {
           user: socket.user,
         });
       } catch (err) {
-        socket.emit('room:error', { message: err.message });
+        console.error('[rooms] socket operation failed:', err.message);
+        socket.emit('room:error', { message: 'Room operation failed. Please retry.' });
       }
     });
 

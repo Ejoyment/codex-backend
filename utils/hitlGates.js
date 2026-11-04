@@ -91,7 +91,8 @@ class HITLGates {
         
         // Emit to frontend
         if (this.io) {
-            this.io.to(userId).emit('agent:confirmation_required', request);
+            // Sockets join `user:<id>`; emitting to the bare id reached nobody.
+            this.io.to(`user:${userId}`).emit('agent:confirmation_required', request);
         }
         
         // Wait for user response with timeout

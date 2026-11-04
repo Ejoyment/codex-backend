@@ -1,3 +1,4 @@
+const { sendInternalError } = require('../utils/httpErrors');
 const express = require('express');
 const router = express.Router();
 const Invitation = require('../models/Invitation');
@@ -151,7 +152,7 @@ router.post('/', authenticateToken, async (req, res) => {
         if (error.code === 11000) {
             return res.status(400).json({ success: false, message: 'User already invited' });
         }
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -193,7 +194,7 @@ router.get('/company/:companyId', authenticateToken, async (req, res) => {
             invitations
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -230,7 +231,7 @@ router.get('/my-invitations', authenticateToken, async (req, res) => {
             invitations
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -285,7 +286,7 @@ router.post('/:token/accept', authenticateToken, async (req, res) => {
             company
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -321,7 +322,7 @@ router.post('/:token/decline', authenticateToken, async (req, res) => {
             message: 'Invitation declined'
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -393,7 +394,7 @@ router.post('/:id/resend', authenticateToken, async (req, res) => {
             invitation
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -439,7 +440,7 @@ router.delete('/:id', authenticateToken, async (req, res) => {
             message: 'Invitation cancelled'
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 

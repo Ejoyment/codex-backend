@@ -3,6 +3,7 @@
  * Provides lazy loading and efficient file management
  */
 
+const { sendInternalError } = require('../utils/httpErrors');
 const express = require('express');
 const mongoose = require('mongoose');
 const router = express.Router();
@@ -128,7 +129,7 @@ router.get('/file/:fileId', authenticateToken, permissionMatrix.requirePermissio
     });
   } catch (error) {
     console.error('VFS read error:', error);
-    res.status(500).json({ error: error.message });
+    return sendInternalError(req, res, error, { envelope: 'error' });
   }
 });
 
@@ -178,7 +179,7 @@ router.get('/file-by-path', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('VFS read by path error:', error);
-    res.status(500).json({ error: error.message });
+    return sendInternalError(req, res, error, { envelope: 'error' });
   }
 });
 
@@ -237,7 +238,7 @@ router.get('/file-chunked/:fileId', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('VFS chunked read error:', error);
-    res.status(500).json({ error: error.message });
+    return sendInternalError(req, res, error, { envelope: 'error' });
   }
 });
 
@@ -268,7 +269,7 @@ router.get('/metadata/:fileId', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('VFS metadata error:', error);
-    res.status(500).json({ error: error.message });
+    return sendInternalError(req, res, error, { envelope: 'error' });
   }
 });
 
@@ -295,7 +296,7 @@ router.get('/search-name', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('VFS name search error:', error);
-    res.status(500).json({ error: error.message });
+    return sendInternalError(req, res, error, { envelope: 'error' });
   }
 });
 
@@ -324,7 +325,7 @@ router.get('/search', authenticateToken, permissionMatrix.requirePermission('vfs
     });
   } catch (error) {
     console.error('VFS search error:', error);
-    res.status(500).json({ error: error.message });
+    return sendInternalError(req, res, error, { envelope: 'error' });
   }
 });
 
@@ -352,7 +353,7 @@ router.get('/search-language', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('VFS language search error:', error);
-    res.status(500).json({ error: error.message });
+    return sendInternalError(req, res, error, { envelope: 'error' });
   }
 });
 
@@ -374,7 +375,7 @@ router.get('/stats/:workspaceId', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('VFS stats error:', error);
-    res.status(500).json({ error: error.message });
+    return sendInternalError(req, res, error, { envelope: 'error' });
   }
 });
 
@@ -397,7 +398,7 @@ router.post('/rebuild-index/:workspaceId', authenticateToken, permissionMatrix.r
     });
   } catch (error) {
     console.error('VFS rebuild index error:', error);
-    res.status(500).json({ error: error.message });
+    return sendInternalError(req, res, error, { envelope: 'error' });
   }
 });
 
@@ -420,7 +421,7 @@ router.post('/rebuild-search/:workspaceId', authenticateToken, async (req, res) 
     });
   } catch (error) {
     console.error('VFS rebuild search error:', error);
-    res.status(500).json({ error: error.message });
+    return sendInternalError(req, res, error, { envelope: 'error' });
   }
 });
 
@@ -442,7 +443,7 @@ router.post('/clear-cache/:workspaceId', authenticateToken, async (req, res) => 
     });
   } catch (error) {
     console.error('VFS clear cache error:', error);
-    res.status(500).json({ error: error.message });
+    return sendInternalError(req, res, error, { envelope: 'error' });
   }
 });
 
@@ -508,7 +509,10 @@ router.post('/files', authenticateToken, permissionMatrix.requirePermission('vfs
     });
   } catch (error) {
     console.error('VFS create file error:', error);
-    res.status(500).json({ error: error.message });
+    if (error.code === 11000) {
+      return res.status(409).json({ error: 'A file already exists at this path' });
+    }
+    res.status(500).json({ error: 'Failed to create file' });
   }
 });
 
@@ -553,7 +557,7 @@ router.put('/files/:fileId', authenticateToken, permissionMatrix.requirePermissi
     });
   } catch (error) {
     console.error('VFS update file error:', error);
-    res.status(500).json({ error: error.message });
+    return sendInternalError(req, res, error, { envelope: 'error' });
   }
 });
 
@@ -584,7 +588,7 @@ router.delete('/files/:fileId', authenticateToken, permissionMatrix.requirePermi
     });
   } catch (error) {
     console.error('VFS delete file error:', error);
-    res.status(500).json({ error: error.message });
+    return sendInternalError(req, res, error, { envelope: 'error' });
   }
 });
 
@@ -659,7 +663,7 @@ router.post('/folders', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('VFS create folder error:', error);
-    res.status(500).json({ error: error.message });
+    return sendInternalError(req, res, error, { envelope: 'error' });
   }
 });
 

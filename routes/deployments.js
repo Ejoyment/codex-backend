@@ -422,6 +422,9 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
                             ? 'Your build or startup exceeded the time limit.'
                             : 'Our build infrastructure did not respond in time — please retry.')), { fault, stage: failureStage });
                 }
+                const publicErrorMessage = fault === 'platform'
+                    ? 'Deployment failed due to a platform error. Please retry.'
+                    : capErrorMessage(depErr.message);
                 const logTail = buildLog
                     ? `${buildLog}\n--- DEPLOYMENT FAILED ---\n${depErr.message}\n`
                     : `--- DEPLOYMENT FAILED ---\n${depErr.message}\n`;
@@ -432,7 +435,7 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
                         {
                             $set: {
                                 status: 'failed',
-                                errorMessage: capErrorMessage(depErr.message),
+                                errorMessage: publicErrorMessage,
                                 fault,
                                 failureStage: failureStage || 'platform',
                                 steps: liveSteps,
@@ -455,7 +458,7 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
                     type: 'deployment_failed',
                     deployment: { _id: deployId, environment: sanitized, company: companyId || null },
                     userId: req.userId,
-                    detail: capErrorMessage(depErr.message) || 'The deployment failed.',
+                    detail: publicErrorMessage || 'The deployment failed.',
                 });
                 // Hand the failure to the background repair worker. This is
                 // fire-and-forget: scheduling must never fail the request.

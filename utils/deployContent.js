@@ -99,6 +99,12 @@ function validateDeployFiles(files) {
         } catch (err) {
             throw new Error(`${err.message} (in "${f.name}")`);
         }
+        const baseName = rel.split('/').pop();
+        const isEnvSecret = /^\.env(\.|$)/i.test(baseName)
+            && !/^\.env\.(example|sample|template)$/i.test(baseName);
+        if (isEnvSecret || baseName === '.npmrc' || baseName === '.netrc') {
+            throw new Error(`Refusing to deploy secret file "${rel}". Remove it or use a deployment secret instead.`);
+        }
         const size = fileBytes(f);
         if (size > maxFileBytes) {
             throw new Error(`File too large: ${f.name} exceeds ${fmtBytes(maxFileBytes)}.`);

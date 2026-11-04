@@ -1,3 +1,4 @@
+const { sendInternalError } = require('../utils/httpErrors');
 const express = require('express');
 const mongoose = require('mongoose');
 const router = express.Router();
@@ -80,7 +81,7 @@ router.get('/languages', authenticateToken, async (req, res) => {
             totalCount: languages.length
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -239,7 +240,7 @@ router.post('/files', authenticateToken, async (req, res) => {
             file: codeFile
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -342,7 +343,10 @@ router.post('/files/batch', authenticateToken, async (req, res) => {
                 });
                 createdFiles.push(codeFile);
             } catch (error) {
-                errors.push({ name: fileData.name, error: error.message });
+                errors.push({
+                    name: fileData.name,
+                    error: error.code === 11000 ? 'A file already exists at this path' : 'Failed to create file'
+                });
             }
         }
 
@@ -419,7 +423,7 @@ router.post('/files/batch', authenticateToken, async (req, res) => {
             failed: errors.length
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -497,7 +501,7 @@ router.get('/files', authenticateToken, async (req, res) => {
             files
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -592,7 +596,7 @@ router.get('/files/:id', authenticateToken, async (req, res) => {
             file
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -675,7 +679,7 @@ router.put('/files/:id', authenticateToken, async (req, res) => {
             file
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -726,7 +730,7 @@ router.delete('/files/:id', authenticateToken, async (req, res) => {
             message: 'File deleted successfully'
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -787,7 +791,7 @@ router.get('/files/:id/collaborators', authenticateToken, async (req, res) => {
             access,
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -828,7 +832,7 @@ router.post('/files/:id/collaborators', authenticateToken, async (req, res) => {
             file
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -856,7 +860,7 @@ router.delete('/files/:id/collaborators/:userId', authenticateToken, async (req,
 
         res.json({ success: true, file });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -896,7 +900,7 @@ router.get('/files/:id/versions', authenticateToken, async (req, res) => {
             versions: file.versions.reverse()
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 

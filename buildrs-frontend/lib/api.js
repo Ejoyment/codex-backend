@@ -63,71 +63,75 @@ export async function apiFetch(path, options = {}) {
     delete headers['Content-Type'];
   }
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
   let lastError;
-  try {
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-      try {
-        const res = await fetch(`${API_BASE_URL}${path}`, {
-          ...requestOptions,
-          headers,
-          signal: controller.signal,
-        });
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    // A fresh controller per attempt: reusing an aborted controller made every
+    // retry after a timeout fail immediately with AbortError.
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(`${API_BASE_URL}${path}`, {
+        ...requestOptions,
+        headers,
+        signal: controller.signal,
+      });
 
-        if (res.status === 429) {
-          const retryAfter = parseInt(res.headers.get('Retry-After') || '5', 10);
-          const error = new Error(`Rate limited. Retry after ${retryAfter}s`);
-          error.status = 429;
-          throw error;
-        }
+      if (res.status === 429) {
+        const parsed = parseInt(res.headers.get('Retry-After') || '5', 10);
+        const retryAfter = Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), 30) : 5;
+        const error = new Error(`Rate limited. Retry after ${retryAfter}s`);
+        error.status = 429;
+        error.retryAfter = retryAfter;
+        throw error;
+      }
 
-        const data = await res.json().catch(() => ({}));
+      const data = await res.json().catch(() => ({}));
 
-        if (res.status === 401) {
-          if (typeof window !== 'undefined' && !options.returnErrorData) {
-            localStorage.removeItem('authToken');
-            localStorage.removeItem('user');
-            localStorage.removeItem('subscription');
-            localStorage.removeItem('auth-storage');
-            localStorage.removeItem('supportAgent');
-            localStorage.removeItem('supportAgentToken');
-            window.location.href = '/sign_in';
-          }
-          const error = new Error(data.message || 'Unauthorized');
-          error.status = 401;
-          error.data = data;
-          throw error;
+      if (res.status === 401) {
+        if (typeof window !== 'undefined' && !options.returnErrorData) {
+          localStorage.removeItem('authToken');
+          localStorage.removeItem('user');
+          localStorage.removeItem('subscription');
+          localStorage.removeItem('auth-storage');
+          localStorage.removeItem('supportAgent');
+          localStorage.removeItem('supportAgentToken');
+          window.location.href = '/sign_in';
         }
+        const error = new Error(data.message || 'Unauthorized');
+        error.status = 401;
+        error.data = data;
+        throw error;
+      }
 
-        if (!res.ok && !options.returnErrorData) {
-          const error = new Error(data.message || data.error || 'API request failed');
-          error.status = res.status;
-          error.data = data;
-          throw error;
-        }
+      if (!res.ok && !options.returnErrorData) {
+        const error = new Error(data.message || data.error || 'API request failed');
+        error.status = res.status;
+        error.data = data;
+        throw error;
+      }
 
-        return data;
-      } catch (err) {
-        lastError = err;
-        if (err.name === 'AbortError') {
-          throw new Error('Request timed out');
-        }
-        if (err.message === 'Session expired' || err.message === 'Unauthorized') {
-          throw err;
-        }
-        if (attempt < MAX_RETRIES && !requestOptions.method) {
-          await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
-          continue;
-        }
+      return data;
+    } catch (err) {
+      lastError = err;
+      if (err.name === 'AbortError') {
+        throw new Error('Request timed out');
+      }
+      if (err.message === 'Session expired' || err.message === 'Unauthorized') {
         throw err;
       }
+      if (attempt < MAX_RETRIES && method === 'GET') {
+        const delayMs = err.status === 429
+          ? (err.retryAfter || 5) * 1000
+          : 1000 * (attempt + 1);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        continue;
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeoutId);
     }
-    throw lastError;
-  } finally {
-    clearTimeout(timeoutId);
   }
+  throw lastError;
 }
 
 export function sanitize(body) {

@@ -193,6 +193,7 @@ async function processScheduledCharges() {
         // Find all pending charges that are due within the next minute
         const dueCharges = await BillingSchedule.find({
             status: 'pending',
+            provider: 'flutterwave',
             scheduledFor: {
                 $lte: oneMinuteFromNow
             }

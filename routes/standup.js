@@ -1,3 +1,4 @@
+const { sendInternalError } = require('../utils/httpErrors');
 const express = require('express');
 const router = express.Router();
 const Standup = require('../models/Standup');
@@ -105,7 +106,7 @@ router.post('/generate', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Standup generate error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -239,7 +240,7 @@ router.post('/', authenticateToken, async (req, res) => {
         if (error.name === 'ValidationError' || error.name === 'CastError') {
             return res.status(400).json({ success: false, message: error.message });
         }
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -268,7 +269,7 @@ router.get('/', authenticateToken, async (req, res) => {
         if (error.name === 'ValidationError' || error.name === 'CastError') {
             return res.status(400).json({ success: false, message: error.message });
         }
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 

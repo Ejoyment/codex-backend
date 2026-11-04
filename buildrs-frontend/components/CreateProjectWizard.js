@@ -255,7 +255,7 @@ export default function CreateProjectWizard({
         setCreatedProject((current) => ({ ...current, ...response.project }));
       }
     } catch (error) {
-      setSubmitError(error.message || 'Could not retry project setup.');
+      setSubmitError(error.message || 'Could not start project setup.');
     } finally {
       setRetryingProvisioning(false);
     }
@@ -298,7 +298,9 @@ export default function CreateProjectWizard({
   const provisioningBusy = ['pending', 'provisioning'].includes(provisioningStatus);
   const provisioningReady = provisioningStatus === 'ready';
   const provisioningFailed = provisioningStatus === 'failed';
+  const provisioningNotStarted = provisioningStatus === 'not_started';
   const provisioningLabel = {
+    not_started: 'Not started',
     pending: 'Queued',
     provisioning: 'Preparing files',
     ready: 'Ready',
@@ -960,6 +962,10 @@ export default function CreateProjectWizard({
                 <p role="alert" className="text-xs leading-relaxed text-rose-300">
                   {createdProject?.provisioningError || 'The workspace could not be prepared. Retry setup to try again.'}
                 </p>
+              ) : provisioningNotStarted ? (
+                <p className="text-xs leading-relaxed text-zinc-300">
+                  Setup has not started yet. Start setup to write the project files into this workspace.
+                </p>
               ) : (
                 <div className="flex items-center gap-2 text-xs text-zinc-300">
                   {provisioningBusy && <Loader2 className="h-3.5 w-3.5 animate-spin text-cyan-400" />}
@@ -986,14 +992,14 @@ export default function CreateProjectWizard({
             )}
 
             <div className="flex justify-end gap-3">
-              {provisioningFailed && (
+              {(provisioningFailed || provisioningNotStarted) && (
                 <button
                   onClick={retryProvisioning}
                   disabled={retryingProvisioning}
                   className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-4 py-2 text-xs font-semibold text-zinc-300 transition hover:bg-white/5 disabled:cursor-wait disabled:opacity-60"
                 >
                   <RefreshCw className={`h-3 w-3 ${retryingProvisioning ? 'animate-spin' : ''}`} />
-                  {retryingProvisioning ? 'Retrying...' : 'Retry setup'}
+                  {retryingProvisioning ? 'Starting...' : provisioningNotStarted ? 'Start setup' : 'Retry setup'}
                 </button>
               )}
               <button

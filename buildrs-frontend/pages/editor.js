@@ -26,11 +26,7 @@ import { useCurrentCompany } from '../hooks/useCurrentCompany';
 import { normalizeTier, tierDisplayLabel, tierDisplayDetail } from '../lib/tier';
 
 function tierBadgeLabel(t) {
-  const n = normalizeTier(t);
-  if (n === 'enterprise') return 'Enterprise';
-  if (n === 'developer') return 'Free';
-  if (n === 'team_standard' || n === 'team_premium') return 'Team';
-  return 'Pro';
+  return tierDisplayLabel(null, normalizeTier(t));
 }
 
 function tierBadgeClass(t) {
@@ -421,6 +417,7 @@ export default function Editor() {
   const monacoRef = useRef(null);
   const markersSubscribedRef = useRef(false);
   const lspProvidersRef = useRef(false);
+  const lspChangeTimerRef = useRef(null);
   const [cursorPos, setCursorPos] = useState({ line: 1, col: 1 });
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [activeSidebar, setActiveSidebar] = useState('explorer');
@@ -677,27 +674,27 @@ export default function Editor() {
   // default, stored server-side per workspace (company settings, owner/admin
   // only — the API 403s everyone else and the toggle reverts).
   const deployScopeId = workspaceId || selectedProject?.workspaceId || null;
-  const [autoDeployOn, setAutoDeployOn] = useState(true);
-  const autoDeployRef = useRef(true);
+  const [autoDeployOn, setAutoDeployOn] = useState(false);
+  const autoDeployRef = useRef(false);
   useEffect(() => {
     let cancelled = false;
     (async () => {
       if (!deployScopeId) {
-        setAutoDeployOn(true);
-        autoDeployRef.current = true;
+        setAutoDeployOn(false);
+        autoDeployRef.current = false;
         return;
       }
       try {
         const data = await companyApi.getDetails(deployScopeId);
-        const on = data?.company?.settings?.autoDeploy !== false;
+        const on = data?.company?.settings?.autoDeploy === true;
         if (!cancelled) {
           setAutoDeployOn(on);
           autoDeployRef.current = on;
         }
       } catch {
         if (!cancelled) {
-          setAutoDeployOn(true);
-          autoDeployRef.current = true;
+          setAutoDeployOn(false);
+          autoDeployRef.current = false;
         }
       }
     })();
@@ -961,6 +958,26 @@ export default function Editor() {
     setGitStatus(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId, selectedRepo]);
+
+  // A direct /editor?projectId=... link selects that project once the list
+  // resolves. Without this, deep links silently opened the previous session or
+  // an empty workspace.
+  const directProjectId = router.isReady && typeof router.query.projectId === 'string'
+    ? router.query.projectId
+    : null;
+  useEffect(() => {
+    if (!directProjectId || !projects.length) return;
+    const target = projects.find((project) => String(project._id || project.id) === directProjectId);
+    if (!target) {
+      setStatus({ type: 'error', msg: 'That project is not available in this workspace.' });
+      return;
+    }
+    const currentId = String(selectedProject?._id || selectedProject?.id || '');
+    if (currentId === directProjectId) return;
+    pendingRestoreRef.current = null;
+    setSelectedRepo(null);
+    setSelectedProject(target);
+  }, [directProjectId, projects, selectedProject?._id, selectedProject?.id]);
 
   // Finish restoring a previous session once its inputs arrive.
   useEffect(() => {
@@ -2073,7 +2090,7 @@ export default function Editor() {
       }).catch((error) => {
         if (requestId !== fileLoadSequenceRef.current) return;
         setFileLoading(false);
-        setStatus({ type: 'error', msg: `Could not load ${file.name || 'file'}: ${error.message}` });
+        setStatus({ type: 'error', msg: error?.status === 404 ? 'That file no longer exists in this workspace.' : `Could not load ${file.name || 'file'}: ${error.message}` });
       });
     }
     if (sourceFile?._id) {
@@ -2498,10 +2515,9 @@ export default function Editor() {
     });
 
     // Keep the server-side document in sync with the buffer (debounced).
-    let lspChangeTimer = null;
     editor.onDidChangeModelContent(() => {
-      if (lspChangeTimer) clearTimeout(lspChangeTimer);
-      lspChangeTimer = setTimeout(() => {
+      if (lspChangeTimerRef.current) clearTimeout(lspChangeTimerRef.current);
+      lspChangeTimerRef.current = setTimeout(() => {
         try {
           if (editor.isDisposed?.()) return;
           const model = editor.getModel();
@@ -2515,6 +2531,10 @@ export default function Editor() {
       }, 700);
     });
   }
+
+  useEffect(() => () => {
+    if (lspChangeTimerRef.current) clearTimeout(lspChangeTimerRef.current);
+  }, []);
 
   function handleEditorWillMount(monaco) {
     monaco.editor.defineTheme('buildrs-figma', {

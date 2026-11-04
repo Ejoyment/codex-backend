@@ -124,7 +124,8 @@ class VpsShell {
       conn
         .on('ready', () => {
           conn.on('error', (err) => {
-            if (!this.closed) this._emit(`\r\n[terminal] ssh error: ${err.message}\r\n`);
+            console.error('VPS ssh error:', err.message);
+            if (!this.closed) this._emit('\r\n[terminal] ssh connection error\r\n');
             this.closed = true;
           });
           conn.on('close', () => {
@@ -133,7 +134,10 @@ class VpsShell {
           });
           done(resolve, conn);
         })
-        .on('error', (err) => done(reject, new Error(`VPS ssh failed: ${err.message}`)))
+        .on('error', (err) => {
+          console.error('VPS ssh connect error:', err.message);
+          done(reject, new Error('VPS ssh connection failed'));
+        })
         .connect({
           host: terminalSshOpt('HOST'),
           port: parseInt(terminalSshOpt('PORT', '22'), 10),

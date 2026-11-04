@@ -1,3 +1,4 @@
+const { sendInternalError } = require('../utils/httpErrors');
 const express = require('express');
 const router = express.Router();
 const Message = require('../models/Message');
@@ -131,7 +132,7 @@ router.post('/channels', authenticateToken, requireCompanyMember, async (req, re
         if (error.code === 11000) {
             return res.status(409).json({ success: false, message: `A channel named "${name}" already exists` });
         }
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -186,7 +187,7 @@ router.get('/channels', authenticateToken, requireCompanyMember, async (req, res
             channels
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -250,7 +251,7 @@ router.get('/channels/:id', authenticateToken, requireCompanyMember, async (req,
             channel
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -416,7 +417,7 @@ router.post('/messages', authenticateToken, messageSendLimiter, requireCompanyMe
             message
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -466,7 +467,7 @@ router.get('/messages', authenticateToken, requireCompanyMember, async (req, res
             messages: messages.reverse()
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -548,7 +549,7 @@ router.put('/messages/:id', authenticateToken, async (req, res) => {
             message
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -574,7 +575,7 @@ router.delete('/messages/:id', authenticateToken, async (req, res) => {
             message: 'Message deleted'
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -668,7 +669,7 @@ router.post('/messages/:id/reactions', authenticateToken, async (req, res) => {
             message
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -732,7 +733,7 @@ router.post('/messages/:id/read', authenticateToken, async (req, res) => {
             success: true
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -816,7 +817,7 @@ router.post('/channels/:id/members', authenticateToken, async (req, res) => {
             channel
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 

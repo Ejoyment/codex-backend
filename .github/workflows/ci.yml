@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main, master, develop ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ main, master, develop ]
 
 jobs:
   lint-and-test:
@@ -88,11 +88,10 @@ jobs:
         echo "Running syntax validation..."
         node --check server.js
         count=0
-        for f in routes/*.js middleware/*.js config/*.js utils/*.js models/*.js server/*.js; do
-          [ -f "$f" ] || continue
+        while IFS= read -r f; do
           node --check "$f"
           count=$((count + 1))
-        done
+        done < <(find routes middleware config utils models server scripts tests -type f -name '*.js' | sort)
         echo "✓ $count files passed syntax validation"
 
     - name: Execute Test Suite
@@ -103,6 +102,13 @@ jobs:
         # suite exercises the same code path as a real deployment.
         JWT_SECRET: ci-test-jwt-secret-must-be-at-least-32-chars
         MONGODB_URI: mongodb://localhost:27017/codex-inc-ci-test
+
+    - name: Build frontend
+      if: matrix.node-version == '20.x'
+      run: npm run build --prefix buildrs-frontend
+      env:
+        NEXT_PUBLIC_API_URL: http://localhost:3000
+        NEXT_PUBLIC_SOCKET_URL: http://localhost:3000
 
     - name: Upload coverage report
       if: always()

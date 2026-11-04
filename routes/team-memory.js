@@ -1,3 +1,4 @@
+const { sendInternalError } = require('../utils/httpErrors');
 const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../middleware/auth');
@@ -21,7 +22,7 @@ const ensureCompanyMember = async (req, res, next) => {
         next();
     } catch (error) {
         console.error('Company membership check error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 };
 
@@ -89,7 +90,7 @@ router.post('/team-conventions', authenticateToken, ensureCompanyMember, async (
         res.status(201).json({ success: true, convention });
     } catch (error) {
         console.error('Create convention error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -129,7 +130,7 @@ router.get('/team-conventions/:companyId', authenticateToken, ensureCompanyMembe
         res.json({ success: true, conventions });
     } catch (error) {
         console.error('Get conventions error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -193,7 +194,7 @@ router.put('/team-conventions/:companyId/:conventionId', authenticateToken, ensu
         res.json({ success: true, convention });
     } catch (error) {
         console.error('Update convention error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -203,7 +204,7 @@ router.delete('/team-conventions/:companyId/:conventionId', authenticateToken, e
         res.json({ success: true, convention });
     } catch (error) {
         console.error('Delete convention error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
