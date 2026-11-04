@@ -1,3 +1,4 @@
+const { sendInternalError } = require('../utils/httpErrors');
 const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../middleware/auth');
@@ -19,7 +20,7 @@ const ensureCompanyMember = async (req, res, next) => {
         req.company = company;
         next();
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 };
 
@@ -46,7 +47,7 @@ router.get('/company/:companyId', authenticateToken, ensureCompanyMember, async 
             skip: parseInt(skip) || 0
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -57,7 +58,7 @@ router.get('/categories', authenticateToken, ensureCompanyMember, async (req, re
         const categories = await AuditLog.distinct('category', { company: companyId });
         res.json({ success: true, categories });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 

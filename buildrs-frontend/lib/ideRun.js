@@ -71,7 +71,7 @@ export function streamRun(runId, onEvent) {
       signal: controller.signal,
     });
     if (!res.ok) {
-      throw new Error(res.status === 404 ? 'Run not found' : `Run stream failed (${res.status})`);
+      throw new Error(res.status === 404 ? 'This run is no longer available.' : 'Run stream is temporarily unavailable. Please retry.');
     }
     const reader = res.body.getReader();
     const decoder = new TextDecoder();

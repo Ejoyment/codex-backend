@@ -39,6 +39,9 @@ async function approveExecution({
   requireWorkspace = true,
   requireChanges = true,
 } = {}) {
+  if (execution.status === 'approved' || execution.status === 'completed') {
+    return { ok: true, execution, alreadyApproved: true };
+  }
   const previousStatus = execution.status;
   const claim = await AgentExecution.findOneAndUpdate(
     {
@@ -176,10 +179,21 @@ async function approveExecution({
       return result;
     });
     if (!mergeResult.success) {
+      let rollback = { restored: 0 };
+      if (appliedChanges?.snapshots?.length) {
+        try {
+          rollback = await agentChangeSet.rollbackVFS(appliedChanges.workspaceId || workspaceId, appliedChanges.snapshots);
+        } catch (rollbackError) {
+          rollback = { restored: 0, error: rollbackError.message };
+        }
+      }
       execution.status = previousStatus;
-      execution.logs.push({ timestamp: new Date(), message: `Merge failed: ${mergeResult.error}` });
+      execution.logs.push({
+        timestamp: new Date(),
+        message: `Merge failed: ${mergeResult.error}; rolled back ${rollback.restored || 0} applied file change(s)`,
+      });
       await execution.save();
-      return conflict(mergeResult.error, { execution });
+      return conflict(mergeResult.error, { execution, rollback });
     }
     const cleanup = await gitService.removeAgentWorktree(
       workspaceId,

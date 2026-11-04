@@ -1,3 +1,4 @@
+const { sendInternalError } = require('../utils/httpErrors');
 const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../middleware/auth');
@@ -5,6 +6,7 @@ const Pipeline = require('../models/Pipeline');
 const PipelineRun = require('../models/PipelineRun');
 const Company = require('../models/Company');
 const { addAuditLog } = require('../utils/auditLogService');
+const { boundedLimit } = require('../utils/queryLimits');
 
 const ensureCompanyMember = async (req, res, next) => {
     try {
@@ -21,7 +23,7 @@ const ensureCompanyMember = async (req, res, next) => {
         req.company = company;
         next();
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 };
 
@@ -30,7 +32,7 @@ router.get('/company/:companyId', authenticateToken, ensureCompanyMember, async 
         const pipelines = await Pipeline.find({ company: req.params.companyId }).sort({ updatedAt: -1 });
         res.json({ success: true, pipelines });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -59,7 +61,7 @@ router.post('/', authenticateToken, ensureCompanyMember, async (req, res) => {
         });
         res.json({ success: true, pipeline });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -90,7 +92,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
         });
         res.json({ success: true, pipeline });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -117,7 +119,7 @@ router.delete('/:id', authenticateToken, async (req, res) => {
         });
         res.json({ success: true, message: 'Pipeline deleted' });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -178,7 +180,7 @@ router.post('/:id/run', authenticateToken, async (req, res) => {
 
         res.json({ success: true, run, message: `Pipeline "${pipeline.name}" started` });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -188,11 +190,11 @@ router.get('/:id/runs', authenticateToken, async (req, res) => {
         if (!pipeline) return res.status(404).json({ success: false, message: 'Pipeline not found' });
         const runs = await PipelineRun.find({ pipeline: pipeline._id })
             .sort({ createdAt: -1 })
-            .limit(Math.min(parseInt(req.query.limit) || 25, 100))
+            .limit(boundedLimit(req.query.limit, 25, 100))
             .populate('triggeredBy', 'fullName email profilePicture');
         res.json({ success: true, runs });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -200,12 +202,12 @@ router.get('/company/:companyId/runs', authenticateToken, ensureCompanyMember, a
     try {
         const runs = await PipelineRun.find({ company: req.params.companyId })
             .sort({ createdAt: -1 })
-            .limit(Math.min(parseInt(req.query.limit) || 25, 100))
+            .limit(boundedLimit(req.query.limit, 25, 100))
             .populate('triggeredBy', 'fullName email profilePicture')
             .populate('pipeline', 'name');
         res.json({ success: true, runs });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -237,7 +239,7 @@ router.get('/:id/yaml', authenticateToken, async (req, res) => {
         res.setHeader('Content-Type', 'text/yaml');
         res.send(yamlFor(pipeline));
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 

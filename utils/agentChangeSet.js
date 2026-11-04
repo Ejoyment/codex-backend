@@ -566,6 +566,7 @@ async function applyToVFS(workspaceId, changes, { userId = null, projectId = nul
   let created = 0;
   let updated = 0;
   let deleted = 0;
+  const snapshots = [];
 
   const safeChanges = (changes || [])
     .filter((change) => isSafeRelativePath(change.path))
@@ -595,6 +596,7 @@ async function applyToVFS(workspaceId, changes, { userId = null, projectId = nul
     if (change.action === 'delete') {
       const existing = filesByPath.get(key);
       if (existing) {
+        snapshots.push({ change, existing: typeof existing.toObject === 'function' ? existing.toObject() : existing });
         await existing.deleteOne();
         filesByPath.delete(key);
         try {
@@ -613,6 +615,7 @@ async function applyToVFS(workspaceId, changes, { userId = null, projectId = nul
     const existing = filesByPath.get(key);
 
     if (existing) {
+      snapshots.push({ change, existing: typeof existing.toObject === 'function' ? existing.toObject() : existing });
       existing.content = content;
       existing.size = size;
       if (change.language) existing.language = language;
@@ -625,6 +628,7 @@ async function applyToVFS(workspaceId, changes, { userId = null, projectId = nul
       }
       updated += 1;
     } else {
+      snapshots.push({ change, existing: null });
       const doc = await CodeFile.create({
         name,
         path: dir,
@@ -644,7 +648,37 @@ async function applyToVFS(workspaceId, changes, { userId = null, projectId = nul
     }
   }
 
-  return { success: true, created, updated, deleted, applied: created + updated + deleted };
+  return { success: true, created, updated, deleted, applied: created + updated + deleted, snapshots, workspaceId };
+}
+
+/**
+ * Compensate a failed approval: restore the CodeFile documents captured before
+ * applyToVFS ran. Best-effort, but a failure is surfaced so the caller can
+ * report a partial rollback instead of silently leaving both states diverged.
+ */
+async function rollbackVFS(workspaceId, snapshots) {
+  let restored = 0;
+  for (const snapshot of snapshots || []) {
+    const change = snapshot.change;
+    if (!change || !isSafeRelativePath(change.path)) continue;
+    const { name, dir } = splitPath(change.path);
+    if (snapshot.existing) {
+      const doc = await CodeFile.findOneAndUpdate(
+        { company: workspaceId, name, path: dir },
+        snapshot.existing,
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+      try { await codeSearchService.updateFile(doc); } catch (error) { /* best effort */ }
+    } else {
+      const existing = await CodeFile.findOne({ company: workspaceId, name, path: dir });
+      if (existing) {
+        await existing.deleteOne();
+        try { await codeSearchService.deleteFile(existing._id); } catch (error) { /* best effort */ }
+      }
+    }
+    restored += 1;
+  }
+  return { restored };
 }
 
 /**
@@ -671,7 +705,7 @@ async function applyExecutionChanges(execution) {
 
   const projectId = resolveProjectId({ execution });
   const result = await applyToVFS(workspaceId, changes, { userId: execution.userId, projectId });
-  return { applied: true, ...result, changes: changes.length };
+  return { applied: true, ...result, changes: changes.length, workspaceId };
 }
 
 const CHANGE_FORMAT_INSTRUCTIONS = [
@@ -693,6 +727,7 @@ module.exports = {
   applyChangesToFileList,
   stageChanges,
   applyToVFS,
+  rollbackVFS,
   applyExecutionChanges,
   languageFor,
   normalizeFullPath,

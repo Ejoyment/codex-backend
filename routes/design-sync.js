@@ -1,3 +1,4 @@
+const { sendInternalError } = require('../utils/httpErrors');
 const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../middleware/auth');
@@ -67,7 +68,7 @@ router.post('/', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Create design sync error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -107,7 +108,7 @@ router.get('/:sessionId', authenticateToken, async (req, res) => {
             }
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -175,7 +176,7 @@ router.post('/:sessionId/parity', authenticateToken, async (req, res) => {
         res.json({ success: true, ...payload });
     } catch (error) {
         console.error('Parity compute error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -203,7 +204,7 @@ router.get('/:sessionId/parity', authenticateToken, async (req, res) => {
         if (!session) return res.status(404).json({ success: false, message: 'Session not found' });
         res.json({ success: true, parity: session.parity || { score: 0, items: [] } });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 

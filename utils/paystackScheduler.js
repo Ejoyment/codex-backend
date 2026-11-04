@@ -201,6 +201,7 @@ class PaystackScheduler {
             const now = new Date();
             const dueCharges = await BillingSchedule.find({
                 status: 'pending',
+                provider: 'paystack',
                 scheduledFor: { $lte: new Date(now.getTime() + (60 * 1000)) } // Due within next 60 seconds
             });
 

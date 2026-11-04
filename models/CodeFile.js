@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const mongoose = require('mongoose');
 
 const codeFileSchema = new mongoose.Schema({
@@ -84,6 +85,56 @@ const codeFileSchema = new mongoose.Schema({
 }, {
     timestamps: true
 });
+
+function normalizePath(value) {
+    let path = String(value || '/').replace(/\\/g, '/').trim();
+    if (!path) return '/';
+    if (!path.startsWith('/')) path = `/${path}`;
+    path = path.replace(/\/+/g, '/');
+    if (path.length > 1) path = path.replace(/\/+$/, '');
+    return path || '/';
+}
+
+function fullPathFor(file) {
+    const path = normalizePath(file?.path);
+    const name = String(file?.name || '').trim();
+    if (!name) return path;
+    if (path === '/') return `/${name}`;
+    if (path === name || path.endsWith(`/${name}`)) return path;
+    return `${path}/${name}`;
+}
+
+function pathKeyFor(file) {
+    if (!file?.company || !file?.name) return undefined;
+    return crypto
+        .createHash('sha256')
+        .update(`${file.company}:${fullPathFor(file)}`)
+        .digest('hex');
+}
+
+// A file's identity is its full path within a workspace. Storing a hash keeps
+// the unique index small even when paths are long, while the pre-validate hook
+// normalizes both supported shapes (`/src` + `app.js` and `/src/app.js`).
+codeFileSchema.add({
+    pathKey: {
+        type: String,
+        index: true,
+        unique: true,
+        sparse: true,
+        select: false,
+    },
+});
+
+codeFileSchema.pre('validate', function(next) {
+    this.name = String(this.name || '').trim();
+    this.path = normalizePath(this.path);
+    const key = pathKeyFor(this);
+    if (key) this.pathKey = key;
+    next();
+});
+
+codeFileSchema.statics.fullPathFor = fullPathFor;
+codeFileSchema.statics.pathKeyFor = pathKeyFor;
 
 // Index for faster queries
 codeFileSchema.index({ company: 1, name: 1 });

@@ -262,6 +262,11 @@ async function startServer(port = process.env.PORT || 3000) {
 // Trust proxy (required for Render and other reverse proxies)
 app.set('trust proxy', 1);
 
+// Correlate every request with its logs and error envelope. Incoming ids are
+// accepted only when they match a narrow charset so a client cannot inject
+// log lines or response-splitting payloads.
+app.use(require('./utils/httpErrors').requestIdMiddleware);
+
 // Middleware
 app.use(cors({
     origin: function (origin, callback) {
@@ -627,11 +632,6 @@ app.use((req, res) => {
 // Error handling middleware
 app.use((err, req, res, next) => {
     if (res.headersSent) return next(err);
-    console.error(err.stack);
-    require('./utils/sentry').captureError(err, {
-        route: `${req.method} ${req.path}`,
-        userId: req.user && (req.user._id || req.user.id),
-    });
     // Client/origin problems are not server errors: CORS rejections and
     // malformed JSON bodies used to collapse into 500s.
     if (err.message === 'Not allowed by CORS') {
@@ -640,10 +640,8 @@ app.use((err, req, res, next) => {
     if (err.type === 'entity.parse.failed' || (err instanceof SyntaxError && err.status === 400)) {
         return res.status(400).json({ success: false, message: 'Malformed JSON body' });
     }
-    res.status(500).json({ 
-        success: false, 
+    return require('./utils/httpErrors').sendInternalError(req, res, err, {
         message: 'Something went wrong!',
-        error: process.env.NODE_ENV === 'development' ? err.message : undefined
     });
 });
 
@@ -905,6 +903,11 @@ terminalNamespace.use(async (socket, next) => {
     }
 });
 
+function terminalPublicError(error) {
+    if (error?.message === 'Invalid session') return 'Invalid session';
+    return 'Terminal operation failed. Please retry.';
+}
+
 terminalNamespace.on('connection', (socket) => {
     console.log(`Terminal connected: ${socket.userId}`);
     let currentSession = null;
@@ -956,7 +959,7 @@ terminalNamespace.on('connection', (socket) => {
             console.log(`Terminal created: ${currentSession}`);
         } catch (error) {
             console.error('Terminal create error:', error);
-            socket.emit('terminal:error', { message: error.message });
+            socket.emit('terminal:error', { message: terminalPublicError(error) });
         }
     });
     
@@ -970,7 +973,7 @@ terminalNamespace.on('connection', (socket) => {
             terminalService.write(sessionId, data, currentToken);
         } catch (error) {
             console.error('Terminal input error:', error);
-            socket.emit('terminal:error', { message: error.message });
+            socket.emit('terminal:error', { message: terminalPublicError(error) });
         }
     });
     
@@ -984,7 +987,7 @@ terminalNamespace.on('connection', (socket) => {
             terminalService.resize(sessionId, cols, rows, currentToken);
         } catch (error) {
             console.error('Terminal resize error:', error);
-            socket.emit('terminal:error', { message: error.message });
+            socket.emit('terminal:error', { message: terminalPublicError(error) });
         }
     });
     
@@ -999,7 +1002,7 @@ terminalNamespace.on('connection', (socket) => {
             socket.emit('terminal:history', { history });
         } catch (error) {
             console.error('Terminal history error:', error);
-            socket.emit('terminal:error', { message: error.message });
+            socket.emit('terminal:error', { message: terminalPublicError(error) });
         }
     });
     
@@ -1017,7 +1020,7 @@ terminalNamespace.on('connection', (socket) => {
             console.log(`Terminal destroyed: ${sessionId}`);
         } catch (error) {
             console.error('Terminal destroy error:', error);
-            socket.emit('terminal:error', { message: error.message });
+            socket.emit('terminal:error', { message: terminalPublicError(error) });
         }
     });
 
