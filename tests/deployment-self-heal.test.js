@@ -391,4 +391,94 @@ describe('deployment self-heal worker', () => {
     expect(context.requireMutation).toBe(true);
     expect(context.agentMaxTokens).toBe(selfHeal._config.AGENT_MAX_TOKENS);
   });
+
+  test('extracts errors from non-Node toolchains', () => {
+    const cases = [
+      {
+        name: 'python',
+        log: 'Collecting flask\nTraceback (most recent call last):\n  File "/app/main.py", line 3, in <module>\n    import flask\nModuleNotFoundError: No module named \'flask\'',
+        expected: 'ModuleNotFoundError',
+      },
+      {
+        name: 'go',
+        log: '# example.com/app\n./main.go:12:2: undefined: handler\n',
+        expected: './main.go:12:2: undefined: handler',
+      },
+      {
+        name: 'rust',
+        log: 'error[E0432]: unresolved import `serde`\n --> src/main.rs:2:5\n',
+        expected: 'error[E0432]: unresolved import `serde`',
+      },
+      {
+        name: 'java',
+        log: 'Main.java:4: error: cannot find symbol\n  symbol: class Gson\n',
+        expected: 'cannot find symbol',
+      },
+      {
+        name: 'dotnet',
+        log: 'Program.cs(7,9): error CS0103: The name `Console` does not exist\n',
+        expected: 'error CS0103',
+      },
+      {
+        name: 'docker',
+        log: '#8 1.203 failed to solve: process "/bin/sh -c npm run build" did not complete successfully: exit code: 1',
+        expected: 'failed to solve',
+      },
+    ];
+
+    for (const item of cases) {
+      const digest = selfHeal.buildErrorDigest({
+        fault: 'user',
+        failureStage: 'build',
+        buildLogs: `${'noise\n'.repeat(500)}${item.log}${'noise\n'.repeat(500)}`,
+      });
+      expect(digest).toContain(item.expected);
+    }
+  });
+
+  test('suggests the right manifest for non-Node failures', () => {
+    const pythonFiles = [{ _id: 'f1', name: 'requirements.txt', path: '/', language: 'text' }];
+    const pythonHints = selfHeal.buildRepairHints(
+      "ModuleNotFoundError: No module named 'flask'",
+      pythonFiles
+    );
+    expect(pythonHints.join('\n')).toContain('requirements.txt');
+
+    const goFiles = [{ _id: 'f2', name: 'go.mod', path: '/', language: 'go' }];
+    const goHints = selfHeal.buildRepairHints(
+      './main.go:12:2: undefined: handler',
+      goFiles
+    );
+    expect(goHints.join('\n')).toMatch(/Go compile error/i);
+
+    const rustFiles = [{ _id: 'f3', name: 'Cargo.toml', path: '/', language: 'toml' }];
+    const rustHints = selfHeal.buildRepairHints(
+      'error[E0432]: unresolved import `serde`',
+      rustFiles
+    );
+    expect(rustHints.join('\n')).toContain('Cargo.toml');
+
+    const javaFiles = [{ _id: 'f4', name: 'pom.xml', path: '/', language: 'xml' }];
+    const javaHints = selfHeal.buildRepairHints(
+      'Main.java:4: error: cannot find symbol',
+      javaFiles
+    );
+    expect(javaHints.join('\n')).toContain('pom.xml');
+  });
+
+  test('detects manifests and tells the agent the stack is not assumed', () => {
+    const goal = selfHeal.buildHealingGoal(
+      deployment({ fault: 'user', failureStage: 'build', buildLogs: 'error CS0103: missing' }),
+      'project-id',
+      [
+        { _id: 'f1', name: 'Program.cs', path: '/', language: 'csharp' },
+        { _id: 'f2', name: 'app.csproj', path: '/', language: 'xml' },
+        { _id: 'f3', name: 'Dockerfile', path: '/', language: 'dockerfile' },
+      ]
+    );
+
+    expect(goal).toContain('may use any language, framework, or build system');
+    expect(goal).toContain('dockerfile');
+    expect(goal).toContain('edit_file');
+  });
 });

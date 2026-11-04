@@ -42,25 +42,27 @@ const AGENT_TIMEOUT_MS = readInt('DEPLOY_SELF_HEAL_AGENT_TIMEOUT_MS', 10 * 60 * 
 // The repair prompt is sent to the same model the user's plan uses. Some
 // providers cap tokens per minute (Groq's on-demand tier is 8k), so the whole
 // request — system prompt, goal, history and max_tokens — has to stay bounded.
-// These budgets keep a normal repair prompt around ~4k tokens; the compact
-// variant is used after a token-limit failure and relies on read_file instead
-// of inlining file bodies.
-const MAX_GOAL_CHARS = 15000;
+// These budgets keep a normal repair prompt under the provider limit; the
+// compact variant is used after a token-limit failure and relies on read_file
+// instead of inlining file bodies.
+const MAX_GOAL_CHARS = 10000;
 const COMPACT_GOAL_CHARS = 6000;
-const AGENT_MAX_TOKENS = 2048;
+const AGENT_MAX_TOKENS = 1536;
 const TOKEN_LIMIT_PATTERN = 'request too large|tokens per minute|rate_limit_exceeded|context_length_exceeded|maximum context length|too many tokens|reduce your message size';
 
-// Autonomous repairs may read broadly, but only create/update files. Deleting
-// source or executing arbitrary code needs a human, and would otherwise stall
-// forever on the HITL gate because there is no one watching the background run.
+// Autonomous repairs may read broadly, but only create/update/edit files.
+// Deleting source or executing arbitrary code needs a human, and would
+// otherwise stall forever on the HITL gate because there is no one watching
+// the background run. edit_file is included so large files can be fixed
+// without rewriting the whole file (and without relying on a full-file read
+// fitting in the prompt).
 const SAFE_TOOLS = [
   'read_file',
   'list_files',
   'search_code',
   'analyze_code',
-  'get_workspace_snapshot',
 ];
-const AUTO_APPROVE_TOOLS = ['create_file', 'update_file', 'create_multiple_files'];
+const AUTO_APPROVE_TOOLS = ['create_file', 'update_file', 'edit_file', 'create_multiple_files'];
 const AUTONOMOUS_TOOLS = [...SAFE_TOOLS, ...AUTO_APPROVE_TOOLS];
 const CHANGING_TOOLS = new Set(AUTO_APPROVE_TOOLS);
 
@@ -222,7 +224,59 @@ function cleanLogLine(line) {
     .replace(/\s+$/, '');
 }
 
-const ERROR_LINE_RE = /(?:^|\b)(?:error|failed|failure|cannot|can't|not found|module not found|does not exist|unable to|exception|fatal|denied|invalid|missing|unresolved|exit code|ERR!|ERESOLVE|ENOENT|EACCES|TS\d{3,5}|webpack|did not complete successfully)(?:\b|$)/i;
+// Build failures are not language-specific. Match the shapes emitted by the
+// common toolchains (Node, Python, Go, Rust, Java, .NET, Ruby, PHP, Swift,
+// Dart, Elixir, C/C++), Docker/BuildKit, shells, and package managers.
+const ERROR_LINE_PATTERNS = [
+  /\b(?:error|failed|failure|fatal|exception|panic|denied|invalid|missing|unresolved|unable to|cannot|can't|not found|does not exist)\b/i,
+  /\b(?:ERR!|ERESOLVE|ENOENT|EACCES|EPERM|EADDRINUSE|EBADENGINE|MODULE_NOT_FOUND|ELIFECYCLE)\b/,
+  /(?:ModuleNotFound|Import|Syntax|Indentation|Attribute|Type|Value|Key|Name|OS|Runtime|Permission|Assertion)Error/,
+  /Traceback \(most recent call last\)/i,
+  /No module named/i,
+  /error\[E\d+\]/i,
+  /cannot find symbol/i,
+  /\bCS\d{4}\b/,
+  /Undefined symbols?|linker command failed/i,
+  /Segmentation fault|\bKilled\b|out of memory|OOMKilled/i,
+  /(?:^|\s)[^\s:]+\.(?:go|rs|java|cs|py|rb|php|swift|kt|kts|dart|ex|exs|c|cc|cpp|h|hpp|ts|tsx|js|jsx|mjs|cjs):\d+(?::\d+)?/i,
+  /at .+\(.+:\d+:\d+\)/,
+  /\b(?:BUILD FAILED|FAILED|exit code|exited with|command not found|not found:)\b/i,
+  /(?:npm|yarn|pnpm) ERR!/i,
+  /(?:failed to solve|failed to compute cache key|exec format error|no such file or directory)/i,
+  /(?:unsupported engine|requires node|requires python|requires go|requires java)/i,
+  /(?:GLIBC|libstdc\+\+|libc\.so|error while loading shared libraries)/i,
+];
+
+function isErrorLine(line) {
+  return errorLineScore(line) > 0;
+}
+
+// A generic word like "missing" is a weak signal; a file:line or a known
+// compiler/runtime signature is a strong one. Ranking strong lines first means
+// a wall of npm warnings cannot push the real error out of the digest.
+const STRONG_ERROR_PATTERNS = [
+  /Traceback \(most recent call last\)/i,
+  /ModuleNotFoundError|ImportError|No module named/i,
+  /error\[E\d+\]/i,
+  /cannot find symbol/i,
+  /\bCS\d{4}\b/,
+  /(?:^|\s)[^\s:]+\.(?:go|rs|java|cs|py|rb|php|swift|kt|kts|dart|ex|exs|c|cc|cpp|h|hpp|ts|tsx|js|jsx|mjs|cjs):\d+(?::\d+)?/i,
+  /Module not found|Cannot find module|MODULE_NOT_FOUND/i,
+  /failed to solve|failed to compute cache key/i,
+  /(?:npm|yarn|pnpm) ERR!/i,
+  /\bexit code\b|\bexited with\b/i,
+  /\bpanic:|\bfatal(?: error)?:/i,
+  /\b(?:BUILD FAILED|FAILED)\b/,
+  /error TS\d+/i,
+];
+
+function errorLineScore(line) {
+  const value = String(line || '');
+  if (!value.trim()) return 0;
+  if (STRONG_ERROR_PATTERNS.some((pattern) => pattern.test(value))) return 3;
+  if (ERROR_LINE_PATTERNS.some((pattern) => pattern.test(value))) return 1;
+  return 0;
+}
 
 // Pull the lines that actually explain the failure out of the (sometimes very
 // long) build log. A plain tail can miss the compiler error entirely when npm
@@ -236,54 +290,150 @@ function buildErrorDigest(deployment = {}, maxChars = 3500) {
   if (!raw.trim()) return '(no build or runtime log was captured)';
 
   const lines = raw.split('\n');
-  const picked = [];
-  const seen = new Set();
-  let used = 0;
+  const candidates = [];
   for (let i = 0; i < lines.length; i++) {
-    if (!ERROR_LINE_RE.test(lines[i])) continue;
-    for (let j = Math.max(0, i - 1); j <= Math.min(lines.length - 1, i + 1); j++) {
-      if (seen.has(j)) continue;
+    const score = errorLineScore(lines[i]);
+    if (score > 0) candidates.push({ index: i, score });
+  }
+  candidates.sort((a, b) => (b.score - a.score) || (a.index - b.index));
+
+  const chosen = new Set();
+  let used = 0;
+  for (const { index } of candidates) {
+    for (let j = Math.max(0, index - 1); j <= Math.min(lines.length - 1, index + 1); j++) {
+      if (chosen.has(j)) continue;
       const line = cleanLogLine(lines[j]);
       if (!line) continue;
-      seen.add(j);
-      picked.push(line);
+      chosen.add(j);
       used += line.length + 1;
     }
     if (used >= maxChars) break;
   }
 
+  const picked = [...chosen]
+    .sort((a, b) => a - b)
+    .map((index) => cleanLogLine(lines[index]))
+    .filter(Boolean);
   const digest = picked.length ? picked.join('\n') : truncateMiddle(raw, maxChars);
   return truncateMiddle(digest, maxChars);
 }
 
+const MANIFEST_LABELS = {
+  'package.json': 'JavaScript/TypeScript dependencies',
+  'requirements.txt': 'Python dependencies',
+  'pyproject.toml': 'Python dependencies',
+  'pipfile': 'Python dependencies',
+  'poetry.lock': 'Python dependencies',
+  'go.mod': 'Go modules',
+  'go.sum': 'Go modules',
+  'cargo.toml': 'Rust dependencies',
+  'cargo.lock': 'Rust dependencies',
+  'pom.xml': 'Java/Maven dependencies',
+  'build.gradle': 'Java/Gradle dependencies',
+  'build.gradle.kts': 'Java/Gradle dependencies',
+  'settings.gradle': 'Java/Gradle build',
+  'settings.gradle.kts': 'Java/Gradle build',
+  'gemfile': 'Ruby gems',
+  'gemfile.lock': 'Ruby gems',
+  'composer.json': 'PHP dependencies',
+  'composer.lock': 'PHP dependencies',
+  'pubspec.yaml': 'Dart/Flutter dependencies',
+  'pubspec.lock': 'Dart/Flutter dependencies',
+  'mix.exs': 'Elixir dependencies',
+  'mix.lock': 'Elixir dependencies',
+  'package.swift': 'Swift dependencies',
+  'cmakelists.txt': 'C/C++ build',
+  'makefile': 'C/C++ build',
+  'dockerfile': 'container build',
+  'docker-compose.yml': 'container orchestration',
+};
+
+function detectManifests(files = []) {
+  const found = [];
+  const seen = new Set();
+  for (const file of files) {
+    const name = String(file?.name || '').toLowerCase();
+    if (!MANIFEST_LABELS[name] || seen.has(name)) continue;
+    seen.add(name);
+    found.push(`${name} (${MANIFEST_LABELS[name]})`);
+  }
+  return found;
+}
+
+function dependencyManifestFor(files = []) {
+  const names = new Set(files.map((file) => String(file?.name || '').toLowerCase()));
+  const order = [
+    'package.json', 'requirements.txt', 'pyproject.toml', 'pipfile',
+    'go.mod', 'cargo.toml', 'pom.xml', 'build.gradle', 'build.gradle.kts',
+    'gemfile', 'composer.json', 'pubspec.yaml', 'mix.exs', 'package.swift',
+  ];
+  return order.find((name) => names.has(name)) || null;
+}
+
 // Turn the common build failures into concrete repair instructions. This is
-// generic (not tied to one project): it only points at what the log says.
-function buildRepairHints(digest = '') {
+// generic (not tied to one project or stack): it only points at what the log
+// says and which manifest the project actually has.
+function buildRepairHints(digest = '', files = []) {
   const text = String(digest || '');
   const hints = [];
+  const add = (pattern, hint) => {
+    if (pattern.test(text)) hints.push(hint);
+  };
+  const manifest = dependencyManifestFor(files);
+
   const missing = [];
-  const missingRe = /(?:Module not found:\s*Can't resolve|Cannot find module)\s*['"]?([^'"\s]+)['"]?/gi;
+  const missingRe = /(?:Module not found:\s*Can't resolve|Cannot find module|No module named|Could not find (?:gem|package|module))\s*['"]?([^'"\s]+)['"]?/gi;
   let match;
   while ((match = missingRe.exec(text)) !== null) missing.push(match[1]);
   for (const target of [...new Set(missing)].slice(0, 4)) {
     if (target.startsWith('.') || target.startsWith('/')) {
       hints.push(`Create the missing file "${target}" (or correct the import) so the referenced path exists.`);
     } else {
-      hints.push(`The build cannot resolve the package "${target}". Add it to package.json or fix the import.`);
+      hints.push(`The build cannot resolve "${target}". Add it to ${manifest || 'the dependency manifest'} or fix the import.`);
     }
   }
-  if (/only works in a Client Component|needs (?:useEffect|useState|useReducer|useRef|useContext|useMemo|useCallback|useLayoutEffect)/i.test(text)) {
-    hints.push('Add "use client"; as the first line of the App Router file that uses client-only hooks (and of any component it imports that also uses them).');
-  }
-  if (/ERESOLVE|peer dep|Could not resolve dependency|conflicting peer/i.test(text)) {
-    hints.push('Resolve the dependency conflict in package.json by aligning the incompatible versions.');
-  }
-  if (/error TS\d+|Type error:/i.test(text)) {
-    hints.push('Fix the reported TypeScript type error in the named file.');
-  }
-  if (/ENOENT|no such file or directory/i.test(text)) {
-    hints.push('Create the file or directory the build says is missing.');
-  }
+
+  add(/only works in a Client Component|needs (?:useEffect|useState|useReducer|useRef|useContext|useMemo|useCallback|useLayoutEffect)/i,
+    'Add "use client"; as the first line of the App Router file that uses client-only hooks (and of any component it imports that also uses them).');
+  add(/ERESOLVE|peer dep|Could not resolve dependency|conflicting peer/i,
+    'Resolve the dependency conflict in package.json by aligning the incompatible versions.');
+  add(/error TS\d+|Type error:/i,
+    'Fix the reported TypeScript type error in the named file.');
+  add(/ENOENT|no such file or directory/i,
+    'Create the file or directory the build says is missing.');
+  add(/Traceback \(most recent call last\)|ModuleNotFoundError|ImportError|No module named/i,
+    `A Python import failed. Add the module to ${manifest || 'requirements.txt'} or fix the import path.`);
+  add(/\bundefined:|cannot find package|missing go\.sum entry|go: (?:updates|downloading)/i,
+    'Fix the Go compile error (undefined symbol or import); make go.mod/go.sum match the imports.');
+  add(/error\[E\d+\]|unresolved import|cannot find crate/i,
+    'Fix the Rust compile error; add the missing crate to Cargo.toml if the import is valid.');
+  add(/cannot find symbol|package .* does not exist|Could not resolve dependencies/i,
+    `Fix the Java compile/dependency error; add the missing dependency to ${manifest || 'pom.xml or build.gradle'}.`);
+  add(/\bCS\d{4}\b|The type or namespace name .* could not be found/i,
+    'Fix the .NET compile error; add the missing package reference to the .csproj.');
+  add(/Could not find .* in any of the sources|cannot load such file/i,
+    'Add the missing gem to Gemfile (or fix the require path) so bundle install can resolve it.');
+  add(/Class .* not found|Your requirements could not be resolved|composer.*(?:error|failed)/i,
+    'Fix the PHP dependency/autoload error in composer.json or the require path.');
+  add(/Because .* depends on|pub get failed|Could not resolve/i,
+    'Resolve the Dart/Flutter dependency in pubspec.yaml.');
+  add(/EADDRINUSE|address already in use|listen EADDRINUSE/i,
+    'Bind the server to 0.0.0.0 and the port from the PORT environment variable; do not hardcode a port.');
+  add(/EACCES|EPERM|permission denied/i,
+    'Fix the permission/ownership error; the container runs as a non-root user, so chmod/chown the path or write to a writable location.');
+  add(/out of memory|OOMKilled|heap out of memory|\bKilled\b/i,
+    'The build ran out of memory. Reduce build concurrency/heap usage or remove unnecessary build steps.');
+  add(/failed to solve|failed to compute cache key|exec format error|no such file or directory/i,
+    'Inspect the Dockerfile and the failing COPY/RUN step; fix the path, base image, or command it names.');
+  add(/GLIBC|libstdc\+\+|libc\.so|error while loading shared libraries/i,
+    'The runtime image is missing a system library or uses an incompatible libc; switch to a compatible base image or install the library in the Dockerfile.');
+  add(/missing (?:required )?environment variable|process\.env\.[A-Z0-9_]+ is undefined|KeyError/i,
+    'A required environment variable is missing. Make the code tolerate an unset value or read it from the environment; do not hardcode secrets.');
+  add(/SyntaxError|IndentationError|unexpected token|Expected .* found/i,
+    'Fix the syntax error in the file and line named by the log.');
+  add(/unsupported engine|EBADENGINE|requires node|requires python|requires go|requires java/i,
+    'Align the runtime version in the project manifest/Dockerfile with the version the toolchain requires.');
+
   return [...new Set(hints)].slice(0, 6);
 }
 
@@ -307,10 +457,22 @@ function buildFileManifest(files = [], maxChars = 2200) {
 }
 
 const ENTRY_FILE_NAMES = new Set([
-  'package.json', 'dockerfile', 'index.js', 'server.js', 'app.js', 'main.js',
-  'main.py', 'requirements.txt', 'pyproject.toml', 'go.mod', 'go.sum',
-  'gemfile', 'composer.json', 'nginx.conf', '.env.example', 'vite.config.js',
-  'next.config.js', 'tsconfig.json',
+  // Node/JS/TS
+  'package.json', 'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml',
+  'index.js', 'server.js', 'app.js', 'main.js', 'index.ts', 'server.ts',
+  'vite.config.js', 'next.config.js', 'nuxt.config.js', 'tsconfig.json',
+  // Python
+  'main.py', 'app.py', 'manage.py', 'requirements.txt', 'pyproject.toml',
+  'pipfile', 'setup.py', 'setup.cfg',
+  // Go / Rust / JVM / .NET
+  'go.mod', 'go.sum', 'cargo.toml', 'cargo.lock', 'pom.xml', 'build.gradle',
+  'build.gradle.kts', 'settings.gradle', 'settings.gradle.kts',
+  // Ruby / PHP / Dart / Elixir / Swift / C/C++
+  'gemfile', 'gemfile.lock', 'composer.json', 'composer.lock', 'pubspec.yaml',
+  'mix.exs', 'package.swift', 'cmakelists.txt', 'makefile',
+  // Containers / serving
+  'dockerfile', 'docker-compose.yml', '.dockerignore', 'nginx.conf',
+  '.env.example', 'procfile',
 ]);
 
 // Pick a handful of files whose contents are worth putting directly in the
@@ -338,7 +500,8 @@ function buildHealingGoal(deployment, projectId, files = [], previewFiles = [], 
   const budget = compact ? COMPACT_GOAL_CHARS : MAX_GOAL_CHARS;
   const subdomain = deployment.subdomain;
   let digestText = buildErrorDigest(deployment, compact ? 2200 : 3500);
-  const hints = buildRepairHints(digestText);
+  const hints = buildRepairHints(digestText, files);
+  const manifests = detectManifests(files);
   const logTail = compact ? '' : truncateMiddle(stripAnsi(deployment.buildLogs || ''), 1800);
   const manifest = buildFileManifest(files, compact ? 1600 : 2200);
   const previews = (compact ? [] : previewFiles)
@@ -347,8 +510,8 @@ function buildHealingGoal(deployment, projectId, files = [], previewFiles = [], 
     .map((file) => {
       const dir = file.path && file.path !== '/' ? String(file.path).replace(/\/+$/, '') : '';
       const label = `${dir ? `${dir}/` : ''}${file.name}`;
-      const body = file.content.length > 2000
-        ? `${file.content.slice(0, 2000)}\n... [preview truncated; call read_file with id ${file._id} for the full file]`
+      const body = file.content.length > 1500
+        ? `${file.content.slice(0, 1500)}\n... [preview truncated; call read_file with id ${file._id} and use offset/limit for the rest]`
         : file.content;
       return `--- ${label} (id: ${file._id}) ---\n${body}`;
     });
@@ -359,12 +522,16 @@ function buildHealingGoal(deployment, projectId, files = [], previewFiles = [], 
   const render = () => {
     const header = [
       'A deployment failed and must be repaired automatically, without asking a human.',
+      'The project may use any language, framework, or build system. Do not assume Node or Next.js; read the manifests and the files named in the log first.',
       '',
       `Project: ${projectId}`,
       `Deployment: ${subdomain}.buildrshq.dev`,
       `Failure stage: ${deployment.failureStage || 'unknown'}`,
       `Error: ${truncateMiddle(deployment.errorMessage || 'Unknown deployment failure', compact ? 600 : 1200)}`,
     ];
+    const manifestsSection = manifests.length
+      ? ['Detected project manifests:', ...manifests.map((item) => `- ${item}`)]
+      : [];
     const digestSection = ['What the build log says:', digestText];
     const tailSection = includeTail ? ['Build log tail (the failing step):', logTail] : [];
     const hintsSection = hints.length ? ['Repair hints derived from the log:', ...hints.map((hint) => `- ${hint}`)] : [];
@@ -374,25 +541,29 @@ function buildHealingGoal(deployment, projectId, files = [], previewFiles = [], 
       : [];
     const instructions = [
       'You must make at least one file change. This is an automatic repair run with no human to approve, clarify, or run commands.',
-      'Use read_file to inspect the full file, then update_file with the complete corrected content, or create_file for a missing file.',
-      'create_file parameters: name, path, language, content. update_file parameters: fileId, content.',
-      'If the log names a missing file, create it. If a component uses hooks in the Next.js app router, add "use client";. If a dependency is missing, add it to package.json.',
+      'Use read_file to inspect the failing file. For a small fix, call edit_file with exact oldText/newText (set replaceAll=true if the same text repeats). For a missing file, call create_file. Use update_file only when you have the complete corrected file.',
+      'edit_file parameters: fileId, oldText, newText, replaceAll. create_file parameters: name, path, language, content. update_file parameters: fileId, content.',
+      'If the log names a missing file, create it. If a dependency is missing, add it to the manifest that this project actually has (package.json, requirements.txt, pyproject.toml, go.mod, Cargo.toml, pom.xml, build.gradle, Gemfile, composer.json, pubspec.yaml, mix.exs, or the Dockerfile).',
+      'If the project uses a Dockerfile, fix the failing COPY/RUN/CMD step or the base image. If it does not, fix the source so the detected runtime can build it.',
       'Do not delete files, run tests, or execute code. The deployment is redeployed automatically after your edit.',
       'When the fix is in place, set goalAchieved=true. Do not set goalAchieved=true before you have changed a file.',
     ];
-    return [header, digestSection, tailSection, hintsSection, manifestSection, previewSection, instructions]
+    return [header, manifestsSection, digestSection, tailSection, hintsSection, manifestSection, previewSection, instructions]
       .map((section) => (Array.isArray(section) ? section.join('\n') : section))
       .filter(Boolean)
       .join('\n\n');
   };
 
   let goal = render();
-  if (goal.length > budget && includePreviews) {
-    includePreviews = false;
-    goal = render();
-  }
+  // The digest already contains the failing lines, so drop the raw tail first,
+  // then previews, then shrink the digest. Previews are the most useful context
+  // for the model and should survive as long as the budget allows.
   if (goal.length > budget && includeTail) {
     includeTail = false;
+    goal = render();
+  }
+  if (goal.length > budget && includePreviews) {
+    includePreviews = false;
     goal = render();
   }
   if (goal.length > budget) {
@@ -406,7 +577,7 @@ function buildHealingGoal(deployment, projectId, files = [], previewFiles = [], 
 async function runHealingAgent(deployment, { projectId, workspaceId, files = [], compact = false }) {
   // Feed the prompt the most relevant file bodies too, so the repair does not
   // depend on the model choosing to read them first. Bounded: a few files,
-  // 2KB each. Compact runs skip previews and rely on read_file.
+  // 1.5KB each. Compact runs skip previews and rely on read_file.
   let previewFiles = [];
   const digest = buildErrorDigest(deployment);
   const previewCandidates = compact ? [] : pickPreviewFiles(files, deployment, digest);
@@ -414,6 +585,8 @@ async function runHealingAgent(deployment, { projectId, workspaceId, files = [],
     try {
       previewFiles = await CodeFile.find({
         _id: { $in: previewCandidates.map((file) => file._id) },
+        company: workspaceId,
+        project: String(projectId),
       })
         .select('name path content')
         .lean();
@@ -856,6 +1029,9 @@ module.exports = {
   buildHealingGoal,
   buildErrorDigest,
   buildRepairHints,
+  detectManifests,
+  dependencyManifestFor,
+  isErrorLine,
   buildFileManifest,
   resolveRepairWorkspaces,
   isTokenLimitError,
