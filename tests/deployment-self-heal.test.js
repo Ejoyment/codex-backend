@@ -292,11 +292,31 @@ describe('deployment self-heal worker', () => {
 
     const result = await selfHeal.runTick();
 
-    expect(Deployment.updateMany).toHaveBeenCalledTimes(4);
+    expect(Deployment.updateMany).toHaveBeenCalledTimes(5);
+    expect(Deployment.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        'selfHeal.status': 'pending',
+        'selfHeal.lastError': expect.objectContaining({
+          $regex: expect.stringContaining('tokens per minute'),
+        }),
+        'selfHeal.recoveredAt': null,
+      }),
+      expect.objectContaining({
+        $set: expect.objectContaining({
+          'selfHeal.attempts': 0,
+          'selfHeal.recoveredAt': expect.any(Date),
+        }),
+      })
+    );
     expect(Deployment.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         'selfHeal.status': 'gave_up',
-        'selfHeal.summary': expect.objectContaining({ $regex: 'no resolvable workspace' }),
+        'selfHeal.recoveredAt': null,
+        $or: expect.arrayContaining([
+          expect.objectContaining({
+            'selfHeal.summary': expect.objectContaining({ $regex: 'no resolvable workspace' }),
+          }),
+        ]),
       }),
       expect.objectContaining({
         $set: expect.objectContaining({
@@ -306,5 +326,69 @@ describe('deployment self-heal worker', () => {
       })
     );
     expect(result).toMatchObject({ processed: 1 });
+  });
+
+  test('feeds the actual failing lines even when they are not in the log tail', () => {
+    const noisy = `${'noise line\n'.repeat(2000)}Module not found: Can't resolve './globals.css'\n${'more noise\n'.repeat(2000)}`;
+    const goal = selfHeal.buildHealingGoal(
+      deployment({ fault: 'user', failureStage: 'build', buildLogs: noisy }),
+      'project-id',
+      []
+    );
+
+    expect(goal).toContain("Module not found: Can't resolve './globals.css'");
+    expect(goal).toContain('Create the missing file "./globals.css"');
+  });
+
+  test('keeps the repair prompt inside the provider token budget', () => {
+    const hugeLogs = `Module not found: Can't resolve './missing.css'\n${'noise\n'.repeat(20000)}`;
+    const hugeFiles = Array.from({ length: 300 }, (_, i) => ({
+      _id: `file-${i}`,
+      name: `file-${i}.js`,
+      path: '/',
+      language: 'javascript',
+      content: 'x'.repeat(10000),
+    }));
+
+    const goal = selfHeal.buildHealingGoal(
+      deployment({ fault: 'user', failureStage: 'build', buildLogs: hugeLogs }),
+      'project-id',
+      hugeFiles,
+      hugeFiles.slice(0, 4)
+    );
+
+    expect(goal.length).toBeLessThanOrEqual(selfHeal._config.MAX_GOAL_CHARS);
+    expect(goal).toContain("Module not found: Can't resolve './missing.css'");
+    expect(goal).toContain('goalAchieved=true');
+  });
+
+  test('uses a compact prompt after a token-limit failure', async () => {
+    Deployment.findOneAndUpdate.mockResolvedValue(deployment({
+      fault: 'user',
+      failureStage: 'build',
+      selfHeal: {
+        status: 'running',
+        attempts: 2,
+        lastError: 'Groq API error: Request too large ... tokens per minute (TPM): Limit 8000, Requested 8410',
+      },
+    }));
+    agentOrchestrator.executeAgenticLoop.mockResolvedValue({
+      success: true,
+      iterations: [{
+        action: { tool: 'update_file', parameters: { fileId: 'file-id' } },
+        result: { success: true },
+      }],
+      summary: { finalThought: 'Fixed it.' },
+    });
+
+    const result = await selfHeal.processDeployment('deployment-id');
+
+    expect(result).toMatchObject({ healed: true });
+    const goal = agentOrchestrator.executeAgenticLoop.mock.calls[0][0];
+    expect(goal).not.toContain('Relevant file contents');
+    expect(goal.length).toBeLessThanOrEqual(selfHeal._config.COMPACT_GOAL_CHARS);
+    const context = agentOrchestrator.executeAgenticLoop.mock.calls[0][1];
+    expect(context.requireMutation).toBe(true);
+    expect(context.agentMaxTokens).toBe(selfHeal._config.AGENT_MAX_TOKENS);
   });
 });

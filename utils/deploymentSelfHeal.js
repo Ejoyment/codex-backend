@@ -39,6 +39,17 @@ const BATCH_SIZE = Math.max(1, readInt('DEPLOY_SELF_HEAL_BATCH', 5));
 const STALE_RUNNING_MS = readInt('DEPLOY_SELF_HEAL_STALE_MS', 30 * 60 * 1000);
 const AGENT_TIMEOUT_MS = readInt('DEPLOY_SELF_HEAL_AGENT_TIMEOUT_MS', 10 * 60 * 1000);
 
+// The repair prompt is sent to the same model the user's plan uses. Some
+// providers cap tokens per minute (Groq's on-demand tier is 8k), so the whole
+// request — system prompt, goal, history and max_tokens — has to stay bounded.
+// These budgets keep a normal repair prompt around ~4k tokens; the compact
+// variant is used after a token-limit failure and relies on read_file instead
+// of inlining file bodies.
+const MAX_GOAL_CHARS = 15000;
+const COMPACT_GOAL_CHARS = 6000;
+const AGENT_MAX_TOKENS = 2048;
+const TOKEN_LIMIT_PATTERN = 'request too large|tokens per minute|rate_limit_exceeded|context_length_exceeded|maximum context length|too many tokens|reduce your message size';
+
 // Autonomous repairs may read broadly, but only create/update files. Deleting
 // source or executing arbitrary code needs a human, and would otherwise stall
 // forever on the HITL gate because there is no one watching the background run.
@@ -58,6 +69,10 @@ let activeTick = null;
 
 function logError(context, error) {
   console.error(`[deploy-self-heal] ${context}:`, error?.message || error);
+}
+
+function isTokenLimitError(value) {
+  return new RegExp(TOKEN_LIMIT_PATTERN, 'i').test(String(value || ''));
 }
 
 function backoffFor(attempts) {
@@ -186,16 +201,109 @@ async function markRetry(deployment, error, workspaceId) {
   return { retry: true, attempts, nextAttemptAt };
 }
 
-function buildFileManifest(files = []) {
+function stripAnsi(text) {
+  return String(text || '').replace(/\u001b\[[0-9;]*[A-Za-z]/g, '');
+}
+
+function truncateMiddle(text, maxChars) {
+  const value = String(text || '');
+  if (value.length <= maxChars) return value;
+  const head = Math.floor(maxChars * 0.35);
+  const tail = Math.max(0, maxChars - head - 48);
+  const dropped = value.length - head - tail;
+  return `${value.slice(0, head)}\n... [${dropped} chars omitted] ...\n${value.slice(-tail)}`;
+}
+
+// Docker buildkit prefixes every line with `#<step> <seconds> `. Strip those so
+// the model sees the actual compiler/npm message, not timestamps.
+function cleanLogLine(line) {
+  return stripAnsi(line)
+    .replace(/^#\d+\s+[\d.]+\s?/, '')
+    .replace(/\s+$/, '');
+}
+
+const ERROR_LINE_RE = /(?:^|\b)(?:error|failed|failure|cannot|can't|not found|module not found|does not exist|unable to|exception|fatal|denied|invalid|missing|unresolved|exit code|ERR!|ERESOLVE|ENOENT|EACCES|TS\d{3,5}|webpack|did not complete successfully)(?:\b|$)/i;
+
+// Pull the lines that actually explain the failure out of the (sometimes very
+// long) build log. A plain tail can miss the compiler error entirely when npm
+// keeps printing deprecation warnings after it.
+function buildErrorDigest(deployment = {}, maxChars = 3500) {
+  const raw = stripAnsi([
+    deployment.errorMessage,
+    deployment.buildLogs,
+    deployment.runtimeLogs,
+  ].filter(Boolean).join('\n'));
+  if (!raw.trim()) return '(no build or runtime log was captured)';
+
+  const lines = raw.split('\n');
+  const picked = [];
+  const seen = new Set();
+  let used = 0;
+  for (let i = 0; i < lines.length; i++) {
+    if (!ERROR_LINE_RE.test(lines[i])) continue;
+    for (let j = Math.max(0, i - 1); j <= Math.min(lines.length - 1, i + 1); j++) {
+      if (seen.has(j)) continue;
+      const line = cleanLogLine(lines[j]);
+      if (!line) continue;
+      seen.add(j);
+      picked.push(line);
+      used += line.length + 1;
+    }
+    if (used >= maxChars) break;
+  }
+
+  const digest = picked.length ? picked.join('\n') : truncateMiddle(raw, maxChars);
+  return truncateMiddle(digest, maxChars);
+}
+
+// Turn the common build failures into concrete repair instructions. This is
+// generic (not tied to one project): it only points at what the log says.
+function buildRepairHints(digest = '') {
+  const text = String(digest || '');
+  const hints = [];
+  const missing = [];
+  const missingRe = /(?:Module not found:\s*Can't resolve|Cannot find module)\s*['"]?([^'"\s]+)['"]?/gi;
+  let match;
+  while ((match = missingRe.exec(text)) !== null) missing.push(match[1]);
+  for (const target of [...new Set(missing)].slice(0, 4)) {
+    if (target.startsWith('.') || target.startsWith('/')) {
+      hints.push(`Create the missing file "${target}" (or correct the import) so the referenced path exists.`);
+    } else {
+      hints.push(`The build cannot resolve the package "${target}". Add it to package.json or fix the import.`);
+    }
+  }
+  if (/only works in a Client Component|needs (?:useEffect|useState|useReducer|useRef|useContext|useMemo|useCallback|useLayoutEffect)/i.test(text)) {
+    hints.push('Add "use client"; as the first line of the App Router file that uses client-only hooks (and of any component it imports that also uses them).');
+  }
+  if (/ERESOLVE|peer dep|Could not resolve dependency|conflicting peer/i.test(text)) {
+    hints.push('Resolve the dependency conflict in package.json by aligning the incompatible versions.');
+  }
+  if (/error TS\d+|Type error:/i.test(text)) {
+    hints.push('Fix the reported TypeScript type error in the named file.');
+  }
+  if (/ENOENT|no such file or directory/i.test(text)) {
+    hints.push('Create the file or directory the build says is missing.');
+  }
+  return [...new Set(hints)].slice(0, 6);
+}
+
+function buildFileManifest(files = [], maxChars = 2200) {
   if (!files.length) return '(no project files were found for this deployment)';
-  return files
-    .slice(0, 200)
-    .map((file) => {
-      const dir = file.path && file.path !== '/' ? String(file.path).replace(/\/+$/, '') : '';
-      const name = `${dir ? `${dir}/` : ''}${file.name}`;
-      return `- ${name} (id: ${file._id})`;
-    })
-    .join('\n');
+  const lines = [];
+  let used = 0;
+  for (let i = 0; i < files.length && i < 200; i++) {
+    const file = files[i];
+    const dir = file.path && file.path !== '/' ? String(file.path).replace(/\/+$/, '') : '';
+    const name = `${dir ? `${dir}/` : ''}${file.name}`;
+    const line = `- ${name} (id: ${file._id})`;
+    if (used + line.length + 1 > maxChars) {
+      lines.push(`- ... ${files.length - i} more file(s); use list_files to see the rest.`);
+      break;
+    }
+    lines.push(line);
+    used += line.length + 1;
+  }
+  return lines.join('\n');
 }
 
 const ENTRY_FILE_NAMES = new Set([
@@ -207,63 +315,101 @@ const ENTRY_FILE_NAMES = new Set([
 
 // Pick a handful of files whose contents are worth putting directly in the
 // repair prompt: files named in the build error first, then common entrypoints.
-function pickPreviewFiles(files = [], deployment = {}) {
-  const haystack = `${deployment.errorMessage || ''}\n${deployment.buildLogs || ''}`.toLowerCase();
+function pickPreviewFiles(files = [], deployment = {}, digest = '') {
+  const haystack = `${deployment?.errorMessage || ''}\n${deployment?.buildLogs || ''}\n${digest}`.toLowerCase();
   return files
     .map((file) => {
       const name = String(file.name || '').toLowerCase();
+      const path = String(file.path || '').toLowerCase();
       let score = 0;
       if (name && haystack.includes(name)) score += 10;
+      if (path && path !== '/' && haystack.includes(path)) score += 4;
       if (ENTRY_FILE_NAMES.has(name)) score += 5;
       return { file, score };
     })
+    .filter(({ score }) => score > 0)
     .sort((a, b) => b.score - a.score)
-    .slice(0, 8)
+    .slice(0, 4)
     .map(({ file }) => file);
 }
 
-function buildHealingGoal(deployment, projectId, files = [], previewFiles = []) {
-  const logs = String(deployment.buildLogs || '').slice(-12000);
-  const runtimeLogs = String(deployment.runtimeLogs || '').slice(-4000);
+function buildHealingGoal(deployment, projectId, files = [], previewFiles = [], options = {}) {
+  const compact = options.compact === true;
+  const budget = compact ? COMPACT_GOAL_CHARS : MAX_GOAL_CHARS;
   const subdomain = deployment.subdomain;
-  const previews = previewFiles
+  let digestText = buildErrorDigest(deployment, compact ? 2200 : 3500);
+  const hints = buildRepairHints(digestText);
+  const logTail = compact ? '' : truncateMiddle(stripAnsi(deployment.buildLogs || ''), 1800);
+  const manifest = buildFileManifest(files, compact ? 1600 : 2200);
+  const previews = (compact ? [] : previewFiles)
     .filter((file) => typeof file.content === 'string' && file.content.length)
+    .slice(0, 3)
     .map((file) => {
       const dir = file.path && file.path !== '/' ? String(file.path).replace(/\/+$/, '') : '';
       const label = `${dir ? `${dir}/` : ''}${file.name}`;
-      const body = file.content.length > 4000
-        ? `${file.content.slice(0, 4000)}\n... [truncated]`
+      const body = file.content.length > 2000
+        ? `${file.content.slice(0, 2000)}\n... [preview truncated; call read_file with id ${file._id} for the full file]`
         : file.content;
-      return `--- ${label} ---\n${body}`;
+      return `--- ${label} (id: ${file._id}) ---\n${body}`;
     });
-  return [
-    'A deployment failed and must be repaired automatically, without asking a human.',
-    '',
-    `Project: ${projectId}`,
-    `Deployment: ${subdomain}.buildrshq.dev`,
-    `Failure stage: ${deployment.failureStage || 'unknown'}`,
-    `Error: ${deployment.errorMessage || 'Unknown deployment failure'}`,
-    '',
-    'Build log tail:',
-    logs || '(no build log captured)',
-    ...(runtimeLogs ? ['', 'Runtime log tail:', runtimeLogs] : []),
-    '',
-    'Project files (read them with read_file using the id):',
-    buildFileManifest(files),
-    ...(previews.length ? ['', 'Relevant file contents (truncated):', ...previews] : []),
-    '',
-    'Diagnose the root cause in this project and edit the project files to fix it.',
-    'Make the smallest correct change. Do not delete files, run tests, or execute code.',
-    'Read the relevant files before editing them. When the fix is in place, set goalAchieved=true.',
-  ].join('\n');
+
+  let includeTail = Boolean(logTail);
+  let includePreviews = previews.length > 0;
+
+  const render = () => {
+    const header = [
+      'A deployment failed and must be repaired automatically, without asking a human.',
+      '',
+      `Project: ${projectId}`,
+      `Deployment: ${subdomain}.buildrshq.dev`,
+      `Failure stage: ${deployment.failureStage || 'unknown'}`,
+      `Error: ${truncateMiddle(deployment.errorMessage || 'Unknown deployment failure', compact ? 600 : 1200)}`,
+    ];
+    const digestSection = ['What the build log says:', digestText];
+    const tailSection = includeTail ? ['Build log tail (the failing step):', logTail] : [];
+    const hintsSection = hints.length ? ['Repair hints derived from the log:', ...hints.map((hint) => `- ${hint}`)] : [];
+    const manifestSection = ['Project files (read with read_file using the id):', manifest];
+    const previewSection = includePreviews
+      ? ['Relevant file contents (previews; call read_file for the full file):', ...previews]
+      : [];
+    const instructions = [
+      'You must make at least one file change. This is an automatic repair run with no human to approve, clarify, or run commands.',
+      'Use read_file to inspect the full file, then update_file with the complete corrected content, or create_file for a missing file.',
+      'create_file parameters: name, path, language, content. update_file parameters: fileId, content.',
+      'If the log names a missing file, create it. If a component uses hooks in the Next.js app router, add "use client";. If a dependency is missing, add it to package.json.',
+      'Do not delete files, run tests, or execute code. The deployment is redeployed automatically after your edit.',
+      'When the fix is in place, set goalAchieved=true. Do not set goalAchieved=true before you have changed a file.',
+    ];
+    return [header, digestSection, tailSection, hintsSection, manifestSection, previewSection, instructions]
+      .map((section) => (Array.isArray(section) ? section.join('\n') : section))
+      .filter(Boolean)
+      .join('\n\n');
+  };
+
+  let goal = render();
+  if (goal.length > budget && includePreviews) {
+    includePreviews = false;
+    goal = render();
+  }
+  if (goal.length > budget && includeTail) {
+    includeTail = false;
+    goal = render();
+  }
+  if (goal.length > budget) {
+    digestText = truncateMiddle(digestText, Math.max(600, digestText.length - (goal.length - budget)));
+    goal = render();
+  }
+  if (goal.length > budget) goal = truncateMiddle(goal, budget);
+  return goal;
 }
 
-async function runHealingAgent(deployment, { projectId, workspaceId, files = [] }) {
+async function runHealingAgent(deployment, { projectId, workspaceId, files = [], compact = false }) {
   // Feed the prompt the most relevant file bodies too, so the repair does not
-  // depend on the model choosing to read them first. Bounded: a handful of
-  // files, 4KB each.
+  // depend on the model choosing to read them first. Bounded: a few files,
+  // 2KB each. Compact runs skip previews and rely on read_file.
   let previewFiles = [];
-  const previewCandidates = pickPreviewFiles(files, deployment);
+  const digest = buildErrorDigest(deployment);
+  const previewCandidates = compact ? [] : pickPreviewFiles(files, deployment, digest);
   if (previewCandidates.length) {
     try {
       previewFiles = await CodeFile.find({
@@ -303,6 +449,8 @@ async function runHealingAgent(deployment, { projectId, workspaceId, files = [] 
       language: file.language,
     })),
     autonomous: true,
+    requireMutation: true,
+    agentMaxTokens: AGENT_MAX_TOKENS,
     allowedTools: AUTONOMOUS_TOOLS,
     autoApproveTools: AUTO_APPROVE_TOOLS,
     skipAutoValidation: true,
@@ -312,7 +460,7 @@ async function runHealingAgent(deployment, { projectId, workspaceId, files = [] 
   let result;
   try {
     result = await agentOrchestrator.executeAgenticLoop(
-      buildHealingGoal(deployment, projectId, files, previewFiles),
+      buildHealingGoal(deployment, projectId, files, previewFiles, { compact }),
       context,
       execution._id
     );
@@ -451,6 +599,10 @@ async function processDeployment(deploymentId) {
   }
 
   const attempts = Number(deployment.selfHeal?.attempts) || 1;
+  // A previous attempt may have been rejected by the provider because the
+  // prompt was too large. Keep the retry under the token budget and let the
+  // agent read files with read_file instead of inlining previews.
+  const compact = isTokenLimitError(deployment.selfHeal?.lastError);
   notifyDeploymentEvent({
     type: 'deployment_healing',
     deployment: deploymentNotificationTarget(deployment, workspaceId),
@@ -460,7 +612,7 @@ async function processDeployment(deploymentId) {
 
   try {
     if (deployment.fault === 'user') {
-      const agentResult = await runHealingAgent(deployment, { projectId, workspaceId, files });
+      const agentResult = await runHealingAgent(deployment, { projectId, workspaceId, files, compact });
       if (!agentResult.success) {
         return await markRetry(
           deployment,
@@ -544,6 +696,7 @@ async function schedule(deploymentId, { delayMs = 0 } = {}) {
           'selfHeal.agentExecutionId': null,
           'selfHeal.summary': null,
           'selfHeal.lastError': null,
+          'selfHeal.recoveredAt': null,
         },
       }
     );
@@ -569,6 +722,26 @@ async function runTick() {
     { $set: { 'selfHeal.status': 'pending', 'selfHeal.nextAttemptAt': now } }
   );
 
+  // A pending run whose last attempt was rejected by the provider for size is
+  // given one fresh budget. The next attempt uses the compact prompt, so this
+  // is not a retry of the same oversized request. recoveredAt makes it
+  // one-shot.
+  await Deployment.updateMany(
+    {
+      status: 'failed',
+      'selfHeal.status': 'pending',
+      'selfHeal.lastError': { $regex: TOKEN_LIMIT_PATTERN, $options: 'i' },
+      'selfHeal.recoveredAt': null,
+    },
+    {
+      $set: {
+        'selfHeal.attempts': 0,
+        'selfHeal.nextAttemptAt': now,
+        'selfHeal.recoveredAt': now,
+      },
+    }
+  );
+
   // Anything still pending with no attempts left can never be claimed (for
   // example a crash between the final retry and the give-up write).
   await Deployment.updateMany(
@@ -586,13 +759,19 @@ async function runTick() {
     }
   );
 
-  // Recovery for failures the old resolver gave up on because it required a
-  // workspace. Requeue them once so the workspace-optional resolver can try;
-  // the summary changes after the next attempt, so this cannot loop.
+  // One-shot recovery for runs the old code gave up on:
+  //   - the old resolver required a workspace, and
+  //   - the first prompt versions could exceed the provider's token limit.
+  // recoveredAt prevents a row from being requeued again if the new attempt
+  // still fails.
   await Deployment.updateMany(
     {
       'selfHeal.status': 'gave_up',
-      'selfHeal.summary': { $regex: 'no resolvable workspace', $options: 'i' },
+      'selfHeal.recoveredAt': null,
+      $or: [
+        { 'selfHeal.summary': { $regex: 'no resolvable workspace', $options: 'i' } },
+        { 'selfHeal.lastError': { $regex: TOKEN_LIMIT_PATTERN, $options: 'i' } },
+      ],
       createdAt: { $gte: new Date(now.getTime() - LOOKBACK_MS) },
     },
     {
@@ -601,7 +780,7 @@ async function runTick() {
         'selfHeal.attempts': 0,
         'selfHeal.nextAttemptAt': now,
         'selfHeal.completedAt': null,
-        'selfHeal.lastError': null,
+        'selfHeal.recoveredAt': now,
       },
     }
   );
@@ -675,8 +854,11 @@ module.exports = {
   runTick,
   processDeployment,
   buildHealingGoal,
+  buildErrorDigest,
+  buildRepairHints,
   buildFileManifest,
   resolveRepairWorkspaces,
+  isTokenLimitError,
   // exported for tests
   _config: {
     ENABLED,
@@ -688,6 +870,9 @@ module.exports = {
     BATCH_SIZE,
     STALE_RUNNING_MS,
     AGENT_TIMEOUT_MS,
+    MAX_GOAL_CHARS,
+    COMPACT_GOAL_CHARS,
+    AGENT_MAX_TOKENS,
     SAFE_TOOLS,
     AUTO_APPROVE_TOOLS,
     AUTONOMOUS_TOOLS,

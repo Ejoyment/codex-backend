@@ -16,6 +16,17 @@ const MAX_CONTEXT_FILES = parseInt(process.env.AI_CONTEXT_FILES, 10) || 16;
 const MAX_FILE_CONTEXT_CHARS = parseInt(process.env.AI_CONTEXT_FILE_CHARS, 10) || 20000;
 const MAX_TOTAL_FILE_CONTEXT_CHARS = parseInt(process.env.AI_CONTEXT_TOTAL_CHARS, 10) || 120000;
 
+// Providers such as Groq count the requested output budget toward their
+// tokens-per-minute limit. Callers that only need a small JSON decision (the
+// agent reasoning loop) can pass a lower maxTokens so the request fits.
+function resolveMaxTokens(codeContext, fallback) {
+    const requested = Number(codeContext?.maxTokens);
+    if (Number.isFinite(requested) && requested > 0) {
+        return Math.min(Math.floor(requested), 32768);
+    }
+    return fallback;
+}
+
 class AIService {
     constructor() {
         this.provider = process.env.AI_PROVIDER || 'auto'; // auto, gemini, mistral, groq
@@ -296,7 +307,7 @@ Please:
             body: JSON.stringify({
                 model: codeContext.model || config.model,
                 messages: formattedMessages,
-                max_tokens: parseInt(process.env.AI_MAX_TOKENS) || 8192,
+                max_tokens: resolveMaxTokens(codeContext, parseInt(process.env.AI_MAX_TOKENS) || 8192),
                 temperature: parseFloat(process.env.AI_TEMPERATURE) || 0.7
             }),
             signal: codeContext.signal || AbortSignal.timeout(codeContext.timeoutMs || AI_REQUEST_TIMEOUT_MS)
@@ -373,7 +384,7 @@ Please:
             body: JSON.stringify({
                 model: codeContext.model || config.model,
                 messages: formattedMessages,
-                max_tokens: parseInt(process.env.AI_MAX_TOKENS) || 8192,
+                max_tokens: resolveMaxTokens(codeContext, parseInt(process.env.AI_MAX_TOKENS) || 8192),
                 temperature: parseFloat(process.env.AI_TEMPERATURE) || 0.7,
                 ...(isGptOss ? { reasoning_effort: 'low' } : {}),
                 ...(responseFormat ? { response_format: responseFormat } : {})
@@ -428,7 +439,7 @@ Please:
             body: JSON.stringify({
                 inputs: prompt,
                 parameters: {
-                    max_new_tokens: parseInt(process.env.AI_MAX_TOKENS) || 2048,
+                    max_new_tokens: resolveMaxTokens(codeContext, parseInt(process.env.AI_MAX_TOKENS) || 2048),
                     temperature: parseFloat(process.env.AI_TEMPERATURE) || 0.7,
                     return_full_text: false
                 }
