@@ -909,6 +909,22 @@ class AgentOrchestrator {
         );
         let lastObservation = await this.observe(context, goal);
 
+        // Background callers (deployment self-heal) have no browser attached,
+        // so they pass onProgress to persist a human-readable trace.
+        const emitProgress = (payload) => {
+            if (typeof context.onProgress === 'function') {
+                try {
+                    context.onProgress(payload);
+                } catch (e) { /* non-critical */ }
+            }
+            if (context && context.userId) {
+                try {
+                    const realtimeBus = require('./realtimeBus');
+                    realtimeBus.emitAgentProgress(context.userId, payload);
+                } catch (e) { /* non-critical */ }
+            }
+        };
+
         while (iteration < this.maxIterations && !goalAchieved && Date.now() < context.agentDeadlineAt) {
             iteration++;
             console.log(`\n=== Agent Iteration ${iteration} ===`);
@@ -923,18 +939,13 @@ class AgentOrchestrator {
                 }))
             };
 
-            if (context && context.userId) {
-                try {
-                    const realtimeBus = require('./realtimeBus');
-                    realtimeBus.emitAgentProgress(context.userId, {
-                        type: 'thinking',
-                        iteration,
-                        maxIterations: this.maxIterations,
-                        message: 'Reviewing the request and available project context',
-                        status: 'running'
-                    });
-                } catch (e) { /* non-critical */ }
-            }
+            emitProgress({
+                type: 'thinking',
+                iteration,
+                maxIterations: this.maxIterations,
+                message: 'Reviewing the request and available project context',
+                status: 'running'
+            });
 
             // Direct, read-only inspection requests do not need an LLM round-trip
             // just to select the required inspection tool.
@@ -955,6 +966,12 @@ class AgentOrchestrator {
                 console.error('Reasoning failed:', reasoning.error);
                 reasoningError = reasoning.error || 'Agent reasoning failed';
                 stopReason = reasoningError;
+                emitProgress({
+                    type: 'error',
+                    iteration,
+                    status: 'error',
+                    message: reasoningError
+                });
                 break;
             }
 
@@ -964,7 +981,7 @@ class AgentOrchestrator {
                 // sometimes answer "done" after reading the logs without
                 // editing a file, which would leave the deployment broken.
                 if (context.requireMutation && session.mutations.length === 0) {
-                    const nudge = 'You have not changed any project files yet. This is an automatic repair run with no human to approve or clarify. Call create_file or update_file with the fix before setting goalAchieved=true.';
+                    const nudge = 'You have not changed any project files yet. This is an automatic repair run with no human to approve or clarify. Call edit_file, create_file, or update_file with the fix before setting goalAchieved=true.';
                     if (mutationNudges >= 3) {
                         stopReason = 'Agent stopped without changing any project files.';
                         session.iterations.push({
@@ -1021,22 +1038,17 @@ class AgentOrchestrator {
             }
 
             // 3. ACTION - Execute the chosen tool
-            if (context && context.userId) {
-                try {
-                    const realtimeBus = require('./realtimeBus');
-                    realtimeBus.emitAgentProgress(context.userId, {
-                        type: 'iteration',
-                        iteration,
-                        maxIterations: this.maxIterations,
-                        message: this.getProgressLabel(reasoning.action?.tool),
-                        action: reasoning.action ? {
-                            tool: reasoning.action.tool,
-                            parameters: reasoning.action.parameters
-                        } : null,
-                        status: 'running'
-                    });
-                } catch (e) { /* non-critical */ }
-            }
+            emitProgress({
+                type: 'iteration',
+                iteration,
+                maxIterations: this.maxIterations,
+                message: this.getProgressLabel(reasoning.action?.tool),
+                action: reasoning.action ? {
+                    tool: reasoning.action.tool,
+                    parameters: reasoning.action.parameters
+                } : null,
+                status: 'running'
+            });
 
             const actionResult = await this.act(reasoning.action, context);
 
@@ -1077,21 +1089,16 @@ class AgentOrchestrator {
                 }
             }
 
-            if (context && context.userId) {
-                try {
-                    const realtimeBus = require('./realtimeBus');
-                    realtimeBus.emitAgentProgress(context.userId, {
-                        type: 'result',
-                        iteration,
-                        action: reasoning.action ? { tool: reasoning.action.tool } : null,
-                        status: actionResult.success ? 'success' : 'error',
-                        result: {
-                            success: actionResult.success,
-                            message: actionResult.message || actionResult.error || 'Step complete'
-                        }
-                    });
-                } catch (e) { /* non-critical */ }
-            }
+            emitProgress({
+                type: 'result',
+                iteration,
+                action: reasoning.action ? { tool: reasoning.action.tool } : null,
+                status: actionResult.success ? 'success' : 'error',
+                result: {
+                    success: actionResult.success,
+                    message: actionResult.message || actionResult.error || 'Step complete'
+                }
+            });
 
             // Store iteration
             const iterationData = {
@@ -1134,18 +1141,14 @@ class AgentOrchestrator {
             stopReason = 'Stopped after reaching the agent time limit.';
         }
 
-        if (context && context.userId) {
-            try {
-                const realtimeBus = require('./realtimeBus');
-                realtimeBus.emitAgentProgress(context.userId, {
-                    type: 'done',
-                    status: 'done',
-                    success: goalAchieved,
-                    summary: this.generateSummary(session),
-                    iterations: session.iterations.length
-                });
-            } catch (e) { /* non-critical */ }
-        }
+        emitProgress({
+            type: 'done',
+            status: 'done',
+            success: goalAchieved,
+            summary: this.generateSummary(session),
+            iterations: session.iterations.length,
+            stopReason: stopReason || null
+        });
 
         return {
             success: goalAchieved,
@@ -1239,6 +1242,9 @@ class AgentOrchestrator {
                 timeoutMs,
                 provider: context.provider,
                 model: context.model,
+                // Autonomous background runs must not stop because the
+                // preferred provider is rate-limited or down.
+                allowProviderFallback: context.allowProviderFallback === true,
             });
 
             // Parse LLM response

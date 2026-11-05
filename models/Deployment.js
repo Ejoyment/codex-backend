@@ -135,6 +135,13 @@ const deploymentSchema = new mongoose.Schema({
             type: String,
             default: null
         },
+        // Latest human-readable line from the repair agent ("Step 2: read_file
+        // succeeded."). Background runs have no browser attached, so this is
+        // what the deployment API shows while the agent works.
+        progress: {
+            type: String,
+            default: null
+        },
         lastError: {
             type: String,
             default: null

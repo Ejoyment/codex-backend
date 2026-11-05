@@ -498,4 +498,198 @@ describe('deployment self-heal worker', () => {
     expect(goal).toContain('create a correct Dockerfile');
     expect(goal).toContain('pom.xml');
   });
+
+  test('resolves a missing relative import against the file that imports it', () => {
+    const hints = selfHeal.buildRepairHints(
+      "./app/layout.tsx\nModule not found: Can't resolve './globals.css'",
+      [{ _id: 'layout-id', name: 'layout.tsx', path: '/app', language: 'tsx' }]
+    );
+
+    expect(hints.join('\n')).toContain('Create the missing file "app/globals.css"');
+    expect(hints.join('\n')).toContain('imported as "./globals.css" by app/layout.tsx');
+  });
+
+  test('prefers the persisted deployment runtime over metadata-only detection', () => {
+    const goal = selfHeal.buildHealingGoal(
+      deployment({
+        fault: 'user',
+        failureStage: 'build',
+        buildLogs: "Module not found: Can't resolve './globals.css'",
+      }),
+      'project-id',
+      [{ _id: 'f1', name: 'package.json', path: '/', language: 'json' }],
+      [],
+      { runtime: 'node' }
+    );
+
+    expect(goal).toContain('Detected runtime: node');
+    expect(goal).not.toContain('Detected runtime: static');
+  });
+
+  test('drops the context listing and keeps compiler lines intact', () => {
+    const logs = [
+      'Context contents: total 64',
+      'drwxr-xr-x 9 deployer deployer 4096 Nov  4 15:48 .',
+      '-rw-r--r-- 1 deployer deployer 945 Nov  4 15:48 package.json',
+      './app/layout.tsx',
+      "Module not found: Can't resolve './globals.css'",
+      './app/page.tsx',
+      "Error: You're importing a component that needs useState. It only works in a Client Component but none of its parents are marked with \"use client\"",
+    ].join('\n');
+
+    const digest = selfHeal.buildErrorDigest(deployment({ errorMessage: '', buildLogs: logs }));
+
+    expect(digest).not.toContain('Context contents');
+    expect(digest).not.toMatch(/^drwxr-xr-x/m);
+    expect(digest).not.toMatch(/^-rw-r--r--/m);
+    expect(digest).toContain("Can't resolve './globals.css'");
+    expect(digest).toContain('It only works in a Client Component');
+
+    const goal = selfHeal.buildHealingGoal(
+      deployment({
+        errorMessage: 'Your build failed (node, context \'.\'). Context contents: total 64\ndrwxr-xr-x 9 deployer deployer 4096 Nov  4 15:48 .',
+        buildLogs: logs,
+      }),
+      'project-id',
+      []
+    );
+    expect(goal).not.toContain('Context contents');
+    expect(goal).not.toMatch(/drwxr-xr-x/);
+  });
+
+  test('points the agent at the files named in the log', () => {
+    const goal = selfHeal.buildHealingGoal(
+      deployment({
+        fault: 'user',
+        failureStage: 'build',
+        errorMessage: '',
+        buildLogs: [
+          './app/layout.tsx',
+          "Module not found: Can't resolve './globals.css'",
+          './app/page.tsx',
+          'Error: hooks require a client component',
+        ].join('\n'),
+      }),
+      'project-id',
+      [
+        { _id: 'layout-id', name: 'layout.tsx', path: '/app', language: 'tsx' },
+        { _id: 'page-id', name: 'page.tsx', path: '/app', language: 'tsx' },
+        { _id: 'css-id', name: 'globals.css', path: '/app', language: 'css' },
+      ]
+    );
+
+    expect(goal).toContain('Files named in the log');
+    expect(goal).toContain('app/layout.tsx (id: layout-id)');
+    expect(goal).toContain('app/page.tsx (id: page-id)');
+    expect(goal).toContain('app/globals.css (id: css-id)');
+  });
+
+  test('retries inline with the compact prompt when the provider rejects the request size', async () => {
+    Deployment.findOneAndUpdate.mockResolvedValue(deployment({ fault: 'user', failureStage: 'build' }));
+    agentOrchestrator.executeAgenticLoop
+      .mockResolvedValueOnce({
+        success: false,
+        iterations: [],
+        error: 'Request too large: tokens per minute (TPM) limit 8000',
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        iterations: [{
+          action: { tool: 'update_file', parameters: { fileId: 'file-id' } },
+          result: { success: true },
+        }],
+        summary: { finalThought: 'Fixed it.' },
+      });
+
+    const result = await selfHeal.processDeployment('deployment-id');
+
+    expect(result).toMatchObject({ healed: true });
+    expect(agentOrchestrator.executeAgenticLoop).toHaveBeenCalledTimes(2);
+    const secondGoal = agentOrchestrator.executeAgenticLoop.mock.calls[1][0];
+    expect(secondGoal.length).toBeLessThanOrEqual(selfHeal._config.COMPACT_GOAL_CHARS);
+  });
+
+  test('persists agent progress to the deployment and the execution log', async () => {
+    Deployment.findOneAndUpdate.mockResolvedValue(deployment({ fault: 'user', failureStage: 'build' }));
+    agentOrchestrator.executeAgenticLoop.mockImplementation(async (goal, context) => {
+      context.onProgress({ type: 'thinking', iteration: 1 });
+      context.onProgress({
+        type: 'iteration',
+        iteration: 1,
+        message: 'Reading a source file',
+        action: { tool: 'read_file' },
+      });
+      return {
+        success: true,
+        iterations: [{
+          action: { tool: 'update_file', parameters: { fileId: 'file-id' } },
+          result: { success: true },
+        }],
+        summary: { finalThought: 'Fixed it.' },
+      };
+    });
+
+    await selfHeal.processDeployment('deployment-id');
+
+    const progressWrites = Deployment.updateOne.mock.calls
+      .map(([, update]) => update?.$set?.['selfHeal.progress'])
+      .filter(Boolean);
+    expect(progressWrites.length).toBeGreaterThan(0);
+    expect(progressWrites.some((line) => /Reading a source file/.test(line))).toBe(true);
+
+    const logWrites = AgentExecution.updateOne.mock.calls
+      .filter(([, update]) => update?.$push?.logs);
+    expect(logWrites.length).toBeGreaterThan(0);
+  });
+
+  test('runs the worker immediately after scheduling instead of waiting for the poll', async () => {
+    await selfHeal.schedule('deployment-id');
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(Deployment.findOneAndUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ _id: 'deployment-id' }),
+      expect.anything(),
+      expect.anything()
+    );
+  });
+
+  test('reports the real agent error when an attempt fails', async () => {
+    Deployment.findOneAndUpdate.mockResolvedValue(deployment({ fault: 'user', failureStage: 'build' }));
+    agentOrchestrator.executeAgenticLoop.mockResolvedValue({
+      success: false,
+      iterations: [],
+      error: 'Agent reasoning failed: Unexpected token < in JSON',
+    });
+
+    const result = await selfHeal.processDeployment('deployment-id');
+
+    expect(result).toMatchObject({ retry: true });
+    expect(Deployment.updateOne).toHaveBeenCalledWith(
+      { _id: 'deployment-id', 'selfHeal.status': 'running' },
+      expect.objectContaining({
+        $set: expect.objectContaining({
+          'selfHeal.lastError': 'Agent reasoning failed: Unexpected token < in JSON',
+          'selfHeal.summary': expect.stringContaining('Agent reasoning failed: Unexpected token < in JSON'),
+        }),
+      })
+    );
+  });
+
+  test('gives up with an actionable message when the AI provider rejects the key', async () => {
+    Deployment.findOneAndUpdate.mockResolvedValue(deployment({ fault: 'user', failureStage: 'build' }));
+    agentOrchestrator.executeAgenticLoop.mockResolvedValue({
+      success: false,
+      iterations: [],
+      error: 'Groq API error: Invalid API Key',
+    });
+
+    const result = await selfHeal.processDeployment('deployment-id');
+
+    expect(result).toMatchObject({ gaveUp: true });
+    expect(result.summary).toContain('Check the provider API key');
+    expect(redeployDeployment).not.toHaveBeenCalled();
+    expect(notifyDeploymentEvent).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'deployment_heal_failed',
+    }));
+  });
 });
