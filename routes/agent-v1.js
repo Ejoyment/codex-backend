@@ -312,6 +312,7 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       contextSnapshot,
       model: effectiveModel || provider,
       startedAt: new Date(),
+      computeReservationHours: req.computeReservationHours || 0,
       metadata: {
         taskId: taskId || null,
         workspaceId,
@@ -339,7 +340,8 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
         {
           _id: task._id,
           userId: req.userId,
-          $or: [{ agentSessionId: null }, { agentSessionId: { $exists: false } }],
+          status: previousTaskState.status,
+          agentSessionId: previousTaskState.agentSessionId ?? null,
         },
         {
           $set: {
@@ -364,15 +366,9 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       );
 
       if (!claimedTask) {
-        execution.status = 'failed';
-        execution.completedAt = new Date();
-        execution.summary = 'Task already has an active agent session';
-        await execution.save();
-        if (creditCharged) {
-          creditCharged = false;
-          await refundAgentCredit(req.userId);
-        }
-        return res.status(409).json({ success: false, message: 'This task already has an active agent session' });
+        const conflict = new Error('This task was delegated by another request. Refresh and try again.');
+        conflict.status = 409;
+        throw conflict;
       }
 
       taskClaim = {
@@ -389,6 +385,8 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
         if (task.userId) cacheInvalidator.invalidateForUser(task.userId);
       } catch (e) { /* ignore */ }
     }
+
+    if (typeof req.consumeComputeReservation === 'function') req.consumeComputeReservation();
 
     realtimeBus.emitAgentProgress(req.userId, {
       type: 'delegate',

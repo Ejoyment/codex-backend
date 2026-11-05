@@ -21,7 +21,7 @@ const { io: ioClient } = require(path.resolve(__dirname, '../buildrs-frontend/no
 
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret-for-automated-testing-32chars';
 
-jest.mock('../models/AgentExecution', () => ({ create: jest.fn(), findById: jest.fn(), findOne: jest.fn() }));
+jest.mock('../models/AgentExecution', () => ({ create: jest.fn(), findById: jest.fn(), findOne: jest.fn(), findOneAndUpdate: jest.fn() }));
 jest.mock('../models/LocalTask', () => ({ findOne: jest.fn(), findById: jest.fn(), findOneAndUpdate: jest.fn(), findByIdAndUpdate: jest.fn() }));
 jest.mock('../models/LocalProject', () => ({ findById: jest.fn() }));
 jest.mock('../models/SpecModel', () => ({ findById: jest.fn(), findByIdAndUpdate: jest.fn() }));
@@ -45,6 +45,8 @@ jest.mock('../utils/gitService', () => ({
   init: jest.fn(),
   ensureBaseCommit: jest.fn(),
   createBranch: jest.fn(),
+  createAgentWorktree: jest.fn(),
+  removeAgentWorktree: jest.fn(),
   writeWorkingTree: jest.fn(),
   commitWorkingTree: jest.fn(),
 }));
@@ -154,12 +156,15 @@ beforeEach(() => {
     workspaceId: String(workspaceId),
   }));
   AgentExecution.create.mockResolvedValue(execFixture(USER_A, { metadata: {} }));
+  AgentExecution.findOneAndUpdate.mockImplementation(async (query) => AgentExecution.findById(query._id));
   CreditPoolService.deductCredits.mockResolvedValue({ success: true, remaining: 19 });
   CreditPoolService.refundCredits.mockResolvedValue({ success: true, amountRefunded: 1 });
   CodeFile.find.mockResolvedValue([]);
   gitService.init.mockResolvedValue({ success: true });
   gitService.ensureBaseCommit.mockResolvedValue({ success: true });
   gitService.createBranch.mockResolvedValue({ success: true });
+  gitService.createAgentWorktree.mockResolvedValue({ success: true });
+  gitService.removeAgentWorktree.mockResolvedValue({ success: true });
 });
 
 afterEach(() => {
@@ -280,9 +285,14 @@ describe('agent:delegate ownership', () => {
     s.emit('agent:delegate', { workspaceId: WORKSPACE_A, taskTitle: 'branch me' });
     const payload = await result;
     expect(payload.success).toBe(true);
-    expect(gitService.init).toHaveBeenCalledWith(WORKSPACE_A);
-    expect(gitService.ensureBaseCommit).toHaveBeenCalledWith(WORKSPACE_A, 'main');
-    expect(gitService.createBranch).toHaveBeenCalledWith(WORKSPACE_A, expect.stringMatching(/^feature\//));
+    expect(gitService.init).toHaveBeenCalledWith(WORKSPACE_A, {}, null);
+    expect(gitService.createAgentWorktree).toHaveBeenCalledWith(
+      WORKSPACE_A,
+      expect.stringMatching(/^feature\//),
+      'main',
+      null,
+      EXEC_A
+    );
     s.disconnect();
   });
 });

@@ -165,7 +165,8 @@ class CreditPoolService {
      * @param {number} hours
      * @returns {object}
      */
-    async deductComputeHours(userId, hours = 1) {
+    async deductComputeHours(userId, hours = 1, options = {}) {
+        const reservedHours = Math.max(0, Number(options.reservedHours) || 0);
         const subscription = await Subscription.findOne({ userId });
         if (!subscription) {
             return { success: false, message: 'No subscription found' };
@@ -181,7 +182,11 @@ class CreditPoolService {
 
         const used = subscription.cloudComputeHours?.usedThisMonth || 0;
         const priorOverage = subscription.cloudComputeHours?.overageHoursThisMonth || 0;
-        const nextUsed = used + hours;
+        // The preflight reservation is already included in usedThisMonth.
+        // Only charge the difference between the real duration and the slice
+        // that was reserved when the job started.
+        const chargeableHours = hours - reservedHours;
+        const nextUsed = used + chargeableHours;
         const nextOverage = Math.max(0, nextUsed - monthlyLimit);
         // Only the newly-created overage is charged; earlier overage in the
         // same month was recorded by an earlier in-flight job.
@@ -207,7 +212,7 @@ class CreditPoolService {
             { userId },
             {
                 $inc: {
-                    'cloudComputeHours.usedThisMonth': hours,
+                    'cloudComputeHours.usedThisMonth': chargeableHours,
                     'cloudComputeHours.overageHoursThisMonth': overageHours,
                     'cloudComputeHours.overageAmountMinor': overageAmountMinor
                 }
@@ -253,6 +258,33 @@ class CreditPoolService {
                 ? `Recorded ${hours.toFixed(4)}h compute, including ${overageHours.toFixed(4)}h overage.${billingNote}`
                 : `Recorded ${hours.toFixed(4)}h compute.`
         };
+    }
+
+    /**
+     * Release a preflight compute reservation that never turned into a job.
+     */
+    async releaseComputeHours(userId, hours = 0) {
+        const amount = Number(hours);
+        if (!userId || !Number.isFinite(amount) || amount <= 0) return { success: false };
+        await Subscription.findOneAndUpdate(
+            { userId },
+            [{
+                $set: {
+                    'cloudComputeHours.usedThisMonth': {
+                        $max: [
+                            0,
+                            {
+                                $subtract: [
+                                    { $ifNull: ['$cloudComputeHours.usedThisMonth', 0] },
+                                    amount,
+                                ],
+                            },
+                        ],
+                    },
+                },
+            }]
+        );
+        return { success: true };
     }
 
     /**
