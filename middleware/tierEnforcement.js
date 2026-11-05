@@ -115,10 +115,11 @@ function enforceConcurrentJobs(maxJobs) {
             });
         }
         if (limit !== null) {
-            const activeCount = await AgentExecution.countDocuments({
-                userId: req.userId,
-                status: { $in: ['running', 'awaiting_approval'] }
-            });
+            const isTeam = req.trial?.isTeamContext;
+            const countFilter = isTeam
+                ? { companyId: req.trial?.companyId, status: { $in: ['running', 'awaiting_approval'] } }
+                : { userId: req.userId, status: { $in: ['running', 'awaiting_approval'] } };
+            const activeCount = await AgentExecution.countDocuments(countFilter);
             if (activeCount >= limit) {
                 return res.status(403).json({
                     success: false,
@@ -202,14 +203,15 @@ function enforceDeploymentLimit() {
         const maxDeployments = subscription.getMaxActiveDeployments();
         const Model = getDeployment();
         if (!Model) return next();
-        const activeDeployments = await Model.countDocuments({
-            userId: req.userId,
-            status: 'active'
-        });
+        const isTeam = req.trial?.isTeamContext;
+        const countFilter = isTeam
+            ? { companyId: req.trial?.companyId, status: 'active' }
+            : { userId: req.userId, status: 'active' };
+        const activeDeployments = await Model.countDocuments(countFilter);
         if (!limitAllows(maxDeployments, activeDeployments)) {
             return res.status(403).json({
                 success: false,
-                message: `You have reached the limit of ${maxDeployments} active deployments. Upgrade for more.`,
+                message: `You have reached the limit of ${maxDeployments} active deployments.`,
                 code: 'DEPLOYMENT_LIMIT_REACHED',
                 currentCount: activeDeployments,
                 maxDeployments
