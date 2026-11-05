@@ -163,6 +163,7 @@ async function startServer(port = process.env.PORT || 3000) {
         ),
     ]);
     require('./utils/emailJobWorker').startEmailJobWorker();
+    require('./utils/auditOutboxWorker').startAuditOutboxWorker();
     // Background repair for failed deployments (platform retries + agent
     // edits for user-code failures).
     require('./utils/deploymentSelfHeal').startSelfHealWorker();
@@ -653,6 +654,7 @@ const stopServer = async () => {
         const BillingCron = require('./utils/billingCron');
         if (BillingCron && BillingCron.stop) BillingCron.stop();
         await require('./utils/emailJobWorker').stopEmailJobWorker();
+        await require('./utils/auditOutboxWorker').stopAuditOutboxWorker();
         await require('./utils/deploymentSelfHeal').stopSelfHealWorker();
 
         if (CreditPoolService && CreditPoolService.stop) CreditPoolService.stop();
