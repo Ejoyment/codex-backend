@@ -81,6 +81,7 @@ router.get('/', authenticateToken, async (req, res) => {
                         completedAt: null,
                         agentExecutionId: null,
                         summary: null,
+                        progress: null,
                         lastError: null,
                     },
                     expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
@@ -270,6 +271,7 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
                             completedAt: null,
                             agentExecutionId: null,
                             summary: null,
+                            progress: null,
                             lastError: null,
                         },
                     },

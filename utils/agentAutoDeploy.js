@@ -16,6 +16,7 @@ function resetSelfHealState(deployment) {
     completedAt: null,
     agentExecutionId: null,
     summary: null,
+    progress: null,
     lastError: null,
     recoveredAt: null,
   };
@@ -124,12 +125,15 @@ async function redeployDeployment({
     });
     validateDeployFiles(normalizedFiles);
     const detected = depService.detectRuntime(normalizedFiles);
+    // Persist what we are about to build before the build runs, so a failed
+    // redeploy still tells the next self-heal attempt which runtime was used
+    // (the agent may have added or changed a Dockerfile since the last run).
+    deployment.runtime = detected.runtime;
     const result = await depService.deployProject(subdomain, normalizedFiles, hooks);
     deployment.containerId = result.containerId || null;
     deployment.deployedUrl = result.url || `https://${subdomain}.buildrshq.dev`;
     deployment.httpUrl = `http://${subdomain}.buildrshq.dev`;
     deployment.status = 'success';
-    deployment.runtime = detected.runtime;
     deployment.errorMessage = null;
     deployment.fault = null;
     deployment.failureStage = null;
