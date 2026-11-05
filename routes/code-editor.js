@@ -653,7 +653,7 @@ const file = await CodeFile.findOne({
         
         // Update VFS cache and index (re-key when the name/path changed)
         try {
-            const workspaceId = file.company.toString();
+            const workspaceId = file.company ? String(file.company) : null;
             const cacheKey = `${workspaceId}:${file._id}`;
             const index = vfs.indexes.get(workspaceId);
             if (index) {
@@ -675,7 +675,7 @@ const file = await CodeFile.findOne({
         }
         
         // Emit real-time event
-        emitWorkspaceChange(file.company.toString(), 'file:updated', {
+        emitWorkspaceChange(file.company ? String(file.company) : null, 'file:updated', {
             file: {
                 _id: file._id,
                 name: file.name,
@@ -708,7 +708,7 @@ router.delete('/files/:id', authenticateToken, async (req, res) => {
 
         if (!(await assertFileAccess(file, req.userId, res, 'manage'))) return;
 
-        const workspaceId = file.company.toString();
+        const workspaceId = file.company ? String(file.company) : null;
         const fileId = file._id.toString();
         const filePath = vfs.fullPathOf(file);
         

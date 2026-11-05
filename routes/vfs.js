@@ -543,7 +543,7 @@ router.put('/files/:fileId', authenticateToken, permissionMatrix.requirePermissi
     await file.save();
     
     // Update VFS cache and index
-    const workspaceId = file.company.toString();
+    const workspaceId = file.company ? String(file.company) : null;
     await vfs.writeFile(fileId, file.content, workspaceId);
     
     emitWorkspaceChange(workspaceId, 'file:updated', {
@@ -584,7 +584,7 @@ router.delete('/files/:fileId', authenticateToken, permissionMatrix.requirePermi
     });
     if (!(await assertFileAccess(file, req.userId, res, 'manage'))) return;
 
-    const workspaceId = file.company.toString();
+    const workspaceId = file.company ? String(file.company) : null;
 
     await vfs.deleteFile(fileId, workspaceId);
     
