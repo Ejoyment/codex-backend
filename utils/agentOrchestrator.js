@@ -999,6 +999,13 @@ class AgentOrchestrator {
             }
         };
 
+        // A successful inspection that the model repeats verbatim is a loop,
+        // not a next step. Autonomous repair runs have no human to break the
+        // cycle, so nudge the model toward making a change instead of stopping
+        // the whole attempt on the first repeated read.
+        const INSPECTION_TOOLS = new Set(['read_file', 'list_files', 'search_code', 'analyze_code', 'get_repository_status']);
+        let repeatNudges = 0;
+
         while (iteration < this.maxIterations && !goalAchieved && Date.now() < context.agentDeadlineAt) {
             iteration++;
             console.log(`\n=== Agent Iteration ${iteration} ===`);
@@ -1099,12 +1106,49 @@ class AgentOrchestrator {
                 break;
             }
 
-            const previousIteration = session.iterations[session.iterations.length - 1];
+const previousIteration = session.iterations[session.iterations.length - 1];
             if (
                 previousIteration?.action?.tool === reasoning.action?.tool &&
                 JSON.stringify(previousIteration.action.parameters || {}) ===
-                    JSON.stringify(reasoning.action?.parameters || {})
+                JSON.stringify(reasoning.action?.parameters || {})
             ) {
+                // A repeated *successful* inspection (read_file, list_files,
+                // search_code, analyze_code) is a loop, not progress. In an
+                // autonomous repair run there is no human to break it, so nudge
+                // the model toward making a file change instead of killing the
+                // whole attempt on the first repeated read. Failed repeats are
+                // still stopped: retrying an action that already failed cannot
+                // help and just burns the repair budget.
+                if (previousIteration.result?.success && INSPECTION_TOOLS.has(reasoning.action.tool)) {
+                    const nudge = `You already read that file. You now have its contents — make the fix. This is an automatic repair run with no human to approve or clarify, so call edit_file, create_file, or update_file with the change before setting goalAchieved=true.`;
+                    if (repeatNudges >= 3) {
+                        stopReason = 'Agent stopped after repeating the same inspection without making a change.';
+                        session.iterations.push({
+                            iteration,
+                            observation,
+                            reasoning,
+                            action: null,
+                            result: { success: false, error: stopReason }
+                        });
+                        break;
+                    }
+                    repeatNudges++;
+                    session.iterations.push({
+                        iteration,
+                        observation,
+                        reasoning,
+                        action: null,
+                        result: { success: false, error: nudge }
+                    });
+                    await this.saveIteration(sessionId, {
+                        iteration,
+                        thought: reasoning.thought,
+                        action: null,
+                        result: { success: false, error: nudge }
+                    }, context.userId).catch(() => {});
+                    lastObservation = { ...lastObservation, nudge };
+                    continue;
+                }
                 stopReason = previousIteration.result?.success
                     ? `Stopped to avoid repeating ${reasoning.action.tool} with the same parameters.`
                     : `Stopped because ${reasoning.action.tool} failed and the agent proposed the same action again.`;
