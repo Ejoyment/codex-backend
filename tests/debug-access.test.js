@@ -12,7 +12,7 @@ const jwt = require('jsonwebtoken');
 
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret-for-automated-testing-32chars';
 
-jest.mock('../models/CodeFile', () => ({ findById: jest.fn(), findByIdAndDelete: jest.fn(async () => null) }));
+jest.mock('../models/CodeFile', () => ({ findById: jest.fn(), findOne: jest.fn(), findByIdAndDelete: jest.fn(async () => null) }));
 jest.mock('../models/Company', () => ({ findOne: jest.fn() }));
 jest.mock('../models/User', () => ({ exists: jest.fn(), findById: jest.fn() }));
 jest.mock('../middleware/trial', () => ({
@@ -89,6 +89,7 @@ beforeEach(() => {
   debugAdapter.sessions.clear();
   debugAdapter.sessions.set('sessA', { id: 'sessA', userId: 'userA' });
   CodeFile.findById.mockImplementation(() => chainable(currentFile));
+  CodeFile.findOne.mockImplementation(() => chainable(currentFile));
   Company.findOne.mockImplementation(() => ({
     select: () => ({ lean: async () => currentCompany }),
   }));

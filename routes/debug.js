@@ -141,7 +141,13 @@ router.post('/launch', authenticateToken, permissionMatrix.requirePermission('de
         if (!(await assertSessionAccess(sessionId, req.userId, res))) return;
 
         // Get file to debug
-        const file = await CodeFile.findById(fileId);
+        const file = await CodeFile.findOne({
+        _id: fileId,
+        $or: [
+          { company: null, createdBy: req.userId },
+          { company: { $ne: null } }
+        ]
+      });
         if (!(await assertFileAccess(file, req.userId, res))) return;
         
         // Create temporary file for debugging
