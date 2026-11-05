@@ -80,16 +80,16 @@ export default function SpecWorkspace() {
       </Head>
       <div className="workspace-container min-h-screen">
         <Sidebar />
-        <main className="workspace-main flex-1 p-6 bg-[#0f0f1a] overflow-auto">
+        <main className="workspace-main flex-1 p-6 bg-[#121821] overflow-auto">
           <div className="mb-6">
             <div className="flex items-center gap-3 mb-2">
               <FileCodeIcon className="w-6 h-6 text-purple-400" />
-              <h1 className="text-2xl font-bold text-[#e2e2ea]">{spec?.title}</h1>
+              <h1 className="text-2xl font-bold text-[#dee2f6]">{spec?.title}</h1>
               <span className="text-xs bg-purple-600/20 text-purple-400 px-2 py-0.5 rounded">
                 {spec?.specId}
               </span>
             </div>
-            <div className="flex items-center gap-4 text-xs text-[#565d6b]">
+            <div className="flex items-center gap-4 text-xs text-[#59687a]">
               <span>Updated: {spec?.updatedAt ? new Date(spec.updatedAt).toLocaleDateString() : 'Never'}</span>
               {spec?.targetModules?.length > 0 && (
                 <span className="flex items-center gap-1">
@@ -101,20 +101,20 @@ export default function SpecWorkspace() {
                   <AlertTriangle className="w-3 h-3" /> {spec.assertions.length} assertions
                 </span>
               )}
-            </main>
+            </div>
           </div>
 
           <div className="grid grid-cols-3 gap-4 mb-6">
-            <div className="p-4 bg-[#1e1e2e] rounded-lg border border-[#2e2e3e]">
-              <div className="text-xs text-[#565d6b] mb-1">Target Modules</div>
-              <div className="text-lg font-bold text-[#e2e2ea]">{spec?.targetModules?.length || 0}</div>
+            <div className="p-4 bg-[#1d263b] rounded-lg border border-[#2a3446]">
+              <div className="text-xs text-[#59687a] mb-1">Target Modules</div>
+              <div className="text-lg font-bold text-[#dee2f6]">{spec?.targetModules?.length || 0}</div>
             </div>
-            <div className="p-4 bg-[#1e1e2e] rounded-lg border border-[#2e2e3e]">
-              <div className="text-xs text-[#565d6b] mb-1">Assertions</div>
-              <div className="text-lg font-bold text-[#e2e2ea]">{spec?.assertions?.length || 0}</div>
+            <div className="p-4 bg-[#1d263b] rounded-lg border border-[#2a3446]">
+              <div className="text-xs text-[#59687a] mb-1">Assertions</div>
+              <div className="text-lg font-bold text-[#dee2f6]">{spec?.assertions?.length || 0}</div>
             </div>
-            <div className="p-4 bg-[#1e1e2e] rounded-lg border border-[#2e2e3e]">
-              <div className="text-xs text-[#565d6b] mb-1">Verification</div>
+            <div className="p-4 bg-[#1d263b] rounded-lg border border-[#2a3446]">
+              <div className="text-xs text-[#59687a] mb-1">Verification</div>
               <div className={`text-lg font-bold ${verificationResult?.passed ? 'text-green-400' : 'text-yellow-400'}`}>
                 {verificationResult ? (verificationResult.passed ? 'Passed' : 'Failed') : 'Pending'}
               </div>
@@ -134,7 +134,7 @@ export default function SpecWorkspace() {
                 setDriftReport(null);
                 setVerificationResult(null);
               }}
-              className="flex items-center gap-2 px-4 py-2 bg-[#2e2e3e] hover:bg-[#3e3e4e] text-[#e2e2ea] text-sm font-semibold rounded-lg"
+              className="flex items-center gap-2 px-4 py-2 bg-[#2a3446] hover:bg-[#2a3446] text-[#dee2f6] text-sm font-semibold rounded-lg"
             >
               <AlertTriangle className="w-4 h-4" />
               Check Drift
@@ -149,9 +149,9 @@ export default function SpecWorkspace() {
               </div>
               <div className="space-y-1">
                 {driftReport.reports?.map((r, i) => (
-                  <div key={i} className="text-xs text-[#e2e2ea] bg-[#14141e] p-2 rounded">
+                  <div key={i} className="text-xs text-[#dee2f6] bg-[#161d29] p-2 rounded">
                     <span className="text-red-400">⚠ {r.message}</span>
-                    <span className="text-[#565d6b] ml-2">{r.file}</span>
+                    <span className="text-[#59687a] ml-2">{r.file}</span>
                   </div>
                 ))}
               </div>
@@ -173,7 +173,7 @@ export default function SpecWorkspace() {
             workspaceId={spec?.workspaceId}
             onDriftDetected={handleDriftDetected}
           />
-        </div>
+        </main>
       </div>
 
       {showDrawer && (

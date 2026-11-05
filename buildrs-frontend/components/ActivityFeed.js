@@ -2,9 +2,9 @@ import Link from 'next/link';
 import { CheckSquare, CheckCircle2, Users, Github, Figma, Clock, MessageSquare, ExternalLink } from 'lucide-react';
 
 const ICON_STYLES = {
-  task: { bg: 'rgba(47,214,230,0.12)', color: '#2fd6e6', Icon: CheckSquare },
-  completed: { bg: 'rgba(52,211,153,0.12)', color: '#34d399', Icon: CheckCircle2 },
-  team: { bg: 'rgba(167,139,250,0.12)', color: '#a78bfa', Icon: Users },
+  task: { bg: 'rgba(18,220,229,0.12)', color: '#12dce5', Icon: CheckSquare },
+  completed: { bg: 'rgba(3,186,3,0.12)', color: '#03ba03', Icon: CheckCircle2 },
+  team: { bg: 'rgba(138,56,245,0.12)', color: '#8a38f5', Icon: Users },
   integration: { bg: 'rgba(229,184,74,0.12)', color: '#e5b84a', Icon: Clock },
   github: { bg: 'rgba(255,255,255,0.06)', color: '#e2e8f0', Icon: Github },
   discord: { bg: 'rgba(88,101,242,0.15)', color: '#8492f6', Icon: Users },

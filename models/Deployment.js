@@ -24,6 +24,13 @@ const deploymentSchema = new mongoose.Schema({
         type: String,
         default: null
     },
+    // Workspace this deploy was launched from. Optional: a local project can
+    // be deployed without any workspace. Stored so background self-heal can
+    // scope its file edits without needing a live user/session.
+    workspaceId: {
+        type: String,
+        default: null
+    },
     subdomain: {
         type: String,
         required: true,
@@ -43,6 +50,10 @@ const deploymentSchema = new mongoose.Schema({
         type: String,
         enum: ['pending', 'building', 'deploying', 'success', 'failed', 'stopped'],
         default: 'pending'
+    },
+    buildRunId: {
+        type: String,
+        default: null
     },
     errorMessage: {
         type: String,
@@ -89,6 +100,60 @@ const deploymentSchema = new mongoose.Schema({
         type: String,
         default: null
     },
+    // Background self-healing state. A failed deployment is scheduled here by
+    // the deploy route / redeploy path and picked up by the self-heal worker,
+    // which either retries platform faults or runs an agent to fix user-code
+    // failures before redeploying. Null status = never scheduled.
+    selfHeal: {
+        status: {
+            type: String,
+            enum: ['pending', 'running', 'succeeded', 'failed', 'gave_up'],
+            default: null
+        },
+        attempts: {
+            type: Number,
+            default: 0
+        },
+        lastAttemptAt: {
+            type: Date,
+            default: null
+        },
+        nextAttemptAt: {
+            type: Date,
+            default: null
+        },
+        completedAt: {
+            type: Date,
+            default: null
+        },
+        agentExecutionId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'AgentExecution',
+            default: null
+        },
+        summary: {
+            type: String,
+            default: null
+        },
+        // Latest human-readable line from the repair agent ("Step 2: read_file
+        // succeeded."). Background runs have no browser attached, so this is
+        // what the deployment API shows while the agent works.
+        progress: {
+            type: String,
+            default: null
+        },
+        lastError: {
+            type: String,
+            default: null
+        },
+        // One-shot marker used by the poller to recover runs that failed for a
+        // now-fixed reason (missing workspace, oversized prompt). It prevents
+        // the same row from being requeued forever.
+        recoveredAt: {
+            type: Date,
+            default: null
+        }
+    },
     metadata: {
         type: Map,
         of: mongoose.Schema.Types.Mixed
@@ -105,5 +170,7 @@ const deploymentSchema = new mongoose.Schema({
 deploymentSchema.index({ userId: 1, createdAt: -1 });
 deploymentSchema.index({ subdomain: 1 }, { unique: true });
 deploymentSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+// Self-heal poller: due failures, scoped to the recent lookback window.
+deploymentSchema.index({ status: 1, 'selfHeal.status': 1, 'selfHeal.nextAttemptAt': 1 });
 
 module.exports = mongoose.model('Deployment', deploymentSchema);

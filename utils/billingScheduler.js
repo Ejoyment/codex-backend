@@ -2,11 +2,15 @@ const BillingSchedule = require('../models/BillingSchedule');
 const Subscription = require('../models/Subscription');
 const User = require('../models/User');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const paystack = require('../config/paystack');
+const flutterwave = require('../config/flutterwave');
 const { planAmountCents } = require('../utils/billingPricing');
+const { scheduleFirstCharge } = require('./firstChargeSchedule');
 
 // A charge row left in `processing` longer than this crashed (or lost its
 // worker) between the atomic claim and the completion write. The reaper
-// reconciles those rows against Stripe instead of blindly retrying them.
+// reconciles those rows against the rail that created them instead of blindly
+// retrying them.
 const STUCK_PROCESSING_MS = parseInt(process.env.BILLING_STUCK_PROCESSING_MS, 10) || 30 * 60 * 1000;
 const STUCK_REAP_BATCH = parseInt(process.env.BILLING_STUCK_REAP_BATCH, 10) || 100;
 const STRIPE_PENDING_STATUSES = new Set([
@@ -15,35 +19,24 @@ const STRIPE_PENDING_STATUSES = new Set([
     'requires_confirmation',
     'requires_capture'
 ]);
+const PAYSTACK_PENDING_STATUSES = new Set(['pending', 'ongoing', 'processing', 'queued']);
+const FLUTTERWAVE_PENDING_STATUSES = new Set(['pending', 'processing', 'new', 'ongoing', 'queued']);
+const FLUTTERWAVE_SUCCESS_STATUSES = new Set(['successful', 'success', 'completed']);
+const KNOWN_PROVIDERS = new Set(['stripe', 'paystack', 'flutterwave']);
 
 class BillingScheduler {
     /**
      * Schedule first charge when the 14-day trial ends
      */
     static async scheduleFirstCharge(userId, subscriptionId, cardAddedAt, tier = 'pro') {
-        // Idempotent: repeated /setup-payment calls must not stack duplicate
-        // charges on the same trial.
-        const existing = await BillingSchedule.findOne({
-            subscriptionId,
-            chargeType: 'first_charge',
-            status: 'pending'
-        });
-        if (existing) return existing;
-
-        const firstChargeTime = new Date(cardAddedAt.getTime() + (14 * 24 * 60 * 60 * 1000)); // 14 days
-        
-        const schedule = new BillingSchedule({
+        const schedule = await scheduleFirstCharge({
             userId,
             subscriptionId,
-            chargeType: 'first_charge',
-            scheduledFor: firstChargeTime,
-            amount: planAmountCents(tier),
-            status: 'pending'
+            cardAddedAt,
+            tier,
+            provider: 'stripe',
         });
-        
-        await schedule.save();
-        console.log(`First charge scheduled for user ${userId} at ${firstChargeTime}`);
-        
+        console.log(`First charge scheduled for user ${userId} at ${schedule.scheduledFor}`);
         return schedule;
     }
 
@@ -57,6 +50,7 @@ class BillingScheduler {
         const schedule = new BillingSchedule({
             userId,
             subscriptionId,
+            provider: 'stripe',
             chargeType: 'second_charge',
             scheduledFor: secondChargeTime,
             amount: planAmountCents(tier),
@@ -79,6 +73,7 @@ class BillingScheduler {
         const schedule = new BillingSchedule({
             userId,
             subscriptionId,
+            provider: 'stripe',
             chargeType: 'recurring',
             scheduledFor: nextChargeTime,
             amount: planAmountCents(tier),
@@ -139,9 +134,11 @@ class BillingScheduler {
             });
 
             // Update schedule
+            schedule.provider = 'stripe';
             schedule.status = 'completed';
             schedule.completedAt = new Date();
             schedule.stripePaymentIntentId = paymentIntent.id;
+            schedule.providerStatus = paymentIntent.status;
             await schedule.save();
 
             // Update subscription
@@ -203,22 +200,29 @@ class BillingScheduler {
      * Reap charges stuck in `processing` — a crash between the atomic claim
      * and the status write leaves a row there forever, silently blocking the
      * subscription it belongs to. Blindly re-running it could double-charge,
-     * so each row is reconciled against Stripe instead:
+     * so each row is reconciled against the provider that created it:
      *
+     * Stripe:
      * - stored intent succeeded               -> completed (no re-charge)
      * - stored intent still pending at Stripe -> left for the next sweep
      * - metadata search by scheduleId finds a succeeded intent -> completed
-     * - nothing confirms a charge             -> failed + ops note; never
-     *   retried automatically (only `pending` rows are ever charged)
+     * - nothing confirms a charge             -> failed + ops note
+     *
+     * Paystack:
+     * - verify by stored reference (or the deterministic `bs-<scheduleId>`
+     *   reference the scheduler now sends) -> success/pending/failed
+     * - no reference can be verified          -> failed + ops note
+     *
+     * Flutterwave:
+     * - verify by stored transaction id       -> successful/pending/failed
+     * - transaction id was never persisted    -> failed + ops note (the
+     *   configured client only supports lookup by id, not tx_ref)
      *
      * Subscription state is deliberately not advanced here: the crash may
      * have happened before or after the subscription save, and advancing is
      * not idempotent (it schedules the next charge). Recovered completions
-     * are logged loudly for manual follow-up.
-     *
-     * Rows are provider-agnostic in BillingSchedule; rows from Paystack or
-     * Flutterwave cannot be verified against Stripe and are resolved as
-     * failed-with-note for manual review rather than left stuck.
+     * are logged loudly for manual follow-up. No provider is ever charged
+     * from this path, so a reap cannot double-charge or double-activate.
      */
     static async reapStuckCharges(options = {}) {
         const stuckMs = options.stuckMs ?? STUCK_PROCESSING_MS;
@@ -255,7 +259,87 @@ class BillingScheduler {
         return summary;
     }
 
+    /**
+     * Older Paystack rows may not have the reference persisted (the field was
+     * previously dropped by strict mode). The scheduler now sends a stable
+     * reference derived from the schedule id, so a crash before the response
+     * was saved can still be verified without charging again.
+     */
+    static paystackReferenceFor(schedule) {
+        return schedule.paystackReference || `bs-${String(schedule._id)}`;
+    }
+
+    static flutterwaveTxRefFor(schedule) {
+        return `charge_${String(schedule._id)}`;
+    }
+
+    static providerForSchedule(schedule) {
+        if (schedule.provider && KNOWN_PROVIDERS.has(String(schedule.provider).toLowerCase())) {
+            return String(schedule.provider).toLowerCase();
+        }
+        if (schedule.paystackReference) return 'paystack';
+        if (schedule.flutterwaveTransactionId) return 'flutterwave';
+        if (schedule.stripePaymentIntentId) return 'stripe';
+        // Pre-provider-field rows default to Stripe, preserving the original
+        // reaper behavior for the only rail that existed when they were made.
+        return 'stripe';
+    }
+
+    static async resolveProviderForSchedule(schedule) {
+        const inferred = this.providerForSchedule(schedule);
+        const ambiguous =
+            !schedule.provider &&
+            !schedule.paystackReference &&
+            !schedule.flutterwaveTransactionId &&
+            !schedule.stripePaymentIntentId;
+
+        // Rows created before the provider field existed can still be routed
+        // correctly by their subscription's paymentProvider. Only ambiguous
+        // rows pay for this lookup; a failure keeps the Stripe fallback.
+        if (ambiguous && schedule.subscriptionId) {
+            try {
+                const query = Subscription.findById(schedule.subscriptionId);
+                const subscription =
+                    query && typeof query.select === 'function'
+                        ? await query.select('paymentProvider')
+                        : await query;
+                const subscriptionProvider =
+                    subscription && subscription.paymentProvider
+                        ? String(subscription.paymentProvider).toLowerCase()
+                        : null;
+                if (subscriptionProvider && KNOWN_PROVIDERS.has(subscriptionProvider)) {
+                    return subscriptionProvider;
+                }
+            } catch (error) {
+                console.warn(
+                    `Billing reaper: could not resolve provider for schedule ${schedule._id} from its subscription:`,
+                    error.message
+                );
+            }
+        }
+
+        return inferred;
+    }
+
     static async reconcileStuckCharge(schedule) {
+        // A live worker may have completed the row after the scan loaded it.
+        // Stand down instead of overwriting a newer terminal state.
+        if (schedule.status && schedule.status !== 'processing') {
+            if (schedule.status === 'completed') return 'completed';
+            if (schedule.status === 'failed') return 'failed';
+            return 'pending';
+        }
+
+        const provider = await this.resolveProviderForSchedule(schedule);
+
+        if (provider === 'paystack') return this.reconcilePaystackCharge(schedule);
+        if (provider === 'flutterwave') return this.reconcileFlutterwaveCharge(schedule);
+        return this.reconcileStripeCharge(schedule);
+    }
+
+    static async reconcileStripeCharge(schedule) {
+        schedule.provider = 'stripe';
+
         if (schedule.stripePaymentIntentId) {
             const intent = await stripe.paymentIntents.retrieve(schedule.stripePaymentIntentId);
             return this.applyReconciledIntent(schedule, intent);
@@ -281,18 +365,21 @@ class BillingScheduler {
             if (intent) return this.applyReconciledIntent(schedule, intent);
         }
 
-        return this.failStuckSchedule(schedule);
+        return this.failStuckSchedule(schedule, 'no successful charge confirmed', 'stripe');
     }
 
     static async applyReconciledIntent(schedule, intent) {
         if (intent.status === 'succeeded') {
+            schedule.provider = 'stripe';
             schedule.status = 'completed';
             schedule.completedAt = schedule.completedAt || new Date();
             schedule.stripePaymentIntentId = intent.id;
+            schedule.providerStatus = intent.status;
+            schedule.reconciledAt = new Date();
             await schedule.save();
 
             console.warn(
-                `Billing reaper: schedule ${schedule._id} was actually charged (intent ${intent.id}) but never completed — marked completed; verify the subscription state manually.`
+                `Billing reaper: schedule ${schedule._id} was actually charged (Stripe intent ${intent.id}) but never completed — marked completed; verify the subscription state manually.`
             );
             return 'completed';
         }
@@ -302,20 +389,171 @@ class BillingScheduler {
             return 'pending';
         }
 
-        schedule.status = 'failed';
-        schedule.error = `Stuck in processing; Stripe intent ${intent.status} (reaped)`;
-        await schedule.save();
-        return 'failed';
+        schedule.provider = 'stripe';
+        schedule.providerStatus = intent.status;
+        return this.failStuckSchedule(
+            schedule,
+            `Stripe intent ${intent.status}`,
+            'stripe'
+        );
     }
 
-    static async failStuckSchedule(schedule) {
-        schedule.status = 'failed';
-        schedule.error =
-            'Stuck in processing; no successful charge confirmed (reaped for manual review)';
+    static async reconcilePaystackCharge(schedule) {
+        schedule.provider = 'paystack';
+        const reference = this.paystackReferenceFor(schedule);
+        if (!reference) {
+            return this.failStuckSchedule(
+                schedule,
+                'no Paystack reference available to verify',
+                'paystack'
+            );
+        }
+
+        let response;
+        try {
+            response = await paystack.transaction.verify({ reference });
+        } catch (error) {
+            if (this.isNonRetryableProviderError(error)) {
+                return this.failStuckSchedule(
+                    schedule,
+                    `Paystack could not verify reference ${reference}: ${error.message}`,
+                    'paystack'
+                );
+            }
+            throw error;
+        }
+
+        const data = (response && response.data) || {};
+        const status = data.status ? String(data.status).toLowerCase() : null;
+        const actualReference = data.reference || reference;
+
+        schedule.providerStatus = status || 'unknown';
+        schedule.paystackReference = actualReference;
+
+        if (status === 'success') {
+            return this.completeReconciledSchedule(
+                schedule,
+                'paystack',
+                `Paystack reference ${actualReference}`
+            );
+        }
+
+        if (PAYSTACK_PENDING_STATUSES.has(status)) {
+            // Not final yet — do not touch the row.
+            return 'pending';
+        }
+
+        if (!status) {
+            const detail = response && response.message ? `: ${response.message}` : '';
+            return this.failStuckSchedule(
+                schedule,
+                `Paystack verify returned no transaction status for reference ${reference}${detail}`,
+                'paystack'
+            );
+        }
+
+        return this.failStuckSchedule(
+            schedule,
+            `Paystack transaction ${actualReference} is ${status}`,
+            'paystack'
+        );
+    }
+
+    static async reconcileFlutterwaveCharge(schedule) {
+        schedule.provider = 'flutterwave';
+        const transactionId = schedule.flutterwaveTransactionId || null;
+
+        if (!transactionId) {
+            return this.failStuckSchedule(
+                schedule,
+                `Flutterwave transaction id was not persisted (expected tx_ref ${this.flutterwaveTxRefFor(schedule)}); the configured client can only verify by id`,
+                'flutterwave'
+            );
+        }
+
+        let response;
+        try {
+            response = await flutterwave.Transaction.verify({ id: transactionId });
+        } catch (error) {
+            if (this.isNonRetryableProviderError(error)) {
+                return this.failStuckSchedule(
+                    schedule,
+                    `Flutterwave could not verify transaction ${transactionId}: ${error.message}`,
+                    'flutterwave'
+                );
+            }
+            throw error;
+        }
+
+        const data = (response && response.data) || {};
+        const status = data.status ? String(data.status).toLowerCase() : null;
+        const actualId = data.id != null ? String(data.id) : String(transactionId);
+
+        schedule.providerStatus = status || 'unknown';
+        schedule.flutterwaveTransactionId = actualId;
+
+        if (status && FLUTTERWAVE_SUCCESS_STATUSES.has(status)) {
+            return this.completeReconciledSchedule(
+                schedule,
+                'flutterwave',
+                `Flutterwave transaction ${actualId}`
+            );
+        }
+
+        if (FLUTTERWAVE_PENDING_STATUSES.has(status)) {
+            // Not final yet — do not touch the row.
+            return 'pending';
+        }
+
+        if (!status) {
+            const detail = response && response.message ? `: ${response.message}` : '';
+            return this.failStuckSchedule(
+                schedule,
+                `Flutterwave verify returned no transaction status for id ${transactionId}${detail}`,
+                'flutterwave'
+            );
+        }
+
+        return this.failStuckSchedule(
+            schedule,
+            `Flutterwave transaction ${actualId} is ${status}`,
+            'flutterwave'
+        );
+    }
+
+    static async completeReconciledSchedule(schedule, provider, detail) {
+        schedule.provider = provider;
+        schedule.status = 'completed';
+        schedule.completedAt = schedule.completedAt || new Date();
+        schedule.reconciledAt = new Date();
         await schedule.save();
 
         console.warn(
-            `Billing reaper: schedule ${schedule._id} could not be confirmed as charged — marked failed for manual review; it will not be retried automatically.`
+            `Billing reaper: schedule ${schedule._id} was actually charged (${detail}) but never completed — marked completed; verify the subscription state manually.`
+        );
+        return 'completed';
+    }
+
+    static isNonRetryableProviderError(error) {
+        if (!error) return false;
+        if (/not configured/i.test(error.message || '')) return true;
+        const status = error.response && error.response.status;
+        return status === 400 || status === 401 || status === 403 || status === 404;
+    }
+
+    static async failStuckSchedule(
+        schedule,
+        reason = 'no successful charge confirmed',
+        provider = this.providerForSchedule(schedule)
+    ) {
+        schedule.provider = provider;
+        schedule.status = 'failed';
+        schedule.error = `Stuck in processing; ${reason} (reaped for manual review)`;
+        schedule.reconciledAt = new Date();
+        await schedule.save();
+
+        console.warn(
+            `Billing reaper: ${provider} schedule ${schedule._id} could not be confirmed as charged (${reason}) — marked failed for manual review; it will not be retried automatically.`
         );
         return 'failed';
     }
@@ -327,6 +565,9 @@ class BillingScheduler {
         const now = new Date();
         return await BillingSchedule.find({
             status: 'pending',
+            // This scheduler owns Stripe; provider schedulers own their rows.
+            // Legacy rows without a provider field default to Stripe.
+            $or: [{ provider: 'stripe' }, { provider: { $exists: false } }, { provider: null }],
             scheduledFor: { $lte: now }
         }).populate('userId subscriptionId');
     }

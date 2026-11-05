@@ -2,17 +2,17 @@ import { useRouter } from 'next/router';
 import { Inbox, AlertCircle, ChevronRight } from 'lucide-react';
 
 const STATUS_STYLES = {
-  pending: { bg: 'rgba(154,161,174,0.1)', text: '#9aa1ae', label: 'Pending' },
-  in_progress: { bg: 'rgba(47,214,230,0.12)', text: '#2fd6e6', label: 'In Progress' },
+  pending: { bg: 'rgba(154,174,186,0.1)', text: '#9aaeba', label: 'Pending' },
+  in_progress: { bg: 'rgba(18,220,229,0.12)', text: '#12dce5', label: 'In Progress' },
   in_review: { bg: 'rgba(229,184,74,0.12)', text: '#e5b84a', label: 'In Review' },
-  completed: { bg: 'rgba(52,211,153,0.12)', text: '#34d399', label: 'Completed' },
+  completed: { bg: 'rgba(3,186,3,0.12)', text: '#03ba03', label: 'Completed' },
 };
 
 const PRIORITY_STYLES = {
   low: { dot: '#7d8494' },
-  medium: { dot: '#2fd6e6' },
+  medium: { dot: '#12dce5' },
   high: { dot: '#e5b84a' },
-  urgent: { dot: '#f87171' },
+  urgent: { dot: '#ec1414' },
 };
 
 export default function MyQueue({ tasks = [] }) {
@@ -51,7 +51,7 @@ export default function MyQueue({ tasks = [] }) {
                 <span className="pill" style={{ background: status.bg, color: status.text }}>
                   {status.label}
                 </span>
-                <span className="pill pill-mono" style={{ background: 'rgba(255,255,255,0.05)', color: '#9aa1ae' }}>
+                <span className="pill pill-mono" style={{ background: 'rgba(255,255,255,0.05)', color: '#9aaeba' }}>
                   {task.priority}
                 </span>
                 {dueLabel && (

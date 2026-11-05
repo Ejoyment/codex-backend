@@ -1,4 +1,6 @@
 import { isTokenExpired, rateLimit, sanitizeInput } from './security';
+import { getDemoApiResponse, isDemoTourActive } from './demoFixtures';
+export { isDemoTourActive };
 
 // Normalize the API origin: strip trailing slashes and a trailing `/api` so an
 // env value like `https://host/api` never doubles the prefix when combined with
@@ -11,7 +13,7 @@ export function normalizeApiBaseUrl(raw) {
     .replace(/\/+$/, '');
 }
 
-export const API_BASE_URL = normalizeApiBaseUrl(process.env.NEXT_PUBLIC_API_URL || 'https://codex-backend-7utu.onrender.com');
+export const API_BASE_URL = normalizeApiBaseUrl(process.env.NEXT_PUBLIC_API_URL || '');
 // Realtime endpoints share the backend origin unless overridden — never fall
 // back to localhost in production (REST-on-render + socket-on-localhost is a
 // guaranteed split failure).
@@ -20,6 +22,10 @@ const DEFAULT_TIMEOUT_MS = 15000;
 const MAX_RETRIES = 2;
 
 export async function apiFetch(path, options = {}) {
+  if (isDemoTourActive()) {
+    return getDemoApiResponse(path, options);
+  }
+
   const { timeoutMs = DEFAULT_TIMEOUT_MS, ...requestOptions } = options;
   const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
 
@@ -57,71 +63,75 @@ export async function apiFetch(path, options = {}) {
     delete headers['Content-Type'];
   }
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
   let lastError;
-  try {
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-      try {
-        const res = await fetch(`${API_BASE_URL}${path}`, {
-          ...requestOptions,
-          headers,
-          signal: controller.signal,
-        });
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    // A fresh controller per attempt: reusing an aborted controller made every
+    // retry after a timeout fail immediately with AbortError.
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(`${API_BASE_URL}${path}`, {
+        ...requestOptions,
+        headers,
+        signal: controller.signal,
+      });
 
-        if (res.status === 429) {
-          const retryAfter = parseInt(res.headers.get('Retry-After') || '5', 10);
-          const error = new Error(`Rate limited. Retry after ${retryAfter}s`);
-          error.status = 429;
-          throw error;
-        }
+      if (res.status === 429) {
+        const parsed = parseInt(res.headers.get('Retry-After') || '5', 10);
+        const retryAfter = Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), 30) : 5;
+        const error = new Error(`Rate limited. Retry after ${retryAfter}s`);
+        error.status = 429;
+        error.retryAfter = retryAfter;
+        throw error;
+      }
 
-        const data = await res.json().catch(() => ({}));
+      const data = await res.json().catch(() => ({}));
 
-        if (res.status === 401) {
-          if (typeof window !== 'undefined' && !options.returnErrorData) {
-            localStorage.removeItem('authToken');
-            localStorage.removeItem('user');
-            localStorage.removeItem('subscription');
-            localStorage.removeItem('auth-storage');
-            localStorage.removeItem('supportAgent');
-            localStorage.removeItem('supportAgentToken');
-            window.location.href = '/sign_in';
-          }
-          const error = new Error(data.message || 'Unauthorized');
-          error.status = 401;
-          error.data = data;
-          throw error;
+      if (res.status === 401) {
+        if (typeof window !== 'undefined' && !options.returnErrorData) {
+          localStorage.removeItem('authToken');
+          localStorage.removeItem('user');
+          localStorage.removeItem('subscription');
+          localStorage.removeItem('auth-storage');
+          localStorage.removeItem('supportAgent');
+          localStorage.removeItem('supportAgentToken');
+          window.location.href = '/sign_in';
         }
+        const error = new Error(data.message || 'Unauthorized');
+        error.status = 401;
+        error.data = data;
+        throw error;
+      }
 
-        if (!res.ok && !options.returnErrorData) {
-          const error = new Error(data.message || data.error || 'API request failed');
-          error.status = res.status;
-          error.data = data;
-          throw error;
-        }
+      if (!res.ok && !options.returnErrorData) {
+        const error = new Error(data.message || data.error || 'API request failed');
+        error.status = res.status;
+        error.data = data;
+        throw error;
+      }
 
-        return data;
-      } catch (err) {
-        lastError = err;
-        if (err.name === 'AbortError') {
-          throw new Error('Request timed out');
-        }
-        if (err.message === 'Session expired' || err.message === 'Unauthorized') {
-          throw err;
-        }
-        if (attempt < MAX_RETRIES && !requestOptions.method) {
-          await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
-          continue;
-        }
+      return data;
+    } catch (err) {
+      lastError = err;
+      if (err.name === 'AbortError') {
+        throw new Error('Request timed out');
+      }
+      if (err.message === 'Session expired' || err.message === 'Unauthorized') {
         throw err;
       }
+      if (attempt < MAX_RETRIES && method === 'GET') {
+        const delayMs = err.status === 429
+          ? (err.retryAfter || 5) * 1000
+          : 1000 * (attempt + 1);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        continue;
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeoutId);
     }
-    throw lastError;
-  } finally {
-    clearTimeout(timeoutId);
   }
+  throw lastError;
 }
 
 export function sanitize(body) {
@@ -198,26 +208,26 @@ export const companyApi = {
 };
 
 export const subscriptionApi = {
-  getCurrent: () => apiFetch('/api/subscription/current'),
-  // `mode` is 'period_end' (default, keeps access until the paid period runs
-  // out) or 'immediate' (revoke at once). The API decides the right default;
-  // only send it when the user explicitly asked to lose access now.
-  cancel: (mode) =>
-    apiFetch('/api/subscription/cancel', {
-      method: 'POST',
-      body: JSON.stringify(mode ? { mode } : {}),
-    }),
-  resume: () => apiFetch('/api/subscription/resume', { method: 'POST' }),
+  getCurrent: () => apiFetch('/api/v1/billing/subscription/current'),
+  // User-initiated cancellation is always period-end; immediate revocation is
+  // reserved for abuse/refund handling and is not exposed to the client.
+  cancel: () => apiFetch('/api/v1/billing/cancel', { method: 'POST' }),
+  resume: () => apiFetch('/api/v1/billing/subscription/resume', { method: 'POST' }),
   // Downgrades and moves to Free. Upgrades must go through checkout instead.
   changePlan: (tier, timing) =>
-    apiFetch('/api/subscription/change-plan', {
+    apiFetch('/api/v1/billing/subscription/change-plan', {
       method: 'POST',
       body: JSON.stringify({ tier, timing }),
+    }),
+  setOverage: (enabled) =>
+    apiFetch('/api/v1/billing/subscription/overage', {
+      method: 'POST',
+      body: JSON.stringify({ enabled }),
     }),
 };
 
 export const billingApi = {
-  getTrial: () => apiFetch('/api/trial-billing/status'),
+  getTrial: () => apiFetch('/api/v1/billing/trial/status'),
 };
 
 export const integrationApi = {
@@ -242,6 +252,7 @@ export const githubApi = {
     return apiFetch(`/api/github/repos${qs ? `?${qs}` : ''}`);
   },
   getRepo: (owner, repo) => apiFetch(`/api/github/repos/${owner}/${repo}`),
+  getBranches: (owner, repo) => apiFetch(`/api/github/repos/${owner}/${repo}/branches`),
   getCommits: (owner, repo, params = {}) => {
     const qs = new URLSearchParams(params).toString();
     return apiFetch(`/api/github/repos/${owner}/${repo}/commits${qs ? `?${qs}` : ''}`);
@@ -339,6 +350,11 @@ export const projectApi = {
       body: JSON.stringify(data),
     }),
   get: (projectId) => apiFetch(`/api/projects/${projectId}`),
+  getProvisioning: (projectId) => apiFetch(`/api/projects/${projectId}/provisioning`),
+  retryProvisioning: (projectId) =>
+    apiFetch(`/api/projects/${projectId}/provisioning/retry`, {
+      method: 'POST',
+    }),
   listProjectFiles: (projectId) => apiFetch(`/api/projects/${projectId}/files`),
   listTasks: () => apiFetch('/api/projects/tasks'),
   getTask: (taskId) => apiFetch(`/api/projects/tasks/${taskId}`),
@@ -364,7 +380,7 @@ export const agentApi = {
     apiFetch('/api/v1/agent/delegate', {
       method: 'POST',
       body: JSON.stringify(data),
-      timeoutMs: 120000,
+      timeoutMs: 300000,
     }),
   sessions: () => apiFetch('/api/v1/agent/sessions'),
   status: (taskId) => apiFetch(`/api/v1/agent/status/${taskId}`),

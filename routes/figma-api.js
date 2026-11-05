@@ -1,3 +1,4 @@
+const { sendInternalError } = require('../utils/httpErrors');
 const express = require('express');
 const router = express.Router();
 const axios = require('axios');
@@ -104,7 +105,7 @@ router.get('/me', authenticateToken, async (req, res) => {
         const user = await figmaAPI(integration.accessToken, '/me');
         res.json({ success: true, user });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -133,7 +134,10 @@ router.get('/files', authenticateToken, async (req, res) => {
         const files = await figmaAPI(integration.accessToken, `/projects/${projectId}/files`);
         res.json({ success: true, files: files.files });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        if (error.message === 'Figma not connected') {
+            return res.json({ success: true, files: [], connected: false });
+        }
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -147,7 +151,7 @@ router.get('/files/:fileKey', authenticateToken, async (req, res) => {
         const file = await figmaAPI(integration.accessToken, `/files/${fileKey}?geometry=${geometry}`);
         res.json({ success: true, file });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -161,7 +165,7 @@ router.get('/files/:fileKey/nodes', authenticateToken, async (req, res) => {
         const nodes = await figmaAPI(integration.accessToken, `/files/${fileKey}/nodes?ids=${ids}`);
         res.json({ success: true, nodes });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -175,7 +179,7 @@ router.get('/images/:fileKey', authenticateToken, async (req, res) => {
         const images = await figmaAPI(integration.accessToken, `/images/${fileKey}?ids=${ids}&scale=${scale}&format=${format}`);
         res.json({ success: true, images });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -188,7 +192,7 @@ router.get('/files/:fileKey/versions', authenticateToken, async (req, res) => {
         const versions = await figmaAPI(integration.accessToken, `/files/${fileKey}/versions`);
         res.json({ success: true, versions: versions.versions });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -201,7 +205,7 @@ router.get('/files/:fileKey/comments', authenticateToken, async (req, res) => {
         const comments = await figmaAPI(integration.accessToken, `/files/${fileKey}/comments`);
         res.json({ success: true, comments: comments.comments });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -215,7 +219,7 @@ router.post('/files/:fileKey/comments', authenticateToken, async (req, res) => {
         const comment = await figmaAPI(integration.accessToken, `/files/${fileKey}/comments`, 'POST', { message, client_meta });
         res.json({ success: true, comment });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -228,7 +232,7 @@ router.get('/teams/:teamId/projects', authenticateToken, async (req, res) => {
         const projects = await figmaAPI(integration.accessToken, `/teams/${teamId}/projects`);
         res.json({ success: true, projects: projects.projects });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -241,7 +245,7 @@ router.get('/projects/:projectId/files', authenticateToken, async (req, res) => 
         const files = await figmaAPI(integration.accessToken, `/projects/${projectId}/files`);
         res.json({ success: true, files: files.files });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -254,7 +258,7 @@ router.get('/components/:key', authenticateToken, async (req, res) => {
         const component = await figmaAPI(integration.accessToken, `/components/${key}`);
         res.json({ success: true, component: component.meta });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -267,7 +271,7 @@ router.get('/component_sets/:key', authenticateToken, async (req, res) => {
         const componentSet = await figmaAPI(integration.accessToken, `/component_sets/${key}`);
         res.json({ success: true, componentSet: componentSet.meta });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -280,7 +284,7 @@ router.get('/styles/:key', authenticateToken, async (req, res) => {
         const style = await figmaAPI(integration.accessToken, `/styles/${key}`);
         res.json({ success: true, style: style.meta });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -467,7 +471,7 @@ router.get('/status', authenticateToken, async (req, res) => {
             account: integration ? integration.accountEmail : null
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -495,7 +499,7 @@ router.delete('/disconnect', authenticateToken, async (req, res) => {
 
         res.json({ success: true, message: 'Figma disconnected' });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 

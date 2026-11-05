@@ -14,7 +14,18 @@ const BRANCH_RE = /^[A-Za-z0-9._\/-]{1,128}$/;
 function assertSafeBranch(v, name='branch') { if (typeof v !== 'string' || !BRANCH_RE.test(v) || v.startsWith('-') || v.includes('..') || v.includes('@{') || v.includes(':')) throw new Error(`Invalid ${name}`); }
 function assertSafeCommit(v) { if (typeof v !== 'string' || !/^[0-9a-f]{4,40}$/i.test(v)) throw new Error('Invalid commit'); }
 function assertSafeRemote(v) { if (typeof v !== 'string' || !/^\w[\w.-]{0,63}$/.test(v)) throw new Error('Invalid remote'); }
-function assertSafePath(v) { if (typeof v !== 'string' || v.includes('..') || /(^|\/)-/.test(v)) throw new Error('Invalid path'); for (const s of v.split('/')) { if (s.length && !/^[a-zA-Z0-9._-]+$/.test(s)) throw new Error('Invalid path'); } }
+function assertSafePath(v) {
+  if (typeof v !== 'string' || !v || v.includes('\\') || v.includes(':') || /[\u0000-\u001f\u007f]/.test(v)) {
+    throw new Error('Invalid path');
+  }
+  const relativePath = v.replace(/^\/+/, '');
+  const segments = relativePath.split('/');
+  if (!relativePath || segments.some((segment) => (
+    !segment || segment === '.' || segment === '..' || segment.startsWith('-')
+  ))) {
+    throw new Error('Invalid path');
+  }
+}
 function clampLimit(v, def=50, max=200) { const n = parseInt(v, 10); if (!Number.isFinite(n)) return def; return Math.min(Math.max(n, 1), max); }
 function assertSafeMessage(v, name='message') { if (typeof v !== 'string') throw new Error(`Invalid ${name}`); if (v.length > 500) throw new Error(`Invalid ${name}`); if (v.trim().startsWith('-')) throw new Error(`Invalid ${name}`); }
 function toFileArray(files) { const arr = Array.isArray(files) ? files : [files]; for (const f of arr) assertSafePath(f); return ['--', ...arr]; }
@@ -23,25 +34,76 @@ class GitService {
   constructor() {
     this.repositories = new Map(); // workspaceId -> git instance
     this.workspacePaths = new Map(); // workspaceId -> path
+    this.repositoryLocks = new Map();
+  }
+
+  repositoryKey(workspaceId, projectId = null, executionId = null) {
+    if (executionId && !/^[a-f\d]{24}$/i.test(String(executionId))) {
+      throw new Error('Invalid execution ID');
+    }
+    return executionId
+      ? `${workspaceId}:project:${projectId || 'workspace'}:execution:${executionId}`
+      : projectId ? `${workspaceId}:project:${projectId}` : String(workspaceId);
+  }
+
+  repositoryPath(workspaceId, projectId = null) {
+    return projectId
+      ? path.join(os.tmpdir(), 'codex-git', String(workspaceId), 'projects', String(projectId))
+      : path.join(os.tmpdir(), 'codex-git', String(workspaceId));
+  }
+
+  agentWorktreePath(workspaceId, projectId, executionId) {
+    return path.join(
+      os.tmpdir(),
+      'codex-git-worktrees',
+      String(workspaceId),
+      String(projectId || 'workspace'),
+      String(executionId)
+    );
+  }
+
+  async withRepositoryLock(workspaceId, projectId, operation) {
+    const key = this.repositoryKey(workspaceId, projectId);
+    const previous = this.repositoryLocks.get(key) || Promise.resolve();
+    let release;
+    const current = new Promise((resolve) => { release = resolve; });
+    const queued = previous.then(() => current);
+    this.repositoryLocks.set(key, queued);
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release();
+      if (this.repositoryLocks.get(key) === queued) this.repositoryLocks.delete(key);
+    }
   }
 
   /**
    * Get or create git instance for workspace
    */
-  async getGit(workspaceId) {
+  async getGit(workspaceId, projectId = null, executionId = null) {
     assertValidWorkspaceId(workspaceId);
-
-    if (this.repositories.has(workspaceId)) {
-      return this.repositories.get(workspaceId);
+    if (projectId && !/^[a-f\d]{24}$/i.test(String(projectId))) {
+      throw new Error('Invalid project ID');
     }
 
-    // Create workspace directory
-    const workspacePath = path.join(os.tmpdir(), 'codex-git', workspaceId);
-    await fs.mkdir(workspacePath, { recursive: true });
+    const repositoryKey = this.repositoryKey(workspaceId, projectId, executionId);
+    if (this.repositories.has(repositoryKey)) {
+      return this.repositories.get(repositoryKey);
+    }
+
+    const workspacePath = executionId
+      ? this.agentWorktreePath(workspaceId, projectId, executionId)
+      : this.repositoryPath(workspaceId, projectId);
+    if (executionId) {
+      await fs.access(workspacePath);
+    } else {
+      await fs.mkdir(workspacePath, { recursive: true });
+    }
 
     const git = simpleGit(workspacePath);
-    this.repositories.set(workspaceId, git);
-    this.workspacePaths.set(workspaceId, workspacePath);
+    this.repositories.set(repositoryKey, git);
+    this.workspacePaths.set(repositoryKey, workspacePath);
 
     return git;
   }
@@ -49,9 +111,9 @@ class GitService {
   /**
    * Initialize Git repository
    */
-  async init(workspaceId, options = {}) {
+  async init(workspaceId, options = {}, projectId = null) {
     try {
-      const git = await this.getGit(workspaceId);
+      const git = await this.getGit(workspaceId, projectId);
       await git.init();
 
       // Set default config
@@ -71,17 +133,22 @@ class GitService {
    * always clean and commits capture nothing. Also prunes files that were
    * deleted from the VFS so git sees the deletions.
    */
-  async hydrateFromVFS(workspaceId) {
+  async hydrateFromVFS(workspaceId, projectId = null) {
     assertValidWorkspaceId(workspaceId);
+    if (projectId && !/^[a-f\d]{24}$/i.test(String(projectId))) {
+      throw new Error('Invalid project ID');
+    }
     const CodeFile = require('../models/CodeFile');
     const vfs = require('./virtualFileSystem');
 
-    const workspacePath =
-      this.workspacePaths.get(workspaceId) ||
-      path.join(os.tmpdir(), 'codex-git', workspaceId);
+    const repositoryKey = this.repositoryKey(workspaceId, projectId);
+    const workspacePath = this.workspacePaths.get(repositoryKey) || this.repositoryPath(workspaceId, projectId);
     await fs.mkdir(workspacePath, { recursive: true });
 
-    const docs = await CodeFile.find({ company: workspaceId })
+    const docs = await CodeFile.find({
+      company: workspaceId,
+      ...(projectId ? { project: String(projectId) } : {}),
+    })
       .select('name path content')
       .lean();
 
@@ -117,11 +184,14 @@ class GitService {
   /**
    * Get repository status
    */
-  async status(workspaceId) {
+  async status(workspaceId, projectId = null) {
     try {
-      await this.hydrateFromVFS(workspaceId).catch(() => {});
-      const git = await this.getGit(workspaceId);
-      const status = await git.status();
+      const git = await this.getGit(workspaceId, projectId);
+      let status = await git.status();
+      if (status.isClean() && ['main', 'master'].includes(status.current)) {
+        await this.hydrateFromVFS(workspaceId, projectId);
+        status = await git.status();
+      }
 
       return {
         success: true,
@@ -145,16 +215,14 @@ class GitService {
   /**
    * Get file diff
    */
-  async diff(workspaceId, file = null) {
+  async diff(workspaceId, file = null, projectId = null) {
     try {
-      await this.hydrateFromVFS(workspaceId).catch(() => {});
-      const git = await this.getGit(workspaceId);
-      let diffArgs;
-      if (file) {
-        assertSafePath(file);
-        diffArgs = ['--', file];
-      }
-      const diffText = file ? await git.diff(diffArgs) : await git.diff();
+      const git = await this.getGit(workspaceId, projectId);
+      if (file) assertSafePath(file);
+      const fileArgs = file ? ['--', file] : [];
+      const stagedDiff = await git.diff(['--cached', ...fileArgs]);
+      const unstagedDiff = await git.diff(fileArgs);
+      const diffText = [stagedDiff, unstagedDiff].filter(Boolean).join('\n');
 
       const parsed = this.parseDiff(diffText);
 
@@ -221,10 +289,13 @@ class GitService {
   /**
    * Stage files
    */
-  async add(workspaceId, files) {
+  async add(workspaceId, files, projectId = null) {
     try {
-      await this.hydrateFromVFS(workspaceId).catch(() => {});
-      const git = await this.getGit(workspaceId);
+      const git = await this.getGit(workspaceId, projectId);
+      const current = await git.status();
+      if (current.isClean() && ['main', 'master'].includes(current.current)) {
+        await this.hydrateFromVFS(workspaceId, projectId);
+      }
       await git.add(toFileArray(files));
 
       return { success: true, message: 'Files staged' };
@@ -237,12 +308,19 @@ class GitService {
   /**
    * Unstage files
    */
-  async reset(workspaceId, files) {
+  async reset(workspaceId, files, projectId = null) {
     try {
-      const git = await this.getGit(workspaceId);
+      const git = await this.getGit(workspaceId, projectId);
       const arr = Array.isArray(files) ? files : [files];
       for (const f of arr) assertSafePath(f);
-      await git.reset(['HEAD', '--', ...arr]);
+      const hasHead = await git.raw(['rev-parse', '--verify', 'HEAD'])
+        .then(() => true)
+        .catch((error) => {
+          if (/Needed a single revision|unknown revision|ambiguous argument/i.test(error.message || '')) return false;
+          throw error;
+        });
+      if (hasHead) await git.reset(['HEAD', '--', ...arr]);
+      else await git.raw(['rm', '--cached', '--ignore-unmatch', '--', ...arr]);
 
       return { success: true, message: 'Files unstaged' };
     } catch (error) {
@@ -254,14 +332,13 @@ class GitService {
   /**
    * Commit changes
    */
-  async commit(workspaceId, message, files = null) {
+  async commit(workspaceId, message, projectId = null) {
     try {
       assertSafeMessage(message);
-      await this.hydrateFromVFS(workspaceId).catch(() => {});
-      const git = await this.getGit(workspaceId);
-
-      if (files) {
-        await git.add(toFileArray(files));
+      const git = await this.getGit(workspaceId, projectId);
+      const status = await git.status();
+      if (!(status.staged || []).length) {
+        return { success: false, error: 'No staged changes to commit' };
       }
 
       const result = await git.commit(message);
@@ -283,7 +360,7 @@ class GitService {
    */
   async log(workspaceId, options = {}) {
     try {
-      const git = await this.getGit(workspaceId);
+      const git = await this.getGit(workspaceId, options.projectId || null);
       if (options.file) assertSafePath(options.file);
       const log = await git.log({
         maxCount: clampLimit(options.limit),
@@ -309,9 +386,9 @@ class GitService {
   /**
    * List branches
    */
-  async branches(workspaceId) {
+  async branches(workspaceId, projectId = null) {
     try {
-      const git = await this.getGit(workspaceId);
+      const git = await this.getGit(workspaceId, projectId);
       const branches = await git.branchLocal();
 
       return {
@@ -329,10 +406,10 @@ class GitService {
   /**
    * Create new branch
    */
-  async createBranch(workspaceId, branchName) {
+  async createBranch(workspaceId, branchName, projectId = null) {
     try {
       assertSafeBranch(branchName, 'branchName');
-      const git = await this.getGit(workspaceId);
+      const git = await this.getGit(workspaceId, projectId);
       await git.checkoutLocalBranch(branchName);
 
       return { success: true, branch: branchName };
@@ -342,13 +419,76 @@ class GitService {
     }
   }
 
+  async createAgentWorktree(workspaceId, branchName, baseBranch, projectId, executionId) {
+    try {
+      assertValidWorkspaceId(workspaceId);
+      this.repositoryKey(workspaceId, projectId, executionId);
+      assertSafeBranch(branchName, 'branchName');
+      assertSafeBranch(baseBranch, 'baseBranch');
+      const worktreePath = this.agentWorktreePath(workspaceId, projectId, executionId);
+      return await this.withRepositoryLock(workspaceId, projectId, async () => {
+        const initializedRepo = await this.init(workspaceId, {}, projectId);
+        if (!initializedRepo.success) throw new Error(initializedRepo.error || 'Could not initialize project Git repository');
+        const initialized = await this.ensureBaseCommit(
+          workspaceId,
+          baseBranch,
+          'Initialize project from VFS',
+          projectId
+        );
+        if (!initialized.success) throw new Error(initialized.error || 'Could not initialize base branch');
+        const git = await this.getGit(workspaceId, projectId);
+        const branches = await git.branchLocal();
+        if (branches.all.includes(branchName)) throw new Error(`Branch ${branchName} already exists`);
+        try {
+          await fs.lstat(worktreePath);
+          const worktrees = await git.raw(['worktree', 'list', '--porcelain']);
+          if (worktrees.split('\n').some((line) => line === `worktree ${worktreePath}`)) {
+            throw new Error(`Agent worktree is already registered: ${worktreePath}`);
+          }
+          await fs.rm(worktreePath, { recursive: true, force: true });
+        } catch (error) {
+          if (error.code !== 'ENOENT') throw error;
+        }
+        await fs.mkdir(path.dirname(worktreePath), { recursive: true });
+        await git.raw(['worktree', 'add', '-b', branchName, worktreePath, baseBranch]);
+        return { success: true, branch: branchName, worktreePath };
+      });
+    } catch (error) {
+      console.error('Git create agent worktree error:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  async removeAgentWorktree(workspaceId, projectId, executionId, { branchName = null, deleteBranch = false } = {}) {
+    try {
+      assertValidWorkspaceId(workspaceId);
+      this.repositoryKey(workspaceId, projectId, executionId);
+      const worktreePath = this.agentWorktreePath(workspaceId, projectId, executionId);
+      return await this.withRepositoryLock(workspaceId, projectId, async () => {
+        const git = await this.getGit(workspaceId, projectId);
+        const worktrees = await git.raw(['worktree', 'list', '--porcelain']);
+        const registered = worktrees.split('\n').some((line) => line === `worktree ${worktreePath}`);
+        if (registered) await git.raw(['worktree', 'remove', '--force', worktreePath]);
+        if (deleteBranch && branchName) {
+          assertSafeBranch(branchName, 'branchName');
+          const branches = await git.branchLocal();
+          if (branches.all.includes(branchName)) await git.deleteLocalBranch(branchName, true);
+        }
+        return { success: true, removed: registered };
+      });
+    } catch (error) {
+      console.error('Git remove agent worktree error:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
   /**
    * Switch branch
    */
-  async checkout(workspaceId, branchName) {
+  async checkout(workspaceId, branchName, projectId = null) {
     try {
       assertSafeBranch(branchName, 'branchName');
-      const git = await this.getGit(workspaceId);
+      const git = await this.getGit(workspaceId, projectId);
       await git.checkout(branchName);
 
       return { success: true, branch: branchName };
@@ -361,10 +501,10 @@ class GitService {
   /**
    * Merge branch
    */
-  async merge(workspaceId, branchName) {
+  async merge(workspaceId, branchName, projectId = null) {
     try {
       assertSafeBranch(branchName, 'branchName');
-      const git = await this.getGit(workspaceId);
+      const git = await this.getGit(workspaceId, projectId);
       const result = await git.merge([branchName]);
 
       return {
@@ -372,14 +512,21 @@ class GitService {
         result: result
       };
     } catch (error) {
+      try {
+        const git = await this.getGit(workspaceId, projectId);
+        const status = await git.status();
+        if ((status.conflicted || []).length) await git.raw(['merge', '--abort']);
+      } catch (abortError) {
+        error.message = `${error.message}; merge cleanup failed: ${abortError.message}`;
+      }
       console.error('Git merge error:', error);
       return { success: false, error: error.message };
     }
   }
 
-  async deleteBranch(workspaceId, branchName, baseBranch = 'main') {
+  async deleteBranch(workspaceId, branchName, baseBranch = 'main', projectId = null) {
     try {
-      const git = await this.getGit(workspaceId);
+      const git = await this.getGit(workspaceId, projectId);
       const branches = await git.branchLocal();
       if (branches.current === branchName) await git.checkout(baseBranch);
       await git.deleteLocalBranch(branchName, true);
@@ -397,13 +544,19 @@ class GitService {
    * source of truth and must not be mirrored over the agent's staged files.
    * Paths are validated and confined to the workspace directory.
    */
-  async writeWorkingTree(workspaceId, changes) {
+  async writeWorkingTree(workspaceId, changes, projectId = null, executionId = null) {
     try {
       assertValidWorkspaceId(workspaceId);
-      const workspacePath =
-        this.workspacePaths.get(workspaceId) ||
-        path.join(os.tmpdir(), 'codex-git', workspaceId);
-      await fs.mkdir(workspacePath, { recursive: true });
+      if (projectId && !/^[a-f\d]{24}$/i.test(String(projectId))) {
+        throw new Error('Invalid project ID');
+      }
+      if (executionId) await this.getGit(workspaceId, projectId, executionId);
+      const repositoryKey = this.repositoryKey(workspaceId, projectId, executionId);
+      const workspacePath = this.workspacePaths.get(repositoryKey)
+        || (executionId
+          ? this.agentWorktreePath(workspaceId, projectId, executionId)
+          : this.repositoryPath(workspaceId, projectId));
+      if (!executionId) await fs.mkdir(workspacePath, { recursive: true });
 
       let written = 0;
       for (const change of changes || []) {
@@ -432,10 +585,15 @@ class GitService {
    * Stage and commit the working tree WITHOUT hydrating from the VFS, so the
    * agent's staged files survive. Used on the isolated agent branch.
    */
-  async commitWorkingTree(workspaceId, message = 'Agent changes', branch = null) {
+  async commitWorkingTree(workspaceId, message = 'Agent changes', branch = null, projectId = null, executionId = null) {
     try {
       assertSafeMessage(message);
-      const git = await this.getGit(workspaceId);
+      if (branch) assertSafeBranch(branch);
+      const git = await this.getGit(workspaceId, projectId, executionId);
+      const before = await git.status();
+      if (branch && before.current !== branch) {
+        throw new Error(`Agent worktree is on ${before.current || 'no branch'}, expected ${branch}`);
+      }
       await git.add(['-A']);
       const status = await git.status();
       if (!(status.staged || []).length) {
@@ -470,11 +628,11 @@ class GitService {
    * so a fresh feature branch has a real parent to merge back into. Without
    * this the tmpdir repo is unborn and `merge` has no base.
    */
-  async ensureBaseCommit(workspaceId, baseBranch = 'main', message = 'Initialize workspace from VFS') {
+  async ensureBaseCommit(workspaceId, baseBranch = 'main', message = 'Initialize workspace from VFS', projectId = null) {
     try {
       assertValidWorkspaceId(workspaceId);
       assertSafeBranch(baseBranch, 'baseBranch');
-      const git = await this.getGit(workspaceId);
+      const git = await this.getGit(workspaceId, projectId);
       const branches = await git.branchLocal();
 
       if (!branches.all.length) {
@@ -486,7 +644,7 @@ class GitService {
         await git.checkout(baseBranch);
       }
 
-      await this.hydrateFromVFS(workspaceId).catch(() => {});
+      await this.hydrateFromVFS(workspaceId, projectId).catch(() => {});
       await git.add(['-A']);
       const status = await git.status();
       if ((status.staged || []).length === 0) {

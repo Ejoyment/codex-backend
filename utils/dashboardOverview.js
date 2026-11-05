@@ -12,7 +12,7 @@ const Integration = require('../models/Integration');
 
 const OPEN_TASK_STATUSES = ['pending', 'in-progress', 'in_progress', 'in_review', 'backlog', 'blocked'];
 const DONE_TASK_STATUSES = ['completed', 'done'];
-const RUNNING_AGENT_STATUSES = ['queued', 'running', 'awaiting_review', 'awaiting_approval'];
+const RUNNING_AGENT_STATUSES = ['queued', 'running', 'awaiting_review', 'awaiting_approval', 'approving'];
 
 function initialsOf(name) {
     if (!name) return '··';
@@ -80,7 +80,7 @@ async function computeOverview(userId) {
             $or: [{ createdBy: userId }, ...(companyIds.length ? [{ companyId: { $in: companyIds } }] : [])],
         }).sort({ updatedAt: -1 }).limit(10).lean(),
         CodeChange.find({ userId }).sort({ createdAt: -1 }).limit(10).lean(),
-        Integration.find({ userId, isActive: true }).lean(),
+        Integration.find({ userId, isActive: true }).limit(50).lean(),
     ]);
 
     const [teamActivities, auditLogs, mcpServers] = await Promise.all([

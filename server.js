@@ -3,6 +3,7 @@ const cors = require('cors');
 const session = require('express-session');
 const passport = require('passport');
 const mongoose = require('mongoose');
+const mongoConnection = require('./utils/mongoConnection');
 const swaggerUi = require('swagger-ui-express');
 const swaggerSpecs = require('./config/swagger');
 require('dotenv').config();
@@ -46,6 +47,7 @@ if (require.main === module) {
 const authRoutes = require('./routes/auth');
 const otpRoutes = require('./routes/otp');
 const subscriptionRoutes = require('./routes/subscription');
+const legacyBillingDeprecation = require('./middleware/legacyBillingDeprecation');
 const integrationsRoutes = require('./routes/integrations');
 const aiPairRoutes = require('./routes/ai-pair');
 const codeEditorRoutes = require('./routes/code-editor');
@@ -72,7 +74,7 @@ const globalLimiter = rateLimit({
     max: 200,
     standardHeaders: true,
     legacyHeaders: false,
-    store: require('./utils/redis').getRateLimitStore(),
+    store: require('./utils/redis').getRateLimitStore('global'),
     passOnStoreError: true,
     message: { success: false, message: 'Too many requests, please try again later.' }
 });
@@ -82,6 +84,20 @@ const { checkTrialStatus, enforceProjectLimit, enforceAIAccess } = require('./mi
 const { enforceCreditPool, enforceCloudComputeLimit, enforceDeploymentLimit, enforceDebugRoomAccess, enforceDebugRoomLimit } = require('./middleware/tierEnforcement');
 const CreditPoolService = require('./utils/creditPoolService');
 const { enforceSecurityHeaders } = require('./utils/securityHeaders');
+
+// Post-connect initialization must run exactly once, whether the first
+// connection attempt succeeded (module-level .then below) or succeeded on the
+// retry inside mongoConnection.ensureConnected().
+let _postConnectInitStarted = false;
+function initAfterMongoConnect() {
+    if (_postConnectInitStarted) return;
+    _postConnectInitStarted = true;
+    CreditPoolService.resetMonthlyCredits();
+    if (process.env.NODE_ENV !== 'test') {
+        require('./middleware/auth').initLivenessRevocationSubscriber()
+            .catch((error) => console.warn('Auth revocation subscriber failed:', error.message));
+    }
+}
 
 let server = null;
 let io = null;
@@ -129,10 +145,27 @@ async function startServer(port = process.env.PORT || 3000) {
     const { server: srv, io: socket } = createServer();
 
     // No database, no traffic: a listening server with no DB serves 500s on
-    // every route. Wait for the connection (bounded) instead.
-    if (mongoose.connection.readyState !== 1) {
-        await mongoose.connect(process.env.MONGODB_URI, mongooseOptions);
-    }
+    // every route. Wait for the connection (bounded) instead. This awaits the
+    // module-level connect promise rather than calling mongoose.connect()
+    // again — a second call while the first is in flight returns immediately,
+    // and with bufferCommands disabled the createIndex() calls below would
+    // then throw "before initial connection is complete".
+    await mongoConnection.ensureConnected();
+    initAfterMongoConnect();
+    await Promise.all([
+        require('./models/BillingSchedule').collection.createIndex(
+            { idempotencyKey: 1 },
+            { unique: true, sparse: true }
+        ),
+        require('./models/EmailJob').collection.createIndex(
+            { dedupeKey: 1 },
+            { unique: true }
+        ),
+    ]);
+    require('./utils/emailJobWorker').startEmailJobWorker();
+    // Background repair for failed deployments (platform retries + agent
+    // edits for user-code failures).
+    require('./utils/deploymentSelfHeal').startSelfHealWorker();
 
     // createServer() is idempotent but the namespace wiring below is not
     // (io.of() returns the same namespace, so a second call would stack
@@ -229,6 +262,11 @@ async function startServer(port = process.env.PORT || 3000) {
 // Trust proxy (required for Render and other reverse proxies)
 app.set('trust proxy', 1);
 
+// Correlate every request with its logs and error envelope. Incoming ids are
+// accepted only when they match a narrow charset so a client cannot inject
+// log lines or response-splitting payloads.
+app.use(require('./utils/httpErrors').requestIdMiddleware);
+
 // Middleware
 app.use(cors({
     origin: function (origin, callback) {
@@ -310,10 +348,11 @@ require('./config/passport')(passport);
 // Note: useNewUrlParser and useUnifiedTopology are deprecated in Mongoose 8+
 const mongooseOptions = require('./config/mongoOptions');
 
-mongoose.connect(process.env.MONGODB_URI, mongooseOptions)
+mongoConnection.startInitialConnection()
 .then(() => {
     console.log('✓ MongoDB connected successfully');
     console.log('✓ Database:', mongoose.connection.name);
+    initAfterMongoConnect();
 })
 .catch(err => {
     console.error('✗ MongoDB connection error:', err.message);
@@ -398,7 +437,7 @@ app.use('/uploads', express.static(require('path').join(__dirname, 'uploads'), {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/otp', otpRoutes);
-app.use('/api/subscription', subscriptionRoutes);
+app.use('/api/subscription', legacyBillingDeprecation('legacy subscription API'), subscriptionRoutes);
 app.use('/api/integrations', integrationsRoutes);
 // Apply trial middleware to all dashboard routes (protected routes)
 app.use('/api/dashboard', checkTrialStatus, dashboardRoutes);
@@ -417,9 +456,9 @@ app.use('/api/messaging', messagingRoutes);
 app.use('/api/meetings', meetingsRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/admin', adminRoutes);
-app.use('/api/trial-billing', trialBillingRoutes);
-app.use('/api/paystack-billing', paystackBillingRoutes);
-app.use('/api/flutterwave-billing', flutterwaveBillingRoutes);
+app.use('/api/trial-billing', legacyBillingDeprecation('legacy trial billing API'), trialBillingRoutes);
+app.use('/api/paystack-billing', legacyBillingDeprecation('legacy Paystack billing API'), paystackBillingRoutes);
+app.use('/api/flutterwave-billing', legacyBillingDeprecation('legacy Flutterwave billing API'), flutterwaveBillingRoutes);
 app.use('/api/support', supportRoutes);
 app.use('/api/notifications', notificationsRoutes);
 // Public waitlist — signup, live counter and release blast (no auth)
@@ -456,14 +495,16 @@ app.use('/api/v1/specs', checkTrialStatus, specRoutes);
 // Phase 3 — Ephemeral Debug Rooms + Multi-rail billing (entitlement-gated)
 app.use('/api/v1/rooms', checkTrialStatus, enforceDebugRoomAccess(), enforceDebugRoomLimit(), roomsRoutes);
 app.use('/api/v1/billing', billingV1Routes);
+// P15 migration facade: the canonical namespace fronts the existing handlers
+// while they are extracted. Legacy URLs stay mounted only for old clients and
+// provider callbacks, and are deprecation-wrapped above.
+app.use('/api/v1/billing/subscription', subscriptionRoutes);
+app.use('/api/v1/billing/trial', trialBillingRoutes);
+app.use('/api/v1/billing/paystack', paystackBillingRoutes);
+app.use('/api/v1/billing/flutterwave', flutterwaveBillingRoutes);
 app.use('/api/projects', checkTrialStatus, enforceDeploymentLimit(), projectRoutes);
 app.use('/api/ai-context', figmaContextRoutes, teamMemoryRoutes, ticketBridgeRoutes);
 
-
-// Credit pool reset check (skipped in tests: no database to scan).
-if (process.env.NODE_ENV !== 'test') {
-    CreditPoolService.resetMonthlyCredits();
-}
 
 // Swagger API Documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs, {
@@ -591,11 +632,6 @@ app.use((req, res) => {
 // Error handling middleware
 app.use((err, req, res, next) => {
     if (res.headersSent) return next(err);
-    console.error(err.stack);
-    require('./utils/sentry').captureError(err, {
-        route: `${req.method} ${req.path}`,
-        userId: req.user && (req.user._id || req.user.id),
-    });
     // Client/origin problems are not server errors: CORS rejections and
     // malformed JSON bodies used to collapse into 500s.
     if (err.message === 'Not allowed by CORS') {
@@ -604,10 +640,8 @@ app.use((err, req, res, next) => {
     if (err.type === 'entity.parse.failed' || (err instanceof SyntaxError && err.status === 400)) {
         return res.status(400).json({ success: false, message: 'Malformed JSON body' });
     }
-    res.status(500).json({ 
-        success: false, 
+    return require('./utils/httpErrors').sendInternalError(req, res, err, {
         message: 'Something went wrong!',
-        error: process.env.NODE_ENV === 'development' ? err.message : undefined
     });
 });
 
@@ -618,6 +652,8 @@ const stopServer = async () => {
     try {
         const BillingCron = require('./utils/billingCron');
         if (BillingCron && BillingCron.stop) BillingCron.stop();
+        await require('./utils/emailJobWorker').stopEmailJobWorker();
+        await require('./utils/deploymentSelfHeal').stopSelfHealWorker();
 
         if (CreditPoolService && CreditPoolService.stop) CreditPoolService.stop();
 
@@ -867,6 +903,11 @@ terminalNamespace.use(async (socket, next) => {
     }
 });
 
+function terminalPublicError(error) {
+    if (error?.message === 'Invalid session') return 'Invalid session';
+    return 'Terminal operation failed. Please retry.';
+}
+
 terminalNamespace.on('connection', (socket) => {
     console.log(`Terminal connected: ${socket.userId}`);
     let currentSession = null;
@@ -889,10 +930,19 @@ terminalNamespace.on('connection', (socket) => {
                 return socket.emit('terminal:error', { message: permission.reason || 'Permission denied' });
             }
 
+            // Real PTY sessions are paid-only. Free accounts still get the
+            // VFS-backed simulated terminal, so they cannot reach a host shell
+            // by upgrading the socket payload.
+            const hostPermission = await permissionMatrix.checkPermission(
+                socket.userId,
+                'host',
+                'terminal'
+            );
+
             const result = await terminalService.createTerminal(
                 socket.userId,
                 workspaceId,
-                options
+                { ...(options || {}), allowHostShell: hostPermission.allowed }
             );
 
             currentSession = result.sessionId;
@@ -909,7 +959,7 @@ terminalNamespace.on('connection', (socket) => {
             console.log(`Terminal created: ${currentSession}`);
         } catch (error) {
             console.error('Terminal create error:', error);
-            socket.emit('terminal:error', { message: error.message });
+            socket.emit('terminal:error', { message: terminalPublicError(error) });
         }
     });
     
@@ -923,7 +973,7 @@ terminalNamespace.on('connection', (socket) => {
             terminalService.write(sessionId, data, currentToken);
         } catch (error) {
             console.error('Terminal input error:', error);
-            socket.emit('terminal:error', { message: error.message });
+            socket.emit('terminal:error', { message: terminalPublicError(error) });
         }
     });
     
@@ -937,7 +987,7 @@ terminalNamespace.on('connection', (socket) => {
             terminalService.resize(sessionId, cols, rows, currentToken);
         } catch (error) {
             console.error('Terminal resize error:', error);
-            socket.emit('terminal:error', { message: error.message });
+            socket.emit('terminal:error', { message: terminalPublicError(error) });
         }
     });
     
@@ -952,7 +1002,7 @@ terminalNamespace.on('connection', (socket) => {
             socket.emit('terminal:history', { history });
         } catch (error) {
             console.error('Terminal history error:', error);
-            socket.emit('terminal:error', { message: error.message });
+            socket.emit('terminal:error', { message: terminalPublicError(error) });
         }
     });
     
@@ -970,7 +1020,7 @@ terminalNamespace.on('connection', (socket) => {
             console.log(`Terminal destroyed: ${sessionId}`);
         } catch (error) {
             console.error('Terminal destroy error:', error);
-            socket.emit('terminal:error', { message: error.message });
+            socket.emit('terminal:error', { message: terminalPublicError(error) });
         }
     });
 

@@ -23,7 +23,7 @@ const agentExecutionSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['queued', 'idle', 'running', 'awaiting_review', 'awaiting_approval', 'approved', 'rejected', 'completed', 'failed'],
+    enum: ['queued', 'idle', 'running', 'awaiting_review', 'awaiting_approval', 'approving', 'approved', 'rejected', 'completed', 'failed'],
     default: 'idle',
   },
   model: { type: String, default: '' },
@@ -52,6 +52,11 @@ const agentExecutionSchema = new mongoose.Schema({
   retryCount: { type: Number, default: 0 },
   startedAt: { type: Date, default: null },
   completedAt: { type: Date, default: null },
+  // Cloud compute metering. Pricing/cost-per-hour is intentionally not
+  // encoded here yet; we record hours and the claim timestamp so a future
+  // pricing decision can bill without re-running executions.
+  computeHours: { type: Number, default: 0, min: 0 },
+  computeHoursMeteredAt: { type: Date, default: null },
   approvalRequired: {
     type: Boolean,
     default: false,
@@ -82,6 +87,19 @@ const agentExecutionSchema = new mongoose.Schema({
 
 agentExecutionSchema.index({ userId: 1, sessionId: 1, status: 1 });
 agentExecutionSchema.index({ createdAt: -1 });
+
+agentExecutionSchema.post('save', function (doc) {
+  const terminalStatuses = ['awaiting_review', 'awaiting_approval', 'approved', 'rejected', 'completed', 'failed'];
+  if (!terminalStatuses.includes(doc.status)) return;
+  if (!doc.startedAt || !doc.completedAt || doc.computeHoursMeteredAt) return;
+  if (process.env.NODE_ENV === 'test') return;
+  if (mongoose.connection.readyState !== 1) return;
+  setImmediate(() => {
+    require('../utils/computeMeter').meterExecution(doc._id).catch((error) => {
+      console.error('Compute metering failed:', error.message);
+    });
+  });
+});
 // Status polling filters on the metadata copy (agent-v1 + agentSocket).
 agentExecutionSchema.index({ 'metadata.taskId': 1 });
 

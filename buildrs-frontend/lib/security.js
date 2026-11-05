@@ -42,14 +42,23 @@ export function debounce(fn, delayMs = 300) {
 }
 
 // ============ TOKEN EXPIRY ============
+const TOKEN_CLOCK_SKEW_MS = 30 * 1000;
+
+function decodeJwtPayload(token) {
+  const part = String(token || '').split('.')[1];
+  if (!part) return null;
+  const normalized = part.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+  return JSON.parse(atob(padded));
+}
+
 export function isTokenExpired(token) {
   if (!token) return true;
   try {
-    const parts = String(token).split('.');
-    if (parts.length < 2) return true;
-    const payload = JSON.parse(atob(parts[1]));
-    const expiryMs = payload.exp * 1000;
-    return Date.now() >= expiryMs;
+    const payload = decodeJwtPayload(token);
+    const expiryMs = Number(payload?.exp) * 1000;
+    if (!Number.isFinite(expiryMs)) return true;
+    return Date.now() + TOKEN_CLOCK_SKEW_MS >= expiryMs;
   } catch {
     return true;
   }
@@ -58,10 +67,9 @@ export function isTokenExpired(token) {
 export function getTokenRemainingMs(token) {
   if (!token) return 0;
   try {
-    const parts = String(token).split('.');
-    if (parts.length < 2) return 0;
-    const payload = JSON.parse(atob(parts[1]));
-    const expiryMs = payload.exp * 1000;
+    const payload = decodeJwtPayload(token);
+    const expiryMs = Number(payload?.exp) * 1000;
+    if (!Number.isFinite(expiryMs)) return 0;
     return Math.max(0, expiryMs - Date.now());
   } catch {
     return 0;

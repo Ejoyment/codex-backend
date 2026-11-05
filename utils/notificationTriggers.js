@@ -99,7 +99,7 @@ function notifyNewMessage({ message, channel, recipientId, mentions }) {
                 title: `${senderName} in #${channel?.name || 'a channel'}`,
                 message: body,
                 priority: 'low',
-                dedupeKey: `channel:${channel?._id || message.channel}`,
+                dedupeKey: `message:${message._id}`,
             });
         })(),
         'notifyNewMessage'
@@ -261,8 +261,11 @@ function notifyDeploymentEvent({ type, deployment, userId, detail }) {
         deployment_started: 'Deployment started',
         deployment_succeeded: 'Deployment succeeded',
         deployment_failed: 'Deployment failed',
+        deployment_healing: 'Deployment self-healing',
+        deployment_healed: 'Deployment healed',
+        deployment_heal_failed: 'Deployment self-heal failed',
     };
-    const failed = type === 'deployment_failed';
+    const failed = type === 'deployment_failed' || type === 'deployment_heal_failed';
     fire(
         NotificationService.notifyUser(idOf(userId), {
             type,

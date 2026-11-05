@@ -22,11 +22,11 @@ const TIER_BADGE = {
 
 const TIER_BADGE_COLORS = {
   // developer: '',
-  pro: 'bg-[#2fd6e6] text-[#08080b]',
-  pro_plus: 'bg-[#525764]',
-  // team_standard: 'bg-[#34d399]',
-  // team_premium: 'bg-[#e5b84a] text-[#08080b]',
-  // enterprise: 'bg-[#f87171]',
+  pro: 'bg-[#12dce5] text-[#0f131c]',
+  pro_plus: 'bg-[#59687a]',
+  // team_standard: 'bg-[#03ba03]',
+  // team_premium: 'bg-[#e5b84a] text-[#0f131c]',
+  // enterprise: 'bg-[#ec1414]',
 };
 
 const PLANS = [
@@ -263,12 +263,12 @@ export default function Pricing() {
             </ScrollReveal>
 
             <ScrollReveal delay={0.3}>
-              <div className="mt-9 inline-flex items-center gap-1 rounded-lg border border-[#ffffff12] bg-[#0d0d12] p-1">
+              <div className="mt-9 inline-flex items-center gap-1 rounded-lg border border-[#ffffff10] bg-[#121821] p-1">
                 <button
                   type="button"
                   onClick={() => setYearly(false)}
                   className={`mkt-mono rounded-md px-4 py-2 text-xs tracking-wide transition ${
-                    !yearly ? 'bg-[#1b1b22] text-white' : 'text-[#686e7c] hover:text-white'
+                    !yearly ? 'bg-[#1d263b] text-white' : 'text-[#748194] hover:text-white'
                   }`}
                 >
                   monthly
@@ -277,10 +277,10 @@ export default function Pricing() {
                   type="button"
                   onClick={() => setYearly(true)}
                   className={`mkt-mono flex items-center gap-2 rounded-md px-4 py-2 text-xs tracking-wide transition ${
-                    yearly ? 'bg-[#1b1b22] text-white' : 'text-[#686e7c] hover:text-white'
+                    yearly ? 'bg-[#1d263b] text-white' : 'text-[#748194] hover:text-white'
                   }`}
                 >
-                  yearly <span className="text-[#2fd6e6]">save ~20%</span>
+                  yearly <span className="text-[#12dce5]">save ~20%</span>
                 </button>
               </div>
             </ScrollReveal>
@@ -289,12 +289,12 @@ export default function Pricing() {
 
         {/* Plans */}
         <section className="mx-auto max-w-[1200px] px-5 pb-20 sm:px-8">
-          <StaggerChildren className="grid gap-px overflow-hidden rounded-xl border border-[#ffffff12] bg-[#ffffff12] lg:grid-cols-3" stagger={0.12}>
+          <StaggerChildren className="grid gap-px overflow-hidden rounded-xl border border-[#ffffff10] bg-[#ffffff10] lg:grid-cols-3" stagger={0.12}>
             {PLANS.map((plan) => (
               <StaggerItem key={plan.name}>
               <div
-                className={`relative h-full bg-[#0d0d12] p-8 ${plan.featured ? 'lg:-my-4 lg:rounded-lg lg:border lg:border-[#2fd6e680] lg:bg-[#0f0f15]' : ''} ${
-                  plan.featured ? 'shadow-[0_0_60px_-20px_rgba(47,214,230,0.35)]' : ''
+                className={`relative h-full bg-[#121821] p-8 ${plan.featured ? 'lg:-my-4 lg:rounded-lg lg:border lg:border-[#12dce580] lg:bg-[#121821]' : ''} ${
+                  plan.featured ? 'shadow-[0_0_60px_-20px_rgba(18,220,229,0.35)]' : ''
                 }`}
               >
                 {plan.featured && (
@@ -307,26 +307,26 @@ export default function Pricing() {
                     {plan.badge}
                   </span>
                 )}
-                <p className="mkt-mono text-[11px] uppercase tracking-widest text-[#686e7c]">
+                <p className="mkt-mono text-[11px] uppercase tracking-widest text-[#748194]">
                   {plan.name}
                 </p>
-                <p className="mt-2.5 text-[13.5px] text-[#a8adba]">{plan.blurb}</p>
+                <p className="mt-2.5 text-[13.5px] text-[#a9b7c4]">{plan.blurb}</p>
 
                 <div className="mt-7 flex items-end gap-2">
                   <span className="text-[44px] font-semibold leading-none tracking-tight text-white">
                     {getPrice(plan)}
                   </span>
-                  <span className="mkt-mono pb-1 text-xs text-[#686e7c]">
+                  <span className="mkt-mono pb-1 text-xs text-[#748194]">
                     {getMonthlyNote(plan)}
                   </span>
                 </div>
                 {yearly && plan.yearlyPrice && plan.price !== 'Custom' && (
-                  <p className="mkt-mono mt-1.5 text-[11px] text-[#525764]">
+                  <p className="mkt-mono mt-1.5 text-[11px] text-[#59687a]">
                     or ${plan.yearlyPrice}/yr billed annually
                   </p>
                 )}
                 {plan.price === 'Custom' && (
-                  <p className="mkt-mono mt-1.5 text-[11px] text-[#525764]">
+                  <p className="mkt-mono mt-1.5 text-[11px] text-[#59687a]">
                     Contact sales for a custom quote
                   </p>
                 )}
@@ -336,7 +336,7 @@ export default function Pricing() {
                   className={`mt-7 block rounded-lg py-3 text-center text-[14px] font-medium transition ${
                     plan.featured
                       ? 'mkt-btn-primary !border-0'
-                      : 'border border-[#ffffff1a] text-white hover:border-[#2fd6e680] hover:bg-white/5'
+                      : 'border border-[#ffffff1a] text-white hover:border-[#12dce580] hover:bg-white/5'
                   }`}
                 >
                   {plan.cta}
@@ -347,12 +347,12 @@ export default function Pricing() {
                     <li key={label} className="flex items-start gap-3 text-[13px]">
                       <span
                         className={`mkt-mono mt-0.5 flex h-4 w-4 items-center justify-center text-[10px] ${
-                          typeof on === 'boolean' ? (on ? 'text-[#2fd6e6]' : 'text-[#3a3d46]') : 'text-[#525764]'
+                          typeof on === 'boolean' ? (on ? 'text-[#12dce5]' : 'text-[#3a3d46]') : 'text-[#59687a]'
                         }`}
                       >
                         {typeof on === 'boolean' ? (on ? '✓' : '·') : on}
                       </span>
-                      <span className={typeof on === 'boolean' ? (on ? 'text-[#a8adba]' : 'text-[#525764]') : 'text-[#a8adba]'}>{label}</span>
+                      <span className={typeof on === 'boolean' ? (on ? 'text-[#a9b7c4]' : 'text-[#59687a]') : 'text-[#a9b7c4]'}>{label}</span>
                     </li>
                   ))}
                 </ul>
@@ -361,13 +361,13 @@ export default function Pricing() {
             ))}
           </StaggerChildren>
 
-          <p className="mkt-mono mt-6 text-center text-[11px] text-[#525764]">
+          <p className="mkt-mono mt-6 text-center text-[11px] text-[#59687a]">
             all prices in USD · billed via Stripe · Paystack · Flutterwave (Partial; multi-rail coverage per region) · enterprise has custom terms
           </p>
         </section>
 
         {/* Feature Comparison */}
-        <section className="border-t border-[#ffffff0d]">
+        <section className="border-t border-[#ffffff0f]">
           <div className="mx-auto max-w-[1100px] px-5 py-24 sm:px-8">
             <ScrollReveal>
               <p className="mkt-eyebrow mb-8">
@@ -391,13 +391,13 @@ export default function Pricing() {
                 <tbody>
                   {COMPARE.map((row) => (
                     <tr key={row[0]}>
-                      <td className="!text-[#eceef1]">{row[0]}</td>
+                      <td className="!text-[#ffffff]">{row[0]}</td>
                       <td>{row[1]}</td>
-                      <td className={row[2] !== 'Disabled' && row[2] !== 'Local Only' && row[2] !== '–' ? '!text-[#2fd6e6]' : ''}>{row[2]}</td>
-                      <td className={row[3] !== '–' && row[3] !== 'Disabled' ? '!text-[#a78bfa]' : ''}>{row[3]}</td>
-                      <td className={row[4] !== '–' && row[4] !== 'Disabled' ? '!text-[#34d399]' : ''}>{row[4]}</td>
+                      <td className={row[2] !== 'Disabled' && row[2] !== 'Local Only' && row[2] !== '–' ? '!text-[#12dce5]' : ''}>{row[2]}</td>
+                      <td className={row[3] !== '–' && row[3] !== 'Disabled' ? '!text-[#8a38f5]' : ''}>{row[3]}</td>
+                      <td className={row[4] !== '–' && row[4] !== 'Disabled' ? '!text-[#03ba03]' : ''}>{row[4]}</td>
                       <td className={row[5] !== '–' && row[5] !== 'Disabled' ? '!text-[#e5b84a]' : ''}>{row[5]}</td>
-                      <td className="!text-[#f87171]">{row[6]}</td>
+                      <td className="!text-[#ec1414]">{row[6]}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -408,7 +408,7 @@ export default function Pricing() {
         </section>
 
         {/* Credit Pool Mechanics */}
-        <section className="border-t border-[#ffffff0d]">
+        <section className="border-t border-[#ffffff0f]">
           <div className="mx-auto max-w-[800px] px-5 py-24 sm:px-8">
             <ScrollReveal>
               <p className="mkt-eyebrow mb-8">
@@ -417,27 +417,27 @@ export default function Pricing() {
             </ScrollReveal>
             <StaggerChildren className="space-y-4" stagger={0.1}>
               <StaggerItem>
-              <div className="bg-[#0d0d12] border border-[#ffffff0d] rounded-xl p-6">
+              <div className="bg-[#121821] border border-[#ffffff0f] rounded-xl p-6">
                 <h3 className="text-[15px] font-semibold text-white mb-2">Auto Mode is free on all paid plans</h3>
-                <p className="text-[14px] text-[#9aa1ae]">Fast, cost-effective models route automatically. No credits burned. Only frontier models like Claude 3.5 Sonnet or GPT-4o draw from your monthly pool at published API rates.</p>
+                <p className="text-[14px] text-[#9aaeba]">Fast, cost-effective models route automatically. No credits burned. Only frontier models like Claude 3.5 Sonnet or GPT-4o draw from your monthly pool at published API rates.</p>
               </div>
               </StaggerItem>
               <StaggerItem>
-              <div className="bg-[#0d0d12] border border-[#ffffff0d] rounded-xl p-6">
+              <div className="bg-[#121821] border border-[#ffffff0f] rounded-xl p-6">
                 <h3 className="text-[15px] font-semibold text-white mb-2">What happens when credits run out</h3>
-                <p className="text-[14px] text-[#9aa1ae]">Paid accounts automatically drop back to Unlimited Auto Mode or local BYOM. You can enable Pay-As-You-Go overages at exact model API cost with zero markup, or upgrade to a higher tier.</p>
+                <p className="text-[14px] text-[#9aaeba]">Paid accounts automatically drop back to Unlimited Auto Mode or local BYOM. You can enable Pay-As-You-Go overages at exact model API cost with zero markup, or upgrade to a higher tier.</p>
               </div>
               </StaggerItem>
               <StaggerItem>
-              <div className="bg-[#0d0d12] border border-[#ffffff0d] rounded-xl p-6">
+              <div className="bg-[#121821] border border-[#ffffff0f] rounded-xl p-6">
                 <h3 className="text-[15px] font-semibold text-white mb-2">Team credits are pooled</h3>
-                <p className="text-[14px] text-[#9aa1ae]">On Team plans, seat credits combine into a single organization balance. If one engineer burns through their allocation, others can still use the shared pool.</p>
+                <p className="text-[14px] text-[#9aaeba]">On Team plans, seat credits combine into a single organization balance. If one engineer burns through their allocation, others can still use the shared pool.</p>
               </div>
               </StaggerItem>
               <StaggerItem>
-              <div className="bg-[#0d0d12] border border-[#ffffff0d] rounded-xl p-6">
+              <div className="bg-[#121821] border border-[#ffffff0f] rounded-xl p-6">
                 <h3 className="text-[15px] font-semibold text-white mb-2">Credits reset monthly</h3>
-                <p className="text-[14px] text-[#9aa1ae]">Unused credits do not roll over. Your pool resets at the beginning of each billing cycle. Cloud compute hours follow the same monthly reset pattern.</p>
+                <p className="text-[14px] text-[#9aaeba]">Unused credits do not roll over. Your pool resets at the beginning of each billing cycle. Cloud compute hours follow the same monthly reset pattern.</p>
               </div>
               </StaggerItem>
             </StaggerChildren>
@@ -451,17 +451,17 @@ export default function Pricing() {
               <span className="dot">●</span> faq
             </p>
           </ScrollReveal>
-          <StaggerChildren className="divide-y divide-[#ffffff0d] border-y border-[#ffffff0d]" stagger={0.06}>
+          <StaggerChildren className="divide-y divide-[#ffffff0f] border-y border-[#ffffff0f]" stagger={0.06}>
             {FAQ.map(([q, a], i) => (
               <StaggerItem key={q}>
               <details className="group py-5" open={i === 0}>
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-6 text-[15px] font-medium text-white">
                   <span>{q}</span>
-                  <span className="mkt-mono text-[#2fd6e6] transition-transform duration-200 group-open:rotate-45">
+                  <span className="mkt-mono text-[#12dce5] transition-transform duration-200 group-open:rotate-45">
                     +
                   </span>
                 </summary>
-                <p className="mt-3 max-w-[620px] text-[14px] leading-relaxed text-[#a8adba]">{a}</p>
+                <p className="mt-3 max-w-[620px] text-[14px] leading-relaxed text-[#a9b7c4]">{a}</p>
               </details>
               </StaggerItem>
             ))}
@@ -469,7 +469,7 @@ export default function Pricing() {
         </section>
 
         {/* CTA */}
-        <section className="relative overflow-hidden border-t border-[#ffffff0d]">
+        <section className="relative overflow-hidden border-t border-[#ffffff0f]">
           <div className="mkt-hero-bg" />
           <div className="relative mx-auto max-w-[1200px] px-5 py-24 text-center sm:px-8">
             <ScrollReveal>

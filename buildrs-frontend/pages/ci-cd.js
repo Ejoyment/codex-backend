@@ -273,7 +273,7 @@ export default function CiCd() {
 
           <div className="workspace-content">
             <div className="dash-content">
-              {error && <p className="text-sm text-[#f87171] mb-4">{error}</p>}
+              {error && <p className="text-sm text-[#ec1414] mb-4">{error}</p>}
 
               <section className="dash-section">
                 <div className="dash-section-head">
@@ -319,7 +319,7 @@ export default function CiCd() {
                     {pipelines.length === 0 ? (
                       <div className="workspace-card">
                         <div className="workspace-card-body text-center py-10">
-                          <Rocket className="w-8 h-8 mx-auto mb-2" style={{ color: '#3c3c3c' }} />
+                          <Rocket className="w-8 h-8 mx-auto mb-2" style={{ color: '#2a3446' }} />
                           <p className="text-sm text-muted">
                             No pipelines yet. Create one to define your Continuous Integration workflow.
                           </p>
@@ -366,7 +366,7 @@ export default function CiCd() {
                                   Run
                                 </button>
                                 <button type="button" className="btn-workspace btn-secondary" style={{ fontSize: '0.72rem', padding: '0.3rem 0.6rem' }} onClick={() => openEdit(p)}>Edit</button>
-                                <button type="button" className="btn-workspace btn-secondary" style={{ fontSize: '0.72rem', padding: '0.3rem 0.6rem', color: '#f87171' }} onClick={() => deletePipeline(p)}><Trash2 className="w-3.5 h-3.5" /></button>
+                                <button type="button" className="btn-workspace btn-secondary" style={{ fontSize: '0.72rem', padding: '0.3rem 0.6rem', color: '#ec1414' }} onClick={() => deletePipeline(p)}><Trash2 className="w-3.5 h-3.5" /></button>
                               </div>
                             </div>
                           </div>
@@ -466,7 +466,7 @@ export default function CiCd() {
                       </select>
                       <input type="text" value={s.name} className="ws-input" placeholder="Stage name" onChange={(e) => updateStage(idx, 'name', e.target.value)} />
                       <input type="text" value={s.command} className="ws-input" placeholder="command, e.g. npm test" onChange={(e) => updateStage(idx, 'command', e.target.value)} />
-                      <button type="button" className="btn-workspace btn-secondary" onClick={() => removeStage(idx)} style={{ color: '#f87171' }}><Trash2 className="w-3.5 h-3.5" /></button>
+                      <button type="button" className="btn-workspace btn-secondary" onClick={() => removeStage(idx)} style={{ color: '#ec1414' }}><Trash2 className="w-3.5 h-3.5" /></button>
                     </div>
                   ))}
                   <button type="button" className="btn-workspace btn-secondary" onClick={addStage}>
@@ -480,7 +480,7 @@ export default function CiCd() {
                 <pre className="ws-yaml">{yamlPreview()}</pre>
               </div>
 
-              {formError && <p className="text-xs text-[#f87171]">{formError}</p>}
+              {formError && <p className="text-xs text-[#ec1414]">{formError}</p>}
 
               <div className="flex justify-end gap-3">
                 <button type="button" className="btn-workspace btn-secondary" onClick={() => setModalOpen(false)}>Cancel</button>

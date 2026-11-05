@@ -42,7 +42,7 @@ const PROVIDERS = [
   {
     key: 'vscode',
     name: 'VS Code',
-    color: { bg: 'rgba(96,165,250,0.1)', text: '#60a5fa' },
+    color: { bg: 'rgba(96,165,250,0.1)', text: '#68f7ff' },
     description: 'Connect your editor environment for enhanced code sync capabilities.',
     infoOnly: true,
   },
@@ -170,7 +170,7 @@ export default function Integrations() {
             </div>
             <div className="flex items-center gap-3">
               <span className="dash-pill hidden md:inline-flex">
-                <Plug2 className="w-3 h-3" style={{ color: '#2fd6e6' }} />
+                <Plug2 className="w-3 h-3" style={{ color: '#12dce5' }} />
                 {connectedCount}/{availableCount} connected
               </span>
               <button type="button" className="btn-workspace btn-secondary" onClick={fetchIntegrations}>
@@ -270,15 +270,15 @@ export default function Integrations() {
                           </div>
                         </div>
                         {provider.infoOnly ? (
-                          <span className="pill int-pill" style={{ background: 'rgba(47,214,230,0.08)', color: '#2fd6e6' }}>
+                          <span className="pill int-pill" style={{ background: 'rgba(18,220,229,0.08)', color: '#12dce5' }}>
                             Info Only
                           </span>
                         ) : isActive ? (
-                          <span className="pill int-pill" style={{ background: 'rgba(52,211,153,0.12)', color: '#34d399' }}>
+                          <span className="pill int-pill" style={{ background: 'rgba(3,186,3,0.12)', color: '#03ba03' }}>
                             Connected
                           </span>
                         ) : (
-                          <span className="pill int-pill" style={{ background: 'rgba(255,255,255,0.05)', color: '#9aa1ae' }}>
+                          <span className="pill int-pill" style={{ background: 'rgba(255,255,255,0.05)', color: '#9aaeba' }}>
                             Not Connected
                           </span>
                         )}
@@ -367,7 +367,7 @@ export default function Integrations() {
     <>
       {page}
       <section className="mx-auto max-w-[1200px] px-5 sm:px-8 py-10">
-        <p className="text-[12px] text-[#686e7c]">Connectors listed reflect implemented routes in codebase (Partial where WIP). See features page for maturity.</p>
+        <p className="text-[12px] text-[#748194]">Connectors listed reflect implemented routes in codebase (Partial where WIP). See features page for maturity.</p>
       </section>
     </>
   );

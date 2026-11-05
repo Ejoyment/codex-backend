@@ -1,3 +1,4 @@
+const { sendInternalError } = require('../utils/httpErrors');
 const express = require('express');
 const router = express.Router();
 const Standup = require('../models/Standup');
@@ -9,6 +10,7 @@ const Message = require('../models/Message');
 const { authenticateToken } = require('../middleware/auth');
 const { canPostToChannel } = require('../utils/channelPolicy');
 const { notifyStandupPosted } = require('../utils/notificationTriggers');
+const { boundedLimit } = require('../utils/queryLimits');
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -104,7 +106,7 @@ router.post('/generate', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Standup generate error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -238,7 +240,7 @@ router.post('/', authenticateToken, async (req, res) => {
         if (error.name === 'ValidationError' || error.name === 'CastError') {
             return res.status(400).json({ success: false, message: error.message });
         }
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -260,14 +262,14 @@ router.get('/', authenticateToken, async (req, res) => {
             .populate('user', 'fullName email profilePicture')
             .populate('relatedTasks', 'title status')
             .sort({ createdAt: -1 })
-            .limit(parseInt(limit));
+            .limit(boundedLimit(limit, 50, 100));
 
         res.json({ success: true, standups });
     } catch (error) {
         if (error.name === 'ValidationError' || error.name === 'CastError') {
             return res.status(400).json({ success: false, message: error.message });
         }
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 

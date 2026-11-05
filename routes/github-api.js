@@ -1,3 +1,4 @@
+const { sendInternalError } = require('../utils/httpErrors');
 const express = require('express');
 const router = express.Router();
 const axios = require('axios');
@@ -5,42 +6,7 @@ const Integration = require('../models/Integration');
 const jwt = require('jsonwebtoken');
 const { authenticateToken } = require('../middleware/auth');
 const { createStateToken, verifyStateToken } = require('../utils/oauthState');
-
-// Helper to get GitHub integration
-async function getGitHubIntegration(userId) {
-    const integration = await Integration.findOne({
-        userId,
-        provider: 'github',
-        isActive: true
-    });
-    
-    if (!integration) {
-        throw new Error('GitHub not connected');
-    }
-    
-    return integration;
-}
-
-// Helper to make GitHub API calls
-async function githubAPI(accessToken, endpoint, method = 'GET', data = null) {
-    try {
-        const response = await axios({
-            method,
-            url: `https://api.github.com${endpoint}`,
-            headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'Accept': 'application/vnd.github.v3+json',
-                'User-Agent': 'CODEX-INC-App'
-            },
-            data,
-            timeout: 20000
-        });
-        return response.data;
-    } catch (error) {
-        console.error('GitHub API error:', error.response?.data || error.message);
-        throw error;
-    }
-}
+const { getGitHubIntegration, githubAPI } = require('../utils/githubApiClient');
 
 // ===== REPOSITORIES =====
 
@@ -110,7 +76,10 @@ router.get('/repos', authenticateToken, async (req, res) => {
             }))
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        if (error.message === 'GitHub not connected') {
+            return res.json({ success: true, repositories: [], connected: false });
+        }
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -166,7 +135,7 @@ router.get('/repos/:owner/:repo', authenticateToken, async (req, res) => {
             }
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -237,7 +206,7 @@ router.post('/repos', authenticateToken, async (req, res) => {
             }
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -274,7 +243,7 @@ router.get('/repos/:owner/:repo/branches', authenticateToken, async (req, res) =
         const integration = await getGitHubIntegration(req.userId);
         const { owner, repo } = req.params;
         
-        const branches = await githubAPI(integration.accessToken, `/repos/${owner}/${repo}/branches`);
+        const branches = await githubAPI(integration.accessToken, `/repos/${owner}/${repo}/branches?per_page=100`);
         
         res.json({
             success: true,
@@ -288,7 +257,7 @@ router.get('/repos/:owner/:repo/branches', authenticateToken, async (req, res) =
             }))
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -356,7 +325,7 @@ router.post('/repos/:owner/:repo/branches', authenticateToken, async (req, res) 
             }
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -439,7 +408,7 @@ router.get('/repos/:owner/:repo/contents/*', authenticateToken, async (req, res)
             });
         }
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -515,7 +484,7 @@ router.put('/repos/:owner/:repo/contents/*', authenticateToken, async (req, res)
             }
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -588,7 +557,7 @@ router.post('/repos/:owner/:repo/contents/*', authenticateToken, async (req, res
             }
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -659,7 +628,7 @@ router.get('/repos/:owner/:repo/commits', authenticateToken, async (req, res) =>
             }))
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -731,7 +700,7 @@ router.get('/repos/:owner/:repo/issues', authenticateToken, async (req, res) => 
             }))
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -803,7 +772,7 @@ router.post('/repos/:owner/:repo/issues', authenticateToken, async (req, res) =>
             }
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -876,7 +845,7 @@ router.get('/repos/:owner/:repo/pulls', authenticateToken, async (req, res) => {
             }))
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -945,7 +914,7 @@ router.post('/repos/:owner/:repo/pulls', authenticateToken, async (req, res) => 
             }
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -988,7 +957,7 @@ router.get('/user', authenticateToken, async (req, res) => {
             }
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -1146,7 +1115,7 @@ router.get('/status', authenticateToken, async (req, res) => {
             account: integration ? integration.accountLogin : null
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -1174,7 +1143,7 @@ router.delete('/disconnect', authenticateToken, async (req, res) => {
 
         res.json({ success: true, message: 'GitHub disconnected' });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -1308,7 +1277,7 @@ router.get('/repos/:owner/:repo/git/tree', authenticateToken, async (req, res) =
                 note: 'Non-recursive listing (root level only)'
             });
         } catch (fallbackError) {
-            res.status(500).json({ success: false, message: error.message });
+            return sendInternalError(req, res, error);
         }
     }
 });

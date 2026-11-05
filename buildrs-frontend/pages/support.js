@@ -7,17 +7,17 @@ import { apiFetch } from '../lib/api';
 import { Plus, X, Send, ChevronDown, ChevronRight, MessageSquare, Loader2 } from 'lucide-react';
 
 const STATUS_TINTS = {
-  open: { bg: 'rgba(47,214,230,0.12)', text: '#2fd6e6' },
+  open: { bg: 'rgba(18,220,229,0.12)', text: '#12dce5' },
   'in-progress': { bg: 'rgba(229,184,74,0.12)', text: '#e5b84a' },
-  resolved: { bg: 'rgba(52,211,153,0.12)', text: '#34d399' },
-  closed: { bg: 'rgba(154,161,174,0.1)', text: '#9aa1ae' },
+  resolved: { bg: 'rgba(3,186,3,0.12)', text: '#03ba03' },
+  closed: { bg: 'rgba(154,174,186,0.1)', text: '#9aaeba' },
 };
 
 const PRIORITY_TINTS = {
-  low: '#9aa1ae',
-  medium: '#2fd6e6',
+  low: '#9aaeba',
+  medium: '#12dce5',
   high: '#e5b84a',
-  urgent: '#f87171',
+  urgent: '#ec1414',
 };
 
 function CreateTicketModal({ onClose, onCreated }) {
@@ -60,7 +60,7 @@ function CreateTicketModal({ onClose, onCreated }) {
             </span>
             <h3 className="ws-modal-title">New Support Ticket</h3>
           </div>
-          <button type="button" onClick={onClose} className="text-[#565d6b] hover:text-[#eceef1]">
+          <button type="button" onClick={onClose} className="text-[#59687a] hover:text-[#ffffff]">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -125,7 +125,7 @@ function TicketCard({ ticket, onReply }) {
   const [sending, setSending] = useState(false);
 
   const statusTint = STATUS_TINTS[ticket.status] || STATUS_TINTS.open;
-  const priorityColor = PRIORITY_TINTS[ticket.priority] || '#9aa1ae';
+  const priorityColor = PRIORITY_TINTS[ticket.priority] || '#9aaeba';
 
   const handleSendReply = async () => {
     if (!reply.trim()) return;

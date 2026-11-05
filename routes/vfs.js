@@ -3,21 +3,32 @@
  * Provides lazy loading and efficient file management
  */
 
+const { sendInternalError } = require('../utils/httpErrors');
 const express = require('express');
+const mongoose = require('mongoose');
 const router = express.Router();
 const vfs = require('../utils/virtualFileSystem');
 const codeSearchService = require('../utils/codeSearchService');
 const CodeFile = require('../models/CodeFile');
 const { emitWorkspaceChange } = require('../utils/realtimeBus');
+const { userCanAccessProject } = require('../utils/specAccess');
 // Tenant isolation (audit rec 7): every workspaceId/fileId below is verified.
 // requirePermission('vfs', …) only gates tiers — its resource check has no
 // 'vfs' case, so without these guards any user could read/mutate any workspace.
 const {
     assertFileAccess,
+    assertCompanyAccess,
     assertCompanyMembership,
 } = require('../middleware/workspaceAccess');
 const { authenticateToken } = require('../middleware/auth');
 const permissionMatrix = require('../middleware/permissionMatrix');
+
+// A file/folder may only be attached to a project the caller can reach.
+async function canUseProject(projectId, userId) {
+    if (!projectId) return true;
+    if (!mongoose.isValidObjectId(projectId)) return false;
+    return userCanAccessProject(projectId, userId);
+}
 
 /**
  * @swagger
@@ -118,7 +129,7 @@ router.get('/file/:fileId', authenticateToken, permissionMatrix.requirePermissio
     });
   } catch (error) {
     console.error('VFS read error:', error);
-    res.status(500).json({ error: error.message });
+    return sendInternalError(req, res, error, { envelope: 'error' });
   }
 });
 
@@ -168,7 +179,7 @@ router.get('/file-by-path', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('VFS read by path error:', error);
-    res.status(500).json({ error: error.message });
+    return sendInternalError(req, res, error, { envelope: 'error' });
   }
 });
 
@@ -227,7 +238,7 @@ router.get('/file-chunked/:fileId', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('VFS chunked read error:', error);
-    res.status(500).json({ error: error.message });
+    return sendInternalError(req, res, error, { envelope: 'error' });
   }
 });
 
@@ -258,7 +269,7 @@ router.get('/metadata/:fileId', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('VFS metadata error:', error);
-    res.status(500).json({ error: error.message });
+    return sendInternalError(req, res, error, { envelope: 'error' });
   }
 });
 
@@ -285,7 +296,7 @@ router.get('/search-name', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('VFS name search error:', error);
-    res.status(500).json({ error: error.message });
+    return sendInternalError(req, res, error, { envelope: 'error' });
   }
 });
 
@@ -314,7 +325,7 @@ router.get('/search', authenticateToken, permissionMatrix.requirePermission('vfs
     });
   } catch (error) {
     console.error('VFS search error:', error);
-    res.status(500).json({ error: error.message });
+    return sendInternalError(req, res, error, { envelope: 'error' });
   }
 });
 
@@ -342,7 +353,7 @@ router.get('/search-language', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('VFS language search error:', error);
-    res.status(500).json({ error: error.message });
+    return sendInternalError(req, res, error, { envelope: 'error' });
   }
 });
 
@@ -364,7 +375,7 @@ router.get('/stats/:workspaceId', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('VFS stats error:', error);
-    res.status(500).json({ error: error.message });
+    return sendInternalError(req, res, error, { envelope: 'error' });
   }
 });
 
@@ -387,7 +398,7 @@ router.post('/rebuild-index/:workspaceId', authenticateToken, permissionMatrix.r
     });
   } catch (error) {
     console.error('VFS rebuild index error:', error);
-    res.status(500).json({ error: error.message });
+    return sendInternalError(req, res, error, { envelope: 'error' });
   }
 });
 
@@ -410,7 +421,7 @@ router.post('/rebuild-search/:workspaceId', authenticateToken, async (req, res) 
     });
   } catch (error) {
     console.error('VFS rebuild search error:', error);
-    res.status(500).json({ error: error.message });
+    return sendInternalError(req, res, error, { envelope: 'error' });
   }
 });
 
@@ -432,7 +443,7 @@ router.post('/clear-cache/:workspaceId', authenticateToken, async (req, res) => 
     });
   } catch (error) {
     console.error('VFS clear cache error:', error);
-    res.status(500).json({ error: error.message });
+    return sendInternalError(req, res, error, { envelope: 'error' });
   }
 });
 
@@ -466,7 +477,10 @@ router.post('/files', authenticateToken, permissionMatrix.requirePermission('vfs
       return res.status(400).json({ error: 'name and companyId are required' });
     }
 
-    if (!(await assertCompanyMembership(companyId, req.userId, res))) return;
+    if (!(await assertCompanyAccess(companyId, req.userId, res, 'write'))) return;
+    if (projectId && !(await canUseProject(projectId, req.userId))) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
 
     const file = await vfs.createFile({
       name,
@@ -495,7 +509,10 @@ router.post('/files', authenticateToken, permissionMatrix.requirePermission('vfs
     });
   } catch (error) {
     console.error('VFS create file error:', error);
-    res.status(500).json({ error: error.message });
+    if (error.code === 11000) {
+      return res.status(409).json({ error: 'A file already exists at this path' });
+    }
+    res.status(500).json({ error: 'Failed to create file' });
   }
 });
 
@@ -509,7 +526,7 @@ router.put('/files/:fileId', authenticateToken, permissionMatrix.requirePermissi
     const { content, name, language } = req.body;
     
     const file = await CodeFile.findById(fileId);
-    if (!(await assertFileAccess(file, req.userId, res))) return;
+    if (!(await assertFileAccess(file, req.userId, res, 'write'))) return;
 
     if (content !== undefined) file.content = content;
     if (name) file.name = name;
@@ -540,7 +557,7 @@ router.put('/files/:fileId', authenticateToken, permissionMatrix.requirePermissi
     });
   } catch (error) {
     console.error('VFS update file error:', error);
-    res.status(500).json({ error: error.message });
+    return sendInternalError(req, res, error, { envelope: 'error' });
   }
 });
 
@@ -553,7 +570,7 @@ router.delete('/files/:fileId', authenticateToken, permissionMatrix.requirePermi
     const { fileId } = req.params;
     
     const file = await CodeFile.findById(fileId);
-    if (!(await assertFileAccess(file, req.userId, res))) return;
+    if (!(await assertFileAccess(file, req.userId, res, 'manage'))) return;
 
     const workspaceId = file.company.toString();
 
@@ -571,7 +588,7 @@ router.delete('/files/:fileId', authenticateToken, permissionMatrix.requirePermi
     });
   } catch (error) {
     console.error('VFS delete file error:', error);
-    res.status(500).json({ error: error.message });
+    return sendInternalError(req, res, error, { envelope: 'error' });
   }
 });
 
@@ -609,8 +626,12 @@ router.post('/folders', authenticateToken, async (req, res) => {
     }
 
     // An explicit companyId must be one of the caller's (the fallback above
-    // already is, and passes this check trivially).
-    if (!(await assertCompanyMembership(companyId, req.userId, res))) return;
+    // already is, and passes this check trivially). Creating a folder writes a
+    // placeholder file, so viewers are read-only here too.
+    if (!(await assertCompanyAccess(companyId, req.userId, res, 'write'))) return;
+    if (projectId && !(await canUseProject(projectId, req.userId))) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
 
     const folderPath = path === '/' ? `/${name}` : `${path}/${name}`;
     
@@ -642,7 +663,7 @@ router.post('/folders', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('VFS create folder error:', error);
-    res.status(500).json({ error: error.message });
+    return sendInternalError(req, res, error, { envelope: 'error' });
   }
 });
 

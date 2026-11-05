@@ -14,6 +14,9 @@ const DebugRoom = require('../models/DebugRoomModel');
 
 const ROOM_TTL_MS = parseInt(process.env.DEBUG_ROOM_TTL_MS || '', 10) || 2 * 60 * 60 * 1000; // 2h
 const IDLE_TIMEOUT_MS = parseInt(process.env.DEBUG_ROOM_IDLE_MS || '', 10) || 30 * 60 * 1000; // 30m
+const MAX_PARTICIPANTS = 50;
+const MAX_PENDING_REQUESTS = 50;
+const MAX_SHARED_ENV_KEYS = 25;
 
 // Env keys that are never auto-shared; redaction matches *_KEY, *_SECRET, *_TOKEN, *_PASSWORD.
 const SECRET_NAME_RE = /(_KEY|_SECRET|_TOKEN|_PASSWORD)$/i;
@@ -158,6 +161,9 @@ async function requestJoin(room, userId) {
   if (already) return room;
   const pending = room.pendingRequests.some((r) => r.userId?.toString() === userId?.toString());
   if (!pending) {
+    if (room.pendingRequests.length >= MAX_PENDING_REQUESTS) {
+      throw Object.assign(new Error('Too many pending join requests'), { status: 429 });
+    }
     room.pendingRequests.push({ userId, requestedAt: new Date() });
     await touchActivity(room);
   }
@@ -173,6 +179,9 @@ async function respondToJoin(room, targetUserId, approve) {
       (p) => p.userId?.toString() === targetUserId?.toString()
     );
     if (!exists) {
+      if (room.participants.length >= MAX_PARTICIPANTS) {
+        throw Object.assign(new Error('Room is full'), { status: 429 });
+      }
       // Read-only by default — viewer until host grants control.
       room.participants.push({ userId: targetUserId, role: 'viewer', joinedAt: new Date() });
     }
@@ -257,6 +266,9 @@ module.exports = {
   getRole,
   requestJoin,
   respondToJoin,
+  MAX_PARTICIPANTS,
+  MAX_PENDING_REQUESTS,
+  MAX_SHARED_ENV_KEYS,
   setControl,
   removeParticipant,
   closeRoom,

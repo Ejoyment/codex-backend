@@ -115,7 +115,6 @@ class BillingCron {
      */
     static async checkTrialLifecycle() {
         const Subscription = require('../models/Subscription');
-        const User = require('../models/User');
         const emailService = require('./emailServiceResend');
 
         // Only trials that can need action this tick: expired, or inside the
@@ -125,6 +124,7 @@ class BillingCron {
             status: 'trial',
             trialEndsAt: { $lte: new Date(Date.now() + TRIAL_REMINDER_WINDOW_MS) }
         })
+            .populate('userId', 'email fullName')
             .sort({ trialEndsAt: 1 })
             .limit(TRIAL_LIFECYCLE_BATCH);
 
@@ -136,7 +136,7 @@ class BillingCron {
 
         for (const subscription of activeTrials) {
             try {
-                const user = await User.findById(subscription.userId);
+                const user = subscription.userId;
                 if (!user) continue;
 
                 const daysLeft = subscription.getTrialDaysLeft();

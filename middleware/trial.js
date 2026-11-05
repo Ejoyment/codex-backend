@@ -3,6 +3,7 @@ const Entitlement = require('../server/models/EntitlementModel');
 const jwt = require('jsonwebtoken');
 const emailService = require('../utils/emailServiceResend');
 const User = require('../models/User');
+const { isUserSessionValid } = require('./auth');
 
 // The tier a free trial grants. Trialing users get the Pro feature set, so the
 // tier recorded on the subscription must be Pro for the whole trial — a
@@ -30,7 +31,7 @@ function createTrialSubscription(userId, startedAt = new Date()) {
 }
 
 function isTrialExpired(subscription, now = new Date()) {
-    if (!subscription?.trialEndsAt) return false;
+    if (!subscription?.trialEndsAt) return true;
     return subscription.trialEndsAt.getTime() < now.getTime();
 }
 
@@ -53,6 +54,11 @@ function downgradeExpiredTrial(subscription, now = new Date()) {
  */
 function repairTrialTier(subscription, now = new Date()) {
     if (subscription.status !== 'trial') return false;
+    if (!subscription.trialEndsAt) {
+        const startedAt = subscription.trialStartedAt || subscription.createdAt || now;
+        subscription.trialStartedAt = subscription.trialStartedAt || startedAt;
+        subscription.trialEndsAt = new Date(startedAt.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
+    }
     if (isTrialExpired(subscription, now)) {
         return downgradeExpiredTrial(subscription, now);
     }
@@ -136,6 +142,10 @@ const checkTrialStatus = async (req, res, next) => {
 
         const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
         const userId = decoded.userId || decoded.id;
+
+        if (!(await isUserSessionValid(userId, decoded.tokenVersion))) {
+            return res.status(401).json({ success: false, message: 'Invalid or expired token' });
+        }
         
         const subscription = await getOrCreateSubscription(userId);
 
@@ -201,6 +211,10 @@ const enforceProjectLimit = async (req, res, next) => {
 
         const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
         const userId = decoded.userId || decoded.id;
+
+        if (!(await isUserSessionValid(userId, decoded.tokenVersion))) {
+            return res.status(401).json({ success: false, message: 'Invalid or expired token' });
+        }
         
         const subscription = await getOrCreateSubscription(userId);
 
@@ -241,6 +255,10 @@ const enforceAIAccess = async (req, res, next) => {
 
         const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
         const userId = decoded.userId || decoded.id;
+
+        if (!(await isUserSessionValid(userId, decoded.tokenVersion))) {
+            return res.status(401).json({ success: false, message: 'Invalid or expired token' });
+        }
         
         const subscription = await getOrCreateSubscription(userId);
 

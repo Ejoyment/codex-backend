@@ -1,0 +1,80 @@
+/**
+ * #4 — one registry for AI providers.
+ *
+ * utils/aiService.js (the implementation) and utils/aiRouterService.js (the
+ * selector) used to duplicate the same list with slightly different names.
+ * A provider is advertised only when `implemented` is true and its API key is
+ * configured; adding a name here without adding a chat method is a test
+ * failure, not a silent reroute to another model.
+ */
+const PROVIDERS = Object.freeze({
+  gemini: Object.freeze({
+    implemented: true,
+    name: 'Google Gemini',
+    type: 'cloud',
+    apiKeyEnv: 'GEMINI_API_KEY',
+    modelEnv: 'AI_MODEL',
+    defaultModel: 'gemini-1.5-flash',
+  }),
+  mistral: Object.freeze({
+    implemented: true,
+    name: 'Mistral AI',
+    type: 'cloud',
+    apiKeyEnv: 'MISTRAL_API_KEY',
+    modelEnv: 'MISTRAL_MODEL',
+    defaultModel: 'mistral-tiny',
+    endpoint: 'https://api.mistral.ai/v1/chat/completions',
+  }),
+  groq: Object.freeze({
+    implemented: true,
+    name: 'Groq (Fast Inference)',
+    type: 'cloud',
+    apiKeyEnv: 'GROQ_API_KEY',
+    modelEnv: 'GROQ_MODEL',
+    defaultModel: 'openai/gpt-oss-120b',
+    endpoint: 'https://api.groq.com/openai/v1/chat/completions',
+  }),
+  huggingface: Object.freeze({
+    implemented: true,
+    name: 'Hugging Face',
+    type: 'cloud',
+    apiKeyEnv: 'HUGGINGFACE_API_KEY',
+    modelEnv: 'HUGGINGFACE_MODEL',
+    defaultModel: 'mistralai/Mistral-7B-Instruct-v0.2',
+    endpoint: 'https://api-inference.huggingface.co/models/',
+  }),
+});
+
+function providerDefinitions() {
+  return Object.fromEntries(
+    Object.entries(PROVIDERS).map(([key, definition]) => {
+      const apiKey = definition.apiKeyEnv ? process.env[definition.apiKeyEnv] : null;
+      return [
+        key,
+        {
+          ...definition,
+          model: process.env[definition.modelEnv] || definition.defaultModel,
+          available: Boolean(apiKey),
+          apiKey: apiKey || null,
+        },
+      ];
+    })
+  );
+}
+
+function implementedProviderNames() {
+  return Object.entries(PROVIDERS)
+    .filter(([, definition]) => definition.implemented)
+    .map(([key]) => key);
+}
+
+function isImplementedProvider(name) {
+  return Boolean(PROVIDERS[name]?.implemented);
+}
+
+module.exports = {
+  PROVIDERS,
+  providerDefinitions,
+  implementedProviderNames,
+  isImplementedProvider,
+};

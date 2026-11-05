@@ -97,19 +97,19 @@ export default function VerifyEmail() {
             width: 60px;
             height: 68px;
             text-align: center;
-            font-family: ui-monospace, 'SF Mono', SFMono-Regular, 'Cascadia Code', Menlo, Consolas, monospace;
+            font-family: var(--figma-font-mono);
             font-size: 26px;
             font-weight: 700;
-            color: #2fd6e6;
-            background: #08080b;
+            color: #12dce5;
+            background: #0f131c;
             border: 1px solid rgba(255, 255, 255, 0.08);
             border-radius: 12px;
             outline: none;
             transition: border-color 0.2s, box-shadow 0.2s;
           }
           .otp-input:focus {
-            border-color: rgba(47, 214, 230, 0.65);
-            box-shadow: 0 0 0 3px rgba(47, 214, 230, 0.12);
+            border-color: rgba(18,220,229,0.65);
+            box-shadow: 0 0 0 3px rgba(18,220,229,0.12);
           }
           .window-dot {
             width: 10px;
@@ -128,9 +128,9 @@ export default function VerifyEmail() {
               <span className="logo-text">Buildrs<span>HQ</span></span>
             </Link>
             <div style={{ display: 'flex', gap: 6 }}>
-              <div className="window-dot" style={{ background: '#f87171' }} />
+              <div className="window-dot" style={{ background: '#ec1414' }} />
               <div className="window-dot" style={{ background: '#e5b84a' }} />
-              <div className="window-dot" style={{ background: '#34d399' }} />
+              <div className="window-dot" style={{ background: '#03ba03' }} />
             </div>
           </div>
 
@@ -168,7 +168,7 @@ export default function VerifyEmail() {
 
             <p className="verify-footer">
               Didn&apos;t receive the code?{' '}
-              <button type="button" onClick={resend} style={{ color: '#2fd6e6', border: 'none', background: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
+              <button type="button" onClick={resend} style={{ color: '#12dce5', border: 'none', background: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
                 Resend
               </button>
             </p>

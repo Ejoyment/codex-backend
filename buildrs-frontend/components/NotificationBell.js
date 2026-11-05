@@ -12,17 +12,20 @@ import { getAvatarUrl } from '../lib/utils';
 
 // Map event types to a colour so the bell reads at a glance.
 const TONE = {
-  mention: 'var(--danger, #ef4444)',
+  mention: 'var(--danger, #ec1414)',
   direct_message: 'var(--accent, #6366f1)',
-  task_assigned: 'var(--warning, #f59e0b)',
-  agent_failed: 'var(--danger, #ef4444)',
-  agent_needs_input: 'var(--warning, #f59e0b)',
-  deployment_failed: 'var(--danger, #ef4444)',
-  payment_failed: 'var(--danger, #ef4444)',
-  payment_succeeded: 'var(--success, #22c55e)',
-  deployment_succeeded: 'var(--success, #22c55e)',
-  spec_verified: 'var(--success, #22c55e)',
-  spec_failed: 'var(--danger, #ef4444)',
+  task_assigned: 'var(--warning, #e5b84a)',
+  agent_failed: 'var(--danger, #ec1414)',
+  agent_needs_input: 'var(--warning, #e5b84a)',
+  deployment_failed: 'var(--danger, #ec1414)',
+  deployment_heal_failed: 'var(--danger, #ec1414)',
+  deployment_healing: 'var(--warning, #e5b84a)',
+  deployment_healed: 'var(--success, #03ba03)',
+  payment_failed: 'var(--danger, #ec1414)',
+  payment_succeeded: 'var(--success, #03ba03)',
+  deployment_succeeded: 'var(--success, #03ba03)',
+  spec_verified: 'var(--success, #03ba03)',
+  spec_failed: 'var(--danger, #ec1414)',
 };
 
 function timeAgo(iso) {
@@ -141,7 +144,7 @@ export default function NotificationBell({ placement = 'down', look } = {}) {
         type="button"
         className={
           look === 'header'
-            ? 'relative w-11 h-11 rounded-full bg-[#0f1523] border border-white/15 flex items-center justify-center hover:border-white/30 transition'
+            ? 'relative w-11 h-11 rounded-full bg-[#101d2c] border border-white/15 flex items-center justify-center hover:border-white/30 transition'
             : 'notif-bell-btn'
         }
         onClick={() => setOpen((v) => !v)}

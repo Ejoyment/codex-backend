@@ -9,24 +9,24 @@ import { NoWorkspaceEmptyState } from '../hooks/useCurrentCompany';
 import { Plus, X, BookOpen, ChevronDown, Loader2, BookMarked, Layers, AlertTriangle } from 'lucide-react';
 
 const CATEGORIES = [
-  { value: 'architecture', label: 'Architecture', color: '#60a5fa' },
-  { value: 'naming', label: 'Naming', color: '#a78bfa' },
-  { value: 'error-handling', label: 'Error Handling', color: '#f87171' },
-  { value: 'state-management', label: 'State Management', color: '#34d399' },
+  { value: 'architecture', label: 'Architecture', color: '#68f7ff' },
+  { value: 'naming', label: 'Naming', color: '#8a38f5' },
+  { value: 'error-handling', label: 'Error Handling', color: '#ec1414' },
+  { value: 'state-management', label: 'State Management', color: '#03ba03' },
   { value: 'api-design', label: 'API Design', color: '#e5b84a' },
-  { value: 'testing', label: 'Testing', color: '#2fd6e6' },
-  { value: 'security', label: 'Security', color: '#fbbf24' },
+  { value: 'testing', label: 'Testing', color: '#12dce5' },
+  { value: 'security', label: 'Security', color: '#e5b84a' },
   { value: 'deployment', label: 'Deployment', color: '#f472b6' },
-  { value: 'custom', label: 'Custom', color: '#9aa1ae' },
+  { value: 'custom', label: 'Custom', color: '#9aaeba' },
 ];
 
 const CATEGORY_MAP = Object.fromEntries(CATEGORIES.map((c) => [c.value, c]));
 
 const PRIORITY_TINTS = {
-  low: { bg: 'rgba(154,161,174,0.1)', text: '#9aa1ae' },
-  medium: { bg: 'rgba(47,214,230,0.12)', text: '#2fd6e6' },
+  low: { bg: 'rgba(154,174,186,0.1)', text: '#9aaeba' },
+  medium: { bg: 'rgba(18,220,229,0.12)', text: '#12dce5' },
   high: { bg: 'rgba(229,184,74,0.12)', text: '#e5b84a' },
-  urgent: { bg: 'rgba(248,113,113,0.12)', text: '#f87171' },
+  urgent: { bg: 'rgba(236,20,20,0.12)', text: '#ec1414' },
 };
 
 export default function TeamMemory() {
@@ -357,7 +357,7 @@ function AddConventionModal({ companyId, onClose, onCreated }) {
             </span>
             <h3 className="ws-modal-title">Add Convention</h3>
           </div>
-          <button type="button" onClick={onClose} className="text-[#565d6b] hover:text-[#eceef1]">
+          <button type="button" onClick={onClose} className="text-[#59687a] hover:text-[#ffffff]">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -420,7 +420,7 @@ function AddConventionModal({ companyId, onClose, onCreated }) {
 
           <div className="mb-4">
             <label className="ws-label">
-              Examples <span className="text-[#565d6b] font-normal">(one per line)</span>
+              Examples <span className="text-[#59687a] font-normal">(one per line)</span>
             </label>
             <textarea
               rows={3}
@@ -456,6 +456,7 @@ function AddConventionModal({ companyId, onClose, onCreated }) {
   );
 }
 
-export async function getServerSideProps() {
+export async function getServerSideProps({ query }) {
+  if (query.tour === '1') return { props: {} };
   return { redirect: { destination: '/specs', permanent: false } };
 }

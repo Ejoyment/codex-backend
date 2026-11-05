@@ -14,11 +14,13 @@ describe('Middleware - Auth', () => {
     // Re-mock to ensure clean state
     jest.mock('jsonwebtoken', () => ({
       sign: jest.fn(() => 'mock-jwt-token'),
-      verify: jest.fn((token, secret, cb) => {
-        if (cb) {
-          cb(null, { id: 'mock-user-id', userId: 'mock-user-id' });
+      verify: jest.fn((token, secret, options, cb) => {
+        const done = typeof options === 'function' ? options : cb;
+        const payload = { id: 'mock-user-id', userId: 'mock-user-id' };
+        if (done) {
+          done(null, payload);
         } else {
-          return { id: 'mock-user-id', userId: 'mock-user-id' };
+          return payload;
         }
       }),
     }));
@@ -66,9 +68,10 @@ describe('Middleware - Auth', () => {
   test('should return 403 if token is invalid', async () => {
     jest.resetModules();
     jest.mock('jsonwebtoken', () => ({
-      verify: jest.fn((token, secret, cb) => {
-        if (cb) {
-          cb(new Error('Invalid token'), null);
+      verify: jest.fn((token, secret, options, cb) => {
+        const done = typeof options === 'function' ? options : cb;
+        if (done) {
+          done(new Error('Invalid token'), null);
         } else {
           throw new Error('Invalid token');
         }

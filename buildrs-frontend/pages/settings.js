@@ -4,7 +4,7 @@ import { useRouter } from 'next/router';
 import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
-import { apiFetch, subscriptionApi, integrationApi } from '../lib/api';
+import { apiFetch, isDemoTourActive, subscriptionApi, integrationApi } from '../lib/api';
 import { rateLimit, validate, createSubmitGuard } from '../lib/security';
 import { getAvatarUrl } from '../lib/utils';
 import { normalizeTier } from '../lib/tier';
@@ -204,6 +204,17 @@ function BillingTab({ router, toast }) {
   const resume = () => runAction('resume', () => subscriptionApi.resume(), 'Your plan will continue');
 
   const goToCheckout = (tier) => router.push(`/checkout?plan=${tier}&interval=${interval}`);
+  const toggleOverage = (enabled) =>
+    runAction(
+      'overage',
+      () => subscriptionApi.setOverage(enabled),
+      enabled ? 'Overage enabled' : 'Overage disabled'
+    );
+
+  const compute = subscription?.usage?.computeHours;
+  const overageEnabled = compute?.overageEnabled === true;
+  const overageCapMinor = compute?.overageCapMinor || 0;
+  const overageRateMinor = compute?.overageRateMinorPerHour || 100;
 
   if (loading) {
     return (
@@ -353,6 +364,43 @@ function BillingTab({ router, toast }) {
             <span className="bill-usage-item">
               Cloud hours: <strong>{subscription.usage.computeHours.used}{subscription.usage.computeHours.limit == null ? ' (unlimited)' : ` / ${subscription.usage.computeHours.limit}`}</strong>
             </span>
+          </div>
+        )}
+
+        {compute && compute.limit > 0 && (
+          <div className="bill-overage">
+            <div className="bill-overage-copy">
+              <p className="bill-overage-title">
+                <Zap className="bill-overage-icon" aria-hidden="true" />
+                Compute overage
+              </p>
+              <p className="bill-overage-body">
+                {overageEnabled
+                  ? `Jobs can run past your ${compute.limit}h allowance at $${(overageRateMinor / 100).toFixed(2)}/hour, up to $${(overageCapMinor / 100).toFixed(2)} per month.`
+                  : `Jobs stop at your ${compute.limit}h allowance. Enable overage to keep long jobs running.`}
+              </p>
+              {compute.overageHours > 0 && (
+                <p className="bill-overage-usage">
+                  This month: {compute.overageHours.toFixed(2)}h overage
+                  {overageEnabled
+                    ? ` · $${(compute.overageAmountMinor / 100).toFixed(2)}`
+                    : ' · not billed'}
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              className={`btn-workspace ${overageEnabled ? 'btn-secondary' : 'btn-primary'}`}
+              onClick={() => toggleOverage(!overageEnabled)}
+              disabled={isBusy('overage')}
+            >
+              {isBusy('overage') ? (
+                <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+              ) : (
+                <Zap className="w-4 h-4" aria-hidden="true" />
+              )}
+              {overageEnabled ? 'Disable overage' : 'Enable overage'}
+            </button>
           </div>
         )}
 
@@ -578,11 +626,13 @@ function BillingTab({ router, toast }) {
           <button
             type="button"
             className="btn-workspace btn-secondary"
-            onClick={() => goToCheckout(state.isFree ? 'pro' : state.tier)}
-            disabled={state.tier === 'enterprise'}
-            title={state.tier === 'enterprise' ? 'Enterprise plans are managed via custom contract — contact support to change payment details' : undefined}
+            onClick={() => {
+              if (state.tier === 'enterprise') router.push('/contact?topic=enterprise-billing');
+              else goToCheckout(state.isFree ? 'pro' : state.tier);
+            }}
+            title={state.tier === 'enterprise' ? 'Enterprise plans are managed via custom contract — contact sales to change payment details' : undefined}
           >
-            {state.paymentProvider ? 'Update' : 'Add payment method'}
+            {state.tier === 'enterprise' ? 'Contact sales' : state.paymentProvider ? 'Update' : 'Add payment method'}
           </button>
         </div>
       </section>
@@ -637,6 +687,10 @@ export default function Settings() {
         body: JSON.stringify({ confirm: 'DELETE' }),
       });
       if (data.success) {
+        if (isDemoTourActive()) {
+          toast.success('Demo mode — no account changes were made');
+          return;
+        }
         clearAuth();
         router.replace('/sign_in');
       } else {
@@ -708,8 +762,10 @@ export default function Settings() {
         body: JSON.stringify({ fullName: name, email: user.email }),
       });
       if (data.user) {
-        const token = localStorage.getItem('authToken');
-        setAuth(token, { ...user, ...data.user });
+        if (!isDemoTourActive()) {
+          const token = localStorage.getItem('authToken');
+          setAuth(token, { ...user, ...data.user });
+        }
       }
       toast.success('Profile updated successfully');
     } catch {
@@ -728,9 +784,11 @@ export default function Settings() {
       body: form,
     });
     if (data.profilePicture) {
-      const token = localStorage.getItem('authToken');
-      const updated = { ...user, profilePicture: data.profilePicture };
-      setAuth(token, updated);
+      if (!isDemoTourActive()) {
+        const token = localStorage.getItem('authToken');
+        const updated = { ...user, profilePicture: data.profilePicture };
+        setAuth(token, updated);
+      }
       toast.success('Profile picture updated');
     } else {
       throw new Error(data.message || 'Upload failed');
@@ -1018,12 +1076,12 @@ export default function Settings() {
                       </div>
                     </div>
 
-                    <div className="set-gate" style={{ borderColor: 'rgba(248,113,113,0.3)', background: 'rgba(248,113,113,0.04)' }}>
-                      <div className="set-gate-ico" style={{ background: 'rgba(248,113,113,0.12)', color: '#f87171' }}>
+                    <div className="set-gate" style={{ borderColor: 'rgba(236,20,20,0.3)', background: 'rgba(236,20,20,0.04)' }}>
+                      <div className="set-gate-ico" style={{ background: 'rgba(236,20,20,0.12)', color: '#ec1414' }}>
                         <AlertTriangle className="w-4 h-4" />
                       </div>
                       <div className="flex-1">
-                        <h3 className="mem-rule" style={{ marginBottom: '0.15rem', color: '#f87171' }}>Delete Account</h3>
+                        <h3 className="mem-rule" style={{ marginBottom: '0.15rem', color: '#ec1414' }}>Delete Account</h3>
                         <p className="set-hint" style={{ marginBottom: '0.75rem' }}>
                           Permanently deletes your profile, projects, files, AI sessions, messages, deployments
                           and usage data. Your integration connections (GitHub, Figma, Slack, Notion, Discord)
@@ -1042,7 +1100,7 @@ export default function Settings() {
                           type="button"
                           onClick={handleDeleteAccount}
                           disabled={deleteText !== 'DELETE' || deleting}
-                          className="btn-workspace btn-secondary text-[#f87171] border-[rgba(248,113,113,0.3)] hover:bg-[rgba(248,113,113,0.08)] opacity-60 cursor-not-allowed"
+                          className="btn-workspace btn-secondary text-[#ec1414] border-[rgba(236,20,20,0.3)] hover:bg-[rgba(236,20,20,0.08)] opacity-60 cursor-not-allowed"
                           style={
                             deleteText === 'DELETE' && !deleting
                               ? { opacity: 1, cursor: 'pointer' }
@@ -1092,7 +1150,7 @@ export default function Settings() {
                             </div>
                             <div className="flex items-center gap-3 flex-shrink-0">
                               {connected && (
-                                <span className="pill" style={{ background: 'rgba(52,211,153,0.12)', color: '#34d399' }}>
+                                <span className="pill" style={{ background: 'rgba(3,186,3,0.12)', color: '#03ba03' }}>
                                   Connected
                                 </span>
                               )}

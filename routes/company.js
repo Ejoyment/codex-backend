@@ -8,6 +8,8 @@ const { checkMemberLimit, checkProjectLimit, requireTeamFeature, getCompanyLimit
 const permissionMatrix = require('../middleware/permissionMatrix');
 const { authenticateToken } = require('../middleware/auth');
 const { canonicalTier } = require('../utils/tierNames');
+const { ensurePersonalWorkspace } = require('../utils/personalWorkspace');
+const companyRoleService = require('../server/services/companyRoleService');
 
 /**
  * @swagger
@@ -158,6 +160,8 @@ router.post('/create', authenticateToken, permissionMatrix.requirePermission('co
 // Get user's companies
 router.get('/my-companies', authenticateToken, async (req, res) => {
     try {
+        await ensurePersonalWorkspace(req.userId);
+
         const companies = await Company.find({
             $or: [
                 { owner: req.userId },
@@ -168,11 +172,21 @@ router.get('/my-companies', authenticateToken, async (req, res) => {
         .populate('owner', 'fullName email profilePicture')
         .populate('members.user', 'fullName email profilePicture')
         .sort({ createdAt: -1 });
-        
+
+        const ownerIds = [...new Set(
+            companies.map(company => company.owner?._id?.toString()).filter(Boolean)
+        )];
+        const ownerSubscriptions = ownerIds.length
+            ? await Subscription.find({ userId: { $in: ownerIds } }).select('userId tier')
+            : [];
+        const subscriptionsByOwner = new Map(
+            ownerSubscriptions.map(subscription => [subscription.userId.toString(), subscription])
+        );
+        const companyUpdates = [];
+
         // Sync each company's tier with its owner's subscription
-        const companiesData = await Promise.all(companies.map(async (company) => {
-            // Get owner's subscription
-            const ownerSubscription = await Subscription.findOne({ userId: company.owner._id });
+        const companiesData = companies.map((company) => {
+            const ownerSubscription = subscriptionsByOwner.get(company.owner?._id?.toString());
             const ownerTier = canonicalTier(ownerSubscription?.tier);
             
             // Update company tier if it doesn't match
@@ -180,7 +194,12 @@ router.get('/my-companies', authenticateToken, async (req, res) => {
                 const memberLimit = ownerTier === 'developer' ? 1 : ['pro', 'pro_plus'].includes(ownerTier) ? 10 : 999999;
                 company.subscription.tier = ownerTier;
                 company.subscription.memberLimit = memberLimit;
-                await company.save();
+                companyUpdates.push({
+                    updateOne: {
+                        filter: { _id: company._id },
+                        update: { $set: { 'subscription.tier': ownerTier, 'subscription.memberLimit': memberLimit } }
+                    }
+                });
             }
             
             const _brokenMy = company.members.filter(m => !m.user);
@@ -204,7 +223,11 @@ router.get('/my-companies', authenticateToken, async (req, res) => {
                 stats: company.stats,
                 createdAt: company.createdAt
             };
-        }));
+        });
+
+        if (companyUpdates.length > 0) {
+            await Company.bulkWrite(companyUpdates);
+        }
         
         res.json({
             success: true,
@@ -489,14 +512,6 @@ router.post('/:companyId/invite', authenticateToken, permissionMatrix.requirePer
             });
         }
         
-        // Check member limit
-        if (company.members.length >= company.subscription.memberLimit) {
-            return res.status(403).json({
-                success: false,
-                message: `Member limit reached (${company.subscription.memberLimit}). Upgrade your plan to add more members.`
-            });
-        }
-        
         // Find user by email
         if (typeof email !== 'string' || !email.includes('@')) {
             return res.status(400).json({
@@ -521,15 +536,51 @@ router.post('/:companyId/invite', authenticateToken, permissionMatrix.requirePer
             });
         }
         
-        // Add member
-        company.members.push({
-            user: invitedUser._id,
-            role,
-            joinedAt: new Date(),
-            invitedBy: req.userId
-        });
-        
-        await company.save();
+        const memberLimit = company.subscription.memberLimit;
+        if (company.members.length >= memberLimit) {
+            return res.status(403).json({
+                success: false,
+                message: `Member limit reached (${memberLimit}). Upgrade your plan to add more members.`
+            });
+        }
+
+        const joinedAt = new Date();
+        const updatedCompany = await Company.findOneAndUpdate(
+            {
+                _id: company._id,
+                'members.user': { $ne: invitedUser._id },
+                $expr: {
+                    $lt: [
+                        { $size: { $ifNull: ['$members', []] } },
+                        { $ifNull: ['$subscription.memberLimit', 1] }
+                    ]
+                }
+            },
+            {
+                $addToSet: {
+                    members: {
+                        user: invitedUser._id,
+                        role,
+                        joinedAt,
+                        invitedBy: req.userId
+                    }
+                }
+            },
+            { new: true }
+        );
+        if (!updatedCompany) {
+            const latestCompany = await Company.findById(company._id);
+            if (latestCompany?.members.some((item) => item.user.toString() === invitedUser._id.toString())) {
+                return res.status(400).json({ success: false, message: 'User is already a member' });
+            }
+            if (!latestCompany || latestCompany.members.length >= latestCompany.subscription.memberLimit) {
+                return res.status(403).json({
+                    success: false,
+                    message: `Member limit reached (${latestCompany?.subscription?.memberLimit || memberLimit}). Upgrade your plan to add more members.`
+                });
+            }
+            return res.status(409).json({ success: false, message: 'Team membership changed. Refresh and try again.' });
+        }
         
         // Log activity
         await TeamActivity.create({
@@ -795,6 +846,42 @@ router.post('/:companyId/logo', authenticateToken, async (req, res) => {
     }
 });
 
+// Owner-only bulk promotion. Dry-run by default; the response lists every
+// requested member and why it was skipped so the caller can correct the list
+// before applying it.
+router.post('/:companyId/members/roles/bulk', authenticateToken, permissionMatrix.requirePermission('company', 'update'), async (req, res) => {
+    try {
+        const body = req.body || {};
+        const result = await companyRoleService.bulkPromoteMembers({
+            companyId: req.params.companyId,
+            userIds: body.userIds,
+            role: body.role || 'member',
+            actorId: req.userId,
+            dryRun: body.dryRun !== false,
+        });
+
+        if (!result.dryRun) {
+            for (const change of result.changes) {
+                await TeamActivity.create({
+                    company: req.params.companyId,
+                    user: req.userId,
+                    type: 'role_bulk_updated',
+                    action: `Bulk-promoted member to ${change.to}`,
+                    metadata: {
+                        targetUser: change.userId,
+                        oldValue: change.from,
+                        newValue: change.to,
+                    },
+                });
+            }
+        }
+
+        res.json({ success: true, data: result });
+    } catch (error) {
+        res.status(error.statusCode || 500).json({ success: false, message: error.message });
+    }
+});
+
 /**
  * @swagger
  * /api/company/{companyId}/members/{userId}/role:
@@ -926,7 +1013,7 @@ router.put('/:companyId/members/:userId/role', authenticateToken, permissionMatr
 // Update company settings
 router.put('/:companyId/settings', authenticateToken, permissionMatrix.requirePermission('company', 'update'), async (req, res) => {
     try {
-        const { allowMemberInvites, requireApproval, defaultRole, autoDeploy } = req.body;
+        const { allowMemberInvites, requireApproval, defaultRole, autoDeploy, selfHeal } = req.body;
         
         const company = await Company.findById(req.params.companyId);
         
@@ -944,6 +1031,7 @@ router.put('/:companyId/settings', authenticateToken, permissionMatrix.requirePe
         if (requireApproval !== undefined) company.settings.requireApproval = requireApproval;
         if (defaultRole !== undefined) company.settings.defaultRole = defaultRole;
         if (autoDeploy !== undefined) company.settings.autoDeploy = autoDeploy;
+        if (selfHeal !== undefined) company.settings.selfHeal = selfHeal;
         
         await company.save();
         

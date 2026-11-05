@@ -1,3 +1,4 @@
+const { sendInternalError } = require('../utils/httpErrors');
 const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../middleware/auth');
@@ -228,7 +229,7 @@ router.post('/generate', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('Design-to-code error:', error.message);
-    res.status(500).json({ success: false, message: error.message });
+    return sendInternalError(req, res, error);
   }
 });
 

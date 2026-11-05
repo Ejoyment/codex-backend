@@ -24,9 +24,9 @@ import {
 
 const ROLE_TINTS = {
   owner: { bg: 'rgba(229, 184, 74, 0.12)', text: '#e5b84a' },
-  admin: { bg: 'rgba(167, 139, 250, 0.12)', text: '#a78bfa' },
-  member: { bg: 'rgba(154, 161, 174, 0.1)', text: '#9aa1ae' },
-  viewer: { bg: 'rgba(47, 214, 230, 0.1)', text: '#2fd6e6' },
+  admin: { bg: 'rgba(138,56,245,0.12)', text: '#8a38f5' },
+  member: { bg: 'rgba(154,174,186,0.1)', text: '#9aaeba' },
+  viewer: { bg: 'rgba(18,220,229,0.1)', text: '#12dce5' },
 };
 
 export default function Teams() {
@@ -404,7 +404,7 @@ function TeamDetail({ company, members, loadingMembers, currentUser, onOpenSetti
           </div>
           <div>
             <p className="tm-stat-label">Created</p>
-            <p className="tm-stat-value" style={{ fontFamily: 'ui-monospace, SF Mono, Menlo, monospace', fontSize: '0.85rem', fontWeight: 600 }}>
+            <p className="tm-stat-value" style={{ fontFamily: 'var(--figma-font-mono)', fontSize: '0.85rem', fontWeight: 600 }}>
               {new Date(company.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
             </p>
           </div>
@@ -564,7 +564,7 @@ function CreateTeamModal({ onClose, onCreated }) {
             </span>
             <h3 className="ws-modal-title">Create Team</h3>
           </div>
-          <button type="button" onClick={onClose} className="text-[#565d6b] hover:text-[#eceef1]">
+          <button type="button" onClick={onClose} className="text-[#59687a] hover:text-[#ffffff]">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -666,12 +666,12 @@ function InviteMemberModal({ companies, selectedCompanyId, onClose }) {
       >
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-2.5">
-            <span className="card-ico" style={{ background: 'rgba(47,214,230,0.09)', borderColor: 'rgba(47,214,230,0.22)', color: '#2fd6e6' }}>
+            <span className="card-ico" style={{ background: 'rgba(18,220,229,0.09)', borderColor: 'rgba(18,220,229,0.22)', color: '#12dce5' }}>
               <Send className="w-4 h-4" />
             </span>
             <h3 className="ws-modal-title">Invite Member</h3>
           </div>
-          <button type="button" onClick={onClose} className="text-[#565d6b] hover:text-[#eceef1]">
+          <button type="button" onClick={onClose} className="text-[#59687a] hover:text-[#ffffff]">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -793,7 +793,7 @@ function CompanySettingsModal({ company, onClose, onUpdated }) {
             </span>
             <h3 className="ws-modal-title">Team Settings</h3>
           </div>
-          <button type="button" onClick={onClose} className="text-[#565d6b] hover:text-[#eceef1]">
+          <button type="button" onClick={onClose} className="text-[#59687a] hover:text-[#ffffff]">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -820,15 +820,15 @@ function CompanySettingsModal({ company, onClose, onUpdated }) {
             <label className="ws-label">Description</label>
             <textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} className="ws-textarea" placeholder="What does this team work on?" />
           </div>
-          <div className="border-t border-[#ffffff0d] pt-4 space-y-3">
-            <h4 className="text-sm font-semibold text-[#eceef1]">Permissions</h4>
+          <div className="border-t border-[#ffffff0f] pt-4 space-y-3">
+            <h4 className="text-sm font-semibold text-[#ffffff]">Permissions</h4>
             <label className="flex items-center gap-3 cursor-pointer">
-              <input type="checkbox" checked={allowMemberInvites} onChange={(e) => setAllowMemberInvites(e.target.checked)} className="w-4 h-4 rounded border-slate-300 text-[#2fd6e6] focus:ring-[#2fd6e6]" style={{ accentColor: '#2fd6e6' }} />
-              <span className="text-sm text-[#a8adba]">Allow members to invite others</span>
+              <input type="checkbox" checked={allowMemberInvites} onChange={(e) => setAllowMemberInvites(e.target.checked)} className="w-4 h-4 rounded border-slate-300 text-[#12dce5] focus:ring-[#12dce5]" style={{ accentColor: '#12dce5' }} />
+              <span className="text-sm text-[#a9b7c4]">Allow members to invite others</span>
             </label>
             <label className="flex items-center gap-3 cursor-pointer">
-              <input type="checkbox" checked={requireApproval} onChange={(e) => setRequireApproval(e.target.checked)} className="w-4 h-4 rounded border-slate-300 text-[#2fd6e6] focus:ring-[#2fd6e6]" style={{ accentColor: '#2fd6e6' }} />
-              <span className="text-sm text-[#a8adba]">Require approval for new members</span>
+              <input type="checkbox" checked={requireApproval} onChange={(e) => setRequireApproval(e.target.checked)} className="w-4 h-4 rounded border-slate-300 text-[#12dce5] focus:ring-[#12dce5]" style={{ accentColor: '#12dce5' }} />
+              <span className="text-sm text-[#a9b7c4]">Require approval for new members</span>
             </label>
             <div>
               <label className="ws-label">Default role for new members</label>

@@ -2,6 +2,7 @@ const Company = require('../models/Company');
 const Subscription = require('../models/Subscription');
 const jwt = require('jsonwebtoken');
 const { canonicalTier } = require('../utils/tierNames');
+const { isUserSessionValid } = require('./auth');
 
 // Tier limits configuration
 const CORE_PAID_FEATURES = {
@@ -322,6 +323,12 @@ async function checkUserSubscription(req, res, next) {
         }
 
         const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+        const userId = decoded.userId || decoded.id || decoded._id;
+
+        if (!(await isUserSessionValid(userId, decoded.tokenVersion))) {
+            return res.status(401).json({ success: false, message: 'Invalid or expired token' });
+        }
+
         const subscription = await Subscription.findOne({ userId: decoded.id });
         
         if (!subscription || canonicalTier(subscription.tier) === 'developer') {

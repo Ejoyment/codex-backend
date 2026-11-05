@@ -6,7 +6,7 @@ function Bar({ className = '' }) {
 
 function Card({ children, className = '' }) {
   return (
-    <div className={`bg-[#111622] border border-white/10 rounded-2xl p-6 shadow-xl ${className}`}>
+    <div className={`bg-[#101d2c] border border-white/10 rounded-2xl p-6 shadow-xl ${className}`}>
       {children}
     </div>
   );
@@ -48,7 +48,7 @@ export default function DashboardSkeleton() {
         </div>
         <div className="space-y-3">
           {[0, 1, 2].map((i) => (
-            <div key={i} className="bg-[#161b26] border border-white/5 rounded-xl p-4 flex items-center gap-3.5">
+            <div key={i} className="bg-[#182130] border border-white/5 rounded-xl p-4 flex items-center gap-3.5">
               <Bar className="w-8 h-8 rounded-lg shrink-0" />
               <div className="space-y-2 flex-1">
                 <Bar className="h-3 w-32" />
@@ -70,7 +70,7 @@ export default function DashboardSkeleton() {
           </div>
           <Bar className="h-6 w-16 rounded-full" />
         </div>
-        <div className="bg-[#161b26] border border-white/10 rounded-xl p-5 mb-4 space-y-3">
+        <div className="bg-[#182130] border border-white/10 rounded-xl p-5 mb-4 space-y-3">
           <Bar className="h-4 w-32" />
           <Bar className="h-5 w-48" />
           <Bar className="h-2 w-full rounded-full" />

@@ -1,3 +1,4 @@
+const { sendInternalError } = require('../utils/httpErrors');
 const express = require('express');
 const router = express.Router();
 const MeetingRoom = require('../models/MeetingRoom');
@@ -96,7 +97,7 @@ router.post('/', authenticateToken, requireCompanyMember, async (req, res) => {
             meeting
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -164,7 +165,7 @@ router.get('/', authenticateToken, requireCompanyMember, async (req, res) => {
             meetings
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -328,7 +329,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
             meeting
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -388,7 +389,7 @@ router.get('/room/:roomId', authenticateToken, async (req, res) => {
             meeting
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -422,7 +423,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
             meeting
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -497,7 +498,7 @@ router.post('/:id/join', authenticateToken, async (req, res) => {
             roomId: meeting.roomId
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -545,7 +546,7 @@ router.post('/:id/leave', authenticateToken, async (req, res) => {
             message: 'Left meeting'
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -595,7 +596,7 @@ router.post('/:id/end', authenticateToken, async (req, res) => {
             message: 'Meeting ended'
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -646,7 +647,7 @@ router.post('/:id/record/start', authenticateToken, async (req, res) => {
             message: 'Recording started'
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -710,7 +711,7 @@ router.post('/:id/record/stop', authenticateToken, async (req, res) => {
             recording: meeting.recording
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -734,7 +735,7 @@ router.delete('/:id', authenticateToken, async (req, res) => {
             message: 'Meeting deleted'
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 

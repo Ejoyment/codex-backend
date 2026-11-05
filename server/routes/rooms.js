@@ -49,7 +49,7 @@ router.post('/', async (req, res) => {
     });
     res.status(201).json({ success: true, data: roomView(room) });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    res.status(err.status || 500).json({ success: false, message: err.message });
   }
 });
 
@@ -66,7 +66,7 @@ router.post('/:id/respond', async (req, res) => {
     await roomService.respondToJoin(room, userId, !!approve);
     res.json({ success: true, data: roomView(room) });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    res.status(err.status || 500).json({ success: false, message: err.message });
   }
 });
 
@@ -106,6 +106,9 @@ router.post('/:id/share-env', async (req, res) => {
       });
     }
     if (!room.sharedEnvKeys.includes(key)) {
+      if (room.sharedEnvKeys.length >= roomService.MAX_SHARED_ENV_KEYS) {
+        return res.status(429).json({ success: false, message: 'Shared env key limit reached' });
+      }
       room.sharedEnvKeys.push(key);
       await roomService.touchActivity(room);
     }

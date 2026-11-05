@@ -73,12 +73,12 @@ export default function Demo() {
             <p className="mkt-eyebrow mb-6">
               <span className="dot">●</span> what you’ll see
             </p>
-            <StaggerChildren className="space-y-px overflow-hidden rounded-xl border border-[#ffffff12] bg-[#ffffff12]" stagger={0.08}>
+            <StaggerChildren className="space-y-px overflow-hidden rounded-xl border border-[#ffffff10] bg-[#ffffff10]" stagger={0.08}>
               {SELLING_POINTS.map(([tag, text]) => (
                 <StaggerItem key={tag}>
-                <div className="flex gap-5 bg-[#0d0d12] p-6">
+                <div className="flex gap-5 bg-[#121821] p-6">
                   <span className="mkt-pill flex-shrink-0">{tag}</span>
-                  <p className="text-[13.5px] leading-relaxed text-[#a8adba]">{text}</p>
+                  <p className="text-[13.5px] leading-relaxed text-[#a9b7c4]">{text}</p>
                 </div>
                 </StaggerItem>
               ))}
@@ -86,11 +86,11 @@ export default function Demo() {
             <div className="mkt-card mt-6 p-6">
               <div className="mkt-live mb-2">
                 <span className="dot" />
-                <span className="mkt-mono text-[11px] uppercase tracking-widest text-[#686e7c]">
+                <span className="mkt-mono text-[11px] uppercase tracking-widest text-[#748194]">
                   no slideware — the live workspace
                 </span>
               </div>
-              <p className="text-[13px] leading-relaxed text-[#a8adba]">
+              <p className="text-[13px] leading-relaxed text-[#a9b7c4]">
                 We demo the real product, not a deck. Bring your stack and we’ll talk through how
                 Buildrs would sit in it.
               </p>
@@ -143,7 +143,7 @@ export default function Demo() {
                   Request demo <span className="mkt-arrow">→</span>
                 </button>
               </MagneticButton>
-              <p className="mkt-mono text-center text-[11px] text-[#525764]">
+              <p className="mkt-mono text-center text-[11px] text-[#59687a]">
                 replies within one business day · no obligation
               </p>
             </form>

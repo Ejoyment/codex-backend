@@ -39,6 +39,9 @@ const NOTIFICATION_TYPES = [
     'deployment_started',
     'deployment_succeeded',
     'deployment_failed',
+    'deployment_healing',
+    'deployment_healed',
+    'deployment_heal_failed',
     // Billing
     'payment_succeeded',
     'payment_failed',
@@ -114,6 +117,10 @@ const notificationSchema = new mongoose.Schema(
 notificationSchema.index({ userId: 1, read: 1, createdAt: -1 });
 notificationSchema.index({ userId: 1, createdAt: -1 });
 notificationSchema.index({ userId: 1, dedupeKey: 1, createdAt: -1 });
+notificationSchema.index(
+    { userId: 1, dedupeKey: 1 },
+    { unique: true, partialFilterExpression: { dedupeKey: { $type: 'string' } } }
+);
 notificationSchema.index({ createdAt: 1 }, { expireAfterSeconds: 60 * 60 * 24 * 30 });
 
 notificationSchema.virtual('timeAgo').get(function () {
