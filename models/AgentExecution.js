@@ -56,6 +56,9 @@ const agentExecutionSchema = new mongoose.Schema({
   // encoded here yet; we record hours and the claim timestamp so a future
   // pricing decision can bill without re-running executions.
   computeHours: { type: Number, default: 0, min: 0 },
+  // Slice pre-charged by the compute preflight so the meter does not double
+  // count it (or can release an unused remainder).
+  computeReservationHours: { type: Number, default: 0, min: 0 },
   computeHoursMeteredAt: { type: Date, default: null },
   approvalRequired: {
     type: Boolean,

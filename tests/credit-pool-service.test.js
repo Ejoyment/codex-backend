@@ -222,6 +222,30 @@ describe('deductComputeHours overage', () => {
     expect(result).toMatchObject({ success: true, overage: false, remaining: 3, hoursDeducted: 2 });
   });
 
+  test('subtracts the preflight reservation from the charged duration', async () => {
+    Subscription.findOne.mockResolvedValue(subscription({
+      cloudComputeHours: { usedThisMonth: 5.5, overageHoursThisMonth: 0, overageAmountMinor: 0 },
+    }));
+    Subscription.findOneAndUpdate.mockResolvedValue(subscription({
+      cloudComputeHours: { usedThisMonth: 7, overageHoursThisMonth: 0, overageAmountMinor: 0 },
+    }));
+
+    const result = await creditPool.deductComputeHours('u1', 2, { reservedHours: 0.5 });
+
+    expect(Subscription.findOneAndUpdate).toHaveBeenCalledWith(
+      { userId: 'u1' },
+      {
+        $inc: {
+          'cloudComputeHours.usedThisMonth': 1.5,
+          'cloudComputeHours.overageHoursThisMonth': 0,
+          'cloudComputeHours.overageAmountMinor': 0,
+        },
+      },
+      { new: true }
+    );
+    expect(result).toMatchObject({ success: true, hoursDeducted: 2 });
+  });
+
   test('records only newly-created overage for an in-flight job', async () => {
     Subscription.findOne.mockResolvedValue(subscription({
       cloudComputeHours: { usedThisMonth: 9, overageHoursThisMonth: 0, overageAmountMinor: 0 },
