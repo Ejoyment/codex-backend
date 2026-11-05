@@ -47,6 +47,8 @@ const Invitation = require('../models/Invitation');
 const AuditLog = require('../models/AuditLog');
 const DebugHandoff = require('../models/DebugHandoff');
 const CollaborationSession = require('../models/CollaborationSession');
+const TeamActivity = require('../models/TeamActivity');
+const Standup = require('../models/Standup');
 const SupportTicket = require('../models/SupportTicket');
 const Notification = require('../models/Notification');
 const Message = require('../models/Message');
@@ -86,6 +88,8 @@ describe('TTL indexes', () => {
     ['AuditLog', AuditLog, 'expiresAt'],
     ['DebugHandoff', DebugHandoff, 'expiresAt'],
     ['CollaborationSession', CollaborationSession, 'expiresAt'],
+    ['TeamActivity', TeamActivity, 'expiresAt'],
+    ['Standup', Standup, 'expiresAt'],
     ['Notification', Notification, 'createdAt'],
   ])('%s expires via TTL', (name, model, field) => {
     expect(hasTtlOn(model, field)).toBe(true);
@@ -114,6 +118,8 @@ describe('TTL indexes', () => {
       () => ({ sandboxKey: 'k', createdBy: new mongoose.Types.ObjectId() })],
     ['Invitation', Invitation, 'INVITATION_TTL_DAYS', 3,
       () => ({ email: 'a@b.c', company: new mongoose.Types.ObjectId(), invitedBy: new mongoose.Types.ObjectId() })],
+    ['TeamActivity', TeamActivity, 'TEAM_ACTIVITY_RETENTION_DAYS', 3, () => ({})],
+    ['Standup', Standup, 'STANDUP_RETENTION_DAYS', 3, () => ({})],
   ])('%s honors %s', (_name, model, envVar, daysVal, makeDoc) => {
     if (daysVal === null) {
       process.env[envVar] = '48';
