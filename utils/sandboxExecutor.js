@@ -73,6 +73,11 @@ class SandboxExecutor {
 
     /**
      * Execute code safely in an isolated Docker container.
+     *
+     * `files` (optional) lets the caller seed the container's /workspace with
+     * project files before running. Without it only the single `code` snippet
+     * is present, so imports and test fixtures cannot resolve — which is why
+     * snippet execution cannot replace a real build.
      */
     async execute(code, language = 'javascript', options = {}) {
         if (typeof code === 'string' && code.length > 200000) throw new Error('Code too large');
@@ -94,6 +99,13 @@ class SandboxExecutor {
     /**
      * Execute in Docker container via sandboxSecurity.js.
      * Containers are always cleaned up (finally block).
+     *
+     * `options.files` (optional) seeds the container's /workspace with project
+     * files before running. Without it only the single `code` snippet is
+     * present, so imports and test fixtures cannot resolve — which is why
+     * snippet execution cannot replace a real build. Files are written via
+     * base64 over the container's exec API, so no shell interpolation and no
+     * external tar dependency is required.
      */
     async executeInDocker(code, language, options) {
         if (typeof code === 'string' && code.length > 200000) throw new Error('Code too large');
@@ -104,12 +116,24 @@ class SandboxExecutor {
 
         try {
             const container = await sandboxSecurity.createIsolatedContainer(userId, workspaceId);
+            await container.start();
+
+            // Seed project files (base64 -> file, mkdir -p first). Each write
+            // is a separate exec so a failure on one file does not abort the
+            // rest. Paths are validated before reaching the shell.
+            const files = Array.isArray(options.files) ? options.files : [];
+            for (const file of files.slice(0, 200)) {
+                const rel = this._safeRelPath(file?.path, file?.name);
+                if (!rel) continue;
+                const b64 = Buffer.from(String(file?.content || '')).toString('base64');
+                await this._execInContainer(container,
+                    ['sh', '-c', `mkdir -p "$(dirname ${JSON.stringify('/workspace/' + rel)})" && echo ${b64} | base64 -d > ${JSON.stringify('/workspace/' + rel)}`]
+                );
+            }
 
             // Use exec form (no shell) to prevent shell injection.
             // Pass code directly to the language interpreter.
             const execCmd = this.getDockerExecCmd(language, code);
-            await container.start();
-
             const exec = await container.exec({ Cmd: execCmd, AttachStdout: true, AttachStderr: true });
             const stream = await exec.start({});
 
@@ -171,8 +195,35 @@ class SandboxExecutor {
         }
     }
 
+/**
+     * Resolve a caller-supplied path/name pair to a safe workspace-relative
+     * path. Rejects absolute paths, traversal, shell metacharacters, and
+     * anything that would escape /workspace. Returns null when unsafe.
+     */
+    _safeRelPath(pathValue, name) {
+        const raw = `${pathValue || ''}/${name || ''}`;
+        const rel = raw.replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/+$/, '');
+        if (!rel || rel === '.') return null;
+        if (rel.split('/').some((seg) => !seg || seg === '..' || seg === '.')) return null;
+        if (/[\u0000-\u001f\u007f]/.test(rel)) return null;
+        if (/[;&|`$(){}[\]#!~<>'"]/.test(rel)) return null;
+        return rel;
+    }
+
     /**
-     * Get exec-form command (no shell) to prevent injection.
+     * Run an exec-form command inside an already-started container, ignoring
+     * stdout/stderr. Used for file seeding where we only care about success.
+     */
+    async _execInContainer(container, cmd) {
+        const exec = await container.exec({ Cmd: cmd, AttachStdout: false, AttachStderr: false });
+        await new Promise((resolve) => {
+            const t = setTimeout(resolve, 5000);
+            exec.start({}, () => { clearTimeout(t); resolve(); });
+        });
+    }
+
+    /**
+     * Get exec-form command (no shell) to prevent shell injection.
      * Returns array like ['node', '-e', code] instead of shell string.
      * For Go/Rust: writes code to /tmp file first to avoid shell interpolation.
      */
@@ -234,14 +285,86 @@ class SandboxExecutor {
 
     /**
      * Execute tests in an isolated container.
+     *
+     * `options.files` seeds /workspace with project files (via base64 over the
+     * exec API) so imports resolve. `options.installDeps` runs the project's
+     * install command first when set. Without these, only the single test
+     * snippet exists and the run is a syntax smoke test at best.
      */
-    async executeTests(testCode, language = 'javascript', framework = 'jest') {
+    async executeTests(testCode, language = 'javascript', framework = 'jest', options = {}) {
         const testEnvironment = this.prepareTestEnvironment(framework);
         const fullCode = `${testEnvironment}\n${testCode}`;
 
-        return await this.execute(fullCode, language, {
-            timeout: 30000 // Tests get more time
-        });
+        const execOptions = {
+            timeout: options.timeout || 30000,
+            files: options.files,
+            installDeps: options.installDeps,
+        };
+
+        if (options.installDeps && options.files) {
+            return await this.executeWithInstall(fullCode, language, framework, execOptions);
+        }
+        return await this.execute(fullCode, language, execOptions);
+    }
+
+    /**
+     * Run a test snippet inside a container that has been seeded with project
+     * files and had its dependencies installed. This is the only path that can
+     * produce meaningful pass/fail for a real project; the bare snippet path
+     * cannot.
+     */
+    async executeWithInstall(testCode, language, framework, options) {
+        const userId = options.userId || 'system';
+        const workspaceId = options.workspaceId || 'default';
+        if (!/^[a-zA-Z0-9_-]{1,64}$/.test(String(userId)) || !/^[a-zA-Z0-9_-]{1,64}$/.test(String(workspaceId))) {
+            throw new Error('Invalid userId/workspaceId');
+        }
+
+        try {
+            const container = await sandboxSecurity.createIsolatedContainer(userId, workspaceId);
+            await container.start();
+
+            const files = Array.isArray(options.files) ? options.files : [];
+            for (const file of files.slice(0, 200)) {
+                const rel = this._safeRelPath(file?.path, file?.name);
+                if (!rel) continue;
+                const b64 = Buffer.from(String(file?.content || '')).toString('base64');
+                await this._execInContainer(container,
+                    ['sh', '-c', `mkdir -p "$(dirname ${JSON.stringify('/workspace/' + rel)})" && echo ${b64} | base64 -d > ${JSON.stringify('/workspace/' + rel)}`]
+                );
+            }
+
+            if (options.installDeps) {
+                await this._execInContainer(container,
+                    ['sh', '-c', `cd /workspace && ${options.installDeps}`]
+                );
+            }
+
+            const execCmd = this.getDockerExecCmd(language, testCode);
+            const exec = await container.exec({ Cmd: execCmd, AttachStdout: true, AttachStderr: true });
+            const stream = await exec.start({});
+
+            let output = '';
+            const startTime = Date.now();
+            await new Promise((resolve, reject) => {
+                const t = setTimeout(() => reject(new Error('Execution timeout')), options.timeout || 30000);
+                stream.on('data', (d) => { output += d.toString(); clearTimeout(t); });
+                stream.on('end', () => { clearTimeout(t); resolve(); });
+                stream.on('error', (e) => { clearTimeout(t); reject(e); });
+            });
+            const info = await exec.inspect();
+
+            return {
+                success: info.ExitCode === 0,
+                output,
+                exitCode: info.ExitCode,
+                executionTime: Date.now() - startTime,
+            };
+        } catch (error) {
+            return { success: false, error: error.message };
+        } finally {
+            try { await sandboxSecurity.cleanupContainer(userId); } catch (_) {}
+        }
     }
 
     /**

@@ -182,6 +182,17 @@ class GitService {
   }
 
   /**
+   * Resolve the on-disk path for a workspace/project. autoValidator and other
+   * exec-based tools need the path; previously they fell back to process.cwd()
+   * which is the wrong directory entirely.
+   */
+  getWorkspacePath(workspaceId, projectId = null) {
+    assertValidWorkspaceId(workspaceId);
+    const key = this.repositoryKey(workspaceId, projectId);
+    return this.workspacePaths.get(key) || this.repositoryPath(workspaceId, projectId);
+  }
+
+  /**
    * Get repository status
    */
   async status(workspaceId, projectId = null) {

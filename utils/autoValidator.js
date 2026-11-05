@@ -56,12 +56,41 @@ class AutoValidator {
                 hasVitest,
                 hasVite,
                 deps: { ...pkg.dependencies, ...pkg.devDependencies },
-                pkgName: pkg.name
+                pkgName: pkg.name,
+                // The install command the project declares (npm/pnpm/yarn), or a
+                // sensible default. Validation cannot typecheck or test a
+                // project whose dependencies are not on disk.
+                installScript: this.inferInstallScript(pkg, workspaceId),
             };
         } catch (error) {
             console.error('Error detecting config:', error);
             return { hasConfig: false };
         }
+    }
+
+    /**
+     * Pick the package manager and install command from the project's
+     * manifests. A lockfile is the strongest signal; package.json scripts are
+     * the fallback. Returns null when nothing can be inferred.
+     */
+    async inferInstallScript(pkg = {}, workspaceId) {
+        const lockfiles = ['pnpm-lock.yaml', 'yarn.lock', 'package-lock.json'];
+        for (const name of lockfiles) {
+            const has = await CodeFile.findOne({
+                company: workspaceId,
+                name: { $regex: new RegExp(`${name.replace(/\./g, '\\.')}$`) }
+            });
+            if (has) {
+                if (name === 'pnpm-lock.yaml') return 'pnpm install --frozen-lockfile';
+                if (name === 'yarn.lock') return 'yarn install --frozen-lockfile';
+                return 'npm ci';
+            }
+        }
+        const scripts = pkg.scripts || {};
+        const testScript = scripts.test || '';
+        if (testScript.includes('pnpm')) return 'pnpm install --frozen-lockfile';
+        if (testScript.includes('yarn')) return 'yarn install --frozen-lockfile';
+        return 'npm ci';
     }
 
     /**
@@ -215,6 +244,37 @@ class AutoValidator {
             const gitService = require('./gitService');
             const workspacePath = gitService.getWorkspacePath ? gitService.getWorkspacePath(workspaceId) : null;
             const cwd = workspacePath || process.cwd();
+
+            // Install dependencies before typecheck/lint/test. Without this the
+            // workspace is just source on disk: every check fails with
+            // "Cannot find module" and the repair loop reports false failures.
+            // Use a generous timeout — installs dominate validation time.
+            if (config.installScript) {
+                const installTimeout = Math.max(timeoutMs, 120000);
+                try {
+                    const { stdout, stderr } = await execPromise(config.installScript, {
+                        cwd,
+                        timeout: installTimeout,
+                        maxBuffer: 20 * 1024 * 1024,
+                        env: { ...process.env, CI: 'true', npm_config_audit: 'false' },
+                    });
+                    results.commandsRun.push(config.installScript);
+                    results.details.install = { passed: true };
+                } catch (err) {
+                    results.commandsRun.push(`${config.installScript} (failed)`);
+                    const installErrors = this.parseErrors(err.stderr || err.stdout || err.message, 'install');
+                    if (installErrors.length) {
+                        results.errors.push(...installErrors.filter(e => e.severity === 'error'));
+                    }
+                    results.details.install = { passed: false, error: (err.message || '').slice(0, 500) };
+                    // A failed install means typecheck/lint/test would only
+                    // report missing-module noise. Stop here rather than adding
+                    // hundreds of cascading errors.
+                    results.success = results.errors.length === 0;
+                    results.summary = `Install failed: ${(err.message || '').slice(0, 200)}`;
+                    return results;
+                }
+            }
 
             // Try typecheck first
             if (config.scripts.typecheck) {
