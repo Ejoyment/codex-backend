@@ -44,20 +44,21 @@ class CreditPoolService {
         if (Subscription.db?.readyState !== 1) return;
         try {
             const now = new Date();
-            const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+            const nextMonth = Subscription.nextMonthlyReset(now);
 
-            // Find subscriptions whose resetAt is before now
+            // Overdue rows, legacy rows whose resetAt defaulted to Jan 1, and
+            // rows missing resetAt altogether all need normalizing.
             const subscriptions = await Subscription.find({
-                'creditPool.resetAt': { $lte: now },
-                status: 'active'
+                status: 'active',
+                $or: [
+                    { 'creditPool.resetAt': { $lte: now } },
+                    { 'creditPool.resetAt': { $gt: nextMonth } },
+                    { 'creditPool.resetAt': { $exists: false } }
+                ]
             });
 
             for (const sub of subscriptions) {
-                sub.creditPool.usedThisMonth = 0;
-                sub.cloudComputeHours.usedThisMonth = 0;
-                sub.cloudComputeHours.overageHoursThisMonth = 0;
-                sub.cloudComputeHours.overageAmountMinor = 0;
-                sub.creditPool.resetAt = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+                sub.applyMonthlyReset(now);
                 await sub.save();
             }
 
