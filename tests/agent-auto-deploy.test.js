@@ -23,7 +23,7 @@ const TeamProject = require('../models/TeamProject');
 const deploymentService = require('../utils/deploymentService');
 const { backfillFileContent, validateDeployFiles } = require('../utils/deployContent');
 const { notifyDeploymentEvent } = require('../utils/notificationTriggers');
-const { redeployApprovedProject } = require('../utils/agentAutoDeploy');
+const { redeployApprovedProject, redeployDeployment } = require('../utils/agentAutoDeploy');
 
 const query = (value) => ({
   select: jest.fn(() => ({ lean: jest.fn().mockResolvedValue(value) })),
@@ -102,5 +102,47 @@ describe('redeployApprovedProject', () => {
       runtime: 'node',
     });
     expect(notifyDeploymentEvent).toHaveBeenCalledTimes(2);
+  });
+
+  test('injects the deployment env vars into the container run', async () => {
+    const deployment = activeDeployment();
+    deployment.env = [
+      { key: 'PORT', value: '8080', secret: false, encrypted: false },
+      { key: 'API_KEY', value: 'plain-secret', secret: true, encrypted: false },
+    ];
+    Deployment.findOne.mockReturnValue({ sort: jest.fn().mockResolvedValue(deployment) });
+
+    await redeployApprovedProject({ execution, userId: 'user-id', workspaceId: 'workspace-id' });
+
+    expect(deploymentService.deployProject).toHaveBeenCalledWith(
+      'demo-app',
+      expect.any(Array),
+      expect.objectContaining({ env: { PORT: '8080', API_KEY: 'plain-secret' } })
+    );
+  });
+
+  test('persists the crash runtime logs when a redeploy fails', async () => {
+    const deployment = activeDeployment();
+    deployment.projectKey = 'project-id';
+    const failure = Object.assign(new Error('app crashed'), {
+      fault: 'user',
+      stage: 'start',
+      runtimeLogs: 'Error: Cannot find module express',
+    });
+    deploymentService.deployProject.mockRejectedValue(failure);
+
+    await expect(redeployDeployment({
+      deployment,
+      userId: 'user-id',
+      projectId: 'project-id',
+      scheduleOnFailure: false,
+    })).rejects.toThrow('app crashed');
+
+    expect(deployment).toMatchObject({
+      status: 'failed',
+      fault: 'user',
+      failureStage: 'start',
+      runtimeLogs: 'Error: Cannot find module express',
+    });
   });
 });

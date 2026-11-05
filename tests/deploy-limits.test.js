@@ -385,6 +385,98 @@ describe('detectRuntime', () => {
         ]);
         expect(minorOnly.dockerfile).toContain('FROM golang:1.21-alpine');
     });
+
+    test('rust: cargo manifest selects the binary and detects the port', () => {
+        const { runtime, dockerfile, exposePort } = detectRuntime([
+            { name: 'Cargo.toml', path: '/', content: '[package]\nname = "my-api"\n\n[dependencies]\nserde = "1"\n' },
+            { name: 'src/main.rs', path: '/', content: 'bind("0.0.0.0:9090")' },
+        ]);
+        expect(runtime).toBe('rust');
+        expect(exposePort).toBe(9090);
+        expect(dockerfile).toContain('cargo build --release');
+        expect(dockerfile).toContain('/src/target/release/my-api');
+    });
+
+    test('java: maven projects build a jar and honour server.port', () => {
+        const { runtime, dockerfile, exposePort } = detectRuntime([
+            { name: 'pom.xml', path: '/', content: '<project><java.version>17</java.version></project>' },
+            { name: 'src/main/java/App.java', path: '/', content: 'class App {}' },
+            { name: 'src/main/resources/application.properties', path: '/', content: 'server.port=8088\n' },
+        ]);
+        expect(runtime).toBe('java');
+        expect(exposePort).toBe(8088);
+        expect(dockerfile).toContain('FROM maven:3.9-eclipse-temurin-17 AS build');
+        expect(dockerfile).toContain('FROM eclipse-temurin:17-jre');
+        expect(dockerfile).toContain('ENV SERVER_PORT=8088');
+    });
+
+    test('dotnet: csproj selects the SDK and runs the published assembly', () => {
+        const { runtime, dockerfile } = detectRuntime([
+            { name: 'MyApp.csproj', path: '/', content: '<Project><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>' },
+        ]);
+        expect(runtime).toBe('dotnet');
+        expect(dockerfile).toContain('mcr.microsoft.com/dotnet/sdk:8.0');
+        expect(dockerfile).toContain('ENTRYPOINT ["dotnet", "MyApp.dll"]');
+    });
+
+    test('elixir: mix project runs phoenix when the dependency is present', () => {
+        const { runtime, dockerfile } = detectRuntime([
+            { name: 'mix.exs', path: '/', content: 'defp deps do [{:phoenix, "~> 1.7"}] end' },
+            { name: 'config/runtime.exs', path: '/', content: 'config :app, port: 4321' },
+        ]);
+        expect(runtime).toBe('elixir');
+        expect(dockerfile).toContain('CMD ["mix", "phx.server"]');
+        expect(dockerfile).toContain('ENV PORT=4321');
+    });
+
+    test('swift: Package.swift builds the named executable', () => {
+        const { runtime, dockerfile } = detectRuntime([
+            { name: 'Package.swift', path: '/', content: 'let package = Package(name: "SwiftAPI")' },
+        ]);
+        expect(runtime).toBe('swift');
+        expect(dockerfile).toContain('swift build -c release');
+        expect(dockerfile).toContain('.build/release/SwiftAPI');
+    });
+
+    test('dart: pubspec selects the bin entrypoint', () => {
+        const { runtime, dockerfile } = detectRuntime([
+            { name: 'pubspec.yaml', path: '/', content: 'name: dart_api\n' },
+            { name: 'bin/server.dart', path: '/', content: 'void main() {}' },
+        ]);
+        expect(runtime).toBe('dart');
+        expect(dockerfile).toContain('dart compile exe bin/server.dart -o /out/app');
+    });
+
+    test('docker compose with a build service fails clearly instead of deploying statically', () => {
+        const detected = detectRuntime([
+            { name: 'docker-compose.yml', path: '/', content: 'services:\n  web:\n    build: .\n    ports:\n      - "3000:3000"\n' },
+        ]);
+        expect(detected.runtime).toBe('compose');
+        expect(detected.unsupported).toBe(true);
+        expect(detected.reason).toMatch(/Docker Compose/i);
+    });
+
+    test('image-only compose files fall through to the normal static deploy', () => {
+        const detected = detectRuntime([
+            { name: 'docker-compose.yml', path: '/', content: 'services:\n  redis:\n    image: redis:7\n' },
+            { name: 'index.html', path: '/', content: '<h1>docs</h1>' },
+        ]);
+        expect(detected.runtime).toBe('static');
+        expect(detected.unsupported).toBeUndefined();
+    });
+
+    test('nested rust/java/.NET markers are detected in their own context', () => {
+        const rust = detectRuntime([
+            { name: 'Cargo.toml', path: '/services/api', content: '[package]\nname = "api"\n' },
+        ]);
+        expect(rust.runtime).toBe('rust');
+        expect(rust.contextDir).toBe('services/api');
+        const java = detectRuntime([
+            { name: 'pom.xml', path: '/services/web', content: '<project/>' },
+        ]);
+        expect(java.runtime).toBe('java');
+        expect(java.contextDir).toBe('services/web');
+    });
 });
 
 describe('ensureStaticEntry', () => {

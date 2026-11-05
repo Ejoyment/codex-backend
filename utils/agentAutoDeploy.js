@@ -4,6 +4,7 @@ const Deployment = require('../models/Deployment');
 const LocalProject = require('../models/LocalProject');
 const TeamProject = require('../models/TeamProject');
 const depService = require('./deploymentService');
+const { toEnvObject } = require('./deployEnv');
 const { validateDeployFiles, backfillFileContent, limits: deployLimits } = require('./deployContent');
 const { notifyDeploymentEvent } = require('./notificationTriggers');
 
@@ -19,6 +20,7 @@ function resetSelfHealState(deployment) {
     progress: null,
     lastError: null,
     recoveredAt: null,
+    requiredEnv: [],
   };
 }
 
@@ -129,7 +131,11 @@ async function redeployDeployment({
     // redeploy still tells the next self-heal attempt which runtime was used
     // (the agent may have added or changed a Dockerfile since the last run).
     deployment.runtime = detected.runtime;
-    const result = await depService.deployProject(subdomain, normalizedFiles, hooks);
+    const result = await depService.deployProject(subdomain, normalizedFiles, {
+      ...hooks,
+      // Stored entries are decrypted here and injected into `docker run`.
+      env: toEnvObject(deployment.env || []),
+    });
     deployment.containerId = result.containerId || null;
     deployment.deployedUrl = result.url || `https://${subdomain}.buildrshq.dev`;
     deployment.httpUrl = `http://${subdomain}.buildrshq.dev`;
@@ -156,6 +162,8 @@ async function redeployDeployment({
     deployment.failureStage = error.stage || fallbackStage || 'platform';
     deployment.steps = steps;
     deployment.buildLogs = depService.capLogTail(`${buildLogs}\n--- REDEPLOYMENT FAILED ---\n${deployment.errorMessage}\n`);
+    // The crash output is what the repair agent needs on the next attempt.
+    if (error.runtimeLogs) deployment.runtimeLogs = String(error.runtimeLogs).slice(-200000);
     deployment.expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     await deployment.save();
     notifyDeploymentEvent({

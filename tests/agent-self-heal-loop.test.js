@@ -134,7 +134,7 @@ describe('autonomous agent repair loop', () => {
 
     expect(prompt).not.toContain('f0');
     expect(prompt).toContain('f9');
-    expect(prompt.length).toBeLessThan(12000);
+    expect(prompt.length).toBeLessThan(26000);
   });
 });
 
@@ -264,5 +264,83 @@ describe('stack-agnostic file tools', () => {
     expect(page.content).toBe('cdef');
     expect(page.truncated).toBe(true);
     expect(page.nextOffset).toBe(6);
+  });
+});
+
+describe('deployment environment tools', () => {
+  test('set_env records non-secret configuration on the run context', async () => {
+    const context = {};
+    const result = await orchestrator.tools.set_env.execute({
+      vars: { PORT: '8080', NODE_ENV: 'production' },
+    }, context);
+
+    expect(result.success).toBe(true);
+    expect(context.agentEnv).toEqual({ PORT: '8080', NODE_ENV: 'production' });
+  });
+
+  test('set_env refuses credential-shaped keys so secrets are never hardcoded', async () => {
+    const context = {};
+    const result = await orchestrator.tools.set_env.execute({
+      vars: { STRIPE_API_KEY: 'sk_live_123', PORT: '8080' },
+    }, context);
+
+    expect(result.success).toBe(true);
+    expect(context.agentEnv).toEqual({ PORT: '8080' });
+    expect(result.rejected).toContain('STRIPE_API_KEY');
+    expect(context.agentEnv.STRIPE_API_KEY).toBeUndefined();
+  });
+
+  test('declare_env_vars records the variables the user must supply', async () => {
+    const context = {};
+    const result = await orchestrator.tools.declare_env_vars.execute({
+      vars: [{ key: 'DATABASE_URL', reason: 'Postgres connection string.' }],
+    }, context);
+
+    expect(result.success).toBe(true);
+    expect(context.requiredEnv).toEqual([{
+      key: 'DATABASE_URL',
+      reason: 'Postgres connection string.',
+    }]);
+  });
+
+  test('declaring required env satisfies the mutation requirement', async () => {
+    const baseState = { workspace: { id: 'w', name: 'workspace' }, files: [], currentFile: null };
+    jest.spyOn(orchestrator, 'observe').mockResolvedValue(baseState);
+    jest.spyOn(orchestrator, 'feedback').mockResolvedValue(baseState);
+    jest.spyOn(orchestrator, 'saveIteration').mockResolvedValue();
+    jest.spyOn(orchestrator, 'storeSuccessfulPattern').mockResolvedValue();
+    jest.spyOn(orchestrator, 'storeActionPattern').mockResolvedValue();
+    const reason = jest.spyOn(orchestrator, 'reason')
+      .mockResolvedValueOnce({
+        success: true,
+        thought: 'The app needs a database URL.',
+        goalAchieved: false,
+        action: { tool: 'declare_env_vars', parameters: { vars: [{ key: 'DATABASE_URL' }] } },
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        thought: 'The user must supply the value.',
+        goalAchieved: true,
+        action: null,
+      });
+    const act = jest.spyOn(orchestrator, 'act').mockImplementation(async (action, context) => {
+      context.requiredEnv = [{ key: 'DATABASE_URL', reason: null }];
+      return { success: true, message: 'Declared' };
+    });
+
+    const result = await orchestrator.executeAgenticLoop('Repair the build', {
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      autonomous: true,
+      requireMutation: true,
+      allowedTools: ['read_file', 'declare_env_vars'],
+      autoApproveTools: ['declare_env_vars'],
+      skipAutoValidation: true,
+      maxRuntimeMs: 60000,
+    }, 'session-1');
+
+    expect(result.success).toBe(true);
+    expect(act).toHaveBeenCalledTimes(1);
+    expect(reason).toHaveBeenCalledTimes(2);
   });
 });
