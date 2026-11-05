@@ -62,19 +62,18 @@ const TOKEN_LIMIT_PATTERN = 'request too large|tokens per minute|rate_limit_exce
 // burns the repair budget. Surface it to the user instead.
 const PROVIDER_CONFIG_PATTERN = 'invalid api key|incorrect api key|invalid_api_key|unauthorized|authentication failed|no ai providers configured|is selected but not configured';
 
-// Autonomous repairs may read broadly, but only create/update/edit files.
-// Deleting source or executing arbitrary code needs a human, and would
-// otherwise stall forever on the HITL gate because there is no one watching
-// the background run. edit_file is included so large files can be fixed
-// without rewriting the whole file (and without relying on a full-file read
-// fitting in the prompt).
+// Autonomous repairs may read broadly, and may run the project's own build and
+// tests to verify a fix before redeploying. run_tests executes in the sandbox
+// (no arbitrary code, no file deletion), so it is safe for a background run
+// with no human watching. Deleting source or running arbitrary shell still
+// needs a human and stays out of the autonomous set.
 const SAFE_TOOLS = [
   'read_file',
   'list_files',
   'search_code',
   'analyze_code',
 ];
-const AUTO_APPROVE_TOOLS = ['create_file', 'update_file', 'edit_file', 'create_multiple_files', 'set_env', 'declare_env_vars'];
+const AUTO_APPROVE_TOOLS = ['create_file', 'update_file', 'edit_file', 'create_multiple_files', 'set_env', 'declare_env_vars', 'run_tests'];
 const AUTONOMOUS_TOOLS = [...SAFE_TOOLS, ...AUTO_APPROVE_TOOLS];
 const CHANGING_TOOLS = new Set(AUTO_APPROVE_TOOLS.filter((tool) => tool !== 'declare_env_vars'));
 
@@ -665,6 +664,10 @@ function buildHealingGoal(deployment, projectId, files = [], previewFiles = [], 
   const hints = buildRepairHints(digestText, files);
   const manifests = detectManifests(files);
   const failingFiles = failingFilesFromDigest(digestText, files);
+  // A previous validation pass (lint/typecheck/tests) may have surfaced new
+  // errors the agent must fix before the build can pass. Surface them first so
+  // they outrank the original build-log digest.
+  const validationErrors = Array.isArray(options.validationErrors) ? options.validationErrors : [];
   // The platform persists the runtime it detected before building. Use that
   // instead of re-detecting from a metadata-only file list (which cannot see
   // package.json scripts and would report "static" for a Node app).
@@ -733,6 +736,14 @@ function buildHealingGoal(deployment, projectId, files = [], previewFiles = [], 
       ? ['Runtime logs (the container\'s stdout/stderr after starting):', runtimeLogs]
       : [];
     const hintsSection = hints.length ? ['Repair hints derived from the log:', ...hints.map((hint) => `- ${hint}`)] : [];
+    const validationSection = validationErrors.length
+      ? [
+        'VALIDATION ERRORS (the project was rebuilt and these still fail):',
+        ...validationErrors.map((err) => `- ${err.file || 'unknown'}:${err.line || 0} [${err.source || 'build'}] ${err.severity || 'error'}: ${err.message || err.raw || ''}`),
+        '',
+        'Fix every error above. Do not set goalAchieved=true until they are gone.',
+      ]
+      : [];
     const manifestSection = ['Project files (read with read_file using the id):', manifest];
     const previewSection = includePreviews
       ? ['Relevant file contents (previews; call read_file for the full file):', ...previews]
@@ -746,10 +757,10 @@ function buildHealingGoal(deployment, projectId, files = [], previewFiles = [], 
       'If the detected runtime does not match the project (for example a Java, Rust, .NET, Elixir, or C/C++ project detected as static) or the log shows the platform cannot build this stack, create a correct Dockerfile that installs the toolchain, builds the project, and runs it on the PORT environment variable.',
       'If the app needs non-secret configuration (for example PORT, NODE_ENV, LOG_LEVEL, or a hostname), call set_env with a vars object. Never put passwords, API keys, tokens, or connection strings in a file or in set_env.',
       'If the app needs a value only the user can supply (an API key, password, token, or database URL), call declare_env_vars with { key, reason } entries and do not invent a value. The run stops and the user is asked to add it.',
-      'Do not delete files, run tests, or execute code. The deployment is redeployed automatically after your edit.',
+      'Do not delete files or execute arbitrary code. You may run the project tests with run_tests to verify a fix before declaring the goal achieved.',
       'When the fix is in place, set goalAchieved=true. Do not set goalAchieved=true before you have changed a file or declared the required environment variables.',
     ];
-    return [header, manifestsSection, failingSection, digestSection, tailSection, runtimeSection, hintsSection, manifestSection, previewSection, instructions]
+    return [header, manifestsSection, failingSection, digestSection, tailSection, runtimeSection, hintsSection, validationSection, manifestSection, previewSection, instructions]
       .map((section) => (Array.isArray(section) ? section.join('\n') : section))
       .filter(Boolean)
       .join('\n\n');
@@ -932,14 +943,72 @@ async function runHealingAgent(deployment, { projectId, workspaceId, files = [],
       && CHANGING_TOOLS.has(iteration.action.tool)
     )
   );
+
+  // Self-heal edits live in CodeFile, not on disk, so the orchestrator's
+  // per-iteration auto-validation is skipped. Verify the fix here instead:
+  // hydrate the project's git workspace from the VFS, run its own build and
+  // tests, and feed any errors back to the agent for one more pass. A repair
+  // that still fails validation is not a repair — it would just redeploy a
+  // broken build and burn another attempt.
+  //
+  // The validation scope is the CodeFiles' own company, not the deployment's
+  // workspaceId. Individual developers may deploy without a workspace, but
+  // their files still carry a company (the personal workspace the platform
+  // creates for them), so disk validation works for them too. Only when no
+  // company can be resolved at all do we skip disk validation — and in that
+  // case the agent still has run_tests in its toolset to self-verify.
+  let validationErrors = [];
+  const validationWorkspace = workspaceId
+    || (files.find((file) => file?.company)?.company)
+    || null;
+  if (changed && validationWorkspace) {
+    try {
+      const autoValidator = require('./autoValidator');
+      const gitService = require('./gitService');
+      await gitService.hydrateFromVFS(validationWorkspace, String(projectId));
+      const validation = await autoValidator.validate({
+        workspaceId: validationWorkspace,
+        mutatedFiles: (result.iterations || [])
+          .filter((i) => i?.action?.tool && CHANGING_TOOLS.has(i.action.tool))
+          .map((i) => i.action.parameters || {}),
+        timeoutMs: Math.min(AGENT_TIMEOUT_MS, 180000),
+      });
+      validationErrors = Array.isArray(validation?.errors) ? validation.errors : [];
+      appendLog(validationErrors.length
+        ? `Validation found ${validationErrors.length} error(s); feeding them back to the agent.`
+        : 'Validation passed before redeploy.');
+    } catch (validationErr) {
+      logError('could not validate the self-heal edit', validationErr);
+    }
+  } else if (changed) {
+    appendLog('No workspace/company scope for disk validation; the agent can use run_tests to verify.');
+  }
+
+  let fixResult = result;
+  if (changed && validationErrors.length && attempts < MAX_ATTEMPTS) {
+    try {
+      const fixGoal = buildHealingGoal(
+        deployment,
+        projectId,
+        files,
+        [],
+        { compact: true, runtime, validationErrors: validationErrors.slice(0, 15) }
+      );
+      appendLog('Re-running the agent with the validation errors.');
+      fixResult = await agentOrchestrator.executeAgenticLoop(fixGoal, context, execution._id);
+    } catch (fixErr) {
+      logError('validation follow-up run failed', fixErr);
+    }
+  }
+
   const agentEnv = Object.keys(context.agentEnv || {}).length ? { ...context.agentEnv } : {};
   const requiredEnv = Array.isArray(context.requiredEnv) ? context.requiredEnv.slice(0, 20) : [];
-  const failureDetail = result?.error || result?.summary?.stopReason || null;
+  const failureDetail = fixResult?.error || fixResult?.summary?.stopReason || null;
   const summary = requiredEnv.length
     ? `Agent needs environment variables from the user: ${requiredEnv.map((item) => item.key).join(', ')}.`
     : (!changed && failureDetail)
       ? `Agent failed: ${failureDetail}`
-      : (result?.summary?.finalThought
+      : (fixResult?.summary?.finalThought
         || (changed ? 'Agent edited project files.' : 'Agent made no file changes.'));
 
   await AgentExecution.updateOne(
