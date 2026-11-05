@@ -160,9 +160,13 @@ describe('deployment self-heal worker', () => {
     );
     // The agent is fed the project file manifest, build logs and file bodies.
     const goal = agentOrchestrator.executeAgenticLoop.mock.calls[0][0];
+    // Self-heal starts compact: file bodies are not inlined, the agent reads
+    // them with read_file instead, which keeps the request under the provider
+    // token cap on the first attempt.
     expect(goal).toContain('index.js');
     expect(goal).toContain('npm ERR! missing module');
-    expect(goal).toContain('require("missing-module")');
+    expect(goal).not.toContain('Relevant file contents');
+    expect(goal.length).toBeLessThanOrEqual(selfHeal._config.COMPACT_GOAL_CHARS);
   });
 
   test('heals a project that has no workspace by using the files own company', async () => {
@@ -584,29 +588,29 @@ describe('deployment self-heal worker', () => {
     expect(goal).toContain('app/globals.css (id: css-id)');
   });
 
-  test('retries inline with the compact prompt when the provider rejects the request size', async () => {
+  test('starts compact so the first request fits under the provider token cap', async () => {
     Deployment.findOneAndUpdate.mockResolvedValue(deployment({ fault: 'user', failureStage: 'build' }));
-    agentOrchestrator.executeAgenticLoop
-      .mockResolvedValueOnce({
-        success: false,
-        iterations: [],
-        error: 'Request too large: tokens per minute (TPM) limit 8000',
-      })
-      .mockResolvedValueOnce({
-        success: true,
-        iterations: [{
-          action: { tool: 'update_file', parameters: { fileId: 'file-id' } },
-          result: { success: true },
-        }],
-        summary: { finalThought: 'Fixed it.' },
-      });
+    agentOrchestrator.executeAgenticLoop.mockResolvedValue({
+      success: true,
+      iterations: [{
+        action: { tool: 'update_file', parameters: { fileId: 'file-id' } },
+        result: { success: true },
+      }],
+      summary: { finalThought: 'Fixed it.' },
+    });
 
     const result = await selfHeal.processDeployment('deployment-id');
 
     expect(result).toMatchObject({ healed: true });
-    expect(agentOrchestrator.executeAgenticLoop).toHaveBeenCalledTimes(2);
-    const secondGoal = agentOrchestrator.executeAgenticLoop.mock.calls[1][0];
-    expect(secondGoal.length).toBeLessThanOrEqual(selfHeal._config.COMPACT_GOAL_CHARS);
+    // Self-heal starts compact: file bodies are not inlined, the agent reads
+    // them with read_file instead, which keeps the request under the provider
+    // token cap on the first attempt.
+    expect(agentOrchestrator.executeAgenticLoop).toHaveBeenCalledTimes(1);
+    const goal = agentOrchestrator.executeAgenticLoop.mock.calls[0][0];
+    expect(goal).not.toContain('Relevant file contents');
+    expect(goal.length).toBeLessThanOrEqual(selfHeal._config.COMPACT_GOAL_CHARS);
+    const context = agentOrchestrator.executeAgenticLoop.mock.calls[0][1];
+    expect(context.agentMaxTokens).toBe(selfHeal._config.AGENT_MAX_TOKENS);
   });
 
   test('persists agent progress to the deployment and the execution log', async () => {
