@@ -9,8 +9,17 @@ const subscriptionSchema = new mongoose.Schema({
     userId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
-        required: true,
-        unique: true
+        required: false
+    },
+    companyId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Company',
+        required: false
+    },
+    type: {
+        type: String,
+        enum: ['personal', 'team'],
+        default: 'personal'
     },
     tier: {
         type: String,
@@ -123,6 +132,8 @@ const subscriptionSchema = new mongoose.Schema({
     },
     // Team pooled credits
     teamPooledCredits: { type: Number, default: 0 },
+    teamCreditsUsedThisMonth: { type: Number, default: 0 },
+    teamCreditsResetAt: { type: Date, default: () => nextMonthlyReset() },
     // Overages
     allowPayAsYouGo: { type: Boolean, default: false },
     // Edge routing
@@ -157,6 +168,16 @@ subscriptionSchema.methods.applyMonthlyReset = function(now = new Date()) {
         this.cloudComputeHours.overageAmountMinor = 0;
     }
     if (this.creditPool) this.creditPool.resetAt = nextMonth;
+
+    // Team credit pool reset
+    const teamResetDate = this.teamCreditsResetAt;
+    const teamOverdue = teamResetDate instanceof Date && now >= teamResetDate;
+    const teamInvalidFuture = !teamResetDate || teamResetDate > nextMonth;
+    if (teamOverdue || teamInvalidFuture) {
+        this.teamCreditsUsedThisMonth = 0;
+        this.teamCreditsResetAt = nextMonth;
+    }
+
     return this;
 };
 
@@ -257,6 +278,56 @@ subscriptionSchema.methods.isTeamTier = function() {
 
 subscriptionSchema.methods.isEnterpriseTier = function() {
     return this.tier === 'enterprise';
+};
+
+subscriptionSchema.methods.isTeamSubscription = function() {
+    return this.type === 'team' && !!this.companyId;
+};
+
+subscriptionSchema.methods.isPersonalSubscription = function() {
+    return this.type === 'personal' && !!this.userId;
+};
+
+subscriptionSchema.methods.addSeat = function(userId) {
+    if (!this.isTeamSubscription()) throw new Error('Not a team subscription');
+    if (this.seats.includes(userId)) return this; // already a seat
+    const teamSize = this.teamSize || 1;
+    if (this.seats.length >= teamSize) throw new Error('Team seat limit reached');
+    this.seats.push(userId);
+    return this.save();
+};
+
+subscriptionSchema.methods.removeSeat = function(userId) {
+    if (!this.isTeamSubscription()) throw new Error('Not a team subscription');
+    this.seats = this.seats.filter((id) => String(id) !== String(userId));
+    return this.save();
+};
+
+subscriptionSchema.methods.hasSeat = function(userId) {
+    if (!this.isTeamSubscription()) return false;
+    return this.seats.includes(userId);
+};
+
+subscriptionSchema.methods.deductTeamCredits = function(amount) {
+    if (!this.isTeamSubscription()) throw new Error('Not a team subscription');
+    const limit = this.teamPooledCredits ?? 0;
+    const used = this.teamCreditsUsedThisMonth ?? 0;
+    const remaining = limit - used;
+    if (amount > remaining) return { success: false, remaining: 0, message: 'Insufficient team credits' };
+    this.teamCreditsUsedThisMonth = used + amount;
+    return this.save().then(() => ({ success: true, remaining: remaining - amount, amountDeducted: amount }));
+};
+
+subscriptionSchema.methods.getTeamRemainingCredits = function() {
+    if (!this.isTeamSubscription()) return { tier: this.tier, remaining: 0, limit: 0 };
+    const limit = this.teamPooledCredits ?? 0;
+    const used = this.teamCreditsUsedThisMonth ?? 0;
+    return {
+        tier: this.tier,
+        limit: limit === 0 ? null : limit,
+        used,
+        remaining: limit === 0 ? null : limit - used
+    };
 };
 
 subscriptionSchema.methods.hasFeature = function(featureName) {
@@ -418,8 +489,21 @@ module.exports = mongoose.model('Subscription', subscriptionSchema);
 // Indexes for the hot cron paths (billingCron per-minute trial scan,
 // creditPoolService hourly reset scan) — the schema previously had none
 // (only the userId unique index).
+// Validate that exactly one of userId (personal) or companyId (team) is set
+subscriptionSchema.pre('save', function(next) {
+    const hasUserId = !!this.userId;
+    const hasCompanyId = !!this.companyId;
+    if (hasUserId === hasCompanyId) {
+        return next(new Error('Subscription must have either userId (personal) or companyId (team), not both or neither'));
+    }
+    next();
+});
+
+subscriptionSchema.index({ userId: 1 }, { unique: true, sparse: true });
+subscriptionSchema.index({ companyId: 1 }, { unique: true, sparse: true });
 subscriptionSchema.index({ status: 1, trialEndsAt: 1 });
 subscriptionSchema.index({ status: 1, 'creditPool.resetAt': 1 });
+subscriptionSchema.index({ status: 1, 'companyId': 1 });
 subscriptionSchema.statics.nextMonthlyReset = nextMonthlyReset;
 
 subscriptionSchema.statics.tierConfigs = {

@@ -13,6 +13,7 @@ const {
     DEFAULT_COMPUTE_OVERAGE_CAP_MINOR,
     overageChargeMinor,
 } = require('./overagePolicy');
+const teamBillingService = require('./teamBillingService');
 
 const configuredAgentCreditCost = Number(process.env.AGENT_JOB_CREDIT_COST);
 const AGENT_JOB_CREDIT_COST = Number.isFinite(configuredAgentCreditCost) && configuredAgentCreditCost > 0
@@ -71,15 +72,27 @@ class CreditPoolService {
     }
 
     /**
-     * Deduct credits from a user's pool
-     * @param {string} userId - The user's ID
+     * Deduct credits from a user's pool or a team's pooled credits.
+     *
+     * @param {string} userId - The user's ID (for personal deduction)
      * @param {number} amount - Credits to deduct
+     * @param {object} context - { type: 'personal' } or { type: 'team', companyId }
      * @returns {object} { success, overage, remaining, message }
      */
-    async deductCredits(userId, amount = 1) {
-        const subscription = await Subscription.findOne({ userId });
+    async deductCredits(userId, amount = 1, context = {}) {
+        if (context.type === 'team' && context.companyId) {
+            return this.deductTeamCredits(context.companyId, amount);
+        }
+        return this.deductPersonalCredits(userId, amount);
+    }
+
+    /**
+     * Deduct credits from a user's personal pool
+     */
+    async deductPersonalCredits(userId, amount = 1) {
+        const subscription = await Subscription.findOne({ userId, type: 'personal' });
         if (!subscription) {
-            return { success: false, message: 'No subscription found', remaining: 0 };
+            return { success: false, message: 'No personal subscription found', remaining: 0 };
         }
 
         // Developer tier has no credits
@@ -103,10 +116,7 @@ class CreditPoolService {
             };
         }
 
-        // Conditional increment prevents two concurrent jobs from both
-        // passing the remaining check and overdrawing the pool. Pay-As-You-Go
-        // is allowed past the limit, so it skips the guard.
-        const filter = { userId };
+        const filter = { userId, type: 'personal' };
         if (!subscription.allowPayAsYouGo) {
             filter['creditPool.usedThisMonth'] = { $lte: monthlyLimit - amount };
         }
@@ -138,8 +148,56 @@ class CreditPoolService {
     }
 
     /**
-     * Return credits when a charged job never ran (or failed before producing
-     * any work). Conditional decrement cannot drive usedThisMonth negative.
+     * Deduct credits from a team's pooled credit pool
+     */
+    async deductTeamCredits(companyId, amount = 1) {
+        const subscription = await Subscription.findOne({ companyId, type: 'team' });
+        if (!subscription) {
+            return { success: false, message: 'No team subscription found', remaining: 0 };
+        }
+
+        const limit = subscription.teamPooledCredits ?? 0;
+        const used = subscription.teamCreditsUsedThisMonth ?? 0;
+        const remaining = remainingFor(limit === 0 ? null : limit, used);
+
+        if (remaining === Infinity) {
+            return { success: true, overage: false, remaining: Infinity, message: 'Unlimited team credits' };
+        }
+
+        if (amount > remaining) {
+            return {
+                success: false,
+                message: `Insufficient team credits. ${used}/${limit} used this month.`,
+                remaining: remaining
+            };
+        }
+
+        subscription.teamCreditsUsedThisMonth = used + amount;
+        await subscription.save();
+        const remainingAfter = Math.max(0, limit - used - amount);
+        return {
+            success: true,
+            overage: false,
+            remaining: remainingAfter,
+            amountDeducted: amount,
+            message: `Deducted ${amount} team credits. ${remainingAfter} remaining.`
+        };
+    }
+
+    /**
+     * Get remaining team credits
+     */
+    async getTeamRemainingCredits(companyId) {
+        const subscription = await Subscription.findOne({ companyId, type: 'team' });
+        if (!subscription) {
+            return { tier: null, remaining: 0, limit: 0, hasTeam: false };
+        }
+        return subscription.getTeamRemainingCredits();
+    }
+
+    /**
+     * Refund credits when a charged job never ran (or failed before producing
+     * any work).
      */
     async refundCredits(userId, amount = 1) {
         const updated = await Subscription.findOneAndUpdate(
@@ -289,30 +347,70 @@ class CreditPoolService {
     }
 
     /**
-     * Get remaining credits for a user
+     * Get remaining credits for a user or team
      * @param {string} userId
+     * @param {object} context - { type: 'personal' } or { type: 'team', companyId }
      * @returns {object}
      */
-    async getRemainingCredits(userId) {
-        const subscription = await Subscription.findOne({ userId });
+    async getRemainingCredits(userId, context = {}) {
+        if (context.type === 'team' && context.companyId) {
+            return this.getTeamRemainingCredits(context.companyId);
+        }
+        const subscription = await Subscription.findOne({ userId, type: 'personal' });
         if (!subscription) return { tier: 'developer', remaining: 0, limit: 0 };
         return subscription.getRemainingCredits();
     }
 
     /**
-     * Get remaining compute hours for a user
+     * Get remaining compute hours for a user or team
+     * @param {string} userId
+     * @param {object} context - { type: 'personal' } or { type: 'team', companyId }
      */
-    async getRemainingCompute(userId) {
-        const subscription = await Subscription.findOne({ userId });
+    async getRemainingCompute(userId, context = {}) {
+        if (context.type === 'team' && context.companyId) {
+            const subscription = await Subscription.findOne({ companyId, type: 'team' });
+            if (!subscription) return { tier: 'developer', remaining: 0, limit: 0 };
+            return {
+                tier: subscription.tier,
+                limit: null,
+                used: subscription.teamCreditsUsedThisMonth || 0,
+                remaining: null,
+                overageHours: 0,
+                overageAmountMinor: 0,
+                overageEnabled: false,
+                overageCapMinor: DEFAULT_COMPUTE_OVERAGE_CAP_MINOR,
+                overageRateMinorPerHour: COMPUTE_OVERAGE_RATE_MINOR_PER_HOUR
+            };
+        }
+        const subscription = await Subscription.findOne({ userId, type: 'personal' });
         if (!subscription) return { tier: 'developer', remaining: 0, limit: 0 };
         return subscription.getRemainingCompute();
     }
 
     /**
      * Check if user can delegate an agent
+     * @param {string} userId
+     * @param {object} context - { type: 'personal' } or { type: 'team', companyId }
      */
-    async canDelegateAgent(userId) {
-        const subscription = await Subscription.findOne({ userId });
+    async canDelegateAgent(userId, context = {}) {
+        if (context.type === 'team' && context.companyId) {
+            const subscription = await Subscription.findOne({ companyId, type: 'team' });
+            if (!subscription) return { allowed: false, reason: 'No team subscription' };
+
+            const activeJobs = await AgentExecution.countDocuments({
+                companyId,
+                status: { $in: ['running', 'awaiting_approval'] }
+            });
+            const maxJobs = subscription.getMaxConcurrentAgentJobs();
+
+            if (maxJobs !== null && activeJobs >= maxJobs) {
+                return { allowed: false, reason: `Max ${maxJobs} concurrent team jobs reached`, activeJobs, maxJobs };
+            }
+
+            return { allowed: true, activeJobs, maxJobs };
+        }
+
+        const subscription = await Subscription.findOne({ userId, type: 'personal' });
         if (!subscription) return { allowed: false, reason: 'No subscription' };
 
         if (subscription.tier === 'developer') {
@@ -334,27 +432,54 @@ class CreditPoolService {
 
     /**
      * Check if user can use cloud compute
+     * @param {string} userId
+     * @param {object} context - { type: 'personal' } or { type: 'team', companyId }
      */
-    async canUseCloudCompute(userId) {
-        const subscription = await Subscription.findOne({ userId });
+    async canUseCloudCompute(userId, context = {}) {
+        if (context.type === 'team' && context.companyId) {
+            const subscription = await Subscription.findOne({ companyId, type: 'team' });
+            if (!subscription) return { allowed: false };
+            return { allowed: subscription.tier !== 'developer' };
+        }
+        const subscription = await Subscription.findOne({ userId, type: 'personal' });
         if (!subscription) return { allowed: false };
         return { allowed: subscription.tier !== 'developer' };
     }
 
     /**
      * Check if user can host debug rooms
+     * @param {string} userId
+     * @param {object} context - { type: 'personal' } or { type: 'team', companyId }
      */
-    async canHostDebugRoom(userId) {
-        const subscription = await Subscription.findOne({ userId });
+    async canHostDebugRoom(userId, context = {}) {
+        if (context.type === 'team' && context.companyId) {
+            const subscription = await Subscription.findOne({ companyId, type: 'team' });
+            if (!subscription) return { allowed: false };
+            return { allowed: subscription.isDebugRoomHostAllowed() };
+        }
+        const subscription = await Subscription.findOne({ userId, type: 'personal' });
         if (!subscription) return { allowed: false };
         return { allowed: subscription.isDebugRoomHostAllowed() };
     }
 
     /**
      * Record agent execution credits and compute usage
+     * @param {string} userId - The user running the agent
+     * @param {number} creditsUsed - Credits consumed
+     * @param {number} hoursUsed - Compute hours consumed
+     * @param {object} context - { type: 'personal' } or { type: 'team', companyId }
      */
-    async recordAgentExecution(userId, creditsUsed = 0, hoursUsed = 0) {
-        const sub = await Subscription.findOne({ userId });
+    async recordAgentExecution(userId, creditsUsed = 0, hoursUsed = 0, context = {}) {
+        if (context.type === 'team' && context.companyId) {
+            const sub = await Subscription.findOne({ companyId, type: 'team' });
+            if (!sub) return { success: false };
+            if (creditsUsed > 0) {
+                sub.teamCreditsUsedThisMonth = (sub.teamCreditsUsedThisMonth || 0) + creditsUsed;
+            }
+            await sub.save();
+            return { success: true };
+        }
+        const sub = await Subscription.findOne({ userId, type: 'personal' });
         if (!sub || sub.tier === 'developer') return { success: false };
 
         if (creditsUsed > 0) {
