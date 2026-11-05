@@ -22,7 +22,7 @@ async function meterExecution(executionId) {
   const Subscription = require('../models/Subscription');
 
   const execution = await AgentExecution.findById(executionId)
-    .select('userId status startedAt completedAt computeHoursMeteredAt')
+    .select('userId status startedAt completedAt computeHoursMeteredAt computeReservationHours')
     .lean();
   if (!execution) return { metered: false, reason: 'execution not found' };
   if (!METERED_STATUSES.has(execution.status)) return { metered: false, reason: 'not terminal' };
@@ -43,7 +43,9 @@ async function meterExecution(executionId) {
   if (!claimed) return { metered: false, reason: 'already metered' };
 
   const CreditPoolService = require('./creditPoolService');
-  const result = await CreditPoolService.deductComputeHours(execution.userId, hours);
+  const result = await CreditPoolService.deductComputeHours(execution.userId, hours, {
+    reservedHours: execution.computeReservationHours || 0,
+  });
   if (!result.success) {
     console.warn(`Compute metering for ${executionId} recorded ${hours.toFixed(4)}h but was not charged: ${result.message}`);
   }

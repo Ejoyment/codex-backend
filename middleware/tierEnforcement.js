@@ -13,6 +13,46 @@ const jwt = require('jsonwebtoken');
 const { limitAllows } = require('../utils/tierLimits');
 const { DEFAULT_COMPUTE_OVERAGE_CAP_MINOR } = require('../utils/overagePolicy');
 
+// Reserve a tiny slice of the monthly allowance at request start. Without it,
+// concurrent starts all read the same `usedThisMonth` and pass the preflight
+// check together. The meter subtracts this reservation from the real duration.
+const DEFAULT_COMPUTE_RESERVATION_HOURS = 1 / 60;
+function computeReservationHours() {
+    const configured = Number(process.env.COMPUTE_RESERVATION_HOURS);
+    return Number.isFinite(configured) && configured > 0
+        ? configured
+        : DEFAULT_COMPUTE_RESERVATION_HOURS;
+}
+
+async function reserveComputeHours(subscription, monthlyLimit, overageCapMinor) {
+    if (!subscription?._id) return true;
+    const hours = computeReservationHours();
+    const updated = await Subscription.findOneAndUpdate(
+        {
+            _id: subscription._id,
+            $expr: {
+                $or: [
+                    {
+                        $lte: [
+                            { $add: [{ $ifNull: ['$cloudComputeHours.usedThisMonth', 0] }, hours] },
+                            monthlyLimit,
+                        ],
+                    },
+                    {
+                        $and: [
+                            { $eq: ['$cloudComputeHours.overageEnabled', true] },
+                            { $lt: [{ $ifNull: ['$cloudComputeHours.overageAmountMinor', 0] }, overageCapMinor] },
+                        ],
+                    },
+                ],
+            },
+        },
+        { $inc: { 'cloudComputeHours.usedThisMonth': hours } },
+        { new: true }
+    );
+    return Boolean(updated);
+}
+
 // Lazy require — DebugRoom and Deployment may not exist on all deploys
 let DebugRoom = null;
 let Deployment = null;
@@ -216,6 +256,34 @@ function enforceCloudComputeLimit() {
                     overageEnabled,
                     overageCapMinor,
                     overageCapReached
+                });
+            }
+
+            const reserved = await reserveComputeHours(subscription, monthlyLimit, overageCapMinor);
+            if (!reserved) {
+                return res.status(403).json({
+                    success: false,
+                    message: `You've used ${monthlyLimit}h of cloud compute this month. Enable overage or upgrade for more.`,
+                    code: 'COMPUTE_LIMIT_REACHED',
+                    usedThisMonth: used,
+                    monthlyLimit,
+                    overageEnabled,
+                    overageCapMinor,
+                    overageCapReached,
+                });
+            }
+
+            const hours = computeReservationHours();
+            req.computeReservationHours = hours;
+            let consumed = false;
+            req.consumeComputeReservation = () => { consumed = true; };
+            if (typeof res.once === 'function') {
+                res.once('finish', () => {
+                    if (consumed) return;
+                    const CreditPoolService = require('../utils/creditPoolService');
+                    CreditPoolService.releaseComputeHours(req.userId, hours).catch((error) => {
+                        console.error('Compute reservation release failed:', error.message);
+                    });
                 });
             }
         }

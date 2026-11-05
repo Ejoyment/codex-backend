@@ -22,7 +22,10 @@ jest.mock('../models/LocalProject');
 jest.mock('../models/TeamProject');
 jest.mock('../models/CodeFile');
 jest.mock('../models/Company');
-jest.mock('../utils/deploymentService', () => ({}));
+jest.mock('../utils/deploymentService', () => ({
+    buildFileRelPath: (file) => file.name,
+    assertSafeRelPath: () => {},
+}));
 jest.mock('../utils/auditLogService', () => ({ addAuditLog: jest.fn() }));
 jest.mock('../utils/notificationTriggers', () => ({ notifyDeploymentEvent: jest.fn() }));
 
