@@ -106,4 +106,19 @@ describe('createTerminal kill-switch', () => {
       terminalService.createTerminal('user-1', 'user-1', {})
     ).rejects.toMatchObject({ statusCode: 503 });
   });
+
+  test('production without a PTY runtime refuses instead of simulating', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.IDE_TERMINAL_TRANSPORT = 'local';
+    const terminalService = require('../utils/terminalService');
+    const hadPty = terminalService.usePty;
+    terminalService.usePty = false;
+    try {
+      await expect(
+        terminalService.createTerminal('user-1', 'user-1', {})
+      ).rejects.toMatchObject({ statusCode: 503 });
+    } finally {
+      terminalService.usePty = hadPty;
+    }
+  });
 });
