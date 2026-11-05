@@ -173,6 +173,9 @@ class AIService {
                     case 'groq':
                         result = await this.chatGroq(messages, requestContext);
                         break;
+                    case 'anthropic':
+                        result = await this.chatAnthropic(messages, requestContext);
+                        break;
                     case 'huggingface':
                         result = await this.chatHuggingFace(messages, requestContext);
                         break;
@@ -461,6 +464,77 @@ Please:
             codeBlocks: this.extractCodeBlocks(text),
             fileReferences: this.extractFileReferences(text),
             provider: 'huggingface'
+        };
+    }
+
+    // Anthropic Claude Implementation
+    async chatAnthropic(messages, codeContext) {
+        const config = this.providers.anthropic;
+        // Anthropic separates the system prompt from the message array and
+        // rejects an empty system string, so only send it when there is one.
+        const systemMessages = messages
+            .filter((message) => message.role === 'system')
+            .map((message) => message.content);
+        const systemContent = [this.buildSystemPrompt(codeContext), ...systemMessages]
+            .filter((text) => typeof text === 'string' && text.trim())
+            .join('\n\n');
+        const conversation = messages
+            .filter((message) => message.role !== 'system')
+            .map((message) => ({
+                role: message.role === 'assistant' ? 'assistant' : 'user',
+                content: message.content,
+            }));
+
+        const isAgentReasoning = codeContext.agentReasoning === true;
+        const availableTools = Array.isArray(codeContext.availableTools) ? codeContext.availableTools : [];
+        // Claude's structured-output contract: the agent reasoning loop expects
+        // a JSON object with thought/goalAchieved/action. Anthropic wants the
+        // schema described in the prompt and the output constrained with
+        // max_tokens, so we ask for JSON and parse it the same way the other
+        // providers are parsed downstream.
+        const responseFormat = isAgentReasoning
+            ? { type: 'json_object' }
+            : undefined;
+
+        const body = {
+            model: codeContext.model || config.model,
+            messages: conversation,
+            max_tokens: resolveMaxTokens(codeContext, parseInt(process.env.AI_MAX_TOKENS) || 8192),
+            temperature: parseFloat(process.env.AI_TEMPERATURE) || 0.7,
+            ...(systemContent ? { system: systemContent } : {}),
+            ...(responseFormat ? { response_format: responseFormat } : {}),
+        };
+
+        const response = await fetch(config.endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': config.apiKey,
+                'anthropic-version': config.anthropicVersion,
+            },
+            body: JSON.stringify(body),
+            signal: codeContext.signal || AbortSignal.timeout(codeContext.timeoutMs || AI_REQUEST_TIMEOUT_MS)
+        });
+
+        if (!response.ok) {
+            const error = await response.text();
+            throw new Error(`Anthropic API error: ${error}`);
+        }
+
+        const data = await response.json();
+        // Claude returns content as an array of blocks; extract the text ones.
+        const blocks = Array.isArray(data?.content) ? data.content : [];
+        const text = blocks
+            .filter((block) => block?.type === 'text' && typeof block.text === 'string')
+            .map((block) => block.text)
+            .join('');
+
+        return {
+            success: true,
+            content: text,
+            codeBlocks: this.extractCodeBlocks(text),
+            fileReferences: this.extractFileReferences(text),
+            provider: 'anthropic'
         };
     }
 
