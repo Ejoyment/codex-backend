@@ -43,23 +43,32 @@ class SandboxSecurity {
    * - no-new-privileges security option
    * - CPU, memory, and PID limits
    */
-async createIsolatedContainer(userId, workspaceId) {
+async createIsolatedContainer(userId, workspaceId, options = {}) {
      if (!/^[a-zA-Z0-9_-]{1,64}$/.test(String(userId)) || !/^[a-zA-Z0-9_-]{1,64}$/.test(String(workspaceId))) throw new Error('Invalid userId/workspaceId');
      if (!this.docker) throw new Error('Docker not available');
+
+     const image = options.image || 'node:18-alpine';
+     if (!/^[a-zA-Z0-9][a-zA-Z0-9._/-]*(?::[a-zA-Z0-9._-]+)?$/.test(image)) {
+       throw new Error('Invalid sandbox image');
+     }
+
      try {
-      // Check if container already exists and is running
+      // Reuse a running container only when it was built from the requested
+      // image. A JavaScript container must not be reused for Python.
       if (this.containers.has(userId)) {
         const existing = this.containers.get(userId);
-        try {
-          const info = await existing.inspect();
-          if (info.State.Running) {
-            return existing;
+        if (existing._sandboxImage === image) {
+          try {
+            const info = await existing.inspect();
+            if (info.State.Running) {
+              return existing;
+            }
+          } catch (_) {
+            // Container may have been removed externally
           }
-        } catch (_) {
-          // Container may have been removed externally
         }
-        // Clean up stopped/removed container
-        try { await existing.remove(); } catch (_) {}
+        // Clean up stopped/removed or wrong-image container
+        try { await existing.remove({ force: true }); } catch (_) {}
         this.containers.delete(userId);
       }
 
@@ -67,7 +76,7 @@ async createIsolatedContainer(userId, workspaceId) {
 
       // Create new isolated container
       const container = await this.docker.createContainer({
-        Image: 'node:18-alpine',
+        Image: image,
         name: `sandbox_${userId}_${Date.now()}`,
         Cmd: ['/bin/sh'],
         Tty: true,
@@ -106,6 +115,7 @@ async createIsolatedContainer(userId, workspaceId) {
         AttachStderr: true,
       });
 
+      container._sandboxImage = image;
       this.containers.set(userId, container);
       return container;
     } catch (error) {
