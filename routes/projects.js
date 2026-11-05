@@ -413,7 +413,8 @@ router.post('/tasks', authenticateToken, async (req, res) => {
 
         // Personal tasks only. Team-scoped tasks are created from the teams
         // page by product admins, not from this endpoint.
-        const resolvedCompanyId = null;
+        const workspace = await ensurePersonalWorkspace(userId);
+        const resolvedCompanyId = workspace._id;
 
         if (projectId) {
             const project = await LocalProject.findById(projectId).select('workspaceId').lean();
@@ -902,7 +903,8 @@ router.post('/:projectId/tasks', authenticateToken, async (req, res) => {
             priority: priority || 'medium',
             taskType: taskType || 'local',
             dueDate: dueDate ? new Date(dueDate) : null,
-            status: 'pending'
+            status: 'pending',
+            companyId: project.workspaceId ? String(project.workspaceId) : null
         });
 
         res.status(201).json({
