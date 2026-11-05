@@ -264,8 +264,9 @@ function notifyDeploymentEvent({ type, deployment, userId, detail }) {
         deployment_healing: 'Deployment self-healing',
         deployment_healed: 'Deployment healed',
         deployment_heal_failed: 'Deployment self-heal failed',
+        deployment_env_required: 'Environment variables required',
     };
-    const failed = type === 'deployment_failed' || type === 'deployment_heal_failed';
+    const failed = type === 'deployment_failed' || type === 'deployment_heal_failed' || type === 'deployment_env_required';
     fire(
         NotificationService.notifyUser(idOf(userId), {
             type,

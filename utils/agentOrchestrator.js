@@ -408,7 +408,7 @@ class AgentOrchestrator {
                     fileId: 'string - The ID of the file to read',
                     path: 'string - The path of the file',
                     offset: 'number - Optional character offset to start reading from (default 0)',
-                    limit: 'number - Optional maximum characters to return (default: whole file, max 12000)'
+                    limit: 'number - Optional maximum characters to return (default: whole file, max 20000)'
                 },
                 execute: async (params, context) => {
                     const page = (content, extra = {}) => {
@@ -416,7 +416,7 @@ class AgentOrchestrator {
                         const offset = Math.max(0, Number(params.offset) || 0);
                         const requested = Number(params.limit);
                         const limit = Number.isFinite(requested) && requested > 0
-                            ? Math.min(Math.floor(requested), 12000)
+                            ? Math.min(Math.floor(requested), 20000)
                             : text.length;
                         const slice = text.slice(offset, offset + limit);
                         const nextOffset = offset + limit < text.length ? offset + limit : null;
@@ -849,6 +849,80 @@ class AgentOrchestrator {
                 }
             },
 
+            set_env: {
+                name: 'set_env',
+                description: 'Set non-secret environment variables for the deployment (configuration such as PORT, NODE_ENV, LOG_LEVEL, or a hostname). Never use this for passwords, API keys, tokens, or connection strings — declare those with declare_env_vars instead.',
+                parameters: {
+                    vars: 'object - Map of environment variable names to non-secret values'
+                },
+                execute: async (params, context) => {
+                    const { KEY_RE, looksSecret } = require('./deployEnv');
+                    const input = params.vars && typeof params.vars === 'object' && !Array.isArray(params.vars)
+                        ? params.vars
+                        : {};
+                    const entries = Object.entries(input);
+                    if (!entries.length) {
+                        return { success: false, error: 'vars must be a non-empty object of KEY: value pairs.' };
+                    }
+                    const accepted = {};
+                    const rejected = [];
+                    for (const [rawKey, rawValue] of entries) {
+                        const key = String(rawKey || '').trim();
+                        const value = rawValue === null || rawValue === undefined ? '' : String(rawValue);
+                        if (!KEY_RE.test(key) || looksSecret(key)) {
+                            rejected.push(key);
+                            continue;
+                        }
+                        accepted[key] = value;
+                    }
+                    if (!Object.keys(accepted).length) {
+                        return {
+                            success: false,
+                            error: `No usable non-secret variables. Use declare_env_vars for values the user must supply (${rejected.join(', ') || 'no valid keys'}).`
+                        };
+                    }
+                    context.agentEnv = { ...(context.agentEnv || {}), ...accepted };
+                    return {
+                        success: true,
+                        message: `Set ${Object.keys(accepted).join(', ')} for the next deployment.`,
+                        env: Object.keys(accepted),
+                        rejected
+                    };
+                }
+            },
+
+            declare_env_vars: {
+                name: 'declare_env_vars',
+                description: 'Declare environment variables the deployment needs but only the user can provide (secrets such as API keys, passwords, tokens, database URLs). The repair stops and the user is asked to fill them in. Never invent or hardcode values.',
+                parameters: {
+                    vars: 'array - Array of { key, reason } describing each required variable'
+                },
+                execute: async (params, context) => {
+                    const { KEY_RE } = require('./deployEnv');
+                    const input = Array.isArray(params.vars) ? params.vars : [];
+                    const declared = [];
+                    for (const entry of input) {
+                        const key = String(entry?.key || entry?.name || '').trim();
+                        if (!KEY_RE.test(key)) continue;
+                        if (declared.some((item) => item.key === key)) continue;
+                        const reason = String(entry?.reason || '').trim().slice(0, 300);
+                        declared.push({ key, reason: reason || null });
+                    }
+                    if (!declared.length) {
+                        return {
+                            success: false,
+                            error: 'vars must be a non-empty array of { key, reason } with valid environment variable names.'
+                        };
+                    }
+                    context.requiredEnv = [...(context.requiredEnv || []), ...declared];
+                    return {
+                        success: true,
+                        message: `Declared required environment variables: ${declared.map((item) => item.key).join(', ')}. The run will stop so the user can provide them.`,
+                        requiredEnv: declared
+                    };
+                }
+            },
+
             execute_code: {
                 name: 'execute_code',
                 description: 'Execute code safely in a sandbox environment',
@@ -980,7 +1054,7 @@ class AgentOrchestrator {
                 // Background repair runs must actually change something. Models
                 // sometimes answer "done" after reading the logs without
                 // editing a file, which would leave the deployment broken.
-                if (context.requireMutation && session.mutations.length === 0) {
+                if (context.requireMutation && session.mutations.length === 0 && !(Array.isArray(context.requiredEnv) && context.requiredEnv.length > 0)) {
                     const nudge = 'You have not changed any project files yet. This is an automatic repair run with no human to approve or clarify. Call edit_file, create_file, or update_file with the fix before setting goalAchieved=true.';
                     if (mutationNudges >= 3) {
                         stopReason = 'Agent stopped without changing any project files.';
@@ -1054,7 +1128,7 @@ class AgentOrchestrator {
 
             // Track mutations for auto-validation
             if (actionResult.success && reasoning.action) {
-                const mutatingTools = ['create_file', 'update_file', 'edit_file', 'create_multiple_files', 'delete_file'];
+                const mutatingTools = ['create_file', 'update_file', 'edit_file', 'create_multiple_files', 'delete_file', 'set_env'];
                 if (mutatingTools.includes(reasoning.action.tool)) {
                     session.mutations.push({
                         tool: reasoning.action.tool,
@@ -1562,11 +1636,11 @@ RESPOND WITH JSON ONLY.`;
         const previousActions = autonomous
             ? observation.previousActions.slice(-3)
             : observation.previousActions;
-        const resultLimit = autonomous ? 1200 : 6000;
+        const resultLimit = autonomous ? 2000 : 6000;
         const limitForAction = (action) => {
             if (!autonomous) return resultLimit;
-            if (action?.tool === 'read_file') return 3000;
-            if (action?.tool === 'list_files' || action?.tool === 'search_code') return 1800;
+            if (action?.tool === 'read_file') return 6000;
+            if (action?.tool === 'list_files' || action?.tool === 'search_code') return 3000;
             return resultLimit;
         };
         const memories = autonomous
@@ -1800,6 +1874,8 @@ RESPOND WITH JSON ONLY - NO MARKDOWN, NO EXPLANATIONS.`;
             update_file: 'Updating a file',
             edit_file: 'Editing a file',
             create_multiple_files: 'Creating project files',
+            set_env: 'Setting deployment environment variables',
+            declare_env_vars: 'Recording required environment variables',
             delete_file: 'Deleting a file'
         };
         return labels[tool] || 'Working on the requested task';

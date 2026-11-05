@@ -484,7 +484,7 @@ describe('deployment self-heal worker', () => {
     expect(goal).toContain('create a correct Dockerfile');
   });
 
-  test('tells the agent when an unsupported stack was detected as static', () => {
+  test('tells the agent which runtime was detected', () => {
     const goal = selfHeal.buildHealingGoal(
       deployment({ fault: 'user', failureStage: 'build', buildLogs: 'Main.java:4: error: cannot find symbol' }),
       'project-id',
@@ -494,7 +494,7 @@ describe('deployment self-heal worker', () => {
       ]
     );
 
-    expect(goal).toContain('Detected runtime: static');
+    expect(goal).toContain('Detected runtime: java');
     expect(goal).toContain('create a correct Dockerfile');
     expect(goal).toContain('pom.xml');
   });
@@ -689,6 +689,103 @@ describe('deployment self-heal worker', () => {
     expect(result.summary).toContain('Check the provider API key');
     expect(redeployDeployment).not.toHaveBeenCalled();
     expect(notifyDeploymentEvent).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'deployment_heal_failed',
+    }));
+  });
+
+  test('includes the container runtime logs in the repair prompt', () => {
+    const goal = selfHeal.buildHealingGoal(
+      deployment({
+        fault: 'user',
+        failureStage: 'start',
+        buildLogs: 'build ok',
+        runtimeLogs: "Error: Cannot find module 'express'\n    at Module._resolveFilename",
+      }),
+      'project-id',
+      []
+    );
+
+    expect(goal).toContain('Runtime logs');
+    expect(goal).toContain("Cannot find module 'express'");
+  });
+
+  test('allows the agent to set non-secret env and declare required secrets', async () => {
+    Deployment.findOneAndUpdate.mockResolvedValue(deployment({ fault: 'user', failureStage: 'start' }));
+    agentOrchestrator.executeAgenticLoop.mockResolvedValue({
+      success: true,
+      iterations: [{
+        action: { tool: 'set_env', parameters: { vars: { PORT: '8080' } } },
+        result: { success: true },
+      }],
+      summary: { finalThought: 'Configured the port.' },
+    });
+
+    const result = await selfHeal.processDeployment('deployment-id');
+
+    expect(result).toMatchObject({ healed: true });
+    const context = agentOrchestrator.executeAgenticLoop.mock.calls[0][1];
+    expect(context.allowedTools).toEqual(expect.arrayContaining(['set_env', 'declare_env_vars']));
+    expect(context.autoApproveTools).toEqual(expect.arrayContaining(['set_env', 'declare_env_vars']));
+  });
+
+  test('merges agent-set env into the deployment before redeploying', async () => {
+    Deployment.findOneAndUpdate.mockResolvedValue(deployment({ fault: 'user', failureStage: 'start' }));
+    agentOrchestrator.executeAgenticLoop.mockImplementation(async (goal, context) => {
+      context.agentEnv = { PORT: '8080', LOG_LEVEL: 'debug' };
+      return {
+        success: true,
+        iterations: [{
+          action: { tool: 'set_env', parameters: { vars: { PORT: '8080' } } },
+          result: { success: true },
+        }],
+        summary: { finalThought: 'Configured env.' },
+      };
+    });
+
+    const result = await selfHeal.processDeployment('deployment-id');
+
+    expect(result).toMatchObject({ healed: true });
+    expect(Deployment.updateOne).toHaveBeenCalledWith(
+      { _id: 'deployment-id' },
+      {
+        $set: {
+          env: expect.arrayContaining([
+            expect.objectContaining({ key: 'PORT', value: '8080', secret: false }),
+            expect.objectContaining({ key: 'LOG_LEVEL', value: 'debug', secret: false }),
+          ]),
+        },
+      }
+    );
+    expect(redeployDeployment).toHaveBeenCalled();
+  });
+
+  test('stops and asks the user when the agent declares required secrets', async () => {
+    Deployment.findOneAndUpdate.mockResolvedValue(deployment({ fault: 'user', failureStage: 'start' }));
+    agentOrchestrator.executeAgenticLoop.mockImplementation(async (goal, context) => {
+      context.requiredEnv = [{ key: 'STRIPE_API_KEY', reason: 'Used to call Stripe.' }];
+      return {
+        success: true,
+        iterations: [{
+          action: { tool: 'declare_env_vars', parameters: {} },
+          result: { success: true },
+        }],
+        summary: { finalThought: 'Needs a key.' },
+      };
+    });
+
+    const result = await selfHeal.processDeployment('deployment-id');
+
+    expect(result).toMatchObject({ gaveUp: true });
+    expect(result.summary).toContain('STRIPE_API_KEY');
+    expect(redeployDeployment).not.toHaveBeenCalled();
+    expect(Deployment.updateOne).toHaveBeenCalledWith(
+      { _id: 'deployment-id' },
+      { $set: { 'selfHeal.requiredEnv': [{ key: 'STRIPE_API_KEY', reason: 'Used to call Stripe.' }] } }
+    );
+    expect(notifyDeploymentEvent).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'deployment_env_required',
+    }));
+    expect(notifyDeploymentEvent).not.toHaveBeenCalledWith(expect.objectContaining({
       type: 'deployment_heal_failed',
     }));
   });

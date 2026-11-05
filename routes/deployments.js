@@ -14,6 +14,8 @@ const { authenticateToken } = require('../middleware/auth');
 const { userIsCompanyMember } = require('../middleware/workspaceAccess');
 const { enforceDeploymentLimit } = require('../middleware/tierEnforcement');
 const depService = require('../utils/deploymentService');
+const { normalizeEnv, toEnvObject, redact } = require('../utils/deployEnv');
+const { redeployDeployment, resetSelfHealState } = require('../utils/agentAutoDeploy');
 const { validateDeployFiles, backfillFileContent, limits: deployLimits } = require('../utils/deployContent');
 const { addAuditLog } = require('../utils/auditLogService');
 const { notifyDeploymentEvent } = require('../utils/notificationTriggers');
@@ -83,6 +85,7 @@ router.get('/', authenticateToken, async (req, res) => {
                         summary: null,
                         progress: null,
                         lastError: null,
+                        requiredEnv: [],
                     },
                     expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
                 },
@@ -118,6 +121,8 @@ router.get('/:id', authenticateToken, async (req, res) => {
         if (!deployment) {
             return res.status(404).json({ error: 'Deployment not found' });
         }
+        // Never return secret env values; the UI only needs to know they're set.
+        deployment.env = redact(deployment.env || []);
         res.json({ success: true, deployment });
     } catch (error) {
         console.error('Get deployment error:', error);
@@ -132,7 +137,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
 // deleting existing deployments.
 router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) => {
     try {
-        const { projectId, subdomain, companyId, source, repo, files: directFiles } = req.body;
+        const { projectId, subdomain, companyId, source, repo, files: directFiles, env: directEnv } = req.body;
 
         if (!subdomain) {
             return res.status(400).json({ error: 'subdomain is required' });
@@ -231,6 +236,9 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
         if (deployment && deployment.userId.toString() !== req.userId.toString()) {
             return res.status(409).json({ error: 'Subdomain already taken by another user.' });
         }
+        // Validate/normalise env vars. Undefined input keeps whatever the
+        // deployment already has (a redeploy without touching the env form).
+        const envEntries = normalizeEnv(directEnv, { existing: deployment ? deployment.env : [] });
         const repoFullName = repo
             ? (repo.fullName || (repo.owner && repo.name ? `${repo.owner}/${repo.name}` : null))
             : null;
@@ -251,6 +259,7 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
                         projectKey,
                         repoFullName,
                         workspaceId: workspaceId ? String(workspaceId) : null,
+                        env: envEntries,
                         status: 'building',
                         buildRunId,
                         errorMessage: null,
@@ -273,6 +282,7 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
                             summary: null,
                             progress: null,
                             lastError: null,
+                            requiredEnv: [],
                         },
                     },
                 },
@@ -290,6 +300,7 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
                     repoFullName,
                     workspaceId: workspaceId ? String(workspaceId) : null,
                     subdomain: sanitized,
+                    env: envEntries,
                     status: 'building',
                     buildRunId,
                     steps: INITIAL_STEPS()
@@ -325,6 +336,7 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
             success: true,
             deployment: {
                 ...deployment.toObject(),
+                env: redact(deployment.env || []),
                 deployedUrl: null,
                 httpUrl: null
             }
@@ -542,7 +554,10 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
                 let httpUrl = `http://${sanitized}.buildrshq.dev`;
                 let runtimeLogs = '';
 
-                const deployPromise = depService.deployProject(sanitized, normalizedFiles, deployHooks);
+                const deployPromise = depService.deployProject(sanitized, normalizedFiles, {
+                    ...deployHooks,
+                    env: toEnvObject(envEntries),
+                });
                 const timeoutPromise = new Promise((_, reject) =>
                     setTimeout(() => reject(new Error('Deployment timed out')), DEPLOY_RACE_TIMEOUT)
                 );
@@ -613,6 +628,53 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
             ? 'A deployment with this subdomain already exists.'
             : error.message || 'Failed to start deployment';
         res.status(500).json({ error: 'Failed to start deployment: ' + msg });
+    }
+});
+
+// Update a deployment's environment variables and redeploy with them. Secret
+// values are encrypted at rest (when DEPLOY_ENV_KEY is set) and never echoed.
+router.patch('/:id/env', authenticateToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!/^[0-9a-fA-F]{24}$/.test(id)) {
+            return res.status(400).json({ error: 'Invalid deployment id' });
+        }
+        const deployment = await Deployment.findOne({ _id: id, userId: req.userId });
+        if (!deployment) {
+            return res.status(404).json({ error: 'Deployment not found' });
+        }
+        if (deployment.status === 'building' || deployment.status === 'deploying') {
+            return res.status(409).json({ error: 'A deployment is already running for this app.' });
+        }
+        if (!deployment.projectKey) {
+            return res.status(400).json({ error: 'This deployment is not linked to a project, so it cannot be redeployed with new env vars.' });
+        }
+        if (!Array.isArray(req.body?.env) && typeof req.body?.env !== 'object') {
+            return res.status(400).json({ error: 'env must be an object of KEY: value pairs.' });
+        }
+
+        const envEntries = normalizeEnv(req.body.env, { existing: deployment.env || [] });
+        deployment.env = envEntries;
+        // A changed environment gets a fresh self-heal budget.
+        resetSelfHealState(deployment);
+        await deployment.save();
+
+        res.json({ success: true, env: redact(envEntries), redeploying: true });
+
+        setImmediate(() => {
+            redeployDeployment({
+                deployment,
+                userId: req.userId,
+                workspaceId: deployment.workspaceId || null,
+                projectId: deployment.projectKey,
+                reason: 'Redeploying after environment variables changed.',
+            }).catch((error) => {
+                console.error('[deploy] env-triggered redeploy failed:', error.message);
+            });
+        });
+    } catch (error) {
+        console.error('Update deployment env error:', error);
+        res.status(500).json({ error: 'Failed to update environment variables' });
     }
 });
 

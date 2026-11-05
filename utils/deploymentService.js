@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const zlib = require('zlib');
+const { toEnvObject } = require('./deployEnv');
 
 const SSH_HOST = process.env.DEPLOY_SSH_HOST;
 const SSH_PORT = parseInt(process.env.DEPLOY_SSH_PORT || '22');
@@ -111,11 +112,16 @@ function sshExec(command, input = null, onData = null) {
 // Runtime detection & Dockerfile generation
 //
 // detectRuntime(files) returns:
-//   runtime    - 'node' | 'python' | 'go' | 'ruby' | 'php' | 'static' | 'docker'
+//   runtime    - 'node' | 'python' | 'go' | 'ruby' | 'php' | 'rust' | 'java'
+//                | 'dotnet' | 'elixir' | 'swift' | 'dart' | 'static'
+//                | 'docker' | 'compose'
 //   dockerfile - generated template text, or the user's own Dockerfile text
 //                when runtime === 'docker'
 //   exposePort - container port advertised to traefik
 //   contextDir - repo-relative docker build context ('.' = repo root)
+//   unsupported - true when the project shape cannot be run on this platform
+//                 (currently Docker Compose); the caller must fail with the
+//                 supplied reason instead of silently serving files statically.
 //
 // Markers are matched ROOT-FIRST so a monorepo's nested app never hijacks a
 // root project. A nested match (e.g. gateway/Dockerfile, gateway/go.mod) sets
@@ -131,9 +137,15 @@ const APP_DIR_PRIORITY = ['app', 'api', 'server', 'backend', 'gateway', 'service
 // Deps that compile native addons: node:alpine needs python3/make/g++.
 const NATIVE_DEP_RE = /node-pty|bcrypt|sharp|canvas|better-sqlite3|sqlite3|serialport|epoll|bufferutil|utf-8-validate|node-sass|grpc|re2|leveldown|classic-level|node-gyp|prebuild/;
 // Files whose presence marks a directory as the deployable app (Dockerfile scoring).
-const APP_MANIFESTS = ['package.json', 'requirements.txt', 'go.mod', 'gemfile', 'composer.json', 'pom.xml', 'cargo.toml'];
+const APP_MANIFESTS = [
+  'package.json', 'requirements.txt', 'go.mod', 'gemfile', 'composer.json',
+  'pom.xml', 'build.gradle', 'build.gradle.kts', 'cargo.toml', 'mix.exs',
+  'package.swift', 'pubspec.yaml',
+];
 // Signals that a nested package.json directory is the real app root.
 const NESTED_PKG_SIGNALS = ['package-lock.json', 'npm-shrinkwrap.json', 'yarn.lock', 'pnpm-lock.yaml', 'bun.lockb', 'dockerfile'];
+// Docker Compose cannot be represented by the single-container deploy path.
+const COMPOSE_NAMES = ['docker-compose.yml', 'docker-compose.yaml', 'compose.yml', 'compose.yaml'];
 
 function fileText(f) {
   return f && f.encoding === 'base64'
@@ -511,6 +523,212 @@ ${cmd}
     };
   };
 
+  const rustResult = dir => {
+    const dk = dir.toLowerCase();
+    const cargo = findIn(dk, 'cargo.toml');
+    if (!cargo) return staticResult();
+    const manifest = text(cargo);
+    const packageName = (manifest.match(/^\s*name\s*=\s*"([^"]+)"/m) || [])[1];
+    const binSection = manifest.match(/\[\[bin\]\][\s\S]*?(?=\n\[|$)/);
+    const binName = binSection ? (binSection[0].match(/^\s*name\s*=\s*"([^"]+)"/m) || [])[1] : null;
+    const binary = String(binName || packageName || 'app').replace(/[^A-Za-z0-9_-]/g, '') || 'app';
+    let port = 8080;
+    const under = e => !dir || e.key.startsWith(dk + '/');
+    for (const entry of entries.filter(e => e.name.endsWith('.rs') && under(e))) {
+      const pm = text(entry).match(/(?:bind|listen|addr)[^\n]{0,120}?(\d{4,5})/i);
+      if (pm) {
+        const parsed = clampPort(pm[1]);
+        if (parsed) { port = parsed; break; }
+      }
+    }
+    return {
+      runtime: 'rust',
+      exposePort: port,
+      contextDir: dir || '.',
+      dockerfile: `FROM rust:1-slim-bookworm AS build
+WORKDIR /src
+COPY . .
+RUN cargo build --release
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libssl3 && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY --from=build /src/target/release/${binary} /usr/local/bin/app
+ENV PORT=${port}
+EXPOSE ${port}
+CMD ["app"]
+`,
+    };
+  };
+
+  const javaResult = dir => {
+    const dk = dir.toLowerCase();
+    const pom = findIn(dk, 'pom.xml');
+    const gradle = findIn(dk, 'build.gradle') || findIn(dk, 'build.gradle.kts');
+    if (!pom && !gradle) return staticResult();
+    const manifest = pom ? text(pom) : text(gradle);
+    const jm = manifest.match(/<java\.version>\s*(\d+)/i)
+      || manifest.match(/<maven\.compiler\.(?:source|release)>\s*(\d+)/i)
+      || manifest.match(/sourceCompatibility\s*=\s*['"]?(\d+)/i)
+      || manifest.match(/JavaLanguageVersion\.of\(\s*(\d+)/i);
+    let major = jm ? parseInt(jm[1], 10) : 21;
+    if (!Number.isFinite(major)) major = 21;
+    if (![8, 11, 17, 21].includes(major)) {
+      major = major >= 21 ? 21 : major >= 17 ? 17 : major >= 11 ? 11 : 8;
+    }
+    let port = 8080;
+    const props = entries.find(e =>
+      (!dir || e.key.startsWith(dk + '/')) && /^application\.(properties|ya?ml)$/i.test(e.name)
+    );
+    if (props) {
+      const pm = text(props).match(/(?:server\.port|port)\s*[:=]\s*(\d{2,5})/i);
+      if (pm) port = clampPort(pm[1]) || port;
+    }
+    const buildStage = pom
+      ? `FROM maven:3.9-eclipse-temurin-${major} AS build
+WORKDIR /src
+COPY . .
+RUN mvn -q -DskipTests package`
+      : `FROM gradle:8-jdk${major} AS build
+WORKDIR /src
+COPY . .
+RUN if [ -x ./gradlew ]; then ./gradlew build -x test --no-daemon; else gradle build -x test --no-daemon; fi`;
+    const artifactCopy = pom
+      ? 'COPY --from=build /src/target /app/artifacts'
+      : 'COPY --from=build /src/build/libs /app/artifacts';
+    return {
+      runtime: 'java',
+      exposePort: port,
+      contextDir: dir || '.',
+      dockerfile: `${buildStage}
+FROM eclipse-temurin:${major}-jre
+WORKDIR /app
+${artifactCopy}
+ENV PORT=${port}
+ENV SERVER_PORT=${port}
+EXPOSE ${port}
+CMD ["sh", "-c", "JAR=$(find /app/artifacts -maxdepth 1 -name '*.jar' ! -name '*-sources.jar' ! -name '*-javadoc.jar' | head -n1); exec java -jar \\"$JAR\\""]
+`,
+    };
+  };
+
+  const dotnetResult = dir => {
+    const dk = dir.toLowerCase();
+    const under = e => !dir || e.key.startsWith(dk + '/');
+    let project = entries.find(e => e.dirKey === dk && /\.(csproj|fsproj|vbproj)$/i.test(e.name));
+    if (!project) {
+      const sln = entries.find(e => e.dirKey === dk && e.name.endsWith('.sln'));
+      if (!sln) return staticResult();
+      project = entries.find(e => under(e) && /\.(csproj|fsproj|vbproj)$/i.test(e.name)) || sln;
+    }
+    const manifest = text(project);
+    const tfm = manifest.match(/<TargetFramework>\s*net(\d+)\.(\d+)/i);
+    let major = tfm ? parseInt(tfm[1], 10) : 8;
+    if (!Number.isFinite(major)) major = 8;
+    if (![6, 7, 8, 9].includes(major)) major = major >= 9 ? 9 : major >= 8 ? 8 : major >= 7 ? 7 : 6;
+    const assembly = project.rel.split('/').pop().replace(/\.(csproj|fsproj|vbproj|sln)$/i, '') || 'app';
+    return {
+      runtime: 'dotnet',
+      exposePort: 8080,
+      contextDir: dir || '.',
+      dockerfile: `FROM mcr.microsoft.com/dotnet/sdk:${major}.0 AS build
+WORKDIR /src
+COPY . .
+RUN dotnet publish -c Release -o /out
+FROM mcr.microsoft.com/dotnet/aspnet:${major}.0
+WORKDIR /app
+COPY --from=build /out .
+ENV ASPNETCORE_URLS=http://+:8080
+ENV PORT=8080
+EXPOSE 8080
+ENTRYPOINT ["dotnet", "${assembly}.dll"]
+`,
+    };
+  };
+
+  const elixirResult = dir => {
+    const dk = dir.toLowerCase();
+    const mix = findIn(dk, 'mix.exs');
+    if (!mix) return staticResult();
+    const manifest = text(mix);
+    const phoenix = /phoenix/i.test(manifest);
+    let port = 4000;
+    const config = entries.find(e => (!dir || e.key.startsWith(dk + '/')) && /(?:runtime|prod|config)\.exs$/i.test(e.name));
+    if (config) {
+      const pm = text(config).match(/port\s*:\s*(\d{2,5})/i);
+      if (pm) port = clampPort(pm[1]) || port;
+    }
+    return {
+      runtime: 'elixir',
+      exposePort: port,
+      contextDir: dir || '.',
+      dockerfile: `FROM elixir:1.16
+RUN apt-get update && apt-get install -y --no-install-recommends git build-essential && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+ENV MIX_ENV=prod
+ENV PORT=${port}
+RUN mix local.hex --force && mix local.rebar --force
+COPY . .
+RUN mix deps.get --only prod && mix compile
+EXPOSE ${port}
+CMD ["mix", ${phoenix ? '"phx.server"' : '"run", "--no-halt"'}]
+`,
+    };
+  };
+
+  const swiftResult = dir => {
+    const dk = dir.toLowerCase();
+    const pkg = findIn(dk, 'package.swift');
+    if (!pkg) return staticResult();
+    const name = (text(pkg).match(/\bname\s*:\s*"([^"]+)"/) || [])[1] || 'app';
+    const binary = String(name).replace(/[^A-Za-z0-9_-]/g, '') || 'app';
+    return {
+      runtime: 'swift',
+      exposePort: 8080,
+      contextDir: dir || '.',
+      dockerfile: `FROM swift:5.10 AS build
+WORKDIR /src
+COPY . .
+RUN swift build -c release
+FROM swift:5.10-slim
+WORKDIR /app
+COPY --from=build /src/.build/release/${binary} /usr/local/bin/app
+ENV PORT=8080
+EXPOSE 8080
+CMD ["app"]
+`,
+    };
+  };
+
+  const dartResult = dir => {
+    const dk = dir.toLowerCase();
+    const pubspec = findIn(dk, 'pubspec.yaml');
+    if (!pubspec) return staticResult();
+    const name = (text(pubspec).match(/^name:\s*([A-Za-z0-9_]+)/m) || [])[1] || 'app';
+    const entry = entries.find(e =>
+      (!dir || e.key.startsWith(dk + '/')) &&
+      ctxRelOf(e, dir).startsWith('bin/') &&
+      e.name.endsWith('.dart')
+    );
+    const entryRel = entry ? ctxRelOf(entry, dir) : `bin/${name}.dart`;
+    return {
+      runtime: 'dart',
+      exposePort: 8080,
+      contextDir: dir || '.',
+      dockerfile: `FROM dart:stable AS build
+WORKDIR /src
+COPY . .
+RUN dart pub get
+RUN dart compile exe ${entryRel} -o /out/app
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY --from=build /out/app /usr/local/bin/app
+ENV PORT=8080
+EXPOSE 8080
+CMD ["app"]
+`,
+    };
+  };
+
   // Root-first marker chain. Root markers (design order) always beat nested
   // ones so a monorepo subdir never hijacks the root project.
   const rootDockerfile = inRoot('dockerfile');
@@ -519,6 +737,29 @@ ${cmd}
   if (inRoot('requirements.txt')) return pythonResult('');
   if (inRoot('go.mod')) return goResult('');
   if (inRoot('gemfile')) return rubyResult('');
+  if (inRoot('cargo.toml')) return rustResult('');
+  if (inRoot('pom.xml') || inRoot('build.gradle') || inRoot('build.gradle.kts')) return javaResult('');
+  if (entries.some(e => e.dirKey === '' && /\.(csproj|fsproj|vbproj|sln)$/i.test(e.name))) return dotnetResult('');
+  if (inRoot('mix.exs')) return elixirResult('');
+  if (inRoot('package.swift')) return swiftResult('');
+  if (inRoot('pubspec.yaml')) return dartResult('');
+
+  // Docker Compose describes a multi-container app. The deploy path runs one
+  // image, so fail clearly instead of silently serving the source as a static
+  // site. A compose file with only `image:` services is treated as local
+  // development tooling and falls through to the normal static detection.
+  const compose = entries.find(e => COMPOSE_NAMES.includes(e.name));
+  if (compose && /^\s*build\s*:/m.test(text(compose))) {
+    return {
+      runtime: 'compose',
+      exposePort: 80,
+      contextDir: compose.dir || '.',
+      unsupported: true,
+      reason: 'This project uses Docker Compose, which this deployment platform does not run. ' +
+        'Add a Dockerfile for the service you want to deploy, or deploy a single service that does not need sidecar containers.',
+    };
+  }
+
   const rootNginx = inRoot('nginx.conf');
   if (rootNginx) return staticResult(ctxRelOf(rootNginx, ''));
   if (entries.some(e => e.dirKey === '' && e.name.endsWith('.php'))) return phpResult('');
@@ -539,6 +780,20 @@ ${cmd}
   if (nestedReqs.length) return pythonResult(pickDir(nestedReqs).dir);
   const nestedGoMods = entries.filter(e => e.dirKey !== '' && e.name === 'go.mod');
   if (nestedGoMods.length) return goResult(pickDir(nestedGoMods).dir);
+  const nestedCargo = entries.filter(e => e.dirKey !== '' && e.name === 'cargo.toml');
+  if (nestedCargo.length) return rustResult(pickDir(nestedCargo).dir);
+  const nestedJava = entries.filter(e =>
+    e.dirKey !== '' && (e.name === 'pom.xml' || e.name === 'build.gradle' || e.name === 'build.gradle.kts')
+  );
+  if (nestedJava.length) return javaResult(pickDir(nestedJava).dir);
+  const nestedDotnet = entries.filter(e => e.dirKey !== '' && /\.(csproj|fsproj|vbproj|sln)$/i.test(e.name));
+  if (nestedDotnet.length) return dotnetResult(pickDir(nestedDotnet).dir);
+  const nestedMix = entries.filter(e => e.dirKey !== '' && e.name === 'mix.exs');
+  if (nestedMix.length) return elixirResult(pickDir(nestedMix).dir);
+  const nestedSwift = entries.filter(e => e.dirKey !== '' && e.name === 'package.swift');
+  if (nestedSwift.length) return swiftResult(pickDir(nestedSwift).dir);
+  const nestedDart = entries.filter(e => e.dirKey !== '' && e.name === 'pubspec.yaml');
+  if (nestedDart.length) return dartResult(pickDir(nestedDart).dir);
 
   const anyNginx = entries.filter(e => e.name === 'nginx.conf');
   if (anyNginx.length) return staticResult(shallowest(anyNginx).rel);
@@ -661,7 +916,14 @@ async function deployProject(subdomain, files, hooks = {}) {
   const nextContainerName = `${containerName}-next-${Date.now()}`;
   const imageTag = `${containerName}:${Date.now()}`;
 
-  const { runtime, dockerfile, exposePort, contextDir } = detectRuntime(files);
+  const detected = detectRuntime(files);
+  const { runtime, dockerfile, exposePort, contextDir } = detected;
+  if (detected.unsupported) {
+    throw new DeployError(detected.reason || 'This project uses a deployment mode that is not supported.', {
+      stage: 'validation',
+      fault: 'user',
+    });
+  }
   const contextRel = String(contextDir || '.').replace(/^\.?\/+/, '').replace(/\/+$/, '') || '.';
   const buildDir = contextRel === '.' ? deploymentDir : `${deploymentDir}/${contextRel}`;
   console.log(`[deploy] Runtime: ${runtime}, port: ${exposePort}, context: ${contextRel}, dir: ${deploymentDir}`);
@@ -770,6 +1032,18 @@ async function deployProject(subdomain, files, hooks = {}) {
   emitStep('deploy', 'running', `starting ${nextContainerName}`);
   emitLog(`\nStarting container ${nextContainerName}...\n`);
 
+  // Environment variables are injected at run time (never baked into the
+  // image). Values are shell-quoted as a single KEY=value argument so spaces,
+  // quotes and `$` survive. Secret values are never logged.
+  const envVars = toEnvObject(hooks.env);
+  const envEntries = Object.entries(envVars);
+  if (envEntries.length) {
+    emitLog(`Injecting ${envEntries.length} environment variable(s)\n`);
+  }
+  const envArgs = envEntries
+    .map(([key, value]) => `  --env ${shq(`${key}=${value}`)} \\`)
+    .join('\n');
+
   const runScript = `#!/bin/bash
 docker rm -f ${nextContainerName} 2>/dev/null || true
 docker run -d \\
@@ -786,7 +1060,7 @@ docker run -d \\
   --memory 512m \\
   --cpus 1 \\
   --pids-limit 100 \\
-  --label 'traefik.enable=true' \\
+${envArgs ? `${envArgs}\n` : ''}  --label 'traefik.enable=true' \\
   --label 'traefik.http.routers.${sanitizedSubdomain}.rule=Host(\`${sanitizedSubdomain}.${DOMAIN}\`) || Host(\`www.${sanitizedSubdomain}.${DOMAIN}\`)' \\
   --label 'traefik.http.routers.${sanitizedSubdomain}.entrypoints=websecure' \\
   --label 'traefik.http.routers.${sanitizedSubdomain}.tls.certresolver=letsencrypt' \\

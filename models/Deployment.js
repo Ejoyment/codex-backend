@@ -43,8 +43,20 @@ const deploymentSchema = new mongoose.Schema({
     },
     runtime: {
         type: String,
-        enum: ['node', 'python', 'go', 'ruby', 'php', 'static', 'docker', 'unknown'],
+        enum: ['node', 'python', 'go', 'ruby', 'php', 'rust', 'java', 'dotnet', 'elixir', 'swift', 'dart', 'static', 'docker', 'compose', 'unknown'],
         default: 'unknown'
+    },
+    // Environment variables injected into the container at run time. Secret
+    // values are encrypted at rest when DEPLOY_ENV_KEY is set and are never
+    // returned by the API (see utils/deployEnv.js).
+    env: {
+        type: [{
+            key: { type: String, required: true },
+            value: { type: String, default: '' },
+            secret: { type: Boolean, default: false },
+            encrypted: { type: Boolean, default: false }
+        }],
+        default: []
     },
     status: {
         type: String,
@@ -145,6 +157,16 @@ const deploymentSchema = new mongoose.Schema({
         lastError: {
             type: String,
             default: null
+        },
+        // Env vars the repair agent determined are required but that only the
+        // user can supply (secret values). Healing stops and the user is asked
+        // to fill them in rather than the agent hardcoding anything.
+        requiredEnv: {
+            type: [{
+                key: { type: String, required: true },
+                reason: { type: String, default: null }
+            }],
+            default: []
         },
         // One-shot marker used by the poller to recover runs that failed for a
         // now-fixed reason (missing workspace, oversized prompt). It prevents

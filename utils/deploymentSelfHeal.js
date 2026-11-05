@@ -23,6 +23,7 @@ const agentOrchestrator = require('./agentOrchestrator');
 const { ensurePersonalWorkspace } = require('./personalWorkspace');
 const { redeployDeployment } = require('./agentAutoDeploy');
 const { detectRuntime } = require('./deploymentService');
+const { normalizeEnv, toObject } = require('./deployEnv');
 const { notifyDeploymentEvent } = require('./notificationTriggers');
 
 function readInt(name, fallback) {
@@ -46,8 +47,8 @@ const AGENT_TIMEOUT_MS = readInt('DEPLOY_SELF_HEAL_AGENT_TIMEOUT_MS', 10 * 60 * 
 // These budgets keep a normal repair prompt under the provider limit; the
 // compact variant is used after a token-limit failure and relies on read_file
 // instead of inlining file bodies.
-const MAX_GOAL_CHARS = 10000;
-const COMPACT_GOAL_CHARS = 6000;
+const MAX_GOAL_CHARS = 16000;
+const COMPACT_GOAL_CHARS = 8000;
 const AGENT_MAX_TOKENS = 1536;
 const TOKEN_LIMIT_PATTERN = 'request too large|tokens per minute|rate_limit_exceeded|context_length_exceeded|maximum context length|too many tokens|reduce your message size';
 // A rejected/absent provider key is not a code problem and retrying it just
@@ -66,9 +67,9 @@ const SAFE_TOOLS = [
   'search_code',
   'analyze_code',
 ];
-const AUTO_APPROVE_TOOLS = ['create_file', 'update_file', 'edit_file', 'create_multiple_files'];
+const AUTO_APPROVE_TOOLS = ['create_file', 'update_file', 'edit_file', 'create_multiple_files', 'set_env', 'declare_env_vars'];
 const AUTONOMOUS_TOOLS = [...SAFE_TOOLS, ...AUTO_APPROVE_TOOLS];
-const CHANGING_TOOLS = new Set(AUTO_APPROVE_TOOLS);
+const CHANGING_TOOLS = new Set(AUTO_APPROVE_TOOLS.filter((tool) => tool !== 'declare_env_vars'));
 
 let timer = null;
 let activeTick = null;
@@ -173,6 +174,7 @@ async function markSucceeded(deployment, summary, workspaceId) {
         'selfHeal.summary': summary,
         'selfHeal.progress': summary,
         'selfHeal.lastError': null,
+        'selfHeal.requiredEnv': [],
       },
     }
   );
@@ -550,11 +552,11 @@ function buildRepairHints(digest = '', files = []) {
   return [...new Set(hints)].slice(0, 6);
 }
 
-function buildFileManifest(files = [], maxChars = 2200) {
+function buildFileManifest(files = [], maxChars = 4000) {
   if (!files.length) return '(no project files were found for this deployment)';
   const lines = [];
   let used = 0;
-  for (let i = 0; i < files.length && i < 200; i++) {
+  for (let i = 0; i < files.length && i < 400; i++) {
     const file = files[i];
     const dir = file.path && file.path !== '/' ? String(file.path).replace(/\/+$/, '') : '';
     const name = `${dir ? `${dir}/` : ''}${file.name}`;
@@ -640,7 +642,7 @@ function pickPreviewFiles(files = [], deployment = {}, digest = '') {
     })
     .filter(({ score }) => score > 0)
     .sort((a, b) => b.score - a.score)
-    .slice(0, 4)
+    .slice(0, 5)
     .map(({ file }) => file);
 }
 
@@ -648,7 +650,7 @@ function buildHealingGoal(deployment, projectId, files = [], previewFiles = [], 
   const compact = options.compact === true;
   const budget = compact ? COMPACT_GOAL_CHARS : MAX_GOAL_CHARS;
   const subdomain = deployment.subdomain;
-  let digestText = buildErrorDigest(deployment, compact ? 2200 : 3500);
+  let digestText = buildErrorDigest(deployment, compact ? 3200 : 5000);
   const hints = buildRepairHints(digestText, files);
   const manifests = detectManifests(files);
   const failingFiles = failingFilesFromDigest(digestText, files);
@@ -668,22 +670,30 @@ function buildHealingGoal(deployment, projectId, files = [], previewFiles = [], 
       .split('\n')
       .filter((line) => !isNoiseLogLine(line))
       .join('\n'),
-    1800
+    3500
   );
-  const manifest = buildFileManifest(files, compact ? 1600 : 2200);
+  const runtimeLogs = compact ? '' : truncateLogLines(
+    stripAnsi(deployment.runtimeLogs || '')
+      .split('\n')
+      .filter((line) => !isNoiseLogLine(line))
+      .join('\n'),
+    4000
+  );
+  const manifest = buildFileManifest(files, compact ? 2400 : 4000);
   const previews = (compact ? [] : previewFiles)
     .filter((file) => typeof file.content === 'string' && file.content.length)
-    .slice(0, 3)
+    .slice(0, 4)
     .map((file) => {
       const dir = file.path && file.path !== '/' ? String(file.path).replace(/\/+$/, '') : '';
       const label = `${dir ? `${dir}/` : ''}${file.name}`;
-      const body = file.content.length > 1200
-        ? `${file.content.slice(0, 1200)}\n... [preview truncated; call read_file with id ${file._id} and use offset/limit for the rest]`
+      const body = file.content.length > 2000
+        ? `${file.content.slice(0, 2000)}\n... [preview truncated; call read_file with id ${file._id} and use offset/limit for the rest]`
         : file.content;
       return `--- ${label} (id: ${file._id}) ---\n${body}`;
     });
 
   let includeTail = Boolean(logTail);
+  let includeRuntime = Boolean(runtimeLogs);
   let includePreviews = previews.length > 0;
 
   const render = () => {
@@ -708,6 +718,9 @@ function buildHealingGoal(deployment, projectId, files = [], previewFiles = [], 
       : [];
     const digestSection = ['What the build log says:', digestText];
     const tailSection = includeTail ? ['Build log tail (the failing step):', logTail] : [];
+    const runtimeSection = includeRuntime
+      ? ['Runtime logs (the container\'s stdout/stderr after starting):', runtimeLogs]
+      : [];
     const hintsSection = hints.length ? ['Repair hints derived from the log:', ...hints.map((hint) => `- ${hint}`)] : [];
     const manifestSection = ['Project files (read with read_file using the id):', manifest];
     const previewSection = includePreviews
@@ -720,10 +733,12 @@ function buildHealingGoal(deployment, projectId, files = [], previewFiles = [], 
       'If the log names a missing file, create it. If a dependency is missing, add it to the manifest that this project actually has (package.json, requirements.txt, pyproject.toml, go.mod, Cargo.toml, pom.xml, build.gradle, Gemfile, composer.json, pubspec.yaml, mix.exs, or the Dockerfile).',
       'If the project uses a Dockerfile, fix the failing COPY/RUN/CMD step or the base image. If it does not, fix the source so the detected runtime can build it.',
       'If the detected runtime does not match the project (for example a Java, Rust, .NET, Elixir, or C/C++ project detected as static) or the log shows the platform cannot build this stack, create a correct Dockerfile that installs the toolchain, builds the project, and runs it on the PORT environment variable.',
+      'If the app needs non-secret configuration (for example PORT, NODE_ENV, LOG_LEVEL, or a hostname), call set_env with a vars object. Never put passwords, API keys, tokens, or connection strings in a file or in set_env.',
+      'If the app needs a value only the user can supply (an API key, password, token, or database URL), call declare_env_vars with { key, reason } entries and do not invent a value. The run stops and the user is asked to add it.',
       'Do not delete files, run tests, or execute code. The deployment is redeployed automatically after your edit.',
-      'When the fix is in place, set goalAchieved=true. Do not set goalAchieved=true before you have changed a file.',
+      'When the fix is in place, set goalAchieved=true. Do not set goalAchieved=true before you have changed a file or declared the required environment variables.',
     ];
-    return [header, manifestsSection, failingSection, digestSection, tailSection, hintsSection, manifestSection, previewSection, instructions]
+    return [header, manifestsSection, failingSection, digestSection, tailSection, runtimeSection, hintsSection, manifestSection, previewSection, instructions]
       .map((section) => (Array.isArray(section) ? section.join('\n') : section))
       .filter(Boolean)
       .join('\n\n');
@@ -731,10 +746,14 @@ function buildHealingGoal(deployment, projectId, files = [], previewFiles = [], 
 
   let goal = render();
   // The digest already contains the failing lines, so drop the raw tail first,
-  // then previews, then shrink the digest. Previews are the most useful context
-  // for the model and should survive as long as the budget allows.
+  // then runtime logs, then previews, then shrink the digest. Previews are the
+  // most useful context for the model and should survive as long as possible.
   if (goal.length > budget && includeTail) {
     includeTail = false;
+    goal = render();
+  }
+  if (goal.length > budget && includeRuntime) {
+    includeRuntime = false;
     goal = render();
   }
   if (goal.length > budget && includePreviews) {
@@ -752,7 +771,7 @@ function buildHealingGoal(deployment, projectId, files = [], previewFiles = [], 
 async function runHealingAgent(deployment, { projectId, workspaceId, files = [], compact = false }) {
   // Feed the prompt the most relevant file bodies too, so the repair does not
   // depend on the model choosing to read them first. Bounded: a few files,
-  // 1.2KB each. Compact runs skip previews and rely on read_file.
+  // 2KB each. Compact runs skip previews and rely on read_file.
   let previewFiles = [];
   const digest = buildErrorDigest(deployment);
   const previewCandidates = compact ? [] : pickPreviewFiles(files, deployment, digest);
@@ -847,6 +866,9 @@ async function runHealingAgent(deployment, { projectId, workspaceId, files = [],
     })),
     autonomous: true,
     requireMutation: true,
+    // Filled by the set_env / declare_env_vars tools while the agent runs.
+    agentEnv: {},
+    requiredEnv: [],
     agentMaxTokens: AGENT_MAX_TOKENS,
     // An autonomous repair must not die because one provider is down or the
     // user's preferred provider is rate-limited.
@@ -898,11 +920,15 @@ async function runHealingAgent(deployment, { projectId, workspaceId, files = [],
       && CHANGING_TOOLS.has(iteration.action.tool)
     )
   );
+  const agentEnv = Object.keys(context.agentEnv || {}).length ? { ...context.agentEnv } : {};
+  const requiredEnv = Array.isArray(context.requiredEnv) ? context.requiredEnv.slice(0, 20) : [];
   const failureDetail = result?.error || result?.summary?.stopReason || null;
-  const summary = (!changed && failureDetail)
-    ? `Agent failed: ${failureDetail}`
-    : (result?.summary?.finalThought
-      || (changed ? 'Agent edited project files.' : 'Agent made no file changes.'));
+  const summary = requiredEnv.length
+    ? `Agent needs environment variables from the user: ${requiredEnv.map((item) => item.key).join(', ')}.`
+    : (!changed && failureDetail)
+      ? `Agent failed: ${failureDetail}`
+      : (result?.summary?.finalThought
+        || (changed ? 'Agent edited project files.' : 'Agent made no file changes.'));
 
   await AgentExecution.updateOne(
     { _id: execution._id },
@@ -918,8 +944,10 @@ async function runHealingAgent(deployment, { projectId, workspaceId, files = [],
   return {
     // A run that edited files but stopped before declaring the goal achieved
     // may still have fixed the build; let the redeploy decide.
-    success: result?.success !== false || changed,
+    success: result?.success !== false || changed || requiredEnv.length > 0,
     changed,
+    agentEnv,
+    requiredEnv,
     summary,
     error: failureDetail,
     executionId: execution._id,
@@ -972,7 +1000,7 @@ async function processDeployment(deploymentId) {
 
   const files = await CodeFile.find({ project: String(projectId) })
     .select('name path language company')
-    .limit(400)
+    .limit(1000)
     .lean();
 
   // Workspace is optional. Prefer the CodeFiles' own company (the scope the
@@ -1033,6 +1061,39 @@ async function processDeployment(deploymentId) {
   try {
     if (deployment.fault === 'user') {
       const agentResult = await runHealingAgent(deployment, { projectId, workspaceId, files, compact });
+      // The agent may have declared secrets only the user can supply. Stop and
+      // ask, instead of letting it hardcode anything.
+      if (agentResult.requiredEnv?.length) {
+        await Deployment.updateOne(
+          { _id: deployment._id },
+          { $set: { 'selfHeal.requiredEnv': agentResult.requiredEnv } }
+        ).catch(() => {});
+        const keys = agentResult.requiredEnv.map((item) => item.key);
+        notifyDeploymentEvent({
+          type: 'deployment_env_required',
+          deployment: deploymentNotificationTarget(deployment, workspaceId),
+          userId: deployment.userId,
+          detail: `${deployment.subdomain}.buildrshq.dev needs environment variables only you can provide: ${keys.join(', ')}. Add them to the deployment, then redeploy.`,
+        });
+        return await markGaveUp(
+          deployment,
+          `Deployment self-heal stopped: set ${keys.join(', ')} on the deployment, then redeploy.`,
+          null,
+          workspaceId,
+          { notify: false }
+        );
+      }
+      // Non-secret configuration the agent set is merged into the stored env
+      // (existing secrets are preserved and re-encrypted by normalizeEnv).
+      if (agentResult.agentEnv && Object.keys(agentResult.agentEnv).length) {
+        const merged = { ...toObject(deployment.env || []), ...agentResult.agentEnv };
+        const entries = normalizeEnv(merged);
+        deployment.env = entries;
+        await Deployment.updateOne(
+          { _id: deployment._id },
+          { $set: { env: entries } }
+        ).catch(() => {});
+      }
       if (!agentResult.success) {
         if (isProviderConfigError(agentResult.error)) {
           return await markGaveUp(
@@ -1125,6 +1186,7 @@ async function schedule(deploymentId, { delayMs = 0 } = {}) {
           'selfHeal.summary': null,
           'selfHeal.lastError': null,
           'selfHeal.recoveredAt': null,
+          'selfHeal.requiredEnv': [],
         },
       }
     );
