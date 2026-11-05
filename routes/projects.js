@@ -156,7 +156,7 @@ router.post('/', authenticateToken, enforceProjectLimit, async (req, res) => {
         const {
             name, description, priority, tags, visibility = 'private',
             sourceType = 'scratch', githubRepoUrl, githubRepoName, defaultBranch = 'main',
-            template = '', technologies = [], intelligence = {}, workspaceId
+            template = '', technologies = [], intelligence = {}
         } = req.body;
 
         if (typeof name !== 'string' || !name.trim()) {
@@ -224,14 +224,10 @@ router.post('/', authenticateToken, enforceProjectLimit, async (req, res) => {
             return res.status(400).json({ success: false, message: 'Choose a supported project template' });
         }
 
-        let projectWorkspaceId;
-        if (workspaceId) {
-            if (!(await assertCompanyMembership(workspaceId, userId, res))) return;
-            projectWorkspaceId = workspaceId;
-        } else {
-            const workspace = await ensurePersonalWorkspace(userId);
-            projectWorkspaceId = workspace._id;
-        }
+        // Personal projects only. Team-scoped projects are created from the
+        // teams page by product admins, not from this endpoint.
+        const workspace = await ensurePersonalWorkspace(userId);
+        const projectWorkspaceId = workspace._id;
 
         const project = await LocalProject.create({
             userId,
@@ -386,7 +382,7 @@ router.post('/tasks', authenticateToken, async (req, res) => {
     try {
         const userId = req.userId || req.user.userId || req.user.id;
         const {
-            title, description, priority, taskType, dueDate, projectId, companyId,
+            title, description, priority, taskType, dueDate, projectId,
             specIds = [], figmaNodeId, blockedBy = [], status = 'backlog',
             assignToMe = false, labels = [],
         } = req.body;
@@ -415,7 +411,10 @@ router.post('/tasks', authenticateToken, async (req, res) => {
             }
         }
 
-        let resolvedCompanyId = companyId || null;
+        // Personal tasks only. Team-scoped tasks are created from the teams
+        // page by product admins, not from this endpoint.
+        const resolvedCompanyId = null;
+
         if (projectId) {
             const project = await LocalProject.findById(projectId).select('workspaceId').lean();
             if (!project) {
@@ -424,11 +423,6 @@ router.post('/tasks', authenticateToken, async (req, res) => {
             if (!(await userCanAccessProject(projectId, userId))) {
                 return res.status(403).json({ success: false, message: 'Project access denied' });
             }
-            const projectWorkspaceId = project.workspaceId ? String(project.workspaceId) : null;
-            if (resolvedCompanyId && projectWorkspaceId && String(resolvedCompanyId) !== projectWorkspaceId) {
-                return res.status(403).json({ success: false, message: 'Project does not belong to this workspace' });
-            }
-            resolvedCompanyId = projectWorkspaceId || resolvedCompanyId;
         }
 
         const task = await LocalTask.create({
@@ -536,7 +530,7 @@ router.get('/tasks/:taskId', authenticateToken, async (req, res) => {
 router.put('/tasks/:taskId', authenticateToken, async (req, res) => {
     try {
         const userId = req.userId || req.user.userId || req.user.id;
-        const { status, title, description, priority, specIds, companyId, figmaNodeId, blockedBy } = req.body;
+        const { status, title, description, priority, specIds, figmaNodeId, blockedBy } = req.body;
 
         const task = await LocalTask.findOne({ _id: req.params.taskId, userId });
         if (!task) {
@@ -566,7 +560,6 @@ router.put('/tasks/:taskId', authenticateToken, async (req, res) => {
                 return res.status(400).json({ success: false, message: resolved.message });
             }
             task.specIds = specIds;
-            if (companyId) task.companyId = companyId;
         }
         if (figmaNodeId !== undefined) task.figmaNodeId = figmaNodeId || null;
         if (blockedBy !== undefined) {
