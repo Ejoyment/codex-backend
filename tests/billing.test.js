@@ -65,6 +65,35 @@ describe('Stripe Payment Gateway', () => {
     expect(result.url).toContain('stripe.com');
   });
 
+  test('passes a stable idempotency key to Stripe checkout', async () => {
+    const create = stripeModule.stripe.checkout.sessions.create;
+    create.mockClear();
+
+    await stripeModule.createCheckoutSession(
+      'user-123',
+      'test@test.com',
+      'pro',
+      'monthly',
+      { idempotencyKey: 'retry-1' }
+    );
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({ client_reference_id: 'user-123' }),
+      { idempotencyKey: expect.stringMatching(/^[a-f0-9]{64}$/) }
+    );
+    const first = create.mock.calls[0][1].idempotencyKey;
+
+    create.mockClear();
+    await stripeModule.createCheckoutSession(
+      'user-123',
+      'test@test.com',
+      'pro',
+      'monthly',
+      { idempotencyKey: 'retry-1' }
+    );
+    expect(create.mock.calls[0][1].idempotencyKey).toBe(first);
+  });
+
   test('should verify webhook events', () => {
     const payload = Buffer.from(JSON.stringify({ id: 'evt_test' }));
     const result = stripeModule.verifyWebhookSignature(payload, 'test_sig');

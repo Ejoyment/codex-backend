@@ -1,3 +1,5 @@
+const crypto = require('crypto');
+
 let stripe = null;
 
 if (process.env.STRIPE_SECRET_KEY) {
@@ -42,8 +44,18 @@ const PRICE_IDS = {
     enterprise: process.env.STRIPE_ENTERPRISE_PRICE_ID
 };
 
+// Stable idempotency key: a caller-supplied key survives retries as-is; the
+// automatic fallback buckets repeated clicks for the same user/plan into one
+// short window so a double-submit cannot create two sessions.
+function checkoutIdempotencyKey({ userId, tier, interval, idempotencyKey }) {
+    const source = idempotencyKey
+        ? `client:${idempotencyKey}`
+        : `auto:${userId}:${tier}:${interval}:${Math.floor(Date.now() / (15 * 60 * 1000))}`;
+    return crypto.createHash('sha256').update(String(source)).digest('hex');
+}
+
 // Create a checkout session
-async function createCheckoutSession(userId, email, tier, interval = 'monthly') {
+async function createCheckoutSession(userId, email, tier, interval = 'monthly', options = {}) {
     try {
         const priceKey = tier === 'enterprise' ? 'enterprise' : `${tier}_${interval}`;
         const priceId = PRICE_IDS[priceKey];
@@ -51,6 +63,12 @@ async function createCheckoutSession(userId, email, tier, interval = 'monthly') 
             return { success: false, error: `No Stripe price configured for ${tier} (${interval})` };
         }
 
+        const idempotencyKey = checkoutIdempotencyKey({
+            userId,
+            tier,
+            interval,
+            idempotencyKey: options.idempotencyKey,
+        });
         const session = await stripe.checkout.sessions.create({
             customer_email: email,
             client_reference_id: userId,
@@ -69,7 +87,7 @@ async function createCheckoutSession(userId, email, tier, interval = 'monthly') 
                 tier: tier,
                 interval: interval
             }
-        });
+        }, { idempotencyKey });
 
         return { success: true, sessionId: session.id, url: session.url };
     } catch (error) {
@@ -110,6 +128,7 @@ function verifyWebhookSignature(payload, signature) {
 
 module.exports = {
     stripe,
+    checkoutIdempotencyKey,
     createCheckoutSession,
     createPortalSession,
     verifyWebhookSignature,

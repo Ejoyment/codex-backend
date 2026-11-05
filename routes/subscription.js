@@ -227,7 +227,8 @@ router.post('/create-checkout', authenticateToken, async (req, res) => {
             req.userId,
             user.email,
             tier,
-            interval || 'monthly'
+            interval || 'monthly',
+            { idempotencyKey: req.get('Idempotency-Key') }
         );
 
         if (result.success) {
