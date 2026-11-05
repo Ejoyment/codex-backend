@@ -112,7 +112,91 @@ describe('autonomous agent repair loop', () => {
     expect(reason).toHaveBeenCalledTimes(2);
   });
 
-  test('autonomous reasoning prompt keeps tool history bounded', () => {
+  test('nudges instead of stopping when the model repeats a successful read', async () => {
+    const baseState = { workspace: { id: 'w', name: 'workspace' }, files: [], currentFile: null };
+    jest.spyOn(orchestrator, 'observe').mockResolvedValue(baseState);
+    jest.spyOn(orchestrator, 'feedback').mockResolvedValue(baseState);
+    jest.spyOn(orchestrator, 'saveIteration').mockResolvedValue();
+    jest.spyOn(orchestrator, 'storeSuccessfulPattern').mockResolvedValue();
+    jest.spyOn(orchestrator, 'storeActionPattern').mockResolvedValue();
+    const reason = jest.spyOn(orchestrator, 'reason')
+      .mockResolvedValueOnce({
+        success: true,
+        thought: 'Read the failing file.',
+        goalAchieved: false,
+        action: { tool: 'read_file', parameters: { fileId: 'f1' } },
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        thought: 'Read it again.',
+        goalAchieved: false,
+        action: { tool: 'read_file', parameters: { fileId: 'f1' } },
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        thought: 'Apply the fix.',
+        goalAchieved: false,
+        action: { tool: 'update_file', parameters: { fileId: 'f1', content: 'fixed' } },
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        thought: 'Fixed.',
+        goalAchieved: true,
+        action: null,
+      });
+    const act = jest.spyOn(orchestrator, 'act')
+      .mockResolvedValueOnce({ success: true, content: 'contents' })
+      .mockResolvedValueOnce({ success: true, message: 'Updated' });
+
+    const result = await orchestrator.executeAgenticLoop('Repair the build', {
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      autonomous: true,
+      requireMutation: true,
+      allowedTools: ['read_file', 'update_file'],
+      autoApproveTools: ['update_file'],
+      skipAutoValidation: true,
+      maxRuntimeMs: 60000,
+    }, 'session-1');
+
+    // A repeated successful read is nudged, not fatal: the run still edits.
+    expect(result.success).toBe(true);
+    expect(act).toHaveBeenCalledTimes(2);
+    expect(reason).toHaveBeenCalledTimes(4);
+  });
+
+  test('stops after the model repeats a successful inspection without editing', async () => {
+    const baseState = { workspace: { id: 'w', name: 'workspace' }, files: [], currentFile: null };
+    jest.spyOn(orchestrator, 'observe').mockResolvedValue(baseState);
+    jest.spyOn(orchestrator, 'feedback').mockResolvedValue(baseState);
+    jest.spyOn(orchestrator, 'saveIteration').mockResolvedValue();
+    jest.spyOn(orchestrator, 'storeSuccessfulPattern').mockResolvedValue();
+    jest.spyOn(orchestrator, 'storeActionPattern').mockResolvedValue();
+    const reason = jest.spyOn(orchestrator, 'reason')
+      .mockResolvedValue({
+        success: true,
+        thought: 'Keep reading.',
+        goalAchieved: false,
+        action: { tool: 'read_file', parameters: { fileId: 'f1' } },
+      });
+    jest.spyOn(orchestrator, 'act').mockResolvedValue({ success: true, content: 'contents' });
+
+    const result = await orchestrator.executeAgenticLoop('Repair the build', {
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      autonomous: true,
+      requireMutation: true,
+      allowedTools: ['read_file', 'update_file'],
+      autoApproveTools: ['update_file'],
+      skipAutoValidation: true,
+      maxRuntimeMs: 60000,
+    }, 'session-1');
+
+    expect(result.success).toBe(false);
+    expect(result.summary.stopReason).toMatch(/repeating the same inspection/);
+  });
+
+  test('still stops when the model repeats a failed action', async () => {
     const previousActions = Array.from({ length: 10 }, (_, i) => ({
       action: { tool: 'read_file', parameters: { fileId: `f${i}` } },
       result: { success: true, fileId: `f${i}`, content: 'x'.repeat(10000) },
