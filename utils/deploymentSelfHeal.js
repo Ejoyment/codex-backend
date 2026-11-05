@@ -44,12 +44,19 @@ const AGENT_TIMEOUT_MS = readInt('DEPLOY_SELF_HEAL_AGENT_TIMEOUT_MS', 10 * 60 * 
 // The repair prompt is sent to the same model the user's plan uses. Some
 // providers cap tokens per minute (Groq's on-demand tier is 8k), so the whole
 // request — system prompt, goal, history and max_tokens — has to stay bounded.
-// These budgets keep a normal repair prompt under the provider limit; the
-// compact variant is used after a token-limit failure and relies on read_file
-// instead of inlining file bodies.
-const MAX_GOAL_CHARS = 16000;
-const COMPACT_GOAL_CHARS = 8000;
-const AGENT_MAX_TOKENS = 1536;
+// These budgets keep a repair prompt under the provider limit. Groq's
+// on-demand tier is 8k tokens per minute (TPM), and the request counts both
+// the prompt and the requested max_tokens against that window. The compact
+// variant is the default for self-heal: it skips file previews and relies on
+// read_file instead of inlining bodies, which is what keeps a repair under
+// the limit on the first attempt.
+const MAX_GOAL_CHARS = readInt('DEPLOY_SELF_HEAL_MAX_GOAL_CHARS', 8000);
+const COMPACT_GOAL_CHARS = readInt('DEPLOY_SELF_HEAL_COMPACT_GOAL_CHARS', 4000);
+const AGENT_MAX_TOKENS = readInt('DEPLOY_SELF_HEAL_AGENT_MAX_TOKENS', 512);
+// Groq (and several other providers) reset their per-minute token window on
+// a whole-minute boundary. A token-limit retry should not fire until that
+// window has had a chance to clear, otherwise it is rejected again.
+const TOKEN_LIMIT_BACKOFF_MS = readInt('DEPLOY_SELF_HEAL_TOKEN_LIMIT_BACKOFF_MS', 65000);
 const TOKEN_LIMIT_PATTERN = 'request too large|tokens per minute|rate_limit_exceeded|context_length_exceeded|maximum context length|too many tokens|reduce your message size';
 // A rejected/absent provider key is not a code problem and retrying it just
 // burns the repair budget. Surface it to the user instead.
@@ -200,7 +207,11 @@ async function markRetry(deployment, error, workspaceId) {
     );
   }
 
-  const nextAttemptAt = new Date(Date.now() + backoffFor(attempts));
+  // A provider token-limit rejection (Groq's 8k TPM on-demand tier) resets on
+  // a whole-minute boundary. Retrying immediately just burns another attempt
+  // on a request that cannot succeed, so wait past the window before retrying.
+  const delay = isTokenLimitError(message) ? TOKEN_LIMIT_BACKOFF_MS : backoffFor(attempts);
+  const nextAttemptAt = new Date(Date.now() + delay);
   const summary = `Attempt ${attempts}/${MAX_ATTEMPTS} failed: ${message}`;
   await Deployment.updateOne(
     { _id: deployment._id, 'selfHeal.status': 'running' },
@@ -895,9 +906,10 @@ async function runHealingAgent(deployment, { projectId, workspaceId, files = [],
   try {
     result = await run(compact, compact ? [] : previewFiles);
     // Some providers reject the request before it reaches the model (token
-    // budget, TPM, context length). Retrying inline with the compact prompt
-    // avoids spending one of the three repair attempts on a request that was
-    // never evaluated.
+    // budget, TPM, context length). Self-heal starts compact, but a caller
+    // that passes a non-compact goal can still hit the limit; retrying inline
+    // with the compact prompt avoids spending a repair attempt on a request
+    // that was never evaluated.
     if (!compact && result && result.success === false && isTokenLimitError(result.error)) {
       appendLog('The repair prompt exceeded the provider limit; retrying with a compact prompt.');
       result = await run(true, []);
@@ -1047,10 +1059,11 @@ async function processDeployment(deploymentId) {
   }
 
   const attempts = Number(deployment.selfHeal?.attempts) || 1;
-  // A previous attempt may have been rejected by the provider because the
-  // prompt was too large. Keep the retry under the token budget and let the
-  // agent read files with read_file instead of inlining previews.
-  const compact = isTokenLimitError(deployment.selfHeal?.lastError);
+  // Self-heal runs start in compact mode by default: the goal is already
+  // bounded to COMPACT_GOAL_CHARS and the agent reads files with read_file,
+  // so the request fits under an 8k TPM cap on the first attempt. A previous
+  // attempt's oversized prompt is still detected here and kept compact.
+  const compact = isTokenLimitError(deployment.selfHeal?.lastError) || true;
   notifyDeploymentEvent({
     type: 'deployment_healing',
     deployment: deploymentNotificationTarget(deployment, workspaceId),
