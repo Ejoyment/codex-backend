@@ -55,7 +55,7 @@ const subscriptionSchema = new mongoose.Schema({
     creditPool: {
         monthlyLimit: { type: Number, default: 0 },
         usedThisMonth: { type: Number, default: 0 },
-        resetAt: { type: Date, default: () => new Date(new Date().getMonth() === 11 ? new Date().getFullYear() + 1 : new Date().getFullYear(), 0, 1) }
+        resetAt: { type: Date, default: () => nextMonthlyReset() }
     },
     // Cloud compute
     cloudComputeHours: {
@@ -133,19 +133,36 @@ const subscriptionSchema = new mongoose.Schema({
     updatedAt: { type: Date, default: Date.now }
 });
 
-subscriptionSchema.pre('save', function(next) {
-    this.updatedAt = Date.now();
-    // Reset credits at month boundary
-    const now = new Date();
-    const resetDate = this.creditPool.resetAt;
-    if (resetDate && now > resetDate) {
-        this.creditPool.usedThisMonth = 0;
+function nextMonthlyReset(now = new Date()) {
+    return new Date(now.getFullYear(), now.getMonth() + 1, 1);
+}
+
+/**
+ * Credit pools are monthly even when billing is yearly. Older rows defaulted
+ * `resetAt` to Jan 1 of the next year, which silently delayed every reset.
+ * Reset when the stored boundary is overdue, missing, or further out than the
+ * next month boundary, then normalize it to the next month.
+ */
+subscriptionSchema.methods.applyMonthlyReset = function(now = new Date()) {
+    const nextMonth = nextMonthlyReset(now);
+    const resetDate = this.creditPool?.resetAt;
+    const overdue = resetDate instanceof Date && now >= resetDate;
+    const invalidFuture = !resetDate || resetDate > nextMonth;
+    if (!overdue && !invalidFuture) return this;
+
+    if (this.creditPool) this.creditPool.usedThisMonth = 0;
+    if (this.cloudComputeHours) {
         this.cloudComputeHours.usedThisMonth = 0;
         this.cloudComputeHours.overageHoursThisMonth = 0;
         this.cloudComputeHours.overageAmountMinor = 0;
-        const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-        this.creditPool.resetAt = nextMonth;
     }
+    if (this.creditPool) this.creditPool.resetAt = nextMonth;
+    return this;
+};
+
+subscriptionSchema.pre('save', function(next) {
+    this.updatedAt = Date.now();
+    this.applyMonthlyReset();
     next();
 });
 
@@ -403,6 +420,7 @@ module.exports = mongoose.model('Subscription', subscriptionSchema);
 // (only the userId unique index).
 subscriptionSchema.index({ status: 1, trialEndsAt: 1 });
 subscriptionSchema.index({ status: 1, 'creditPool.resetAt': 1 });
+subscriptionSchema.statics.nextMonthlyReset = nextMonthlyReset;
 
 subscriptionSchema.statics.tierConfigs = {
     developer: {
