@@ -19,6 +19,7 @@ import {
   Radio,
   Brain,
   LifeBuoy,
+  Figma,
 } from 'lucide-react';
 import { getAvatarUrl } from '../lib/utils';
 import WorkspaceGlobalHeader from './WorkspaceGlobalHeader';
@@ -36,7 +37,7 @@ const NAV_SECTIONS = [
     label: 'BUILD',
     items: [
       { href: '/editor', label: 'Editor', icon: Edit3 },
-      { href: '/specs', label: 'Figma', icon: FileCode2 },
+      { href: '/figma', label: 'Figma', icon: Figma },
       { href: '/ai-pair', label: 'AI Agent', icon: Sparkles },
       { href: '/specs', label: 'Specs', icon: FileText },
       { href: '/mcp', label: 'MCP Server', icon: Server },
