@@ -62,7 +62,21 @@ describe('compute-hour metering', () => {
     );
     expect(CreditPoolService.deductComputeHours).toHaveBeenCalledWith(
       '507f1f77bcf86cd799439011',
-      2
+      2,
+      { reservedHours: 0 }
+    );
+  });
+
+  test('passes the preflight reservation to the charge path', async () => {
+    mockFindExecution(execution({ computeReservationHours: 0.5 }));
+    mockSubscription('pro');
+
+    await meterExecution('exec-1');
+
+    expect(CreditPoolService.deductComputeHours).toHaveBeenCalledWith(
+      '507f1f77bcf86cd799439011',
+      2,
+      { reservedHours: 0.5 }
     );
   });
 

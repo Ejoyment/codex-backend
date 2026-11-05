@@ -1,3 +1,4 @@
+const Subscription = require('../models/Subscription');
 const { enforceCloudComputeLimit } = require('../middleware/tierEnforcement');
 
 function run(subscription) {
@@ -60,6 +61,39 @@ describe('compute overage gate', () => {
     await promise;
     expect(res.status).not.toHaveBeenCalled();
     expect(next).toHaveBeenCalled();
+  });
+
+  test('atomically reserves a small slice before starting', async () => {
+    const sub = Object.assign(pro({ usedThisMonth: 2 }), { _id: 'sub-1' });
+    const reserve = jest.spyOn(Subscription, 'findOneAndUpdate').mockResolvedValue(sub);
+
+    const { req, res, next, promise } = run(sub);
+    await promise;
+
+    expect(res.status).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalled();
+    expect(req.computeReservationHours).toBeGreaterThan(0);
+    expect(reserve).toHaveBeenCalledWith(
+      expect.objectContaining({ _id: 'sub-1' }),
+      expect.objectContaining({ $inc: { 'cloudComputeHours.usedThisMonth': req.computeReservationHours } }),
+      { new: true }
+    );
+
+    reserve.mockRestore();
+  });
+
+  test('blocks when the atomic reservation loses a concurrent race', async () => {
+    const sub = Object.assign(pro({ usedThisMonth: 2 }), { _id: 'sub-1' });
+    const reserve = jest.spyOn(Subscription, 'findOneAndUpdate').mockResolvedValue(null);
+
+    const { res, next, promise } = run(sub);
+    await promise;
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'COMPUTE_LIMIT_REACHED' }));
+
+    reserve.mockRestore();
   });
 
   test('developer tier remains blocked', async () => {

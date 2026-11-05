@@ -34,6 +34,12 @@ const teamActivitySchema = new mongoose.Schema({
         targetUser: mongoose.Schema.Types.ObjectId,
         oldValue: String,
         newValue: String
+    },
+    // Retention policy: activity/standup history expires after a year by
+    // default. Override per deployment without a migration.
+    expiresAt: {
+        type: Date,
+        default: () => new Date(Date.now() + (parseInt(process.env.TEAM_ACTIVITY_RETENTION_DAYS || '365', 10) * 24 * 60 * 60 * 1000))
     }
 }, {
     timestamps: true
@@ -41,5 +47,6 @@ const teamActivitySchema = new mongoose.Schema({
 
 teamActivitySchema.index({ company: 1, createdAt: -1 });
 teamActivitySchema.index({ user: 1 });
+teamActivitySchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 module.exports = mongoose.model('TeamActivity', teamActivitySchema);

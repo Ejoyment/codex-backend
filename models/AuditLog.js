@@ -36,6 +36,11 @@ const auditLogSchema = new mongoose.Schema({
         type: String,
         default: ''
     },
+    // Outbox dedupe: one audit row per queued event even if a worker retries
+    // after writing the row but before deleting the job.
+    sourceId: {
+        type: String
+    },
     // Retention policy (rec 11): audit rows expire after AUDIT_LOG_RETENTION_DAYS
     // (default 90). Compliance windows longer than that need an export pipeline
     // first — see recommendations §4.7, still an open team decision.
@@ -50,6 +55,7 @@ const auditLogSchema = new mongoose.Schema({
 auditLogSchema.index({ company: 1, createdAt: -1 });
 auditLogSchema.index({ actor: 1, createdAt: -1 });
 auditLogSchema.index({ category: 1, createdAt: -1 });
+auditLogSchema.index({ sourceId: 1 }, { unique: true, sparse: true });
 // TTL: rows die when expiresAt passes.
 auditLogSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
