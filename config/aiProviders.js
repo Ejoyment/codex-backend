@@ -8,6 +8,20 @@
  * failure, not a silent reroute to another model.
  */
 const PROVIDERS = Object.freeze({
+  anthropic: Object.freeze({
+    implemented: true,
+    name: 'Anthropic Claude',
+    type: 'cloud',
+    apiKeyEnv: 'ANTHROPIC_API_KEY',
+    modelEnv: 'ANTHROPIC_MODEL',
+    defaultModel: 'claude-sonnet-4-20250514',
+    endpoint: 'https://api.anthropic.com/v1/messages',
+    // Anthropic's Messages API is not OpenAI-compatible: it separates the
+    // system prompt, uses a different request/response shape, and requires
+    // the x-api-key header and anthropic-version. The implementation lives in
+    // aiService.chatAnthropic.
+    anthropicVersion: '2023-06-01',
+  }),
   gemini: Object.freeze({
     implemented: true,
     name: 'Google Gemini',
