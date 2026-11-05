@@ -90,6 +90,11 @@ router.post('/initialize', authenticateToken, async (req, res) => {
             return res.status(404).json({ success: false, message: 'User not found' });
         }
 
+        const frontendUrl = String(process.env.FRONTEND_URL || '').replace(/\/+$/, '');
+        if (!frontendUrl) {
+            return res.status(503).json({ success: false, message: 'Payment provider is not configured yet.' });
+        }
+
         // Amount in cents ($0.50 = 50 cents for card verification)
         // This is the verification charge amount
         const amount = 50; // $0.50 verification charge
@@ -99,7 +104,7 @@ router.post('/initialize', authenticateToken, async (req, res) => {
             email: user.email,
             amount: amount,
             currency: 'USD',
-            callback_url: `${process.env.FRONTEND_URL}/payment-success`,
+            callback_url: `${frontendUrl}/payment-success`,
             channels: ['card'], // Only allow card payments
             metadata: {
                 userId: userId.toString(),

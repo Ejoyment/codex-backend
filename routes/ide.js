@@ -120,6 +120,11 @@ router.post(
   async (req, res) => {
     const userId = String(req.userId || req.user?._id || '');
 
+    // Sandboxed runs (Docker/VPS) remain available on every tier. Only the
+    // unsandboxed host fallback is paid; otherwise a free account could turn
+    // the Run button into code execution as the service user.
+    const hostPermission = await permissionMatrix.checkPermission(userId, 'host', 'ide');
+
     const v = sanitizeFiles(req.body?.files);
     if (v.error) {
       return res.status(400).json({ error: v.error });
@@ -155,7 +160,7 @@ router.post(
       userId,
       language: def.id,
       entry,
-      backend: pickStrategy(),
+      backend: pickStrategy({ allowHost: hostPermission.allowed }),
       status: 'running',
       output: '',
       outputChunks: 0,
@@ -186,6 +191,7 @@ router.post(
           args: Array.isArray(req.body.args) ? req.body.args : [],
           stdin: typeof req.body.stdin === 'string' ? req.body.stdin : undefined,
           timeoutMs: req.body.timeoutMs,
+          allowHost: hostPermission.allowed,
           onOutput: (chunk) => {
             run.output += chunk;
             run.outputChunks += 1;

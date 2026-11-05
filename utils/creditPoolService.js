@@ -8,7 +8,20 @@
 const Subscription = require('../models/Subscription');
 const AgentExecution = require('../models/AgentExecution');
 const { remainingFor } = require('./tierLimits');
+const {
+    COMPUTE_OVERAGE_RATE_MINOR_PER_HOUR,
+    DEFAULT_COMPUTE_OVERAGE_CAP_MINOR,
+    overageChargeMinor,
+} = require('./overagePolicy');
 
+const configuredAgentCreditCost = Number(process.env.AGENT_JOB_CREDIT_COST);
+const AGENT_JOB_CREDIT_COST = Number.isFinite(configuredAgentCreditCost) && configuredAgentCreditCost > 0
+    ? configuredAgentCreditCost
+    : 1;
+
+// Overage is recorded in minor units so a later invoice can use the same
+// amount without re-pricing history. Billing is opt-in per subscription and
+// capped monthly; see utils/overagePolicy.js.
 class CreditPoolService {
     constructor() {
         // No hourly timer in tests: it keeps the jest event loop alive and
@@ -28,6 +41,7 @@ class CreditPoolService {
      * Check if the month has changed and reset credits if needed
      */
     async resetMonthlyCredits() {
+        if (Subscription.db?.readyState !== 1) return;
         try {
             const now = new Date();
             const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -41,6 +55,8 @@ class CreditPoolService {
             for (const sub of subscriptions) {
                 sub.creditPool.usedThisMonth = 0;
                 sub.cloudComputeHours.usedThisMonth = 0;
+                sub.cloudComputeHours.overageHoursThisMonth = 0;
+                sub.cloudComputeHours.overageAmountMinor = 0;
                 sub.creditPool.resetAt = new Date(now.getFullYear(), now.getMonth() + 1, 1);
                 await sub.save();
             }
@@ -78,18 +94,7 @@ class CreditPoolService {
             return { success: true, overage: false, remaining: Infinity, message: 'Unlimited credits' };
         }
 
-        if (amount > remaining) {
-            if (subscription.allowPayAsYouGo) {
-                subscription.creditPool.usedThisMonth += amount;
-                await subscription.save();
-                return {
-                    success: true,
-                    overage: true,
-                    remaining: 0,
-                    amountDeducted: amount,
-                    message: `Deducted ${amount} credits (Pay-As-You-Go)`
-                };
-            }
+        if (amount > remaining && !subscription.allowPayAsYouGo) {
             return {
                 success: false,
                 message: `Insufficient credits. ${used}/${monthlyLimit} used this month.`,
@@ -97,14 +102,60 @@ class CreditPoolService {
             };
         }
 
-        subscription.creditPool.usedThisMonth += amount;
-        await subscription.save();
+        // Conditional increment prevents two concurrent jobs from both
+        // passing the remaining check and overdrawing the pool. Pay-As-You-Go
+        // is allowed past the limit, so it skips the guard.
+        const filter = { userId };
+        if (!subscription.allowPayAsYouGo) {
+            filter['creditPool.usedThisMonth'] = { $lte: monthlyLimit - amount };
+        }
+        const updated = await Subscription.findOneAndUpdate(
+            filter,
+            { $inc: { 'creditPool.usedThisMonth': amount } },
+            { new: true }
+        );
+        if (!updated) {
+            return {
+                success: false,
+                message: 'Insufficient credits — another request used the remaining balance.',
+                remaining: 0
+            };
+        }
+
+        const newUsed = updated.creditPool?.usedThisMonth ?? (used + amount);
+        const overage = amount > remaining;
+        const remainingAfter = Math.max(0, monthlyLimit - newUsed);
         return {
             success: true,
-            overage: false,
-            remaining: remaining - amount,
+            overage,
+            remaining: remainingAfter,
             amountDeducted: amount,
-            message: `Deducted ${amount} credits. ${remaining - amount} remaining.`
+            message: overage
+                ? `Deducted ${amount} credits (Pay-As-You-Go).`
+                : `Deducted ${amount} credits. ${remainingAfter} remaining.`
+        };
+    }
+
+    /**
+     * Return credits when a charged job never ran (or failed before producing
+     * any work). Conditional decrement cannot drive usedThisMonth negative.
+     */
+    async refundCredits(userId, amount = 1) {
+        const updated = await Subscription.findOneAndUpdate(
+            { userId, 'creditPool.usedThisMonth': { $gte: amount } },
+            { $inc: { 'creditPool.usedThisMonth': -amount } },
+            { new: true }
+        );
+        if (!updated) {
+            return { success: false, message: 'No charged credits to refund', remaining: 0 };
+        }
+        const used = updated.creditPool?.usedThisMonth || 0;
+        const remaining = remainingFor(updated.getMonthlyCreditLimit(), used);
+        return {
+            success: true,
+            amountRefunded: amount,
+            remaining,
+            message: `Refunded ${amount} credits.`
         };
     }
 
@@ -121,27 +172,86 @@ class CreditPoolService {
         }
 
         const monthlyLimit = subscription.getCloudComputeHours();
+        if (monthlyLimit === null || monthlyLimit === undefined) {
+            return { success: true, overage: false, remaining: Infinity, message: 'Unlimited compute' };
+        }
+        if (monthlyLimit <= 0) {
+            return { success: false, message: 'Cloud compute is not included on this tier', remaining: 0 };
+        }
+
         const used = subscription.cloudComputeHours?.usedThisMonth || 0;
-        const remaining = monthlyLimit ? monthlyLimit - used : Infinity;
+        const priorOverage = subscription.cloudComputeHours?.overageHoursThisMonth || 0;
+        const nextUsed = used + hours;
+        const nextOverage = Math.max(0, nextUsed - monthlyLimit);
+        // Only the newly-created overage is charged; earlier overage in the
+        // same month was recorded by an earlier in-flight job.
+        const overageHours = Math.max(0, nextOverage - priorOverage);
+        const overageEnabled = subscription.cloudComputeHours?.overageEnabled === true;
+        const configuredCap = Number(subscription.cloudComputeHours?.overageCapMinor);
+        const overageCapMinor = Number.isFinite(configuredCap) && configuredCap >= 0
+            ? configuredCap
+            : DEFAULT_COMPUTE_OVERAGE_CAP_MINOR;
+        const priorAmountMinor = subscription.cloudComputeHours?.overageAmountMinor || 0;
+        const charge = overageChargeMinor({
+            hours: overageHours,
+            priorAmountMinor,
+            enabled: overageEnabled,
+            capMinor: overageCapMinor,
+        });
+        const overageAmountMinor = charge.amountMinor;
 
-        if (remaining === Infinity) {
-            return { success: true, remaining: Infinity, message: 'Unlimited compute' };
+        // Deliberately unconditional: the preflight middleware blocks NEW jobs
+        // at/over the limit, while a job that started with hours remaining must
+        // still be able to record its actual usage (and any overage).
+        const updated = await Subscription.findOneAndUpdate(
+            { userId },
+            {
+                $inc: {
+                    'cloudComputeHours.usedThisMonth': hours,
+                    'cloudComputeHours.overageHoursThisMonth': overageHours,
+                    'cloudComputeHours.overageAmountMinor': overageAmountMinor
+                }
+            },
+            { new: true }
+        );
+        if (!updated) {
+            return { success: false, message: 'No subscription found', remaining: 0 };
         }
 
-        if (hours > remaining) {
-            return {
-                success: false,
-                message: `Insufficient compute hours. ${used}/${monthlyLimit}h used.`,
-                remaining
-            };
+        const newUsed = updated.cloudComputeHours?.usedThisMonth ?? nextUsed;
+        const remainingAfter = Math.max(0, monthlyLimit - newUsed);
+        let overageTotalAmountMinor = updated.cloudComputeHours?.overageAmountMinor ?? priorAmountMinor + overageAmountMinor;
+        if (overageEnabled && overageTotalAmountMinor > overageCapMinor) {
+            // Concurrent in-flight jobs can each pass the pre-read cap check;
+            // clamp the stored total so the monthly cap remains authoritative.
+            overageTotalAmountMinor = overageCapMinor;
+            await Subscription.updateOne(
+                { userId },
+                { $set: { 'cloudComputeHours.overageAmountMinor': overageCapMinor } }
+            );
         }
-
-        subscription.cloudComputeHours.usedThisMonth += hours;
-        await subscription.save();
+        const overageCapped = overageEnabled && (charge.capped || overageTotalAmountMinor >= overageCapMinor);
+        const billingNote = overageHours > 0
+            ? overageEnabled
+                ? overageCapped
+                    ? ` Overage is capped at ${overageCapMinor} minor units this month.`
+                    : ` Overage recorded at ${COMPUTE_OVERAGE_RATE_MINOR_PER_HOUR} minor units/hour.`
+                : ' Overage billing is disabled; no charge was recorded.'
+            : '';
         return {
             success: true,
-            remaining: remaining - hours,
-            hoursDeducted: hours
+            overage: overageHours > 0,
+            overageHours,
+            overageAmountMinor,
+            overageTotalAmountMinor,
+            overageEnabled,
+            overageCapMinor,
+            overageCapped,
+            remaining: remainingAfter,
+            hoursDeducted: hours,
+            message: overageHours > 0
+                ? `Recorded ${hours.toFixed(4)}h compute, including ${overageHours.toFixed(4)}h overage.${billingNote}`
+                : `Recorded ${hours.toFixed(4)}h compute.`
         };
     }
 
@@ -230,4 +340,8 @@ class CreditPoolService {
     }
 }
 
-module.exports = new CreditPoolService();
+module.exports = Object.assign(new CreditPoolService(), {
+    AGENT_JOB_CREDIT_COST,
+    COMPUTE_OVERAGE_RATE_MINOR_PER_HOUR,
+    DEFAULT_COMPUTE_OVERAGE_CAP_MINOR
+});

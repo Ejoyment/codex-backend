@@ -148,15 +148,27 @@ async function ingestDesignTokens(userId, fileKey, nodeId = null) {
     const spacingTokens = extractSpacingTokens(targetNode);
     
     const allTokens = [...colorTokens, ...typographyTokens, ...spacingTokens];
-    
-    const savedTokens = [];
-    for (const token of allTokens) {
-        const existing = await DesignToken.findOne({
+
+    const tokenKey = token => JSON.stringify([token.name, token.tokenType]);
+    const tokenFilters = [...new Map(
+        allTokens.map(token => [tokenKey(token), { name: token.name, tokenType: token.tokenType }])
+    ).values()];
+    const existingTokens = tokenFilters.length
+        ? await DesignToken.find({
             userId,
             figmaFileId: fileKey,
-            name: token.name,
-            tokenType: token.tokenType
-        });
+            $or: tokenFilters
+        })
+        : [];
+    const tokensByKey = new Map();
+    for (const token of existingTokens) {
+        const key = tokenKey(token);
+        if (!tokensByKey.has(key)) tokensByKey.set(key, token);
+    }
+    const savedTokens = [];
+    for (const token of allTokens) {
+        const key = tokenKey(token);
+        const existing = tokensByKey.get(key);
         
         if (existing) {
             existing.value = token.value;
@@ -171,6 +183,7 @@ async function ingestDesignTokens(userId, fileKey, nodeId = null) {
                 figmaNodeId: nodeId,
                 ...token
             });
+            tokensByKey.set(key, created);
             savedTokens.push(created);
         }
     }

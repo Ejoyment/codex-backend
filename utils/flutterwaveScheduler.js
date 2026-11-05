@@ -2,32 +2,21 @@ const BillingSchedule = require('../models/BillingSchedule');
 const Subscription = require('../models/Subscription');
 const flw = require('../config/flutterwave');
 const { planAmountCents } = require('../utils/billingPricing');
+const { scheduleFirstCharge: createFirstChargeSchedule } = require('./firstChargeSchedule');
 
 /**
  * Schedule first charge when the 14-day trial ends
  */
 async function scheduleFirstCharge(userId, subscriptionId, cardAddedAt, tier = 'pro') {
-    // Idempotent: repeated /verify or webhook replays must not stack duplicate
-    // charges on the same trial.
-    const existing = await BillingSchedule.findOne({
-        subscriptionId,
-        chargeType: 'first_charge',
-        status: 'pending'
-    });
-    if (existing) return existing;
-
     const firstChargeTime = new Date(cardAddedAt.getTime() + (14 * 24 * 60 * 60 * 1000)); // 14 days
-
-    const billingSchedule = new BillingSchedule({
+    const billingSchedule = await createFirstChargeSchedule({
         userId,
         subscriptionId,
-        chargeType: 'first_charge',
-        scheduledFor: firstChargeTime,
-        amount: planAmountCents(tier),
-        status: 'pending'
+        cardAddedAt,
+        tier,
+        provider: 'flutterwave',
     });
 
-    await billingSchedule.save();
     console.log(`✓ First charge scheduled for user ${userId} at ${firstChargeTime}`);
     
     return billingSchedule;
@@ -43,6 +32,7 @@ async function scheduleSecondCharge(userId, subscriptionId, firstChargeDate, tie
     const billingSchedule = new BillingSchedule({
         userId,
         subscriptionId,
+        provider: 'flutterwave',
         chargeType: 'second_charge',
         scheduledFor: secondChargeTime,
         amount: planAmountCents(tier),
@@ -65,6 +55,7 @@ async function scheduleRecurringCharge(userId, subscriptionId, lastChargeDate, t
     const billingSchedule = new BillingSchedule({
         userId,
         subscriptionId,
+        provider: 'flutterwave',
         chargeType: 'recurring',
         scheduledFor: nextChargeTime,
         amount: planAmountCents(tier),
@@ -97,14 +88,16 @@ async function processCharge(billingSchedule) {
             throw new Error('Customer ID or payment token not found');
         }
 
-        // Create charge using Flutterwave tokenized charge
+        // Create charge using Flutterwave tokenized charge. The tx_ref is
+        // derived from the schedule id so ops can always trace the attempt,
+        // even if the response (and its transaction id) is lost to a crash.
         const payload = {
             token: paymentToken,
             currency: 'USD',
             country: 'US',
             amount: billingSchedule.amount / 100, // Convert cents to dollars
             email: subscription.email || 'customer@buildershq.com',
-            tx_ref: `charge_${billingSchedule._id}_${Date.now()}`,
+            tx_ref: `charge_${billingSchedule._id}`,
             narration: `BuildrsHQ ${billingSchedule.chargeType.replace('_', ' ')}`,
         };
 
@@ -112,8 +105,10 @@ async function processCharge(billingSchedule) {
 
         if (response.status === 'success') {
             // Update billing schedule
+            billingSchedule.provider = 'flutterwave';
             billingSchedule.status = 'completed';
             billingSchedule.flutterwaveTransactionId = response.data.id;
+            billingSchedule.providerStatus = response.data.status || null;
             billingSchedule.completedAt = new Date();
             await billingSchedule.save();
 
@@ -160,6 +155,9 @@ async function processCharge(billingSchedule) {
             console.log(`✓ Successfully processed ${billingSchedule.chargeType} for user ${billingSchedule.userId}`);
             return { success: true, data: response.data };
         } else {
+            billingSchedule.provider = 'flutterwave';
+            billingSchedule.providerStatus =
+                (response.data && response.data.status) || null;
             throw new Error(response.message || 'Charge failed');
         }
 
@@ -167,6 +165,7 @@ async function processCharge(billingSchedule) {
         console.error(`✗ Charge failed for user ${billingSchedule.userId}:`, error.message);
 
         // Update billing schedule with error
+        billingSchedule.provider = 'flutterwave';
         billingSchedule.status = 'failed';
         billingSchedule.error = error.message;
         billingSchedule.attempts += 1;
@@ -194,6 +193,7 @@ async function processScheduledCharges() {
         // Find all pending charges that are due within the next minute
         const dueCharges = await BillingSchedule.find({
             status: 'pending',
+            provider: 'flutterwave',
             scheduledFor: {
                 $lte: oneMinuteFromNow
             }

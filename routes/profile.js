@@ -1,29 +1,20 @@
+const { sendInternalError } = require('../utils/httpErrors');
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
-const fs = require('fs');
 const User = require('../models/User');
 const { authenticateToken } = require('../middleware/auth');
 const realtimeBus = require('../utils/realtimeBus');
+const {
+    saveProfilePicture,
+    deleteProfilePicture,
+} = require('../utils/profilePictureStorage');
 
-// Configure multer for file upload
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        const uploadDir = 'uploads/profiles';
-        if (!fs.existsSync(uploadDir)) {
-            fs.mkdirSync(uploadDir, { recursive: true });
-        }
-        cb(null, uploadDir);
-    },
-    filename: (req, file, cb) => {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, 'profile-' + uniqueSuffix + path.extname(file.originalname));
-    }
-});
-
+// Keep the upload in memory so storage can be either Cloudflare R2 (when
+// configured) or the local uploads directory for tests/development.
 const upload = multer({
-    storage,
+    storage: multer.memoryStorage(),
     limits: {
         fileSize: 5 * 1024 * 1024 // 5MB limit
     },
@@ -31,12 +22,9 @@ const upload = multer({
         const allowedExts = ['.jpeg', '.jpg', '.png', '.gif', '.webp'];
         const ext = path.extname(file.originalname).toLowerCase();
         const isExtAllowed = allowedExts.includes(ext);
-        const isMimeAllowed = file.mimetype && file.mimetype.startsWith('image/');
+        const isMimeAllowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.mimetype);
         
-        if (isExtAllowed && isMimeAllowed) {
-            return cb(null, true);
-        }
-        // Require BOTH extension AND mime to pass — prevents .exe with image/png MIME
+        // Require BOTH extension AND mime to pass — prevents .exe with image/png MIME.
         if (isExtAllowed && isMimeAllowed) {
             return cb(null, true);
         }
@@ -80,16 +68,17 @@ router.post('/picture', authenticateToken, upload.single('profilePicture'), asyn
             return res.status(404).json({ success: false, message: 'User not found' });
         }
         
-        // Delete old profile picture if exists
-        if (user.profilePicture && user.profilePicture.startsWith('/uploads/')) {
-            const oldPath = path.join(__dirname, '..', user.profilePicture);
-            if (fs.existsSync(oldPath)) {
-                fs.unlinkSync(oldPath);
+        const previousPicture = user.profilePicture;
+        const stored = await saveProfilePicture(req.file, req.userId);
+        user.profilePicture = stored.url;
+        await user.save();
+        if (previousPicture) {
+            try {
+                await deleteProfilePicture(previousPicture);
+            } catch (cleanupError) {
+                console.error('Profile picture cleanup failed:', cleanupError.message);
             }
         }
-        
-        user.profilePicture = '/uploads/profiles/' + req.file.filename;
-        await user.save();
         
         realtimeBus.emitProfileUpdate(user._id.toString(), {
             profilePicture: user.profilePicture
@@ -101,7 +90,7 @@ router.post('/picture', authenticateToken, upload.single('profilePicture'), asyn
             message: 'Profile picture updated successfully'
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -212,7 +201,7 @@ router.put('/', authenticateToken, async (req, res) => {
             }
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -304,7 +293,7 @@ router.get('/export', authenticateToken, async (req, res) => {
             supportTickets: tickets || [],
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -326,7 +315,7 @@ router.get('/:userId?', authenticateToken, async (req, res) => {
             user
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -374,7 +363,7 @@ router.put('/status', authenticateToken, async (req, res) => {
             customStatus: user.customStatus
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -398,10 +387,11 @@ router.delete('/picture', authenticateToken, async (req, res) => {
     try {
         const user = await User.findById(req.userId);
         
-        if (user.profilePicture && user.profilePicture.startsWith('/uploads/')) {
-            const oldPath = path.join(__dirname, '..', user.profilePicture);
-            if (fs.existsSync(oldPath)) {
-                fs.unlinkSync(oldPath);
+        if (user.profilePicture) {
+            try {
+                await deleteProfilePicture(user.profilePicture);
+            } catch (cleanupError) {
+                console.error('Profile picture cleanup failed:', cleanupError.message);
             }
         }
         
@@ -413,7 +403,7 @@ router.delete('/picture', authenticateToken, async (req, res) => {
             message: 'Profile picture deleted'
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 

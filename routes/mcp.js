@@ -1,3 +1,4 @@
+const { sendInternalError } = require('../utils/httpErrors');
 const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../middleware/auth');
@@ -69,7 +70,7 @@ const ensureCompanyMember = async (req, res, next) => {
         req.company = company;
         next();
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 };
 
@@ -81,7 +82,7 @@ router.get('/company/:companyId', authenticateToken, ensureCompanyMember, async 
             servers: servers.map(publicServer),
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -124,7 +125,7 @@ router.post('/', authenticateToken, ensureCompanyMember, async (req, res) => {
         });
         res.json({ success: true, server: publicServer(server) });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -160,7 +161,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
         });
         res.json({ success: true, server: publicServer(server) });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -185,7 +186,7 @@ router.delete('/:id', authenticateToken, async (req, res) => {
         });
         res.json({ success: true, message: 'MCP server removed' });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -251,7 +252,7 @@ router.post('/:id/probe', authenticateToken, async (req, res) => {
         });
         res.json({ success: connected, connected, tools: server.tools, message: connected ? `Connected — ${server.tools.length} tool(s) discovered` : error || `Could not reach ${server.serverUrl}` });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 

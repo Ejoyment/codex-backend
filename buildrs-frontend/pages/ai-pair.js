@@ -3,7 +3,7 @@ import Head from 'next/head';
 import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
-import { apiFetch, SOCKET_URL } from '../lib/api';
+import { apiFetch, SOCKET_URL, isDemoTourActive } from '../lib/api';
 import {
   Bot,
   Send,
@@ -20,7 +20,6 @@ import {
   GitBranch,
   ChevronDown,
   Search,
-  ArrowLeft,
   CheckCircle2,
   XCircle,
   RefreshCw,
@@ -28,6 +27,7 @@ import {
   ShieldCheck,
   Workflow,
   Terminal,
+  FileDiff,
 } from 'lucide-react';
 import { getTierLimits, normalizeTier } from '../lib/tier';
 import { useRouter } from 'next/router';
@@ -35,10 +35,11 @@ import { io } from 'socket.io-client';
 import { useCurrentCompany } from '../hooks/useCurrentCompany';
 
 const LANGUAGES = ['JavaScript', 'TypeScript', 'Python', 'Java', 'Go', 'Rust', 'C++', 'Ruby', 'PHP'];
+const AI_MODEL_PREFERENCE_KEY = 'buildrs-ai-model-preference';
 
 const ACTION_TINTS = {
-  create: { bg: 'rgba(52, 211, 153, 0.12)', text: '#34d399' },
-  delete: { bg: 'rgba(248, 113, 113, 0.12)', text: '#f87171' },
+  create: { bg: 'rgba(3,186,3,0.12)', text: '#03ba03' },
+  delete: { bg: 'rgba(236,20,20,0.12)', text: '#ec1414' },
   edit: { bg: 'rgba(229, 184, 74, 0.12)', text: '#e5b84a' },
 };
 
@@ -51,6 +52,79 @@ function getAiLimitForTier(tier) {
 function formatTime(dateStr) {
   const d = new Date(dateStr);
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function parseUnifiedDiff(patch) {
+  if (typeof patch !== 'string' || !patch.trim()) return [];
+
+  let oldLine = 0;
+  let newLine = 0;
+  return patch.split('\n').flatMap((line, index) => {
+    const hunk = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+    if (hunk) {
+      oldLine = Number(hunk[1]);
+      newLine = Number(hunk[2]);
+      return [{ type: 'hunk', text: line, key: `hunk-${index}` }];
+    }
+    if (line.startsWith('+++') || line.startsWith('---') || line.startsWith('Index:') || /^=+$/.test(line) || line.startsWith('\\ No newline')) {
+      return [];
+    }
+    if (line.startsWith('+')) {
+      return [{ type: 'added', oldLine: '', newLine: newLine++, text: line.slice(1), key: `line-${index}` }];
+    }
+    if (line.startsWith('-')) {
+      return [{ type: 'removed', oldLine: oldLine++, newLine: '', text: line.slice(1), key: `line-${index}` }];
+    }
+    if (line.startsWith(' ')) {
+      return [{ type: 'context', oldLine: oldLine++, newLine: newLine++, text: line.slice(1), key: `line-${index}` }];
+    }
+    return [];
+  });
+}
+
+function getDiffCounts(patch) {
+  if (typeof patch !== 'string') return { insertions: 0, deletions: 0 };
+  return patch.split('\n').reduce((counts, line) => {
+    if (line.startsWith('+++') || line.startsWith('---')) return counts;
+    if (line.startsWith('+')) counts.insertions += 1;
+    else if (line.startsWith('-')) counts.deletions += 1;
+    return counts;
+  }, { insertions: 0, deletions: 0 });
+}
+
+function AgentFileDiff({ file, index }) {
+  const rows = parseUnifiedDiff(file.diff);
+  const counts = getDiffCounts(file.diff);
+  const action = file.action || 'edit';
+  const actionTint = ACTION_TINTS[action] || ACTION_TINTS.edit;
+
+  return (
+    <details className="ail-agent-diff-file" open={index === 0}>
+      <summary>
+        <FileDiff />
+        <code>{file.path || file.filePath || `Changed file ${index + 1}`}</code>
+        <span className="ail-agent-diff-action" style={{ color: actionTint.text, background: actionTint.bg }}>{action}</span>
+        <span className="ail-agent-diff-counts"><span>+{counts.insertions}</span><span>-{counts.deletions}</span></span>
+        <ChevronDown className="ail-agent-diff-chevron" />
+      </summary>
+      {rows.length ? (
+        <div className="ail-agent-diff-code" role="table" aria-label={`Diff for ${file.path || file.filePath || 'changed file'}`}>
+          {rows.map((row) => row.type === 'hunk' ? (
+            <div className="ail-agent-diff-hunk" role="row" key={row.key}>{row.text}</div>
+          ) : (
+            <div className={`ail-agent-diff-line is-${row.type}`} role="row" key={row.key}>
+              <span className="ail-agent-diff-line-number">{row.oldLine}</span>
+              <span className="ail-agent-diff-line-number">{row.newLine}</span>
+              <span className="ail-agent-diff-line-marker" aria-hidden="true">{row.type === 'added' ? '+' : row.type === 'removed' ? '−' : ' '}</span>
+              <code>{row.text || ' '}</code>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="ail-agent-diff-unavailable">A line-by-line patch is not available for this file.</p>
+      )}
+    </details>
+  );
 }
 
 function CodeBlock({ lang, code }) {
@@ -238,7 +312,7 @@ function AgentRunsPanel({ sessions, selected, loading, error, followUp, setFollo
   const reviewable = selected && ['awaiting_review', 'awaiting_approval'].includes(selected.status);
   const hasAppliedChanges = Boolean((selected?.filesChanged || []).length || selected?.diffSummary?.filesChanged > 0);
   const validation = selected?.validationResult;
-  const statusColor = selected?.status === 'failed' ? '#f87171' : reviewable ? '#e5b84a' : ['running', 'in_progress'].includes(selected?.status) ? '#2fd6e6' : '#9aa1ae';
+  const statusColor = selected?.status === 'failed' ? '#ec1414' : reviewable ? '#e5b84a' : ['running', 'in_progress'].includes(selected?.status) ? '#12dce5' : '#9aaeba';
   const activeCount = sessions.filter((session) => ['running', 'in_progress'].includes(session.status)).length;
   const reviewCount = sessions.filter((session) => ['awaiting_review', 'awaiting_approval'].includes(session.status)).length;
   const rawProgress = Number(selected?.progress);
@@ -261,7 +335,7 @@ function AgentRunsPanel({ sessions, selected, loading, error, followUp, setFollo
           </div>
           <div className="ail-agent-session-list">
             {sessions.length ? sessions.map((session) => {
-              const sessionStatusColor = session.status === 'failed' ? '#f87171' : ['awaiting_review', 'awaiting_approval'].includes(session.status) ? '#a78bfa' : ['running', 'in_progress'].includes(session.status) ? '#2fd6e6' : '#34d399';
+              const sessionStatusColor = session.status === 'failed' ? '#ec1414' : ['awaiting_review', 'awaiting_approval'].includes(session.status) ? '#8a38f5' : ['running', 'in_progress'].includes(session.status) ? '#12dce5' : '#03ba03';
               return (
                 <button key={session._id} type="button" onClick={() => onSelect(session)} className={`ail-agent-session ${selected?._id === session._id ? 'is-selected' : ''}`}>
                   <span className="ail-agent-session-dot" style={{ background: sessionStatusColor }} />
@@ -329,19 +403,35 @@ function AgentRunsPanel({ sessions, selected, loading, error, followUp, setFollo
               )}
               {detailTab === 'diff' && (
                 <div className="ail-agent-diff">
-                  {selected.diffSummary && <pre>{typeof selected.diffSummary === 'string' ? selected.diffSummary : JSON.stringify(selected.diffSummary, null, 2)}</pre>}
                   {(selected.filesChanged || []).length ? (
-                    <ul>{selected.filesChanged.map((file, index) => <li key={file.path || file.filePath || index}><Code /><span>{file.path || file.filePath || String(file)}</span></li>)}</ul>
-                  ) : !selected.diffSummary ? <p>No file diff is available for this session.</p> : null}
+                    <>
+                      <div className="ail-agent-diff-summary">
+                        <strong>{selected.filesChanged.length} {selected.filesChanged.length === 1 ? 'file' : 'files'} changed</strong>
+                        <span>+{selected.diffSummary?.insertions ?? selected.filesChanged.reduce((total, file) => total + getDiffCounts(file.diff).insertions, 0)} additions</span>
+                        <span>−{selected.diffSummary?.deletions ?? selected.filesChanged.reduce((total, file) => total + getDiffCounts(file.diff).deletions, 0)} deletions</span>
+                      </div>
+                      <div className="ail-agent-diff-files">
+                        {selected.filesChanged.map((file, index) => (
+                          <AgentFileDiff key={file.path || file.filePath || index} file={file} index={index} />
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="ail-agent-diff-empty">
+                      <FileDiff />
+                      <strong>No file diff is available</strong>
+                      <span>{selected.status === 'failed' ? 'This run failed before producing reviewable file changes.' : 'Line-by-line changes will appear here after the agent proposes file edits.'}</span>
+                    </div>
+                  )}
                 </div>
               )}
               {detailTab === 'validation' && (
                 <div className="ail-agent-validation">
                   {validation?.specs?.length ? validation.specs.map((spec, index) => (
                     <section key={spec.specId || index}>
-                      <header><strong>{spec.title || `Spec ${index + 1}`}</strong><span style={{ color: spec.passed ? '#34d399' : '#e5b84a' }}>{spec.passed ? 'requirements passing' : 'review needed'}</span></header>
+                      <header><strong>{spec.title || `Spec ${index + 1}`}</strong><span style={{ color: spec.passed ? '#03ba03' : '#e5b84a' }}>{spec.passed ? 'requirements passing' : 'review needed'}</span></header>
                       {(spec.requirements || []).map((requirement, requirementIndex) => (
-                        <p key={requirement.id || requirementIndex}><span style={{ color: requirement.status === 'pass' ? '#34d399' : requirement.status === 'fail' ? '#f87171' : '#e5b84a' }}>{requirement.status}</span><span>{requirement.id}: {requirement.text} <small>{requirement.evidence}</small></span></p>
+                        <p key={requirement.id || requirementIndex}><span style={{ color: requirement.status === 'pass' ? '#03ba03' : requirement.status === 'fail' ? '#ec1414' : '#e5b84a' }}>{requirement.status}</span><span>{requirement.id}: {requirement.text} <small>{requirement.evidence}</small></span></p>
                       ))}
                       {spec.verificationCommand && <p className="ail-agent-validation-command">Command pending: {spec.verificationCommand.command}</p>}
                     </section>
@@ -356,10 +446,10 @@ function AgentRunsPanel({ sessions, selected, loading, error, followUp, setFollo
                 <button type="submit" className="btn-workspace btn-secondary" disabled={!followUp.trim() || Boolean(actionId)}><Send className="h-4 w-4" /><span className="hidden sm:inline">Continue</span></button>
               </form>}
               <div><span>Agent work always waits for a human decision.</span><div className="ail-agent-review-actions">
-                {reviewable && <><button type="button" className="btn-workspace btn-secondary" onClick={() => { const reason = window.prompt('Reason for rejecting this run?') || ''; onAction('reject', selected, { reason }); }} disabled={Boolean(actionId)}><XCircle className="h-4 w-4" />Reject &amp; Rollback</button><button type="button" className="btn-workspace btn-primary" onClick={() => onAction('approve', selected)} disabled={Boolean(actionId) || !hasAppliedChanges} title={!hasAppliedChanges ? 'The agent has not applied file changes to its branch' : 'Approve and merge the branch'}><CheckCircle2 className="h-4 w-4" />Approve &amp; Merge</button></>}
-                {actionId === selected._id && <Loader2 className="h-4 w-4 animate-spin text-[#2fd6e6]" />}
+                {reviewable && <><button type="button" className="btn-workspace btn-secondary" onClick={() => { const reason = window.prompt('Reason for rejecting this run?') || ''; onAction('reject', selected, { reason }); }} disabled={Boolean(actionId)}><XCircle className="h-4 w-4" />Reject &amp; Rollback</button><button type="button" className="btn-workspace btn-primary" onClick={() => onAction('approve', selected)} disabled={Boolean(actionId)} title={hasAppliedChanges ? 'Approve and merge the branch' : 'Accept this plan and close the task'}><CheckCircle2 className="h-4 w-4" />{hasAppliedChanges ? 'Approve & Merge' : 'Accept Plan'}</button></>}
+                {actionId === selected._id && <Loader2 className="h-4 w-4 animate-spin text-[#12dce5]" />}
               </div></div>
-              {reviewable && !hasAppliedChanges && <p className="ail-agent-review-note">This worker has returned a plan and response, but has not written files to the branch. Merge stays disabled until branch edits are supported.</p>}
+              {reviewable && !hasAppliedChanges && <p className="ail-agent-review-note">This run returned a plan but no file changes. Accept the plan, continue with a follow-up instruction, or delegate the task again.</p>}
             </footer>}
           </>}
         </section>
@@ -413,24 +503,50 @@ export default function AiPair() {
   const [agentSessions, setAgentSessions] = useState([]);
   const [selectedExecution, setSelectedExecution] = useState(null);
   const [loadingAgentSessions, setLoadingAgentSessions] = useState(false);
+  const [aiProviders, setAiProviders] = useState([]);
+  const [selectedAiModel, setSelectedAiModel] = useState(null);
+  const selectedModelIsLocal = ['ollama', 'lm-studio'].includes(selectedAiModel?.provider);
+  const effectiveAiLimit = selectedModelIsLocal ? Infinity : aiLimit;
+  const [draftAiModel, setDraftAiModel] = useState(null);
+  const [showModelPicker, setShowModelPicker] = useState(false);
+  const [loadingAiProviders, setLoadingAiProviders] = useState(false);
   const [agentActionId, setAgentActionId] = useState('');
   const [followUp, setFollowUp] = useState('');
   const agentSocketRef = useRef(null);
+  const selectedExecutionIdRef = useRef(null);
+  const agentSessionsRequestRef = useRef(0);
+  const chatSessionRequestRef = useRef(0);
+  const chatSendRequestRef = useRef(0);
   const { selectedCompany, hasCompany } = useCurrentCompany();
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
-    setRemaining(aiLimit);
-  }, [aiLimit]);
+    setRemaining(effectiveAiLimit);
+  }, [effectiveAiLimit]);
 
   useEffect(() => {
     fetchSessions();
+    try {
+      const savedPreference = localStorage.getItem(AI_MODEL_PREFERENCE_KEY);
+      if (savedPreference) {
+        const parsed = JSON.parse(savedPreference);
+        if (parsed && parsed.model && parsed.provider && parsed.model === parsed.provider) {
+          localStorage.removeItem(AI_MODEL_PREFERENCE_KEY);
+          setSelectedAiModel(null);
+        } else {
+          setSelectedAiModel(parsed);
+        }
+      }
+    } catch (err) {
+      localStorage.removeItem(AI_MODEL_PREFERENCE_KEY);
+    }
   }, []);
 
   useEffect(() => {
     if (!router.isReady) return;
     if (router.query.executionId) {
       setActiveView('runs');
+      selectedExecutionIdRef.current = String(router.query.executionId);
       fetchAgentSessions(router.query.executionId);
       return;
     }
@@ -450,7 +566,7 @@ export default function AiPair() {
 
   useEffect(() => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
-    if (!token) return;
+    if (!token || isDemoTourActive()) return;
     const socketUrl = SOCKET_URL;
     const sock = io(`${socketUrl}/collab`, { auth: { token }, transports: ['websocket', 'polling'] });
     agentSocketRef.current = sock;
@@ -499,20 +615,83 @@ export default function AiPair() {
   }
 
   async function fetchAgentSessions(preferredId) {
+    const requestId = ++agentSessionsRequestRef.current;
     setLoadingAgentSessions(true);
     try {
       const data = await apiFetch('/api/v1/agent/sessions');
       const loadedSessions = data.sessions || [];
+      if (requestId !== agentSessionsRequestRef.current) return;
       setAgentSessions(loadedSessions);
-      const targetId = preferredId || router.query.executionId || selectedExecution?._id;
-      if (targetId) setSelectedExecution(loadedSessions.find((item) => item._id === targetId) || null);
-      else if (selectedExecution) setSelectedExecution(loadedSessions.find((item) => item._id === selectedExecution._id) || null);
-      else setSelectedExecution(loadedSessions[0] || null);
+      const targetId = preferredId || selectedExecutionIdRef.current;
+      const selected = targetId
+        ? loadedSessions.find((item) => item._id === String(targetId))
+        : loadedSessions[0];
+      if (selected) {
+        selectedExecutionIdRef.current = selected._id;
+        setSelectedExecution(selected);
+      } else if (!targetId) {
+        selectedExecutionIdRef.current = null;
+        setSelectedExecution(null);
+      }
     } catch (err) {
-      setError(err.message || 'Failed to load agent runs');
+      if (requestId === agentSessionsRequestRef.current) setError(err.message || 'Failed to load agent runs');
     } finally {
-      setLoadingAgentSessions(false);
+      if (requestId === agentSessionsRequestRef.current) setLoadingAgentSessions(false);
     }
+  }
+
+  function selectAgentExecution(execution) {
+    selectedExecutionIdRef.current = execution?._id || null;
+    setSelectedExecution(execution || null);
+    const query = { ...router.query };
+    if (execution?._id) query.executionId = execution._id;
+    else delete query.executionId;
+    router.replace({ pathname: router.pathname, query }, undefined, { shallow: true });
+  }
+
+  async function fetchAiProviders() {
+    setLoadingAiProviders(true);
+    try {
+      const data = await apiFetch('/api/ai-pair/providers');
+      if (!data.success) throw new Error(data.message || 'Could not load AI models');
+      setAiProviders(data.providers || []);
+      const saved = selectedAiModel || (() => {
+        try {
+          return JSON.parse(localStorage.getItem(AI_MODEL_PREFERENCE_KEY) || 'null');
+        } catch {
+          return null;
+        }
+      })();
+      const savedIsValid = Boolean(saved?.provider && saved?.model && saved.model !== saved.provider);
+      const available = savedIsValid && (data.providers || []).some((provider) =>
+        provider.key === saved?.provider &&
+        (provider.type === 'cloud' ? provider.model === saved?.model : provider.models?.includes(saved?.model))
+      );
+      const defaultProvider = (data.providers || []).find((provider) => provider.key === data.defaultProvider);
+      const defaultModel = defaultProvider?.type === 'cloud'
+        ? defaultProvider.model
+        : defaultProvider?.models?.[0];
+      setDraftAiModel(available ? saved : defaultProvider && defaultModel
+        ? { provider: defaultProvider.key, model: defaultModel }
+        : null);
+    } catch (err) {
+      setError(err.message || 'Could not load AI models');
+    } finally {
+      setLoadingAiProviders(false);
+    }
+  }
+
+  function openModelPicker() {
+    setError(null);
+    setShowModelPicker(true);
+    fetchAiProviders();
+  }
+
+  function saveAiModel() {
+    if (!draftAiModel) return;
+    setSelectedAiModel(draftAiModel);
+    localStorage.setItem(AI_MODEL_PREFERENCE_KEY, JSON.stringify(draftAiModel));
+    setShowModelPicker(false);
   }
 
   async function submitAgentAction(action, execution, extra = {}) {
@@ -544,6 +723,9 @@ export default function AiPair() {
 
   async function handleCreateSession() {
     if (!selectedRepo) return;
+    chatSessionRequestRef.current += 1;
+    chatSendRequestRef.current += 1;
+    setLoading(false);
     setCreatingSession(true);
     setError(null);
     try {
@@ -567,7 +749,7 @@ export default function AiPair() {
         setSessions((prev) => [sess, ...prev]);
         setActiveSession(sess);
         setMessages([]);
-        setRemaining(aiLimit);
+        setRemaining(effectiveAiLimit);
         setShowNewSession(false);
       } else {
         setError(data.message || 'Failed to create session');
@@ -583,6 +765,8 @@ export default function AiPair() {
     e.preventDefault();
     if (!input.trim() || !activeSession || loading) return;
 
+    const requestId = ++chatSendRequestRef.current;
+    const sessionRequestId = chatSessionRequestRef.current;
     const userMsg = { role: 'user', content: input, timestamp: new Date().toISOString() };
     setMessages((prev) => [...prev, userMsg]);
     const currentInput = input;
@@ -599,6 +783,8 @@ export default function AiPair() {
           sessionId: activeSession._id,
           message: currentInput,
           useAgentLoop: agentMode,
+          provider: selectedAiModel?.provider,
+          model: selectedAiModel?.model,
           companyId: selectedCompany?._id || undefined,
           codeContext: {
             workspace: { id: selectedCompany?._id, name: selectedCompany?.name },
@@ -607,6 +793,10 @@ export default function AiPair() {
           },
         }),
       });
+      if (
+        requestId !== chatSendRequestRef.current ||
+        sessionRequestId !== chatSessionRequestRef.current
+      ) return;
       if (data.success) {
         if (data.agentMode && data.result) {
           const result = data.result;
@@ -644,9 +834,12 @@ export default function AiPair() {
         }
       }
     } catch (err) {
-      setError(err.message || 'Failed to send message');
+      if (
+        requestId === chatSendRequestRef.current &&
+        sessionRequestId === chatSessionRequestRef.current
+      ) setError(err.message || 'Failed to send message');
     } finally {
-      setLoading(false);
+      if (requestId === chatSendRequestRef.current) setLoading(false);
     }
   }
 
@@ -659,10 +852,29 @@ export default function AiPair() {
   }
 
   function selectSession(sess) {
+    chatSessionRequestRef.current += 1;
+    chatSendRequestRef.current += 1;
     setActiveSession(sess);
     setMessages([]);
-    setRemaining(aiLimit);
+    setLoading(false);
+    setRemaining(effectiveAiLimit);
     setError(null);
+    const requestId = ++chatSessionRequestRef.current;
+    apiFetch(`/api/ai-pair/session/${sess._id}`)
+      .then((data) => {
+        if (requestId !== chatSessionRequestRef.current) return;
+        if (!data.success) throw new Error(data.message || 'Could not load conversation');
+        setActiveSession(data.session || sess);
+        setMessages((data.messages || []).map((message) => ({
+          role: message.role,
+          content: message.content,
+          timestamp: message.createdAt,
+          codeChanges: message.metadata?.codeChanges || [],
+        })));
+      })
+      .catch((err) => {
+        if (requestId === chatSessionRequestRef.current) setError(err.message || 'Could not load conversation');
+      });
   }
 
   return (
@@ -678,10 +890,6 @@ export default function AiPair() {
           subscription={subscription}
           headerBranch={selectedExecution?.branch || 'Feature/auth-flow-redesign'}
         />
-        <button type="button" className="ail-sidebar-back" onClick={() => router.back()} aria-label="Go back" title="Go back">
-          <ArrowLeft />
-        </button>
-
         <main className="workspace-main">
           <header className="workspace-header dash-header">
             <div>
@@ -694,11 +902,11 @@ export default function AiPair() {
             <div className="flex items-center gap-3">
               <button
                 type="button"
-                className="ail-model-button hidden sm:inline-flex"
-                disabled
-                title="AI model selection is not available yet"
+                className="ail-model-button"
+                onClick={openModelPicker}
+                title="Choose a configured cloud or connected BYOM model"
               >
-                Change AI Model
+                {selectedAiModel ? `${selectedAiModel.provider} · ${selectedAiModel.model}` : 'Change AI Model'}
               </button>
               <button type="button" onClick={() => router.push('/tasks')} className="btn-workspace btn-primary">
                 <Sparkles className="w-4 h-4" />
@@ -706,6 +914,52 @@ export default function AiPair() {
               </button>
             </div>
           </header>
+
+          {showModelPicker && (
+            <div className="ail-model-backdrop" role="presentation" onMouseDown={(event) => {
+              if (event.target === event.currentTarget) setShowModelPicker(false);
+            }}>
+              <section className="ail-model-dialog" role="dialog" aria-modal="true" aria-labelledby="ail-model-title">
+                <header>
+                  <div><p className="ail-eyebrow">Model preferences</p><h2 id="ail-model-title">Choose an AI model</h2></div>
+                  <button type="button" onClick={() => setShowModelPicker(false)} aria-label="Close model picker"><X /></button>
+                </header>
+                {loadingAiProviders ? (
+                  <div className="ail-model-loading"><Loader2 className="animate-spin" /> Checking configured and connected models…</div>
+                ) : aiProviders.length ? (
+                  <>
+                    <label htmlFor="ail-model-select">Available models</label>
+                    <select
+                      id="ail-model-select"
+                      value={draftAiModel ? JSON.stringify(draftAiModel) : ''}
+                      onChange={(event) => setDraftAiModel(event.target.value ? JSON.parse(event.target.value) : null)}
+                    >
+                      {aiProviders.flatMap((provider) => {
+                        const models = provider.type === 'cloud' ? [provider.model] : provider.models || [];
+                        return models.map((model) => (
+                          <option key={`${provider.key}:${model}`} value={JSON.stringify({ provider: provider.key, model })}>
+                            {provider.name} · {model}
+                          </option>
+                        ));
+                      })}
+                    </select>
+                    <p>Local BYOM options are listed only when Ollama or LM Studio is connected and has a model loaded.</p>
+                  </>
+                ) : (
+                  <div className="ail-model-empty">
+                    <AlertCircle />
+                    <strong>No AI models are available</strong>
+                    <span>Configure a cloud provider or connect Ollama/LM Studio with a loaded model, then refresh.</span>
+                  </div>
+                )}
+                <footer>
+                  <button type="button" className="btn-workspace btn-secondary" onClick={fetchAiProviders} disabled={loadingAiProviders}>Refresh models</button>
+                  <button type="button" className="btn-workspace btn-secondary" onClick={() => setShowModelPicker(false)}>Cancel</button>
+                  <button type="button" className="btn-workspace btn-primary" onClick={saveAiModel} disabled={loadingAiProviders || !draftAiModel}>Use model</button>
+                </footer>
+              </section>
+            </div>
+          )}
 
           {activeView === 'runs' && <div className="workspace-content ail-workspace-content">
             <AgentRunsPanel
@@ -716,7 +970,7 @@ export default function AiPair() {
               followUp={followUp}
               setFollowUp={setFollowUp}
               setError={setError}
-              onSelect={setSelectedExecution}
+              onSelect={selectAgentExecution}
               onAction={(action, execution, extra) => submitAgentAction(action, execution, extra)}
               actionId={agentActionId}
               onDelegate={() => router.push('/tasks')}
@@ -729,7 +983,7 @@ export default function AiPair() {
                   <aside className="ail-rail">
                     <div className="ail-rail-head">
                       <span className="ail-rail-title">
-                        <MessageSquare className="w-4 h-4" style={{ color: '#2fd6e6' }} />
+                        <MessageSquare className="w-4 h-4" style={{ color: '#12dce5' }} />
                         Sessions
                       </span>
                       <button type="button" className="ail-new" onClick={openNewSessionModal} title="New session">
@@ -775,8 +1029,8 @@ export default function AiPair() {
                                     className="ail-sess-status"
                                     style={
                                       sess.status === 'active'
-                                        ? { background: 'rgba(52,211,153,0.12)', color: '#34d399' }
-                                        : { background: 'rgba(255,255,255,0.05)', color: '#9aa1ae' }
+                                        ? { background: 'rgba(3,186,3,0.12)', color: '#03ba03' }
+                                        : { background: 'rgba(255,255,255,0.05)', color: '#9aaeba' }
                                     }
                                   >
                                     {sess.status}
@@ -784,7 +1038,7 @@ export default function AiPair() {
                                 </span>
                                 <span className="ail-sess-time">{formatTime(sess.createdAt)}</span>
                               </span>
-                              <ChevronRight className="w-3.5 h-3.5 flex-shrink-0" style={{ color: isActive ? '#2fd6e6' : '#3a4050' }} />
+                              <ChevronRight className="w-3.5 h-3.5 flex-shrink-0" style={{ color: isActive ? '#12dce5' : '#3a4657' }} />
                             </button>
                           );
                         })
@@ -806,7 +1060,7 @@ export default function AiPair() {
                         <div className="std-alert std-alert-error mx-4 mt-4">
                           <AlertCircle className="w-4 h-4 flex-shrink-0" />
                           <p className="flex-1">{error}</p>
-                          <button type="button" onClick={() => setError(null)} className="text-[#fca5a5] hover:text-white">
+                          <button type="button" onClick={() => setError(null)} className="text-[#ec8f8f] hover:text-white">
                             <X className="w-4 h-4" />
                           </button>
                         </div>
@@ -852,15 +1106,15 @@ export default function AiPair() {
                                 <div key={i} className="ail-msg-row">
                                   <div className="ail-bubble ail-bubble-ai">
                                     <div className="ail-msg-head">
-                                      <Bot className="w-3.5 h-3.5" style={{ color: '#2fd6e6' }} />
+                                      <Bot className="w-3.5 h-3.5" style={{ color: '#12dce5' }} />
                                       <span className="ail-msg-who">AI</span>
                                     </div>
                                     {renderCodeBlocks(msg.content, `a${i}`)}
                                     {msg.agentSteps && msg.agentSteps.length > 0 && (
                                       <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                                         {msg.agentSteps.map((s, si) => (
-                                          <div key={si} style={{ fontSize: '0.75rem', color: '#a8adba', display: 'flex', gap: '0.4rem' }}>
-                                            <span className="mkt-mono" style={{ color: s.success === false ? '#f87171' : '#2fd6e6' }}>
+                                          <div key={si} style={{ fontSize: '0.75rem', color: '#a9b7c4', display: 'flex', gap: '0.4rem' }}>
+                                            <span className="mkt-mono" style={{ color: s.success === false ? '#ec1414' : '#12dce5' }}>
                                               {s.success === false ? '✕' : '✓'}
                                             </span>
                                             <span>Step {s.step}: {s.tool || 'Agent action'} {s.success === false ? 'needs attention' : 'completed'}</span>
@@ -881,7 +1135,7 @@ export default function AiPair() {
                                   <div className="ail-msg-row">
                                     <div className="ail-bubble ail-bubble-ai" style={{ width: '100%' }}>
                                       <div className="ail-msg-head">
-                                        <Bot className="w-3.5 h-3.5" style={{ color: '#2fd6e6' }} />
+                                        <Bot className="w-3.5 h-3.5" style={{ color: '#12dce5' }} />
                                         <span className="ail-msg-who">Agent working...</span>
                                       </div>
                                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.5rem' }}>
@@ -892,8 +1146,8 @@ export default function AiPair() {
                                             ? (succeeded ? CheckCircle2 : XCircle)
                                             : Loader2;
                                           return (
-                                            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.78rem', color: isCompleteEvent && !succeeded ? '#f87171' : '#c8ccd4' }}>
-                                              <ProgressIcon className={`w-3 h-3 ${!isCompleteEvent ? 'animate-spin' : ''}`} style={{ color: isCompleteEvent ? (succeeded ? '#34d399' : '#f87171') : '#2fd6e6' }} />
+                                            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.78rem', color: isCompleteEvent && !succeeded ? '#ec1414' : '#c8ccd4' }}>
+                                              <ProgressIcon className={`w-3 h-3 ${!isCompleteEvent ? 'animate-spin' : ''}`} style={{ color: isCompleteEvent ? (succeeded ? '#03ba03' : '#ec1414') : '#12dce5' }} />
                                               <span className="mkt-mono">
                                                 {s.iteration ? `step ${s.iteration} · ` : ''}{getAgentProgressLabel(s)}
                                               </span>
@@ -906,7 +1160,7 @@ export default function AiPair() {
                                 ) : (
                                   <div className="ail-msg-row">
                                     <div className="ail-thinking ail-typing">
-                                      <Loader2 className="w-4 h-4 animate-spin" style={{ color: '#2fd6e6' }} />
+                                      <Loader2 className="w-4 h-4 animate-spin" style={{ color: '#12dce5' }} />
                                       <span className="ail-msg-who">{agentMode ? 'Agent thinking...' : 'Thinking...'}</span>
                                     </div>
                                   </div>
@@ -954,7 +1208,7 @@ export default function AiPair() {
                               <span>Enter to send · Shift+Enter for newline</span>
                             )}
                             <span className="ml-auto">
-                              {aiLimit === Infinity ? 'Unlimited messages' : `${remaining}/${aiLimit} messages today`}
+                              {effectiveAiLimit === Infinity ? 'Unlimited messages' : `${remaining}/${effectiveAiLimit} messages today`}
                             </span>
                           </div>
                         </form>
@@ -968,7 +1222,7 @@ export default function AiPair() {
                       steps={agentSteps}
                       messages={messages}
                       remaining={remaining}
-                      aiLimit={aiLimit}
+                      aiLimit={effectiveAiLimit}
                     />
                   </div>
                 </div>

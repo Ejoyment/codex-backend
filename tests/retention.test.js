@@ -33,6 +33,7 @@ jest.doMock('../middleware/auth', () => ({
     req.user = { _id: USER };
     next();
   },
+  isUserSessionValid: jest.fn(async () => true),
 }));
 jest.doMock('../utils/auditLogService', () => ({ addAuditLog: jest.fn() }));
 jest.doMock('../models/Company', () => ({ findOne: jest.fn(), findById: jest.fn() }));
@@ -203,6 +204,15 @@ describe('file version cap (silent trim)', () => {
     doc.save = jest.fn(async function () { return this; });
     doc.populate = jest.fn(async function () { return this; });
     jest.spyOn(CodeFile, 'findById').mockResolvedValue(doc);
+    Company.findOne.mockReturnValue({
+      select: () => ({
+        lean: async () => ({
+          _id: COMPANY,
+          owner: USER,
+          members: [{ user: USER, role: 'owner' }],
+        }),
+      }),
+    });
     const res = await request(app).put(`/api/code-editor/files/${FILE_ID}`).send({ content: 'brand-new' });
     expect(res.status).toBe(200);
     // 60 existing + 1 new version, trimmed back to the cap:

@@ -5,13 +5,14 @@
  * utils/aiService only implements gemini/mistral/groq/huggingface. Client
  * payloads (agent sockets, agent-v1) can carry a provider name, so picking a
  * "Claude" option was silently served by Gemini with no error anywhere.
- * These tests pin: only implemented providers are listed, and legacy or
- * unknown names resolve with an explicit warning — never silently.
+ * These tests pin: only implemented providers are listed, and unsupported
+ * names are rejected rather than silently substituted.
  */
 process.env.GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'test-gemini-key';
 
 const aiRouterService = require('../utils/aiRouterService');
 const aiService = require('../utils/aiService');
+const { implementedProviderNames, isImplementedProvider } = require('../config/aiProviders');
 
 const LEGACY = ['claude-sonnet', 'gpt-4o', 'ollama', 'lm-studio'];
 const IMPLEMENTED = ['gemini', 'mistral', 'groq', 'huggingface'];
@@ -23,6 +24,16 @@ describe('AI provider registry', () => {
         expect(Object.keys(aiRouterService.providers).sort()).toEqual([...IMPLEMENTED].sort());
         for (const legacy of LEGACY) {
             expect(aiRouterService.providers[legacy]).toBeUndefined();
+        }
+    });
+
+    test('router and implementation consume the same registry (#4)', () => {
+        const expected = implementedProviderNames().sort();
+        expect(Object.keys(aiRouterService.providers).sort()).toEqual(expected);
+        expect(Object.keys(aiService.providers).sort()).toEqual(expected);
+        for (const name of Object.keys(aiRouterService.providers)) {
+            expect(aiRouterService.getProvider(name).implemented).toBe(true);
+            expect(isImplementedProvider(name)).toBe(true);
         }
     });
 
@@ -38,27 +49,21 @@ describe('AI provider registry', () => {
         }
     });
 
-    test('legacy provider name resolves to a served provider and warns', () => {
-        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
-        const { provider, substitutedFrom } = aiRouterService.resolveProviderName('claude-sonnet');
-        expect(substitutedFrom).toBe('claude-sonnet');
-        expect(aiRouterService.providers[provider]).toBeDefined();
-        expect(warn).toHaveBeenCalledTimes(1);
+    test('legacy provider names are rejected instead of rerouted', () => {
+        expect(() => aiRouterService.resolveProviderName('claude-sonnet'))
+            .toThrow(/provider "claude-sonnet" is not supported/i);
     });
 
     test('implemented provider names pass through untouched', () => {
         const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
-        const { provider, substitutedFrom } = aiRouterService.resolveProviderName('groq');
-        expect(provider).toBe('groq');
+        const { provider, substitutedFrom } = aiRouterService.resolveProviderName('gemini');
+        expect(provider).toBe('gemini');
         expect(substitutedFrom).toBeNull();
         expect(warn).not.toHaveBeenCalled();
     });
 
-    test('aiService warns instead of silently substituting an unroutable request', () => {
-        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
-        const resolved = aiService.resolveProvider('gpt-4o');
-        expect(IMPLEMENTED).toContain(resolved);
-        expect(resolved).not.toBe('gpt-4o');
-        expect(warn).toHaveBeenCalledTimes(1);
+    test('aiService rejects unsupported providers instead of substituting', () => {
+        expect(() => aiService.resolveProvider('gpt-4o'))
+            .toThrow(/provider "gpt-4o" is not supported/i);
     });
 });

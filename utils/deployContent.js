@@ -99,6 +99,12 @@ function validateDeployFiles(files) {
         } catch (err) {
             throw new Error(`${err.message} (in "${f.name}")`);
         }
+        const baseName = rel.split('/').pop();
+        const isEnvSecret = /^\.env(\.|$)/i.test(baseName)
+            && !/^\.env\.(example|sample|template)$/i.test(baseName);
+        if (isEnvSecret || baseName === '.npmrc' || baseName === '.netrc') {
+            throw new Error(`Refusing to deploy secret file "${rel}". Remove it or use a deployment secret instead.`);
+        }
         const size = fileBytes(f);
         if (size > maxFileBytes) {
             throw new Error(`File too large: ${f.name} exceeds ${fmtBytes(maxFileBytes)}.`);
@@ -250,11 +256,11 @@ async function backfillFileContent({ userId, projectId, workspaceId, source, rep
 
     // 1) Project files: merge content from the CodeFile collection (the
     // project file list API is metadata-only). A record with content '' is a
-    // genuinely empty file — resolved, not pending.
+    // genuinely empty file — resolved, not pending. Scope to the selected
+    // project only; widening to the workspace could pull another project's
+    // source into this deployment.
     if (projectId) {
-        const or = [{ project: projectId }];
-        if (workspaceId) or.push({ company: workspaceId });
-        const dbFiles = await CodeFile.find({ $or: or }).lean();
+        const dbFiles = await CodeFile.find({ project: projectId }).lean();
         const byKey = new Map();
         for (const dbf of dbFiles) {
             byKey.set(fileKey(dbf), typeof dbf.content === 'string' ? dbf.content : '');

@@ -4,11 +4,11 @@ import { ChevronDown, Search } from 'lucide-react';
 
 export default function TaskWorkspaceTopBar({ user, selectedCompany, onWorkspaceClick }) {
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-white/10 bg-[#0b0f17]/80 px-6 backdrop-blur">
+    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-white/10 bg-[#0e141d]/80 px-6 backdrop-blur">
       <button
         type="button"
         onClick={onWorkspaceClick}
-        className="flex items-center gap-2 rounded-full border border-white/10 bg-[#161b26] px-3 py-1.5 text-sm text-zinc-200 transition hover:border-white/20"
+        className="flex items-center gap-2 rounded-full border border-white/10 bg-[#182130] px-3 py-1.5 text-sm text-zinc-200 transition hover:border-white/20"
         aria-label="Open workspace"
       >
         <span className="h-2 w-2 rounded-full bg-cyan-400" />
@@ -32,7 +32,7 @@ export default function TaskWorkspaceTopBar({ user, selectedCompany, onWorkspace
             type="search"
             aria-label="Search tasks"
             placeholder="Search tasks, projects"
-            className="w-full rounded-full border border-white/10 bg-[#161b26] py-1.5 pl-9 pr-4 text-sm text-white placeholder-zinc-500 transition focus:border-cyan-500 focus:outline-none"
+            className="w-full rounded-full border border-white/10 bg-[#182130] py-1.5 pl-9 pr-4 text-sm text-white placeholder-zinc-500 transition focus:border-cyan-500 focus:outline-none"
           />
         </label>
 

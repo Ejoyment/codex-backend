@@ -14,7 +14,8 @@ class LocalBridge {
   async checkConnection(provider) {
     const baseUrl = provider === 'lm-studio' ? this.lmStudioUrl : this.ollamaUrl;
     try {
-      const response = await axios.get(`${baseUrl}/api/tags`, { timeout: 3000 });
+      const endpoint = provider === 'lm-studio' ? '/v1/models' : '/api/tags';
+      await axios.get(`${baseUrl}${endpoint}`, { timeout: 3000 });
       this.isConnected[provider] = true;
       return true;
     } catch (error) {
@@ -24,37 +25,68 @@ class LocalBridge {
     }
   }
 
+  async getModels(provider) {
+    const isLmStudio = provider === 'lm-studio';
+    const baseUrl = isLmStudio ? this.lmStudioUrl : this.ollamaUrl;
+    const endpoint = isLmStudio ? '/v1/models' : '/api/tags';
+    const response = await axios.get(`${baseUrl}${endpoint}`, { timeout: 3000 });
+    const models = isLmStudio ? response.data?.data : response.data?.models;
+    return (Array.isArray(models) ? models : [])
+      .map((model) => (typeof model === 'string' ? model : model?.name || model?.id))
+      .filter((name) => typeof name === 'string' && name.trim())
+      .map((name) => name.trim());
+  }
+
   async chat(messages, codeContext = {}, provider = 'ollama') {
-    const baseUrl = provider === 'lm-studio' ? this.lmStudioUrl : this.ollamaUrl;
-    const model = provider === 'lm-studio'
-      ? (process.env.LM_STUDIO_MODEL || 'local-model')
-      : (process.env.OLLAMA_MODEL || 'llama3');
+    const isLmStudio = provider === 'lm-studio';
+    const baseUrl = isLmStudio ? this.lmStudioUrl : this.ollamaUrl;
+    const model = isLmStudio
+      ? (codeContext.model || process.env.LM_STUDIO_MODEL || 'local-model')
+      : (codeContext.model || process.env.OLLAMA_MODEL || 'llama3');
 
     const systemPrompt = this.buildSystemPrompt(codeContext);
+    const systemMessages = messages
+      .filter((message) => message.role === 'system')
+      .map((message) => message.content);
     const formattedMessages = [
-      { role: 'system', content: systemPrompt },
-      ...messages.map(m => ({
-        role: m.role === 'assistant' ? 'assistant' : 'user',
+      { role: 'system', content: [systemPrompt, ...systemMessages].join('\n\n') },
+      ...messages.filter((message) => message.role !== 'system').map(m => ({
+        role: m.role,
         content: m.content,
       })),
     ];
 
     try {
-      const response = await axios.post(`${baseUrl}/api/chat`, {
-        model,
-        messages: formattedMessages,
-        stream: false,
-        options: {
+      const endpoint = isLmStudio ? '/v1/chat/completions' : '/api/chat';
+      const body = isLmStudio
+        ? {
+          model,
+          messages: formattedMessages,
+          stream: false,
           temperature: parseFloat(process.env.AI_TEMPERATURE) || 0.7,
-          num_predict: parseInt(process.env.AI_MAX_TOKENS) || 8192,
-        },
-      }, {
+          max_tokens: parseInt(process.env.AI_MAX_TOKENS) || 8192,
+        }
+        : {
+          model,
+          messages: formattedMessages,
+          stream: false,
+          options: {
+            temperature: parseFloat(process.env.AI_TEMPERATURE) || 0.7,
+            num_predict: parseInt(process.env.AI_MAX_TOKENS) || 8192,
+          },
+        };
+      const response = await axios.post(`${baseUrl}${endpoint}`, body, {
         timeout: codeContext.timeoutMs || 120000,
         signal: codeContext.signal,
         headers: { 'Content-Type': 'application/json' },
       });
 
-      const content = response.data?.message?.content || response.data?.response || '';
+      const content = isLmStudio
+        ? response.data?.choices?.[0]?.message?.content || ''
+        : response.data?.message?.content || response.data?.response || '';
+      if (typeof content !== 'string' || !content.trim()) {
+        throw new Error(`${provider} returned an empty response`);
+      }
 
       return {
         success: true,
@@ -76,47 +108,76 @@ class LocalBridge {
   }
 
   async stream(messages, codeContext = {}, provider = 'ollama', onChunk) {
-    const baseUrl = provider === 'lm-studio' ? this.lmStudioUrl : this.ollamaUrl;
-    const model = provider === 'lm-studio'
-      ? (process.env.LM_STUDIO_MODEL || 'local-model')
-      : (process.env.OLLAMA_MODEL || 'llama3');
+    const isLmStudio = provider === 'lm-studio';
+    const baseUrl = isLmStudio ? this.lmStudioUrl : this.ollamaUrl;
+    const model = isLmStudio
+      ? (codeContext.model || process.env.LM_STUDIO_MODEL || 'local-model')
+      : (codeContext.model || process.env.OLLAMA_MODEL || 'llama3');
 
     const systemPrompt = this.buildSystemPrompt(codeContext);
+    const systemMessages = messages
+      .filter((message) => message.role === 'system')
+      .map((message) => message.content);
     const formattedMessages = [
-      { role: 'system', content: systemPrompt },
-      ...messages.map(m => ({
-        role: m.role === 'assistant' ? 'assistant' : 'user',
+      { role: 'system', content: [systemPrompt, ...systemMessages].join('\n\n') },
+      ...messages.filter((message) => message.role !== 'system').map(m => ({
+        role: m.role,
         content: m.content,
       })),
     ];
 
     try {
-      const response = await axios.post(`${baseUrl}/api/chat`, {
-        model,
-        messages: formattedMessages,
-        stream: true,
-        options: {
+      const endpoint = isLmStudio ? '/v1/chat/completions' : '/api/chat';
+      const body = isLmStudio
+        ? {
+          model,
+          messages: formattedMessages,
+          stream: true,
           temperature: parseFloat(process.env.AI_TEMPERATURE) || 0.7,
-          num_predict: parseInt(process.env.AI_MAX_TOKENS) || 8192,
-        },
-      }, {
-        timeout: 120000,
+          max_tokens: parseInt(process.env.AI_MAX_TOKENS) || 8192,
+        }
+        : {
+          model,
+          messages: formattedMessages,
+          stream: true,
+          options: {
+            temperature: parseFloat(process.env.AI_TEMPERATURE) || 0.7,
+            num_predict: parseInt(process.env.AI_MAX_TOKENS) || 8192,
+          },
+        };
+      const timeoutMs = codeContext.timeoutMs || 120000;
+      const response = await axios.post(`${baseUrl}${endpoint}`, body, {
+        timeout: timeoutMs,
+        signal: codeContext.signal || AbortSignal.timeout(timeoutMs),
         headers: { 'Content-Type': 'application/json' },
         responseType: 'stream',
       });
 
       let fullContent = '';
+      let pending = '';
+      const consumeLine = (line) => {
+        const payload = line.trim().replace(/^data:\s*/, '');
+        if (!payload || payload === '[DONE]') return;
+        const data = JSON.parse(payload);
+        const content = data?.message?.content ||
+          data?.response ||
+          data?.choices?.[0]?.delta?.content ||
+          data?.choices?.[0]?.message?.content ||
+          '';
+        if (typeof content !== 'string' || !content) return;
+        fullContent += content;
+        if (onChunk) onChunk(content);
+      };
       for await (const chunk of response.data) {
-        const line = chunk.toString();
-        if (line.startsWith('data: ')) {
-          const data = JSON.parse(line.substring(6));
-          const content = data?.message?.content || data?.response || '';
-          fullContent += content;
-          if (onChunk) {
-            onChunk(content);
-          }
+        pending += chunk.toString();
+        const lines = pending.split(/\r?\n/);
+        pending = lines.pop() || '';
+        for (const line of lines) {
+          if (line.trim()) consumeLine(line);
         }
       }
+      if (pending.trim()) consumeLine(pending);
+      if (!fullContent.trim()) throw new Error(`${provider} returned an empty response`);
 
       return {
         success: true,
@@ -138,49 +199,7 @@ class LocalBridge {
   }
 
   buildSystemPrompt(codeContext) {
-    const { repository, files, currentFile, agentMode, instructions } = codeContext || {};
-    let prompt = `You are an expert AI pair programming assistant running locally. You help developers write, debug, and improve code.
-
-Your capabilities:
-- Read and analyze code files
-- Suggest code improvements
-- Write new code
-- Debug issues
-- Explain code concepts
-- Refactor code
-- Generate tests
-- Write documentation
-
-Guidelines:
-- Always provide clear, concise explanations
-- Use proper code formatting with language tags
-- Reference specific files and line numbers when relevant
-- Suggest best practices and patterns
-- Consider performance and security
-- Be helpful and encouraging`;
-
-    if (agentMode && instructions) {
-      prompt += `\n\n${instructions}`;
-    }
-
-    if (repository) {
-      prompt += `\n\nCurrent Repository: ${repository.owner}/${repository.name}`;
-      prompt += `\nBranch: ${repository.branch || 'main'}`;
-    }
-
-    if (currentFile) {
-      prompt += `\n\nCurrent File: ${currentFile.path}`;
-      prompt += `\nLanguage: ${currentFile.language || 'unknown'}`;
-    }
-
-    if (files && files.length > 0) {
-      prompt += '\n\nAvailable Files:';
-      files.slice(0, 10).forEach(file => {
-        prompt += `\n- ${file.path}`;
-      });
-    }
-
-    return prompt;
+    return `${aiService.buildSystemPrompt(codeContext)}\n\nThis request is running on a local model. Keep all provided context within this local execution.`;
   }
 
   extractCodeBlocks(text) {

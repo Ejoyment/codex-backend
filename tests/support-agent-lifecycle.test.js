@@ -53,6 +53,9 @@ jest.doMock('../models/AuthLockout', () => {
 jest.doMock('express-rate-limit', () => () => (req, res, next) => next());
 
 const SupportAgent = require('../models/SupportAgent');
+const SupportTicket = require('../models/SupportTicket');
+const User = require('../models/User');
+const { clearLivenessCache } = require('../middleware/auth');
 const supportRouter = require('../routes/support');
 
 const app = express();
@@ -163,5 +166,63 @@ describe('support agent token lifecycle', () => {
 
         expect(res.status).toBe(200);
         expect(res.body.message).toMatch(/logged out/i);
+    });
+});
+
+describe('deactivated support agent ticket access', () => {
+    const sign = (agentId) => jwt.sign({ agentId, role: 'agent' }, process.env.JWT_SECRET);
+    const ticket = { ticketId: 'TKT-1', userId: '507f1f77bcf86cd799439012', messages: [] };
+
+    test('deactivated agent cannot reply to a ticket', async () => {
+        jest.spyOn(SupportAgent, 'findById').mockResolvedValue(mockAgent({ isActive: false }));
+        const findOne = jest.spyOn(SupportTicket, 'findOne').mockResolvedValue(ticket);
+
+        const res = await request(app)
+            .post('/api/support/tickets/TKT-1/messages')
+            .set('Authorization', `Bearer ${sign('507f1f77bcf86cd799439011')}`)
+            .send({ message: 'still here' });
+
+        expect(res.status).toBe(401);
+        expect(findOne).not.toHaveBeenCalled();
+    });
+
+    test('deactivated agent cannot read a user ticket', async () => {
+        jest.spyOn(SupportAgent, 'findById').mockResolvedValue(mockAgent({ isActive: false }));
+        jest.spyOn(SupportTicket, 'findOne').mockResolvedValue(ticket);
+
+        const res = await request(app)
+            .get('/api/support/tickets/TKT-1')
+            .set('Authorization', `Bearer ${sign('507f1f77bcf86cd799439011')}`);
+
+        expect(res.status).toBe(401);
+    });
+});
+
+describe('support user-token liveness', () => {
+    const signUser = (userId) => jwt.sign({ userId }, process.env.JWT_SECRET);
+
+    beforeEach(() => {
+        clearLivenessCache();
+    });
+
+    test('deleted user cannot list tickets with an unexpired token', async () => {
+        jest.spyOn(User, 'exists').mockResolvedValue(null);
+
+        const res = await request(app)
+            .get('/api/support/tickets')
+            .set('Authorization', `Bearer ${signUser('507f1f77bcf86cd799439012')}`);
+
+        expect(res.status).toBe(401);
+    });
+
+    test('deleted user cannot post a ticket message', async () => {
+        jest.spyOn(User, 'exists').mockResolvedValue(null);
+
+        const res = await request(app)
+            .post('/api/support/tickets/TKT-1/messages')
+            .set('Authorization', `Bearer ${signUser('507f1f77bcf86cd799439012')}`)
+            .send({ message: 'hello' });
+
+        expect(res.status).toBe(401);
     });
 });

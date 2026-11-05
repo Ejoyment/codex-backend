@@ -1,11 +1,11 @@
 import { Github, Users, FolderKanban, FileText } from 'lucide-react';
 
 const STATUS_STYLES = {
-  active: { bg: 'rgba(47,214,230,0.12)', text: '#2fd6e6', label: 'Active' },
+  active: { bg: 'rgba(18,220,229,0.12)', text: '#12dce5', label: 'Active' },
   planning: { bg: 'rgba(229,184,74,0.12)', text: '#e5b84a', label: 'Planning' },
-  'on-hold': { bg: 'rgba(248,113,113,0.1)', text: '#f87171', label: 'On Hold' },
-  completed: { bg: 'rgba(52,211,153,0.12)', text: '#34d399', label: 'Completed' },
-  archived: { bg: 'rgba(255,255,255,0.06)', text: '#9aa1ae', label: 'Archived' },
+  'on-hold': { bg: 'rgba(236,20,20,0.1)', text: '#ec1414', label: 'On Hold' },
+  completed: { bg: 'rgba(3,186,3,0.12)', text: '#03ba03', label: 'Completed' },
+  archived: { bg: 'rgba(255,255,255,0.06)', text: '#9aaeba', label: 'Archived' },
 };
 
 function ProjectIcon({ type }) {
@@ -42,8 +42,8 @@ export default function ProjectsList({ projects, onViewAll }) {
     <div>
       {projects.map((project, idx) => {
         const status = STATUS_STYLES[project.status] || STATUS_STYLES.active;
-        const iconColor = project.type === 'github' ? '#e2e8f0' : project.type === 'local' ? '#2fd6e6' : '#a78bfa';
-        const iconBg = project.type === 'github' ? 'rgba(255,255,255,0.06)' : project.type === 'local' ? 'rgba(47,214,230,0.10)' : 'rgba(167,139,250,0.12)';
+        const iconColor = project.type === 'github' ? '#e2e8f0' : project.type === 'local' ? '#12dce5' : '#8a38f5';
+        const iconBg = project.type === 'github' ? 'rgba(255,255,255,0.06)' : project.type === 'local' ? 'rgba(18,220,229,0.10)' : 'rgba(138,56,245,0.12)';
         const progress = project.stats?.progress || 0;
         const metaParts = [];
 

@@ -22,11 +22,21 @@ const { io: ioClient } = require(path.resolve(__dirname, '../buildrs-frontend/no
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret-for-automated-testing-32chars';
 
 jest.mock('../models/AgentExecution', () => ({ create: jest.fn(), findById: jest.fn(), findOne: jest.fn() }));
-jest.mock('../models/LocalTask', () => ({ findOne: jest.fn(), findById: jest.fn(), findByIdAndUpdate: jest.fn() }));
+jest.mock('../models/LocalTask', () => ({ findOne: jest.fn(), findById: jest.fn(), findOneAndUpdate: jest.fn(), findByIdAndUpdate: jest.fn() }));
+jest.mock('../models/LocalProject', () => ({ findById: jest.fn() }));
 jest.mock('../models/SpecModel', () => ({ findById: jest.fn(), findByIdAndUpdate: jest.fn() }));
 jest.mock('../models/CodeFile', () => ({ find: jest.fn(), findOne: jest.fn(), create: jest.fn() }));
-jest.mock('../utils/specAccess', () => ({ userCanAccessSpec: jest.fn(), userCanAccessWorkspace: jest.fn() }));
-jest.mock('../utils/aiRouterService', () => ({ routeChat: jest.fn() }));
+jest.mock('../utils/specAccess', () => ({ userCanAccessProject: jest.fn(), userCanAccessSpec: jest.fn(), userCanAccessWorkspace: jest.fn() }));
+jest.mock('../utils/workspaceAuth', () => ({ assertWorkspaceAccess: jest.fn() }));
+jest.mock('../utils/aiRouterService', () => ({
+  routeChat: jest.fn(),
+  resolveRequestProvider: jest.fn((provider, localPrivacyMode) => ({
+    provider: provider || 'gemini',
+    localPrivacyMode: Boolean(localPrivacyMode),
+  })),
+  normalizeModel: jest.fn((provider, model) => (model && model !== provider ? model : null)),
+  validateModel: jest.fn().mockResolvedValue(true),
+}));
 jest.mock('../utils/sddVerificationService', () => ({ verifySpec: jest.fn() }));
 jest.mock('../utils/containerWorker', () => ({ provisionWorker: jest.fn(), teardownWorker: jest.fn() }));
 jest.mock('../utils/gitService', () => ({
@@ -41,16 +51,24 @@ jest.mock('../utils/gitService', () => ({
 jest.mock('../utils/notificationTriggers', () => ({ notifyAgentEvent: jest.fn() }));
 jest.mock('../utils/realtimeBus', () => ({ emitAgentProgress: jest.fn() }));
 jest.mock('../utils/terminalService', () => ({}));
+jest.mock('../utils/creditPoolService', () => ({
+  AGENT_JOB_CREDIT_COST: 1,
+  deductCredits: jest.fn(),
+  refundCredits: jest.fn(),
+}));
 
 const AgentExecution = require('../models/AgentExecution');
 const LocalTask = require('../models/LocalTask');
+const LocalProject = require('../models/LocalProject');
 const SpecModel = require('../models/SpecModel');
 const CodeFile = require('../models/CodeFile');
 const specAccess = require('../utils/specAccess');
+const workspaceAuth = require('../utils/workspaceAuth');
 const aiRouterService = require('../utils/aiRouterService');
 const sddVerificationService = require('../utils/sddVerificationService');
 const gitService = require('../utils/gitService');
 const realtimeBus = require('../utils/realtimeBus');
+const CreditPoolService = require('../utils/creditPoolService');
 const AgentSocketHandler = require('../utils/agentSocket');
 const User = require('../models/User');
 const { clearLivenessCache } = require('../middleware/auth');
@@ -127,10 +145,17 @@ beforeEach(() => {
   aiRouterService.routeChat.mockResolvedValue({ success: false, error: 'disabled in tests' });
   sddVerificationService.verifySpec.mockResolvedValue({ success: true, passed: true });
   LocalTask.findOne.mockResolvedValue(null);
+  LocalProject.findById.mockReturnValue({ select: () => ({ lean: async () => null }) });
   SpecModel.findById.mockResolvedValue(null);
+  specAccess.userCanAccessProject.mockResolvedValue(true);
   specAccess.userCanAccessSpec.mockResolvedValue(false);
-  specAccess.userCanAccessWorkspace.mockResolvedValue(false);
+  workspaceAuth.assertWorkspaceAccess.mockImplementation(async (workspaceId) => ({
+    ok: true,
+    workspaceId: String(workspaceId),
+  }));
   AgentExecution.create.mockResolvedValue(execFixture(USER_A, { metadata: {} }));
+  CreditPoolService.deductCredits.mockResolvedValue({ success: true, remaining: 19 });
+  CreditPoolService.refundCredits.mockResolvedValue({ success: true, amountRefunded: 1 });
   CodeFile.find.mockResolvedValue([]);
   gitService.init.mockResolvedValue({ success: true });
   gitService.ensureBaseCommit.mockResolvedValue({ success: true });
@@ -161,7 +186,7 @@ describe('agent:delegate ownership', () => {
     s.emit('agent:delegate', { taskId: TASK_B, taskTitle: 'x' });
     expect((await err).message).toMatch(/task not found/i);
     expect(AgentExecution.create).not.toHaveBeenCalled();
-    expect(LocalTask.findByIdAndUpdate).not.toHaveBeenCalled();
+    expect(LocalTask.findOneAndUpdate).not.toHaveBeenCalled();
     s.disconnect();
   });
 
@@ -177,30 +202,79 @@ describe('agent:delegate ownership', () => {
   });
 
   test('foreign workspaceId is rejected', async () => {
-    specAccess.userCanAccessWorkspace.mockResolvedValue(false);
+    workspaceAuth.assertWorkspaceAccess.mockResolvedValue({ ok: false, reason: 'Workspace not found or access denied' });
     const s = await connect(USER_A);
     const err = once(s, 'agent:error');
     s.emit('agent:delegate', { workspaceId: 'company-not-yours' });
-    expect((await err).message).toMatch(/workspace access denied/i);
+    expect((await err).message).toMatch(/access denied/i);
     expect(AgentExecution.create).not.toHaveBeenCalled();
+    s.disconnect();
+  });
+
+  test('client-supplied userId cannot override the socket identity', async () => {
+    const s = await connect(USER_A);
+    const result = once(s, 'agent:delegate-result');
+    s.emit('agent:delegate', { taskTitle: 'spoofed', userId: USER_B });
+    await result;
+    expect(AgentExecution.create).toHaveBeenCalledWith(expect.objectContaining({ userId: USER_A }));
+    s.disconnect();
+  });
+
+  test('task linked to a foreign project is rejected', async () => {
+    LocalTask.findOne.mockResolvedValue({ _id: TASK_A, userId: USER_A, projectId: 'project-a' });
+    LocalProject.findById.mockReturnValue({
+      select: () => ({ lean: async () => ({ workspaceId: '8'.repeat(24) }) }),
+    });
+    const s = await connect(USER_A);
+    const err = once(s, 'agent:error');
+    s.emit('agent:delegate', { taskId: TASK_A, workspaceId: WORKSPACE_A });
+    expect((await err).message).toMatch(/project does not belong/i);
+    expect(AgentExecution.create).not.toHaveBeenCalled();
+    s.disconnect();
+  });
+
+  test('exhausted credit pool rejects before creating an execution', async () => {
+    CreditPoolService.deductCredits.mockResolvedValue({
+      success: false,
+      message: 'Insufficient credits. 20/20 used this month.',
+      remaining: 0,
+    });
+    const s = await connect(USER_A);
+    const err = once(s, 'agent:error');
+    s.emit('agent:delegate', { taskTitle: 'too expensive' });
+    const payload = await err;
+    expect(payload.code).toBe('CREDIT_LIMIT_REACHED');
+    expect(payload.message).toMatch(/insufficient credits/i);
+    expect(AgentExecution.create).not.toHaveBeenCalled();
+    s.disconnect();
+  });
+
+  test('a failed execution refunds the charged credit', async () => {
+    aiRouterService.routeChat.mockResolvedValue({ success: false, error: 'provider down' });
+    const s = await connect(USER_A);
+    const result = once(s, 'agent:delegate-result');
+    const failure = once(s, 'agent:execution-error');
+    s.emit('agent:delegate', { taskTitle: 'will fail' });
+    await result;
+    expect((await failure).error).toMatch(/provider down/i);
+    expect(CreditPoolService.refundCredits).toHaveBeenCalledWith(USER_A, 1);
     s.disconnect();
   });
 
   test('own task delegates successfully', async () => {
     LocalTask.findOne.mockResolvedValue({ _id: TASK_A, userId: USER_A });
-    LocalTask.findByIdAndUpdate.mockResolvedValue({});
+    LocalTask.findOneAndUpdate.mockResolvedValue({});
     const s = await connect(USER_A);
     const result = once(s, 'agent:delegate-result');
     s.emit('agent:delegate', { taskId: TASK_A, taskTitle: 'mine' });
     const payload = await result;
     expect(payload.success).toBe(true);
     expect(AgentExecution.create).toHaveBeenCalledWith(expect.objectContaining({ userId: USER_A }));
-    expect(LocalTask.findByIdAndUpdate).toHaveBeenCalledWith(TASK_A, expect.anything());
+    expect(LocalTask.findOneAndUpdate).toHaveBeenCalledWith({ _id: TASK_A, userId: USER_A }, expect.anything());
     s.disconnect();
   });
 
   test('workspace delegate seeds a base commit and creates an isolated branch', async () => {
-    specAccess.userCanAccessWorkspace.mockResolvedValue(true);
     const s = await connect(USER_A);
     const result = once(s, 'agent:delegate-result');
     s.emit('agent:delegate', { workspaceId: WORKSPACE_A, taskTitle: 'branch me' });
@@ -231,7 +305,7 @@ describe('approve / reject ownership', () => {
     const err = once(s, 'agent:error');
     s.emit('agent:approve', { executionId: EXEC_A, taskId: TASK_B });
     expect((await err).message).toMatch(/task not found/i);
-    expect(LocalTask.findByIdAndUpdate).not.toHaveBeenCalled();
+    expect(LocalTask.findOneAndUpdate).not.toHaveBeenCalled();
     expect(execution.save).not.toHaveBeenCalled();
     s.disconnect();
   });
@@ -240,13 +314,42 @@ describe('approve / reject ownership', () => {
     const execution = execFixture(USER_A, { metadata: {} });
     AgentExecution.findById.mockResolvedValue(execution);
     LocalTask.findOne.mockResolvedValue({ _id: TASK_A, userId: USER_A });
-    LocalTask.findByIdAndUpdate.mockResolvedValue({});
+    LocalTask.findOneAndUpdate.mockResolvedValue({});
     const s = await connect(USER_A);
     const done = once(s, 'agent:approved');
     s.emit('agent:approve', { executionId: EXEC_A, taskId: TASK_A });
     const payload = await done;
     expect(payload.message).toMatch(/approved/i);
     expect(execution.status).toBe('completed');
+    s.disconnect();
+  });
+
+  test('ObjectId execution owner matches the string socket userId', async () => {
+    const mongoose = require('mongoose');
+    const execution = execFixture(new mongoose.Types.ObjectId(USER_A), { metadata: {} });
+    AgentExecution.findById.mockResolvedValue(execution);
+    const s = await connect(USER_A);
+    const done = once(s, 'agent:approved');
+    s.emit('agent:approve', { executionId: EXEC_A });
+    const payload = await done;
+    expect(payload.message).toMatch(/approved/i);
+    expect(execution.status).toBe('completed');
+    s.disconnect();
+  });
+
+  test('approve re-checks workspace access before applying changes', async () => {
+    const execution = execFixture(USER_A, {
+      metadata: { workspaceId: WORKSPACE_A },
+      proposedChanges: [{ path: 'src/a.js', action: 'update', language: 'javascript', content: 'new body' }],
+    });
+    AgentExecution.findById.mockResolvedValue(execution);
+    workspaceAuth.assertWorkspaceAccess.mockResolvedValue({ ok: false, reason: 'Workspace not found or access denied' });
+    const s = await connect(USER_A);
+    const err = once(s, 'agent:error');
+    s.emit('agent:approve', { executionId: EXEC_A });
+    expect((await err).message).toMatch(/access denied/i);
+    expect(CodeFile.find).not.toHaveBeenCalled();
+    expect(execution.save).not.toHaveBeenCalled();
     s.disconnect();
   });
 
@@ -257,13 +360,17 @@ describe('approve / reject ownership', () => {
     });
     AgentExecution.findById.mockResolvedValue(execution);
     const doc = { _id: 'f1', name: 'a.js', path: '/src', content: 'old', save: jest.fn(async function () { return this; }) };
-    CodeFile.findOne.mockResolvedValue(doc);
+    CodeFile.find.mockResolvedValue([doc]);
     const s = await connect(USER_A);
     const done = once(s, 'agent:approved');
     s.emit('agent:approve', { executionId: EXEC_A });
     const payload = await done;
     expect(payload.message).toMatch(/approved/i);
-    expect(CodeFile.findOne).toHaveBeenCalledWith({ company: WORKSPACE_A, name: 'a.js', path: '/src' });
+    expect(CodeFile.find).toHaveBeenCalledWith({
+      company: WORKSPACE_A,
+      project: null,
+      $or: [{ name: 'a.js', path: '/src' }],
+    });
     expect(doc.save).toHaveBeenCalled();
     expect(doc.content).toBe('new body');
     s.disconnect();

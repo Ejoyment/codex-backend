@@ -46,6 +46,9 @@ const TYPE_CATEGORY = {
     deployment_started: 'deployments',
     deployment_succeeded: 'deployments',
     deployment_failed: 'deployments',
+    deployment_healing: 'deployments',
+    deployment_healed: 'deployments',
+    deployment_heal_failed: 'deployments',
     payment_succeeded: 'billing',
     payment_failed: 'billing',
     subscription_expiring: 'billing',
@@ -202,7 +205,22 @@ class NotificationService {
                 updatedAt: now,
             }));
 
-            const saved = await Notification.insertMany(docs, { ordered: false });
+            let saved;
+            try {
+                saved = await Notification.insertMany(docs, { ordered: false });
+            } catch (error) {
+                const writeErrors = error.writeErrors || error.result?.writeErrors || [];
+                const duplicateOnly = error.code === 11000
+                    || (writeErrors.length > 0 && writeErrors.every((entry) => entry.code === 11000));
+                if (!duplicateOnly || !dedupeKey) throw error;
+                // A concurrent event won the unique dedupe key. Re-read the
+                // rows that did land so realtime delivery still happens once.
+                saved = await Notification.find({
+                    userId: { $in: recipients },
+                    dedupeKey,
+                    createdAt: now,
+                });
+            }
 
             for (const n of saved) {
                 realtimeBus.emitNotification(String(n.userId), n.toJSON());

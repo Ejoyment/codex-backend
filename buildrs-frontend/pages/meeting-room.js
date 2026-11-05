@@ -4,7 +4,7 @@ import { useRouter } from 'next/router';
 import { io } from 'socket.io-client';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
-import { apiFetch, SOCKET_URL } from '../lib/api';
+import { apiFetch, SOCKET_URL, isDemoTourActive } from '../lib/api';
 import { getAvatarUrl } from '../lib/utils';
 import {
   Mic, MicOff, Video, VideoOff, Monitor, PhoneOff, Send, Users, MessageSquare,
@@ -384,7 +384,7 @@ export default function MeetingRoom() {
 
   const attachSocket = useCallback(() => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
-    if (!token) return;
+    if (!token || isDemoTourActive()) return;
 
     const socket = io(`${SOCKET_URL}/meeting`, { auth: { token }, transports: ['websocket', 'polling'] });
     socketRef.current = socket;
@@ -717,7 +717,7 @@ export default function MeetingRoom() {
           <link rel="icon" href="/buildrs.png" />
         </Head>
         <div className="mrr-page" style={{ alignItems: 'center', justifyContent: 'center' }}>
-          <div className="flex items-center gap-3 text-[#8b93a1]">
+          <div className="flex items-center gap-3 text-[#9aaeba]">
             <Loader2 className="w-5 h-5 animate-spin" />
             <span className="text-sm">Entering meeting room...</span>
           </div>
@@ -746,7 +746,7 @@ export default function MeetingRoom() {
               <span className="mrr-pulse" />
               {joined ? 'Live' : 'Idle'}
             </span>
-            {socketStatus === 'error' && (<span className="mrr-live is-idle" style={{ background: 'rgba(248,113,113,0.12)', borderColor: 'rgba(248,113,113,0.35)', color: '#f87171' }}>Reconnecting</span>)}
+            {socketStatus === 'error' && (<span className="mrr-live is-idle" style={{ background: 'rgba(236,20,20,0.12)', borderColor: 'rgba(236,20,20,0.35)', color: '#ec1414' }}>Reconnecting</span>)}
           </div>
 
           <div className="mrr-top-right">
@@ -845,7 +845,7 @@ export default function MeetingRoom() {
                       <span className="mrr-tile-label">
                         <span className="mrr-status-dot" />
                         {peer.userName} {peer.connected === false && <span className="mrr-role">· connecting</span>}
-                        {peer.sharing && <span className="mrr-role" style={{ color: '#2fd6e6' }}> · sharing</span>}
+                        {peer.sharing && <span className="mrr-role" style={{ color: '#12dce5' }}> · sharing</span>}
                       </span>
                       <span className="mrr-mute-chip" title={peer.muted ? 'Muted' : 'Mic on'}>
                         {peer.muted ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}

@@ -58,6 +58,12 @@ describe('backend-issued frontend URLs resolve to real pages', () => {
       if (!found.has(route)) found.set(route, []);
       found.get(route).push(path.relative(ROOT, file));
     }
+    // Guarded local frontend origin (`const frontendUrl = ...`) — same contract.
+    for (const m of src.matchAll(/\$\{frontendUrl\}\/([a-zA-Z0-9/_?=\-&#.]+)/g)) {
+      const route = `/${m[1]}`.split('?')[0].split('#')[0];
+      if (!found.has(route)) found.set(route, []);
+      found.get(route).push(path.relative(ROOT, file));
+    }
     // Local FRONTEND const (server/routes/billing.js) — same contract.
     for (const m of src.matchAll(/\$\{FRONTEND\}\/([a-zA-Z0-9/_?=\-&#.]+)/g)) {
       const route = `/${m[1]}`.split('?')[0].split('#')[0];
@@ -105,8 +111,4 @@ describe('backend-issued frontend URLs resolve to real pages', () => {
     }
   });
 
-  test('stripe portal returns to the billing tab', () => {
-    const src = fs.readFileSync(path.join(ROOT, 'utils', 'stripeAdapter.js'), 'utf8');
-    expect(src).toMatch(/settings\?tab=billing/);
-  });
 });

@@ -17,6 +17,7 @@ const teamActivitySchema = new mongoose.Schema({
             'task_created', 'task_updated', 'task_completed',
             'project_created', 'project_updated',
             'member_joined', 'member_left',
+            'role_updated', 'role_bulk_updated', 'role_backfilled',
             'meeting_scheduled', 'meeting_completed',
             'file_uploaded', 'comment_added'
         ],

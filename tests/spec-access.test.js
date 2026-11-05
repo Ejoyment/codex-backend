@@ -45,7 +45,7 @@ const WS_OWNER = 'ws-owner';
 const WS_MEMBER = 'ws-member';
 const STRANGER = 'user-stranger';
 const PROJECT_ID = 'proj-1';
-const WORKSPACE_ID = 'ws-1';
+const WORKSPACE_ID = '507f1f77bcf86cd799439099';
 
 beforeEach(() => {
   jest.clearAllMocks();

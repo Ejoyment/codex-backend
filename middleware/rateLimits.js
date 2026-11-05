@@ -12,16 +12,16 @@ const rateLimit = require('express-rate-limit');
 
 const skipInTest = () => process.env.NODE_ENV === 'test';
 
-function makeLimiter({ windowMs, max, message }) {
+function makeLimiter({ name, windowMs, max, message }) {
     return rateLimit({
         windowMs,
         max,
         standardHeaders: true,
         legacyHeaders: false,
         skip: skipInTest,
-        // Shared Redis store when configured (single limits across instances);
-        // a dead Redis fails OPEN instead of 500ing every limited route.
-        store: require('../utils/redis').getRateLimitStore(),
+        // Redis-backed when configured (shared counters across instances); a
+        // dead Redis fails OPEN instead of 500ing every limited route.
+        store: require('../utils/redis').getRateLimitStore(name),
         passOnStoreError: true,
         message: { success: false, message },
     });
@@ -29,6 +29,7 @@ function makeLimiter({ windowMs, max, message }) {
 
 // 60 messages/min per IP (client allows ~10/min).
 const messageSendLimiter = makeLimiter({
+    name: 'message-send',
     windowMs: 60 * 1000,
     max: 60,
     message: 'Too many messages, please slow down.',
@@ -36,6 +37,7 @@ const messageSendLimiter = makeLimiter({
 
 // 10 tickets/min per IP — tickets are agent-facing work items.
 const supportTicketLimiter = makeLimiter({
+    name: 'support-ticket',
     windowMs: 60 * 1000,
     max: 10,
     message: 'Too many tickets, please try again later.',
@@ -43,6 +45,7 @@ const supportTicketLimiter = makeLimiter({
 
 // 60 support replies/min per IP.
 const supportReplyLimiter = makeLimiter({
+    name: 'support-reply',
     windowMs: 60 * 1000,
     max: 60,
     message: 'Too many replies, please slow down.',
@@ -50,6 +53,7 @@ const supportReplyLimiter = makeLimiter({
 
 // 20 AI chat requests/min per IP — each one costs real inference money.
 const aiChatLimiter = makeLimiter({
+    name: 'ai-chat',
     windowMs: 60 * 1000,
     max: 20,
     message: 'Too many AI requests, please try again shortly.',
@@ -57,6 +61,7 @@ const aiChatLimiter = makeLimiter({
 
 // 10 agent delegations/min per IP — spins up AI runs and containers.
 const agentDelegateLimiter = makeLimiter({
+    name: 'agent-delegate',
     windowMs: 60 * 1000,
     max: 10,
     message: 'Too many agent requests, please try again shortly.',

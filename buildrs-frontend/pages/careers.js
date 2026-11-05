@@ -96,14 +96,14 @@ export default function Careers() {
         </section>
 
         {/* Perks */}
-        <section className="border-t border-[#ffffff0d]">
+        <section className="border-t border-[#ffffff0f]">
           <StaggerChildren className="mx-auto grid max-w-[1200px] gap-px px-5 py-4 sm:px-8 lg:grid-cols-4" stagger={0.08}>
             {PERKS.map(([num, title, desc]) => (
               <StaggerItem key={num}>
-              <div className="border-b border-[#ffffff0d] py-8 lg:border-b-0 lg:py-4">
-                <p className="mkt-num text-sm text-[#2fd6e6]">{num}</p>
+              <div className="border-b border-[#ffffff0f] py-8 lg:border-b-0 lg:py-4">
+                <p className="mkt-num text-sm text-[#12dce5]">{num}</p>
                 <h3 className="mkt-h3 mt-3">{title}</h3>
-                <p className="mt-2 text-[13px] leading-relaxed text-[#a8adba]">{desc}</p>
+                <p className="mt-2 text-[13px] leading-relaxed text-[#a9b7c4]">{desc}</p>
               </div>
               </StaggerItem>
             ))}
@@ -120,25 +120,25 @@ export default function Careers() {
                 </p>
                 <h2 className="mkt-h2">We are hiring.</h2>
               </div>
-              <p className="mkt-mono hidden text-[11px] uppercase tracking-widest text-[#525764] lg:block">
+              <p className="mkt-mono hidden text-[11px] uppercase tracking-widest text-[#59687a] lg:block">
                 {JOBS.length} positions · remote
               </p>
             </div>
           </ScrollReveal>
 
-          <StaggerChildren className="grid gap-px overflow-hidden rounded-xl border border-[#ffffff12] bg-[#ffffff12]" stagger={0.08}>
+          <StaggerChildren className="grid gap-px overflow-hidden rounded-xl border border-[#ffffff10] bg-[#ffffff10]" stagger={0.08}>
             {JOBS.map((job) => (
               <StaggerItem key={job.title}>
-              <div className="group flex flex-col gap-5 bg-[#0d0d12] p-7 transition-colors hover:bg-[#121219] md:flex-row md:items-center md:justify-between">
+              <div className="group flex flex-col gap-5 bg-[#121821] p-7 transition-colors hover:bg-[#161d29] md:flex-row md:items-center md:justify-between">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="mkt-h3">{job.title}</h3>
                     <span className="mkt-pill">{job.dept}</span>
                   </div>
-                  <p className="mkt-mono mt-2 text-[11px] uppercase tracking-widest text-[#525764]">
+                  <p className="mkt-mono mt-2 text-[11px] uppercase tracking-widest text-[#59687a]">
                     {job.location} · {job.type}
                   </p>
-                  <p className="mt-3 max-w-[560px] text-[13.5px] leading-relaxed text-[#a8adba]">{job.desc}</p>
+                  <p className="mt-3 max-w-[560px] text-[13.5px] leading-relaxed text-[#a9b7c4]">{job.desc}</p>
                 </div>
                 <MagneticButton strength={0.15}>
                   <Link href="/contact" className="mkt-btn flex-shrink-0">
@@ -152,7 +152,7 @@ export default function Careers() {
         </section>
 
         {/* CTA */}
-        <section className="relative overflow-hidden border-t border-[#ffffff0d]">
+        <section className="relative overflow-hidden border-t border-[#ffffff0f]">
           <div className="mkt-hero-bg" />
           <div className="relative mx-auto max-w-[1200px] px-5 py-24 text-center sm:px-8">
             <ScrollReveal>

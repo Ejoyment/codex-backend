@@ -24,18 +24,18 @@ import { useCurrentCompany } from '../hooks/useCurrentCompany';
 const STATUS_OPTIONS = ['backlog', 'in_progress', 'in_review', 'blocked', 'done'];
 const STATUS_LABELS = { backlog: 'Backlog', in_progress: 'In Progress', in_review: 'In Review', blocked: 'Blocked', done: 'Done' };
 const STATUS_TINTS = {
-  backlog: { bg: 'rgba(154, 161, 174, 0.1)', text: '#9aa1ae', dot: '#6b7280' },
-  in_progress: { bg: 'rgba(47, 214, 230, 0.1)', text: '#2fd6e6', dot: '#2fd6e6' },
+  backlog: { bg: 'rgba(154,174,186,0.1)', text: '#9aaeba', dot: '#748194' },
+  in_progress: { bg: 'rgba(18,220,229,0.1)', text: '#12dce5', dot: '#12dce5' },
   in_review: { bg: 'rgba(229, 184, 74, 0.1)', text: '#e5b84a', dot: '#e5b84a' },
-  blocked: { bg: 'rgba(248, 113, 113, 0.1)', text: '#f87171', dot: '#f87171' },
-  done: { bg: 'rgba(52, 211, 153, 0.12)', text: '#34d399', dot: '#34d399' },
+  blocked: { bg: 'rgba(236,20,20,0.1)', text: '#ec1414', dot: '#ec1414' },
+  done: { bg: 'rgba(3,186,3,0.12)', text: '#03ba03', dot: '#03ba03' },
 };
 const PRIORITY_TINTS = {
-  low: { bg: 'rgba(154, 161, 174, 0.1)', text: '#9aa1ae' },
-  medium: { bg: 'rgba(47, 214, 230, 0.1)', text: '#2fd6e6' },
+  low: { bg: 'rgba(154,174,186,0.1)', text: '#9aaeba' },
+  medium: { bg: 'rgba(18,220,229,0.1)', text: '#12dce5' },
   high: { bg: 'rgba(229, 184, 74, 0.1)', text: '#e5b84a' },
-  critical: { bg: 'rgba(248, 113, 113, 0.1)', text: '#f87171' },
-  urgent: { bg: 'rgba(248, 113, 113, 0.1)', text: '#f87171' },
+  critical: { bg: 'rgba(236,20,20,0.1)', text: '#ec1414' },
+  urgent: { bg: 'rgba(236,20,20,0.1)', text: '#ec1414' },
 };
 const PRIORITY_LABELS = { low: 'Low', medium: 'Medium', high: 'High', critical: 'Critical', urgent: 'Critical' };
 const TABS = [
@@ -48,12 +48,12 @@ const TABS = [
 ];
 
 const TAB_DOTS = {
-  all: '#565d6b',
-  backlog: '#6b7280',
-  in_progress: '#2fd6e6',
+  all: '#59687a',
+  backlog: '#748194',
+  in_progress: '#12dce5',
   in_review: '#e5b84a',
-  blocked: '#f87171',
-  done: '#34d399',
+  blocked: '#ec1414',
+  done: '#03ba03',
 };
 
 function formatCreatedDate(value) {
@@ -65,6 +65,14 @@ function formatCreatedDate(value) {
 function normalizeTask(task) {
   const status = { pending: 'backlog', 'in-progress': 'in_progress', completed: 'done' }[task.status] || task.status || 'backlog';
   return { ...task, id: task.id || task._id, status, specIds: (task.specIds || []).map((spec) => String(spec?._id || spec)) };
+}
+
+// Keep the last session id for logs, but let a failed/rejected run be retried.
+const AGENT_TERMINAL_STATUSES = new Set(['failed', 'rejected', 'completed', 'approved']);
+
+function agentIsActive(task) {
+  if (!task?.agentSessionId) return false;
+  return !AGENT_TERMINAL_STATUSES.has(task.agentExecution?.status);
 }
 
 export default function Tasks() {
@@ -116,6 +124,55 @@ export default function Tasks() {
   }, []);
 
   useEffect(() => { loadTasks(); }, [loadTasks]);
+
+  const activeAgentTaskIds = tasks
+    .filter((task) => task.agentSessionId && ['queued', 'running'].includes(task.agentExecution?.status))
+    .map((task) => task.id)
+    .join(',');
+
+  useEffect(() => {
+    if (!activeAgentTaskIds) return undefined;
+    let active = true;
+    const refreshAgentStatuses = async () => {
+      const taskIds = activeAgentTaskIds.split(',');
+      const updates = await Promise.all(taskIds.map(async (taskId) => {
+        try {
+          const result = await apiFetch(`/api/v1/agent/status/${taskId}`);
+          if (!result.execution) return null;
+          const execution = result.execution;
+          const lastFailure = [...(execution.terminalLog || [])].reverse()
+            .find((entry) => entry.type === 'error')?.message;
+          return {
+            taskId,
+            status: execution.status === 'awaiting_review' ? 'awaiting_approval' : execution.status,
+            error: execution.status === 'failed'
+              ? (execution.summary || lastFailure || 'The agent stopped without a detailed error.')
+              : '',
+          };
+        } catch (statusError) {
+          console.error(`Could not refresh agent status for task ${taskId}:`, statusError.message);
+          return null;
+        }
+      }));
+      if (!active) return;
+      const byTaskId = new Map(updates.filter(Boolean).map((update) => [update.taskId, update]));
+      if (byTaskId.size) {
+        setTasks((current) => current.map((task) => {
+          const update = byTaskId.get(task.id);
+          return update ? {
+            ...task,
+            agentExecution: { ...task.agentExecution, status: update.status, error: update.error },
+          } : task;
+        }));
+      }
+    };
+    refreshAgentStatuses();
+    const intervalId = setInterval(refreshAgentStatuses, 5000);
+    return () => {
+      active = false;
+      clearInterval(intervalId);
+    };
+  }, [activeAgentTaskIds]);
 
   useEffect(() => {
     if (router.isReady && router.query.action === 'new') {
@@ -227,10 +284,29 @@ export default function Tasks() {
     setDelegatingId(task.id);
     setActionError('');
     try {
+      let modelPreference = null;
+      try {
+        modelPreference = JSON.parse(window.localStorage.getItem('buildrs-ai-model-preference') || 'null');
+        // Older builds could persist the provider key in the model slot
+        // (e.g. {provider:'groq', model:'groq'}), which the API rejects.
+        // Treat that as "use the provider default".
+        if (modelPreference?.model && modelPreference.model === modelPreference.provider) {
+          modelPreference = null;
+          window.localStorage.removeItem('buildrs-ai-model-preference');
+        }
+      } catch {
+        window.localStorage.removeItem('buildrs-ai-model-preference');
+      }
       const result = await apiFetch('/api/v1/agent/delegate', {
         method: 'POST',
-        timeoutMs: 120000,
-        body: JSON.stringify({ taskId: task.id, workspaceId: selectedCompany._id, specIds: task.specIds || [] }),
+        timeoutMs: 300000,
+        body: JSON.stringify({
+          taskId: task.id,
+          workspaceId: selectedCompany._id,
+          specIds: task.specIds || [],
+          provider: modelPreference?.provider,
+          model: modelPreference?.model,
+        }),
       });
       if (result.success) await loadTasks();
     } catch (error) {
@@ -264,7 +340,7 @@ export default function Tasks() {
 
   if (!hasHydrated) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0b0f17] text-white">
+      <div className="min-h-screen flex items-center justify-center bg-[#0e141d] text-white">
         <p>Loading...</p>
       </div>
     );
@@ -409,6 +485,7 @@ export default function Tasks() {
                                 const assignee = typeof task.assignee === 'string' ? task.assignee : task.assignee?.fullName || task.assignee?.name;
                                 const taskShortId = String(task.id).slice(-4).toUpperCase();
                                 const isExpanded = expandedTaskId === task.id;
+                                const agentActive = agentIsActive(task);
                                 return (
                                   <article
                                     className={`tsk-card ${isExpanded ? 'is-expanded' : ''}`}
@@ -462,17 +539,18 @@ export default function Tasks() {
                                     </div>
                                     <div className="tsk-card-footer">
                                       <span className="tsk-assignee"><span className="tsk-assignee-avatar">{(assignee || (task.agentSessionId ? 'AI' : '?')).slice(0, 1).toUpperCase()}</span>{assignee || (task.agentSessionId ? 'AI Agent' : 'Unassigned')}</span>
-                                      <span className={`tsk-agent-state ${task.agentSessionId ? 'is-running' : ''}`}>{task.agentSessionId ? task.agentExecution?.status || 'Agent running' : 'Ready for agent'}</span>
+                                      <span className={`tsk-agent-state ${agentActive ? 'is-running' : ''}`}>{task.agentSessionId ? task.agentExecution?.status || (agentActive ? 'Agent running' : 'Agent idle') : 'Ready for agent'}</span>
                                     </div>
+                                    {task.agentExecution?.status === 'failed' && <p className="tsk-create-error-note" role="alert">Agent failed: {task.agentExecution.error || 'Open task details for execution diagnostics.'}</p>}
                                     {isExpanded && <div className="tsk-card-details" onClick={(event) => event.stopPropagation()}>
                                       <div className="grid gap-6 lg:grid-cols-2">
                                         <section>
-                                          <h3 className="mb-2 text-xs font-semibold uppercase text-[#9aa1ae]">Context</h3>
+                                          <h3 className="mb-2 text-xs font-semibold uppercase text-[#9aaeba]">Context</h3>
                                           <div className="grid gap-3 sm:grid-cols-2">
-                                            <label className="text-xs text-[#9aa1ae]">Figma node or frame ID
+                                            <label className="text-xs text-[#9aaeba]">Figma node or frame ID
                                               <input className="ws-input mt-1" value={task.figmaNodeId || ''} onChange={(event) => setTasks((current) => current.map((item) => item.id === task.id ? { ...item, figmaNodeId: event.target.value } : item))} onBlur={(event) => saveTaskContext(task, { figmaNodeId: event.target.value, specIds: task.specIds || [] })} placeholder="Optional frame ID" />
                                             </label>
-                                            <label className="text-xs text-[#9aa1ae]">Blocked by
+                                            <label className="text-xs text-[#9aaeba]">Blocked by
                                               <select className="ws-select mt-1 min-h-10" multiple value={(task.blockedBy || []).map((id) => String(id?._id || id))} onChange={(event) => {
                                                 const blockedBy = [...event.target.selectedOptions].map((option) => option.value);
                                                 setTasks((current) => current.map((item) => item.id === task.id ? { ...item, blockedBy } : item));
@@ -481,29 +559,36 @@ export default function Tasks() {
                                             </label>
                                           </div>
                                           <div className="mt-4">
-                                            <p className="mb-2 text-xs text-[#9aa1ae]">Attached specs <span className="text-[#727987]">(validation contracts)</span></p>
-                                            {specs.length ? <div className="grid gap-2 sm:grid-cols-2">{specs.map((spec) => <label key={spec._id} className="flex items-start gap-2 text-sm text-[#c6cad2]">
+                                            <p className="mb-2 text-xs text-[#9aaeba]">Attached specs <span className="text-[#748194]">(validation contracts)</span></p>
+                                            {specs.length ? <div className="grid gap-2 sm:grid-cols-2">{specs.map((spec) => <label key={spec._id} className="flex items-start gap-2 text-sm text-[#c7d2dd]">
                                               <input type="checkbox" checked={(task.specIds || []).includes(String(spec._id))} onChange={(event) => {
                                                 const specIds = event.target.checked ? [...new Set([...(task.specIds || []), String(spec._id)])] : (task.specIds || []).filter((id) => id !== String(spec._id));
                                                 const nextTask = { ...task, specIds };
                                                 setTasks((current) => current.map((item) => item.id === task.id ? nextTask : item));
                                                 saveTaskContext(nextTask, { specIds });
                                               }} />
-                                              <span>{spec.title}<span className="block text-xs text-[#727987]">{spec.status || 'unvalidated'}</span></span>
-                                            </label>)}</div> : <p className="text-xs text-[#727987]">Create a spec in Specs to add executable validation.</p>}
+                                              <span>{spec.title}<span className="block text-xs text-[#748194]">{spec.status || 'unvalidated'}</span></span>
+                                            </label>)}</div> : <p className="text-xs text-[#748194]">Create a spec in Specs to add executable validation.</p>}
                                           </div>
                                         </section>
                                         <section>
-                                          <h3 className="mb-2 text-xs font-semibold uppercase text-[#9aa1ae]">Execution</h3>
-                                          {task.branch && <p className="mb-2 flex items-center gap-2 text-sm text-[#c6cad2]"><GitBranch className="w-4 h-4 text-[#2fd6e6]" /><code>{task.branch}</code></p>}
-                                          {task.agentSessionId && <p className="mb-3 text-xs text-[#9aa1ae]">Session {String(task.agentSessionId)} · {task.agentExecution?.status || 'active'}</p>}
-                                          {task.pullRequestId && <p className="mb-3 text-sm text-[#c6cad2]">Pull request: {task.pullRequestId}</p>}
+                                          <h3 className="mb-2 text-xs font-semibold uppercase text-[#9aaeba]">Execution</h3>
+                                          {task.branch && <p className="mb-2 flex items-center gap-2 text-sm text-[#c7d2dd]"><GitBranch className="w-4 h-4 text-[#12dce5]" /><code>{task.branch}</code></p>}
+                                          {task.agentSessionId && <p className="mb-3 text-xs text-[#9aaeba]">Session {String(task.agentSessionId)} · {task.agentExecution?.status || 'active'}</p>}
+                                          {task.pullRequestId && <p className="mb-3 text-sm text-[#c7d2dd]">Pull request: {task.pullRequestId}</p>}
                                           <div className="flex flex-wrap gap-2">
-                                            <button type="button" className="btn-workspace btn-primary" onClick={() => delegateTask(task)} disabled={delegatingId === task.id || Boolean(task.agentSessionId) || task.status === 'blocked' || !selectedCompany?._id || contextSavingId === task.id}>
-                                              {delegatingId === task.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bot className="w-4 h-4" />}{delegatingId === task.id ? 'Delegating' : 'Delegate to AI Agent'}
+                                            <button type="button" className="btn-workspace btn-primary" onClick={() => delegateTask(task)} disabled={delegatingId === task.id || agentActive || task.status === 'blocked' || !selectedCompany?._id || contextSavingId === task.id} title={agentActive ? 'This task already has an active agent session' : undefined}>
+                                              {delegatingId === task.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bot className="w-4 h-4" />}
+                                              {delegatingId === task.id
+                                                ? 'Delegating'
+                                                : agentActive
+                                                  ? 'Agent assigned'
+                                                  : task.agentSessionId
+                                                    ? 'Retry agent'
+                                                    : 'Delegate to AI Agent'}
                                             </button>
                                             {task.agentSessionId && <button type="button" className="btn-workspace btn-secondary" onClick={() => window.location.assign(`/ai-pair?executionId=${task.agentSessionId}`)}><ExternalLink className="w-4 h-4" /> Open session</button>}
-                                            {contextSavingId === task.id && <span className="self-center text-xs text-[#9aa1ae]">Saving context</span>}
+                                            {contextSavingId === task.id && <span className="self-center text-xs text-[#9aaeba]">Saving context</span>}
                                           </div>
                                           {!(task.specIds || []).length && <p className="mt-3 text-xs text-[#e5b84a]">Attach a spec to give this run an explicit contract and automated checks.</p>}
                                         </section>

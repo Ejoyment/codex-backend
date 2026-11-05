@@ -27,7 +27,7 @@ import {
 import AuthGuard from '../../components/AuthGuard';
 import Sidebar from '../../components/Sidebar';
 import { useCurrentCompany } from '../../hooks/useCurrentCompany';
-import { apiFetch, projectApi } from '../../lib/api';
+import { agentApi, apiFetch, projectApi } from '../../lib/api';
 import useAuthStore from '../../store/authStore';
 
 const STATUS_LABELS = {
@@ -59,6 +59,15 @@ const REQUIREMENT_STATUS = {
 
 function taskStatus(task) {
   return STATUS_LABELS[task?.status] || task?.status || 'To do';
+}
+
+// A task keeps its last agentSessionId after a failed/rejected run (for logs),
+// but it is no longer an active session and must be re-delegatable.
+const AGENT_TERMINAL_STATUSES = new Set(['failed', 'rejected', 'completed', 'approved']);
+
+function agentIsActive(task) {
+  if (!task?.agentSessionId) return false;
+  return !AGENT_TERMINAL_STATUSES.has(task.agentExecution?.status);
 }
 
 function formatDate(value, options = { dateStyle: 'medium', timeStyle: 'short' }) {
@@ -146,6 +155,37 @@ export default function TaskDetails() {
   useEffect(() => {
     if (router.isReady) loadTask();
   }, [router.isReady, loadTask]);
+
+  useEffect(() => {
+    if (!task?.agentSessionId || !['queued', 'running'].includes(task.agentExecution?.status)) return undefined;
+    let active = true;
+    const refreshExecution = async () => {
+      try {
+        const result = await agentApi.status(task.id);
+        if (!active || result.success === false || !result.execution) return;
+        const execution = result.execution;
+        const lastFailure = [...(execution.terminalLog || [])].reverse()
+          .find((entry) => entry.type === 'error')?.message;
+        setTask((current) => current ? ({
+          ...current,
+          agentExecution: {
+            ...current.agentExecution,
+            status: execution.status === 'awaiting_review' ? 'awaiting_approval' : execution.status,
+            error: execution.status === 'failed' ? (execution.summary || lastFailure || 'The agent stopped without a detailed error.') : '',
+            logs: execution.logs || current.agentExecution?.logs || [],
+          },
+        }) : current);
+      } catch (statusError) {
+        console.error('Could not refresh delegated agent status:', statusError.message);
+      }
+    };
+    refreshExecution();
+    const intervalId = setInterval(refreshExecution, 5000);
+    return () => {
+      active = false;
+      clearInterval(intervalId);
+    };
+  }, [task?.agentSessionId, task?.agentExecution?.status, task?.id]);
 
   useEffect(() => {
     let active = true;
@@ -279,10 +319,22 @@ export default function TaskDetails() {
         return;
       }
 
+      let modelPreference = null;
+      try {
+        modelPreference = JSON.parse(window.localStorage.getItem('buildrs-ai-model-preference') || 'null');
+      } catch {
+        window.localStorage.removeItem('buildrs-ai-model-preference');
+      }
       const result = await apiFetch('/api/v1/agent/delegate', {
         method: 'POST',
         timeoutMs: 120000,
-        body: JSON.stringify({ taskId: task.id, workspaceId, specIds: task.specIds || [] }),
+        body: JSON.stringify({
+          taskId: task.id,
+          workspaceId,
+          specIds: task.specIds || [],
+          provider: modelPreference?.provider,
+          model: modelPreference?.model,
+        }),
       });
       if (result.success === false) throw new Error(result.message || 'Could not delegate this task.');
       await loadTask();
@@ -296,6 +348,14 @@ export default function TaskDetails() {
   const handleSaveKeyDown = (event) => {
     if (event.key === 'Escape') setEditing(false);
   };
+
+  const agentActive = agentIsActive(task);
+  const canDelegate = Boolean(task) && !agentActive && task.status !== 'blocked';
+  const delegateLabel = agentActive
+    ? 'Agent assigned'
+    : task?.agentSessionId
+      ? 'Retry agent'
+      : 'Delegate to AI';
 
   return (
     <AuthGuard>
@@ -326,15 +386,25 @@ export default function TaskDetails() {
                 Review PR
                 {pullRequestUrl && <ExternalLink className="w-3.5 h-3.5" />}
               </a>
-              <button type="button" className="btn-workspace btn-primary" onClick={delegateTask} disabled={delegating || Boolean(task?.agentSessionId) || !task}>
+              <button type="button" className="btn-workspace btn-primary" onClick={delegateTask} disabled={delegating || !canDelegate} title={agentActive ? 'This task already has an active agent session' : task?.status === 'blocked' ? 'Blocked tasks cannot be delegated' : undefined}>
                 {delegating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bot className="w-4 h-4" />}
-                {delegating ? 'Delegating' : task?.agentSessionId ? 'Agent assigned' : 'Delegate to AI'}
+                {delegating ? 'Delegating' : delegateLabel}
               </button>
             </div>
           </header>
 
           <div className="workspace-content tsk-detail-content">
             {actionError && <div className="std-alert std-alert-error tsk-detail-alert">{actionError}<button type="button" className="ml-auto" onClick={() => setActionError('')} aria-label="Dismiss error"><X className="w-4 h-4" /></button></div>}
+            {task?.agentExecution?.status === 'failed' && (
+              <div className="std-alert std-alert-error tsk-detail-alert" role="alert">
+                <Bot className="h-4 w-4 flex-shrink-0" />
+                <span className="flex-1">Agent execution failed: {task.agentExecution.error || 'No failure details were saved.'}</span>
+                {task.agentSessionId && <Link href={`/ai-pair?executionId=${task.agentSessionId}`} className="text-xs underline">Open run logs</Link>}
+                <button type="button" className="text-xs underline whitespace-nowrap" onClick={delegateTask} disabled={delegating || task.status === 'blocked'}>
+                  {delegating ? 'Retrying…' : 'Retry agent'}
+                </button>
+              </div>
+            )}
             {loading ? (
               <div className="tsk-detail-state"><Loader2 className="w-5 h-5 animate-spin" /> Loading task details...</div>
             ) : error ? (

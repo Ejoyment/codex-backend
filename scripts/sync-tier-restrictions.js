@@ -18,7 +18,8 @@
  * (creditPool.usedThisMonth) are left untouched.
  *
  * Usage:
- *   node scripts/sync-tier-restrictions.js [--dry-run] [--verbose]
+ *   node scripts/sync-tier-restrictions.js [--apply] [--verbose]
+ *   Writes only with --apply; the default is a dry run.
  */
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
@@ -27,7 +28,7 @@ const mongoose = require('mongoose');
 const Subscription = require('../models/Subscription');
 const { repairTrialTier } = require('../middleware/trial');
 
-const dryRun = process.argv.includes('--dry-run');
+const dryRun = !process.argv.includes('--apply');
 const verbose = process.argv.includes('--verbose');
 
 // Fields written by syncTierRestrictions, so a row that already matches its tier

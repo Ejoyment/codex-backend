@@ -9,27 +9,25 @@ const User = require('../models/User');
 const Subscription = require('../models/Subscription');
 const rateLimit = require('express-rate-limit');
 const emailService = require('../utils/emailServiceResend');
-const { authenticateToken } = require('../middleware/auth');
+const {
+    authenticateToken,
+    invalidateLivenessEverywhere,
+    normalizeTokenVersion
+} = require('../middleware/auth');
 const { isLockedOut, recordFailure, clearLockout } = require('../models/AuthLockout');
 const { createTrialSubscription, getOrCreateSubscription } = require('../middleware/trial');
+const {
+    saveProfilePicture,
+    deleteProfilePicture,
+    deleteProfilePicturesForUser,
+} = require('../utils/profilePictureStorage');
+const { sendInternalError } = require('../utils/httpErrors');
+const { enqueueEmailJob } = require('../utils/emailJobWorker');
 
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        const uploadDir = 'uploads/profiles';
-        if (!fs.existsSync(uploadDir)) {
-            fs.mkdirSync(uploadDir, { recursive: true });
-        }
-        cb(null, uploadDir);
-    },
-    filename: function (req, file, cb) {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, 'profile-' + uniqueSuffix + path.extname(file.originalname));
-    }
-});
-
+// Keep uploads in memory so the storage helper can choose R2 or the local
+// uploads directory (tests/development) without changing the route.
 const upload = multer({
-    storage: storage,
+    storage: multer.memoryStorage(),
     limits: {
         fileSize: 5 * 1024 * 1024 // 5MB limit
     },
@@ -50,7 +48,7 @@ const upload = multer({
 const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 5, // 5 requests per window
-    store: require('../utils/redis').getRateLimitStore(),
+    store: require('../utils/redis').getRateLimitStore('auth'),
     passOnStoreError: true,
     message: { success: false, message: 'Too many attempts, please try again later.' }
 });
@@ -59,14 +57,19 @@ const authLimiter = rateLimit({
 const oauthLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 20, // 20 OAuth initiations per window
-    store: require('../utils/redis').getRateLimitStore(),
+    store: require('../utils/redis').getRateLimitStore('oauth'),
     passOnStoreError: true,
     message: { success: false, message: 'Too many OAuth attempts. Please try again later.' }
 });
 
-// Generate JWT token
-const generateToken = (userId) => {
-    return jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: '24h' });
+// Generate JWT token. tokenVersion lets logout-all / password changes / bans
+// invalidate tokens that were issued before the bump.
+const generateToken = (userId, tokenVersion = 0) => {
+    return jwt.sign(
+        { userId, tokenVersion: normalizeTokenVersion(tokenVersion) },
+        process.env.JWT_SECRET,
+        { expiresIn: '24h' }
+    );
 };
 
 /**
@@ -146,11 +149,15 @@ router.post('/signup', authLimiter, async (req, res) => {
         await user.save();
         const trialEndsAt = subscription.trialEndsAt;
 
-        // Send trial welcome email (non-blocking)
+        // Persist an email job so delivery never holds the signup request open.
         try {
-            await emailService.sendTrialWelcomeEmail(email, fullName, trialEndsAt);
-        } catch (emailError) {
-            console.error('Trial welcome email error:', emailError);
+            await enqueueEmailJob(
+                'trial_welcome',
+                `trial-welcome:${user._id}`,
+                { email: user.email, fullName: user.fullName, trialEndsAt }
+            );
+        } catch (queueError) {
+            console.error('Trial welcome email queue error:', queueError.message);
         }
 
         res.status(201).json({
@@ -280,7 +287,7 @@ router.post('/signin', authLimiter, async (req, res) => {
         const subscription = await getOrCreateSubscription(user._id);
 
         // Generate token
-        const token = generateToken(user._id);
+        const token = generateToken(user._id, user.tokenVersion);
 
         const { addAuditLog } = require('../utils/auditLogService');
         addAuditLog({
@@ -363,7 +370,7 @@ router.get('/google/callback',
     passport.authenticate('google', { failureRedirect: '/sign_in' }),
     (req, res) => {
         // Generate token
-        const token = generateToken(req.user._id);
+        const token = generateToken(req.user._id, req.user.tokenVersion);
         
         // Set httpOnly cookie for security (token not visible in JS/browser history)
         res.cookie('auth_token', token, {
@@ -552,17 +559,17 @@ router.post('/upload-photo', authenticateToken, upload.single('profilePhoto'), a
             });
         }
 
-        // Delete old profile picture if exists
-        if (user.profilePicture && user.profilePicture.startsWith('/uploads/')) {
-            const oldPath = path.join(__dirname, '..', user.profilePicture);
-            if (fs.existsSync(oldPath)) {
-                fs.unlinkSync(oldPath);
+        const previousPicture = user.profilePicture;
+        const stored = await saveProfilePicture(req.file, req.userId);
+        user.profilePicture = stored.url;
+        await user.save();
+        if (previousPicture) {
+            try {
+                await deleteProfilePicture(previousPicture);
+            } catch (cleanupError) {
+                console.error('Profile photo cleanup failed:', cleanupError.message);
             }
         }
-
-        // Update user profile picture
-        user.profilePicture = '/uploads/profiles/' + req.file.filename;
-        await user.save();
 
         res.json({
             success: true,
@@ -572,11 +579,7 @@ router.post('/upload-photo', authenticateToken, upload.single('profilePhoto'), a
 
     } catch (error) {
         console.error('Upload photo error:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Error uploading photo',
-            error: error.message 
-        });
+        return sendInternalError(req, res, error, { message: 'Error uploading photo' });
     }
 });
 
@@ -732,13 +735,16 @@ router.post('/change-password', authLimiter, authenticateToken, async (req, res)
             });
         }
 
-        // Update password (will be hashed by pre-save hook)
+        // Update password (will be hashed by pre-save hook) and revoke every
+        // session issued under the previous password, including this one.
         user.password = newPassword;
+        user.tokenVersion = normalizeTokenVersion(user.tokenVersion) + 1;
         await user.save();
+        await invalidateLivenessEverywhere(user._id);
 
         res.json({
             success: true,
-            message: 'Password changed successfully'
+            message: 'Password changed successfully. Please sign in again.'
         });
 
     } catch (error) {
@@ -747,6 +753,56 @@ router.post('/change-password', authLimiter, authenticateToken, async (req, res)
             success: false, 
             message: 'Error changing password',
             error: error.message 
+        });
+    }
+});
+
+/**
+ * @swagger
+ * /api/auth/logout-all:
+ *   post:
+ *     summary: Sign out of every session
+ *     description: Increments the account tokenVersion, invalidating every JWT issued before this call (including the caller's current token).
+ *     tags:
+ *       - Authentication
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: All sessions revoked
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: User not found
+ */
+// Logout all sessions. Ordinary stateless sign-out is client-side only; this
+// endpoint is the explicit "sign out everywhere" action.
+router.post('/logout-all', authenticateToken, async (req, res) => {
+    try {
+        const user = await User.findById(req.userId);
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        user.tokenVersion = normalizeTokenVersion(user.tokenVersion) + 1;
+        await user.save();
+        await invalidateLivenessEverywhere(user._id);
+
+        res.json({
+            success: true,
+            message: 'All sessions have been signed out'
+        });
+
+    } catch (error) {
+        console.error('Logout all error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error signing out all sessions',
+            error: error.message
         });
     }
 });
@@ -799,23 +855,34 @@ router.delete('/delete-account', authenticateToken, async (req, res) => {
             if (typeof result === 'number') return count(name, result);
             count(name, result.deletedCount ?? result.modifiedCount ?? 0);
         };
+        const withRetry = async (fn) => {
+            let lastError;
+            for (let attempt = 0; attempt < 3; attempt += 1) {
+                try {
+                    return await fn();
+                } catch (err) {
+                    lastError = err;
+                    if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 25 * 2 ** attempt));
+                }
+            }
+            throw lastError;
+        };
         const safely = async (label, fn) => {
             try {
-                return await fn();
+                return await withRetry(fn);
             } catch (err) {
                 console.error(`Delete account — ${label} failed:`, err.message);
                 return null;
             }
         };
 
-        // Profile photo on disk
-        if (user.profilePicture && user.profilePicture.startsWith('/uploads/')) {
-            try {
-                const photoPath = path.join(__dirname, '..', user.profilePicture);
-                if (fs.existsSync(photoPath)) fs.unlinkSync(photoPath);
-            } catch (err) {
-                console.error('Delete account — photo removal failed:', err.message);
-            }
+        // Profile photos: current object plus any orphaned objects for this
+        // user (R2 prefixes by user id; local legacy URLs are handled too).
+        try {
+            if (user.profilePicture) await deleteProfilePicture(user.profilePicture);
+            await deleteProfilePicturesForUser(userId);
+        } catch (err) {
+            console.error('Delete account — photo removal failed:', err.message);
         }
 
         // Every account-owned collection (models with a userId field).
@@ -826,7 +893,6 @@ router.delete('/delete-account', authenticateToken, async (req, res) => {
             BillingSchedule: require('../models/BillingSchedule'),
             ChatMessage: require('../models/ChatMessage'),
             CodeChange: require('../models/CodeChange'),
-            CodeFile: require('../models/CodeFile'),
             CollaborationSession: require('../models/CollaborationSession'),
             Deployment: require('../models/Deployment'),
             DesignToken: require('../models/DesignToken'),
@@ -840,7 +906,7 @@ router.delete('/delete-account', authenticateToken, async (req, res) => {
         };
         const ownedResults = await Promise.allSettled(
             Object.entries(ownedModels).map(async ([name, model]) => {
-                const r = await model.deleteMany({ userId });
+                const r = await withRetry(() => model.deleteMany({ userId }));
                 return [name, r.deletedCount];
             })
         );
@@ -854,6 +920,7 @@ router.delete('/delete-account', authenticateToken, async (req, res) => {
             ['OTP', () => require('../models/OTP').deleteMany({ email: user.email })],
             ['AuthLockout', () => require('../models/AuthLockout').deleteMany({ key: user.email.toLowerCase() })],
             ['AuditLog', () => require('../models/AuditLog').deleteMany({ $or: [{ actor: userId }, { email: user.email }] })],
+            ['CodeFile', () => require('../models/CodeFile').deleteMany({ createdBy: userId })],
             ['Standup', () => require('../models/Standup').deleteMany({ user: userId })],
             ['TeamActivity', () => require('../models/TeamActivity').deleteMany({ user: userId })],
             ['Message', () => require('../models/Message').deleteMany({ sender: userId })],

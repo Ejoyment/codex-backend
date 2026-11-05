@@ -31,6 +31,14 @@ const userSchema = new mongoose.Schema({
         type: Boolean,
         default: false
     },
+    // Bumped whenever existing sessions must be revoked (password change,
+    // logout-all, admin ban). Issued JWTs carry the value they were minted
+    // with; a mismatch means the token is stale.
+    tokenVersion: {
+        type: Number,
+        default: 0,
+        min: 0
+    },
     bannedAt: {
         type: Date,
         default: null

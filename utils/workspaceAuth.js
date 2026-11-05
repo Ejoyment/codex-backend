@@ -11,6 +11,7 @@
 
 const mongoose = require('mongoose');
 const Company = require('../models/Company');
+const { resolveWorkspaceForUser } = require('./workspaceIdentity');
 
 /**
  * Resolve a workspaceId to a Company document, or null when the id is not a
@@ -41,36 +42,40 @@ function isMemberOf(workspace, userId) {
  *
  * Two workspace forms are accepted:
  *   1. A Company workspace the user belongs to.
- *   2. A personal workspace, where the workspace id IS the user's own id.
- *      Every user has exactly one of these and it is derived from their own
- *      identity, so it cannot collide across tenants.
+ *   2. The caller's own user id, resolved to the personal Company they own or
+ *      belong to. The returned workspaceId is always the Company id so
+ *      downstream storage never keys files by a bare user id.
  *
  * Anything else — including the legacy shared 'default' id, which several
  * unrelated users would map to the same CodeFile.company — is rejected.
  *
- * Returns { ok: true, workspace } or { ok: false, reason }.
+ * Returns { ok: true, workspace, workspaceId } or { ok: false, reason }.
  */
 async function assertWorkspaceAccess(workspaceId, userId) {
     if (!userId) {
         return { ok: false, reason: 'Authentication required' };
     }
     const wsId = String(workspaceId || '');
-
-    // Personal workspace: the caller's own id.
-    if (wsId && wsId === String(userId)) {
-        return { ok: true, workspace: null, personal: true };
+    const resolved = await resolveWorkspaceForUser(wsId, userId);
+    if (resolved) {
+        return {
+            ok: true,
+            workspace: resolved.workspace,
+            workspaceId: String(resolved.workspace._id),
+            personal: resolved.personal,
+        };
     }
 
-    const workspace = await resolveWorkspace(wsId);
-    if (!workspace) {
-        // Do not distinguish "no such workspace" from "not a member": the
-        // former is an enumeration oracle across tenants.
-        return { ok: false, reason: 'Workspace not found or access denied' };
+    // Legacy/test handles are not ObjectIds and cannot name a Company. Keep
+    // accepting the caller's own id as a personal scope, but real accounts
+    // resolve to their Company so every downstream query uses one id.
+    if (wsId && wsId === String(userId) && !mongoose.isValidObjectId(wsId)) {
+        return { ok: true, workspace: null, workspaceId: wsId, personal: true };
     }
-    if (!isMemberOf(workspace, userId)) {
-        return { ok: false, reason: 'Access denied: not a member of this workspace' };
-    }
-    return { ok: true, workspace, personal: false };
+
+    // Do not distinguish "no such workspace" from "not a member": the
+    // former is an enumeration oracle across tenants.
+    return { ok: false, reason: 'Workspace not found or access denied' };
 }
 
 /**
@@ -94,6 +99,7 @@ function requireWorkspaceAccess(paramName = 'workspaceId') {
                 return res.status(403).json({ error: result.reason });
             }
             req.workspace = result.workspace;
+            req.workspaceId = result.workspaceId;
             next();
         } catch (error) {
             console.error('Workspace access check error:', error);

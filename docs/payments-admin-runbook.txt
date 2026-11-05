@@ -1,0 +1,108 @@
+# Admin Runbook
+
+Platform admin endpoints use a static `ADMIN_API_KEY` sent as `x-admin-key`.
+When the variable is empty, every admin endpoint fails closed with 403.
+
+## Endpoints
+
+| Action | Endpoint |
+| --- | --- |
+| Ban / unban user | `POST /api/admin/users/:id/ban`, `POST /api/admin/users/:id/unban` |
+| Provision / renew manual enterprise | `POST /api/admin/entitlements/:userId/enterprise` |
+| Read entitlement | `GET /api/admin/entitlements/:userId` |
+| Backfill company roles (dry-run default) | `POST /api/admin/companies/roles/backfill` |
+
+### Manual enterprise provisioning
+
+```bash
+curl -X POST "$API_URL/api/admin/entitlements/<userId>/enterprise" \
+  -H "x-admin-key: $ADMIN_API_KEY" \
+  -H "content-type: application/json" \
+  -d '{
+    "amountMinor": 123456789,
+    "currency": "USD",
+    "currentPeriodEnd": "2027-10-24T00:00:00.000Z",
+    "status": "active"
+  }'
+```
+
+- `amountMinor` is an integer in the currency's minor unit (cents).
+- The response exposes `signatureVerified` but never the signature itself.
+- The write mirrors tier/status/provider to the legacy `Subscription` record.
+- A renewal replaces the signature; old rows remain verifiable during key
+  rotation.
+
+### Company role backfill
+
+Dry run is the default. Applying requires `{"dryRun": false}`. Missing or
+invalid company roles become `viewer`; owners are never changed.
+
+## Legacy billing retirement (P15)
+
+Canonical aliases live under `/api/v1/billing/{subscription,trial,paystack,flutterwave}`.
+Legacy routes log a structured line on every response:
+
+```text
+[legacy-billing] METHOD URL user=<id> route=<matched-route>
+```
+
+Provider callbacks (`.../webhook` and `.../verify`) are exempt and must remain
+available after retirement.
+
+1. Record the cutover start date in the ops log.
+2. Alert on any `[legacy-billing]` line whose route is not a provider callback.
+3. Retire only after **30 consecutive days with zero non-callback hits**.
+4. Set `LEGACY_BILLING_RETIRED=true`, redeploy, and verify a legacy route
+   returns 410 while provider callbacks still return their normal status.
+5. Roll back with `LEGACY_BILLING_RETIRED=false` if a missed caller appears.
+
+## Compute overage (E5)
+
+- Rate: `COMPUTE_OVERAGE_RATE_MINOR_PER_HOUR=100` ($1.00/hour).
+- Billing requires per-subscription opt-in:
+  `POST /api/v1/billing/subscription/overage` with `{"enabled":true|false}`.
+- Monthly ceiling: `COMPUTE_OVERAGE_MONTHLY_CAP_MINOR=5000` ($50).
+- Hours are always metered; the billable amount stays zero until opt-in.
+- New jobs may start past the included limit only while opted in and below the
+  cap. At the cap, the compute gate blocks new jobs.
+- No invoice or automatic charge path exists yet. Treat the recorded amount as
+  an accrual, not a collected charge.
+
+## Audit trail
+
+Every successful admin write calls `recordAdminAction`:
+
+- Always emits a structured stdout line:
+  `[admin-audit] {"action":"...","target":"...","adminKeyFingerprint":"..."}`
+- Persists an `AdminAudit` row when Mongo is connected.
+- Stores a 12-character SHA-256 fingerprint of the admin key, never the key.
+- Retention: `ADMIN_AUDIT_RETENTION_DAYS` (default 365).
+
+If the Mongo write fails, the action still succeeds and the failure is logged.
+Use the stdout line plus the provider/hosting log drain as the fallback trail.
+
+## Entitlement signing-key rotation
+
+`ENTITLEMENT_SIGNING_SECRET` signs new manual entitlements.
+`ENTITLEMENT_SIGNING_SECRET_PREVIOUS` (comma-separated) is verification-only.
+Both fall back to `JWT_SECRET` for older deployments; set a dedicated secret
+before launch.
+
+1. Generate a new random secret and set it as `ENTITLEMENT_SIGNING_SECRET`.
+2. Move the old value into `ENTITLEMENT_SIGNING_SECRET_PREVIOUS`.
+3. Restart/redeploy and verify `GET /api/admin/entitlements/:userId` returns
+   `signatureVerified: true` for an existing row.
+4. Re-provision or re-sign affected rows with the new primary.
+5. Remove the previous secret once all rows verify with the new key.
+6. Record the rotation date and owner outside this repo.
+
+Never paste secret values into this document or logs.
+
+## Failure handling
+
+- 403: missing/wrong `x-admin-key`; confirm the env var on the running service.
+- 400: invalid user id, amount, currency, period, or status.
+- 500 signing-secret error: neither entitlement secret nor `JWT_SECRET` is set;
+  no row is persisted.
+- Audit row missing but stdout line present: check Mongo connectivity; the
+  business operation is not rolled back.

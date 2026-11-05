@@ -12,7 +12,7 @@
  * branch only.
  */
 const jwt = require('jsonwebtoken');
-const { userExists } = require('../middleware/auth');
+const { checkUserSession } = require('../middleware/auth');
 
 function decodeSocketToken(token) {
     if (!token) throw new Error('Authentication error');
@@ -23,19 +23,24 @@ function decodeSocketToken(token) {
     }
 }
 
-async function assertSocketUserLive(userId) {
+async function assertSocketUserLive(userId, tokenVersion) {
     if (!userId) throw new Error('Authentication error');
-    if (!(await userExists(userId))) {
+    const session = await checkUserSession(userId, tokenVersion);
+    if (!session.exists) {
         throw new Error('Account is no longer active');
+    }
+    if (!session.tokenCurrent) {
+        throw new Error('Authentication error: session has been revoked');
     }
 }
 
-// Full handshake for user-token namespaces: signature + liveness.
+// Full handshake for user-token namespaces: signature + liveness + token
+// version (password change / logout-all / ban revocation).
 // Returns { userId, decoded }; throws connect_error-worthy Errors.
 async function resolveSocketUser(socket) {
     const decoded = decodeSocketToken(socket.handshake.auth?.token);
     const userId = decoded.userId || decoded.id || decoded._id;
-    await assertSocketUserLive(userId);
+    await assertSocketUserLive(userId, decoded.tokenVersion);
     return { userId, decoded };
 }
 

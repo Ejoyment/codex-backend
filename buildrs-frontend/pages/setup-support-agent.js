@@ -16,7 +16,7 @@ export default function SetupSupportAgent() {
               <span className="dot">●</span> buildrs · setup
             </p>
             <h1 className="mkt-h3 text-xl">Setup support agent</h1>
-            <p className="mt-3 text-[13.5px] text-[#a8adba]">This setup flow is coming soon.</p>
+            <p className="mt-3 text-[13.5px] text-[#a9b7c4]">This setup flow is coming soon.</p>
             <Link href="/support" className="mkt-btn mkt-btn-primary mt-6 w-full justify-center">
               Go to support <span className="mkt-arrow">→</span>
             </Link>

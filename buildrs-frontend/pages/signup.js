@@ -140,7 +140,7 @@ export default function SignUp() {
             <div className="quote-author">
               <div className="quote-avatar">BT</div>
               <div>
-                <div className="quote-name">Beulah Tobin West</div>
+                <div className="quote-name">Emmanuel Oyigocho</div>
                 <div className="quote-role">Co-Founder, BUILDRSHQ</div>
               </div>
             </div>
@@ -192,7 +192,7 @@ export default function SignUp() {
 
             <form onSubmit={handleSubmit} noValidate>
               {error && (
-                <div className="mb-4 p-3 rounded" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.5)', color: '#fca5a5', fontSize: '14px' }}>
+                <div className="mb-4 p-3 rounded" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.5)', color: '#ec8f8f', fontSize: '14px' }}>
                   {error}
                 </div>
               )}
@@ -210,7 +210,7 @@ export default function SignUp() {
                   maxLength={100}
                   required
                 />
-                {fieldErrors.fullName && <p style={{ color: '#fca5a5', fontSize: '12px', marginTop: '4px' }}>{fieldErrors.fullName}</p>}
+                {fieldErrors.fullName && <p style={{ color: '#ec8f8f', fontSize: '12px', marginTop: '4px' }}>{fieldErrors.fullName}</p>}
               </div>
               <div className="form-group">
                 <label htmlFor="email" className="form-label">WORK EMAIL</label>
@@ -226,7 +226,7 @@ export default function SignUp() {
                   maxLength={254}
                   required
                 />
-                {fieldErrors.email && <p style={{ color: '#fca5a5', fontSize: '12px', marginTop: '4px' }}>{fieldErrors.email}</p>}
+                {fieldErrors.email && <p style={{ color: '#ec8f8f', fontSize: '12px', marginTop: '4px' }}>{fieldErrors.email}</p>}
               </div>
               <div className="form-group">
                 <label htmlFor="password" className="form-label">PASSWORD</label>
@@ -249,10 +249,10 @@ export default function SignUp() {
                         <div key={i} style={{ flex: 1, height: '3px', borderRadius: '2px', background: i < passwordStrength.score ? passwordStrength.color : '#1d2029' }} />
                       ))}
                     </div>
-                    <p style={{ fontSize: '11px', color: '#a8adba' }}>{passwordStrength.label}</p>
+                    <p style={{ fontSize: '11px', color: '#a9b7c4' }}>{passwordStrength.label}</p>
                   </div>
                 )}
-                {fieldErrors.password && <p style={{ color: '#fca5a5', fontSize: '12px', marginTop: '4px' }}>{fieldErrors.password}</p>}
+                {fieldErrors.password && <p style={{ color: '#ec8f8f', fontSize: '12px', marginTop: '4px' }}>{fieldErrors.password}</p>}
               </div>
 
               <div className="form-group">
@@ -280,8 +280,8 @@ export default function SignUp() {
 
             <p className="terms-text">
               By signing up, you agree to our{' '}
-              <Link href="/terms" style={{ color: '#a8adba', textDecoration: 'underline' }}>Terms</Link> and{' '}
-              <Link href="/privacy" style={{ color: '#a8adba', textDecoration: 'underline' }}>Privacy Policy</Link>.
+              <Link href="/terms" style={{ color: '#a9b7c4', textDecoration: 'underline' }}>Terms</Link> and{' '}
+              <Link href="/privacy" style={{ color: '#a9b7c4', textDecoration: 'underline' }}>Privacy Policy</Link>.
             </p>
           </div>
         </div>

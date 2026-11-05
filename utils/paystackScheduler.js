@@ -2,34 +2,22 @@ const BillingSchedule = require('../models/BillingSchedule');
 const Subscription = require('../models/Subscription');
 const paystack = require('../config/paystack');
 const { planAmountCents } = require('../utils/billingPricing');
+const { scheduleFirstCharge } = require('./firstChargeSchedule');
 
 class PaystackScheduler {
     /**
      * Schedule first charge (14 days after card added - when trial ends)
      */
     static async scheduleFirstCharge(userId, subscriptionId, cardAddedAt, tier = 'pro') {
-        // Idempotent: repeated /verify or webhook replays must not stack
-        // duplicate charges on the same trial.
-        const existing = await BillingSchedule.findOne({
-            subscriptionId,
-            chargeType: 'first_charge',
-            status: 'pending'
-        });
-        if (existing) return existing;
-
         const scheduledFor = new Date(cardAddedAt.getTime() + (14 * 24 * 60 * 60 * 1000)); // 14 days
-        const amount = planAmountCents(tier);
-
-        const billingSchedule = new BillingSchedule({
+        const billingSchedule = await scheduleFirstCharge({
             userId,
             subscriptionId,
-            chargeType: 'first_charge',
-            scheduledFor,
-            amount,
-            status: 'pending'
+            cardAddedAt,
+            tier,
+            provider: 'paystack',
         });
 
-        await billingSchedule.save();
         console.log(`✓ First charge scheduled for user ${userId} at ${scheduledFor}`);
         return billingSchedule;
     }
@@ -45,6 +33,7 @@ class PaystackScheduler {
         const billingSchedule = new BillingSchedule({
             userId,
             subscriptionId,
+            provider: 'paystack',
             chargeType: 'second_charge',
             scheduledFor,
             amount,
@@ -67,6 +56,7 @@ class PaystackScheduler {
         const billingSchedule = new BillingSchedule({
             userId,
             subscriptionId,
+            provider: 'paystack',
             chargeType: 'recurring',
             scheduledFor,
             amount,
@@ -99,24 +89,34 @@ class PaystackScheduler {
                 throw new Error('User not found');
             }
 
+            // Stable reference: if this process dies after Paystack charged but
+            // before the reference is saved, the reaper can verify this exact
+            // reference instead of guessing (and without charging again).
+            const reference =
+                billingSchedule.paystackReference || `bs-${String(billingSchedule._id)}`;
+
             // Charge using saved authorization
             const response = await paystack.transaction.charge({
                 email: user.email,
                 amount: billingSchedule.amount,
                 authorization_code: subscription.paymentId,
                 currency: 'USD',
+                reference,
                 metadata: {
                     userId: subscription.userId.toString(),
                     subscriptionId: subscription._id.toString(),
+                    scheduleId: billingSchedule._id.toString(),
                     chargeType: billingSchedule.chargeType
                 }
             });
 
             if (response.status && response.data.status === 'success') {
                 // Update billing schedule
+                billingSchedule.provider = 'paystack';
                 billingSchedule.status = 'completed';
                 billingSchedule.completedAt = new Date();
-                billingSchedule.paystackReference = response.data.reference;
+                billingSchedule.paystackReference = response.data.reference || reference;
+                billingSchedule.providerStatus = response.data.status;
                 await billingSchedule.save();
 
                 // Update subscription
@@ -164,12 +164,16 @@ class PaystackScheduler {
                 console.log(`✓ Successfully processed ${billingSchedule.chargeType} for user ${subscription.userId}`);
                 return { success: true, reference: response.data.reference };
             } else {
+                billingSchedule.provider = 'paystack';
+                billingSchedule.providerStatus =
+                    (response.data && response.data.status) || null;
                 throw new Error(response.message || 'Charge failed');
             }
 
         } catch (error) {
             console.error(`✗ Charge failed for billing schedule ${billingSchedule._id}:`, error.message);
             
+            billingSchedule.provider = 'paystack';
             billingSchedule.status = 'failed';
             billingSchedule.attempts += 1;
             billingSchedule.error = error.message;
@@ -197,6 +201,7 @@ class PaystackScheduler {
             const now = new Date();
             const dueCharges = await BillingSchedule.find({
                 status: 'pending',
+                provider: 'paystack',
                 scheduledFor: { $lte: new Date(now.getTime() + (60 * 1000)) } // Due within next 60 seconds
             });
 

@@ -27,6 +27,7 @@ export default function Projects() {
   const subscription = useAuthStore((state) => state.subscription);
   const [hasHydrated, setHasHydrated] = useState(false);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
+  const [createSourceType, setCreateSourceType] = useState('scratch');
   const [selectedProjectId, setSelectedProjectId] = useState(null);
   const [projects, setProjects] = useState([]);
   const [loadingProjects, setLoadingProjects] = useState(true);
@@ -60,7 +61,7 @@ export default function Projects() {
 
   if (!hasHydrated) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0b0f17] text-white">
+      <div className="min-h-screen flex items-center justify-center bg-[#0e141d] text-white">
         <p>Loading...</p>
       </div>
     );
@@ -73,10 +74,11 @@ export default function Projects() {
         <link rel="icon" href="/buildrs.png" />
       </Head>
 
-      <div className="workspace-container min-h-screen bg-[#0b0f17] text-white">
+      <div className="workspace-container min-h-screen bg-[#0e141d] text-white">
         <Sidebar user={user} subscription={subscription} headerBranch="Feature/auth-flow-redesign" />
 
         <main className="workspace-main min-w-0">
+
           {selectedProjectId ? (
             <ProjectDetails
               projectId={selectedProjectId}
@@ -85,8 +87,14 @@ export default function Projects() {
             />
           ) : isCreatingProject ? (
             <CreateProjectWizard
+              initialSourceType={createSourceType}
               onClose={() => setIsCreatingProject(false)}
-              onCreated={() => router.push('/dashboard')}
+              onCreated={(project) => {
+                const projectId = project?.id || project?._id;
+                setIsCreatingProject(false);
+                loadProjects();
+                if (projectId) setSelectedProjectId(projectId);
+              }}
             />
           ) : (
             <>
@@ -104,13 +112,20 @@ export default function Projects() {
               <div className="flex items-center gap-3">
                 <button
                   type="button"
+                  onClick={() => {
+                    setCreateSourceType('github');
+                    setIsCreatingProject(true);
+                  }}
                   className="rounded-lg border border-cyan-500/50 px-4 py-2 text-xs font-semibold text-white transition hover:bg-cyan-500/10"
                 >
                   Import from GitHub
                 </button>
                 <button
                   type="button"
-                  onClick={() => setIsCreatingProject(true)}
+                  onClick={() => {
+                    setCreateSourceType('scratch');
+                    setIsCreatingProject(true);
+                  }}
                   className="rounded-lg bg-cyan-400 px-4 py-2 text-xs font-bold text-slate-950 shadow-lg shadow-cyan-500/20 transition hover:bg-cyan-300"
                 >
                   New Project
@@ -173,7 +188,10 @@ export default function Projects() {
                 </p>
                 <button
                   type="button"
-                  onClick={() => setIsCreatingProject(true)}
+                  onClick={() => {
+                    setCreateSourceType('scratch');
+                    setIsCreatingProject(true);
+                  }}
                   className="mt-6 rounded-lg bg-cyan-400 px-5 py-2.5 text-xs font-bold text-slate-950 shadow-lg shadow-cyan-500/20 transition hover:bg-cyan-300"
                 >
                   Create New Project
@@ -223,7 +241,7 @@ export default function Projects() {
 
                       <div className="mt-4 flex min-h-6 flex-wrap gap-1.5">
                         {technologies.length ? technologies.slice(0, 5).map((technology) => (
-                          <span key={technology} className="rounded-md border border-cyan-500/10 bg-[#101722] px-2 py-1 text-[9px] text-cyan-300">
+                          <span key={technology} className="rounded-md border border-cyan-500/10 bg-[#101d2c] px-2 py-1 text-[9px] text-cyan-300">
                             {technology}
                           </span>
                         )) : (
@@ -237,21 +255,21 @@ export default function Projects() {
                       </div>
 
                       <div className="mt-3 grid grid-cols-3 gap-1.5">
-                        <div className="rounded-md bg-[#101722] px-2.5 py-2">
+                        <div className="rounded-md bg-[#101d2c] px-2.5 py-2">
                           <p className="text-[9px] text-zinc-500">Status</p>
                           <p className="mt-1 truncate text-[10px] font-medium capitalize text-white">{statusLabel}</p>
                         </div>
-                        <div className="rounded-md bg-[#101722] px-2.5 py-2">
+                        <div className="rounded-md bg-[#101d2c] px-2.5 py-2">
                           <p className="text-[9px] text-zinc-500">Priority</p>
                           <p className="mt-1 truncate text-[10px] font-medium capitalize text-white">{project.priority || 'medium'}</p>
                         </div>
-                        <div className="rounded-md bg-[#101722] px-2.5 py-2">
+                        <div className="rounded-md bg-[#101d2c] px-2.5 py-2">
                           <p className="text-[9px] text-zinc-500">Progress</p>
                           <p className="mt-1 text-[10px] font-medium text-emerald-400">{progress}%</p>
                         </div>
                       </div>
 
-                      <div className="mt-3 h-1 overflow-hidden rounded-full bg-[#252d3a]">
+                      <div className="mt-3 h-1 overflow-hidden rounded-full bg-[#2a3446]">
                         <div className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-teal-400 transition-all" style={{ width: `${progress}%` }} />
                       </div>
 
@@ -262,6 +280,9 @@ export default function Projects() {
                           {project.githubRepoName && <span className="truncate text-zinc-600">· {project.githubRepoName}</span>}
                         </span>
                         <span className="ml-3 flex shrink-0 items-center gap-2">
+                          {project.provisioningStatus === 'failed' && <span className="text-rose-400">Setup failed</span>}
+                          {project.provisioningStatus === 'not_started' && <span className="text-amber-400">Setup not started</span>}
+                          {['pending', 'provisioning'].includes(project.provisioningStatus) && <span className="text-cyan-400">Setting up</span>}
                           {project.visibility && <span className="capitalize">{project.visibility}</span>}
                           {updatedLabel && <span>{updatedLabel}</span>}
                         </span>

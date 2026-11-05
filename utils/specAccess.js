@@ -17,6 +17,7 @@ const mongoose = require('mongoose');
 const LocalProject = require('../models/LocalProject');
 const Company = require('../models/Company');
 const SpecModel = require('../models/SpecModel');
+const { resolveWorkspaceForUser } = require('./workspaceIdentity');
 
 const idOf = (value) => (value && value._id ? value._id.toString() : value ? value.toString() : null);
 
@@ -61,11 +62,7 @@ async function userCanAccessSpec(spec, userId) {
  */
 async function userCanAccessWorkspace(workspaceId, userId) {
   if (!workspaceId || !userId) return false;
-  const uid = idOf(userId);
-  const workspace = await Company.findById(workspaceId).select('owner members').lean();
-  if (!workspace) return false;
-  if (idOf(workspace.owner) === uid) return true;
-  return (workspace.members || []).some((member) => idOf(member.user || member) === uid);
+  return Boolean(await resolveWorkspaceForUser(workspaceId, userId));
 }
 
 /**

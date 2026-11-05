@@ -44,6 +44,8 @@ export default function CreateTaskWizard({
   specs = [],
   projectsError = '',
   defaultProjectId = '',
+  demoMode = false,
+  focusTargetRef,
 }) {
   const [task, setTask] = useState({
     title: '',
@@ -103,15 +105,12 @@ export default function CreateTaskWizard({
       setError('Enter a task title before creating the task.');
       return;
     }
-    if (task.delegateToAgent && !companyId) {
-      setError('Join a workspace before delegating this task to an agent.');
-      return;
-    }
+    const taskWorkspaceId = companyId || selectedProject?.workspaceId || selectedProject?.companyId || null;
 
     setSubmitting(true);
     setError('');
     try {
-      const result = await projectApi.createTask({
+      const taskData = {
         title,
         description: task.description.trim(),
         taskType: task.taskType,
@@ -119,12 +118,15 @@ export default function CreateTaskWizard({
         priority: task.priority,
         dueDate: task.dueDate || null,
         projectId: task.projectId || null,
-        companyId: companyId || null,
+        companyId: taskWorkspaceId,
         specIds: task.specIds,
         figmaNodeId: task.figmaNodeId.trim() || null,
         labels: task.labels,
         assignToMe: task.assignToMe,
-      });
+      };
+      const result = demoMode
+        ? { success: true, task: { ...taskData, id: `demo-task-${Date.now()}` } }
+        : await projectApi.createTask(taskData);
       if (result.success === false || !result.task) {
         throw new Error(result.message || 'The task could not be created.');
       }
@@ -132,10 +134,17 @@ export default function CreateTaskWizard({
       let delegationError = '';
       let delegationResult = null;
       if (task.delegateToAgent) {
+        if (demoMode) {
+          delegationResult = {
+            success: true,
+            execution: { _id: `demo-execution-${Date.now()}` },
+            agentBranch: 'agent/demo-task',
+          };
+        } else {
         try {
           delegationResult = await agentApi.delegate({
             taskId: getId(result.task),
-            workspaceId: companyId,
+            workspaceId: taskWorkspaceId,
             specIds: task.specIds,
           });
           if (delegationResult.success === false) {
@@ -143,6 +152,7 @@ export default function CreateTaskWizard({
           }
         } catch (delegateError) {
           delegationError = delegateError.message || 'The task was created, but agent delegation failed.';
+        }
         }
       }
 
@@ -340,7 +350,7 @@ export default function CreateTaskWizard({
 
             <footer className="tsk-create-actions">
               <button type="button" className="tsk-create-cancel" onClick={onClose} disabled={submitting}>Cancel</button>
-              <button type="submit" className="tsk-create-submit" disabled={submitting || !task.title.trim()}>
+              <button ref={focusTargetRef} type="submit" className="tsk-create-submit" disabled={submitting || !task.title.trim()}>
                 {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                 {submitting ? 'Creating task...' : 'Create task'}
               </button>

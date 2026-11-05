@@ -8,7 +8,7 @@ process.env.NODE_ENV = 'test';
 jest.mock('stripe', () => jest.fn(() => ({
   checkout: { sessions: { create: jest.fn().mockResolvedValue({ id: 'cs_1', url: 'https://stripe.test/cs_1' }) } },
   billingPortal: { sessions: { create: jest.fn().mockResolvedValue({ url: 'https://stripe.test/portal' }) } },
-  webhooks: { constructEvent: jest.fn().mockReturnValue({ id: 'evt_1', type: 'checkout.session.completed', data: { object: { id: 'cs_1', metadata: { userId: 'u1', plan: 'professional' }, customer: 'cus_1', subscription: 'sub_1', currency: 'usd' } } }) },
+  webhooks: { constructEvent: jest.fn().mockReturnValue({ id: 'evt_1', type: 'checkout.session.completed', data: { object: { id: 'cs_1', metadata: { userId: 'u1', plan: 'professional' }, customer: 'cus_1', subscription: 'sub_1', currency: 'usd', amount_total: 2000 } } }) },
   subscriptions: { cancel: jest.fn().mockResolvedValue({ id: 'sub_1', status: 'canceled' }) },
 })));
 
@@ -130,7 +130,7 @@ describe('entitlementService — idempotent webhooks', () => {
     process.env.PAYSTACK_SECRET_KEY = 'paystack-secret';
     const paystack = getAdapter('paystack');
     const crypto = require('crypto');
-    const body = JSON.stringify({ event: 'charge.success', id: 1, data: { reference: 'ref1', currency: 'NGN', metadata: { userId: String(userId), plan: 'professional' }, customer: { customer_code: 'CUS_1' } } });
+    const body = JSON.stringify({ event: 'charge.success', id: 1, data: { reference: 'ref1', amount: 2150000, currency: 'NGN', metadata: { userId: String(userId), plan: 'professional' }, customer: { customer_code: 'CUS_1' } } });
     const sig = crypto.createHmac('sha512', 'paystack-secret').update(Buffer.from(body)).digest('hex');
     const evt = await paystack.verifyWebhook({ rawBody: Buffer.from(body), signature: sig });
     const applied = await svc.applyWebhookEvent({ ...evt, userId });
@@ -146,11 +146,11 @@ describe('entitlementService — idempotent webhooks', () => {
     await seed(userId);
     process.env.FLUTTERWAVE_SECRET_KEY = 'flw-secret';
     const flw = getAdapter('flutterwave');
-    const body = JSON.stringify({ id: 'evt9', event: 'charge.completed', data: { status: 'successful', tx_ref: 'tx9', currency: 'GHS', meta: { userId: String(userId), plan: 'enterprise' }, customer: { email: 'a@b.c' } } });
+    const body = JSON.stringify({ id: 'evt9', event: 'charge.completed', data: { status: 'successful', tx_ref: 'tx9', amount: 565, currency: 'GHS', meta: { userId: String(userId), plan: 'pro_plus' }, customer: { email: 'a@b.c' } } });
     const evt = await flw.verifyWebhook({ rawBody: Buffer.from(body), signature: 'flw-secret' });
     const applied = await svc.applyWebhookEvent({ ...evt, userId });
     expect(applied.entitlement.status).toBe('active');
-    expect(applied.entitlement.plan).toBe('enterprise');
+    expect(applied.entitlement.plan).toBe('pro_plus');
     const replayed = await svc.applyWebhookEvent({ ...evt, userId });
     expect(replayed.applied).toBe(false);
   });

@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
+import { diffLines } from 'diff';
 import AuthGuard from '../components/AuthGuard';
 import Sidebar from '../components/Sidebar';
 import useAuthStore from '../store/authStore';
-import { apiFetch, projectApi, API_BASE_URL, SOCKET_URL, agentApi, companyApi } from '../lib/api';
+import { apiFetch, projectApi, API_BASE_URL, SOCKET_URL, agentApi, companyApi, githubApi, isDemoTourActive } from '../lib/api';
 import * as editorDrafts from '../lib/editorDrafts';
 import { registerEditorSnippets } from '../lib/monacoExtras';
 import { normalizeMarkers, countProblems, setRunProblems } from '../lib/monacoDiagnostics';
@@ -12,9 +13,9 @@ import { startRun, streamRun, runLanguageFor } from '../lib/ideRun';
 import { lspApi, docUri, lspKindToMonaco, lspRangeToMonaco } from '../lib/lspClient';
 import {
   Save, ChevronDown, ChevronRight, FileCode, Terminal, Bot, Layers, Rocket, Box,
-  Users, GitBranch, Eye, Bug, X, FolderOpen, Search, Settings, Folder, Trash2,
+  Users, GitBranch, Eye, Bug, X, FolderOpen, Search, Folder, Trash2,
   FolderPlus, AlertCircle, CheckCircle, XCircle, RefreshCw, Puzzle, HelpCircle,
-  FilePlus, Play, Loader2, GitPullRequestArrow, Copy, GitCommit,
+  FilePlus, Play, Loader2, GitPullRequestArrow, Copy, GitCommit, Plus, Minus,
 } from 'lucide-react';
 import MonacoEditor from '@monaco-editor/react';
 import { io } from 'socket.io-client';
@@ -25,11 +26,7 @@ import { useCurrentCompany } from '../hooks/useCurrentCompany';
 import { normalizeTier, tierDisplayLabel, tierDisplayDetail } from '../lib/tier';
 
 function tierBadgeLabel(t) {
-  const n = normalizeTier(t);
-  if (n === 'enterprise') return 'Enterprise';
-  if (n === 'developer') return 'Free';
-  if (n === 'team_standard' || n === 'team_premium') return 'Team';
-  return 'Pro';
+  return tierDisplayLabel(null, normalizeTier(t));
 }
 
 function tierBadgeClass(t) {
@@ -42,8 +39,8 @@ function tierBadgeClass(t) {
 // --- ANSI output handling (run output can carry terminal color codes) -------
 const ANSI_SGR_RE = /\x1b\[([0-9;]*)m/g;
 const ANSI_PALETTE = [
-  '#000000', '#cd3131', '#0dbc79', '#e5e510', '#2472c8', '#bc3fbc', '#11a8cd', '#e5e5e5',
-  '#666666', '#f14c4c', '#23d18b', '#f5f543', '#3b8eea', '#d670d6', '#29b8db', '#ffffff',
+  '#000000', '#cd3131', '#0dbc79', '#e5e510', '#2472c8', '#bc3fbc', '#11a8cd', '#dee2f6',
+  '#59687a', '#ec1414', '#23d18b', '#f5f543', '#3b8eea', '#d670d6', '#29b8db', '#ffffff',
 ];
 
 function stripAnsi(text) {
@@ -137,7 +134,7 @@ function detectLanguage(filename) {
 
 function getFileIcon(name) {
   const lang = detectLanguage(name);
-  return LANG_COLORS()[lang] || '#565d6b';
+  return LANG_COLORS()[lang] || '#59687a';
 }
 
 function LANG_COLORS() {
@@ -146,7 +143,7 @@ function LANG_COLORS() {
     java: '#ed8b00', go: '#00add8', rust: '#dea584', cpp: '#00599c',
     c: '#555555', ruby: '#cc342d', php: '#777bb4', html: '#e34c26',
     css: '#563d7c', json: '#292929', yaml: '#cb171e', markdown: '#083fa1',
-    shell: '#89e051', sql: '#e38c00', text: '#6e7681',
+    shell: '#89e051', sql: '#e38c00', text: '#748194',
     lua: '#000080', groovy: '#4298b4', perl: '#0298c3', r: '#276dc3',
     elixir: '#4b275f', csharp: '#68217a', dart: '#0175c2', swift: '#f05138',
     powershell: '#012456', kotlin: '#7f52ff', scala: '#dc322f', haskell: '#5e5086',
@@ -155,7 +152,7 @@ function LANG_COLORS() {
 
 function getLanguageGlyph(name) {
   const lang = detectLanguage(name);
-  const color = LANG_COLORS()[lang] || '#6e7681';
+  const color = LANG_COLORS()[lang] || '#748194';
   const iconProps = {
     stroke: '#0b1020',
     strokeWidth: 1.6,
@@ -269,15 +266,16 @@ function buildFileTree(files) {
   return root;
 }
 
-function InlineFileRow({ depth, value, inputRef, onChange, onCommit, onCancel }) {
+function InlineCreateRow({ kind = 'file', depth, value, inputRef, onChange, onCommit, onCancel }) {
+  const Icon = kind === 'folder' ? Folder : FileCode;
   return (
     <div className="ed-tree-row is-inline-create" style={{ paddingLeft: `${6 + depth * 14}px` }}>
-      <FileCode className="w-3.5 h-3.5 ed-file-inline-ico" />
+      <Icon className={`w-3.5 h-3.5 ${kind === 'folder' ? 'ed-folder-ico' : 'ed-file-inline-ico'}`} />
       <input
         ref={inputRef}
         className="ed-inline-input"
         value={value}
-        placeholder="File name"
+        placeholder={kind === 'folder' ? 'Folder name' : 'File name'}
         autoFocus
         spellCheck={false}
         onChange={(e) => onChange(e.target.value)}
@@ -337,7 +335,8 @@ function FileTreeNode({ node, depth, selectedId, onSelect, expanded, onToggle, i
         {isOpen && (
           <div>
             {inlineHere && (
-              <InlineFileRow
+              <InlineCreateRow
+                kind={inlineCreate.kind}
                 depth={depth + 1}
                 value={inlineCreate.value}
                 inputRef={inlineInputRef}
@@ -398,6 +397,8 @@ export default function Editor() {
   const pollTimersRef = useRef({});
   const pollWhenDoneRef = useRef({});
   const [content, setContent] = useState('');
+  const [fileLoading, setFileLoading] = useState(false);
+  const fileLoadSequenceRef = useRef(0);
   const [languages, setLanguages] = useState([]);
   const [tier, setTier] = useState('');
   const [loading, setLoading] = useState(true);
@@ -405,9 +406,6 @@ export default function Editor() {
   const [inlineCreate, setInlineCreate] = useState(null);
   const inlineInputRef = useRef(null);
   const inlineCancelledRef = useRef(false);
-  const [showNewFolderModal, setShowNewFolderModal] = useState(false);
-  const [newFolderName, setNewFolderName] = useState('');
-  const [newFolderPath, setNewFolderPath] = useState('/');
   const [creating, setCreating] = useState(false);
   const [status, setStatus] = useState(null);
   // Selected-file dirty state is DERIVED (buffer vs per-file baseline), never
@@ -419,6 +417,7 @@ export default function Editor() {
   const monacoRef = useRef(null);
   const markersSubscribedRef = useRef(false);
   const lspProvidersRef = useRef(false);
+  const lspChangeTimerRef = useRef(null);
   const [cursorPos, setCursorPos] = useState({ line: 1, col: 1 });
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [activeSidebar, setActiveSidebar] = useState('explorer');
@@ -506,6 +505,10 @@ export default function Editor() {
   const [byomOpen, setByomOpen] = useState(false);
   const [customModel, setCustomModel] = useState('GPT-4.1');
   const [collaborators, setCollaborators] = useState([]);
+  const [fileCollaborators, setFileCollaborators] = useState([]);
+  const [fileAccess, setFileAccess] = useState(null);
+  const [companyMembers, setCompanyMembers] = useState([]);
+  const [sharingBusy, setSharingBusy] = useState(null);
   const [remoteCursors, setRemoteCursors] = useState({});
   const [figmaFiles, setFigmaFiles] = useState([]);
   const [selectedFigmaFile, setSelectedFigmaFile] = useState(null);
@@ -574,13 +577,24 @@ export default function Editor() {
   const termSessionRef = useRef(null);
   const termRef = useRef(null);
   const aiSessionRef = useRef(null);
-  const { selectedCompany } = useCurrentCompany();
+  const {
+    selectedCompany,
+    hasCompany,
+    refetch: refetchCompanies,
+  } = useCurrentCompany();
   const workspaceId = selectedCompany?._id;
 
   const [projects, setProjects] = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
+  const gitWorkspaceId = selectedProject?.workspaceId || workspaceId;
+  const gitProjectId = selectedProject?._id || selectedProject?.id || null;
   const [githubRepos, setGithubRepos] = useState([]);
   const [selectedRepo, setSelectedRepo] = useState(null);
+  const [selectedBranch, setSelectedBranch] = useState('main');
+  const [availableBranches, setAvailableBranches] = useState([]);
+  const [branchMenuOpen, setBranchMenuOpen] = useState(false);
+  const [branchError, setBranchError] = useState('');
+  const [repoStaged, setRepoStaged] = useState(() => new Set());
   const [showProjectSelector, setShowProjectSelector] = useState(false);
   const [repoCreateOpen, setRepoCreateOpen] = useState(false);
   const [repoCreateName, setRepoCreateName] = useState('');
@@ -591,6 +605,62 @@ export default function Editor() {
   const [expandedFolders, setExpandedFolders] = useState({});
   const [fileFilter, setFileFilter] = useState('');
   const [commitMsg, setCommitMsg] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    const defaultBranch = selectedRepo
+      ? selectedRepo.default_branch || selectedRepo.defaultBranch || 'main'
+      : selectedProject?.defaultBranch || 'main';
+    setSelectedBranch(defaultBranch);
+    setAvailableBranches([]);
+    setBranchError('');
+    setRepoStaged(new Set());
+
+    async function loadBranches() {
+      try {
+        let data;
+        if (selectedRepo) {
+          const owner = selectedRepo.owner?.login || selectedRepo.owner || selectedRepo.ownerName;
+          data = await githubApi.getBranches(owner, selectedRepo.name);
+        } else if (gitWorkspaceId) {
+          const projectQuery = gitProjectId ? `?projectId=${encodeURIComponent(gitProjectId)}` : '';
+          data = await apiFetch(`/api/git/branches/${encodeURIComponent(gitWorkspaceId)}${projectQuery}`);
+        } else {
+          setAvailableBranches([defaultBranch]);
+          return;
+        }
+
+        if (cancelled) return;
+        const branches = (data.branches || [])
+          .map((branch) => typeof branch === 'string' ? branch : branch.name)
+          .filter(Boolean);
+        const currentBranch = data.current || data.currentBranch || defaultBranch;
+        setAvailableBranches(branches.length ? branches : [currentBranch]);
+        setSelectedBranch(currentBranch);
+        if (selectedRepo) {
+          await loadGithubRepoFiles(selectedRepo, currentBranch);
+          await loadRepoGitStatus(selectedRepo, currentBranch);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setAvailableBranches([defaultBranch]);
+          setBranchError(error.message || 'Unable to load branches');
+        }
+      }
+    }
+
+    loadBranches();
+    return () => { cancelled = true; };
+  }, [
+    selectedRepo?.owner,
+    selectedRepo?.name,
+    selectedRepo?.default_branch,
+    selectedRepo?.defaultBranch,
+    selectedProject?.workspaceId,
+    selectedProject?.defaultBranch,
+    gitProjectId,
+    gitWorkspaceId,
+  ]);
 
   const selectedFileRef = useRef(null);
   selectedFileRef.current = selectedFile;
@@ -604,27 +674,27 @@ export default function Editor() {
   // default, stored server-side per workspace (company settings, owner/admin
   // only — the API 403s everyone else and the toggle reverts).
   const deployScopeId = workspaceId || selectedProject?.workspaceId || null;
-  const [autoDeployOn, setAutoDeployOn] = useState(true);
-  const autoDeployRef = useRef(true);
+  const [autoDeployOn, setAutoDeployOn] = useState(false);
+  const autoDeployRef = useRef(false);
   useEffect(() => {
     let cancelled = false;
     (async () => {
       if (!deployScopeId) {
-        setAutoDeployOn(true);
-        autoDeployRef.current = true;
+        setAutoDeployOn(false);
+        autoDeployRef.current = false;
         return;
       }
       try {
         const data = await companyApi.getDetails(deployScopeId);
-        const on = data?.company?.settings?.autoDeploy !== false;
+        const on = data?.company?.settings?.autoDeploy === true;
         if (!cancelled) {
           setAutoDeployOn(on);
           autoDeployRef.current = on;
         }
       } catch {
         if (!cancelled) {
-          setAutoDeployOn(true);
-          autoDeployRef.current = true;
+          setAutoDeployOn(false);
+          autoDeployRef.current = false;
         }
       }
     })();
@@ -649,6 +719,50 @@ export default function Editor() {
       : files,
   ), [files, repoPending, selectedRepo, selectedProject]);
 
+  // Teammates who can be given file-level read/write access. Company
+  // owners/admins already manage every file, and the creator always keeps
+  // control, so those rows are not shown as editable share targets.
+  const fileSharingRows = useMemo(() => {
+    const currentUserId = String(user?.id || user?._id || '');
+    const creatorId = String(selectedFile?.createdBy?._id || selectedFile?.createdBy || '');
+    const rows = new Map();
+
+    (companyMembers || []).forEach((membership) => {
+      const memberUser = membership?.user;
+      const id = String(memberUser?._id || memberUser || '');
+      if (!id) return;
+      rows.set(id, {
+        id,
+        name: memberUser?.fullName || memberUser?.email || 'Teammate',
+        email: memberUser?.email || '',
+        role: membership?.role || 'viewer',
+        permission: null,
+      });
+    });
+
+    (fileCollaborators || []).forEach((collaborator) => {
+      const collaboratorUser = collaborator?.user;
+      const id = String(collaboratorUser?._id || collaboratorUser || '');
+      if (!id) return;
+      const existing = rows.get(id);
+      rows.set(id, {
+        id,
+        name: existing?.name || collaboratorUser?.fullName || collaboratorUser?.email || 'Collaborator',
+        email: existing?.email || collaboratorUser?.email || '',
+        role: existing?.role || null,
+        permission: collaborator?.permission || 'read',
+      });
+    });
+
+    return [...rows.values()].filter((row) => (
+      row.id !== currentUserId
+      && row.id !== creatorId
+      && !['owner', 'admin'].includes(row.role)
+    ));
+  }, [companyMembers, fileCollaborators, selectedFile, user]);
+
+  const isWorkspaceFile = /^[0-9a-f]{24}$/i.test(String(selectedFile?._id || ''));
+
   const getFileKey = useCallback((file) => {
     if (!file) return null;
     if (file._id) return String(file._id);
@@ -657,7 +771,7 @@ export default function Editor() {
     // path in two repos never collides into one buffer/dirty state.
     const repoScope = selectedRepo
       ? (selectedRepo.fullName || `${selectedRepo.owner?.login || selectedRepo.owner || selectedRepo.ownerName || 'gh'}/${selectedRepo.name}`) +
-        (selectedRepo.default_branch ? `@${selectedRepo.default_branch}` : '')
+        (selectedBranch ? `@${selectedBranch}` : '')
       : 'none';
     if (file.path) return `github:${repoScope}:${file.path}`;
     if (file.name) return `github:${repoScope}:${file.name}`;
@@ -670,7 +784,7 @@ export default function Editor() {
       fileKeyCacheRef.current.set(file, key);
     }
     return key;
-  }, [selectedRepo]);
+  }, [selectedRepo, selectedBranch]);
 
   // Single source of truth for dirty state: current buffer vs the file's own
   // last-saved baseline. Read at render/interaction time; never stored, so a
@@ -731,7 +845,12 @@ export default function Editor() {
   function refreshGitModified() {
     setGitStatus((prev) => {
       if (!prev || !prev.isGithub) return prev;
-      return { ...prev, modified: computeLocalModified(prev.repo) };
+      return {
+        ...prev,
+        modified: computeLocalModified(prev.repo),
+        created: repoPending.filter((file) => file.pending).map((file) => fileFullPath(file).replace(/^\/+/, '')),
+        staged: Array.from(repoStaged),
+      };
     });
   }
 
@@ -840,6 +959,26 @@ export default function Editor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId, selectedRepo]);
 
+  // A direct /editor?projectId=... link selects that project once the list
+  // resolves. Without this, deep links silently opened the previous session or
+  // an empty workspace.
+  const directProjectId = router.isReady && typeof router.query.projectId === 'string'
+    ? router.query.projectId
+    : null;
+  useEffect(() => {
+    if (!directProjectId || !projects.length) return;
+    const target = projects.find((project) => String(project._id || project.id) === directProjectId);
+    if (!target) {
+      setStatus({ type: 'error', msg: 'That project is not available in this workspace.' });
+      return;
+    }
+    const currentId = String(selectedProject?._id || selectedProject?.id || '');
+    if (currentId === directProjectId) return;
+    pendingRestoreRef.current = null;
+    setSelectedRepo(null);
+    setSelectedProject(target);
+  }, [directProjectId, projects, selectedProject?._id, selectedProject?.id]);
+
   // Finish restoring a previous session once its inputs arrive.
   useEffect(() => {
     const pend = pendingRestoreRef.current;
@@ -882,7 +1021,7 @@ export default function Editor() {
   // Real-time collaboration socket
   useEffect(() => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
-    if (!token) return;
+    if (!token || isDemoTourActive()) return;
     const socket = io(SOCKET_URL, { auth: { token }, transports: ['websocket', 'polling'] });
     socketRef.current = socket;
 
@@ -1031,6 +1170,44 @@ export default function Editor() {
     };
   }, [selectedFile?._id, user]);
 
+  // File-level collaborator permissions (read/write) live in the Live Share
+  // panel. Company members are the candidates; the server is the source of
+  // truth for whether the caller may change them.
+  useEffect(() => {
+    let cancelled = false;
+    const fileId = selectedFile?._id;
+    if (!fileId || !/^[0-9a-f]{24}$/i.test(String(fileId))) {
+      setFileCollaborators([]);
+      setFileAccess(null);
+      return undefined;
+    }
+    (async () => {
+      try {
+        const data = await apiFetch(`/api/code-editor/files/${fileId}/collaborators`);
+        if (cancelled) return;
+        setFileCollaborators(data.collaborators || []);
+        setFileAccess(data.access || null);
+      } catch {
+        if (cancelled) return;
+        setFileCollaborators([]);
+        setFileAccess(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedFile?._id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!workspaceId) {
+      setCompanyMembers([]);
+      return undefined;
+    }
+    companyApi.getMembers(workspaceId)
+      .then((data) => { if (!cancelled) setCompanyMembers(data.members || []); })
+      .catch(() => { if (!cancelled) setCompanyMembers([]); });
+    return () => { cancelled = true; };
+  }, [workspaceId]);
+
   useEffect(() => {
     function handleClickOutside(e) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
@@ -1069,9 +1246,12 @@ export default function Editor() {
       } else if (k === 'w') {
         e.preventDefault();
         if (selectedFileRef.current) closeTab(selectedFileRef.current);
+      } else if (k === 'n' && e.shiftKey) {
+        e.preventDefault();
+        startInlineCreate('folder');
       } else if (k === 'n') {
         e.preventDefault();
-        startInlineCreate();
+        startInlineCreate('file');
       } else if (k === 'd' && e.shiftKey) {
         e.preventDefault();
         router.push('/dashboard');
@@ -1128,11 +1308,11 @@ export default function Editor() {
         const term = new xtermMod.Terminal({
           // VS Code dark+ palette
           theme: {
-            background: '#1e1e1e',
-            foreground: '#cccccc',
-            cursor: '#aeafad',
-            cursorAccent: '#1e1e1e',
-            selectionBackground: '#264f78',
+            background: '#0a0d15',
+            foreground: '#c7d2dd',
+            cursor: '#9aaeba',
+            cursorAccent: '#0a0d15',
+            selectionBackground: '#12dce533',
             black: '#000000',
             red: '#cd3131',
             green: '#0dbc79',
@@ -1140,15 +1320,15 @@ export default function Editor() {
             blue: '#2472c8',
             magenta: '#bc3fbc',
             cyan: '#11a8cd',
-            white: '#e5e5e5',
-            brightBlack: '#666666',
-            brightRed: '#f14c4c',
+            white: '#dee2f6',
+            brightBlack: '#59687a',
+            brightRed: '#ec1414',
             brightGreen: '#23d18b',
             brightYellow: '#f5f543',
             brightBlue: '#3b8eea',
             brightMagenta: '#d670d6',
             brightCyan: '#29b8db',
-            brightWhite: '#e5e5e5',
+            brightWhite: '#dee2f6',
           },
           fontFamily: "Menlo, Monaco, 'Courier New', monospace",
           fontSize: 13,
@@ -1164,7 +1344,7 @@ export default function Editor() {
         term.open(terminalRef.current);
         try { fit.fit(); } catch (_) { /* ignore */ }
 
-        if (!token) {
+        if (!token || isDemoTourActive()) {
           term.writeln('\x1b[31mNot authenticated — sign in to open a shell.\x1b[0m');
           return;
         }
@@ -1235,7 +1415,7 @@ export default function Editor() {
         }
       })
       .catch(() => {
-        if (terminalRef.current) terminalRef.current.innerHTML = '<div style="padding:1rem;color:#8c8c8c;font-size:0.76rem">Terminal failed to load. Refresh to retry.</div>';
+        if (terminalRef.current) terminalRef.current.innerHTML = '<div style="padding:1rem;color:#9aaeba;font-size:0.76rem">Terminal failed to load. Refresh to retry.</div>';
       });
 
     return () => {
@@ -1284,6 +1464,47 @@ export default function Editor() {
       setStatus({ type: 'error', msg: 'Failed to load files' });
     } finally {
       if (seq === filesSeqRef.current) setLoading(false);
+    }
+  }
+
+  async function loadFileSharing(fileId) {
+    if (!fileId || !/^[0-9a-f]{24}$/i.test(String(fileId))) {
+      setFileCollaborators([]);
+      setFileAccess(null);
+      return;
+    }
+    try {
+      const data = await apiFetch(`/api/code-editor/files/${fileId}/collaborators`);
+      setFileCollaborators(data.collaborators || []);
+      setFileAccess(data.access || null);
+    } catch {
+      setFileCollaborators([]);
+      setFileAccess(null);
+    }
+  }
+
+  async function updateFileCollaborator(userId, permission) {
+    const fileId = selectedFile?._id;
+    if (!fileId || !/^[0-9a-f]{24}$/i.test(String(fileId))) return;
+    setSharingBusy(String(userId));
+    try {
+      if (!permission) {
+        await apiFetch(`/api/code-editor/files/${fileId}/collaborators/${encodeURIComponent(userId)}`, {
+          method: 'DELETE',
+        });
+      } else {
+        await apiFetch(`/api/code-editor/files/${fileId}/collaborators`, {
+          method: 'POST',
+          body: JSON.stringify({ userId, permission }),
+        });
+      }
+      await loadFileSharing(fileId);
+      setStatus({ type: 'success', msg: permission ? 'File access updated' : 'Collaborator removed' });
+      setTimeout(() => setStatus(null), 2000);
+    } catch (err) {
+      setStatus({ type: 'error', msg: err.message || 'Could not update file access' });
+    } finally {
+      setSharingBusy(null);
     }
   }
 
@@ -1450,11 +1671,11 @@ export default function Editor() {
     }
   }
 
-  async function loadGithubRepoFiles(repo) {
+  async function loadGithubRepoFiles(repo, branch = selectedBranch) {
     const seq = ++filesSeqRef.current;
     setLoading(true);
     try {
-      const ref = repo.default_branch || repo.defaultBranch;
+      const ref = branch || repo.default_branch || repo.defaultBranch;
       const qs = `recursive=1${ref ? `&ref=${encodeURIComponent(ref)}` : ''}`;
       const data = await apiFetch(`/api/github/repos/${repo.owner}/${repo.name}/git/tree?${qs}`);
       if (seq !== filesSeqRef.current) return;
@@ -1476,9 +1697,10 @@ export default function Editor() {
   }
 
   async function loadGitStatus() {
-    if (!workspaceId) return;
+    if (!gitWorkspaceId) return;
     try {
-      const data = await apiFetch(`/api/git/status/${workspaceId}`).catch(() => null);
+      const projectQuery = gitProjectId ? `?projectId=${encodeURIComponent(gitProjectId)}` : '';
+      const data = await apiFetch(`/api/git/status/${encodeURIComponent(gitWorkspaceId)}${projectQuery}`).catch(() => null);
       // success:false = repo not initialised yet (or git error) — show the
       // empty state instead of a fake clean tree.
       if (data && data.success !== false) setGitStatus(data);
@@ -1489,7 +1711,7 @@ export default function Editor() {
   // Branch + recent commits + local changes for the selected GitHub repo.
   // Local changes = dirty buffers, locally-saved-but-unpushed files, and
   // parked drafts that differ from the last-known remote content.
-  async function loadRepoGitStatus(repo) {
+  async function loadRepoGitStatus(repo, branch = selectedBranch, stagedFiles = repoStaged) {
     if (!repo) return;
     const owner = repo.owner?.login || repo.owner || repo.ownerName || '';
     const fullName = repo.fullName || `${owner}/${repo.name}`;
@@ -1500,10 +1722,12 @@ export default function Editor() {
     } catch {}
     setGitStatus({
       success: true,
-      branch: repo.default_branch || repo.defaultBranch || 'main',
+      branch: branch || repo.default_branch || repo.defaultBranch || 'main',
       ahead: 0,
       behind: 0,
       modified: computeLocalModified(fullName),
+      created: repoPending.filter((file) => file.pending).map((file) => fileFullPath(file).replace(/^\/+/, '')),
+      staged: Array.from(stagedFiles),
       commits,
       isGithub: true,
       repo: fullName,
@@ -1520,12 +1744,12 @@ export default function Editor() {
       const buf = openContentsRef.current[k];
       const remote = remoteBaselineRef.current[k];
       const unpushed = repoFull && typeof buf === 'string' && typeof remote === 'string' && buf !== remote;
-      if (dirtyBuffer || unpushed) push(f.name || k, k);
+      if (dirtyBuffer || unpushed) push((fileFullPath(f) || f.name || k).replace(/^\/+/, ''), k);
     });
     Object.entries(parkedRef.current).forEach(([k, e]) => {
       if (e?.s !== 'gh' || typeof e.c !== 'string') return;
       const remote = e.g;
-      if (remote === undefined || e.c !== remote) push(e.n || k, k);
+      if (remote === undefined || e.c !== remote) push(String(e.p || e.n || k).replace(/^\/+/, ''), k);
     });
     return out;
   }
@@ -1544,7 +1768,7 @@ export default function Editor() {
       repositoryId: selectedRepo?._id || selectedProject?._id || 'local-workspace',
       repositoryName: selectedRepo?.name || selectedProject?.name || 'workspace',
       repositoryOwner: selectedRepo?.owner?.login || selectedRepo?.owner || selectedProject?.owner || user?.username || 'local',
-      branch: selectedRepo?.default_branch || selectedProject?.defaultBranch || 'main',
+      branch: selectedBranch || selectedRepo?.default_branch || selectedProject?.defaultBranch || 'main',
     };
 
     const data = await apiFetch('/api/ai-pair/session', {
@@ -1559,6 +1783,11 @@ export default function Editor() {
   const startAgentExecution = useCallback(async (taskLabel) => {
     const goal = taskLabel || (selectedFile ? `Fix ${selectedFile.name}` : 'Review workspace');
     const title = selectedFile ? `Fix ${selectedFile.name}` : 'Review workspace';
+    const delegateWorkspaceId = workspaceId || selectedProject?.workspaceId || null;
+    if (!delegateWorkspaceId) {
+      toastError('Select a workspace before delegating to the agent.');
+      return;
+    }
 
     clearAgentPoll();
     setAgentExecution({
@@ -1577,8 +1806,7 @@ export default function Editor() {
     });
 
     try {
-      const wsId = workspaceId || selectedProject?._id || selectedProject?.id || null;
-      const data = await agentApi.delegate({ taskTitle: title, summary: goal, workspaceId: wsId });
+      const data = await agentApi.delegate({ taskTitle: title, summary: goal, workspaceId: delegateWorkspaceId });
       const exec = data?.execution;
       if (!data?.success || !exec?._id) throw new Error(data?.message || 'Delegation failed');
       const backendId = exec._id;
@@ -1730,7 +1958,7 @@ export default function Editor() {
     setAiLoading(true);
     try {
       const session = await ensureAiSession();
-      const companyId = selectedCompany?._id;
+      const companyId = selectedProject?.workspaceId || selectedCompany?._id;
       const shouldUseAgentLoop = /fix|refactor|review|debug|ship|patch|build|deploy/i.test(input);
       // Never ship secrets to the model: .env* files are stripped from AI
       // context (paste values explicitly if the question needs them).
@@ -1761,18 +1989,18 @@ export default function Editor() {
           companyId,
           enableActions: shouldUseAgentLoop,
           useAgentLoop: shouldUseAgentLoop,
-          codeContext: {
-            workspace: {
-              id: workspaceId || selectedProject?._id || selectedRepo?._id || 'local-workspace',
-              name: selectedProject?.name || selectedRepo?.name || 'workspace',
-            },
+            codeContext: {
+              workspace: {
+                id: selectedProject?.workspaceId || workspaceId || selectedRepo?._id || 'local-workspace',
+                name: selectedProject?.name || selectedRepo?.name || 'workspace',
+              },
             files: safeFiles.map((file) => ({ id: file._id || file.id, name: file.name, path: file.path, language: file.language })),
             currentFile: safeCurrent,
             repository: selectedRepo ? {
               id: selectedRepo._id || selectedRepo.id,
               name: selectedRepo.name,
               owner: selectedRepo.owner?.login || selectedRepo.owner || 'local',
-              defaultBranch: selectedRepo.default_branch || 'main',
+              defaultBranch: selectedBranch || selectedRepo.default_branch || 'main',
             } : undefined,
           },
         }),
@@ -1799,7 +2027,7 @@ export default function Editor() {
     const owner = selectedRepo.owner?.login || selectedRepo.owner || selectedRepo.ownerName;
     const repo = selectedRepo.name;
     const path = String(file.path).replace(/^\/+/, '');
-    const ref = selectedRepo.default_branch ? `?ref=${encodeURIComponent(selectedRepo.default_branch)}` : '';
+    const ref = selectedBranch ? `?ref=${encodeURIComponent(selectedBranch)}` : '';
     try {
       const data = await apiFetch(`/api/github/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}${ref}`);
       const content = data?.file?.content ?? '';
@@ -1808,49 +2036,63 @@ export default function Editor() {
       console.warn('GitHub repo file content load failed:', err);
     }
     return file?.content || '';
-  }, [selectedRepo]);
+  }, [selectedRepo, selectedBranch]);
 
-  const loadFile = useCallback(async (file) => {
+  const loadFile = useCallback((file) => {
+    const requestId = ++fileLoadSequenceRef.current;
     const fileKey = getFileKey(file);
     const sourceFile = file && file.path && selectedRepo ? { ...file, _id: fileKey, id: fileKey, source: 'github', owner: selectedRepo.owner?.login || selectedRepo.owner, repo: selectedRepo.name } : file;
     const saved = openContentsRef.current[fileKey];
-    let val;
-    let baseline;
-    if (saved !== undefined) {
-      // Buffer already in memory (open tab, restored session, or local draft).
-      val = saved;
-      baseline = openOriginalsRef.current[fileKey] ?? saved;
-    } else if (sourceFile?.source === 'github') {
-      baseline = await fetchGithubFileContent(sourceFile);
-      val = baseline;
-    } else if (file?.content !== undefined && file?.content !== null) {
-      baseline = file.content;
-      val = file.content;
-    } else if (/^[0-9a-f]{24}$/i.test(String(file?._id || ''))) {
-      // Project file lists are metadata-only — hydrate the real content so
-      // opening a project file (and saving it) actually works.
-      try {
-        const data = await apiFetch(`/api/code-editor/files/${file._id}`);
-        baseline = typeof data?.file?.content === 'string' ? data.file.content : '';
-      } catch (_) {
-        baseline = '';
-      }
-      val = baseline;
-    } else {
-      baseline = '';
-      val = '';
-    }
-    if (sourceFile?.source === 'github' && remoteBaselineRef.current[fileKey] === undefined) {
-      remoteBaselineRef.current[fileKey] = baseline;
-    }
+    const hasInlineContent = file?.content !== undefined && file?.content !== null;
+    const needsFetch = saved === undefined && (
+      sourceFile?.source === 'github'
+      || (!hasInlineContent && /^[0-9a-f]{24}$/i.test(String(file?._id || '')))
+    );
+    const baseline = saved !== undefined
+      ? openOriginalsRef.current[fileKey] ?? saved
+      : hasInlineContent ? file.content : '';
+    const initialContent = saved !== undefined ? saved : baseline;
+
     setSelectedFile(sourceFile || file);
-    setContent(val);
-    openContentsRef.current[fileKey] = val;
-    openOriginalsRef.current[fileKey] = baseline;
-    schedulePersist();
+    setContent(initialContent);
+    setFileLoading(needsFetch);
     refreshProblems();
     setShowProjectSelector(false);
     setStatus(null);
+    if (!needsFetch) {
+      openContentsRef.current[fileKey] = initialContent;
+      openOriginalsRef.current[fileKey] = baseline;
+      if (sourceFile?.source === 'github' && remoteBaselineRef.current[fileKey] === undefined) {
+        remoteBaselineRef.current[fileKey] = baseline;
+      }
+      schedulePersist();
+    } else {
+      const requestContent = sourceFile?.source === 'github'
+        ? fetchGithubFileContent(sourceFile)
+        : apiFetch(`/api/code-editor/files/${file._id}`).then((data) => {
+          if (typeof data?.file?.content !== 'string') {
+            throw new Error('The file response did not include content.');
+          }
+          return data.file.content;
+        });
+      Promise.resolve(requestContent).then((loadedContent) => {
+        if (requestId !== fileLoadSequenceRef.current) return;
+        const resolvedContent = String(loadedContent ?? '');
+        if (sourceFile?.source === 'github' && remoteBaselineRef.current[fileKey] === undefined) {
+          remoteBaselineRef.current[fileKey] = resolvedContent;
+        }
+        openContentsRef.current[fileKey] = resolvedContent;
+        openOriginalsRef.current[fileKey] = resolvedContent;
+        setContent(resolvedContent);
+        setFileLoading(false);
+        schedulePersist();
+        refreshProblems();
+      }).catch((error) => {
+        if (requestId !== fileLoadSequenceRef.current) return;
+        setFileLoading(false);
+        setStatus({ type: 'error', msg: error?.status === 404 ? 'That file no longer exists in this workspace.' : `Could not load ${file.name || 'file'}: ${error.message}` });
+      });
+    }
     if (sourceFile?._id) {
       apiFetch(`/api/collaboration/file/${sourceFile._id}/join`, { method: 'POST' }).catch(() => {});
     }
@@ -2273,10 +2515,9 @@ export default function Editor() {
     });
 
     // Keep the server-side document in sync with the buffer (debounced).
-    let lspChangeTimer = null;
     editor.onDidChangeModelContent(() => {
-      if (lspChangeTimer) clearTimeout(lspChangeTimer);
-      lspChangeTimer = setTimeout(() => {
+      if (lspChangeTimerRef.current) clearTimeout(lspChangeTimerRef.current);
+      lspChangeTimerRef.current = setTimeout(() => {
         try {
           if (editor.isDisposed?.()) return;
           const model = editor.getModel();
@@ -2288,6 +2529,54 @@ export default function Editor() {
           // Editor remounted/disposed mid-debounce — stale timer, ignore.
         }
       }, 700);
+    });
+  }
+
+  useEffect(() => () => {
+    if (lspChangeTimerRef.current) clearTimeout(lspChangeTimerRef.current);
+  }, []);
+
+  function handleEditorWillMount(monaco) {
+    monaco.editor.defineTheme('buildrs-figma', {
+      base: 'vs-dark',
+      inherit: true,
+      rules: [
+        { token: 'comment', foreground: '59687a', fontStyle: 'italic' },
+        { token: 'keyword', foreground: '12dce5' },
+        { token: 'keyword.control', foreground: '12dce5' },
+        { token: 'string', foreground: '56e5a9' },
+        { token: 'number', foreground: 'c795e8' },
+        { token: 'regexp', foreground: 'e5b84a' },
+        { token: 'type', foreground: 'b0c6ff' },
+        { token: 'type.identifier', foreground: 'b0c6ff' },
+        { token: 'function', foreground: '68f7ff' },
+        { token: 'variable', foreground: 'c7d2dd' },
+        { token: 'attribute.name', foreground: 'e5b84a' },
+        { token: 'tag', foreground: '12dce5' },
+      ],
+      colors: {
+        'editor.background': '#0a0d15',
+        'editor.foreground': '#c7d2dd',
+        'editorLineNumber.foreground': '#59687a',
+        'editorLineNumber.activeForeground': '#9aaeba',
+        'editorCursor.foreground': '#12dce5',
+        'editor.selectionBackground': '#12dce533',
+        'editor.inactiveSelectionBackground': '#12dce51a',
+        'editor.lineHighlightBackground': '#ffffff0f',
+        'editorIndentGuide.background1': '#ffffff10',
+        'editorIndentGuide.activeBackground1': '#12dce54d',
+        'editorWidget.background': '#101d2c',
+        'editorWidget.border': '#ffffff1a',
+        'editorSuggestWidget.background': '#101d2c',
+        'editorSuggestWidget.border': '#ffffff1a',
+        'editorSuggestWidget.selectedBackground': '#1d263b',
+        'editorHoverWidget.background': '#101d2c',
+        'editorHoverWidget.border': '#ffffff1a',
+        'editorGutter.background': '#0a0d15',
+        'scrollbarSlider.background': '#ffffff10',
+        'scrollbarSlider.hoverBackground': '#ffffff24',
+        'minimap.background': '#0a0d15',
+      },
     });
   }
 
@@ -2351,7 +2640,7 @@ export default function Editor() {
   // VS Code-style creation: the new file appears as an editable row in the
   // explorer. Enter commits, Escape/blur cancels, and the file lands in the
   // selected file's folder (or the workspace root).
-  function startInlineCreate() {
+  function startInlineCreate(kind = 'file') {
     if (creating) return;
     // Use the ref so the global ⌘N shortcut (registered once) targets the
     // file selected now, not the one selected at mount.
@@ -2363,7 +2652,7 @@ export default function Editor() {
       setExpandedFolders((prev) => ({ ...prev, [parentPath]: true }));
     }
     inlineCancelledRef.current = false;
-    setInlineCreate({ parentPath, value: '' });
+    setInlineCreate({ kind, parentPath, value: '' });
   }
 
   function cancelInlineCreate() {
@@ -2423,6 +2712,7 @@ export default function Editor() {
     const created = data.file || data;
     setStatus({ type: 'success', msg: 'File created' });
     setTimeout(() => setStatus(null), 2000);
+    if (!workspaceId) await refetchCompanies();
     await reloadFiles();
     if (created) {
       openFile(created);
@@ -2430,31 +2720,17 @@ export default function Editor() {
     }
   }
 
-  async function commitInlineCreate() {
-    if (!inlineCreate || creating || inlineCancelledRef.current) return;
-    inlineCancelledRef.current = true;
-    const value = inlineCreate.value.trim();
-    setInlineCreate(null);
-    if (!value) return;
-    try {
-      setCreating(true);
-      await createFileAt(value, inlineCreate.parentPath);
-    } catch (err) {
-      setStatus({ type: 'error', msg: err.message || 'Create failed' });
-    } finally {
-      setCreating(false);
-    }
-  }
+  async function createFolderAt(rawName, parentPath) {
+    const segments = String(rawName || '').trim().split('/').filter(Boolean);
+    if (!segments.length || segments.some((s) => s === '.' || s === '..')) return;
+    const name = segments.join('/');
+    const parent = String(parentPath || '').replace(/^\/+|\/+$/g, '');
+    const dir = [parent, ...segments].filter(Boolean).join('/');
+    const full = `/${dir}`;
 
-  async function handleCreateFolder(e) {
-    e.preventDefault();
-    if (!newFolderName.trim()) return;
     if (selectedRepo && !selectedProject) {
       // Repo mode: stage a .gitkeep placeholder (git can't track empty
       // folders) until Commit & Push publishes it.
-      const name = newFolderName.trim();
-      const dir = (newFolderPath || '/').replace(/\/+$/, '');
-      const full = `${dir}/${name}`.replace(/\/{2,}/g, '/');
       const entry = {
         _id: `pending-dir:${full}`,
         id: `pending-dir:${full}`,
@@ -2466,36 +2742,45 @@ export default function Editor() {
         pending: true,
       };
       setRepoPending((prev) => [...prev.filter((f) => getFileKey(f) !== getFileKey(entry)), entry]);
-      setShowNewFolderModal(false);
-      setNewFolderName('');
       setStatus({ type: 'success', msg: 'Folder staged — Commit & Push to publish it' });
       setExpandedFolders((prev) => ({ ...prev, [full]: true }));
       return;
     }
+
+    const data = await apiFetch('/api/vfs/folders', {
+      method: 'POST',
+      body: JSON.stringify({
+        name,
+        path: parent ? `/${parent}` : '/',
+        companyId: selectedProject?.workspaceId || workspaceId,
+        projectId: selectedProject?._id || selectedProject?.id || null,
+      }),
+    });
+    if (!data.success) {
+      throw new Error(data.error || data.message || 'Folder create failed');
+    }
+    setStatus({ type: 'success', msg: 'Folder created' });
+    setTimeout(() => setStatus(null), 2000);
+    setExpandedFolders((prev) => ({ ...prev, [full]: true }));
+    await reloadFiles();
+  }
+
+  async function commitInlineCreate() {
+    if (!inlineCreate || creating || inlineCancelledRef.current) return;
+    inlineCancelledRef.current = true;
+    const { kind, parentPath, value } = inlineCreate;
+    const trimmed = value.trim();
+    setInlineCreate(null);
+    if (!trimmed) return;
     try {
       setCreating(true);
-      const folderPath = newFolderPath || '/';
-      const data = await apiFetch('/api/vfs/folders', {
-        method: 'POST',
-        body: JSON.stringify({
-          name: newFolderName.trim(),
-          path: folderPath,
-          companyId: selectedProject?.workspaceId || workspaceId,
-          projectId: selectedProject?._id || selectedProject?.id || null,
-        }),
-      });
-      if (!data.success) {
-        throw new Error(data.error || 'Folder create failed');
+      if (kind === 'folder') {
+        await createFolderAt(trimmed, parentPath);
+      } else {
+        await createFileAt(trimmed, parentPath);
       }
-      setShowNewFolderModal(false);
-      setNewFolderName('');
-      setStatus({ type: 'success', msg: 'Folder created' });
-      setTimeout(() => setStatus(null), 2000);
-      const fp = (folderPath === '/' ? '' : folderPath) + '/' + newFolderName.trim();
-      setExpandedFolders((prev) => ({ ...prev, [fp]: true }));
-      await reloadFiles();
     } catch (err) {
-      setStatus({ type: 'error', msg: err.message || 'Folder create failed' });
+      setStatus({ type: 'error', msg: err.message || `${kind === 'folder' ? 'Folder' : 'File'} create failed` });
     } finally {
       setCreating(false);
     }
@@ -2529,6 +2814,13 @@ export default function Editor() {
       const p = fileFullPath(f);
       if (seenPaths.has(p)) return false;
       seenPaths.add(p);
+      const key = getFileKey(f);
+      const hasBuffer = key in openContentsRef.current;
+      const hasParked = key in parkedRef.current;
+      // For GitHub repo entries that were never opened or parked, there is no
+      // resolvable content — pushing them with empty content would wipe the
+      // remote file. Workspace CodeFiles always carry content in file.content.
+      if (selectedRepo && !selectedProject && !hasBuffer && !hasParked && file.content === undefined) return false;
       return true;
     }).map((file) => {
       const key = getFileKey(file);
@@ -2615,7 +2907,7 @@ export default function Editor() {
         repo: selectedRepo ? {
           owner: selectedRepo.owner?.login || selectedRepo.owner || selectedRepo.ownerName,
           name: selectedRepo.name,
-          defaultBranch: selectedRepo.default_branch || 'main',
+          defaultBranch: selectedBranch || selectedRepo.default_branch || 'main',
           fullName: selectedRepo.fullName || selectedRepo.name,
         } : null,
         files: deploymentFiles,
@@ -2674,11 +2966,21 @@ export default function Editor() {
         }
 
         if (action === 'commit' || action === 'push') {
-          const filesToPush = gatherDeploymentFiles().filter(
-            (file) => !!file.name && typeof file.content === 'string'
-          );
+          const allFiles = gatherDeploymentFiles();
+          const stagedPaths = repoStaged;
+          const filesToPush = allFiles.filter((file) => {
+            if (!file.name || typeof file.content !== 'string') return false;
+            const filePath = fileFullPath(file).replace(/^\/+/, '');
+            if (!stagedPaths.has(filePath)) return false;
+            const key = getFileKey(file);
+            const remote = remoteBaselineRef.current[key];
+            if (remote === undefined) return true; // new file — always push
+            return file.content !== remote; // skip unchanged files
+          });
           if (!filesToPush.length) {
-            setStatus({ type: 'error', msg: 'No file changes to push to the selected repository.' });
+            setStatus({ type: 'error', msg: stagedPaths.size
+              ? 'The staged files have no content changes to push.'
+              : 'Stage at least one changed file before committing.' });
             return;
           }
 
@@ -2691,7 +2993,7 @@ export default function Editor() {
             body: JSON.stringify({
               owner: repoOwner,
               repo: repoName,
-              branch: selectedRepo.default_branch || selectedRepo.defaultBranch || 'main',
+              branch: selectedBranch || selectedRepo.default_branch || selectedRepo.defaultBranch || 'main',
               files: filesToPush.map((file) => ({
                 path: (file.fullPath || fileFullPath(file)).replace(/^\/+/, ''),
                 content: file.content,
@@ -2704,26 +3006,29 @@ export default function Editor() {
             throw new Error(data.message || 'GitHub push failed');
           }
 
-          // Push published everything — local drafts now match the remote.
           const fullName = selectedRepo.fullName || `${repoOwner}/${repoName}`;
-          Object.keys(openContentsRef.current).forEach((k) => {
-            if (String(k).startsWith('github:')) {
-              remoteBaselineRef.current[k] = openContentsRef.current[k];
+          const pushedKeys = new Set(filesToPush.map((file) => getFileKey(file)));
+          filesToPush.forEach((file) => {
+            const key = getFileKey(file);
+            remoteBaselineRef.current[key] = file.content;
+            openOriginalsRef.current[key] = file.content;
+            if (typeof openContentsRef.current[key] === 'string') {
+              openContentsRef.current[key] = file.content;
             }
           });
-          Object.keys(parkedRef.current).forEach((k) => {
-            const e = parkedRef.current[k];
-            if (e?.s === 'gh' && (!e.r || e.r === fullName)) delete parkedRef.current[k];
-          });
-          openFiles.forEach((f) => {
-            const k = getFileKey(f);
-            if (String(k).startsWith('github:')) openOriginalsRef.current[k] = openContentsRef.current[k];
+          Object.keys(parkedRef.current).forEach((key) => {
+            if (pushedKeys.has(key)) delete parkedRef.current[key];
           });
           schedulePersist();
           refreshGitModified();
           setCommitMsg('');
-          setRepoPending([]); // staged entries are on the remote now
-          await loadRepoGitStatus(selectedRepo).catch(() => {});
+          const pushedPaths = new Set(filesToPush.map((file) => fileFullPath(file).replace(/^\/+/, '')));
+          setRepoPending((pending) => pending.filter((file) => !pushedPaths.has(fileFullPath(file).replace(/^\/+/, ''))));
+          const remainingStaged = new Set(
+            [...repoStaged].filter((filePath) => !pushedPaths.has(filePath))
+          );
+          setRepoStaged(remainingStaged);
+          await loadRepoGitStatus(selectedRepo, selectedBranch, remainingStaged).catch(() => {});
 
           setStatus({
             type: 'success',
@@ -2737,13 +3042,14 @@ export default function Editor() {
       }
     }
 
-    if (!workspaceId) {
+    if (!gitWorkspaceId) {
       setStatus({ type: 'error', msg: 'Join a workspace or select a GitHub repo to use version control.' });
       return;
     }
     try {
       if (action === 'status') {
-        const data = await apiFetch(`/api/git/status/${workspaceId}`);
+        const projectQuery = gitProjectId ? `?projectId=${encodeURIComponent(gitProjectId)}` : '';
+        const data = await apiFetch(`/api/git/status/${encodeURIComponent(gitWorkspaceId)}${projectQuery}`);
         setGitStatus(data);
         setStatus({ type: 'success', msg: 'Git status refreshed' });
         return;
@@ -2755,9 +3061,14 @@ export default function Editor() {
           setStatus({ type: 'error', msg: 'Write a commit message first.' });
           return;
         }
+        const files = gitStatus?.staged || [];
+        if (!files.length) {
+          setStatus({ type: 'error', msg: 'Stage at least one changed file before committing.' });
+          return;
+        }
         const commit = () => apiFetch('/api/git/commit', {
           method: 'POST',
-          body: JSON.stringify({ workspaceId, message }),
+          body: JSON.stringify({ workspaceId: gitWorkspaceId, projectId: gitProjectId, message, files }),
         });
         let data = await commit();
         if (data?.success === false && /not a git repository/i.test(String(data.error || ''))) {
@@ -2765,7 +3076,8 @@ export default function Editor() {
           await apiFetch('/api/git/init', {
             method: 'POST',
             body: JSON.stringify({
-              workspaceId,
+              workspaceId: gitWorkspaceId,
+              projectId: gitProjectId,
               userName: user?.fullName || 'CODEX User',
               userEmail: user?.email || 'user@codex.dev',
             }),
@@ -2774,7 +3086,8 @@ export default function Editor() {
         }
         if (data?.success === false) throw new Error(data.error || 'Commit failed');
         setCommitMsg('');
-        const st = await apiFetch(`/api/git/status/${workspaceId}`).catch(() => null);
+        const projectQuery = gitProjectId ? `?projectId=${encodeURIComponent(gitProjectId)}` : '';
+        const st = await apiFetch(`/api/git/status/${encodeURIComponent(gitWorkspaceId)}${projectQuery}`).catch(() => null);
         if (st && st.success !== false) setGitStatus(st);
         setStatus({
           type: 'success',
@@ -2785,7 +3098,7 @@ export default function Editor() {
 
       const data = await apiFetch(`/api/git/${action}`, {
         method: 'POST',
-        body: JSON.stringify({ workspaceId, fileId: selectedFile?._id }),
+        body: JSON.stringify({ workspaceId: gitWorkspaceId, fileId: selectedFile?._id }),
       });
       if (data?.success === false) throw new Error(data.error || `Git ${action} failed`);
       setGitStatus((prev) => (data && (data.branch !== undefined || data.modified !== undefined)
@@ -2801,13 +3114,47 @@ export default function Editor() {
   }
 
   async function loadFileDiff(file) {
-    if (!workspaceId) return;
+    if (selectedRepo) {
+      const fileEntry = [...files, ...repoPending].find((item) => fileFullPath(item).replace(/^\/+/, '') === file);
+      if (!fileEntry) return;
+      const key = getFileKey(fileEntry);
+      const current = key === getFileKey(selectedFile)
+        ? content
+        : openContentsRef.current[key] ?? fileEntry.content ?? '';
+      const original = remoteBaselineRef.current[key] ?? '';
+      const changes = diffLines(original, String(current));
+      const diffChanges = changes.flatMap((part) => {
+        const lines = part.value.split('\n');
+        if (part.value.endsWith('\n')) lines.pop();
+        const type = part.added ? 'add' : part.removed ? 'remove' : 'context';
+        return lines.map((line) => ({ type, content: line }));
+      });
+      setDiffFile(file);
+      setDiffData(diffChanges.length ? [{
+        oldPath: file,
+        newPath: file,
+        hunks: [{
+          oldStart: 1,
+          oldLines: changes.filter((part) => !part.added).reduce((count, part) => count + part.count, 0),
+          newStart: 1,
+          newLines: changes.filter((part) => !part.removed).reduce((count, part) => count + part.count, 0),
+          header: '',
+          changes: diffChanges,
+        }],
+      }] : []);
+      setDiffOpen(true);
+      setDiffLoading(false);
+      return;
+    }
+    if (!gitWorkspaceId) return;
     setDiffOpen(true);
     setDiffLoading(true);
     setDiffFile(file);
     setDiffData(null);
     try {
-      const data = await apiFetch(`/api/git/diff/${workspaceId}?file=${encodeURIComponent(file)}`);
+      const query = new URLSearchParams({ file });
+      if (gitProjectId) query.set('projectId', gitProjectId);
+      const data = await apiFetch(`/api/git/diff/${encodeURIComponent(gitWorkspaceId)}?${query}`);
       setDiffData(data.parsed || []);
     } catch {
       setDiffData([]);
@@ -2896,7 +3243,7 @@ export default function Editor() {
         repo: selectedRepo ? {
           owner: selectedRepo.owner?.login || selectedRepo.owner || selectedRepo.ownerName,
           name: selectedRepo.name,
-          defaultBranch: selectedRepo.default_branch || 'main',
+          defaultBranch: selectedBranch || selectedRepo.default_branch || 'main',
           fullName: selectedRepo.fullName || selectedRepo.name,
         } : null,
         files: deploymentFiles,
@@ -3031,7 +3378,7 @@ export default function Editor() {
           body: JSON.stringify({
             owner: repoOwner,
             repo: selectedRepo.name,
-            branch: selectedRepo.default_branch || selectedRepo.defaultBranch || 'main',
+            branch: selectedBranch || selectedRepo.default_branch || selectedRepo.defaultBranch || 'main',
             path: (file.fullPath || fileFullPath(file)).replace(/^\/+/, ''),
           }),
         });
@@ -3055,6 +3402,7 @@ export default function Editor() {
       toastError(err.message || 'Delete failed');
     }
   };
+
 
   const paletteEntries = (() => {
     const q = paletteQuery.trim().toLowerCase();
@@ -3087,8 +3435,69 @@ export default function Editor() {
   })();
 
   function showSidebar(view) {
+    if (sidebarVisible && activeSidebar === view) {
+      setSidebarVisible(false);
+      return;
+    }
     setActiveSidebar(view);
     setSidebarVisible(true);
+  }
+
+  async function chooseBranch(branch) {
+    setBranchMenuOpen(false);
+    if (!branch || branch === selectedBranch) return;
+
+    try {
+      if (selectedRepo) {
+        setSelectedBranch(branch);
+        setRepoStaged(new Set());
+        setSelectedFile(null);
+        setContent('');
+        await loadGithubRepoFiles(selectedRepo, branch);
+        await loadRepoGitStatus(selectedRepo, branch);
+      } else if (gitWorkspaceId) {
+        const data = await apiFetch('/api/git/checkout', {
+          method: 'POST',
+          body: JSON.stringify({ workspaceId: gitWorkspaceId, projectId: gitProjectId, branchName: branch }),
+        });
+        if (data?.success === false) throw new Error(data.error || 'Branch checkout failed');
+        setSelectedBranch(branch);
+        await loadGitStatus();
+      } else {
+        setSelectedBranch(branch);
+      }
+      setStatus({ type: 'success', msg: `Switched to ${branch}` });
+    } catch (error) {
+      setBranchError(error.message || 'Unable to switch branches');
+      setStatus({ type: 'error', msg: `Branch switch failed: ${error.message}` });
+    }
+  }
+
+  async function toggleFileStage(filePath, currentlyStaged) {
+    if (!filePath) return;
+    if (selectedRepo) {
+      const normalizedPath = String(filePath).replace(/^\/+/, '');
+      const next = new Set(repoStaged);
+      if (currentlyStaged) next.delete(normalizedPath);
+      else next.add(normalizedPath);
+      setRepoStaged(next);
+      setGitStatus((prev) => prev?.isGithub ? { ...prev, staged: Array.from(next) } : prev);
+      return;
+    }
+    if (!gitWorkspaceId) {
+      setStatus({ type: 'error', msg: 'Select a project or workspace before staging files.' });
+      return;
+    }
+    try {
+      const data = await apiFetch(`/api/git/${currentlyStaged ? 'reset' : 'add'}`, {
+        method: 'POST',
+        body: JSON.stringify({ workspaceId: gitWorkspaceId, projectId: gitProjectId, files: [filePath] }),
+      });
+      if (data?.success === false) throw new Error(data.error || 'Unable to update staged files');
+      await loadGitStatus();
+    } catch (error) {
+      setStatus({ type: 'error', msg: `Could not ${currentlyStaged ? 'unstage' : 'stage'} ${filePath}: ${error.message}` });
+    }
   }
 
   const runPaletteEntry = (entry) => {
@@ -3099,9 +3508,25 @@ export default function Editor() {
   };
 
   const extList = languages.filter((l) => l.allowed !== false);
-  const modifiedCount = (gitStatus?.modified?.length || 0)
-    + (gitStatus?.created?.length || 0)
-    + (gitStatus?.deleted?.length || 0);
+  const scmEntryMap = new Map();
+  [
+    ...(gitStatus?.modified || []).map((name) => ({ name, letter: 'M', color: '#e5b84a' })),
+    ...(gitStatus?.created || []).map((name) => ({ name, letter: 'A', color: '#03ba03' })),
+    ...(gitStatus?.deleted || []).map((name) => ({ name, letter: 'D', color: '#ec1414' })),
+    ...(gitStatus?.staged || []).map((name) => ({
+      name,
+      letter: (gitStatus?.created || []).includes(name) ? 'A' : 'M',
+      color: (gitStatus?.created || []).includes(name) ? '#03ba03' : '#e5b84a',
+    })),
+  ].forEach((entry) => {
+    if (!scmEntryMap.has(entry.name)) scmEntryMap.set(entry.name, entry);
+  });
+  const scmEntries = Array.from(scmEntryMap.values());
+  const modifiedCount = scmEntries.length;
+  const stagedPaths = selectedRepo ? repoStaged : new Set(gitStatus?.staged || []);
+  const stagedEntries = scmEntries.filter(({ name }) => stagedPaths.has(name));
+  const unstagedEntries = scmEntries.filter(({ name }) => !stagedPaths.has(name));
+  const stagedCount = selectedRepo ? repoStaged.size : (gitStatus?.staged?.length || 0);
   const blockCount = languages.filter((l) => l.allowed === false).length;
   const problemCounts = useMemo(
     () => countProblems([...externalProblems, ...problemList]),
@@ -3164,24 +3589,43 @@ export default function Editor() {
         <Sidebar
           user={user}
           subscription={subscription}
-          headerBranch={gitStatus?.branch || selectedRepo?.default_branch || selectedRepo?.defaultBranch || selectedProject?.defaultBranch || 'main'}
+          headerBranch={selectedBranch || gitStatus?.branch || selectedRepo?.default_branch || selectedRepo?.defaultBranch || selectedProject?.defaultBranch || 'main'}
         />
         <main className="workspace-main ed-workspace-main">
           <header className="ed-global-header">
             <div className="ed-global-context">
+              <div className="ed-branch-wrap">
               <button
                 type="button"
                 className="ed-global-branch"
-                onClick={() => {
-                  showSidebar('explorer');
-                  setShowProjectSelector(true);
-                }}
-                title="Switch workspace, project, or repository"
+                onClick={() => setBranchMenuOpen((open) => !open)}
+                title="Switch branch"
               >
                 <GitBranch className="w-3.5 h-3.5" />
-                <span>{gitStatus?.branch || selectedRepo?.default_branch || selectedRepo?.defaultBranch || selectedProject?.defaultBranch || 'main'}</span>
-                <ChevronDown className="w-3.5 h-3.5" />
+                <span>{selectedBranch || gitStatus?.branch || 'main'}</span>
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${branchMenuOpen ? 'rotate-180' : ''}`} />
               </button>
+              {branchMenuOpen && (
+                <div className="ed-branch-menu">
+                  {branchError && <div className="ed-drop-section">{branchError}</div>}
+                  {availableBranches.map((branch) => (
+                    <button
+                      key={branch}
+                      type="button"
+                      className={`ed-drop-item ${branch === selectedBranch ? 'is-active' : ''}`}
+                      onClick={() => chooseBranch(branch)}
+                    >
+                      <GitBranch className="w-3.5 h-3.5" />
+                      <span>{branch}</span>
+                      {branch === selectedBranch && <CheckCircle className="w-3.5 h-3.5 ml-auto" />}
+                    </button>
+                  ))}
+                  {!availableBranches.length && !branchError && (
+                    <div className="ed-drop-section">No branches available</div>
+                  )}
+                </div>
+              )}
+              </div>
               {gitStatus && (
                 <span className={`ed-global-status ${modifiedCount ? 'is-changed' : 'is-clean'}`}>
                   <span />
@@ -3203,6 +3647,7 @@ export default function Editor() {
               <span>Search specs, diff, agents</span>
               <kbd>⌘K</kbd>
             </button>
+
           </header>
           <div className="ed-page">
             {/* ---- Editor workspace ---- */}
@@ -3226,9 +3671,6 @@ export default function Editor() {
             <button type="button" className="ed-actbtn" onClick={() => setAboutOpen(true)} title="Help & shortcuts">
               <HelpCircle className="w-5 h-5" />
             </button>
-            <button type="button" className="ed-actbtn" onClick={() => router.push('/settings')} title="Settings">
-              <Settings className="w-5 h-5" />
-            </button>
           </nav>
 
           {/* ---- Contextual sidebar ---- */}
@@ -3240,7 +3682,7 @@ export default function Editor() {
                     <span className="ed-sidebar-title">Explorer</span>
                     <div className="ed-sidebar-actions">
                       <button type="button" className="ed-sidebar-btn" onClick={() => startInlineCreate()} title="New File"><FilePlus className="w-3.5 h-3.5" /></button>
-                      <button type="button" className="ed-sidebar-btn" onClick={() => setShowNewFolderModal(true)} title="New Folder"><FolderPlus className="w-3.5 h-3.5" /></button>
+                      <button type="button" className="ed-sidebar-btn" onClick={() => startInlineCreate('folder')} title="New Folder"><FolderPlus className="w-3.5 h-3.5" /></button>
                       <button type="button" className="ed-sidebar-btn" onClick={reloadFiles} title="Refresh"><RefreshCw className="w-3.5 h-3.5" /></button>
                     </div>
                   </div>
@@ -3249,7 +3691,7 @@ export default function Editor() {
                       <button type="button" className="ed-project-btn" onClick={() => setShowProjectSelector(!showProjectSelector)}>
                         <FolderOpen className="w-3.5 h-3.5" />
                         <span className="ed-project-label">{selectedProject ? selectedProject.name : selectedRepo ? (selectedRepo.fullName || selectedRepo.name) : 'Workspace'}</span>
-                        <ChevronDown className={`w-3 h-3 transition-transform ${showProjectSelector ? 'rotate-180' : ''}`} style={{ color: '#6e6e6e' }} />
+                        <ChevronDown className={`w-3 h-3 transition-transform ${showProjectSelector ? 'rotate-180' : ''}`} style={{ color: '#748194' }} />
                       </button>
                       {showProjectSelector && (
                         <div className="ed-drop">
@@ -3295,7 +3737,8 @@ export default function Editor() {
                       ) : (
                         <>
                           {files.length === 0 && inlineCreate && (
-                            <InlineFileRow
+                            <InlineCreateRow
+                              kind={inlineCreate.kind}
                               depth={0}
                               value={inlineCreate.value}
                               inputRef={inlineInputRef}
@@ -3442,7 +3885,7 @@ export default function Editor() {
                   </div>
                   <div className="ed-sidebar-body ed-scm-body">
                     <div className="ed-scm-summary">
-                      <span className="ed-badge-dot" style={{ background: '#2fd6e6' }} />
+                      <span className="ed-badge-dot" style={{ background: '#12dce5' }} />
                       <b>{gitStatus?.branch || 'main'}</b>
                       <span className="ed-scm-remote">
                         {gitStatus?.repo
@@ -3471,9 +3914,9 @@ export default function Editor() {
                         type="button"
                         className="btn-workspace btn-primary ed-scm-commit-btn"
                         onClick={() => handleGitAction('commit')}
-                        disabled={modifiedCount === 0 || !(commitMsg || '').trim()}
-                        title={modifiedCount === 0
-                          ? 'No changes to commit'
+                        disabled={stagedCount === 0 || !(commitMsg || '').trim()}
+                        title={stagedCount === 0
+                          ? 'Stage changes before committing'
                           : (commitMsg || '').trim() ? 'Commit (Ctrl+Enter)' : 'Write a commit message'}
                       >
                         <GitCommit className="w-3.5 h-3.5 mr-1 inline" />
@@ -3488,33 +3931,46 @@ export default function Editor() {
                       </div>
                     )}
 
-                    <div className="ed-scm-section">
-                      <span>Changes{modifiedCount > 0 ? ` (${modifiedCount})` : ''}</span>
-                    </div>
-                    {modifiedCount === 0 ? (
+                    {scmEntries.length === 0 && (
                       <p className="ed-scm-clean">
                         {gitStatus ? 'Working tree clean' : 'No changes'}
                       </p>
-                    ) : (
-                      <div className="ed-scm-files">
-                        {[
-                          ...(gitStatus?.modified || []).map((n) => ({ n, letter: 'M', color: '#fbbf24' })),
-                          ...(gitStatus?.created || []).map((n) => ({ n, letter: 'A', color: '#34d399' })),
-                          ...(gitStatus?.deleted || []).map((n) => ({ n, letter: 'D', color: '#f87171' })),
-                        ].map(({ n, letter, color }) => (
-                          <button
-                            key={`${letter}:${n}`}
-                            type="button"
-                            className="ed-scm-file ed-scm-file-btn"
-                            onClick={() => loadFileDiff(n)}
-                            title={`View diff — ${letter}`}
-                          >
-                            <span className="ed-scm-status" style={{ color }}>{letter}</span>
-                            <span className="ed-scm-name">{n}</span>
-                          </button>
-                        ))}
-                      </div>
                     )}
+                    {[
+                      { title: 'Staged Changes', entries: stagedEntries, isStaged: true },
+                      { title: 'Changes', entries: unstagedEntries, isStaged: false },
+                    ].map(({ title, entries, isStaged }) => (
+                      <div key={title}>
+                        <div className="ed-scm-section">
+                          <span>{title} ({entries.length})</span>
+                        </div>
+                        <div className="ed-scm-files">
+                          {entries.map(({ name, letter, color }) => (
+                            <div key={`${title}:${letter}:${name}`} className="ed-scm-file-row">
+                              <button
+                                type="button"
+                                className="ed-scm-file ed-scm-file-btn"
+                                onClick={() => loadFileDiff(name)}
+                                title={`View diff — ${letter}`}
+                              >
+                                <span className="ed-scm-status" style={{ color }}>{letter}</span>
+                                <span className="ed-scm-name">{name}</span>
+                              </button>
+                              <button
+                                type="button"
+                                className="ed-scm-stage-btn"
+                                onClick={() => toggleFileStage(name, isStaged)}
+                                aria-label={`${isStaged ? 'Unstage' : 'Stage'} ${name}`}
+                                title={`${isStaged ? 'Unstage' : 'Stage'} changes`}
+                              >
+                                {isStaged ? <Minus className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
+                              </button>
+                            </div>
+                          ))}
+                          {!entries.length && <p className="ed-scm-clean">No files</p>}
+                        </div>
+                      </div>
+                    ))}
 
                     {(gitStatus?.commits || []).length > 0 && (
                       <div className="ed-scm-commits">
@@ -3630,7 +4086,7 @@ export default function Editor() {
                     </div>
                     {showSubdomainInput && (
                       <form onSubmit={confirmDeploy} className="ed-stat" style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                        <label className="ws-label" style={{ color: '#8c8c8c' }}>Choose a subdomain</label>
+                        <label className="ws-label" style={{ color: '#9aaeba' }}>Choose a subdomain</label>
                         {(() => {
                           const secretFiles = gatherDeploymentFiles().filter((f) =>
                             /(^|\/)\.env(\.|$)/i.test(`${f.path || ''}/${f.name || ''}`));
@@ -3648,11 +4104,11 @@ export default function Editor() {
                             onChange={(e) => setDeploySubdomain(e.target.value.replace(/[^a-z0-9-]/g, '-').toLowerCase())}
                             placeholder="my-app"
                             className="ws-input"
-                            style={{ minWidth: 0, flex: 1, fontFamily: 'ui-monospace, Menlo, Consolas, monospace', background: '#1e1e1e', borderColor: '#3c3c3c' }}
+                            style={{ minWidth: 0, flex: 1, fontFamily: 'var(--figma-font-mono)', background: '#0a0d15', borderColor: '#2a3446' }}
                             required
                             minLength={2}
                           />
-                          <span className="text-xs whitespace-nowrap" style={{ color: '#6e6e6e' }}>.buildrshq.dev</span>
+                          <span className="text-xs whitespace-nowrap" style={{ color: '#748194' }}>.buildrshq.dev</span>
                           <button type="submit" disabled={deploying || deploySubdomain.length < 2} className="btn-workspace btn-primary">
                             {deploying ? 'Deploying...' : 'Deploy'}
                           </button>
@@ -3664,7 +4120,7 @@ export default function Editor() {
                     )}
                     <div className="ed-sidebar-title" style={{ padding: '0.1rem 0.55rem' }}>Deployments</div>
                     {deployments.length === 0 ? (
-                      <p className="text-xs" style={{ color: '#6e6e6e', padding: '0.2rem 0.55rem' }}>Nothing deployed yet</p>
+                      <p className="text-xs" style={{ color: '#748194', padding: '0.2rem 0.55rem' }}>Nothing deployed yet</p>
                     ) : (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                         {deployments.slice(0, 4).map((d, i) => (
@@ -3675,7 +4131,7 @@ export default function Editor() {
                             title="View build & runtime logs"
                             onClick={() => setLogDeployId(d._id)}
                           >
-                            <span className="ed-badge-dot" style={{ background: d.status === 'success' ? '#28c840' : d.status === 'failed' ? '#f87171' : '#e5b84a' }} />
+                            <span className="ed-badge-dot" style={{ background: d.status === 'success' ? '#28c840' : d.status === 'failed' ? '#ec1414' : '#e5b84a' }} />
                             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.subdomain ? `${d.subdomain}.buildrshq.dev` : d._id || 'Deployment'}</span>
                           </div>
                         ))}
@@ -3700,12 +4156,12 @@ export default function Editor() {
                       {collaborators.length} collaborator(s) · {Object.keys(remoteCursors).length} remote cursor(s)
                     </div>
                     <div className="ed-stat" style={{ lineHeight: 1.8 }}>
-                      <span style={{ color: '#6e6e6e' }}>Invite link</span>
+                      <span style={{ color: '#748194' }}>Invite link</span>
                       <input
                         readOnly
                         value={selectedFile ? `${window.location.origin}/editor?file=${selectedFile._id}` : `${window.location.origin}/editor`}
                         onFocus={(e) => e.target.select()}
-                        style={{ width: '100%', background: 'transparent', border: 'none', outline: 'none', color: '#d4d4d4', fontSize: '0.68rem' }}
+                        style={{ width: '100%', background: 'transparent', border: 'none', outline: 'none', color: '#c7d2dd', fontSize: '0.68rem' }}
                       />
                     </div>
                     <button
@@ -3719,24 +4175,76 @@ export default function Editor() {
                     >
                       Copy Link
                     </button>
+                    {isWorkspaceFile && (
+                      <>
+                        <div className="ed-sidebar-title" style={{ padding: '0.1rem 0.55rem' }}>File access</div>
+                        {!fileAccess?.canManage && (
+                          <p className="text-xs" style={{ color: '#748194', padding: '0.2rem 0.55rem', lineHeight: 1.5 }}>
+                            {fileAccess
+                              ? 'Only the file owner or workspace admins can change who can edit this file.'
+                              : 'Checking file permissions…'}
+                          </p>
+                        )}
+                        {fileSharingRows.length === 0 ? (
+                          <p className="text-xs" style={{ color: '#748194', padding: '0.2rem 0.55rem' }}>
+                            No teammates to share this file with.
+                          </p>
+                        ) : (
+                          fileSharingRows.map((row) => (
+                            <div key={row.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.3rem 0.55rem' }}>
+                              <div style={{ minWidth: 0, flex: 1 }}>
+                                <div className="text-xs" style={{ color: '#c7d2dd', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {row.name}
+                                </div>
+                                {row.email && (
+                                  <div className="text-xs" style={{ color: '#748194', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {row.email}
+                                  </div>
+                                )}
+                              </div>
+                              <select
+                                aria-label={`Access for ${row.name}`}
+                                value={row.permission || ''}
+                                disabled={!fileAccess?.canManage || sharingBusy === row.id}
+                                onChange={(e) => updateFileCollaborator(row.id, e.target.value)}
+                                style={{
+                                  background: '#0a0d15',
+                                  color: '#c7d2dd',
+                                  border: '1px solid rgba(255,255,255,0.12)',
+                                  borderRadius: 6,
+                                  fontSize: '0.66rem',
+                                  padding: '0.2rem 0.25rem',
+                                  maxWidth: 96,
+                                }}
+                              >
+                                <option value="">No access</option>
+                                <option value="read">Can view</option>
+                                <option value="write">Can edit</option>
+                                {row.permission === 'admin' && <option value="admin">Can manage</option>}
+                              </select>
+                            </div>
+                          ))
+                        )}
+                      </>
+                    )}
                     <div className="ed-sidebar-title" style={{ padding: '0.1rem 0.55rem' }}>Active</div>
                     {collaborators.length === 0 ? (
-                      <p className="text-xs" style={{ color: '#6e6e6e', padding: '0.2rem 0.55rem' }}>No active collaborators yet</p>
+                      <p className="text-xs" style={{ color: '#748194', padding: '0.2rem 0.55rem' }}>No active collaborators yet</p>
                     ) : (
                       collaborators.map((c, i) => (
                         <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.35rem 0.55rem' }}>
-                          <div className="ed-member-av" style={{ background: 'rgba(47,214,230,0.15)', color: '#2fd6e6', width: 26, height: 26, fontSize: '0.7rem' }}>{c.name?.[0] || 'U'}</div>
+                          <div className="ed-member-av" style={{ background: 'rgba(18,220,229,0.15)', color: '#12dce5', width: 26, height: 26, fontSize: '0.7rem' }}>{c.name?.[0] || 'U'}</div>
                           <div style={{ minWidth: 0 }}>
-                            <div className="text-xs" style={{ color: '#d4d4d4', fontWeight: 600 }}>{c.name || 'Anonymous'}</div>
-                            {c.email && <div className="text-xs" style={{ color: '#6e6e6e' }}>{c.email}</div>}
+                            <div className="text-xs" style={{ color: '#c7d2dd', fontWeight: 600 }}>{c.name || 'Anonymous'}</div>
+                            {c.email && <div className="text-xs" style={{ color: '#748194' }}>{c.email}</div>}
                           </div>
                         </div>
                       ))
                     )}
                     {Object.values(remoteCursors).filter((rc) => rc.userName !== (user?.fullName || user?.name)).map((rc, i) => (
                       <div key={`cursor-${i}`} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.35rem 0.55rem' }}>
-                        <div className="ed-member-av" style={{ background: 'rgba(167,139,250,0.15)', color: '#a78bfa', width: 26, height: 26, fontSize: '0.7rem' }}>{(rc.userName || 'U')[0]}</div>
-                        <div className="text-xs" style={{ color: '#8c8c8c' }}>{rc.userName} @ line {rc.cursor?.line}, col {rc.cursor?.column}</div>
+                        <div className="ed-member-av" style={{ background: 'rgba(138,56,245,0.15)', color: '#8a38f5', width: 26, height: 26, fontSize: '0.7rem' }}>{(rc.userName || 'U')[0]}</div>
+                        <div className="text-xs" style={{ color: '#9aaeba' }}>{rc.userName} @ line {rc.cursor?.line}, col {rc.cursor?.column}</div>
                       </div>
                     ))}
                   </div>
@@ -3753,7 +4261,7 @@ export default function Editor() {
                     {pendingConfirmations.length > 0 && (
                       <div className="ed-ai-intel" style={{ marginBottom: '0.75rem', borderColor: 'rgba(245,158,11,0.5)' }}>
                         <div className="ed-ai-intel-header">
-                          <AlertCircle className="w-4 h-4" style={{ color: '#fbbf24' }} />
+                          <AlertCircle className="w-4 h-4" style={{ color: '#e5b84a' }} />
                           <span>Pending approvals</span>
                         </div>
                         <div className="ed-ai-suggestions" style={{ gap: '0.5rem' }}>
@@ -3777,9 +4285,9 @@ export default function Editor() {
                       </div>
                     )}
 
-                    <div className="ed-ai-intel" style={{ marginBottom: '0.75rem', borderColor: 'rgba(59,130,246,0.35)' }}>
+                    <div className="ed-ai-intel" style={{ marginBottom: '0.75rem', borderColor: 'rgba(18,220,229,0.35)' }}>
                       <div className="ed-ai-intel-header">
-                        <Bot className="w-4 h-4" style={{ color: '#60a5fa' }} />
+                        <Bot className="w-4 h-4" style={{ color: '#68f7ff' }} />
                         <span>Phase 2 task board</span>
                       </div>
                       <div style={{ display: 'grid', gap: '0.45rem', marginTop: '0.5rem' }}>
@@ -3797,7 +4305,7 @@ export default function Editor() {
                           >
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
                               <strong>{task.title}</strong>
-                              <span className="pill pill-mono" style={{ background: task.priority === 'high' ? 'rgba(248,113,113,0.12)' : task.priority === 'medium' ? 'rgba(234,179,8,0.12)' : 'rgba(52,211,153,0.12)', color: task.priority === 'high' ? '#fca5a5' : task.priority === 'medium' ? '#facc15' : '#7bd197' }}>
+                              <span className="pill pill-mono" style={{ background: task.priority === 'high' ? 'rgba(236,20,20,0.12)' : task.priority === 'medium' ? 'rgba(234,179,8,0.12)' : 'rgba(3,186,3,0.12)', color: task.priority === 'high' ? '#ec8f8f' : task.priority === 'medium' ? '#facc15' : '#56e5a9' }}>
                                 {task.priority}
                               </span>
                             </div>
@@ -3815,8 +4323,8 @@ export default function Editor() {
                       </div>
                       {specMode && (
                         <div style={{ marginTop: '0.6rem', border: '1px solid rgba(96,165,250,0.25)', borderRadius: 8, background: 'rgba(96,165,250,0.05)', padding: '0.6rem' }}>
-                          <div style={{ color: '#d4d4d4', fontWeight: 600, marginBottom: '0.35rem' }}>Implementation contract</div>
-                          <div style={{ color: '#8c8c8c', fontSize: '0.68rem', lineHeight: 1.5 }}>
+                          <div style={{ color: '#c7d2dd', fontWeight: 600, marginBottom: '0.35rem' }}>Implementation contract</div>
+                          <div style={{ color: '#9aaeba', fontSize: '0.68rem', lineHeight: 1.5 }}>
                             Scope: {selectedTask?.title || 'current task'}{selectedFile ? ` • file: ${selectedFile.name}` : ''}<br />
                             Safety: require approval for destructive actions, validate changes, and keep the public contract stable.
                           </div>
@@ -3826,7 +4334,7 @@ export default function Editor() {
                         <button type="button" className="btn-workspace btn-secondary" style={{ flex: 1 }} onClick={() => setByomOpen((prev) => !prev)}>
                           BYOM model
                         </button>
-                        <span style={{ color: '#8c8c8c', fontSize: '0.68rem' }}>{customModel}</span>
+                        <span style={{ color: '#9aaeba', fontSize: '0.68rem' }}>{customModel}</span>
                       </div>
                       {byomOpen && (
                         <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.4rem' }}>
@@ -3842,23 +4350,23 @@ export default function Editor() {
                     </div>
 
                     {agentExecution && (
-                      <div className="ed-ai-intel" style={{ marginBottom: '0.75rem', borderColor: 'rgba(47,214,230,0.5)' }}>
+                      <div className="ed-ai-intel" style={{ marginBottom: '0.75rem', borderColor: 'rgba(18,220,229,0.5)' }}>
                         <div className="ed-ai-intel-header">
-                          <Bot className="w-4 h-4" style={{ color: '#2fd6e6' }} />
+                          <Bot className="w-4 h-4" style={{ color: '#12dce5' }} />
                           <span>{agentExecution.title}</span>
                         </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', marginTop: '0.35rem', color: '#d4d4d4', fontSize: '0.7rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', marginTop: '0.35rem', color: '#c7d2dd', fontSize: '0.7rem' }}>
                           <span style={{ textTransform: 'capitalize' }}>{agentExecution.status}</span>
-                          <span style={{ color: '#7bd197' }}>{agentExecution.diffSummary?.filesChanged || 0} files</span>
+                          <span style={{ color: '#56e5a9' }}>{agentExecution.diffSummary?.filesChanged || 0} files</span>
                         </div>
-                        <div style={{ marginTop: '0.3rem', color: '#8c8c8c', fontSize: '0.64rem', lineHeight: 1.5 }}>
+                        <div style={{ marginTop: '0.3rem', color: '#9aaeba', fontSize: '0.64rem', lineHeight: 1.5 }}>
                           {agentExecution.goal || agentExecution.title}
                         </div>
-                        <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.75rem', fontSize: '0.68rem', color: '#a0a0a0' }}>
+                        <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.75rem', fontSize: '0.68rem', color: '#9aaeba' }}>
                           <span>+{agentExecution.diffSummary?.insertions || 0}</span>
                           <span>-{agentExecution.diffSummary?.deletions || 0}</span>
                         </div>
-                        <div style={{ marginTop: '0.6rem', display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.68rem', color: '#cfd4dc' }}>
+                        <div style={{ marginTop: '0.6rem', display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.68rem', color: '#c7d2dd' }}>
                           {agentExecution.logs.slice(-4).map((log, idx) => (
                             <div key={`${log}-${idx}`} style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.04)', borderRadius: 4, padding: '0.35rem 0.45rem' }}>
                               {log}
@@ -3872,7 +4380,7 @@ export default function Editor() {
                           <button type="button" className="btn-workspace btn-secondary" style={{ flex: 1, minHeight: 0, padding: '0.38rem 0.6rem' }} onClick={() => setTweaking((v) => !v)} disabled={agentExecution.status === 'completed' || agentExecution.status === 'rejected'}>
                             Tweak
                           </button>
-                          <button type="button" className="btn-workspace btn-secondary" style={{ flex: 1, minHeight: 0, padding: '0.38rem 0.6rem', color: '#fca5a5' }} onClick={rejectAgentExecution} disabled={agentExecution.status === 'completed' || agentExecution.status === 'rejected'}>
+                          <button type="button" className="btn-workspace btn-secondary" style={{ flex: 1, minHeight: 0, padding: '0.38rem 0.6rem', color: '#ec8f8f' }} onClick={rejectAgentExecution} disabled={agentExecution.status === 'completed' || agentExecution.status === 'rejected'}>
                             Reject
                           </button>
                         </div>
@@ -3887,7 +4395,7 @@ export default function Editor() {
                               onChange={(e) => setTweakFeedback(e.target.value)}
                               placeholder="What should the agent change?"
                               autoComplete="off"
-                              style={{ flex: 1, minWidth: 0, padding: '0.35rem 0.5rem', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.05)', color: '#eceef1', fontSize: '0.7rem', outline: 'none' }}
+                              style={{ flex: 1, minWidth: 0, padding: '0.35rem 0.5rem', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.05)', color: '#ffffff', fontSize: '0.7rem', outline: 'none' }}
                             />
                             <button type="submit" className="btn-workspace btn-primary" style={{ padding: '0.35rem 0.7rem' }}>
                               Send
@@ -3930,7 +4438,7 @@ export default function Editor() {
                           {m.content}
                         </div>
                       ))}
-                      {aiLoading && <div className="ed-chat-gap" style={{ color: '#2fd6e6' }}>Thinking...</div>}
+                      {aiLoading && <div className="ed-chat-gap" style={{ color: '#12dce5' }}>Thinking...</div>}
                     </div>
                     <form onSubmit={handleAiHelperSend} className="ed-composer">
                       <input value={aiInput} onChange={(e) => setAiInput(e.target.value)} placeholder="Ask AI to explain or refactor..." />
@@ -3961,15 +4469,15 @@ export default function Editor() {
                           <div className="ed-ext-name">{m.name}</div>
                           <div className="ed-ext-sub">{m.sub}</div>
                         </div>
-                        <span className="pill pill-mono" style={{ marginLeft: 'auto', background: 'rgba(52,211,153,0.12)', color: '#7bd197' }}>on</span>
+                        <span className="pill pill-mono" style={{ marginLeft: 'auto', background: 'rgba(3,186,3,0.12)', color: '#56e5a9' }}>on</span>
                       </div>
                     ))}
                     <div className="ed-sidebar-title" style={{ padding: '0.1rem 0.55rem' }}>Languages</div>
                     {languages.length === 0 ? (
-                      <p className="text-xs" style={{ color: '#6e6e6e', padding: '0.2rem 0.55rem' }}>No language catalog yet</p>
+                      <p className="text-xs" style={{ color: '#748194', padding: '0.2rem 0.55rem' }}>No language catalog yet</p>
                     ) : (
                       languages.map((l) => {
-                        const glyphColor = LANG_COLORS()[l.name] || '#8c8c8c';
+                        const glyphColor = LANG_COLORS()[l.name] || '#9aaeba';
                         const glyphText = (l.name || '').slice(0, 2).toUpperCase() || 'FILE';
                         return (
                           <div key={l.name} className="ed-ext-item" style={{ padding: '0.4rem 0.55rem' }}>
@@ -3980,7 +4488,7 @@ export default function Editor() {
                             <div>
                               <div className="ed-ext-name" style={{ fontSize: '0.74rem' }}>{l.name}</div>
                             </div>
-                            <span className={`pill pill-mono ${l.allowed === false ? 'is-free' : ''}`} style={{ marginLeft: 'auto', ...(l.allowed === false ? { background: 'rgba(248,113,113,0.12)', color: '#f87171' } : { background: 'rgba(52,211,153,0.12)', color: '#7bd197' }) }}>
+                            <span className={`pill pill-mono ${l.allowed === false ? 'is-free' : ''}`} style={{ marginLeft: 'auto', ...(l.allowed === false ? { background: 'rgba(236,20,20,0.12)', color: '#ec1414' } : { background: 'rgba(3,186,3,0.12)', color: '#56e5a9' }) }}>
                               {l.allowed === false ? 'locked' : 'active'}
                             </span>
                           </div>
@@ -4024,7 +4532,7 @@ export default function Editor() {
                       {running ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
                       {running ? 'Stop' : 'Run'}
                     </button>
-                    <button type="button" className="btn-workspace btn-secondary" onClick={() => handleDelete(selectedFile)} title="Delete file" style={{ color: '#f87171' }}>
+                    <button type="button" className="btn-workspace btn-secondary" onClick={() => handleDelete(selectedFile)} title="Delete file" style={{ color: '#ec1414' }}>
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                     <button type="button" className="btn-workspace btn-primary" onClick={handleSave} disabled={saving || !dirty}>
@@ -4038,17 +4546,17 @@ export default function Editor() {
             <div className="ed-breadcrumb">
               {selectedFile ? (
                 <>
-                  <FolderOpen className="w-3 h-3" style={{ color: '#2fd6e6' }} />
+                  <FolderOpen className="w-3 h-3" style={{ color: '#12dce5' }} />
                   <span>{selectedProject ? selectedProject.name : selectedRepo ? (selectedRepo.fullName || selectedRepo.name) : 'workspace'}</span>
                   {filePathSegs.map((seg, i) => (
                     <span key={`${seg}-${i}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
                       <span className="ed-breadcrumb-sep">›</span>
-                      <span style={i === filePathSegs.length - 1 ? { color: '#d4d4d4' } : undefined}>{seg}</span>
+                      <span style={i === filePathSegs.length - 1 ? { color: '#c7d2dd' } : undefined}>{seg}</span>
                     </span>
                   ))}
                 </>
               ) : (
-                <span style={{ color: '#6e6e6e' }}>No file open — select a file from the Explorer</span>
+                <span style={{ color: '#748194' }}>No file open — select a file from the Explorer</span>
               )}
             </div>
 
@@ -4067,13 +4575,20 @@ export default function Editor() {
                 </div>
               ) : (
                 <div className="ed-code-wrap">
+                  {fileLoading && (
+                    <div className="ed-file-loading" role="status">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Loading file…
+                    </div>
+                  )}
                   <MonacoEditor
                     height="100%"
                     language={monacoLanguage}
                     value={content}
                     onChange={handleEditorChange}
                     onMount={handleEditorMount}
-                    theme="vs-dark"
+                    beforeMount={handleEditorWillMount}
+                    theme="buildrs-figma"
                     options={monacoOptions}
                     loading={<div className="ed-ide-empty">Loading editor...</div>}
                   />
@@ -4093,7 +4608,7 @@ export default function Editor() {
                     <button key={t.id} type="button" className={`ed-panel-tab ${panel === t.id ? 'is-active' : ''}`} onClick={() => setPanel(t.id)}>
                       <t.icon className="w-3.5 h-3.5" /> {t.label}
                       {t.id === 'problems' && (problemCounts.error > 0 || blockCount > 0) && (
-                        <span style={{ color: problemCounts.error > 0 ? '#f87171' : '#e5b84a' }}> {problemCounts.error || blockCount}</span>
+                        <span style={{ color: problemCounts.error > 0 ? '#ec1414' : '#e5b84a' }}> {problemCounts.error || blockCount}</span>
                       )}
                     </button>
                   ))}
@@ -4149,7 +4664,7 @@ export default function Editor() {
                           </>
                         ) : (
                           <>
-                            <AlertCircle className="w-3.5 h-3.5" style={{ color: problemCounts.error ? '#f87171' : '#e5b84a', verticalAlign: '-2px', marginRight: '0.4rem' }} />
+                            <AlertCircle className="w-3.5 h-3.5" style={{ color: problemCounts.error ? '#ec1414' : '#e5b84a', verticalAlign: '-2px', marginRight: '0.4rem' }} />
                             {problemCounts.error} error(s) · {problemCounts.warning} warning(s) · {problemCounts.info} info
                           </>
                         )}
@@ -4163,7 +4678,7 @@ export default function Editor() {
                               className="ed-scm-file ed-scm-file-btn"
                               style={{
                                 width: '100%', textAlign: 'left',
-                                color: p.severity === 'error' ? '#f87171' : p.severity === 'warning' ? '#e5b84a' : '#7bd197',
+                                color: p.severity === 'error' ? '#ec1414' : p.severity === 'warning' ? '#e5b84a' : '#56e5a9',
                               }}
                               onClick={() => {
                                 if (p.line) jumpToProblem(p);
@@ -4171,7 +4686,7 @@ export default function Editor() {
                               title={p.message}
                             >
                               <span style={{ display: 'flex', gap: '0.4rem', alignItems: 'baseline' }}>
-                                <span style={{ color: '#6e6e6e', fontSize: '0.66rem', whiteSpace: 'nowrap' }}>
+                                <span style={{ color: '#748194', fontSize: '0.66rem', whiteSpace: 'nowrap' }}>
                                   {p.file ? `${p.file}:` : ''}{p.line || 1}:{p.column || 1}
                                 </span>
                                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.message}</span>
@@ -4199,7 +4714,7 @@ export default function Editor() {
                   )}
 
                   {panel === 'tests' && (
-                    <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', fontSize: '0.72rem' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1, fontFamily: 'var(--figma-font-mono)', fontSize: '0.72rem' }}>
                       {outputLines.length === 0 ? (
                         <div className="ed-empty" style={{ flex: 1 }}>
                           <Play className="w-6 h-6" />
@@ -4214,7 +4729,7 @@ export default function Editor() {
                                 key={i}
                                 style={{
                                   whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.5,
-                                  color: l.kind === 'err' ? '#f87171' : l.kind === 'sys' ? '#7bd197' : '#c7d3df',
+                                  color: l.kind === 'err' ? '#ec1414' : l.kind === 'sys' ? '#56e5a9' : '#c7d2dd',
                                 }}
                               >
                                 {segs.length === 0 ? ' ' : segs.map((seg, j) => (
@@ -4267,7 +4782,7 @@ export default function Editor() {
                             {!selectedFigmaFile ? (
                               figmaFiles.length === 0 ? (
                                 <div className="ed-stat" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.6rem' }}>
-                                  <Layers className="w-6 h-6" style={{ color: '#6e6e6e' }} />
+                                  <Layers className="w-6 h-6" style={{ color: '#748194' }} />
                                   <span>No Figma files connected</span>
                                   <a href="/integrations" className="btn-workspace btn-secondary">Connect Figma</a>
                                 </div>
@@ -4278,7 +4793,7 @@ export default function Editor() {
                                       <Layers className="w-3.5 h-3.5" />
                                       <span style={{ minWidth: 0 }}>
                                         <span className="block truncate text-xs">{f.name || f.key}</span>
-                                        <span className="block text-xs" style={{ color: '#6e6e6e' }}>{f.last_modified ? new Date(f.last_modified).toLocaleDateString() : ''}</span>
+                                        <span className="block text-xs" style={{ color: '#748194' }}>{f.last_modified ? new Date(f.last_modified).toLocaleDateString() : ''}</span>
                                       </span>
                                     </button>
                                   ))}
@@ -4287,14 +4802,14 @@ export default function Editor() {
                             ) : (
                               <div className="ed-design-pane" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                                 <div className="ed-stat" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.4rem' }}>
-                                  <button type="button" onClick={() => setSelectedFigmaFile(null)} style={{ color: '#2fd6e6', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.66rem' }}>← All files</button>
-                                  <span className="truncate" style={{ color: '#bbbbbb' }}>{selectedFigmaFile.name || selectedFigmaFile.key}</span>
+                                  <button type="button" onClick={() => setSelectedFigmaFile(null)} style={{ color: '#12dce5', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.66rem' }}>← All files</button>
+                                  <span className="truncate" style={{ color: '#c7d2dd' }}>{selectedFigmaFile.name || selectedFigmaFile.key}</span>
                                 </div>
-                                <div style={{ flex: 1, minHeight: 0, overflow: 'auto', background: '#1e1e1e', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <div style={{ flex: 1, minHeight: 0, overflow: 'auto', background: '#0a0d15', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                   {selectedFigmaFile.thumbnail_url ? (
                                     <img src={selectedFigmaFile.thumbnail_url} alt={selectedFigmaFile.name || 'design'} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
                                   ) : (
-                                    <Layers className="w-8 h-8" style={{ color: '#3c3c3c' }} />
+                                    <Layers className="w-8 h-8" style={{ color: '#2a3446' }} />
                                   )}
                                 </div>
                                 <button type="button" className="btn-workspace btn-primary" onClick={generateFromDesign}>
@@ -4307,7 +4822,8 @@ export default function Editor() {
                             <span className="ed-sidebar-title">Code</span>
                             <div className="ed-code-wrap">
                               {selectedFile ? (
-                                <MonacoEditor height="100%" language={monacoLanguage} value={content} onChange={handleEditorChange} theme="vs-dark"
+                                <MonacoEditor height="100%" language={monacoLanguage} value={content} onChange={handleEditorChange} theme="buildrs-figma"
+                                  beforeMount={handleEditorWillMount}
                                   options={monacoPreviewOptions} />
                               ) : (
                                 <div className="ed-ide-empty">Select a file to preview</div>
@@ -4354,17 +4870,17 @@ export default function Editor() {
                           aria-pressed={autoDeployOn}
                         >
                           Auto-Deploy
-                          <span className={`mkt-mono`} style={{ fontSize: '10px', marginLeft: '6px', padding: '1px 7px', borderRadius: 999, background: autoDeployOn ? 'rgba(47,214,100,0.15)' : 'rgba(255,255,255,0.08)', color: autoDeployOn ? '#4ade80' : '#8c8c8c' }}>
+                          <span className={`mkt-mono`} style={{ fontSize: '10px', marginLeft: '6px', padding: '1px 7px', borderRadius: 999, background: autoDeployOn ? 'rgba(3,186,3,0.15)' : 'rgba(255,255,255,0.08)', color: autoDeployOn ? '#03ba03' : '#9aaeba' }}>
                             {autoDeployOn ? 'ON' : 'OFF'}
                           </span>
                         </button>
                         )}
-                        <span className="text-xs" style={{ color: '#6e6e6e' }}>One-click static deploy → .buildrshq.dev</span>
+                        <span className="text-xs" style={{ color: '#748194' }}>One-click static deploy → .buildrshq.dev</span>
                       </div>
 
                       {showSubdomainInput && (
                         <form onSubmit={confirmDeploy} className="ed-stat" style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                          <label className="ws-label" style={{ color: '#8c8c8c' }}>Choose a subdomain</label>
+                          <label className="ws-label" style={{ color: '#9aaeba' }}>Choose a subdomain</label>
                           {(() => {
                             const secretFiles = gatherDeploymentFiles().filter((f) =>
                               /(^|\/)\.env(\.|$)/i.test(`${f.path || ''}/${f.name || ''}`));
@@ -4377,9 +4893,9 @@ export default function Editor() {
                           })()}                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                             <input type="text" value={deploySubdomain} onChange={(e) => setDeploySubdomain(e.target.value.replace(/[^a-z0-9-]/g, '-').toLowerCase())}
                               placeholder="my-app" className="ws-input"
-                              style={{ fontFamily: 'ui-monospace, Menlo, Consolas, monospace', background: '#1e1e1e', borderColor: '#3c3c3c' }}
+                              style={{ fontFamily: 'var(--figma-font-mono)', background: '#0a0d15', borderColor: '#2a3446' }}
                               autoFocus required minLength={2} />
-                            <span className="text-sm whitespace-nowrap" style={{ color: '#6e6e6e' }}>.buildrshq.dev</span>
+                            <span className="text-sm whitespace-nowrap" style={{ color: '#748194' }}>.buildrshq.dev</span>
                             <button type="submit" disabled={deploying || deploySubdomain.length < 2} className="btn-workspace btn-primary">
                               {deploying ? 'Deploying...' : 'Deploy'}
                             </button>
@@ -4396,31 +4912,31 @@ export default function Editor() {
                         deployments.map((d, i) => (
                           <div key={i} className="ed-stat" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
                             <div style={{ minWidth: 0 }}>
-                              <div className="text-sm" style={{ color: d.deployedUrl ? '#2fd6e6' : '#d4d4d4' }}>
+                              <div className="text-sm" style={{ color: d.deployedUrl ? '#12dce5' : '#c7d2dd' }}>
                                 {d.deployedUrl ? (
-                                  <a href={d.deployedUrl} target="_blank" rel="noreferrer" style={{ color: '#2fd6e6' }}>{d.deployedUrl}</a>
+                                  <a href={d.deployedUrl} target="_blank" rel="noreferrer" style={{ color: '#12dce5' }}>{d.deployedUrl}</a>
                                 ) : d.subdomain ? (
                                   <span>{d.subdomain}.buildrshq.dev</span>
                                 ) : (
                                   <span>{d._id || `Deploy #${i + 1}`}</span>
                                 )}
                               </div>
-                              <div className="text-xs" style={{ color: '#6e6e6e' }}>
+                              <div className="text-xs" style={{ color: '#748194' }}>
                                 {d.status} {(d.projectId?.name ? `• ${d.projectId.name}` : '')} • {d.createdAt ? new Date(d.createdAt).toLocaleString() : ''}
                               </div>
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexShrink: 0 }}>
                               <span className="pill pill-mono" style={
-                                d.status === 'success' ? { background: 'rgba(52,211,153,0.12)', color: '#7bd197' } :
-                                d.status === 'failed' ? { background: 'rgba(248,113,113,0.12)', color: '#f87171' } :
+                                d.status === 'success' ? { background: 'rgba(3,186,3,0.12)', color: '#56e5a9' } :
+                                d.status === 'failed' ? { background: 'rgba(236,20,20,0.12)', color: '#ec1414' } :
                                 d.status === 'building' || d.status === 'deploying' ? { background: 'rgba(229,184,74,0.12)', color: '#e5b84a' } :
-                                { background: 'rgba(255,255,255,0.06)', color: '#8c8c8c' }
+                                { background: 'rgba(255,255,255,0.06)', color: '#9aaeba' }
                               }>{d.status}</span>
-                              <button type="button" onClick={() => setLogDeployId(d._id)} className="text-xs" style={{ color: '#8c8c8c' }} title="View logs">
+                              <button type="button" onClick={() => setLogDeployId(d._id)} className="text-xs" style={{ color: '#9aaeba' }} title="View logs">
                                 Logs
                               </button>
                               {(d.status === 'success' || d.status === 'failed') && (
-                                <button type="button" onClick={() => handleStop(d._id, d.subdomain)} className="text-xs" style={{ color: '#f87171' }}>Stop</button>
+                                <button type="button" onClick={() => handleStop(d._id, d.subdomain)} className="text-xs" style={{ color: '#ec1414' }}>Stop</button>
                               )}
                             </div>
                           </div>
@@ -4466,39 +4982,6 @@ export default function Editor() {
           </footer>
         </div>
 
-      {showNewFolderModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" style={{ zIndex: 9999 }}>
-          <div className="ws-modal w-full max-w-lg" style={{ position: 'relative', zIndex: 1 }}>
-            <div className="flex items-center justify-between p-5 border-b border-[rgba(255,255,255,0.09)]">
-              <div className="flex items-center gap-2.5">
-                <span className="card-ico">
-                  <FolderPlus className="w-4 h-4" />
-                </span>
-                <h2 className="ws-modal-title">Create New Folder</h2>
-              </div>
-              <button type="button" onClick={() => setShowNewFolderModal(false)} className="text-muted hover:text-white"><X className="w-5 h-5" /></button>
-            </div>
-            <form onSubmit={handleCreateFolder} className="p-5 space-y-4">
-              <div>
-                <label className="ws-label">Folder Name</label>
-                <input type="text" value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)} placeholder="e.g. src" className="ws-input" autoFocus required />
-              </div>
-              <div>
-                <label className="ws-label">Parent Path</label>
-                <input type="text" value={newFolderPath} onChange={(e) => setNewFolderPath(e.target.value)} placeholder="/" className="ws-input" />
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', paddingTop: '0.5rem' }}>
-                <button type="button" className="btn-workspace btn-secondary" onClick={() => setShowNewFolderModal(false)}>Cancel</button>
-                <button type="submit" className="btn-workspace btn-primary flex items-center gap-2" disabled={creating || !newFolderName.trim()}>
-                  <FolderPlus className="w-4 h-4" />
-                  {creating ? 'Creating...' : 'Create Folder'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
       {repoCreateOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" style={{ zIndex: 9999 }}>
           <div className="ws-modal w-full max-w-lg" style={{ position: 'relative', zIndex: 1 }}>
@@ -4520,11 +5003,11 @@ export default function Editor() {
                 <label className="ws-label">Description</label>
                 <textarea value={repoCreateDescription} onChange={(e) => setRepoCreateDescription(e.target.value)} placeholder="Project summary and purpose" className="ws-textarea w-full font-mono text-sm" rows={3} />
               </div>
-              <label className="flex items-center gap-2 text-sm" style={{ color: '#d4d4d4' }}>
+              <label className="flex items-center gap-2 text-sm" style={{ color: '#c7d2dd' }}>
                 <input type="checkbox" checked={repoCreatePrivate} onChange={(e) => setRepoCreatePrivate(e.target.checked)} />
                 Make this repository private
               </label>
-              {repoCreateError && <p className="text-xs text-[#f87171]">{repoCreateError}</p>}
+              {repoCreateError && <p className="text-xs text-[#ec1414]">{repoCreateError}</p>}
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', paddingTop: '0.5rem' }}>
                 <button type="button" className="btn-workspace btn-secondary" onClick={() => { setRepoCreateOpen(false); setRepoCreateError(null); }}>Cancel</button>
                 <button type="submit" className="btn-workspace btn-primary flex items-center gap-2" disabled={repoCreateBusy || !repoCreateName.trim()}>
@@ -4590,8 +5073,8 @@ export default function Editor() {
             </div>
             <div className="p-5 space-y-4">
               <div>
-                <p className="text-sm font-medium mb-1" style={{ color: '#eceef1' }}>Version 1.0 · Code editor with Live Share</p>
-                <p className="text-xs" style={{ color: '#9aa1ae', lineHeight: 1.6 }}>
+                <p className="text-sm font-medium mb-1" style={{ color: '#ffffff' }}>Version 1.0 · Code editor with Live Share</p>
+                <p className="text-xs" style={{ color: '#9aaeba', lineHeight: 1.6 }}>
                   Enterprise editor: version control, one-click deploys, sandboxed terminal,
                   AI assistance and real-time collaboration.
                 </p>
@@ -4686,7 +5169,7 @@ export default function Editor() {
               ) : diffData && diffData.length > 0 ? (
                 diffData.map((file, i) => (
                   <div key={i} className="mb-4">
-                    <p className="ed-stat" style={{ color: '#9aa1ae', marginBottom: 6 }}>
+                    <p className="ed-stat" style={{ color: '#9aaeba', marginBottom: 6 }}>
                       {file.oldPath !== file.newPath ? `${file.oldPath} → ${file.newPath}` : file.newPath}
                     </p>
                     {file.hunks.map((hunk, j) => (
@@ -4699,10 +5182,10 @@ export default function Editor() {
                             key={k}
                             className="ws-diff-line"
                             style={{
-                              color: chg.type === 'add' ? '#7ee787' : chg.type === 'remove' ? '#ff7b72' : '#c9d1d9',
+                              color: chg.type === 'add' ? '#7ee787' : chg.type === 'remove' ? '#ff7b72' : '#c7d2dd',
                               background: chg.type === 'add' ? 'rgba(46,160,67,0.15)' : chg.type === 'remove' ? 'rgba(248,81,73,0.15)' : 'transparent',
                               whiteSpace: 'pre-wrap',
-                              fontFamily: 'ui-monospace, Menlo, Consolas, monospace',
+                              fontFamily: 'var(--figma-font-mono)',
                               fontSize: '0.72rem',
                               lineHeight: 1.5,
                               padding: '0.1rem 0.5rem',
@@ -4745,7 +5228,7 @@ export default function Editor() {
                   head: <b className="text-white">{gitStatus?.branch || 'main'}</b>
                 </p>
               ) : (
-                <p className="text-xs text-[#f87171]">Select a GitHub repository in the Explorer first.</p>
+                <p className="text-xs text-[#ec1414]">Select a GitHub repository in the Explorer first.</p>
               )}
               <div>
                 <label className="ws-label">Title *</label>
@@ -4765,7 +5248,7 @@ export default function Editor() {
                   <input type="text" value={gitStatus?.branch || 'main'} className="ws-input" disabled />
                 </div>
               </div>
-              {prError && <p className="text-xs text-[#f87171]">{prError}</p>}
+              {prError && <p className="text-xs text-[#ec1414]">{prError}</p>}
               {prDone && <p className="text-xs text-[#7ee787]">{prDone}</p>}
               <div className="flex justify-end gap-3">
                 <button type="button" className="btn-workspace btn-secondary" onClick={() => { setPrOpen(false); setPrError(null); setPrDone(null); }}>Cancel</button>
@@ -4797,7 +5280,7 @@ export default function Editor() {
                   <Loader2 className="w-4 h-4 animate-spin" /> Reading design and generating code...
                 </div>
               ) : codegenError ? (
-                <p className="text-sm text-[#f87171]">{codegenError}</p>
+                <p className="text-sm text-[#ec1414]">{codegenError}</p>
               ) : codegenResult ? (
                 <div className="space-y-4">
                   <p className="text-xs text-muted">
@@ -4812,11 +5295,11 @@ export default function Editor() {
                             Save to project
                           </button>
                         </div>
-                        <textarea readOnly value={f.content} style={{ width: '100%', minHeight: 180, background: '#111', color: '#c9d1d9', border: 'none', outline: 'none', fontFamily: 'ui-monospace, Menlo, Consolas, monospace', fontSize: '0.72rem', lineHeight: 1.5, padding: '0.6rem', resize: 'vertical', whiteSpace: 'pre', overflow: 'auto' }} />
+                        <textarea readOnly value={f.content} style={{ width: '100%', minHeight: 180, background: '#111', color: '#c7d2dd', border: 'none', outline: 'none', fontFamily: 'var(--figma-font-mono)', fontSize: '0.72rem', lineHeight: 1.5, padding: '0.6rem', resize: 'vertical', whiteSpace: 'pre', overflow: 'auto' }} />
                       </div>
                     ))
                   ) : (
-                    <pre className="text-xs" style={{ color: '#c9d1d9', whiteSpace: 'pre-wrap', fontFamily: 'ui-monospace, Menlo, Consolas, monospace' }}>{codegenResult.content}</pre>
+                    <pre className="text-xs" style={{ color: '#c7d2dd', whiteSpace: 'pre-wrap', fontFamily: 'var(--figma-font-mono)' }}>{codegenResult.content}</pre>
                   )}
                 </div>
               ) : null}

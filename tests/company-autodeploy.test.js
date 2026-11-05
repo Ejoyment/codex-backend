@@ -1,7 +1,7 @@
 /**
  * Server-side auto-deploy setting (Render-style toggle).
  *
- * - Company.settings.autoDeploy defaults true (current behavior preserved).
+ * - Company.settings.autoDeploy defaults false; deployment requires opt-in.
  * - PUT /:companyId/settings persists it (owner/admin only, like the rest).
  */
 const express = require('express');
@@ -38,9 +38,9 @@ afterEach(() => {
 });
 
 describe('company autoDeploy setting', () => {
-  test('defaults to true on new documents', () => {
+  test('defaults to false on new documents', () => {
     const doc = new Company({ name: 'c', owner: new mongoose.Types.ObjectId() });
-    expect(doc.settings.autoDeploy).toBe(true);
+    expect(doc.settings.autoDeploy).toBe(false);
   });
 
   const companyDoc = (settings = {}) => ({
@@ -75,5 +75,26 @@ describe('company autoDeploy setting', () => {
     const res = await request(app).put(`/api/company/${COMPANY_ID}/settings`).send({ autoDeploy: false });
     expect(res.status).toBe(403);
     expect(doc.settings.autoDeploy).toBe(true);
+  });
+});
+
+describe('company selfHeal setting', () => {
+  test('defaults to true on new documents', () => {
+    const doc = new Company({ name: 'c', owner: new mongoose.Types.ObjectId() });
+    expect(doc.settings.selfHeal).toBe(true);
+  });
+
+  test('PUT persists selfHeal=false', async () => {
+    const doc = {
+      _id: COMPANY_ID,
+      members: [{ user: OWNER, role: 'owner' }],
+      settings: { allowMemberInvites: false, requireApproval: true, defaultRole: 'member', autoDeploy: true, selfHeal: true },
+      save: jest.fn(async function () { return this; }),
+    };
+    jest.spyOn(Company, 'findById').mockResolvedValue(doc);
+    const res = await request(app).put(`/api/company/${COMPANY_ID}/settings`).send({ selfHeal: false });
+    expect(res.status).toBe(200);
+    expect(doc.settings.selfHeal).toBe(false);
+    expect(doc.save).toHaveBeenCalled();
   });
 });

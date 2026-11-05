@@ -3,7 +3,9 @@
  * Handles real-time collaboration endpoints
  */
 
+const { sendInternalError } = require('../utils/httpErrors');
 const express = require('express');
+const mongoose = require('mongoose');
 const router = express.Router();
 const { authenticateToken } = require('../middleware/auth');
 const CodeFile = require('../models/CodeFile');
@@ -18,7 +20,9 @@ const { assertFileAccess } = require('../middleware/workspaceAccess');
 
 const ensureCompanyMember = async (req, res, next) => {
     try {
-        const company = await Company.findById(req.params.companyId);
+        const company = mongoose.isValidObjectId(req.params.companyId)
+            ? await Company.findById(req.params.companyId)
+            : await Company.findOne({ slug: req.params.companyId, isActive: true });
         if (!company) {
             return res.status(404).json({ success: false, message: 'Company not found' });
         }
@@ -31,7 +35,7 @@ const ensureCompanyMember = async (req, res, next) => {
         next();
     } catch (error) {
         console.error('Company membership check error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 };
 
@@ -76,7 +80,7 @@ router.get('/file/:fileId/users', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Get active users error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -122,7 +126,7 @@ router.post('/file/:fileId/join', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Join collaboration error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -158,7 +162,7 @@ router.post('/file/:fileId/leave', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Leave collaboration error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -187,7 +191,7 @@ router.post('/file/:fileId/leave', authenticateToken, async (req, res) => {
  */
 router.get('/:companyId/projects', authenticateToken, ensureCompanyMember, async (req, res) => {
     try {
-        const projects = await TeamProject.find({ company: req.params.companyId })
+        const projects = await TeamProject.find({ company: req.company._id })
             .populate('owner', 'fullName email profilePicture')
             .populate('members', 'fullName email profilePicture')
             .sort({ createdAt: -1 });
@@ -210,7 +214,7 @@ router.get('/:companyId/projects', authenticateToken, ensureCompanyMember, async
         });
     } catch (error) {
         console.error('Get company projects error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -267,7 +271,7 @@ router.post('/:companyId/projects', authenticateToken, ensureCompanyMember, asyn
         }
         
         const project = await TeamProject.create({
-            company: req.params.companyId,
+            company: req.company._id,
             name,
             description: description || '',
             status: status || 'planning',
@@ -287,7 +291,7 @@ router.post('/:companyId/projects', authenticateToken, ensureCompanyMember, asyn
         });
     } catch (error) {
         console.error('Create company project error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -327,7 +331,7 @@ router.post('/:companyId/projects', authenticateToken, ensureCompanyMember, asyn
 router.get('/:companyId/tasks', authenticateToken, ensureCompanyMember, async (req, res) => {
     try {
         const { projectId, status } = req.query;
-        const query = { company: req.params.companyId };
+        const query = { company: req.company._id };
         
         if (projectId) {
             query.project = projectId;
@@ -360,7 +364,7 @@ router.get('/:companyId/tasks', authenticateToken, ensureCompanyMember, async (r
         });
     } catch (error) {
         console.error('Get company tasks error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -420,7 +424,7 @@ router.post('/:companyId/tasks', authenticateToken, ensureCompanyMember, async (
         }
         
         const task = await TeamTask.create({
-            company: req.params.companyId,
+            company: req.company._id,
             project: projectId || null,
             title,
             description: description || '',
@@ -446,7 +450,7 @@ router.post('/:companyId/tasks', authenticateToken, ensureCompanyMember, async (
         });
     } catch (error) {
         console.error('Create company task error:', error);
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 

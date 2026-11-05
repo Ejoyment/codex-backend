@@ -16,11 +16,11 @@ const EMPTY_FORM = {
 };
 
 const STATUS_STYLE = {
-  unvalidated: { color: '#9aa1ae', Icon: CircleHelp },
-  healthy: { color: '#34d399', Icon: CheckCircle2 },
+  unvalidated: { color: '#9aaeba', Icon: CircleHelp },
+  healthy: { color: '#03ba03', Icon: CheckCircle2 },
   warning: { color: '#e5b84a', Icon: AlertTriangle },
-  failing: { color: '#f87171', Icon: ShieldAlert },
-  drifted: { color: '#f87171', Icon: AlertTriangle },
+  failing: { color: '#ec1414', Icon: ShieldAlert },
+  drifted: { color: '#ec1414', Icon: AlertTriangle },
 };
 
 function lines(value) {
@@ -418,81 +418,67 @@ export default function SpecsPage() {
                 </select>
               )}
             </div>
-          </div>
-          <div className="specs-content">
-            {notice && <div className="std-alert std-alert-error">{notice}</div>}
-            {loadError && <div className="std-alert std-alert-error">{loadError}</div>}
-            {loadingProjects ? <div className="specs-empty"><Loader2 className="w-5 h-5 animate-spin" /></div> : !projects.length ? (
-              <div className="specs-empty-card">
-                <FolderGit2 className="w-7 h-7 text-[#2fd6e6] mb-4" />
+          </header>
+          <div className="workspace-content">
+            {loadingProjects ? <div className="dash-empty"><Loader2 className="w-5 h-5 animate-spin" /></div> : !projects.length ? (
+              <div className="workspace-card"><div className="workspace-card-body flex flex-col items-center py-16 text-center">
+                <FolderGit2 className="w-7 h-7 text-[#12dce5] mb-4" />
                 <p className="dash-empty-title">No projects yet</p>
                 <p className="dash-empty-sub mb-5">Specs belong to a project. Create a project to start writing executable contracts — no workspace needed.</p>
                 <button className="btn-workspace btn-primary" type="button" onClick={() => router.push('/workspace')}><Plus className="w-4 h-4" /> Create a project</button>
               </div>
             ) : (
-              <div className="specs-workspace">
-                <section className="specs-library" aria-label="Specifications">
-                  <div className="specs-library-heading">
-                    <div>
-                      <h2>Specifications</h2>
-                      <p>{specs.length} executable contract{specs.length === 1 ? '' : 's'}</p>
-                    </div>
-                    <button type="button" className="btn-workspace btn-primary" onClick={() => openEditor()} disabled={!projectId}>
-                      <Plus className="w-4 h-4" /><span>New Spec</span>
-                    </button>
-                  </div>
-                  {loading ? <div className="specs-empty"><Loader2 className="w-5 h-5 animate-spin" /><span>Loading specs...</span></div> : specs.length === 0 ? (
-                    <div className="specs-empty">
-                      <FileCode2 className="w-6 h-6" />
-                      <p>No specs in this project</p>
-                      <span>Create a scoped contract with requirements agents can check against code.</span>
-                      <button className="btn-workspace btn-primary" type="button" onClick={() => openEditor()}><Plus className="w-4 h-4" /> Create first spec</button>
-                    </div>
-                  ) : (
-                    <div className="specs-library-list">
-                      {specs.map((spec) => {
-                        const state = STATUS_STYLE[spec.status] || STATUS_STYLE.unvalidated;
-                        const StatusIcon = state.Icon;
-                        const requirementCount = (spec.requirements || []).length;
-                        const validationTime = spec.lastValidatedAt ? formatValidationTime(spec.lastValidatedAt) : 'Not validated';
-                        return (
-                          <button
-                            type="button"
-                            key={spec._id}
-                            className={`specs-library-item ${selectedSpec?._id === spec._id ? 'is-selected' : ''}`}
-                            onClick={() => setSelectedSpecId(spec._id)}
-                            aria-pressed={selectedSpec?._id === spec._id}
-                          >
-                            <span className="specs-library-item-top">
-                              <span className="specs-library-item-title">{spec.title || spec.specId}</span>
-                              <span className="specs-status" style={{ color: state.color }}>
-                                <StatusIcon />{spec.status === 'healthy' ? 'All Pass' : spec.status === 'failing' || spec.status === 'drifted' ? 'Failing' : spec.status || 'Unvalidated'}
-                              </span>
-                            </span>
-                            <span className="specs-library-item-path">{(spec.targetModules || []).join(', ') || spec.specId || 'No target modules'}</span>
-                            <span className="specs-library-item-meta">{requirementCount} rule{requirementCount === 1 ? '' : 's'} · {validationTime}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                  {specs.length > 0 && <p className="specs-attention-count">{specs.filter((spec) => spec.status === 'failing' || spec.status === 'drifted').length} need attention</p>}
-                </section>
-
-                <section className="specs-detail" aria-label="Selected specification">
-                  {selectedSpec ? (() => {
-                    const requirementResults = selectedSpec.lastValidationResult?.requirements || [];
-                    const passedCount = requirementResults.filter((item) => item.status === 'pass').length;
-                    const failedCount = requirementResults.filter((item) => item.status === 'fail').length;
-                    const requirements = selectedSpec.requirements || [];
-                    return (
-                      <>
-                        <div className="specs-detail-header">
-                          <div className="specs-detail-title">
-                            <div className="specs-detail-name">
-                              <h2>{selectedSpec.title || selectedSpec.specId}</h2>
-                              <span className="specs-detail-id">{selectedSpec.specId}</span>
-                              {selectedSpec.status === 'healthy' && <span className="specs-status specs-status-success">All Pass</span>}
+              <>
+                {notice && <div className="std-alert std-alert-error mb-5">{notice}</div>}
+                {loadError && <div className="std-alert std-alert-error mb-5">{loadError}</div>}
+                <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-5">
+                  <div><span className="text-sm font-semibold text-white">Contract library</span><span className="ml-3 text-xs text-[#9aaeba]">Scope, requirements, and verification</span></div>
+                  <span className="text-xs text-[#9aaeba]">{specs.filter((spec) => spec.status === 'failing' || spec.status === 'drifted').length} need attention</span>
+                </div>
+                {loading ? <div className="dash-empty"><Loader2 className="w-5 h-5 animate-spin" /><p className="dash-empty-title">Loading specs</p></div> : specs.length === 0 ? (
+                  <div className="workspace-card"><div className="workspace-card-body flex flex-col items-center py-16 text-center">
+                    <FileCode2 className="w-7 h-7 text-[#12dce5] mb-4" /><p className="dash-empty-title">No specs in this project</p>
+                    <p className="dash-empty-sub mb-5">Create a scoped contract with requirements agents can check against code.</p>
+                    <button className="btn-workspace btn-primary" type="button" onClick={() => openEditor()}><Plus className="w-4 h-4" /> Create first spec</button>
+                  </div></div>
+                ) : (
+                  <div className="divide-y divide-white/10">
+                    {specs.map((spec) => {
+                      const state = STATUS_STYLE[spec.status] || STATUS_STYLE.unvalidated;
+                      const StatusIcon = state.Icon;
+                      const requirementResults = spec.lastValidationResult?.requirements || [];
+                      return (
+                        <article key={spec._id} className="py-5 first:pt-0">
+                          <div className="flex flex-wrap items-start justify-between gap-4">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <h2 className="text-base font-semibold text-white">{spec.title}</h2>
+                                <span className="inline-flex items-center gap-1.5 text-xs" style={{ color: state.color }}><StatusIcon className="w-3.5 h-3.5" />{spec.status || 'unvalidated'}</span>
+                                <span className="text-xs text-[#748194]">{spec.specId}</span>
+                              </div>
+                              {spec.description && <p className="mt-1 text-sm text-[#a9b7c4]">{spec.description}</p>}
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                {(spec.targetModules || []).map((module) => <code key={module} className="text-xs text-[#80dbe4] bg-white/5 px-2 py-1">{module}</code>)}
+                              </div>
+                              <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs text-[#9aaeba]">
+                                <span>{(spec.requirements || []).length} requirements</span>
+                                <span>{(spec.architecturalRules || []).length} architectural rules</span>
+                                {spec.verificationCommand && <span>Command: <code>{spec.verificationCommand}</code></span>}
+                                {spec.lastValidatedAt && <span>Validated {new Date(spec.lastValidatedAt).toLocaleString()}</span>}
+                              </div>
+                              {requirementResults.length > 0 && <div className="mt-3 grid gap-1.5">
+                                {requirementResults.map((requirement, index) => <div key={requirement.id || index} className="flex items-start gap-2 text-xs text-[#c7d2dd]">
+                                  {requirement.status === 'pass' ? <Check className="w-3.5 h-3.5 text-[#03ba03] mt-0.5" /> : requirement.status === 'fail' ? <X className="w-3.5 h-3.5 text-[#ec1414] mt-0.5" /> : <CircleHelp className="w-3.5 h-3.5 text-[#e5b84a] mt-0.5" />}
+                                  <span>{requirement.id}: {requirement.text}{requirement.evidence ? <span className="ml-2 text-[#748194]">{requirement.evidence}</span> : null}</span>
+                                </div>)}
+                              </div>}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button type="button" className="btn-workspace btn-secondary" title="Run validation" onClick={() => runValidation(spec)} disabled={verifyingId === spec._id}>
+                                {verifyingId === spec._id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}<span className="hidden sm:inline">Validate</span>
+                              </button>
+                              <button type="button" className="btn-workspace btn-secondary" onClick={() => openEditor(spec)}>Edit</button>
+                              <button type="button" className="btn-workspace btn-secondary" onClick={() => deleteSpec(spec)} title="Delete spec"><X className="w-4 h-4" /></button>
                             </div>
                             <p>{(selectedSpec.targetModules || []).join(', ')}</p>
                           </div>
@@ -583,6 +569,42 @@ export default function SpecsPage() {
         )}
       </div>
 
+      {editing && <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/75 p-3 sm:p-6" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) closeEditor(); }}>
+        <section className="ws-modal w-full max-w-3xl max-h-[92vh] overflow-y-auto">
+          <div className="sticky top-0 z-10 flex items-center justify-between border-b border-white/10 bg-[#121821] p-5">
+            <div><p className="text-xs uppercase text-[#12dce5]">Executable contract</p><h2 className="ws-modal-title">{editing?._id ? 'Edit Spec' : 'New Spec'}</h2></div>
+            <button type="button" className="text-[#9aaeba] hover:text-white" onClick={closeEditor} aria-label="Close"><X className="w-5 h-5" /></button>
+          </div>
+          <form onSubmit={saveSpec} className="space-y-5 p-5">
+            {notice && <div className="std-alert std-alert-error">{notice}</div>}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="ws-label">Name<input className="ws-input mt-2" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="Auth security" required /></label>
+              <label className="ws-label">Coverage threshold<input className="ws-input mt-2" type="number" min="0" max="100" value={form.coverageThreshold} onChange={(event) => setForm({ ...form, coverageThreshold: event.target.value })} placeholder="80" /></label>
+            </div>
+            <label className="ws-label">Description<textarea className="ws-input mt-2" rows={2} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} placeholder="What system contract does this govern?" /></label>
+            <label className="ws-label">Target modules <span className="font-normal text-[#748194]">one glob per line</span><textarea className="ws-input mt-2 font-mono" rows={3} value={form.targetModules} onChange={(event) => setForm({ ...form, targetModules: event.target.value })} placeholder={'src/services/auth/**\nsrc/middleware/auth*'} /></label>
+            <label className="ws-label">Architectural rules <span className="font-normal text-[#748194]">one rule per line</span><textarea className="ws-input mt-2" rows={3} value={form.architecturalRules} onChange={(event) => setForm({ ...form, architecturalRules: event.target.value })} placeholder="Auth logic stays in the auth service" /></label>
+            <div>
+              <div className="mb-2 flex items-center justify-between"><span className="ws-label">Requirements</span><button type="button" className="btn-workspace btn-secondary" onClick={() => setForm({ ...form, requirements: [...form.requirements, { ...EMPTY_REQUIREMENT }] })}><Plus className="w-3.5 h-3.5" /> Add requirement</button></div>
+              <div className="space-y-3">
+                {form.requirements.map((requirement, index) => <div key={index} className="grid gap-3 border border-white/10 p-3 sm:grid-cols-[1fr_150px_120px]">
+                  <div className="space-y-2"><input className="ws-input" value={requirement.text} onChange={(event) => updateRequirement(index, 'text', event.target.value)} placeholder="JWT access tokens expire within 15 minutes" />
+                    {['code_pattern', 'file_exists', 'test_name'].includes(requirement.checkType) && <input className="ws-input font-mono" value={requirement.checkValue} onChange={(event) => updateRequirement(index, 'checkValue', event.target.value)} placeholder={requirement.checkType === 'code_pattern' ? 'Regex pattern' : requirement.checkType === 'file_exists' ? 'path/to/file' : 'Test name'} />}</div>
+                  <select className="ws-select" value={requirement.checkType} onChange={(event) => updateRequirement(index, 'checkType', event.target.value)}>{CHECK_TYPES.map((type) => <option key={type} value={type}>{type.replace('_', ' ')}</option>)}</select>
+                  <div className="flex gap-2"><select className="ws-select min-w-0" value={requirement.severity} onChange={(event) => updateRequirement(index, 'severity', event.target.value)}><option value="blocking">Blocking</option><option value="warning">Warning</option></select><button type="button" className="text-[#9aaeba] hover:text-red-400" title="Remove requirement" onClick={() => setForm({ ...form, requirements: form.requirements.filter((_, itemIndex) => itemIndex !== index) })}><X className="w-4 h-4" /></button></div>
+                </div>)}
+              </div>
+            </div>
+            <label className="ws-label">Forbidden imports <span className="font-normal text-[#748194]">one module name per line</span><textarea className="ws-input mt-2 font-mono" rows={2} value={form.forbiddenImports} onChange={(event) => setForm({ ...form, forbiddenImports: event.target.value })} placeholder="jsonwebtoken" /></label>
+            <label className="ws-label">Constraints <span className="font-normal text-[#748194]">key=value per line</span><textarea className="ws-input mt-2 font-mono" rows={2} value={form.constraints} onChange={(event) => setForm({ ...form, constraints: event.target.value })} placeholder="tokenTtlSeconds=900" /></label>
+            <label className="ws-label">Verification command<input className="ws-input mt-2 font-mono" value={form.verificationCommand} onChange={(event) => setForm({ ...form, verificationCommand: event.target.value })} placeholder="npm test -- --testPathPattern=auth" /></label>
+            <div className="flex justify-end gap-3 border-t border-white/10 pt-4">
+              <button type="button" className="btn-workspace btn-secondary" onClick={closeEditor} disabled={saving}>Cancel</button>
+              <button type="submit" className="btn-workspace btn-primary" disabled={saving || !form.title.trim()}>{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}{saving ? 'Saving' : 'Save Spec'}</button>
+            </div>
+          </form>
+        </section>
+      </div>}
     </AuthGuard>
   );
 }

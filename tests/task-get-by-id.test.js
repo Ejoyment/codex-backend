@@ -124,6 +124,7 @@ describe('GET /api/projects/tasks/:taskId', () => {
 
     test('returns the same shape as GET /api/projects/tasks', async () => {
         LocalTask.find.mockReturnValue({
+            populate: jest.fn().mockReturnThis(),
             sort: jest.fn().mockResolvedValue([taskDoc()]),
         });
 

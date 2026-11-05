@@ -1,16 +1,31 @@
 /**
  * Multi-AI Service
  * Supports: Gemini, Mistral AI, Groq, and more
- * Automatically falls back to available providers
+ * Automatic provider selection can fail over; explicit selections stay pinned.
  */
 
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { providerDefinitions, implementedProviderNames } = require('../config/aiProviders');
+const { parsePrivacyMode } = require('./aiPrivacy');
 
 // Outbound LLM calls must stay bounded, including provider failover.
 const AI_REQUEST_TIMEOUT_MS = parseInt(process.env.AI_REQUEST_TIMEOUT_MS, 10) || 60000;
-const MAX_CONTEXT_FILES = 10;
-const MAX_FILE_CONTEXT_CHARS = 12000;
-const MAX_TOTAL_FILE_CONTEXT_CHARS = 60000;
+// Agent runs need enough of the repo to make real cross-file changes. Keep the
+// bounds configurable so a deployment can trade context for cost/latency.
+const MAX_CONTEXT_FILES = parseInt(process.env.AI_CONTEXT_FILES, 10) || 16;
+const MAX_FILE_CONTEXT_CHARS = parseInt(process.env.AI_CONTEXT_FILE_CHARS, 10) || 20000;
+const MAX_TOTAL_FILE_CONTEXT_CHARS = parseInt(process.env.AI_CONTEXT_TOTAL_CHARS, 10) || 120000;
+
+// Providers such as Groq count the requested output budget toward their
+// tokens-per-minute limit. Callers that only need a small JSON decision (the
+// agent reasoning loop) can pass a lower maxTokens so the request fits.
+function resolveMaxTokens(codeContext, fallback) {
+    const requested = Number(codeContext?.maxTokens);
+    if (Number.isFinite(requested) && requested > 0) {
+        return Math.min(Math.floor(requested), 32768);
+    }
+    return fallback;
+}
 
 class AIService {
     constructor() {
@@ -19,35 +34,21 @@ class AIService {
     }
 
     initializeProviders() {
-        this.providers = {
-            gemini: {
-                available: !!process.env.GEMINI_API_KEY,
-                client: process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null,
-                model: process.env.AI_MODEL || 'gemini-1.5-flash',
-                name: 'Google Gemini'
-            },
-            mistral: {
-                available: !!process.env.MISTRAL_API_KEY,
-                apiKey: process.env.MISTRAL_API_KEY,
-                model: process.env.MISTRAL_MODEL || 'mistral-tiny',
-                endpoint: 'https://api.mistral.ai/v1/chat/completions',
-                name: 'Mistral AI'
-            },
-            groq: {
-                available: !!process.env.GROQ_API_KEY,
-                apiKey: process.env.GROQ_API_KEY,
-                model: process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
-                endpoint: 'https://api.groq.com/openai/v1/chat/completions',
-                name: 'Groq (Fast Inference)'
-            },
-            huggingface: {
-                available: !!process.env.HUGGINGFACE_API_KEY,
-                apiKey: process.env.HUGGINGFACE_API_KEY,
-                model: process.env.HUGGINGFACE_MODEL || 'mistralai/Mistral-7B-Instruct-v0.2',
-                endpoint: 'https://api-inference.huggingface.co/models/',
-                name: 'Hugging Face'
-            }
-        };
+        const definitions = providerDefinitions();
+        this.providers = Object.fromEntries(
+            implementedProviderNames().map((key) => {
+                const definition = definitions[key];
+                return [
+                    key,
+                    {
+                        ...definition,
+                        client: key === 'gemini' && definition.apiKey
+                            ? new GoogleGenerativeAI(definition.apiKey)
+                            : null,
+                    },
+                ];
+            })
+        );
 
         // Log available providers
         const available = Object.entries(this.providers)
@@ -68,36 +69,65 @@ class AIService {
      * or aiRouterService's routing decision) takes precedence over the
      * process-wide default. Previously `chat()` read only `this.provider`,
      * so aiRouterService's `provider` argument was silently discarded and
-     * every request went to whichever provider happened to be configured —
-     * users picking Anthropic or OpenAI were served Gemini with no error.
+     * requests could be sent to a provider different from the caller's choice.
      */
     resolveProvider(requested) {
-        const candidates = [requested, this.provider];
-        let resolved = null;
-        for (const candidate of candidates) {
-            if (candidate && candidate !== 'auto' && this.providers[candidate]?.available) {
-                resolved = candidate;
-                break;
-            }
+        const configuredProvider = this.provider && this.provider !== 'auto'
+            ? this.provider
+            : null;
+        const provider = requested && requested !== 'auto'
+            ? requested
+            : configuredProvider || Object.keys(this.providers).find((key) => this.providers[key].available);
+
+        if (!provider) {
+            throw new Error('No AI provider configured. Please add an API key to the environment.');
         }
-        if (!resolved) {
-            resolved = Object.keys(this.providers).find((key) => this.providers[key].available);
+        if (!this.providers[provider]) {
+            throw new Error(`AI provider "${provider}" is not supported by this service.`);
         }
-        if (!resolved) {
-            throw new Error('No AI provider configured. Please add API keys to .env file.');
+        if (!this.providers[provider].available) {
+            throw new Error(`AI provider "${provider}" is selected but not configured. Add its API key or select an available provider.`);
         }
-        // A provider the caller asked for that this service cannot serve must
-        // never be substituted silently: clients (agent sockets read the name
-        // from user payloads) otherwise believe they got the model they picked.
-        if (requested && requested !== 'auto' && requested !== resolved) {
-            console.warn(
-                `[ai] provider "${requested}" is not implemented or not configured — using "${resolved}" instead`
-            );
-        }
-        return resolved;
+        return provider;
     }
 
     async chat(messages, codeContext = {}) {
+        if (!codeContext || typeof codeContext !== 'object' || Array.isArray(codeContext)) {
+            return { success: false, error: 'AI request context must be an object.' };
+        }
+        if (!Array.isArray(messages) || messages.length === 0) {
+            return { success: false, error: 'AI request requires at least one message.' };
+        }
+        const invalidMessage = messages.find((message) =>
+            !message ||
+            !['system', 'user', 'assistant'].includes(message.role) ||
+            typeof message.content !== 'string'
+        );
+        if (invalidMessage) {
+            return { success: false, error: 'AI messages must have a supported role and string content.' };
+        }
+        if (!messages.some((message) => message.role === 'user')) {
+            return { success: false, error: 'AI request requires at least one user message.' };
+        }
+
+        const requestedLocalProvider = ['ollama', 'lm-studio'].includes(codeContext.provider)
+            ? codeContext.provider
+            : null;
+        const localPrivacyMode =
+            parsePrivacyMode(process.env.LOCAL_PRIVACY_MODE) ||
+            parsePrivacyMode(codeContext.localPrivacyMode);
+        if (localPrivacyMode || requestedLocalProvider) {
+            const configuredLocalProvider = process.env.LOCAL_AI_PROVIDER || 'ollama';
+            const localProvider = requestedLocalProvider ||
+                (['ollama', 'lm-studio'].includes(configuredLocalProvider)
+                    ? configuredLocalProvider
+                    : 'ollama');
+            if (!requestedLocalProvider && configuredLocalProvider !== localProvider) {
+                console.warn(`[ai] unsupported local provider "${configuredLocalProvider}"; using ollama`);
+            }
+            return require('./localBridge').chat(messages, codeContext, localProvider);
+        }
+
         // Per-request provider from the router/caller.
         let provider;
         try {
@@ -111,6 +141,10 @@ class AIService {
             : AI_REQUEST_TIMEOUT_MS;
         const deadline = Date.now() + timeoutMs;
         const tried = Array.isArray(codeContext._tried) ? [...codeContext._tried] : [];
+        const allowProviderFallback = typeof codeContext.allowProviderFallback === 'boolean'
+            ? codeContext.allowProviderFallback
+            : !(codeContext.provider && codeContext.provider !== 'auto') &&
+                !(this.provider && this.provider !== 'auto');
         let lastError;
 
         while (provider) {
@@ -153,7 +187,7 @@ class AIService {
                 lastError = error;
                 tried.push(provider);
                 console.error(`Error with ${provider}:`, error?.message || String(error));
-                provider = this.getFallbackProvider(provider, tried);
+                provider = allowProviderFallback ? this.getFallbackProvider(provider, tried) : null;
             }
         }
 
@@ -218,16 +252,21 @@ Please:
     // Gemini Implementation
     async chatGemini(messages, codeContext) {
         const config = this.providers.gemini;
-        const model = config.client.getGenerativeModel({ 
-            model: config.model,
+        const model = config.client.getGenerativeModel({
+            model: codeContext.model || config.model,
             generationConfig: {
                 maxOutputTokens: parseInt(process.env.AI_MAX_TOKENS) || 8192,
                 temperature: parseFloat(process.env.AI_TEMPERATURE) || 0.7,
             }
         });
 
-        const systemPrompt = this.buildSystemPrompt(codeContext);
-        const conversationHistory = this.formatMessagesForGemini(messages);
+        const systemMessages = messages
+            .filter((message) => message.role === 'system')
+            .map((message) => message.content);
+        const systemPrompt = [this.buildSystemPrompt(codeContext), ...systemMessages].join('\n\n');
+        const conversationHistory = this.formatMessagesForGemini(
+            messages.filter((message) => message.role !== 'system')
+        );
         const fullPrompt = `${systemPrompt}\n\n${conversationHistory}`;
 
         const result = await model.generateContent(fullPrompt, {
@@ -254,7 +293,7 @@ Please:
         const formattedMessages = [
             { role: 'system', content: systemPrompt },
             ...messages.map(m => ({
-                role: m.role === 'assistant' ? 'assistant' : 'user',
+                role: m.role,
                 content: m.content
             }))
         ];
@@ -266,9 +305,9 @@ Please:
                 'Authorization': `Bearer ${config.apiKey}`
             },
             body: JSON.stringify({
-                model: config.model,
+                model: codeContext.model || config.model,
                 messages: formattedMessages,
-                max_tokens: parseInt(process.env.AI_MAX_TOKENS) || 8192,
+                max_tokens: resolveMaxTokens(codeContext, parseInt(process.env.AI_MAX_TOKENS) || 8192),
                 temperature: parseFloat(process.env.AI_TEMPERATURE) || 0.7
             }),
             signal: codeContext.signal || AbortSignal.timeout(codeContext.timeoutMs || AI_REQUEST_TIMEOUT_MS)
@@ -299,11 +338,43 @@ Please:
         const formattedMessages = [
             { role: 'system', content: systemPrompt },
             ...messages.map(m => ({
-                role: m.role === 'assistant' ? 'assistant' : 'user',
+                role: m.role,
                 content: m.content
             }))
         ];
 
+        const isAgentReasoning = codeContext.agentReasoning === true;
+        const isGptOss = String(codeContext.model || config.model).includes('gpt-oss');
+        const availableTools = Array.isArray(codeContext.availableTools) ? codeContext.availableTools : [];
+        const responseFormat = isAgentReasoning && isGptOss
+            ? {
+                type: 'json_schema',
+                json_schema: {
+                    name: 'agent_reasoning',
+                    strict: true,
+                    schema: {
+                        type: 'object',
+                        properties: {
+                            thought: { type: 'string' },
+                            goalAchieved: { type: 'boolean' },
+                            action: {
+                                type: 'object',
+                                properties: {
+                                    tool: { type: 'string', enum: [...availableTools, 'none'] },
+                                    parameters: { type: 'string' },
+                                },
+                                required: ['tool', 'parameters'],
+                                additionalProperties: false,
+                            },
+                        },
+                        required: ['thought', 'goalAchieved', 'action'],
+                        additionalProperties: false,
+                    },
+                },
+            }
+            : isAgentReasoning
+                ? { type: 'json_object' }
+                : undefined;
         const response = await fetch(config.endpoint, {
             method: 'POST',
             headers: {
@@ -311,11 +382,12 @@ Please:
                 'Authorization': `Bearer ${config.apiKey}`
             },
             body: JSON.stringify({
-                model: config.model,
+                model: codeContext.model || config.model,
                 messages: formattedMessages,
-                max_tokens: parseInt(process.env.AI_MAX_TOKENS) || 8192,
+                max_tokens: resolveMaxTokens(codeContext, parseInt(process.env.AI_MAX_TOKENS) || 8192),
                 temperature: parseFloat(process.env.AI_TEMPERATURE) || 0.7,
-                ...(String(config.model).includes('gpt-oss') ? { reasoning_effort: 'low' } : {})
+                ...(isGptOss ? { reasoning_effort: 'low' } : {}),
+                ...(responseFormat ? { response_format: responseFormat } : {})
             }),
             signal: codeContext.signal || AbortSignal.timeout(codeContext.timeoutMs || AI_REQUEST_TIMEOUT_MS)
         });
@@ -327,6 +399,9 @@ Please:
 
         const data = await response.json();
         const msg = data.choices[0].message;
+        if (Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
+            throw new Error('Groq returned a native tool call, but this request uses application-managed agent tools');
+        }
         const text = msg.content || msg.reasoning || '';
 
         return {
@@ -342,11 +417,20 @@ Please:
     async chatHuggingFace(messages, codeContext) {
         const config = this.providers.huggingface;
         const systemPrompt = this.buildSystemPrompt(codeContext);
-        const lastMessage = messages[messages.length - 1];
-        
-        const prompt = `${systemPrompt}\n\nUser: ${lastMessage.content}\nAssistant:`;
+        const systemMessages = messages
+            .filter((message) => message.role === 'system')
+            .map((message) => message.content);
+        const conversation = messages
+            .filter((message) => message.role !== 'system')
+            .map((message) => `${message.role === 'assistant' ? 'Assistant' : 'User'}: ${message.content}`)
+            .join('\n\n');
+        const prompt = [
+            [systemPrompt, ...systemMessages].join('\n\n'),
+            conversation,
+            'Assistant:',
+        ].filter(Boolean).join('\n\n');
 
-        const response = await fetch(config.endpoint + config.model, {
+        const response = await fetch(config.endpoint + (codeContext.model || config.model), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -355,7 +439,7 @@ Please:
             body: JSON.stringify({
                 inputs: prompt,
                 parameters: {
-                    max_new_tokens: parseInt(process.env.AI_MAX_TOKENS) || 2048,
+                    max_new_tokens: resolveMaxTokens(codeContext, parseInt(process.env.AI_MAX_TOKENS) || 2048),
                     temperature: parseFloat(process.env.AI_TEMPERATURE) || 0.7,
                     return_full_text: false
                 }
@@ -369,7 +453,7 @@ Please:
         }
 
         const data = await response.json();
-        const text = Array.isArray(data) ? data[0].generated_text : data.generated_text;
+        const text = Array.isArray(data) ? data[0]?.generated_text : data?.generated_text;
 
         return {
             success: true,
@@ -399,7 +483,10 @@ Your capabilities:
 
         // Add agent mode instructions if enabled
         if (agentMode && instructions) {
-            prompt += `\n${instructions}\n\n`;
+            prompt += `\n${instructions}\n`;
+            prompt += codeContext.agentReasoning
+                ? 'Do not emit native tool or function calls. Describe the next tool action only in the requested JSON response; tools are executed by the application after validating that response.\n\n'
+                : 'Do not emit native tool or function calls. Return the requested plan and file-level changes as message text.\n\n';
         }
 
         prompt += `Guidelines:
@@ -422,7 +509,17 @@ Your capabilities:
             prompt += `Language: ${currentFile.language || 'unknown'}\n`;
         }
 
-        if (files && files.length > 0) {
+        if (codeContext.fileManifest?.paths?.length) {
+            // The manifest is the full repository shape; the files passed in
+            // `files` are only the most relevant subset whose contents fit.
+            prompt += `\nRepository Manifest (${codeContext.fileManifest.total || codeContext.fileManifest.paths.length} files):\n`;
+            codeContext.fileManifest.paths.forEach((filePath) => {
+                prompt += `- ${filePath}\n`;
+            });
+            if (codeContext.fileManifest.truncated) {
+                prompt += '- [manifest truncated to keep the request bounded]\n';
+            }
+        } else if (files && files.length > 0) {
             prompt += `\nAvailable Files:\n`;
             files.slice(0, MAX_CONTEXT_FILES).forEach(file => {
                 prompt += `- ${file.path}\n`;

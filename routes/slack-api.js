@@ -1,3 +1,4 @@
+const { sendInternalError } = require('../utils/httpErrors');
 const express = require('express');
 const router = express.Router();
 const axios = require('axios');
@@ -72,7 +73,7 @@ router.get('/team/info', authenticateToken, async (req, res) => {
         const team = await slackAPI(integration.accessToken, 'team.info');
         res.json({ success: true, team: team.team });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -84,7 +85,10 @@ router.get('/conversations/list', authenticateToken, async (req, res) => {
         const channels = await slackAPI(integration.accessToken, 'conversations.list', { types, limit });
         res.json({ success: true, channels: channels.channels });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        if (error.message === 'Slack not connected') {
+            return res.json({ success: true, channels: [], connected: false });
+        }
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -97,7 +101,7 @@ router.get('/conversations/history/:channelId', authenticateToken, async (req, r
         const history = await slackAPI(integration.accessToken, 'conversations.history', { channel: channelId, limit });
         res.json({ success: true, messages: history.messages });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -109,7 +113,7 @@ router.post('/chat/postMessage', authenticateToken, async (req, res) => {
         const result = await slackAPI(integration.accessToken, 'chat.postMessage', { channel, text, blocks });
         res.json({ success: true, message: result });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -121,7 +125,7 @@ router.get('/users/list', authenticateToken, async (req, res) => {
         const users = await slackAPI(integration.accessToken, 'users.list', { limit });
         res.json({ success: true, users: users.members });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -132,7 +136,7 @@ router.get('/users/info/:userId', authenticateToken, async (req, res) => {
         const user = await slackAPI(integration.accessToken, 'users.info', { user: req.params.userId });
         res.json({ success: true, user: user.user });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -144,7 +148,7 @@ router.post('/conversations/create', authenticateToken, async (req, res) => {
         const channel = await slackAPI(integration.accessToken, 'conversations.create', { name, is_private });
         res.json({ success: true, channel: channel.channel });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -156,7 +160,7 @@ router.post('/files/upload', authenticateToken, async (req, res) => {
         const file = await slackAPI(integration.accessToken, 'files.upload', { channels, content, filename, title });
         res.json({ success: true, file: file.file });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -309,7 +313,7 @@ router.get('/status', authenticateToken, async (req, res) => {
             team: integration ? integration.teamName : null
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -337,7 +341,7 @@ router.delete('/disconnect', authenticateToken, async (req, res) => {
 
         res.json({ success: true, message: 'Slack disconnected' });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 

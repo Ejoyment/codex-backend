@@ -1,3 +1,4 @@
+const { sendInternalError } = require('../utils/httpErrors');
 const express = require('express');
 const router = express.Router();
 const axios = require('axios');
@@ -148,7 +149,7 @@ router.get('/user', authenticateToken, async (req, res) => {
             }
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -215,7 +216,10 @@ router.get('/guilds', authenticateToken, async (req, res) => {
             }))
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        if (error.message === 'Discord not connected') {
+            return res.json({ success: true, guilds: [], connected: false });
+        }
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -289,7 +293,7 @@ router.get('/guilds/:guildId', authenticateToken, async (req, res) => {
             }
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -360,7 +364,7 @@ router.get('/guilds/:guildId/channels', authenticateToken, async (req, res) => {
             note: 'Full channel access requires Discord bot integration'
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -402,7 +406,7 @@ router.get('/channels/:channelId/messages', authenticateToken, async (req, res) 
             note: 'Full message access requires Discord bot integration'
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -423,7 +427,7 @@ router.post('/channels/:channelId/messages', authenticateToken, async (req, res)
             note: 'Sending messages requires Discord bot integration. Please set up a bot for full functionality.'
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -447,7 +451,7 @@ router.post('/channels/:channelId/webhooks', authenticateToken, async (req, res)
         note: 'Creating webhooks requires proper channel permissions'
     });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -470,7 +474,7 @@ router.get('/connections', authenticateToken, async (req, res) => {
             }))
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -688,7 +692,7 @@ router.get('/status', authenticateToken, async (req, res) => {
             account: integration ? integration.accountUsername : null
         });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -716,7 +720,7 @@ router.delete('/disconnect', authenticateToken, async (req, res) => {
 
         res.json({ success: true, message: 'Discord disconnected' });
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error);
     }
 });
 

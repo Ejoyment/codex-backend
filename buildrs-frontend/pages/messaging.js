@@ -224,7 +224,7 @@ export default function Messaging() {
             </div>
             <div className="flex items-center gap-3">
               <span className="dash-pill hidden md:inline-flex">
-                <Hash className="w-3 h-3" style={{ color: '#2fd6e6' }} />
+                <Hash className="w-3 h-3" style={{ color: '#12dce5' }} />
                 {channels.length} channel{channels.length === 1 ? '' : 's'}
               </span>
               <button type="button" className="btn-workspace btn-primary" onClick={() => setShowCreateModal(true)}>
@@ -266,7 +266,7 @@ export default function Messaging() {
                 <aside className="msg-rail">
                   <div className="msg-rail-head">
                     <span className="msg-rail-title">
-                      <Hash className="w-4 h-4" style={{ color: '#2fd6e6' }} />
+                      <Hash className="w-4 h-4" style={{ color: '#12dce5' }} />
                       Channels
                     </span>
                     <span className="badge-count">{channels.length}</span>
@@ -341,7 +341,7 @@ export default function Messaging() {
                       {/* Messages */}
                       <div className="msg-scroll">
                         {loadingMessages && (
-                          <div className="text-center text-[#565d6b] py-8 text-sm">Loading messages...</div>
+                          <div className="text-center text-[#59687a] py-8 text-sm">Loading messages...</div>
                         )}
                         {!loadingMessages && messages.length === 0 && (
                           <div className="dash-empty" style={{ paddingTop: '3rem' }}>
@@ -375,7 +375,7 @@ export default function Messaging() {
                           </p>
                         )}
                         {sendError && (
-                          <p role="alert" className="text-xs mb-2" style={{ color: '#f87171' }}>
+                          <p role="alert" className="text-xs mb-2" style={{ color: '#ec1414' }}>
                             {sendError}
                           </p>
                         )}
@@ -477,7 +477,7 @@ export default function Messaging() {
                 </p>
               </div>
               {createChannelError && (
-                <p role="alert" className="text-xs" style={{ color: '#f87171' }}>
+                <p role="alert" className="text-xs" style={{ color: '#ec1414' }}>
                   {createChannelError}
                 </p>
               )}

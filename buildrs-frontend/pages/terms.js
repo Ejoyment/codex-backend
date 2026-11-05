@@ -30,7 +30,7 @@ export default function Terms() {
               <span className="dot">●</span> buildrs · legal
             </p>
             <h1 className="mkt-h1">Terms of service.</h1>
-            <p className="mkt-mono mt-6 text-[12px] uppercase tracking-widest text-[#525764]">
+            <p className="mkt-mono mt-6 text-[12px] uppercase tracking-widest text-[#59687a]">
               last updated · february 2026
             </p>
           </div>
@@ -38,13 +38,13 @@ export default function Terms() {
 
         {/* Sections */}
         <section className="mx-auto max-w-[860px] px-5 pb-24 sm:px-8">
-          <div className="space-y-px overflow-hidden rounded-xl border border-[#ffffff12] bg-[#ffffff12]">
+          <div className="space-y-px overflow-hidden rounded-xl border border-[#ffffff10] bg-[#ffffff10]">
             {SECTIONS.map((s, i) => (
-              <div key={s.title} className="flex flex-col gap-4 bg-[#0d0d12] p-7 sm:flex-row sm:gap-8 sm:p-8">
-                <p className="mkt-num text-sm text-[#525764]">{`0${i + 1}`}</p>
+              <div key={s.title} className="flex flex-col gap-4 bg-[#121821] p-7 sm:flex-row sm:gap-8 sm:p-8">
+                <p className="mkt-num text-sm text-[#59687a]">{`0${i + 1}`}</p>
                 <div>
                   <h2 className="mkt-h3">{s.title}</h2>
-                  <p className="mt-2.5 text-[14px] leading-relaxed text-[#a8adba]">{s.text}</p>
+                  <p className="mt-2.5 text-[14px] leading-relaxed text-[#a9b7c4]">{s.text}</p>
                 </div>
               </div>
             ))}
