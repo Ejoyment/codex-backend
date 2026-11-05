@@ -1,6 +1,7 @@
 import 'xterm/css/xterm.css';
 import '../styles/globals.css';
 import '../styles/workspace.css';
+import '../styles/figma.css';
 import '../styles/marketing.css';
 import '../styles/auth.css';
 import { Inter } from 'next/font/google';
