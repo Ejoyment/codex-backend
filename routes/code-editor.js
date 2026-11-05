@@ -584,10 +584,16 @@ router.get('/files', authenticateToken, async (req, res) => {
 // Get single file
 router.get('/files/:id', authenticateToken, async (req, res) => {
     try {
-        const file = await CodeFile.findById(req.params.id)
-            .populate('createdBy', 'fullName email profilePicture')
-            .populate('lastModifiedBy', 'fullName email profilePicture')
-            .populate('collaborators.user', 'fullName email profilePicture');
+const file = await CodeFile.findOne({
+        _id: req.params.id,
+        $or: [
+          { company: null, createdBy: req.userId },
+          { company: { $ne: null } }
+        ]
+      })
+        .populate('createdBy', 'fullName email profilePicture')
+        .populate('lastModifiedBy', 'fullName email profilePicture')
+        .populate('collaborators.user', 'fullName email profilePicture');
 
         if (!(await assertFileAccess(file, req.userId, res))) return;
 
@@ -605,7 +611,13 @@ router.put('/files/:id', authenticateToken, async (req, res) => {
     try {
         const { content, name, language } = req.body;
         
-        const file = await CodeFile.findById(req.params.id);
+const file = await CodeFile.findOne({
+        _id: req.params.id,
+        $or: [
+          { company: null, createdBy: req.userId },
+          { company: { $ne: null } }
+        ]
+      });
         if (!(await assertFileAccess(file, req.userId, res, 'write'))) return;
         const oldFull = vfs.fullPathOf(file);
         
@@ -686,7 +698,13 @@ router.put('/files/:id', authenticateToken, async (req, res) => {
 // Delete file
 router.delete('/files/:id', authenticateToken, async (req, res) => {
     try {
-        const file = await CodeFile.findById(req.params.id);
+        const file = await CodeFile.findOne({
+        _id: req.params.id,
+        $or: [
+          { company: null, createdBy: req.userId },
+          { company: { $ne: null } }
+        ]
+      });
 
         if (!(await assertFileAccess(file, req.userId, res, 'manage'))) return;
 
@@ -779,8 +797,14 @@ const FILE_PERMISSIONS = ['read', 'write', 'admin'];
 // List collaborators (also tells the editor whether to show sharing controls)
 router.get('/files/:id/collaborators', authenticateToken, async (req, res) => {
     try {
-        const file = await CodeFile.findById(req.params.id)
-            .populate('collaborators.user', 'fullName email profilePicture');
+const file = await CodeFile.findOne({
+        _id: req.params.id,
+        $or: [
+          { company: null, createdBy: req.userId },
+          { company: { $ne: null } }
+        ]
+      })
+        .populate('collaborators.user', 'fullName email profilePicture');
 
         if (!(await assertFileAccess(file, req.userId, res))) return;
 
@@ -801,7 +825,13 @@ router.post('/files/:id/collaborators', authenticateToken, async (req, res) => {
         const { userId } = req.body;
         const permission = req.body.permission || 'read';
 
-        const file = await CodeFile.findById(req.params.id);
+        const file = await CodeFile.findOne({
+            _id: req.params.id,
+            $or: [
+              { company: null, createdBy: req.userId },
+              { company: { $ne: null } }
+            ]
+        });
         if (!(await assertFileAccess(file, req.userId, res, 'manage'))) return;
 
         if (!userId || !mongoose.isValidObjectId(userId)) {
@@ -812,6 +842,21 @@ router.post('/files/:id/collaborators', authenticateToken, async (req, res) => {
                 success: false,
                 message: `Invalid permission. Allowed values: ${FILE_PERMISSIONS.join(', ')}`
             });
+        }
+
+        // Same-boundary check: collaborators must belong to the same company
+        // as the file. Personal files (company: null) cannot have collaborators.
+        if (file.company) {
+            const User = require('../models/User');
+            const targetUser = await User.findById(userId).select('company');
+            if (!targetUser) {
+                return res.status(404).json({ success: false, message: 'Target user not found' });
+            }
+            if (String(targetUser.company) !== String(file.company)) {
+                return res.status(403).json({ success: false, message: 'Cannot add a collaborator from a different workspace' });
+            }
+        } else {
+            return res.status(403).json({ success: false, message: 'Personal files cannot have collaborators' });
         }
 
         const targetId = String(userId);
@@ -842,7 +887,13 @@ router.post('/files/:id/collaborators', authenticateToken, async (req, res) => {
  */
 router.delete('/files/:id/collaborators/:userId', authenticateToken, async (req, res) => {
     try {
-        const file = await CodeFile.findById(req.params.id);
+        const file = await CodeFile.findOne({
+        _id: req.params.id,
+        $or: [
+          { company: null, createdBy: req.userId },
+          { company: { $ne: null } }
+        ]
+      });
         if (!(await assertFileAccess(file, req.userId, res, 'manage'))) return;
 
         const targetId = String(req.params.userId);
@@ -890,8 +941,14 @@ router.delete('/files/:id/collaborators/:userId', authenticateToken, async (req,
 // Get file versions
 router.get('/files/:id/versions', authenticateToken, async (req, res) => {
     try {
-        const file = await CodeFile.findById(req.params.id)
-            .populate('versions.modifiedBy', 'fullName email profilePicture');
+const file = await CodeFile.findOne({
+        _id: req.params.id,
+        $or: [
+          { company: null, createdBy: req.userId },
+          { company: { $ne: null } }
+        ]
+      })
+        .populate('versions.modifiedBy', 'fullName email profilePicture');
 
         if (!(await assertFileAccess(file, req.userId, res))) return;
 

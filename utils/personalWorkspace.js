@@ -19,13 +19,13 @@ function workspaceNameFor(user) {
 }
 
 async function findWorkspace(userId) {
+    // Prefer a company the user owns (true personal workspace) over one they
+    // merely belong to. This keeps personal projects personal even after
+    // joining a team.
     return Company.findOne({
-        $or: [
-            { owner: userId },
-            { 'members.user': userId },
-        ],
+        $or: [{ owner: userId }, { 'members.user': userId }],
         isActive: true,
-    }).sort({ createdAt: 1 });
+    }).sort({ owner: -1, createdAt: 1 });
 }
 
 async function ensurePersonalWorkspace(userId) {

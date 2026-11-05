@@ -525,7 +525,13 @@ router.put('/files/:fileId', authenticateToken, permissionMatrix.requirePermissi
     const { fileId } = req.params;
     const { content, name, language } = req.body;
     
-    const file = await CodeFile.findById(fileId);
+    const file = await CodeFile.findOne({
+      _id: fileId,
+      $or: [
+        { company: null, createdBy: req.userId },
+        { company: { $ne: null } }
+      ]
+    });
     if (!(await assertFileAccess(file, req.userId, res, 'write'))) return;
 
     if (content !== undefined) file.content = content;
@@ -569,7 +575,13 @@ router.delete('/files/:fileId', authenticateToken, permissionMatrix.requirePermi
   try {
     const { fileId } = req.params;
     
-    const file = await CodeFile.findById(fileId);
+    const file = await CodeFile.findOne({
+      _id: fileId,
+      $or: [
+        { company: null, createdBy: req.userId },
+        { company: { $ne: null } }
+      ]
+    });
     if (!(await assertFileAccess(file, req.userId, res, 'manage'))) return;
 
     const workspaceId = file.company.toString();

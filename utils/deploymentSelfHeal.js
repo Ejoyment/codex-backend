@@ -1079,7 +1079,10 @@ async function processDeployment(deploymentId) {
     );
   }
 
-  const files = await CodeFile.find({ project: String(projectId) })
+  const files = await CodeFile.find({
+    project: String(projectId),
+    company: deployment.workspaceId || null
+  })
     .select('name path language company')
     .limit(1000)
     .lean();

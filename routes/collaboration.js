@@ -68,7 +68,13 @@ router.get('/file/:fileId/users', authenticateToken, async (req, res) => {
         const { fileId } = req.params;
         
         // Verify user has access to file
-        const file = await CodeFile.findById(fileId);
+        const file = await CodeFile.findOne({
+        _id: fileId,
+        $or: [
+          { company: null, createdBy: req.userId },
+          { company: { $ne: null } }
+        ]
+      });
         if (!(await assertFileAccess(file, req.userId, res))) return;
 
         const users = collaborationService.getActiveUsers(fileId);
@@ -113,7 +119,13 @@ router.post('/file/:fileId/join', authenticateToken, async (req, res) => {
         const { fileId } = req.params;
         
         // Verify user has access to file
-        const file = await CodeFile.findById(fileId);
+        const file = await CodeFile.findOne({
+        _id: fileId,
+        $or: [
+          { company: null, createdBy: req.userId },
+          { company: { $ne: null } }
+        ]
+      });
         if (!(await assertFileAccess(file, req.userId, res))) return;
 
         // Load document
