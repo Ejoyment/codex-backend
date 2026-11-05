@@ -421,6 +421,17 @@ class TerminalService {
       ? options.repoFullName
       : null;
     
+    // A paid terminal must never silently degrade to the simulated VFS shell
+    // just because the PTY runtime failed to load on the host. Free-tier
+    // callers opt into simulation explicitly with allowHostShell: false.
+    if (!this.usePty && options.allowHostShell !== false && process.env.NODE_ENV === 'production') {
+      const err = new Error(
+        'Terminal is unavailable: the PTY runtime is not installed and no isolated transport is active.'
+      );
+      err.statusCode = 503;
+      throw err;
+    }
+
     // Create workspace directory
     const workspacePath = path.join(os.tmpdir(), 'codex-workspaces', sessionId);
     await fs.mkdir(workspacePath, { recursive: true });
