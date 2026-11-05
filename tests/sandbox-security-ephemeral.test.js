@@ -91,3 +91,71 @@ describe('runEphemeral', () => {
     ).rejects.toThrow(/absolute/);
   });
 });
+
+describe('createIsolatedContainer image selection', () => {
+  const originalDocker = sandboxSecurity.docker;
+  const originalContainers = sandboxSecurity.containers;
+
+  beforeEach(() => {
+    sandboxSecurity.containers = new Map();
+  });
+
+  afterEach(() => {
+    sandboxSecurity.docker = originalDocker;
+    sandboxSecurity.containers = originalContainers;
+  });
+
+  test('uses the requested language image and reuses a matching running container', async () => {
+    const container = {
+      inspect: jest.fn(async () => ({ State: { Running: true } })),
+      remove: jest.fn(async () => {}),
+    };
+    const createContainer = jest.fn(async () => container);
+    sandboxSecurity.docker = { createContainer };
+
+    const first = await sandboxSecurity.createIsolatedContainer('user-1', 'workspace-1', {
+      image: 'python:3.11-alpine',
+    });
+    const second = await sandboxSecurity.createIsolatedContainer('user-1', 'workspace-1', {
+      image: 'python:3.11-alpine',
+    });
+
+    expect(createContainer.mock.calls[0][0].Image).toBe('python:3.11-alpine');
+    expect(first).toBe(container);
+    expect(second).toBe(container);
+    expect(createContainer).toHaveBeenCalledTimes(1);
+  });
+
+  test('replaces a running container when the requested image changes', async () => {
+    const nodeContainer = {
+      inspect: jest.fn(async () => ({ State: { Running: true } })),
+      remove: jest.fn(async () => {}),
+    };
+    const pythonContainer = {
+      inspect: jest.fn(async () => ({ State: { Running: true } })),
+      remove: jest.fn(async () => {}),
+    };
+    const createContainer = jest.fn()
+      .mockResolvedValueOnce(nodeContainer)
+      .mockResolvedValueOnce(pythonContainer);
+    sandboxSecurity.docker = { createContainer };
+
+    await sandboxSecurity.createIsolatedContainer('user-2', 'workspace-2', { image: 'node:18-alpine' });
+    const second = await sandboxSecurity.createIsolatedContainer('user-2', 'workspace-2', {
+      image: 'python:3.11-alpine',
+    });
+
+    expect(nodeContainer.remove).toHaveBeenCalledWith({ force: true });
+    expect(createContainer).toHaveBeenCalledTimes(2);
+    expect(createContainer.mock.calls[1][0].Image).toBe('python:3.11-alpine');
+    expect(second).toBe(pythonContainer);
+  });
+
+  test('rejects a malformed image name', async () => {
+    sandboxSecurity.docker = { createContainer: jest.fn() };
+
+    await expect(
+      sandboxSecurity.createIsolatedContainer('user-3', 'workspace-3', { image: 'node:18-alpine && rm -rf /' })
+    ).rejects.toThrow('Invalid sandbox image');
+  });
+});
