@@ -14,7 +14,7 @@ const PROVIDERS = Object.freeze({
     type: 'cloud',
     apiKeyEnv: 'OPENROUTER_API_KEY',
     modelEnv: 'OPENROUTER_MODEL',
-    defaultModel: 'anthropic/claude-3.5-sonnet',
+    defaultModel: 'anthropic/claude-opus-5.5',
     endpoint: 'https://openrouter.ai/api/v1/chat/completions',
     // OpenRouter is OpenAI-compatible: standard messages array, Bearer auth,
     // json_object response format. Claude models accessed via OpenRouter
