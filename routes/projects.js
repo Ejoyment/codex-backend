@@ -9,7 +9,6 @@ const CodeFile = require('../models/CodeFile');
 const { resolveAccessibleSpecs, getAccessibleProjects, userCanAccessProject } = require('../utils/specAccess');
 const { normalizeMembers } = require('../utils/members');
 const { assertCompanyMembership } = require('../middleware/workspaceAccess');
-const { ensurePersonalWorkspace } = require('../utils/personalWorkspace');
 const { getGitHubIntegration } = require('../utils/githubApiClient');
 const {
     TEMPLATE_FILES,
@@ -226,12 +225,9 @@ router.post('/', authenticateToken, enforceProjectLimit, async (req, res) => {
 
         // Personal projects only. Team-scoped projects are created from the
         // teams page by product admins, not from this endpoint.
-        const workspace = await ensurePersonalWorkspace(userId);
-        const projectWorkspaceId = workspace._id;
-
+        // Personal workspaces are scoped by userId only — no company is created.
         const project = await LocalProject.create({
             userId,
-            workspaceId: projectWorkspaceId,
             name: name.trim(),
             description: (description || '').trim(),
             priority: priority || 'medium',
@@ -413,11 +409,10 @@ router.post('/tasks', authenticateToken, async (req, res) => {
 
         // Personal tasks only. Team-scoped tasks are created from the teams
         // page by product admins, not from this endpoint.
-        const workspace = await ensurePersonalWorkspace(userId);
-        const resolvedCompanyId = workspace._id;
+        // Personal workspaces are scoped by userId only — companyId is null.
 
         if (projectId) {
-            const project = await LocalProject.findById(projectId).select('workspaceId').lean();
+            const project = await LocalProject.findById(projectId).select('_id userId').lean();
             if (!project) {
                 return res.status(404).json({ success: false, message: 'Project not found' });
             }
@@ -434,7 +429,7 @@ router.post('/tasks', authenticateToken, async (req, res) => {
             taskType: ['github', 'gitlab'].includes(taskType) ? taskType : 'local',
             dueDate: dueDate ? new Date(dueDate) : null,
             projectId: projectId || null,
-            companyId: resolvedCompanyId,
+            companyId: null,
             specIds,
             figmaNodeId: figmaNodeId || null,
             blockedBy,

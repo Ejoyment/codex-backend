@@ -9,7 +9,7 @@ const subscriptionSchema = new mongoose.Schema({
     userId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
-        required: false
+        required: true
     },
     companyId: {
         type: mongoose.Schema.Types.ObjectId,
@@ -489,12 +489,11 @@ module.exports = mongoose.model('Subscription', subscriptionSchema);
 // Indexes for the hot cron paths (billingCron per-minute trial scan,
 // creditPoolService hourly reset scan) — the schema previously had none
 // (only the userId unique index).
-// Validate that exactly one of userId (personal) or companyId (team) is set
 subscriptionSchema.pre('save', function(next) {
-    const hasUserId = !!this.userId;
-    const hasCompanyId = !!this.companyId;
-    if (hasUserId === hasCompanyId) {
-        return next(new Error('Subscription must have either userId (personal) or companyId (team), not both or neither'));
+    if (this.companyId) {
+        this.type = 'team';
+    } else {
+        this.type = 'personal';
     }
     next();
 });

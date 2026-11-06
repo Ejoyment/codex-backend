@@ -1,4 +1,5 @@
 const Subscription = require('../models/Subscription');
+const Company = require('../models/Company');
 const Entitlement = require('../server/models/EntitlementModel');
 const jwt = require('jsonwebtoken');
 const emailService = require('../utils/emailServiceResend');
@@ -148,17 +149,7 @@ const checkTrialStatus = async (req, res, next) => {
             return res.status(401).json({ success: false, message: 'Invalid or expired token' });
         }
         
-        // Determine context: team if companyId is provided, otherwise personal
-        const companyId = req.body?.companyId || req.query?.companyId || req.params?.companyId;
-        let subscription;
-        let isTeamContext = false;
-
-        if (companyId) {
-            isTeamContext = true;
-            subscription = await getOrCreateTeamSubscription(companyId, userId);
-        } else {
-            subscription = await getOrCreateSubscription(userId);
-        }
+        const subscription = await getOrCreateSubscription(userId);
 
         const user = await User.findById(userId);
         if (!user) {
@@ -177,7 +168,7 @@ const checkTrialStatus = async (req, res, next) => {
                     subscription.metadata = { ...subscription.metadata, trialEndReminderSent: true };
                     await subscription.save();
                 } catch (emailError) {
-                    console.error('Trial reminder email error:', emailError);
+                    console.error('Trial reminder email error:', error);
                 }
             }
 
@@ -189,8 +180,6 @@ const checkTrialStatus = async (req, res, next) => {
             isLastDay: subscription.status === 'trial' ? subscription.isLastTrialDay() : false,
             trialEndsAt: subscription.status === 'trial' ? subscription.trialEndsAt : null,
             tier: subscription.tier,
-            isTeamContext,
-            companyId: isTeamContext ? companyId : null,
         };
 
         // Attach subscription to request
@@ -294,18 +283,8 @@ const enforceAIAccess = async (req, res, next) => {
     }
 };
 
-module.exports = {
-    checkTrialStatus,
-    enforceProjectLimit,
-    enforceAIAccess,
-    applyProTrial,
-    createTrialSubscription,
-    downgradeExpiredTrial,
-    repairTrialTier,
-    getOrCreateSubscription,
-    getOrCreateTeamSubscription,
-    TRIAL_TIER,
-};
+
+
 /**
  * Get or create a team subscription for a company.
  * Only the company owner can create/upgrade one via the billing route.
@@ -337,3 +316,16 @@ async function getOrCreateTeamSubscription(companyId, adminUserId) {
     }
     return subscription;
 }
+
+module.exports = {
+    checkTrialStatus,
+    enforceProjectLimit,
+    enforceAIAccess,
+    applyProTrial,
+    createTrialSubscription,
+    downgradeExpiredTrial,
+    repairTrialTier,
+    getOrCreateSubscription,
+    getOrCreateTeamSubscription,
+    TRIAL_TIER,
+};
