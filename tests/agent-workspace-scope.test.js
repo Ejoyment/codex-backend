@@ -332,11 +332,10 @@ describe('agent-v1 workspace authorization', () => {
       .send({ taskId: TASK_A, taskTitle: 'legacy project task' });
 
     expect(res.status).toBe(202);
-    expect(ensurePersonalWorkspace).toHaveBeenCalledWith(USER_A);
-    expect(LocalProject.updateOne).toHaveBeenCalledWith(
-      { _id: PROJECT_A, $or: [{ workspaceId: null }, { workspaceId: { $exists: false } }] },
-      { $set: { workspaceId: WORKSPACE_A } }
-    );
+    // Personal workspace is the userId — no company is created, no project
+    // workspaceId is set.
+    expect(findPersonalWorkspace).toHaveBeenCalledWith(USER_A);
+    expect(LocalProject.updateOne).not.toHaveBeenCalled();
     expect(gitService.createAgentWorktree).toHaveBeenCalledWith(
       WORKSPACE_A,
       expect.any(String),
@@ -348,7 +347,7 @@ describe('agent-v1 workspace authorization', () => {
 
   test('delegate releases resources when the atomic task claim loses a race', async () => {
     Company.findById.mockReturnValue(leanDoc(company()));
-    ensurePersonalWorkspace.mockResolvedValue(company());
+    findPersonalWorkspace.mockResolvedValue(company());
     LocalTask.findOne.mockResolvedValue({
       _id: TASK_A,
       userId: USER_A,

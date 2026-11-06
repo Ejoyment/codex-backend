@@ -5,6 +5,7 @@ import { useRouter } from 'next/router';
 import { authApi } from '../lib/api';
 import { rateLimit, resetRateLimit, validate, getPasswordStrength, createSubmitGuard } from '../lib/security';
 import DevGate from '../components/DevGate';
+import BrandLogo from '../components/BrandLogo';
 
 const submitGuard = createSubmitGuard();
 
@@ -125,8 +126,7 @@ export default function SignUp() {
           <div className="orb orb-cyan" style={{ width: '500px', height: '500px', bottom: '-100px', left: '-100px', opacity: 0.2 }} />
 
           <Link href="/" className="left-logo">
-            <img src="/buildrs.png" alt="BuildrsHQ" />
-            <div className="logo-text">Buildrs<span>HQ</span></div>
+            <BrandLogo />
           </Link>
 
           <div className="quote">
@@ -163,8 +163,7 @@ export default function SignUp() {
         <div className="right-panel">
           <div className="form-wrapper">
             <Link href="/" className="mobile-logo">
-              <img src="/buildrs.png" alt="BuildrsHQ" />
-              <div className="logo-text">Buildrs<span>HQ</span></div>
+              <BrandLogo />
             </Link>
 
             <div className="form-header">

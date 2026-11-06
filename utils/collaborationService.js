@@ -406,10 +406,13 @@ class CollaborationService {
     /**
      * Load document from database
      */
-    async loadDocument(fileId) {
+    async loadDocument(fileId, workspaceId) {
         try {
             const CodeFile = require('../models/CodeFile');
-            const file = await CodeFile.findById(fileId);
+            const query = { _id: fileId };
+            if (workspaceId) query.company = workspaceId;
+            else query.$or = [{ company: null }, { company: { $ne: null } }];
+            const file = await CodeFile.findOne(query);
             
             if (!file) {
                 throw new Error('File not found');

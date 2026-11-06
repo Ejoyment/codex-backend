@@ -229,7 +229,8 @@ class SDDVerificationService {
   async checkRS256Assertion(target, spec) {
     const modules = spec.targetModules || [];
     const files = await CodeFile.find({
-      path: { $in: [target, ...modules] }
+      path: { $in: [target, ...modules] },
+      company: spec.workspaceId
     });
     let foundRS256 = false;
     for (const file of files) {
@@ -243,7 +244,7 @@ class SDDVerificationService {
 
   async checkTokenExpirationAssertion(target, spec) {
     const modules = spec.targetModules || [];
-    const files = await CodeFile.find({ path: { $in: [target, ...modules] } });
+    const files = await CodeFile.find({ path: { $in: [target, ...modules] }, company: spec.workspaceId });
     let foundValid = true;
     for (const file of files) {
       if (file.content && file.content.includes('expire')) {
@@ -259,7 +260,7 @@ class SDDVerificationService {
 
   async checkMiddlewareAssertion(target, spec) {
     const modules = spec.targetModules || [];
-    const files = await CodeFile.find({ path: { $in: modules } });
+    const files = await CodeFile.find({ path: { $in: modules }, company: spec.workspaceId });
     let found = true;
     for (const file of files) {
       if (file.content && !file.content.includes('rateLimiter')) {
@@ -272,7 +273,7 @@ class SDDVerificationService {
 
   async checkImportAssertion(target, spec) {
     const modules = spec.targetModules || [];
-    const files = await CodeFile.find({ path: { $in: modules } });
+    const files = await CodeFile.find({ path: { $in: modules }, company: spec.workspaceId });
     let found = true;
     for (const file of files) {
       if (file.content && !file.content.includes('require')) {

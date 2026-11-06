@@ -366,7 +366,9 @@ export default function CreateTaskWizard({
               <input type="checkbox" checked={task.delegateToAgent} onChange={(event) => updateTask('delegateToAgent', event.target.checked)} />
               <i aria-hidden="true" />
             </label>
-            {task.delegateToAgent && !companyId && <p className="tsk-create-error-note">Join a workspace to delegate tasks.</p>}
+            {task.delegateToAgent && (
+              <p className="tsk-agent-note">Agent will run on your personal workspace.</p>
+            )}
           </section>
 
           <section className="tsk-create-panel tsk-readiness-panel">

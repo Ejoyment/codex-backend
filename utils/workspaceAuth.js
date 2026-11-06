@@ -12,6 +12,7 @@
 const mongoose = require('mongoose');
 const Company = require('../models/Company');
 const { resolveWorkspaceForUser } = require('./workspaceIdentity');
+const { ensurePersonalWorkspace } = require('./personalWorkspace');
 
 /**
  * Resolve a workspaceId to a Company document, or null when the id is not a
@@ -56,6 +57,25 @@ async function assertWorkspaceAccess(workspaceId, userId) {
         return { ok: false, reason: 'Authentication required' };
     }
     const wsId = String(workspaceId || '');
+
+    // Personal users with no company workspace — their userId is the scope.
+    // When no workspaceId is provided (null/undefined/empty), treat it as the
+    // user's personal scope and ensure a personal subscription exists.
+    if (!wsId) {
+        await ensurePersonalWorkspace(userId);
+        const resolved = await resolveWorkspaceForUser(userId, userId);
+        if (resolved) {
+            return {
+                ok: true,
+                workspace: resolved.workspace,
+                workspaceId: String(resolved.workspace._id),
+                personal: resolved.personal,
+            };
+        }
+        return { ok: false, reason: 'Workspace not found or access denied' };
+    }
+
+    // Try the requested workspace first (company the user belongs to).
     const resolved = await resolveWorkspaceForUser(wsId, userId);
     if (resolved) {
         return {
@@ -64,6 +84,21 @@ async function assertWorkspaceAccess(workspaceId, userId) {
             workspaceId: String(resolved.workspace._id),
             personal: resolved.personal,
         };
+    }
+
+    // If the requested workspaceId equals the user's own ID, treat it as the
+    // personal scope — ensure a personal subscription exists.
+    if (wsId === String(userId)) {
+        await ensurePersonalWorkspace(userId);
+        const retried = await resolveWorkspaceForUser(userId, userId);
+        if (retried) {
+            return {
+                ok: true,
+                workspace: retried.workspace,
+                workspaceId: String(retried.workspace._id),
+                personal: retried.personal,
+            };
+        }
     }
 
     // Legacy/test handles are not ObjectIds and cannot name a Company. Keep

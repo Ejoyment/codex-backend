@@ -210,6 +210,7 @@ describe('file version cap (silent trim)', () => {
     doc.save = jest.fn(async function () { return this; });
     doc.populate = jest.fn(async function () { return this; });
     jest.spyOn(CodeFile, 'findById').mockResolvedValue(doc);
+    jest.spyOn(CodeFile, 'findOne').mockResolvedValue(doc);
     Company.findOne.mockReturnValue({
       select: () => ({
         lean: async () => ({

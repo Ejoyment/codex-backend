@@ -738,7 +738,8 @@ async function checkFileAccess(fileId, userId) {
         const file = await CodeFile.findById(fileId).select('company').lean();
         if (!file) return false;
         const companyId = file.company || file.companyId;
-        if (!companyId) return true; // personal file without workspace scoping
+        // Personal files (company === null) are owner-only: never public.
+        if (!companyId) return String(uid) === String(file.createdBy || file.owner || file.userId);
         const company = await Company.findById(companyId).select('members owner').lean();
         if (!company) return false;
         const uid = String(userId);

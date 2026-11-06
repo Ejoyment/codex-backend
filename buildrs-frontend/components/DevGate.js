@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
+import BrandLogo from './BrandLogo';
 
 // Very simple dev lock for the auth pages. No backend involved: the typed
 // password is compared client-side against NEXT_PUBLIC_DEV_PASSWORD and,
@@ -75,9 +76,7 @@ export default function DevGate({ title, children }) {
       >
         <div style={{ maxWidth: '440px', width: '100%' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '9px', marginBottom: '28px' }}>
-            <img src="/buildrs.png" alt="Buildrs" style={{ width: '32px', height: '32px', borderRadius: '8px' }} />
-            <span style={{ fontSize: '18px', fontWeight: 650, color: '#ffffff' }}>Buildrs</span>
-            <span className="mkt-mono" style={{ fontSize: '10px', letterSpacing: '0.16em', textTransform: 'uppercase', color: '#748194' }}>· hq</span>
+            <BrandLogo />
           </div>
 
           <p className="mkt-mono" style={{ fontSize: '11px', letterSpacing: '0.16em', textTransform: 'uppercase', color: '#12dce5', margin: '0 0 12px' }}>

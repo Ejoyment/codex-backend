@@ -171,7 +171,7 @@ class VectorMemory {
     /**
      * Store code snippet or pattern
      */
-    async store(content, metadata, userId, workspaceId = null) {
+    async store(content, metadata, userId, workspaceId) {
         const embedding = await this.generateEmbedding(content);
 
         switch (this.backend) {
@@ -354,11 +354,28 @@ class VectorMemory {
             .withNearVector({ vector: queryEmbedding })
             .withLimit(k);
 
+        const whereConditions = [];
         if (userId) {
-            query = query.withWhere({
+            whereConditions.push({
                 path: ['userId'],
                 operator: 'Equal',
                 valueString: userId.toString()
+            });
+        }
+        if (workspaceId) {
+            whereConditions.push({
+                path: ['workspaceId'],
+                operator: 'Equal',
+                valueString: workspaceId.toString()
+            });
+        }
+
+        if (whereConditions.length === 1) {
+            query = query.withWhere(whereConditions[0]);
+        } else if (whereConditions.length > 1) {
+            query = query.withWhere({
+                operator: 'And',
+                operands: whereConditions
             });
         }
 

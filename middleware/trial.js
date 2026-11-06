@@ -1,9 +1,11 @@
 const Subscription = require('../models/Subscription');
+const Company = require('../models/Company');
 const Entitlement = require('../server/models/EntitlementModel');
 const jwt = require('jsonwebtoken');
 const emailService = require('../utils/emailServiceResend');
 const User = require('../models/User');
 const { isUserSessionValid } = require('./auth');
+const teamBillingService = require('../utils/teamBillingService');
 
 // The tier a free trial grants. Trialing users get the Pro feature set, so the
 // tier recorded on the subscription must be Pro for the whole trial — a
@@ -166,7 +168,7 @@ const checkTrialStatus = async (req, res, next) => {
                     subscription.metadata = { ...subscription.metadata, trialEndReminderSent: true };
                     await subscription.save();
                 } catch (emailError) {
-                    console.error('Trial reminder email error:', emailError);
+                    console.error('Trial reminder email error:', error);
                 }
             }
 
@@ -281,6 +283,40 @@ const enforceAIAccess = async (req, res, next) => {
     }
 };
 
+
+
+/**
+ * Get or create a team subscription for a company.
+ * Only the company owner can create/upgrade one via the billing route.
+ * This function ensures a developer-tier team subscription exists so the
+ * team has a record to upgrade from.
+ */
+async function getOrCreateTeamSubscription(companyId, adminUserId) {
+    let subscription = await Subscription.findOne({ companyId, type: 'team' });
+    if (!subscription) {
+        subscription = new Subscription({
+            type: 'team',
+            companyId,
+            userId: adminUserId,
+            tier: 'developer',
+            status: 'active',
+            teamSize: 1,
+            seats: [adminUserId],
+            teamPooledCredits: 0,
+            pricing: { amount: 0, currency: 'USD', interval: 'monthly' }
+        });
+        await subscription.save();
+
+        const company = await Company.findById(companyId);
+        if (company) {
+            company.subscription.tier = 'developer';
+            company.subscription.memberLimit = 1;
+            await company.save();
+        }
+    }
+    return subscription;
+}
+
 module.exports = {
     checkTrialStatus,
     enforceProjectLimit,
@@ -290,5 +326,6 @@ module.exports = {
     downgradeExpiredTrial,
     repairTrialTier,
     getOrCreateSubscription,
+    getOrCreateTeamSubscription,
     TRIAL_TIER,
 };

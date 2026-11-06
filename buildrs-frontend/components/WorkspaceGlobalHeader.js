@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import NotificationBell from './NotificationBell';
+import BrandLogo from './BrandLogo';
 import { GitBranch, Search, ChevronDown } from 'lucide-react';
 import { getAvatarUrl } from '../lib/utils';
 
@@ -22,8 +23,7 @@ export default function WorkspaceGlobalHeader({
   return (
     <header className="workspace-global-header ail-global-header">
       <div className="ail-global-brand">
-        <img src="/buildrs.png" alt="" />
-        <strong>Buildrs<span>HQ</span></strong>
+        <BrandLogo />
       </div>
       <div className="ail-global-tools">
         <button type="button" className="ail-branch-selector" onClick={onWorkspaceClick} disabled={!onWorkspaceClick} aria-label="Current branch">

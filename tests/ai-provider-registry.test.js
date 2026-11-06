@@ -15,7 +15,7 @@ const aiService = require('../utils/aiService');
 const { implementedProviderNames, isImplementedProvider } = require('../config/aiProviders');
 
 const LEGACY = ['claude-sonnet', 'gpt-4o', 'ollama', 'lm-studio'];
-const IMPLEMENTED = ['anthropic', 'gemini', 'mistral', 'groq', 'huggingface'];
+const IMPLEMENTED = ['openrouter', 'gemini', 'mistral', 'groq', 'huggingface'];
 
 describe('AI provider registry', () => {
     afterEach(() => jest.restoreAllMocks());
