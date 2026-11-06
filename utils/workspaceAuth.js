@@ -75,6 +75,7 @@ async function assertWorkspaceAccess(workspaceId, userId) {
         return { ok: false, reason: 'Workspace not found or access denied' };
     }
 
+    // Try the requested workspace first (company the user belongs to).
     const resolved = await resolveWorkspaceForUser(wsId, userId);
     if (resolved) {
         return {
@@ -83,6 +84,21 @@ async function assertWorkspaceAccess(workspaceId, userId) {
             workspaceId: String(resolved.workspace._id),
             personal: resolved.personal,
         };
+    }
+
+    // If the requested workspaceId equals the user's own ID, treat it as the
+    // personal scope — ensure a personal subscription exists.
+    if (wsId === String(userId)) {
+        await ensurePersonalWorkspace(userId);
+        const retried = await resolveWorkspaceForUser(userId, userId);
+        if (retried) {
+            return {
+                ok: true,
+                workspace: retried.workspace,
+                workspaceId: String(retried.workspace._id),
+                personal: retried.personal,
+            };
+        }
     }
 
     // Legacy/test handles are not ObjectIds and cannot name a Company. Keep
