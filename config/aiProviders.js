@@ -8,19 +8,17 @@
  * failure, not a silent reroute to another model.
  */
 const PROVIDERS = Object.freeze({
-  anthropic: Object.freeze({
+  openrouter: Object.freeze({
     implemented: true,
-    name: 'Anthropic Claude',
+    name: 'OpenRouter (Claude)',
     type: 'cloud',
-    apiKeyEnv: 'ANTHROPIC_API_KEY',
-    modelEnv: 'ANTHROPIC_MODEL',
-    defaultModel: 'claude-sonnet-4-20250514',
-    endpoint: 'https://api.anthropic.com/v1/messages',
-    // Anthropic's Messages API is not OpenAI-compatible: it separates the
-    // system prompt, uses a different request/response shape, and requires
-    // the x-api-key header and anthropic-version. The implementation lives in
-    // aiService.chatAnthropic.
-    anthropicVersion: '2023-06-01',
+    apiKeyEnv: 'OPENROUTER_API_KEY',
+    modelEnv: 'OPENROUTER_MODEL',
+    defaultModel: 'anthropic/claude-sonnet-4-20250514',
+    endpoint: 'https://openrouter.ai/api/v1/chat/completions',
+    // OpenRouter is OpenAI-compatible: standard messages array, Bearer auth,
+    // json_object response format. Claude models accessed via OpenRouter
+    // (e.g. anthropic/claude-sonnet-4-20250514).
   }),
   gemini: Object.freeze({
     implemented: true,
