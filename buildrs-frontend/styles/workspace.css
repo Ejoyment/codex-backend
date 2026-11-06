@@ -55,20 +55,10 @@
 }
 
 .workspace-global-header .ail-global-brand img {
-  width: 56px;
-  height: 38px;
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
   object-fit: contain;
-}
-
-.workspace-global-header .ail-global-brand strong {
-  color: #dee2f6;
-  font-size: 0.92rem;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-}
-
-.workspace-global-header .ail-global-brand strong span {
-  color: #748194;
 }
 
 .workspace-global-header .ail-global-tools {
@@ -785,7 +775,8 @@
   }
 
   .workspace-global-header .ail-global-brand img {
-    width: 42px;
+    width: 24px;
+    height: 24px;
   }
 
   .workspace-global-header .ail-branch-selector,
@@ -14518,20 +14509,10 @@
 }
 
 .ail-agent-page .ail-global-brand img {
-  width: 56px;
-  height: 38px;
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
   object-fit: contain;
-}
-
-.ail-agent-page .ail-global-brand strong {
-  color: #dee2f6;
-  font-size: 0.92rem;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-}
-
-.ail-agent-page .ail-global-brand strong span {
-  color: #12dce5;
 }
 
 .ail-agent-page .ail-global-tools {
@@ -14918,7 +14899,8 @@
   }
 
   .ail-agent-page .ail-global-brand img {
-    width: 42px;
+    width: 24px;
+    height: 24px;
   }
 
   .ail-agent-page .ail-branch-selector,
