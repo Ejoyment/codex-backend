@@ -269,10 +269,6 @@ export default function Tasks() {
   };
 
   const delegateTask = async (task) => {
-    if (!selectedCompany?._id) {
-      setActionError('Join a workspace before delegating a task.');
-      return;
-    }
     const unresolvedBlockers = (task.blockedBy || []).some((blockerId) => {
       const blocker = tasks.find((item) => item.id === String(blockerId?._id || blockerId));
       return blocker && blocker.status !== 'done';

@@ -3043,7 +3043,7 @@ export default function Editor() {
     }
 
     if (!gitWorkspaceId) {
-      setStatus({ type: 'error', msg: 'Join a workspace or select a GitHub repo to use version control.' });
+      setStatus({ type: 'error', msg: 'No workspace available for version control. Create a project first.' });
       return;
     }
     try {

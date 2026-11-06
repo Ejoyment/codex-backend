@@ -300,11 +300,7 @@ export default function TaskDetails() {
   };
 
   const delegateTask = async () => {
-    const workspaceId = selectedCompany?._id || selectedCompany?.id || task?.companyId?._id || task?.companyId;
-    if (!workspaceId) {
-      setActionError('Join a workspace before delegating this task.');
-      return;
-    }
+    const workspaceId = selectedCompany?._id || selectedCompany?.id || task?.companyId?._id || task?.companyId || undefined;
     setDelegating(true);
     setActionError('');
     try {
