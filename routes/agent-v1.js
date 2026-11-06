@@ -207,13 +207,12 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       await ensurePersonalWorkspace(req.userId);
       requestedWorkspaceId = req.userId;
     } else {
-      // Validate the requested workspace belongs to the user. If it doesn't
-      // (e.g. stale companyId from before personal/workspace separation),
-      // fall back to the user's personal scope.
+      // Validate the requested workspace belongs to the user. If it doesn't,
+      // reject — do not silently fall back to personal scope for a different
+      // company ID (that would be a cross-tenant leak).
       const access = await assertWorkspaceAccess(requestedWorkspaceId, req.userId);
       if (!access.ok) {
-        await ensurePersonalWorkspace(req.userId);
-        requestedWorkspaceId = req.userId;
+        return res.status(403).json({ success: false, message: 'Workspace access denied' });
       }
     }
     const workspaceAccess = await assertWorkspaceAccess(requestedWorkspaceId, req.userId);

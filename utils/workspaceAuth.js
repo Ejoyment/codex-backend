@@ -12,6 +12,7 @@
 const mongoose = require('mongoose');
 const Company = require('../models/Company');
 const { resolveWorkspaceForUser } = require('./workspaceIdentity');
+const { ensurePersonalWorkspace } = require('./personalWorkspace');
 
 /**
  * Resolve a workspaceId to a Company document, or null when the id is not a
@@ -64,6 +65,21 @@ async function assertWorkspaceAccess(workspaceId, userId) {
             workspaceId: String(resolved.workspace._id),
             personal: resolved.personal,
         };
+    }
+
+    // Personal users have no company workspace — their userId is the scope.
+    // Ensure a personal subscription exists so subsequent lookups succeed.
+    if (wsId && wsId === String(userId)) {
+        await ensurePersonalWorkspace(userId);
+        const retried = await resolveWorkspaceForUser(wsId, userId);
+        if (retried) {
+            return {
+                ok: true,
+                workspace: retried.workspace,
+                workspaceId: String(retried.workspace._id),
+                personal: retried.personal,
+            };
+        }
     }
 
     // Legacy/test handles are not ObjectIds and cannot name a Company. Keep
