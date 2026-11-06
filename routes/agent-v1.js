@@ -202,9 +202,9 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       || task?.companyId?.toString()
       || taskProject?.workspaceId?.toString();
     if (!requestedWorkspaceId) {
-      // Personal users have no company workspace — their userId is the
-      // workspace scope. assertWorkspaceAccess(userId, userId) resolves to
-      // the personal subscription via resolveWorkspaceForUser → findPersonalWorkspace.
+      // Personal users have no company workspace — ensure a personal
+      // subscription exists, then use userId as the workspace scope.
+      await ensurePersonalWorkspace(req.userId);
       requestedWorkspaceId = req.userId;
     }
     const workspaceAccess = await assertWorkspaceAccess(requestedWorkspaceId, req.userId);
