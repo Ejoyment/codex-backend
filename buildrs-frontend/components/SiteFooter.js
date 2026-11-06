@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import BrandLogo from './BrandLogo';
 
 const COLUMNS = [
   {
@@ -47,9 +48,7 @@ export default function SiteFooter() {
         <div className="grid grid-cols-2 gap-x-8 gap-y-12 lg:grid-cols-[1.3fr_1fr_1fr_1fr_1fr]">
           <div>
             <div className="flex items-center gap-2.5">
-              <img src="/buildrs.png" alt="BuildrsHQ" className="h-6 w-6 rounded" />
-              <span className="text-[15px] font-semibold tracking-tight text-white">Buildrs</span>
-              <span className="mkt-mono text-[10px] uppercase tracking-widest text-[#748194]">· hq</span>
+              <BrandLogo />
             </div>
             <p className="mt-4 max-w-[240px] text-[13px] leading-relaxed text-[#748194]">
               Your dev stack in one workspace — AI pair programming, live co-editing,

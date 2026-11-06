@@ -7,6 +7,7 @@ import useAuthStore from '../store/authStore';
 import { rateLimit, resetRateLimit, validate, createSubmitGuard } from '../lib/security';
 import useToastStore from '../store/toastStore';
 import DevGate from '../components/DevGate';
+import BrandLogo from '../components/BrandLogo';
 
 const submitGuard = createSubmitGuard();
 
@@ -114,10 +115,7 @@ export default function SignIn() {
           <div className="orb orb-cyan" style={{ width: '500px', height: '500px', bottom: '-100px', right: '-100px', opacity: 0.25 }} />
 
           <Link href="/" className="left-logo">
-            <img src="/buildrs.png" alt="BuildrsHQ" />
-            <div className="logo-text">
-              Buildrs<span>HQ</span>
-            </div>
+            <BrandLogo />
           </Link>
 
           <div>
@@ -159,10 +157,7 @@ export default function SignIn() {
         <div className="right-panel">
           <div className="form-wrapper">
             <Link href="/" className="mobile-logo">
-              <img src="/buildrs.png" alt="BuildrsHQ" />
-              <div className="logo-text">
-                Buildrs<span>HQ</span>
-              </div>
+              <BrandLogo />
             </Link>
 
             <div className="form-header">

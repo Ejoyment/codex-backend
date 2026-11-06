@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { useState } from 'react';
+import BrandLogo from './BrandLogo';
 
 const NAV = [
   { href: '/features', label: 'Product' },
@@ -19,13 +20,7 @@ export default function SiteHeader() {
       <div className="mx-auto max-w-[1200px] px-5 sm:px-8">
         <div className="flex h-14 items-center justify-between">
           <Link href="/" className="flex items-center gap-2.5">
-            <img src="/buildrs.png" alt="BuildrsHQ" className="h-6 w-6 rounded" />
-            <span className="text-[15px] font-semibold tracking-tight text-white">
-              Buildrs
-            </span>
-            <span className="mkt-mono text-[10px] uppercase tracking-widest text-[#748194]">
-              · hq
-            </span>
+            <BrandLogo />
           </Link>
 
           <nav className="hidden items-center gap-1 md:flex">
