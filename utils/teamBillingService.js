@@ -44,7 +44,6 @@ class TeamBillingService {
         const subscription = new Subscription({
             type: 'team',
             companyId,
-            userId: adminUserId, // admin owns the subscription record
             tier,
             status: 'active',
             teamSize: seatCount,

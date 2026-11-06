@@ -15,6 +15,9 @@ function normalizeWorkspaceId(value) {
 function isMember(workspace, userId) {
     if (!workspace || !userId) return false;
     const uid = String(userId);
+    // Personal workspace (subscription): owner is userId
+    if (workspace.userId && String(workspace.userId) === uid) return true;
+    // Team workspace (company): check owner and members
     if (workspace.owner && String(workspace.owner) === uid) return true;
     return Array.isArray(workspace.members)
         && workspace.members.some((member) => {

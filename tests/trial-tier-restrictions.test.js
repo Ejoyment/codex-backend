@@ -8,7 +8,14 @@
  */
 
 const Subscription = require('../models/Subscription');
-const { createTrialSubscription, repairTrialTier, downgradeExpiredTrial, TRIAL_TIER } = require('../middleware/trial');
+const Company = require('../models/Company');
+const {
+  createTrialSubscription,
+  repairTrialTier,
+  downgradeExpiredTrial,
+  getOrCreateTeamSubscription,
+  TRIAL_TIER,
+} = require('../middleware/trial');
 
 const USER = '507f1f77bcf86cd799439011';
 const DAY = 24 * 60 * 60 * 1000;
@@ -208,5 +215,41 @@ describe('tierConfigs are reachable', () => {
     for (const tier of ['developer', 'pro', 'pro_plus', 'team_standard', 'team_premium', 'enterprise']) {
       expect(Subscription.tierConfigs[tier]).toBeDefined();
     }
+  });
+});
+
+describe('getOrCreateTeamSubscription', () => {
+  const COMPANY = '507f1f77bcf86cd799439012';
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  test('creates a team subscription without a personal userId (schema is XOR)', async () => {
+    jest.spyOn(Subscription, 'findOne').mockResolvedValue(null);
+    jest.spyOn(Subscription.prototype, 'save').mockResolvedValue();
+    const company = {
+      subscription: { tier: 'developer', memberLimit: 1 },
+      save: jest.fn().mockResolvedValue(),
+    };
+    const findById = jest.spyOn(Company, 'findById').mockResolvedValue(company);
+
+    const sub = await getOrCreateTeamSubscription(COMPANY, USER);
+
+    expect(sub.type).toBe('team');
+    expect(sub.companyId.toString()).toBe(COMPANY);
+    expect(sub.userId.toString()).toBe(USER);
+    expect(sub.seats.map(String)).toContain(USER);
+    expect(findById).toHaveBeenCalledWith(COMPANY);
+    expect(company.subscription.tier).toBe('developer');
+    expect(company.subscription.memberLimit).toBe(1);
+    expect(company.save).toHaveBeenCalled();
+  });
+
+  test('reuses an existing team subscription', async () => {
+    const existing = { _id: 'sub-team' };
+    jest.spyOn(Subscription, 'findOne').mockResolvedValue(existing);
+
+    await expect(getOrCreateTeamSubscription(COMPANY, USER)).resolves.toBe(existing);
   });
 });
