@@ -23,7 +23,13 @@ describe('project file scoping', () => {
 
   test('scopes strict queries to the project, or to unassigned files without one', () => {
     expect(projectFileQuery('ws', 'p1')).toEqual({ project: 'p1' });
-    expect(projectFileQuery('ws')).toEqual({ project: null, company: 'ws' });
+    expect(projectFileQuery('ws')).toEqual({
+      project: null,
+      $or: [
+        { company: 'ws' },
+        { company: null, createdBy: 'ws' }
+      ]
+    });
   });
 
   test('workspace-wide tool queries only narrow when a project is provided', () => {
