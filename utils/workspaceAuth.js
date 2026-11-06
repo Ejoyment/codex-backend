@@ -57,6 +57,24 @@ async function assertWorkspaceAccess(workspaceId, userId) {
         return { ok: false, reason: 'Authentication required' };
     }
     const wsId = String(workspaceId || '');
+
+    // Personal users with no company workspace — their userId is the scope.
+    // When no workspaceId is provided (null/undefined/empty), treat it as the
+    // user's personal scope and ensure a personal subscription exists.
+    if (!wsId) {
+        await ensurePersonalWorkspace(userId);
+        const resolved = await resolveWorkspaceForUser(userId, userId);
+        if (resolved) {
+            return {
+                ok: true,
+                workspace: resolved.workspace,
+                workspaceId: String(resolved.workspace._id),
+                personal: resolved.personal,
+            };
+        }
+        return { ok: false, reason: 'Workspace not found or access denied' };
+    }
+
     const resolved = await resolveWorkspaceForUser(wsId, userId);
     if (resolved) {
         return {
@@ -65,21 +83,6 @@ async function assertWorkspaceAccess(workspaceId, userId) {
             workspaceId: String(resolved.workspace._id),
             personal: resolved.personal,
         };
-    }
-
-    // Personal users have no company workspace — their userId is the scope.
-    // Ensure a personal subscription exists so subsequent lookups succeed.
-    if (wsId && wsId === String(userId)) {
-        await ensurePersonalWorkspace(userId);
-        const retried = await resolveWorkspaceForUser(wsId, userId);
-        if (retried) {
-            return {
-                ok: true,
-                workspace: retried.workspace,
-                workspaceId: String(retried.workspace._id),
-                personal: retried.personal,
-            };
-        }
     }
 
     // Legacy/test handles are not ObjectIds and cannot name a Company. Keep
