@@ -64,9 +64,12 @@ test('resolves caller id alias to personal subscription', async () => {
     expect(String(resolved.workspace._id)).toBe(String(existing._id));
 });
 
-test('returns null when no personal workspace exists', async () => {
+test('creates a personal workspace when none exists', async () => {
     Subscription.findOne.mockResolvedValue(null);
 
     const resolved = await resolveWorkspaceForUser(USER_ID, USER_ID);
-    expect(resolved).toBeNull();
+    expect(resolved).not.toBeNull();
+    expect(resolved.personal).toBe(true);
+    expect(String(resolved.workspace._id)).toBeDefined();
+    expect(Subscription).toHaveBeenCalled();
 });
