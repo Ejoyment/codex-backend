@@ -206,23 +206,36 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       // subscription exists, then use userId as the workspace scope.
       await ensurePersonalWorkspace(req.userId);
       requestedWorkspaceId = req.userId;
+    } else {
+      // Validate the requested workspace belongs to the user. If it doesn't
+      // (e.g. stale companyId from before personal/workspace separation),
+      // fall back to the user's personal scope.
+      const access = await assertWorkspaceAccess(requestedWorkspaceId, req.userId);
+      if (!access.ok) {
+        await ensurePersonalWorkspace(req.userId);
+        requestedWorkspaceId = req.userId;
+      }
     }
     const workspaceAccess = await assertWorkspaceAccess(requestedWorkspaceId, req.userId);
     if (!workspaceAccess.ok) {
       return res.status(403).json({ success: false, message: workspaceAccess.reason || 'Workspace access denied' });
     }
     const workspaceId = workspaceAccess.workspaceId;
-    if (task?.companyId && String(task.companyId) !== workspaceId) {
-      return res.status(403).json({ success: false, message: 'Task is linked to a different workspace' });
-    }
-    if (taskProject?.workspaceId && String(taskProject.workspaceId) !== workspaceId) {
-      return res.status(403).json({ success: false, message: 'Project does not belong to this workspace' });
-    }
-
     // Personal users have no company — fileWorkspaceId is the userId so
     // projectFileQuery can match files owned by the user (company: null).
     const isPersonal = workspaceAccess.personal === true;
     const fileWorkspaceId = isPersonal ? req.userId : workspaceId;
+    // Personal users: task.companyId / project.workspaceId may be stale
+    // company IDs from before personal/workspace separation. As long as the
+    // task belongs to this user, allow delegation in their personal scope.
+    if (!isPersonal) {
+      if (task?.companyId && String(task.companyId) !== workspaceId) {
+        return res.status(403).json({ success: false, message: 'Task is linked to a different workspace' });
+      }
+      if (taskProject?.workspaceId && String(taskProject.workspaceId) !== workspaceId) {
+        return res.status(403).json({ success: false, message: 'Project does not belong to this workspace' });
+      }
+    }
 
     const requestedSpecIds = [...new Set([...(req.body.specIds || []), ...(req.body.specId ? [req.body.specId] : []), ...(task?.specIds || []).map(String)])];
     // Specs belong to the task's project; the workspace check above only gates
