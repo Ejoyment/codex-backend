@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 const Company = require('../models/Company');
-const { findPersonalWorkspace } = require('./personalWorkspace');
+const { findPersonalWorkspace, ensurePersonalWorkspace } = require('./personalWorkspace');
 
 function normalizeWorkspaceId(value) {
     if (!value) return null;
@@ -15,6 +15,9 @@ function normalizeWorkspaceId(value) {
 function isMember(workspace, userId) {
     if (!workspace || !userId) return false;
     const uid = String(userId);
+    // Personal workspace (subscription): owner is userId
+    if (workspace.userId && String(workspace.userId) === uid) return true;
+    // Team workspace (company): check owner and members
     if (workspace.owner && String(workspace.owner) === uid) return true;
     return Array.isArray(workspace.members)
         && workspace.members.some((member) => {
@@ -29,7 +32,10 @@ async function resolveWorkspaceForUser(workspaceId, userId) {
 
     if (requestedId === String(userId)) {
         if (!mongoose.isValidObjectId(requestedId)) return null;
-        const workspace = await findPersonalWorkspace(userId);
+        let workspace = await findPersonalWorkspace(userId);
+        if (!workspace) {
+            workspace = await ensurePersonalWorkspace(userId);
+        }
         return workspace ? { workspace, personal: true } : null;
     }
 

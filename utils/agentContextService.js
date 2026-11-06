@@ -233,13 +233,17 @@ class AgentContextService {
 
             // Load active task if specified
             if (taskId) {
-                let task = await TeamTask.findById(taskId)
+                const taskQuery = { _id: taskId };
+                if (companyId) taskQuery.company = companyId;
+                let task = await TeamTask.findOne(taskQuery)
                     .populate('createdBy', 'name')
                     .populate('assignedTo', 'name')
                     .populate('comments.user', 'name')
                     .lean();
                 if (!task) {
-                    task = await LocalTask.findById(taskId).lean();
+                    const localTaskQuery = { _id: taskId };
+                    if (companyId) localTaskQuery.companyId = companyId;
+                    task = await LocalTask.findOne(localTaskQuery).lean();
                 }
                 if (task) {
                     bundle.tasks.activeTask = {

@@ -260,7 +260,7 @@ async function backfillFileContent({ userId, projectId, workspaceId, source, rep
     // project only; widening to the workspace could pull another project's
     // source into this deployment.
     if (projectId) {
-        const dbFiles = await CodeFile.find({ project: projectId }).lean();
+        const dbFiles = await CodeFile.find({ project: projectId, company: workspaceId }).lean();
         const byKey = new Map();
         for (const dbf of dbFiles) {
             byKey.set(fileKey(dbf), typeof dbf.content === 'string' ? dbf.content : '');

@@ -104,7 +104,7 @@ async function redeployDeployment({
   });
 
   try {
-    const files = await CodeFile.find({ project: resolvedProjectId })
+    const files = await CodeFile.find({ project: resolvedProjectId, company: workspaceId })
       .select('name path content language')
       .lean();
     if (!files.length) throw new Error('The approved project has no files to deploy.');

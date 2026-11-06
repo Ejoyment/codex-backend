@@ -1462,10 +1462,18 @@ const previousIteration = session.iterations[session.iterations.length - 1];
                 if (correction.shouldRetry) {
                     console.log(`🔄 Retry ${attempt + 1}: ${correction.reasoning}`);
                     
-                    // Use corrected parameters or alternative tool
+                    // Use corrected parameters or alternative tool. Only fall
+                    // back to an alternative tool that this run permits, and
+                    // keep original parameters when the model returned garbage.
+                    const allowed = Array.isArray(context.allowedTools) ? new Set(context.allowedTools) : null;
+                    const tool = correction.alternativeTool && allowed && allowed.has(correction.alternativeTool)
+                        ? correction.alternativeTool
+                        : action.tool;
+                    const params = correction.adjustedParameters || action.parameters;
+                    
                     const nextAction = {
-                        tool: correction.alternativeTool || action.tool,
-                        parameters: correction.adjustedParameters || action.parameters
+                        tool,
+                        parameters: params,
                     };
                     
                     return await this.executeWithRetry(nextAction, context, attempt + 1);
@@ -1509,7 +1517,7 @@ const previousIteration = session.iterations[session.iterations.length - 1];
             const prompt = `Analyze this error and suggest a correction:
 
 **Tool**: ${action.tool}
-**Parameters**: ${JSON.stringify(action.parameters, null, 2)}
+**Parameters**: ${JSON.stringify(action.parameters || {}, null, 2)}
 **Error**: ${error}
 
 **Available Tools**: ${this.toolNames(context).join(', ')}
@@ -1530,28 +1538,47 @@ RESPOND WITH JSON ONLY.`;
                 agentMode: true,
                 instructions: 'Analyze error and suggest correction. JSON only.',
                 provider: context.provider,
-                model: context.model
+                model: context.model,
+                allowProviderFallback: true,
+                ...(context.provider === 'groq' || !context.provider ? { response_format: { type: 'json_object' } } : {}),
             });
             if (!response?.success || !response.content) {
                 throw new Error(response?.error || 'AI returned an empty error analysis');
             }
 
-            // Parse response
+            // Parse response with a strict schema so a malformed model reply
+            // never feeds garbage back into the action loop.
             let cleaned = response.content.trim();
             if (cleaned.startsWith('```')) {
                 cleaned = cleaned.replace(/```json\n?/g, '').replace(/```\n?/g, '');
             }
-            
-            const correction = JSON.parse(cleaned);
-            return correction;
-            
+            let correction;
+            try {
+                correction = JSON.parse(cleaned);
+            } catch (parseErr) {
+                return {
+                    shouldRetry: false,
+                    reasoning: `Could not parse analysis JSON: ${parseErr.message}`,
+                    adjustedParameters: null,
+                    alternativeTool: null,
+                };
+            }
+
+            const normalized = {
+                shouldRetry: !!correction.shouldRetry,
+                reasoning: typeof correction.reasoning === 'string' ? correction.reasoning : 'No reasoning provided.',
+                adjustedParameters: correction.adjustedParameters && typeof correction.adjustedParameters === 'object' && !Array.isArray(correction.adjustedParameters) ? correction.adjustedParameters : null,
+                alternativeTool: typeof correction.alternativeTool === 'string' ? correction.alternativeTool : null,
+            };
+            return normalized;
+
         } catch (error) {
             console.error('Failed to analyze error:', error);
             return {
                 shouldRetry: false,
-                reasoning: 'Could not analyze error',
+                reasoning: `Could not analyze error: ${error.message}`,
                 adjustedParameters: null,
-                alternativeTool: null
+                alternativeTool: null,
             };
         }
     }

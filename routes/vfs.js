@@ -525,7 +525,13 @@ router.put('/files/:fileId', authenticateToken, permissionMatrix.requirePermissi
     const { fileId } = req.params;
     const { content, name, language } = req.body;
     
-    const file = await CodeFile.findById(fileId);
+    const file = await CodeFile.findOne({
+      _id: fileId,
+      $or: [
+        { company: null, createdBy: req.userId },
+        { company: { $ne: null } }
+      ]
+    });
     if (!(await assertFileAccess(file, req.userId, res, 'write'))) return;
 
     if (content !== undefined) file.content = content;
@@ -537,7 +543,7 @@ router.put('/files/:fileId', authenticateToken, permissionMatrix.requirePermissi
     await file.save();
     
     // Update VFS cache and index
-    const workspaceId = file.company.toString();
+    const workspaceId = file.company ? String(file.company) : null;
     await vfs.writeFile(fileId, file.content, workspaceId);
     
     emitWorkspaceChange(workspaceId, 'file:updated', {
@@ -569,10 +575,16 @@ router.delete('/files/:fileId', authenticateToken, permissionMatrix.requirePermi
   try {
     const { fileId } = req.params;
     
-    const file = await CodeFile.findById(fileId);
+    const file = await CodeFile.findOne({
+      _id: fileId,
+      $or: [
+        { company: null, createdBy: req.userId },
+        { company: { $ne: null } }
+      ]
+    });
     if (!(await assertFileAccess(file, req.userId, res, 'manage'))) return;
 
-    const workspaceId = file.company.toString();
+    const workspaceId = file.company ? String(file.company) : null;
 
     await vfs.deleteFile(fileId, workspaceId);
     

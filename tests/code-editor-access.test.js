@@ -16,6 +16,7 @@ process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret-for-automated-te
 
 jest.mock('../models/CodeFile', () => ({
   findById: jest.fn(),
+  findOne: jest.fn(),
   findByIdAndDelete: jest.fn(async () => null),
   findOneAndDelete: jest.fn(async () => null),
   find: jest.fn(),
@@ -110,6 +111,7 @@ beforeEach(() => {
   clearLivenessCache();
   User.exists.mockResolvedValue({ _id: 'x' }); // liveness passes for everyone
   User.findById.mockReturnValue({
+    select: jest.fn(async () => ({ _id: TARGET_ID, company: COMPANY_ID })),
     populate: jest.fn(async () => ({ subscription: { tier: 'free' } })),
   });
   currentCompany = null; // default: stranger to every company
@@ -121,6 +123,7 @@ beforeEach(() => {
   // NOTE: NOT async — must return the thenable itself (not Promise<thenable>)
   // so `.populate()` chaining works like a mongoose query.
   CodeFile.findById.mockImplementation(() => chainable(currentFile));
+  CodeFile.findOne.mockImplementation(() => chainable(currentFile));
   CodeFile.find.mockImplementation(() => fileListChain([]));
   CodeFile.create.mockImplementation(async (doc) => ({
     ...doc,

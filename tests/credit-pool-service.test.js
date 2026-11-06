@@ -89,7 +89,7 @@ describe('deductCredits', () => {
     const result = await creditPool.deductCredits('u1', 1);
 
     expect(Subscription.findOneAndUpdate).toHaveBeenCalledWith(
-      { userId: 'u1', 'creditPool.usedThisMonth': { $lte: 19 } },
+      { userId: 'u1', type: 'personal', 'creditPool.usedThisMonth': { $lte: 19 } },
       { $inc: { 'creditPool.usedThisMonth': 1 } },
       { new: true }
     );
@@ -119,7 +119,7 @@ describe('deductCredits', () => {
     const result = await creditPool.deductCredits('u1', 1);
 
     expect(Subscription.findOneAndUpdate).toHaveBeenCalledWith(
-      { userId: 'u1' },
+      { userId: 'u1', type: 'personal' },
       { $inc: { 'creditPool.usedThisMonth': 1 } },
       { new: true }
     );

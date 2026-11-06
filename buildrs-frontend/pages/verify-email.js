@@ -5,6 +5,7 @@ import { useRouter } from 'next/router';
 import { authApi } from '../lib/api';
 import useAuthStore from '../store/authStore';
 import useToastStore from '../store/toastStore';
+import BrandLogo from '../components/BrandLogo';
 
 export default function VerifyEmail() {
   const router = useRouter();
@@ -124,8 +125,7 @@ export default function VerifyEmail() {
         <div className="verify-card">
           <div className="flex items-center justify-between mb-8" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '32px' }}>
             <Link href="/" className="flex items-center" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
-              <img src="/buildrs.png" alt="BuildrsHQ" width="30" height="30" style={{ borderRadius: 7, objectFit: 'contain' }} />
-              <span className="logo-text">Buildrs<span>HQ</span></span>
+              <BrandLogo />
             </Link>
             <div style={{ display: 'flex', gap: 6 }}>
               <div className="window-dot" style={{ background: '#ec1414' }} />

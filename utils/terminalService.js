@@ -902,7 +902,13 @@ class TerminalService {
           const dir = path.dirname(fsPath);
           await fs.mkdir(dir, { recursive: true });
 
-          const file = await CodeFile.findById(data.file._id).select('content').lean();
+          const file = await CodeFile.findOne({
+            _id: data.file._id,
+            $or: [
+              { company: null, createdBy: terminal.userId },
+              { company: { $ne: null } }
+            ]
+          }).select('content').lean();
           if (file) {
             await fs.writeFile(fsPath, file.content || '');
           }
@@ -912,7 +918,13 @@ class TerminalService {
           const fsPath = resolveInWorkspace(terminal.workspacePath, vfs.fullPathOf(data.file));
           // Never write through a symlink that already sits at the target.
           try { const st = await fs.lstat(fsPath); if (st.isSymbolicLink()) return; } catch (e) { if (e.code !== 'ENOENT') return; }
-          const file = await CodeFile.findById(data.file._id).select('content').lean();
+          const file = await CodeFile.findOne({
+            _id: data.file._id,
+            $or: [
+              { company: null, createdBy: terminal.userId },
+              { company: { $ne: null } }
+            ]
+          }).select('content').lean();
           if (file) {
             await fs.writeFile(fsPath, file.content || '');
           }

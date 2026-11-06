@@ -75,7 +75,13 @@ router.post('/handoff', authenticateToken, async (req, res) => {
         const codeSnapshot = { branch: 'main', commitSha: null, repository: null, filePath: null, content: null, language: null };
         
         if (fileId) {
-            const file = await CodeFile.findById(fileId);
+            const file = await CodeFile.findOne({
+              _id: fileId,
+              $or: [
+                { company: null, createdBy: req.userId },
+                { company: { $ne: null } }
+              ]
+            });
             if (file) {
                 codeSnapshot.fileId = file._id.toString();
                 codeSnapshot.filePath = file.path;
@@ -431,7 +437,13 @@ router.post('/handoff/from-chat', authenticateToken, async (req, res) => {
 
         const codeSnapshot = { branch: 'main', commitSha: null, repository: null, filePath: null, content: null, language: null };
         if (fileId) {
-            const file = await CodeFile.findById(fileId);
+            const file = await CodeFile.findOne({
+              _id: fileId,
+              $or: [
+                { company: null, createdBy: req.userId },
+                { company: { $ne: null } }
+              ]
+            });
             if (file) {
                 const fileUid = String(req.userId);
                 const isCreator = file.createdBy && String(file.createdBy) === fileUid;

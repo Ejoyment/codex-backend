@@ -253,9 +253,9 @@ class HITLGates {
         try {
             switch (tool) {
                 case 'delete_file':
-                    if (params.fileId) {
+                    if (params.fileId && context?.workspaceId) {
                         const CodeFile = require('../models/CodeFile');
-                        const file = await CodeFile.findById(params.fileId).select('name path language');
+                        const file = await CodeFile.findOne({ _id: params.fileId, company: context.workspaceId }).select('name path language');
                         if (file) {
                             preview.details.push(`File: ${file.name}`);
                             preview.details.push(`Path: ${file.path}`);
@@ -299,9 +299,9 @@ class HITLGates {
                     break;
                 
                 case 'update_file':
-                    if (params.fileId) {
+                    if (params.fileId && context?.workspaceId) {
                         const CodeFile = require('../models/CodeFile');
-                        const file = await CodeFile.findById(params.fileId).select('name path');
+                        const file = await CodeFile.findOne({ _id: params.fileId, company: context.workspaceId }).select('name path');
                         if (file) {
                             preview.details.push(`File: ${file.name}`);
                             preview.details.push(`Path: ${file.path}`);
