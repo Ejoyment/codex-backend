@@ -43,7 +43,15 @@ function resolveProjectId({ projectId = null, task = null, execution = null } = 
 function projectFileQuery(workspaceId, projectId = null) {
   if (projectId) return { project: String(projectId) };
   const query = { project: null };
-  if (workspaceId) query.company = String(workspaceId);
+  if (workspaceId) {
+    // Personal users (workspaceId === userId): match files owned by the user
+    // with no company. Team users (workspaceId === companyId): match files
+    // belonging to the company.
+    query.$or = [
+      { company: String(workspaceId) },
+      { company: null, createdBy: String(workspaceId) }
+    ];
+  }
   return query;
 }
 

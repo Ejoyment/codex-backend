@@ -202,13 +202,10 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       || task?.companyId?.toString()
       || taskProject?.workspaceId?.toString();
     if (!requestedWorkspaceId) {
-      requestedWorkspaceId = String((await ensurePersonalWorkspace(req.userId))._id);
-      if (taskProjectId) {
-        await LocalProject.updateOne(
-          { _id: taskProjectId, $or: [{ workspaceId: null }, { workspaceId: { $exists: false } }] },
-          { $set: { workspaceId: requestedWorkspaceId } }
-        );
-      }
+      // Personal users have no company workspace — their userId is the
+      // workspace scope. assertWorkspaceAccess(userId, userId) resolves to
+      // the personal subscription via resolveWorkspaceForUser → findPersonalWorkspace.
+      requestedWorkspaceId = req.userId;
     }
     const workspaceAccess = await assertWorkspaceAccess(requestedWorkspaceId, req.userId);
     if (!workspaceAccess.ok) {
@@ -222,6 +219,11 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       return res.status(403).json({ success: false, message: 'Project does not belong to this workspace' });
     }
 
+    // Personal users have no company — fileWorkspaceId is the userId so
+    // projectFileQuery can match files owned by the user (company: null).
+    const isPersonal = workspaceAccess.personal === true;
+    const fileWorkspaceId = isPersonal ? req.userId : workspaceId;
+
     const requestedSpecIds = [...new Set([...(req.body.specIds || []), ...(req.body.specId ? [req.body.specId] : []), ...(task?.specIds || []).map(String)])];
     // Specs belong to the task's project; the workspace check above only gates
     // the git branch, not which specs may be attached.
@@ -233,7 +235,7 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
     // Only the task's own project is readable by the agent. A delegated task
     // must never see another project's source just because both live in the
     // same workspace; unlinked tasks see only unassigned files.
-    const codeFiles = await CodeFile.find(projectFileQuery(workspaceId, taskProjectId)).select('path name language content').lean();
+    const codeFiles = await CodeFile.find(projectFileQuery(fileWorkspaceId, taskProjectId)).select('path name language content').lean();
     const taskTitleValue = taskTitle || task?.title || 'Workspace task';
     const slug = taskTitleValue.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'task';
     // Re-delegating a failed task must not collide with the branch left behind
@@ -248,8 +250,8 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       const agentContextService = require('../utils/agentContextService');
       agentContextBundle = await agentContextService.buildBundle({
         userId: req.userId,
-        companyId: workspaceId,
-        workspaceId,
+        companyId: contextCompanyId,
+        workspaceId: fileWorkspaceId,
         taskId: task?._id?.toString(),
         projectId: task?.projectId?.toString(),
         message: summary || taskTitleValue,
