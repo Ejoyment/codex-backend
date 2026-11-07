@@ -319,33 +319,53 @@ export default function FigmaPage() {
                     ))}
                   </div>
                 </section>
-              ) : null}
-
-              <details className="figma-more">
-                <summary>More ways to add designs</summary>
-                <form className="figma-import" onSubmit={importFile}>
-                  <label htmlFor="figma-file-url">Add a single file (e.g. from Drafts) by link</label>
-                  <div className="figma-import-row">
-                    <input
-                      id="figma-file-url"
-                      type="text"
-                      inputMode="url"
-                      autoComplete="off"
-                      placeholder="https://www.figma.com/design/…"
-                      value={fileUrl}
-                      onChange={(event) => setFileUrl(event.target.value)}
-                      disabled={importing}
-                    />
-                    <button type="submit" disabled={importing || !fileUrl.trim()}>
-                      {importing ? <Loader2 className="figma-spin" /> : <Plus />}
-                      <span>{importing ? 'Adding...' : 'Add file'}</span>
-                    </button>
+              ) : (
+                // No files added yet - show prominent add-file section
+                <div className="figma-files-view">
+                  <div className="figma-files-heading">
+                    <div className="figma-brand-mark is-connected"><BrandIcon platform="figma" /></div>
+                    <div>
+                      <p className="figma-eyebrow">Figma connected</p>
+                      <h2>{account ? `Connected as ${account}` : 'Your Figma designs'}</h2>
+                      <p>No designs added yet. Paste a Figma file link to start using your designs with Buildrs.</p>
+                    </div>
                   </div>
-                  <span className="figma-import-hint">Figma doesn&apos;t let apps list personal Drafts, so add those files by link.</span>
-                </form>
-                {importError && <p className="figma-files-error" role="alert">{importError}</p>}
-                <FigmaPluginCard />
-              </details>
+                  {filesError && <p className="figma-files-error" role="alert">{filesError}</p>}
+                  <div className="figma-import-card">
+                    <div className="figma-import-header">
+                      <span className="figma-file-icon"><FigmaIcon /></span>
+                      <div>
+                        <strong>Add your first Figma file</strong>
+                        <small>Paste a Figma file link (File → Share → Copy link in Figma)</small>
+                      </div>
+                    </div>
+                    <form className="figma-import" onSubmit={importFile}>
+                      <div className="figma-import-row">
+                        <input
+                          id="figma-file-url"
+                          type="text"
+                          inputMode="url"
+                          autoComplete="off"
+                          placeholder="https://www.figma.com/design/…"
+                          value={fileUrl}
+                          onChange={(event) => setFileUrl(event.target.value)}
+                          disabled={importing}
+                          placeholder="https://www.figma.com/design/XXXXXX/Your-File-Name"
+                        />
+                        <button type="submit" disabled={importing || !fileUrl.trim()}>
+                          {importing ? <Loader2 className="figma-spin" /> : <Plus />}
+                          <span>{importing ? 'Adding...' : 'Add file'}</span>
+                        </button>
+                      </div>
+                    </form>
+                    {importError && <p className="figma-files-error" role="alert">{importError}</p>}
+                    <p className="figma-import-hint">
+                      Once added, your file will appear here and you can pick frames to convert to code or hand off to AI tasks.
+                    </p>
+                  </div>
+                  <FigmaPluginCard />
+                </section>
+              ) : null}
             </div>
           ) : (
             <div className="figma-empty-state">
