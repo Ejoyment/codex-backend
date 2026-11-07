@@ -70,6 +70,92 @@ async function refreshFigmaToken(integration) {
     }
 }
 
+// Figma cannot enumerate a user's teams/projects programmatically with the
+// granular OAuth scopes it hands out today (`/v1/me` no longer returns teams).
+// Files are therefore imported from a link/key the user pastes and remembered
+// on the integration so the picker keeps working across sessions.
+const FIGMA_FILE_URL_RE = /^https?:\/\/(?:www\.)?figma\.com\/(?:file|design|board|proto|slides)\/([A-Za-z0-9]+)/i;
+const FIGMA_FILE_KEY_RE = /^[A-Za-z0-9]{10,}$/;
+
+function parseFigmaFileKey(input) {
+    const raw = String(input || '').trim();
+    if (!raw) return null;
+
+    const urlMatch = raw.match(FIGMA_FILE_URL_RE);
+    if (urlMatch) return urlMatch[1];
+
+    // Any other figma.com link (team, community, etc.) is not a file link.
+    if (/figma\.com/i.test(raw)) return null;
+
+    return FIGMA_FILE_KEY_RE.test(raw) ? raw : null;
+}
+
+function readSavedFigmaFiles(integration) {
+    const saved = integration?.metadata?.get?.('figmaFiles');
+    if (!Array.isArray(saved)) return [];
+    return saved
+        .filter((file) => file && typeof file.key === 'string' && file.key)
+        .map((file) => ({
+            key: file.key,
+            name: file.name || 'Untitled file',
+            thumbnail_url: file.thumbnail_url || null,
+            last_modified: file.last_modified || null,
+            addedAt: file.addedAt || null,
+        }));
+}
+
+function toSavedFigmaFile(file, fallbackKey) {
+    const key = file?.key || fallbackKey;
+    if (!key) return null;
+    return {
+        key,
+        name: file?.name || 'Untitled file',
+        thumbnail_url: file?.thumbnailUrl || file?.thumbnail_url || null,
+        last_modified: file?.lastModified || file?.last_modified || null,
+        addedAt: new Date().toISOString(),
+    };
+}
+
+// Newest import first, deduped by Figma file key.
+async function saveFigmaFiles(integration, incoming) {
+    const merged = new Map();
+    for (const file of [...incoming, ...readSavedFigmaFiles(integration)]) {
+        if (file?.key && !merged.has(file.key)) merged.set(file.key, file);
+    }
+    const next = Array.from(merged.values()).slice(0, 100);
+    if (!integration.metadata) integration.metadata = new Map();
+    integration.metadata.set('figmaFiles', next);
+    if (typeof integration.markModified === 'function') integration.markModified('metadata');
+    await integration.save();
+    return next;
+}
+
+// Legacy best-effort discovery. Some older tokens still carry team access, so
+// try it, but never let it fail the listing request.
+async function discoverFigmaFiles(integration) {
+    const user = await figmaAPI(integration.accessToken, '/me');
+    const teamId = user?.teams?.[0]?.id;
+    if (!teamId) return [];
+
+    const projects = await figmaAPI(integration.accessToken, `/teams/${teamId}/projects`);
+    const projectIds = (projects?.projects || []).map((project) => project.id).filter(Boolean).slice(0, 5);
+    const discovered = [];
+
+    for (const projectId of projectIds) {
+        try {
+            const result = await figmaAPI(integration.accessToken, `/projects/${projectId}/files`);
+            for (const file of result?.files || []) {
+                const saved = toSavedFigmaFile(file);
+                if (saved) discovered.push(saved);
+            }
+        } catch (error) {
+            // Per-project failures are expected; skip and continue.
+        }
+    }
+
+    return discovered;
+}
+
 async function figmaAPI(accessToken, endpoint, method = 'GET', data = null) {
     try {
         const response = await axios({
@@ -138,30 +224,91 @@ router.get('/me', authenticateToken, async (req, res) => {
 // Get user's files
 router.get('/files', authenticateToken, async (req, res) => {
     try {
+        const integration = await Integration.findOne({
+            userId: req.userId,
+            provider: 'figma',
+            isActive: true,
+        });
+
+        if (!integration) {
+            return res.json({ success: true, connected: false, files: [] });
+        }
+
+        const saved = readSavedFigmaFiles(integration);
+
+        // Only fall back to team discovery when nothing has been imported yet.
+        if (!saved.length) {
+            const discovered = await discoverFigmaFiles(integration).catch(() => []);
+            if (discovered.length) {
+                const files = await saveFigmaFiles(integration, discovered);
+                return res.json({ success: true, connected: true, files });
+            }
+        }
+
+        return res.json({
+            success: true,
+            connected: true,
+            files: saved,
+            message: saved.length
+                ? undefined
+                : 'No Figma files saved yet. Paste a Figma file link to add one.',
+        });
+    } catch (error) {
+        // Listing is a browser convenience: never turn it into a 500 that
+        // blanks the page. Surface an actionable empty state instead.
+        console.error('Figma file listing error:', error.message);
+        return res.json({
+            success: true,
+            connected: true,
+            files: [],
+            message: 'Could not list Figma files. Paste a Figma file link to add one.',
+        });
+    }
+});
+
+// Import a Figma file by link or key
+router.post('/files', authenticateToken, async (req, res) => {
+    try {
         const integration = await getFigmaIntegration(req.userId);
-        
-        // Get user's teams first
-        const user = await figmaAPI(integration.accessToken, '/me');
-        const teamId = user.teams?.[0]?.id;
-        
-        if (!teamId) {
-            return res.json({ success: true, files: [], message: 'No teams found' });
+        const submitted = req.body?.url || req.body?.fileKey || req.body?.link;
+        const fileKey = parseFigmaFileKey(submitted);
+
+        if (!fileKey) {
+            return res.status(400).json({
+                success: false,
+                message: 'Paste a Figma file link (figma.com/file/…) or a file key.',
+            });
         }
-        
-        // Get team projects
-        const projects = await figmaAPI(integration.accessToken, `/teams/${teamId}/projects`);
-        
-        // Get files from first project
-        const projectId = projects.projects?.[0]?.id;
-        if (!projectId) {
-            return res.json({ success: true, files: [], message: 'No projects found' });
+
+        let file;
+        try {
+            file = await figmaAPI(
+                integration.accessToken,
+                `/files/${encodeURIComponent(fileKey)}?depth=1`
+            );
+        } catch (error) {
+            const status = error.response?.status;
+            if (status === 404) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'That Figma file was not found. Check the link and try again.',
+                });
+            }
+            if (status === 403) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Your Figma account does not have access to that file.',
+                });
+            }
+            throw error;
         }
-        
-        const files = await figmaAPI(integration.accessToken, `/projects/${projectId}/files`);
-        res.json({ success: true, files: files.files });
+
+        const saved = toSavedFigmaFile(file, fileKey);
+        const files = await saveFigmaFiles(integration, [saved]);
+        return res.json({ success: true, file: saved, files });
     } catch (error) {
         if (error.message === 'Figma not connected') {
-            return res.json({ success: true, files: [], connected: false });
+            return res.status(400).json({ success: false, message: 'Connect Figma first.' });
         }
         return sendInternalError(req, res, error);
     }
@@ -489,7 +636,9 @@ router.get('/status', authenticateToken, async (req, res) => {
         res.json({
             success: true,
             connected: !!integration,
-            account: integration ? integration.accountEmail : null
+            account: integration
+                ? (integration.providerEmail || integration.providerUsername || null)
+                : null
         });
     } catch (error) {
         return sendInternalError(req, res, error);
@@ -525,3 +674,5 @@ router.delete('/disconnect', authenticateToken, async (req, res) => {
 });
 
 module.exports = router;
+// Exposed for unit tests (route parsing is pure and has no Express deps).
+module.exports.parseFigmaFileKey = parseFigmaFileKey;

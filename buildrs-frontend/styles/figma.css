@@ -341,6 +341,75 @@
   min-height: 180px;
 }
 
+.figma-import {
+  margin-top: 1.25rem;
+  padding: 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: 9px;
+  background: #10151e;
+}
+
+.figma-import label {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: #c6ceda;
+  font-size: 0.72rem;
+  font-weight: 550;
+}
+
+.figma-import-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.figma-import-row input {
+  min-width: 0;
+  flex: 1;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 7px;
+  background: #0b1017;
+  color: #d3dae4;
+  font-size: 0.72rem;
+}
+
+.figma-import-row input:focus {
+  border-color: rgba(18, 212, 220, 0.45);
+  outline: none;
+}
+
+.figma-import-row button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.55rem 0.85rem;
+  border: 1px solid rgba(18, 212, 220, 0.35);
+  border-radius: 7px;
+  background: rgba(18, 212, 220, 0.12);
+  color: #19d2db;
+  font-size: 0.7rem;
+  font-weight: 550;
+  cursor: pointer;
+}
+
+.figma-import-row button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.figma-import-row button svg {
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+.figma-import-hint {
+  display: block;
+  margin-top: 0.5rem;
+  color: #778398;
+  font-size: 0.68rem;
+}
+
 .figma-file-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));

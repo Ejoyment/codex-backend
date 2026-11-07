@@ -280,6 +280,7 @@ export const discordApi = {
 
 export const figmaApi = {
   listFiles: () => apiFetch('/api/figma/files'),
+  addFile: (url) => apiFetch('/api/figma/files', { method: 'POST', body: JSON.stringify({ url }) }),
   getComments: (fileKey) => apiFetch(`/api/figma/files/${fileKey}/comments`),
   getStatus: () => apiFetch('/api/figma/status'),
 };

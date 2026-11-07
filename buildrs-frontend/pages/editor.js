@@ -4783,8 +4783,8 @@ export default function Editor() {
                               figmaFiles.length === 0 ? (
                                 <div className="ed-stat" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.6rem' }}>
                                   <Layers className="w-6 h-6" style={{ color: '#748194' }} />
-                                  <span>No Figma files connected</span>
-                                  <a href="/integrations" className="btn-workspace btn-secondary">Connect Figma</a>
+                                  <span>No Figma files added yet</span>
+                                  <a href="/figma" className="btn-workspace btn-secondary">Add Figma file</a>
                                 </div>
                               ) : (
                                 <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
