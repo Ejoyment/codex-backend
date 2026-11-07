@@ -7,14 +7,15 @@
  *
  *   {"error":true,"status":400,"message":"Invalid scopes for app","i18n":null}
  *
- * `files:read` is the legacy broad scope that still covers every endpoint this
- * integration uses (`/v1/me`, `/v1/files`, `/v1/teams/:id/projects`, ...). Some
- * apps only have the granular scopes enabled, so deployments can set
- * `FIGMA_OAUTH_SCOPES` to the exact comma/space separated list configured on
- * the Figma app (for example `file_content:read,current_user:read`).
+ * `files:read` is the legacy broad scope, but Figma no longer offers it in the
+ * OAuth app scope picker for new apps. Default to the two granular scopes this
+ * integration needs for its core flow: identify the connected user and read
+ * file contents/images. Additional feature scopes (versions, comments,
+ * components/styles) can be requested with `FIGMA_OAUTH_SCOPES`, provided they
+ * are enabled on the Figma app too.
  */
 
-const DEFAULT_FIGMA_SCOPES = ['files:read'];
+const DEFAULT_FIGMA_SCOPES = ['current_user:read', 'file_content:read'];
 
 function getFigmaScopes() {
     const raw = String(process.env.FIGMA_OAUTH_SCOPES || '').trim();

@@ -22,11 +22,11 @@ afterEach(() => {
 });
 
 describe('getFigmaScopes', () => {
-    test('defaults to the broad legacy files:read scope', () => {
+    test('defaults to the core granular scopes', () => {
         delete process.env.FIGMA_OAUTH_SCOPES;
 
-        expect(DEFAULT_FIGMA_SCOPES).toEqual(['files:read']);
-        expect(getFigmaScopes()).toEqual(['files:read']);
+        expect(DEFAULT_FIGMA_SCOPES).toEqual(['current_user:read', 'file_content:read']);
+        expect(getFigmaScopes()).toEqual(['current_user:read', 'file_content:read']);
     });
 
     test('accepts comma separated overrides', () => {
@@ -44,7 +44,7 @@ describe('getFigmaScopes', () => {
     test('ignores an empty override', () => {
         process.env.FIGMA_OAUTH_SCOPES = '   ';
 
-        expect(getFigmaScopes()).toEqual(['files:read']);
+        expect(getFigmaScopes()).toEqual(['current_user:read', 'file_content:read']);
     });
 });
 
@@ -65,7 +65,7 @@ describe('buildFigmaAuthorizeUrl', () => {
         expect(parsed.searchParams.get('redirect_uri')).toBe(
             'https://buildrshq.dev/api/integrations/figma/callback'
         );
-        expect(parsed.searchParams.get('scope')).toBe('files:read');
+        expect(parsed.searchParams.get('scope')).toBe('current_user:read,file_content:read');
         expect(parsed.searchParams.get('state')).toBe('signed-state');
         expect(parsed.searchParams.get('response_type')).toBe('code');
     });
