@@ -18,6 +18,7 @@ const permissionMatrix = require('../middleware/permissionMatrix');
 const { authenticateToken } = require('../middleware/auth');
 const { canonicalTier } = require('../utils/tierNames');
 const { assertWorkspaceAccess } = require('../utils/workspaceAuth');
+const { ensurePersonalWorkspace } = require('../utils/personalWorkspace');
 const { userCanAccessProject } = require('../utils/specAccess');
 const { boundedLimit } = require('../utils/queryLimits');
 
@@ -475,9 +476,22 @@ router.post('/executions', authenticateToken, async (req, res) => {
         if (requestedWorkspaceId) {
             const access = await assertWorkspaceAccess(requestedWorkspaceId, req.userId);
             if (!access.ok) {
-                return res.status(403).json({ success: false, message: access.reason || 'Workspace access denied' });
+                // Stale companyId from before personal/workspace separation —
+                // fall back to the user's personal scope only if the requested
+                // workspaceId equals the user's own ID (personal scope).
+                if (String(requestedWorkspaceId) === String(req.userId)) {
+                    await ensurePersonalWorkspace(req.userId);
+                    const personalAccess = await assertWorkspaceAccess(req.userId, req.userId);
+                    if (!personalAccess.ok) {
+                        return res.status(403).json({ success: false, message: 'Workspace access denied' });
+                    }
+                    workspaceId = personalAccess.workspaceId;
+                } else {
+                    return res.status(403).json({ success: false, message: access.reason || 'Workspace access denied' });
+                }
+            } else {
+                workspaceId = access.workspaceId;
             }
-            workspaceId = access.workspaceId;
         }
 
         const execution = await AgentExecution.create({
@@ -516,9 +530,19 @@ router.patch('/executions/:executionId', authenticateToken, async (req, res) => 
         if (requestedWorkspaceId) {
             const access = await assertWorkspaceAccess(requestedWorkspaceId, req.userId);
             if (!access.ok) {
-                return res.status(403).json({ success: false, message: access.reason || 'Workspace access denied' });
+                if (String(requestedWorkspaceId) === String(req.userId)) {
+                    await ensurePersonalWorkspace(req.userId);
+                    const personalAccess = await assertWorkspaceAccess(req.userId, req.userId);
+                    if (!personalAccess.ok) {
+                        return res.status(403).json({ success: false, message: 'Workspace access denied' });
+                    }
+                    workspaceId = personalAccess.workspaceId;
+                } else {
+                    return res.status(403).json({ success: false, message: access.reason || 'Workspace access denied' });
+                }
+            } else {
+                workspaceId = access.workspaceId;
             }
-            workspaceId = access.workspaceId;
         }
         if (workspaceId) {
             if (!metadataUpdate) {
@@ -745,9 +769,22 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
             if (requestedAgentWorkspaceId) {
                 const access = await assertWorkspaceAccess(requestedAgentWorkspaceId, req.userId);
                 if (!access.ok) {
-                    return res.status(403).json({ success: false, message: access.reason || 'Workspace access denied' });
+                    // Stale companyId from before personal/workspace separation —
+                    // fall back to the user's personal scope so the agent run
+                    // still works.
+                    if (String(requestedAgentWorkspaceId) === String(req.userId)) {
+                        await ensurePersonalWorkspace(req.userId);
+                        const personalAccess = await assertWorkspaceAccess(req.userId, req.userId);
+                        if (!personalAccess.ok) {
+                            return res.status(403).json({ success: false, message: 'Workspace access denied' });
+                        }
+                        agentWorkspaceId = personalAccess.workspaceId;
+                    } else {
+                        return res.status(403).json({ success: false, message: access.reason || 'Workspace access denied' });
+                    }
+                } else {
+                    agentWorkspaceId = access.workspaceId;
                 }
-                agentWorkspaceId = access.workspaceId;
             }
 
             // A task-bound agent may only see its own project. Resolve it from
