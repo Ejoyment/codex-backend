@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import Head from 'next/head';
-import { ExternalLink, Figma as FigmaIcon, Loader2, RefreshCw } from 'lucide-react';
+import { ExternalLink, Figma as FigmaIcon, Loader2, Plus, RefreshCw } from 'lucide-react';
 import AuthGuard from '../components/AuthGuard';
 import BrandIcon from '../components/BrandIcon';
 import Sidebar from '../components/Sidebar';
@@ -24,6 +24,9 @@ export default function FigmaPage() {
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState('');
   const [filesError, setFilesError] = useState('');
+  const [fileUrl, setFileUrl] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState('');
 
   const loadFiles = async () => {
     setFilesLoading(true);
@@ -37,6 +40,27 @@ export default function FigmaPage() {
       setFilesError(loadError.message || 'Could not load Figma files');
     } finally {
       setFilesLoading(false);
+    }
+  };
+
+  const importFile = async (event) => {
+    event.preventDefault();
+    const url = fileUrl.trim();
+    if (!url) return;
+
+    setImporting(true);
+    setImportError('');
+    try {
+      const result = await figmaApi.addFile(url);
+      if (!result.success) throw new Error(result.message || 'Could not add that Figma file');
+      setFiles(result.files || (result.file ? [result.file] : []));
+      setFilesError('');
+      setFileUrl('');
+    } catch (importFailure) {
+      console.error('Failed to add Figma file:', importFailure);
+      setImportError(importFailure.message || 'Could not add that Figma file');
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -148,6 +172,29 @@ export default function FigmaPage() {
                   <span>Refresh</span>
                 </button>
               </div>
+              <form className="figma-import" onSubmit={importFile}>
+                <label htmlFor="figma-file-url">Add a Figma file</label>
+                <div className="figma-import-row">
+                  <input
+                    id="figma-file-url"
+                    type="text"
+                    inputMode="url"
+                    autoComplete="off"
+                    placeholder="https://www.figma.com/design/…"
+                    value={fileUrl}
+                    onChange={(event) => setFileUrl(event.target.value)}
+                    disabled={importing}
+                  />
+                  <button type="submit" disabled={importing || !fileUrl.trim()}>
+                    {importing ? <Loader2 className="figma-spin" /> : <Plus />}
+                    <span>{importing ? 'Adding...' : 'Add file'}</span>
+                  </button>
+                </div>
+                <span className="figma-import-hint">
+                  Open the file in Figma, copy the link from your browser, and paste it here.
+                </span>
+              </form>
+              {importError && <p className="figma-files-error" role="alert">{importError}</p>}
               {filesError && <p className="figma-files-error" role="alert">{filesError}</p>}
               {filesLoading ? (
                 <div className="figma-panel-loading"><Loader2 className="figma-spin" /><span>Loading your files...</span></div>
@@ -169,8 +216,8 @@ export default function FigmaPage() {
                 </div>
               ) : (
                 <div className="figma-files-empty">
-                  <p>No Figma files found for this account.</p>
-                  <span>Make sure your account has access to a Figma team project.</span>
+                  <p>No Figma files added yet.</p>
+                  <span>Paste a Figma file link above to add it to your workspace.</span>
                 </div>
               )}
             </div>
