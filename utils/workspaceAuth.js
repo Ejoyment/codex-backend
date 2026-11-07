@@ -71,20 +71,20 @@ async function assertWorkspaceAccess(workspaceId, userId) {
         }
     }
 
-    // Fall back to personal scope: the user's own userId is their workspace.
-    // Self-heal agents, old session data, and stale company IDs all resolve
-    // here so personal users can always use AI actions.
-    await ensurePersonalWorkspace(userId);
-    const personal = await resolveWorkspaceForUser(userId, userId);
-    if (personal) {
-        return {
-            ok: true,
-            workspace: personal.workspace,
-            workspaceId: String(personal.workspace._id),
-            personal: true,
-        };
+    // Fall back to personal scope only if the requested ID is the user's
+    // own ID (personal scope) or no workspaceId was provided at all.
+    if (!wsId || wsId === String(userId)) {
+        await ensurePersonalWorkspace(userId);
+        const personal = await resolveWorkspaceForUser(userId, userId);
+        if (personal) {
+            return {
+                ok: true,
+                workspace: personal.workspace,
+                workspaceId: String(personal.workspace._id),
+                personal: true,
+            };
+        }
     }
-
     // Legacy/test handles are not ObjectIds and cannot name a Company.
     if (wsId && wsId === String(userId) && !mongoose.isValidObjectId(wsId)) {
         return { ok: true, workspace: null, workspaceId: wsId, personal: true };
