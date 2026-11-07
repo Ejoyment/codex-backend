@@ -6,6 +6,21 @@ const Integration = require('../models/Integration');
 const jwt = require('jsonwebtoken');
 const { createStateToken, verifyStateToken } = require('../utils/oauthState');
 const { authenticateToken } = require('../middleware/auth');
+const { buildFigmaAuthorizeUrl } = require('../utils/figmaOAuth');
+
+// Normalize the backend origin so a `BACKEND_URL` ending in `/api` or a slash
+// never produces a doubled path.
+function backendBaseUrl() {
+    return String(process.env.BACKEND_URL || '')
+        .trim()
+        .replace(/\/+$/, '')
+        .replace(/\/api$/i, '')
+        .replace(/\/+$/, '');
+}
+
+function figmaCallbackUrl() {
+    return process.env.FIGMA_CALLBACK_URL || `${backendBaseUrl()}/api/figma/callback`;
+}
 
 async function getFigmaIntegration(userId) {
     const integration = await Integration.findOne({ userId, provider: 'figma', isActive: true });
@@ -26,11 +41,22 @@ async function getFigmaIntegration(userId) {
 
 async function refreshFigmaToken(integration) {
     try {
-        const response = await axios.post('https://www.figma.com/api/oauth/refresh', {
-            client_id: process.env.FIGMA_CLIENT_ID,
-            client_secret: process.env.FIGMA_CLIENT_SECRET,
-            refresh_token: integration.refreshToken
-        }, { timeout: 15000 });
+        // Figma expects client credentials via HTTP Basic auth on this endpoint.
+        const basicAuth = Buffer.from(
+            `${process.env.FIGMA_CLIENT_ID}:${process.env.FIGMA_CLIENT_SECRET}`
+        ).toString('base64');
+
+        const response = await axios.post(
+            'https://api.figma.com/v1/oauth/refresh',
+            new URLSearchParams({ refresh_token: integration.refreshToken }),
+            {
+                headers: {
+                    'Authorization': `Basic ${basicAuth}`,
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                timeout: 15000
+            }
+        );
         
         const data = response.data;
         integration.accessToken = data.access_token;
@@ -319,17 +345,12 @@ router.get('/connect', authenticateToken, (req, res) => {
     // Store the verifier so /callback can retrieve it using the same state (userId)
     pkceStore.set(req.userId, codeVerifier);
 
-    const params = new URLSearchParams({
-        client_id: process.env.FIGMA_CLIENT_ID,
-        redirect_uri: process.env.FIGMA_CALLBACK_URL,
-        scope: 'files:read',
+    const authUrl = buildFigmaAuthorizeUrl({
+        clientId: process.env.FIGMA_CLIENT_ID,
+        redirectUri: figmaCallbackUrl(),
         state: createStateToken(req.userId), // signed state token prevents session fixation
-        response_type: 'code',
-        code_challenge: codeChallenge,
-        code_challenge_method: 'S256'
+        codeChallenge
     });
-
-    const authUrl = `https://www.figma.com/oauth?${params.toString()}`;
 
     res.json({
         success: true,
@@ -393,7 +414,7 @@ router.get('/callback', async (req, res) => {
         const tokenResponse = await axios.post(
             'https://api.figma.com/v1/oauth/token',
             new URLSearchParams({
-                redirect_uri: process.env.FIGMA_CALLBACK_URL,
+                redirect_uri: figmaCallbackUrl(),
                 code,
                 grant_type: 'authorization_code',
                 code_verifier: codeVerifier

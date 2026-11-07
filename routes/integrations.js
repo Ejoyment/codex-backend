@@ -5,6 +5,7 @@ const Integration = require('../models/Integration');
 const axios = require('axios');
 const { authenticateToken } = require('../middleware/auth');
 const { createStateToken, verifyStateToken } = require('../utils/oauthState');
+const { buildFigmaAuthorizeUrl } = require('../utils/figmaOAuth');
 
 // Normalize the backend origin: strip trailing slashes and a trailing `/api`
 // so an env value like `https://host/api` never doubles the `/api/...` paths
@@ -544,11 +545,14 @@ router.get('/notion/callback', async (req, res) => {
 // Figma OAuth
 router.get('/figma/auth', authenticateToken, (req, res) => {
     const redirectUri = `${backendBaseUrl()}/api/integrations/figma/callback`;
-    const scope = 'file_read';
     const state = createStateToken(req.userId);
-    
-    const figmaAuthUrl = `https://www.figma.com/oauth?client_id=${process.env.FIGMA_CLIENT_ID}&redirect_uri=${redirectUri}&scope=${scope}&state=${state}&response_type=code`;
-    
+
+    const figmaAuthUrl = buildFigmaAuthorizeUrl({
+        clientId: process.env.FIGMA_CLIENT_ID,
+        redirectUri,
+        state
+    });
+
     res.json({
         success: true,
         authUrl: figmaAuthUrl
@@ -589,21 +593,45 @@ router.get('/figma/callback', async (req, res) => {
     }
 
     try {
-        const tokenResponse = await axios.post('https://www.figma.com/api/oauth/token', {
-            client_id: process.env.FIGMA_CLIENT_ID,
-            client_secret: process.env.FIGMA_CLIENT_SECRET,
-            redirect_uri: `${backendBaseUrl()}/api/integrations/figma/callback`,
-            code: code,
-            grant_type: 'authorization_code'
-        }, { timeout: 15000 });
+        // Figma expects client credentials via HTTP Basic auth on this endpoint.
+        const basicAuth = Buffer.from(
+            `${process.env.FIGMA_CLIENT_ID}:${process.env.FIGMA_CLIENT_SECRET}`
+        ).toString('base64');
+
+        const tokenResponse = await axios.post(
+            'https://api.figma.com/v1/oauth/token',
+            new URLSearchParams({
+                redirect_uri: `${backendBaseUrl()}/api/integrations/figma/callback`,
+                code: code,
+                grant_type: 'authorization_code'
+            }),
+            {
+                headers: {
+                    'Authorization': `Basic ${basicAuth}`,
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                timeout: 15000
+            }
+        );
 
         const data = tokenResponse.data;
 
-        // Get user info
-        const userResponse = await axios.get('https://api.figma.com/v1/me', {
-            headers: { Authorization: `Bearer ${data.access_token}` },
-            timeout: 15000
-        });
+        // Fetching the profile is optional: apps using only granular file scopes
+        // may not grant `current_user:read`. Don't fail the whole connection.
+        let profile = {};
+        try {
+            const userResponse = await axios.get('https://api.figma.com/v1/me', {
+                headers: { Authorization: `Bearer ${data.access_token}` },
+                timeout: 15000
+            });
+            profile = {
+                providerUserId: userResponse.data.id,
+                providerUsername: userResponse.data.handle,
+                providerEmail: userResponse.data.email
+            };
+        } catch (profileError) {
+            console.warn('Figma profile fetch skipped:', profileError.response?.data?.message || profileError.message);
+        }
 
         await Integration.findOneAndUpdate(
             { userId, provider: 'figma' },
@@ -613,9 +641,7 @@ router.get('/figma/callback', async (req, res) => {
                 accessToken: data.access_token,
                 refreshToken: data.refresh_token,
                 expiresAt: new Date(Date.now() + data.expires_in * 1000),
-                providerUserId: userResponse.data.id,
-                providerUsername: userResponse.data.handle,
-                providerEmail: userResponse.data.email,
+                ...profile,
                 isActive: true,
                 lastSyncedAt: new Date()
             },
