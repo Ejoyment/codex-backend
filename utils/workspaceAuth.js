@@ -58,12 +58,9 @@ async function assertWorkspaceAccess(workspaceId, userId) {
     }
     const wsId = String(workspaceId || '');
 
-    // Personal users with no company workspace — their userId is the scope.
-    // When no workspaceId is provided (null/undefined/empty), treat it as the
-    // user's personal scope and ensure a personal subscription exists.
-    if (!wsId) {
-        await ensurePersonalWorkspace(userId);
-        const resolved = await resolveWorkspaceForUser(userId, userId);
+    // Try the requested workspace first (company the user belongs to).
+    if (wsId) {
+        const resolved = await resolveWorkspaceForUser(wsId, userId);
         if (resolved) {
             return {
                 ok: true,
@@ -72,38 +69,23 @@ async function assertWorkspaceAccess(workspaceId, userId) {
                 personal: resolved.personal,
             };
         }
-        return { ok: false, reason: 'Workspace not found or access denied' };
     }
 
-    // Try the requested workspace first (company the user belongs to).
-    const resolved = await resolveWorkspaceForUser(wsId, userId);
-    if (resolved) {
+    // Fall back to personal scope: the user's own userId is their workspace.
+    // Self-heal agents, old session data, and stale company IDs all resolve
+    // here so personal users can always use AI actions.
+    await ensurePersonalWorkspace(userId);
+    const personal = await resolveWorkspaceForUser(userId, userId);
+    if (personal) {
         return {
             ok: true,
-            workspace: resolved.workspace,
-            workspaceId: String(resolved.workspace._id),
-            personal: resolved.personal,
+            workspace: personal.workspace,
+            workspaceId: String(personal.workspace._id),
+            personal: true,
         };
     }
 
-    // If the requested workspaceId equals the user's own ID, treat it as the
-    // personal scope — ensure a personal subscription exists.
-    if (wsId === String(userId)) {
-        await ensurePersonalWorkspace(userId);
-        const retried = await resolveWorkspaceForUser(userId, userId);
-        if (retried) {
-            return {
-                ok: true,
-                workspace: retried.workspace,
-                workspaceId: String(retried.workspace._id),
-                personal: retried.personal,
-            };
-        }
-    }
-
-    // Legacy/test handles are not ObjectIds and cannot name a Company. Keep
-    // accepting the caller's own id as a personal scope, but real accounts
-    // resolve to their Company so every downstream query uses one id.
+    // Legacy/test handles are not ObjectIds and cannot name a Company.
     if (wsId && wsId === String(userId) && !mongoose.isValidObjectId(wsId)) {
         return { ok: true, workspace: null, workspaceId: wsId, personal: true };
     }
