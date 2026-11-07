@@ -9,7 +9,8 @@
     "test": "jest --coverage --forceExit --detectOpenHandles",
     "test:watch": "jest --watch --forceExit --detectOpenHandles",
     "test:ci": "jest --coverage --ci --forceExit --detectOpenHandles",
-    "test:spec": "jest --testPathPattern='spec' --forceExit --detectOpenHandles"
+    "test:spec": "jest --testPathPattern='spec' --forceExit --detectOpenHandles",
+    "build:figma-plugin": "mkdir -p buildrs-frontend/public/downloads && rm -f buildrs-frontend/public/downloads/buildrs-figma-plugin.zip && cd figma-plugin && zip -q -X -r ../buildrs-frontend/public/downloads/buildrs-figma-plugin.zip manifest.json code.js ui.html README.md"
   },
   "keywords": [
     "authentication",

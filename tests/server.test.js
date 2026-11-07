@@ -275,4 +275,26 @@ describe('Server', () => {
     expect(res.status).toBe(403);
     expect(res.body.success).toBe(false);
   });
+  test('Figma plugin routes accept the sandboxed plugin origin without credentials', async () => {
+    const preflight = await request(app)
+      .options('/api/figma/plugin/push')
+      .set('Origin', 'null')
+      .set('Access-Control-Request-Method', 'POST')
+      .set('Access-Control-Request-Headers', 'authorization,content-type');
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers['access-control-allow-origin']).toBe('null');
+    expect(preflight.headers['access-control-allow-credentials']).toBeUndefined();
+
+    const res = await request(app).get('/api/figma/plugin/me').set('Origin', 'null');
+    expect(res.status).toBe(401);
+    expect(res.headers['access-control-allow-origin']).toBe('null');
+  });
+
+  test('plugin pairing and other routes keep the strict CORS allowlist', async () => {
+    const pairing = await request(app).post('/api/figma/plugin/token').set('Origin', 'null');
+    expect(pairing.status).toBe(403);
+
+    const other = await request(app).get('/api/health').set('Origin', 'null');
+    expect(other.status).toBe(403);
+  });
 });

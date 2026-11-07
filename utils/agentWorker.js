@@ -182,6 +182,15 @@ async function runAgent() {
       task.description = [task.description, ...feedback.map((line) => `Follow-up instruction: ${line}`)].filter(Boolean).join('\n');
     }
 
+    let figmaSummary = '';
+    if (snapshot.figmaContext) {
+      try {
+        figmaSummary = require('./figmaContextService').toFigmaPromptBlock(snapshot.figmaContext);
+      } catch (error) {
+        console.error('[agent-worker] could not summarize Figma context:', error.message);
+      }
+    }
+
     const { messages, codeContext } = agentRunner.buildAgentContext({
       task,
       taskTitle: execution.taskTitle,
@@ -189,6 +198,7 @@ async function runAgent() {
       specs,
       codeFiles: contextFiles,
       contextSummary,
+      figmaSummary,
       priorAttempt: priorAttemptFrom(execution),
       branch: execution.branch,
       baseBranch: execution.baseBranch,

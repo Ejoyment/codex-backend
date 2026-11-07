@@ -251,6 +251,7 @@ function buildAgentContext({
   specs = [],
   codeFiles = [],
   contextSummary = '',
+  figmaSummary = '',
   priorAttempt = null,
   branch = '',
   baseBranch = 'main',
@@ -312,6 +313,10 @@ function buildAgentContext({
 
   const messages = [{ role: 'system', content: systemLines.join('\n') }];
 
+  if (figmaSummary) {
+    messages.push({ role: 'system', content: String(figmaSummary).trim() });
+  }
+
   if (specs.length) {
     messages.push({
       role: 'system',
@@ -336,6 +341,7 @@ function buildAgentContext({
     content: [
       `Implement this task now: ${title}`,
       description ? `\nRequirements:\n${description}` : '',
+      figmaSummary ? '\nThe UI must match the linked Figma frame exactly (layout, spacing, colors, typography, and copy).' : '',
       '\nReturn a short implementation plan followed by every file you change, using the exact `### file: <path>` marker format. At least one concrete file change is required unless this task is purely investigative.',
     ].filter(Boolean).join('\n'),
   });

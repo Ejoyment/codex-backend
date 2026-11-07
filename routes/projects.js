@@ -10,6 +10,39 @@ const { resolveAccessibleSpecs, getAccessibleProjects, userCanAccessProject } = 
 const { normalizeMembers } = require('../utils/members');
 const { assertCompanyMembership } = require('../middleware/workspaceAccess');
 const { getGitHubIntegration } = require('../utils/githubApiClient');
+const { normalizeNodeId, parseFigmaUrl } = require('../utils/figmaDesignSpec');
+
+// Figma link fields on a task. Accepts a pasted frame URL in `figmaUrl` or
+// `figmaNodeId` (the old free-text field), or explicit key + node id.
+// Returns only the fields present in the body so PUT stays partial.
+function resolveTaskFigmaFields(body = {}) {
+    const fields = {};
+    const has = (key) => Object.prototype.hasOwnProperty.call(body, key);
+    const fromUrl = parseFigmaUrl(body.figmaUrl) || (
+        typeof body.figmaNodeId === 'string' && /figma\.com/i.test(body.figmaNodeId)
+            ? parseFigmaUrl(body.figmaNodeId)
+            : null
+    );
+
+    if (fromUrl) {
+        fields.figmaFileKey = fromUrl.fileKey;
+        fields.figmaNodeId = fromUrl.nodeId;
+    } else {
+        if (has('figmaNodeId')) {
+            const raw = body.figmaNodeId ? String(body.figmaNodeId).trim() : '';
+            fields.figmaNodeId = raw ? (normalizeNodeId(raw) || raw.slice(0, 200)) : null;
+        }
+        if (has('figmaFileKey')) {
+            const parsed = body.figmaFileKey ? parseFigmaUrl(body.figmaFileKey) : null;
+            fields.figmaFileKey = parsed ? parsed.fileKey : null;
+        }
+    }
+    if (has('figmaFileName')) fields.figmaFileName = body.figmaFileName ? String(body.figmaFileName).slice(0, 300) : null;
+    if (has('figmaNodeName')) fields.figmaNodeName = body.figmaNodeName ? String(body.figmaNodeName).slice(0, 300) : null;
+    // Clearing the frame clears its cached name too.
+    if (fields.figmaNodeId === null && !has('figmaNodeName')) fields.figmaNodeName = null;
+    return fields;
+}
 const {
     TEMPLATE_FILES,
     provisionProject,
@@ -286,6 +319,9 @@ const serializeTask = (t) => ({
     companyId: t.companyId,
     specIds: t.specIds,
     figmaNodeId: t.figmaNodeId,
+    figmaFileKey: t.figmaFileKey || null,
+    figmaFileName: t.figmaFileName || null,
+    figmaNodeName: t.figmaNodeName || null,
     blockedBy: t.blockedBy,
     branch: t.branch,
     pullRequestId: t.pullRequestId,
@@ -432,6 +468,7 @@ router.post('/tasks', authenticateToken, async (req, res) => {
             companyId: null,
             specIds,
             figmaNodeId: figmaNodeId || null,
+            ...resolveTaskFigmaFields(req.body),
             blockedBy,
             status,
             completedAt: status === 'done' ? new Date() : null,
@@ -526,7 +563,7 @@ router.get('/tasks/:taskId', authenticateToken, async (req, res) => {
 router.put('/tasks/:taskId', authenticateToken, async (req, res) => {
     try {
         const userId = req.userId || req.user.userId || req.user.id;
-        const { status, title, description, priority, specIds, figmaNodeId, blockedBy } = req.body;
+        const { status, title, description, priority, specIds, blockedBy } = req.body;
 
         const task = await LocalTask.findOne({ _id: req.params.taskId, userId });
         if (!task) {
@@ -557,7 +594,7 @@ router.put('/tasks/:taskId', authenticateToken, async (req, res) => {
             }
             task.specIds = specIds;
         }
-        if (figmaNodeId !== undefined) task.figmaNodeId = figmaNodeId || null;
+        Object.assign(task, resolveTaskFigmaFields(req.body));
         if (blockedBy !== undefined) {
             const blockers = await LocalTask.find({ _id: { $in: blockedBy }, userId });
             if (blockers.length !== new Set(blockedBy.map(String)).size) {
@@ -1021,4 +1058,4 @@ router.get('/:projectId/files', authenticateToken, async (req, res) => {
     }
 });
 
-module.exports = router;
+module.exports = router;module.exports.resolveTaskFigmaFields = resolveTaskFigmaFields;

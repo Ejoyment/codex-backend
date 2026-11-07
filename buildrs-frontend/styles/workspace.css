@@ -4377,6 +4377,50 @@
   height: 1.55rem;
 }
 
+.tsk-figma-picker {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.tsk-figma-picker select.tsk-figma-input {
+  width: 100%;
+  min-width: 0;
+}
+
+.tsk-figma-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: #8390a0;
+}
+
+.tsk-figma-clear {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 1.55rem;
+  height: 1.55rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  background: transparent;
+  color: #8390a0;
+  cursor: pointer;
+}
+
+.tsk-figma-picker small {
+  color: #8390a0;
+  font-size: 0.62rem;
+}
+
+.tsk-figma-picker small a {
+  color: #12dce5;
+}
+
+.tsk-figma-picker small.tsk-figma-error {
+  color: #fca5a5;
+}
+
 .tsk-create-advanced {
   margin-top: 0.5rem;
 }
