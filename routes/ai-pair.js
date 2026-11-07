@@ -769,18 +769,28 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
             if (requestedAgentWorkspaceId) {
                 const access = await assertWorkspaceAccess(requestedAgentWorkspaceId, req.userId);
                 if (!access.ok) {
-                    // Stale companyId from before personal/workspace separation —
-                    // fall back to the user's personal scope so the agent run
-                    // still works.
-                    if (String(requestedAgentWorkspaceId) === String(req.userId)) {
+                    // If from codeContext (frontend request body), reject if
+                    // foreign — unless it equals the user's own ID (personal
+                    // scope). If from session data (stale companyId), fall
+                    // back to personal.
+                    if (requestedAgentWorkspaceId === codeContext?.workspace?.id) {
+                        if (String(requestedAgentWorkspaceId) === String(req.userId)) {
+                            await ensurePersonalWorkspace(req.userId);
+                            const personalAccess = await assertWorkspaceAccess(req.userId, req.userId);
+                            if (!personalAccess.ok) {
+                                return res.status(403).json({ success: false, message: 'Workspace access denied' });
+                            }
+                            agentWorkspaceId = personalAccess.workspaceId;
+                        } else {
+                            return res.status(403).json({ success: false, message: access.reason || 'Workspace access denied' });
+                        }
+                    } else {
                         await ensurePersonalWorkspace(req.userId);
                         const personalAccess = await assertWorkspaceAccess(req.userId, req.userId);
                         if (!personalAccess.ok) {
                             return res.status(403).json({ success: false, message: 'Workspace access denied' });
                         }
                         agentWorkspaceId = personalAccess.workspaceId;
-                    } else {
-                        return res.status(403).json({ success: false, message: access.reason || 'Workspace access denied' });
                     }
                 } else {
                     agentWorkspaceId = access.workspaceId;
