@@ -201,18 +201,36 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
     let requestedWorkspaceId = req.body.workspaceId
       || task?.companyId?.toString()
       || taskProject?.workspaceId?.toString();
+    let workspaceSource = null; // 'body' | 'task' | 'project'
+    if (req.body.workspaceId) {
+      requestedWorkspaceId = req.body.workspaceId;
+      workspaceSource = 'body';
+    } else if (task?.companyId) {
+      requestedWorkspaceId = task?.companyId?.toString();
+      workspaceSource = 'task';
+    } else if (taskProject?.workspaceId) {
+      requestedWorkspaceId = taskProject?.workspaceId?.toString();
+      workspaceSource = 'project';
+    }
     if (!requestedWorkspaceId) {
       // Personal users have no company workspace — ensure a personal
       // subscription exists, then use userId as the workspace scope.
       await ensurePersonalWorkspace(req.userId);
       requestedWorkspaceId = req.userId;
     } else {
-      // Validate the requested workspace belongs to the user. If it doesn't,
-      // reject — do not silently fall back to personal scope for a different
-      // company ID (that would be a cross-tenant leak).
+      // Validate the requested workspace belongs to the user. If it doesn't
+      // (e.g. stale companyId from before personal/workspace separation) but
+      // the request came from task/project data (not an explicit body field),
+      // fall back to the user's personal scope instead of rejecting — the
+      // task/project is theirs, they should be able to use it.
       const access = await assertWorkspaceAccess(requestedWorkspaceId, req.userId);
       if (!access.ok) {
-        return res.status(403).json({ success: false, message: 'Workspace access denied' });
+        if (workspaceSource === 'task' || workspaceSource === 'project') {
+          await ensurePersonalWorkspace(req.userId);
+          requestedWorkspaceId = req.userId;
+        } else {
+          return res.status(403).json({ success: false, message: 'Workspace access denied' });
+        }
       }
     }
     const workspaceAccess = await assertWorkspaceAccess(requestedWorkspaceId, req.userId);
