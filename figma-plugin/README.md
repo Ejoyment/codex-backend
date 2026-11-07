@@ -17,9 +17,10 @@ they can be converted to code or linked to tasks for AI agents.
 - The plugin authenticates with a Buildrs plugin token (`bfp_…`). Design data
   is fetched by the Buildrs backend with the user's own Figma OAuth
   connection, so Figma must also be connected in Buildrs.
-- `figma.fileKey` is only exposed to private/development plugins. When it is
-  missing, the plugin asks for the file link once and stores the key on the
-  document (`setPluginData`).
+- `figma.fileKey` is only exposed to private plugins, so the Community plugin
+  asks for the file link once and stores the key on the document
+  (`setPluginData`), or in the user's client storage for view-only files.
+- To publish to the Figma Community, follow `PUBLISHING.md`.
 - The API origin is set in `ui.html` (`API_BASE`) and must also be listed in
   `manifest.json` → `networkAccess.allowedDomains`.
 - After editing, rebuild the downloadable zip with

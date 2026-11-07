@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Check, Copy, Download, KeyRound, Loader2, Puzzle, Trash2 } from 'lucide-react';
+import { Check, Copy, Download, ExternalLink, KeyRound, Loader2, Puzzle, Trash2 } from 'lucide-react';
 import { figmaApi } from '../../lib/api';
 
 const PLUGIN_ZIP = '/downloads/buildrs-figma-plugin.zip';
+// Figma Community listing, e.g. https://www.figma.com/community/plugin/<id>/send-to-buildrs
+const COMMUNITY_URL = process.env.NEXT_PUBLIC_FIGMA_PLUGIN_URL || '';
 
 export default function FigmaPluginCard() {
   const [status, setStatus] = useState(null);
@@ -66,10 +68,17 @@ export default function FigmaPluginCard() {
       </div>
 
       <ol className="figma-plugin-steps">
-        <li>
-          <a href={PLUGIN_ZIP} download className="figma-plugin-link"><Download /> Download the plugin</a>
-          , unzip it, then in Figma desktop choose <b>Plugins → Development → Import plugin from manifest</b>.
-        </li>
+        {COMMUNITY_URL ? (
+          <li>
+            <a href={COMMUNITY_URL} target="_blank" rel="noreferrer" className="figma-plugin-link"><ExternalLink /> Install from Figma Community</a>
+            {' '}and open it in any file from <b>Plugins → Send to Buildrs</b>.
+          </li>
+        ) : (
+          <li>
+            <a href={PLUGIN_ZIP} download className="figma-plugin-link"><Download /> Download the plugin</a>
+            , unzip it, then in Figma desktop choose <b>Plugins → Development → Import plugin from manifest</b>.
+          </li>
+        )}
         <li>Generate a token below and paste it into the plugin once.</li>
         <li>Select frames in Figma and click <b>Send to Buildrs</b>.</li>
       </ol>
