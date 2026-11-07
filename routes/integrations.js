@@ -5,7 +5,7 @@ const Integration = require('../models/Integration');
 const axios = require('axios');
 const { authenticateToken } = require('../middleware/auth');
 const { createStateToken, verifyStateToken } = require('../utils/oauthState');
-const { buildFigmaAuthorizeUrl } = require('../utils/figmaOAuth');
+const { buildFigmaAuthorizeUrl, getFigmaScopes } = require('../utils/figmaOAuth');
 
 // Normalize the backend origin: strip trailing slashes and a trailing `/api`
 // so an env value like `https://host/api` never doubles the `/api/...` paths
@@ -642,16 +642,19 @@ router.get('/figma/callback', async (req, res) => {
                 refreshToken: data.refresh_token,
                 expiresAt: new Date(Date.now() + data.expires_in * 1000),
                 ...profile,
+                // Scopes requested on this authorization (Figma's token
+                // response doesn't echo them); used to prompt reconnects.
+                scopes: getFigmaScopes(),
                 isActive: true,
                 lastSyncedAt: new Date()
             },
             { upsert: true, new: true }
         );
 
-        res.redirect(`${process.env.FRONTEND_URL}/settings?success=figma`);
+        res.redirect(`${process.env.FRONTEND_URL}/figma?connected=1`);
     } catch (error) {
         console.error('Figma OAuth error:', error);
-        res.redirect(`${process.env.FRONTEND_URL}/settings?error=figma`);
+        res.redirect(`${process.env.FRONTEND_URL}/figma?error=connect`);
     }
 });
 

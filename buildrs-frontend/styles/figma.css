@@ -553,6 +553,247 @@
   height: 0.9rem;
 }
 
+/* Team / folder library */
+.figma-lib {
+  margin-top: 1.25rem;
+}
+
+.figma-lib-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid rgba(240, 180, 91, 0.35);
+  border-radius: 9px;
+  background: rgba(240, 180, 91, 0.08);
+  color: #f0c98a;
+  font-size: 0.72rem;
+}
+
+.figma-lib-banner button,
+.figma-lib-inline {
+  padding: 0.45rem 0.75rem;
+  border: 1px solid rgba(240, 180, 91, 0.45);
+  border-radius: 7px;
+  background: rgba(240, 180, 91, 0.14);
+  color: #f6d7a4;
+  font-size: 0.68rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.figma-lib-inline {
+  margin-left: 0.4rem;
+  padding: 0.2rem 0.5rem;
+}
+
+.figma-lib-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.figma-lib-head h3 {
+  margin: 0;
+  flex: 1;
+  color: #e5ebf2;
+  font-size: 0.9rem;
+}
+
+.figma-lib-search {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0 0.6rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 7px;
+  background: #0b1017;
+  color: #718096;
+}
+
+.figma-lib-search svg {
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+.figma-lib-search input {
+  width: 180px;
+  padding: 0.45rem 0;
+  border: 0;
+  background: transparent;
+  color: #d3dae4;
+  font-size: 0.72rem;
+  outline: none;
+}
+
+.figma-lib-source {
+  margin-top: 1.25rem;
+  padding: 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: 10px;
+  background: #0e131b;
+}
+
+.figma-lib-source > header {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.figma-lib-source > header > div {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+}
+
+.figma-lib-source > header strong {
+  color: #e5ebf2;
+  font-size: 0.82rem;
+}
+
+.figma-lib-source > header small {
+  color: #718096;
+  font-size: 0.65rem;
+}
+
+.figma-lib-folder {
+  margin-top: 0.6rem;
+}
+
+.figma-lib-folder .figma-lib-folder {
+  margin-left: 1rem;
+}
+
+.figma-lib-folder > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.3rem;
+  border-radius: 6px;
+  color: #c6ceda;
+  font-size: 0.74rem;
+  font-weight: 550;
+  cursor: pointer;
+  list-style: none;
+}
+
+.figma-lib-folder > summary::-webkit-details-marker {
+  display: none;
+}
+
+.figma-lib-folder > summary:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.figma-lib-folder > summary small {
+  margin-left: auto;
+  color: #5f6b7d;
+  font-size: 0.62rem;
+  font-weight: 400;
+}
+
+.figma-lib-chevron {
+  width: 0.8rem;
+  height: 0.8rem;
+  color: #5f6b7d;
+  transition: transform 0.15s ease;
+}
+
+.figma-lib-folder[open] > summary .figma-lib-chevron {
+  transform: rotate(90deg);
+}
+
+.figma-lib-folder-icon {
+  width: 0.9rem;
+  height: 0.9rem;
+  color: #19d2db;
+}
+
+.figma-lib-folder-body {
+  padding-left: 1.2rem;
+}
+
+.figma-lib-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.65rem;
+  padding: 0.5rem 0;
+}
+
+.figma-lib-file {
+  display: grid;
+  min-width: 0;
+  gap: 0.35rem;
+  padding: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: 9px;
+  background: #10151e;
+  color: #d3dae4;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.figma-lib-file:hover,
+.figma-lib-file:focus-visible {
+  border-color: rgba(18, 212, 220, 0.4);
+  background: #131b26;
+  outline: none;
+}
+
+.figma-lib-thumb {
+  display: grid;
+  height: 100px;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #0b1017;
+  color: #3b4757;
+}
+
+.figma-lib-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.figma-lib-thumb svg {
+  width: 1.4rem;
+  height: 1.4rem;
+}
+
+.figma-lib-file-name {
+  overflow: hidden;
+  font-size: 0.72rem;
+  font-weight: 550;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.figma-lib-file small {
+  color: #5f6b7d;
+  font-size: 0.6rem;
+}
+
+.figma-lib-empty {
+  margin: 0.5rem 0 0;
+  color: #5f6b7d;
+  font-size: 0.68rem;
+}
+
+.figma-more {
+  margin-top: 1.5rem;
+}
+
+.figma-more > summary {
+  color: #8a96a8;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
 /* Plugin card */
 .figma-plugin-card {
   margin-top: 1.5rem;
