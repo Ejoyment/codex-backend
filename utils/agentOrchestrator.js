@@ -2004,8 +2004,43 @@ RESPOND WITH JSON ONLY - NO MARKDOWN, NO EXPLANATIONS.`;
     }
 
     checkSyntax(content, language) {
-        // Placeholder - would integrate with actual linters
-        return { valid: true, errors: [] };
+        const lang = String(language || 'javascript').toLowerCase();
+        const supported = ['javascript', 'js', 'jsx', 'typescript', 'ts', 'tsx'];
+        if (!supported.includes(lang)) {
+            return {
+                valid: null,
+                errors: [],
+                heuristic: true,
+                reason: `No parser configured for ${lang}`,
+            };
+        }
+
+        const ts = require('typescript');
+        const isJsx = lang === 'jsx' || lang === 'tsx';
+        const isTs = lang === 'typescript' || lang === 'ts' || lang === 'tsx';
+        const fileName = isJsx ? 'input.tsx' : (isTs ? 'input.ts' : 'input.js');
+        const scriptKind = isJsx
+            ? ts.ScriptKind.TSX
+            : (isTs ? ts.ScriptKind.TS : ts.ScriptKind.JS);
+        const sourceFile = ts.createSourceFile(
+            fileName,
+            String(content || ''),
+            ts.ScriptTarget.Latest,
+            true,
+            scriptKind
+        );
+        const diagnostics = sourceFile.parseDiagnostics || [];
+        const errors = diagnostics.map((diagnostic) => {
+            const start = typeof diagnostic.start === 'number' ? diagnostic.start : 0;
+            const position = ts.getLineAndCharacterOfPosition(sourceFile, start);
+            return {
+                line: position.line + 1,
+                column: position.character + 1,
+                message: ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'),
+            };
+        });
+
+        return { valid: errors.length === 0, errors, heuristic: false };
     }
 
     calculateComplexity(content) {

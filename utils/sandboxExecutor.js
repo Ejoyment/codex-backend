@@ -25,6 +25,7 @@ function hostExecAllowed() {
 class SandboxExecutor {
     constructor() {
         this.timeout = parseInt(process.env.SANDBOX_TIMEOUT) || 5000;
+        this.testTimeout = parseInt(process.env.SANDBOX_TEST_TIMEOUT) || 30000;
         this.memoryLimit = parseInt(process.env.SANDBOX_MEMORY_LIMIT) || 128; // MB, used as fallback
         this.available = false;
         this.initialize();
@@ -115,7 +116,9 @@ class SandboxExecutor {
         if (!/^[a-zA-Z0-9_-]{1,64}$/.test(String(userId)) || !/^[a-zA-Z0-9_-]{1,64}$/.test(String(workspaceId))) throw new Error('Invalid userId/workspaceId');
 
         try {
-            const container = await sandboxSecurity.createIsolatedContainer(userId, workspaceId);
+            const container = await sandboxSecurity.createIsolatedContainer(userId, workspaceId, {
+                image: this.getDockerImage(language),
+            });
             await container.start();
 
             // Seed project files (base64 -> file, mkdir -p first). Each write
@@ -296,7 +299,7 @@ class SandboxExecutor {
         const fullCode = `${testEnvironment}\n${testCode}`;
 
         const execOptions = {
-            timeout: options.timeout || 30000,
+            timeout: options.timeout || this.testTimeout,
             files: options.files,
             installDeps: options.installDeps,
         };
@@ -321,7 +324,9 @@ class SandboxExecutor {
         }
 
         try {
-            const container = await sandboxSecurity.createIsolatedContainer(userId, workspaceId);
+            const container = await sandboxSecurity.createIsolatedContainer(userId, workspaceId, {
+                image: this.getDockerImage(language),
+            });
             await container.start();
 
             const files = Array.isArray(options.files) ? options.files : [];
@@ -347,7 +352,7 @@ class SandboxExecutor {
             let output = '';
             const startTime = Date.now();
             await new Promise((resolve, reject) => {
-                const t = setTimeout(() => reject(new Error('Execution timeout')), options.timeout || 30000);
+                const t = setTimeout(() => reject(new Error('Execution timeout')), options.timeout || this.testTimeout);
                 stream.on('data', (d) => { output += d.toString(); clearTimeout(t); });
                 stream.on('end', () => { clearTimeout(t); resolve(); });
                 stream.on('error', (e) => { clearTimeout(t); reject(e); });

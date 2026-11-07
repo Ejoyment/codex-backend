@@ -365,7 +365,7 @@ describe('deployment environment tools', () => {
   test('set_env refuses credential-shaped keys so secrets are never hardcoded', async () => {
     const context = {};
     const result = await orchestrator.tools.set_env.execute({
-      vars: { STRIPE_API_KEY: 'sk_live_123', PORT: '8080' },
+      vars: { STRIPE_API_KEY: 'placeholder-key', PORT: '8080' },
     }, context);
 
     expect(result.success).toBe(true);
