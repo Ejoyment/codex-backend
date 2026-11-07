@@ -112,10 +112,8 @@ describe('GET /api/figma/files', () => {
         expect(axios).not.toHaveBeenCalled();
     });
 
-    test('never 500s when discovery fails', async () => {
-        const integration = makeIntegration();
-        Integration.findOne.mockResolvedValue(integration);
-        axios.mockRejectedValue(axiosError(403));
+    test('an empty library answers with guidance instead of calling Figma', async () => {
+        Integration.findOne.mockResolvedValue(makeIntegration());
 
         const response = await request(app).get('/api/figma/files');
 
@@ -123,36 +121,9 @@ describe('GET /api/figma/files', () => {
         expect(response.body.success).toBe(true);
         expect(response.body.files).toEqual([]);
         expect(response.body.message).toMatch(/paste a figma file link/i);
+        expect(axios).not.toHaveBeenCalled();
     });
 
-    test('saves files found through legacy team discovery', async () => {
-        const integration = makeIntegration();
-        Integration.findOne.mockResolvedValue(integration);
-        axios
-            .mockResolvedValueOnce({ data: { id: 'u1', teams: [{ id: 'team-1' }] } })
-            .mockResolvedValueOnce({ data: { projects: [{ id: 'project-1' }] } })
-            .mockResolvedValueOnce({
-                data: { files: [{ key: 'discovered1234567890', name: 'Discovered', thumbnailUrl: 'thumb.png' }] },
-            });
-
-        const response = await request(app).get('/api/figma/files');
-
-        expect(response.status).toBe(200);
-        expect(response.body.files).toEqual([
-            {
-                key: 'discovered1234567890',
-                name: 'Discovered',
-                thumbnail_url: 'thumb.png',
-                last_modified: null,
-                addedAt: expect.any(String),
-                source: 'link',
-                selection: [],
-                pushedAt: null,
-            },
-        ]);
-        expect(integration.save).toHaveBeenCalled();
-        expect(integration.metadata.get('figmaFiles')).toHaveLength(1);
-    });
 });
 
 describe('POST /api/figma/files', () => {

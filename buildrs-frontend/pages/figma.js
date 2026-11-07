@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
-import { Figma as FigmaIcon, Loader2, Plus, RefreshCw, Sparkles, Trash2 } from 'lucide-react';
+import { Figma as FigmaIcon, Loader2, Plus, Sparkles, Trash2 } from 'lucide-react';
 import AuthGuard from '../components/AuthGuard';
 import BrandIcon from '../components/BrandIcon';
 import Sidebar from '../components/Sidebar';
 import FigmaFrameBrowser from '../components/figma/FigmaFrameBrowser';
 import FigmaCodePanel from '../components/figma/FigmaCodePanel';
 import FigmaPluginCard from '../components/figma/FigmaPluginCard';
+import FigmaLibrary from '../components/figma/FigmaLibrary';
 import useAuthStore from '../store/authStore';
 import { apiFetch, figmaApi } from '../lib/api';
 
@@ -31,6 +32,7 @@ export default function FigmaPage() {
   const [fileUrl, setFileUrl] = useState('');
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState('');
+  const [library, setLibrary] = useState(null);
   const router = useRouter();
   const [openFileKey, setOpenFileKey] = useState(null);
   const [highlightNodeId, setHighlightNodeId] = useState(null);
@@ -45,7 +47,10 @@ export default function FigmaPage() {
       setOpenFileKey(file);
       setHighlightNodeId(node);
     }
-  }, [router.isReady, router.query.file, router.query.node]);
+    if (router.query.error === 'connect') {
+      setError('Figma connection failed. Make sure the Buildrs Figma app allows every requested permission, then try again.');
+    }
+  }, [router.isReady, router.query.file, router.query.node, router.query.error]);
 
   const openFile = (fileKey, nodeId = null) => {
     setOpenFileKey(fileKey);
@@ -83,18 +88,38 @@ export default function FigmaPage() {
     }
   };
 
-  const loadFiles = async () => {
+  // Library = linked teams/folders (full folder trees) + individually added files.
+  const loadFiles = async ({ refresh = false } = {}) => {
     setFilesLoading(true);
     setFilesError('');
     try {
-      const result = await figmaApi.listFiles();
-      if (!result.success) throw new Error(result.message || 'Could not load Figma files');
-      setFiles(result.files || []);
+      const result = await figmaApi.getLibrary({ refresh });
+      if (!result.success) throw new Error(result.message || 'Could not load your Figma designs');
+      setLibrary(result);
+      setFiles(result.linkedFiles || []);
     } catch (loadError) {
-      console.error('Failed to load Figma files:', loadError);
-      setFilesError(loadError.message || 'Could not load Figma files');
+      console.error('Failed to load Figma library:', loadError);
+      setFilesError(loadError.message || 'Could not load your Figma designs');
     } finally {
       setFilesLoading(false);
+    }
+  };
+
+  const addLibrarySource = async (url) => {
+    const result = await figmaApi.addLibrarySource(url);
+    if (!result.success) throw new Error(result.message || 'Could not add that team');
+    await loadFiles();
+  };
+
+  const removeLibrarySource = async (type, id) => {
+    try {
+      await figmaApi.removeLibrarySource(type, id);
+      setLibrary((current) => current && {
+        ...current,
+        sources: current.sources.filter((source) => !(source.type === type && source.id === id)),
+      });
+    } catch (removeError) {
+      setFilesError(removeError.message || 'Could not remove that team');
     }
   };
 
@@ -133,12 +158,15 @@ export default function FigmaPage() {
         if (result.connected) {
           setFilesLoading(true);
           try {
-            const filesResult = await figmaApi.listFiles();
-            if (!filesResult.success) throw new Error(filesResult.message || 'Could not load Figma files');
-            if (active) setFiles(filesResult.files || []);
+            const libraryResult = await figmaApi.getLibrary();
+            if (!libraryResult.success) throw new Error(libraryResult.message || 'Could not load your Figma designs');
+            if (active) {
+              setLibrary(libraryResult);
+              setFiles(libraryResult.linkedFiles || []);
+            }
           } catch (loadError) {
-            console.error('Failed to load Figma files:', loadError);
-            if (active) setFilesError(loadError.message || 'Could not load Figma files');
+            console.error('Failed to load Figma library:', loadError);
+            if (active) setFilesError(loadError.message || 'Could not load your Figma designs');
           } finally {
             if (active) setFilesLoading(false);
           }
@@ -227,86 +255,97 @@ export default function FigmaPage() {
                 <div className="figma-brand-mark is-connected"><BrandIcon platform="figma" /></div>
                 <div>
                   <p className="figma-eyebrow">Figma connected</p>
-                  <h2>{account ? `Connected as ${account}` : 'Your Figma files'}</h2>
-                  <p>Open a file to browse its frames, convert them to code, or link them to tasks.</p>
+                  <h2>{account ? `Connected as ${account}` : 'Your Figma designs'}</h2>
+                  <p>Open any design to pick a frame, convert it to code, or hand it to an AI task.</p>
                 </div>
-                <button type="button" className="figma-refresh" onClick={loadFiles} disabled={filesLoading} aria-label="Refresh Figma files">
-                  {filesLoading ? <Loader2 className="figma-spin" /> : <RefreshCw />}
-                  <span>Refresh</span>
-                </button>
               </div>
-              <form className="figma-import" onSubmit={importFile}>
-                <label htmlFor="figma-file-url">Add a file by link</label>
-                <div className="figma-import-row">
-                  <input
-                    id="figma-file-url"
-                    type="text"
-                    inputMode="url"
-                    autoComplete="off"
-                    placeholder="https://www.figma.com/design/…"
-                    value={fileUrl}
-                    onChange={(event) => setFileUrl(event.target.value)}
-                    disabled={importing}
-                  />
-                  <button type="submit" disabled={importing || !fileUrl.trim()}>
-                    {importing ? <Loader2 className="figma-spin" /> : <Plus />}
-                    <span>{importing ? 'Adding...' : 'Add file'}</span>
-                  </button>
-                </div>
-                <span className="figma-import-hint">
-                  Open the file in Figma, copy the link from your browser, and paste it here.
-                </span>
-              </form>
-              {importError && <p className="figma-files-error" role="alert">{importError}</p>}
               {filesError && <p className="figma-files-error" role="alert">{filesError}</p>}
-              {filesLoading ? (
-                <div className="figma-panel-loading"><Loader2 className="figma-spin" /><span>Loading your files...</span></div>
-              ) : files.length ? (
-                <div className="figma-file-grid">
-                  {files.map((file) => (
-                    <div
-                      key={file.key}
-                      role="button"
-                      tabIndex={0}
-                      className="figma-file-card"
-                      onClick={() => openFile(file.key, file.selection?.[0]?.id || null)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter' || event.key === ' ') {
-                          event.preventDefault();
-                          openFile(file.key, file.selection?.[0]?.id || null);
-                        }
-                      }}
-                    >
-                      {file.thumbnail_url ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img className="figma-file-thumb" src={file.thumbnail_url} alt="" loading="lazy" />
-                      ) : (
-                        <span className="figma-file-icon"><FigmaIcon /></span>
-                      )}
-                      <span className="figma-file-name">
-                        {file.name || 'Untitled file'}
-                        {file.source === 'plugin' ? (
-                          <small className="figma-file-badge"><Sparkles /> {file.selection?.length ? `${file.selection.length} frame${file.selection.length === 1 ? '' : 's'} sent` : 'From plugin'}</small>
-                        ) : null}
-                      </span>
-                      <button
-                        type="button"
-                        className="figma-file-remove"
-                        onClick={(event) => removeFile(event, file.key)}
-                        aria-label={`Remove ${file.name || 'file'} from Buildrs`}
-                      >
-                        <Trash2 />
-                      </button>
+
+              <FigmaLibrary
+                library={library}
+                loading={filesLoading}
+                onRefresh={() => loadFiles({ refresh: true })}
+                onOpenFile={(fileKey) => openFile(fileKey)}
+                onAddSource={addLibrarySource}
+                onRemoveSource={removeLibrarySource}
+                onReconnect={connectFigma}
+              />
+
+              {files.length ? (
+                <section className="figma-lib-source" aria-labelledby="figma-added-title">
+                  <header>
+                    <span className="figma-file-icon"><FigmaIcon /></span>
+                    <div>
+                      <strong id="figma-added-title">Recently opened &amp; added files</strong>
+                      <small>{files.length} file{files.length === 1 ? '' : 's'}</small>
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="figma-files-empty">
-                  <p>No Figma files yet.</p>
-                  <span>Send files from Figma with the Buildrs plugin below, or paste a file link above.</span>
-                </div>
-              )}
-              <FigmaPluginCard />
+                  </header>
+                  <div className="figma-file-grid">
+                    {files.map((file) => (
+                      <div
+                        key={file.key}
+                        role="button"
+                        tabIndex={0}
+                        className="figma-file-card"
+                        onClick={() => openFile(file.key, file.selection?.[0]?.id || null)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            openFile(file.key, file.selection?.[0]?.id || null);
+                          }
+                        }}
+                      >
+                        {file.thumbnail_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img className="figma-file-thumb" src={file.thumbnail_url} alt="" loading="lazy" />
+                        ) : (
+                          <span className="figma-file-icon"><FigmaIcon /></span>
+                        )}
+                        <span className="figma-file-name">
+                          {file.name || 'Untitled file'}
+                          {file.source === 'plugin' ? (
+                            <small className="figma-file-badge"><Sparkles /> {file.selection?.length ? `${file.selection.length} frame${file.selection.length === 1 ? '' : 's'} sent` : 'From plugin'}</small>
+                          ) : null}
+                        </span>
+                        <button
+                          type="button"
+                          className="figma-file-remove"
+                          onClick={(event) => removeFile(event, file.key)}
+                          aria-label={`Remove ${file.name || 'file'} from Buildrs`}
+                        >
+                          <Trash2 />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+
+              <details className="figma-more">
+                <summary>More ways to add designs</summary>
+                <form className="figma-import" onSubmit={importFile}>
+                  <label htmlFor="figma-file-url">Add a single file (e.g. from Drafts) by link</label>
+                  <div className="figma-import-row">
+                    <input
+                      id="figma-file-url"
+                      type="text"
+                      inputMode="url"
+                      autoComplete="off"
+                      placeholder="https://www.figma.com/design/…"
+                      value={fileUrl}
+                      onChange={(event) => setFileUrl(event.target.value)}
+                      disabled={importing}
+                    />
+                    <button type="submit" disabled={importing || !fileUrl.trim()}>
+                      {importing ? <Loader2 className="figma-spin" /> : <Plus />}
+                      <span>{importing ? 'Adding...' : 'Add file'}</span>
+                    </button>
+                  </div>
+                  <span className="figma-import-hint">Figma doesn&apos;t let apps list personal Drafts, so add those files by link.</span>
+                </form>
+                {importError && <p className="figma-files-error" role="alert">{importError}</p>}
+                <FigmaPluginCard />
+              </details>
             </div>
           ) : (
             <div className="figma-empty-state">
@@ -333,7 +372,7 @@ export default function FigmaPage() {
                 {connecting ? <Loader2 className="figma-spin" /> : <BrandIcon platform="figma" />}
                 {connecting ? 'Connecting...' : 'Connect to Figma'}
               </button>
-              <span className="figma-permission-note">You’ll be asked to authorize access to your Figma files.</span>
+              <span className="figma-permission-note">You’ll be asked to let Buildrs read your Figma files and folders.</span>
             </div>
           )}
         </section>

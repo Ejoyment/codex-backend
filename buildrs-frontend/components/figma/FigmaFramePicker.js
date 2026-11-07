@@ -5,10 +5,33 @@ import { figmaApi } from '../../lib/api';
 
 export const EMPTY_FIGMA_LINK = { fileKey: '', fileName: '', nodeId: '', nodeName: '' };
 
+// Flatten the library into option groups: one per team/folder path, plus
+// individually added files.
+function libraryGroups(library) {
+  const groups = [];
+  const seen = new Set();
+  const push = (label, files) => {
+    const unique = files.filter((file) => file?.key && !seen.has(file.key));
+    unique.forEach((file) => seen.add(file.key));
+    if (unique.length) groups.push({ label, files: unique });
+  };
+  const walk = (prefix, folders) => folders.forEach((folder) => {
+    const label = `${prefix} / ${folder.name}`;
+    push(label, folder.files || []);
+    walk(label, folder.folders || []);
+  });
+  (library?.sources || []).forEach((source) => {
+    push(source.name, source.files || []);
+    walk(source.name, source.folders || []);
+  });
+  push('Added files', library?.linkedFiles || []);
+  return groups;
+}
+
 // Choose a Figma file from the user's library and one of its frames.
 // `value` / `onChange` use { fileKey, fileName, nodeId, nodeName }.
 export default function FigmaFramePicker({ value = EMPTY_FIGMA_LINK, onChange, disabled = false, className = '' }) {
-  const [files, setFiles] = useState(null);
+  const [groups, setGroups] = useState(null);
   const [connected, setConnected] = useState(true);
   const [pages, setPages] = useState([]);
   const [framesLoading, setFramesLoading] = useState(false);
@@ -16,15 +39,17 @@ export default function FigmaFramePicker({ value = EMPTY_FIGMA_LINK, onChange, d
 
   useEffect(() => {
     let active = true;
-    figmaApi.listFiles()
+    figmaApi.getLibrary()
       .then((result) => {
         if (!active) return;
         setConnected(result.connected !== false);
-        setFiles(result.files || []);
+        setGroups(libraryGroups(result));
       })
-      .catch(() => active && setFiles([]));
+      .catch(() => active && setGroups([]));
     return () => { active = false; };
   }, []);
+
+  const files = groups === null ? null : groups.flatMap((group) => group.files);
 
   useEffect(() => {
     if (!value.fileKey) {
@@ -59,11 +84,8 @@ export default function FigmaFramePicker({ value = EMPTY_FIGMA_LINK, onChange, d
     );
   }
 
-  // A task saved before files were tracked may only know its file key.
-  const fileOptions = [...(files || [])];
-  if (value.fileKey && !fileOptions.some((file) => file.key === value.fileKey)) {
-    fileOptions.unshift({ key: value.fileKey, name: value.fileName || value.fileKey });
-  }
+  // A task can point at a file that is no longer in the library.
+  const missingCurrent = value.fileKey && !(files || []).some((file) => file.key === value.fileKey);
   const knownFrame = pages.some((page) => page.frames.some((frame) => frame.id === value.nodeId));
 
   return (
@@ -75,8 +97,13 @@ export default function FigmaFramePicker({ value = EMPTY_FIGMA_LINK, onChange, d
         disabled={disabled || files === null}
         aria-label="Figma file"
       >
-        <option value="">{files === null ? 'Loading Figma files…' : fileOptions.length ? 'No Figma design' : 'No Figma files yet'}</option>
-        {fileOptions.map((file) => <option key={file.key} value={file.key}>{file.name || file.key}</option>)}
+        <option value="">{files === null ? 'Loading Figma files…' : files.length ? 'No Figma design' : 'No Figma files yet'}</option>
+        {missingCurrent ? <option value={value.fileKey}>{value.fileName || value.fileKey}</option> : null}
+        {(groups || []).map((group) => (
+          <optgroup key={group.label} label={group.label}>
+            {group.files.map((file) => <option key={file.key} value={file.key}>{file.name || file.key}</option>)}
+          </optgroup>
+        ))}
       </select>
 
       {value.fileKey ? (
@@ -104,7 +131,7 @@ export default function FigmaFramePicker({ value = EMPTY_FIGMA_LINK, onChange, d
           </button>
         </div>
       ) : files && !files.length ? (
-        <small>Send designs from Figma with the Buildrs plugin on the <Link href="/figma">Figma page</Link>.</small>
+        <small>Add your Figma team on the <Link href="/figma">Figma page</Link> to pick its designs here.</small>
       ) : null}
       {error ? <small className="tsk-figma-error">{error}</small> : null}
     </div>
