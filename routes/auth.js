@@ -367,7 +367,9 @@ router.get('/google', oauthLimiter,
  *         description: Redirect to frontend with token
  */
 router.get('/google/callback',
-    passport.authenticate('google', { failureRedirect: '/sign_in' }),
+    passport.authenticate('google', {
+        failureRedirect: `${String(process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/+$/, '')}/sign_in?error=google`,
+    }),
     (req, res) => {
         // Generate token
         const token = generateToken(req.user._id, req.user.tokenVersion);
