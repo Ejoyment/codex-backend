@@ -248,7 +248,7 @@ async function fillFromGitHubApi(repo, token, files, endAt) {
  * Fill `files` (mutated in place) with real content before building.
  * `deadline` is an absolute timestamp; backfill stops resolving after it.
  */
-async function backfillFileContent({ userId, projectId, workspaceId, source, repo, files, deadline }) {
+async function backfillFileContent({ userId, projectId, workspaceId, personal = false, source, repo, files, deadline }) {
     const { backfillTimeoutMs } = limits();
     const endAt = deadline || (Date.now() + backfillTimeoutMs);
     const unresolved = () => files.filter(f => !f.content && !f._resolved);
@@ -260,7 +260,17 @@ async function backfillFileContent({ userId, projectId, workspaceId, source, rep
     // project only; widening to the workspace could pull another project's
     // source into this deployment.
     if (projectId) {
-        const dbFiles = await CodeFile.find({ project: projectId, company: workspaceId }).lean();
+        // Personal workspaces store the Subscription _id on CodeFile.company;
+        // older personal files may still be keyed by the owner's user id.
+        const fileScope = personal
+            ? {
+                $or: [
+                    { company: workspaceId },
+                    { company: String(userId), createdBy: userId },
+                ],
+            }
+            : { company: workspaceId };
+        const dbFiles = await CodeFile.find({ project: projectId, ...fileScope }).lean();
         const byKey = new Map();
         for (const dbf of dbFiles) {
             byKey.set(fileKey(dbf), typeof dbf.content === 'string' ? dbf.content : '');

@@ -11,7 +11,7 @@ const TeamProject = require('../models/TeamProject');
 const LocalProject = require('../models/LocalProject');
 const CodeFile = require('../models/CodeFile');
 const { authenticateToken } = require('../middleware/auth');
-const { userIsCompanyMember } = require('../middleware/workspaceAccess');
+const { resolveWorkspaceScope } = require('../utils/workspaceIdentity');
 const { enforceDeploymentLimit } = require('../middleware/tierEnforcement');
 const depService = require('../utils/deploymentService');
 const { normalizeEnv, toEnvObject, redact } = require('../utils/deployEnv');
@@ -144,9 +144,19 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
         }
 
         // companyId is client-supplied and is used to select CodeFile rows.
-        // Never let it name a workspace the caller does not belong to.
-        if (companyId && !(await userIsCompanyMember(companyId, req.userId))) {
-            return res.status(403).json({ error: 'Access denied' });
+        // Never let it name a workspace the caller does not belong to. This
+        // accepts both Company workspaces and the caller's own personal
+        // workspace (a Subscription whose _id is what projects/files store).
+        //
+        // When a project is selected the client derives companyId from the
+        // project's stored workspace, so that value is validated after the
+        // project ownership check (and may fall back to personal if stale).
+        let workspaceScope = null;
+        if (companyId && !projectId) {
+            workspaceScope = await resolveWorkspaceScope(companyId, req.userId);
+            if (!workspaceScope.ok) {
+                return res.status(403).json({ error: 'Access denied' });
+            }
         }
 
         // Fail fast with a clear message if the deployment backend isn't configured
@@ -169,7 +179,6 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
 
         let files = Array.isArray(directFiles) && directFiles.length ? directFiles : [];
         let project = null;
-        let workspaceId = companyId || null;
 
         if (projectId) {
             const validId = typeof projectId === 'string' && /^[0-9a-fA-F]{24}$/.test(projectId);
@@ -187,20 +196,53 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
             }
 
             project = localProject || teamProject;
-            workspaceId = project.workspaceId || companyId || project.company?.toString() || workspaceId;
+            const projectWorkspaceRef =
+                project.workspaceId ||
+                companyId ||
+                project.company?.toString() ||
+                null;
 
-            // Re-check the resolved workspace: a project's stored workspaceId
-            // predates this request and must also belong to the caller before
-            // it can be used to read workspace-wide files.
-            if (workspaceId && !(await userIsCompanyMember(workspaceId, req.userId))) {
+            // A project's stored workspace predates this request. It may name
+            // the caller's personal workspace (a Subscription id), a company
+            // they belong to, or a stale/legacy id. Since the project itself
+            // is already proven to belong to the caller, fall back to their
+            // personal scope rather than denying access to their own project.
+            const projectScope = await resolveWorkspaceScope(projectWorkspaceRef, req.userId, {
+                fallbackToPersonal: true,
+            });
+            if (!projectScope.ok) {
                 return res.status(403).json({ error: 'Access denied' });
             }
+            workspaceScope = projectScope;
 
             // A selected project deploys only that project's files. Never
             // widen an empty project to the whole workspace: that could
             // publish another project's source under this subdomain.
-            files = files.length ? files : await CodeFile.find({ project: projectId, company: workspaceId }).lean();
+            if (!files.length) {
+                const fileScope = projectScope.personal
+                    ? {
+                        $or: [
+                            { company: projectScope.workspaceId },
+                            // Legacy personal files were keyed by user id.
+                            { company: String(req.userId), createdBy: req.userId },
+                        ],
+                    }
+                    : { company: projectScope.workspaceId };
+                files = await CodeFile.find({ project: projectId, ...fileScope }).lean();
+            }
         }
+
+        // No workspace was named by the client or a project: scope the
+        // deployment to the caller's personal workspace. This keeps files,
+        // audit rows and notifications consistently owned by the user.
+        if (!workspaceScope) {
+            workspaceScope = await resolveWorkspaceScope(null, req.userId);
+            if (!workspaceScope.ok) {
+                return res.status(403).json({ error: workspaceScope.reason || 'Access denied' });
+            }
+        }
+
+        const workspaceId = workspaceScope.workspaceId;
 
         if (files.length === 0 && !projectId && !Array.isArray(directFiles)) {
             return res.status(400).json({ error: 'No files available to deploy. Select a project, repo, or file in the explorer first.' });
@@ -472,7 +514,7 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
                 }
                 notifyDeploymentEvent({
                     type: 'deployment_failed',
-                    deployment: { _id: deployId, environment: sanitized, company: companyId || null },
+                    deployment: { _id: deployId, environment: sanitized, company: workspaceId || null },
                     userId: req.userId,
                     detail: publicErrorMessage || 'The deployment failed.',
                 });
@@ -520,6 +562,7 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
                     userId: req.userId,
                     projectId,
                     workspaceId,
+                    personal: workspaceScope.personal === true,
                     source,
                     repo,
                     files: normalizedFiles,
@@ -610,7 +653,7 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
                 console.log(`[deploy] ${sanitized}.buildrshq.dev is live`);
                 notifyDeploymentEvent({
                     type: 'deployment_succeeded',
-                    deployment: { _id: deployId, environment: sanitized, company: companyId || null },
+                    deployment: { _id: deployId, environment: sanitized, company: workspaceId || null },
                     userId: req.userId,
                     detail: `${sanitized}.buildrshq.dev is live.`,
                 });

@@ -9,11 +9,20 @@ jest.mock('../models/Subscription', () => {
 jest.mock('../models/User', () => ({
     findById: jest.fn(),
 }));
+jest.mock('../models/Company', () => ({
+    findById: jest.fn(),
+    findOne: jest.fn(),
+}));
 
 const Subscription = require('../models/Subscription');
 const User = require('../models/User');
+const Company = require('../models/Company');
 const { ensurePersonalWorkspace, findPersonalWorkspace } = require('../utils/personalWorkspace');
-const { resolveWorkspaceForUser } = require('../utils/workspaceIdentity');
+const { resolveWorkspaceForUser, resolveWorkspaceScope } = require('../utils/workspaceIdentity');
+
+const companyQuery = (result) => ({
+    select: () => ({ lean: async () => result }),
+});
 
 const USER_ID = '507f1f77bcf86cd799439011';
 
@@ -25,6 +34,7 @@ beforeEach(() => {
         email: 'ranger@example.com',
     });
     Subscription.findOne.mockResolvedValue(null);
+    Company.findById.mockReturnValue(companyQuery(null));
 });
 
 test('creates a personal subscription (not a company) for a new user', async () => {
@@ -72,4 +82,37 @@ test('creates a personal workspace when none exists', async () => {
     expect(resolved.personal).toBe(true);
     expect(String(resolved.workspace._id)).toBeDefined();
     expect(Subscription).toHaveBeenCalled();
+});
+
+test('resolves the personal subscription id to the same personal scope', async () => {
+    const existing = { _id: 'sub-7', userId: USER_ID, type: 'personal' };
+    Subscription.findOne.mockResolvedValue(existing);
+
+    const scope = await resolveWorkspaceScope('sub-7', USER_ID);
+
+    expect(scope.ok).toBe(true);
+    expect(scope.personal).toBe(true);
+    expect(scope.workspaceId).toBe('sub-7');
+});
+
+test('stale workspace ids fall back to personal when allowed', async () => {
+    const existing = { _id: 'sub-8', userId: USER_ID, type: 'personal' };
+    Subscription.findOne.mockResolvedValue(existing);
+
+    const scope = await resolveWorkspaceScope('507f1f77bcf86cd799439012', USER_ID, {
+        fallbackToPersonal: true,
+    });
+
+    expect(scope.ok).toBe(true);
+    expect(scope.personal).toBe(true);
+    expect(scope.workspaceId).toBe('sub-8');
+});
+
+test('foreign workspace ids are rejected without the personal fallback', async () => {
+    Subscription.findOne.mockResolvedValue({ _id: 'sub-9', userId: USER_ID, type: 'personal' });
+
+    const scope = await resolveWorkspaceScope('507f1f77bcf86cd799439012', USER_ID);
+
+    expect(scope.ok).toBe(false);
+    expect(scope.reason).toMatch(/access denied/i);
 });

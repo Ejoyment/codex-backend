@@ -53,9 +53,72 @@ async function canonicalWorkspaceId(workspaceId, userId) {
     return resolved ? String(resolved.workspace._id) : null;
 }
 
+/**
+ * Resolve a workspace reference to the caller's scope.
+ *
+ * Accepts a Company the caller belongs to, the caller's user id, or the
+ * caller's personal workspace (Subscription) id. Personal workspaces are
+ * stored by their own `_id` on CodeFile.company and LocalProject.workspaceId,
+ * so both forms must resolve to the same personal scope.
+ *
+ * `fallbackToPersonal` is for server-owned references (project/task/session
+ * data) whose stored workspace may predate the personal/workspace split. Such
+ * a stale id resolves to the caller's personal workspace instead of locking
+ * them out. Explicit client-supplied workspace ids should leave it off so a
+ * foreign tenant id is still rejected.
+ *
+ * Returns { ok, workspace, workspaceId, personal } or { ok: false, reason }.
+ */
+async function resolveWorkspaceScope(workspaceId, userId, { fallbackToPersonal = false } = {}) {
+    if (!userId) return { ok: false, reason: 'Authentication required' };
+    const raw = normalizeWorkspaceId(workspaceId);
+
+    if (raw) {
+        const resolved = await resolveWorkspaceForUser(raw, userId);
+        if (resolved) {
+            return {
+                ok: true,
+                workspace: resolved.workspace,
+                workspaceId: String(resolved.workspace._id),
+                personal: resolved.personal,
+            };
+        }
+
+        // A personal workspace is a Subscription, not a Company. It is
+        // addressable by the owner's user id (handled above) and by its own
+        // _id, which is what projects/files actually store.
+        const personal = await findPersonalWorkspace(userId);
+        if (personal && String(personal._id) === raw) {
+            return {
+                ok: true,
+                workspace: personal,
+                workspaceId: String(personal._id),
+                personal: true,
+            };
+        }
+    }
+
+    if (fallbackToPersonal || !raw) {
+        const personal = await ensurePersonalWorkspace(userId);
+        if (personal) {
+            return {
+                ok: true,
+                workspace: personal,
+                workspaceId: String(personal._id),
+                personal: true,
+            };
+        }
+    }
+
+    // Do not distinguish "no such workspace" from "not a member": the former
+    // would be an enumeration oracle across tenants.
+    return { ok: false, reason: 'Workspace not found or access denied' };
+}
+
 module.exports = {
     normalizeWorkspaceId,
     isMember,
     resolveWorkspaceForUser,
+    resolveWorkspaceScope,
     canonicalWorkspaceId,
 };
