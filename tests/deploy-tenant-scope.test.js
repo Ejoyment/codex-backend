@@ -22,6 +22,10 @@ jest.mock('../models/LocalProject');
 jest.mock('../models/TeamProject');
 jest.mock('../models/CodeFile');
 jest.mock('../models/Company');
+jest.mock('../utils/personalWorkspace', () => ({
+    findPersonalWorkspace: jest.fn(),
+    ensurePersonalWorkspace: jest.fn(),
+}));
 jest.mock('../utils/deploymentService', () => ({
     buildFileRelPath: (file) => file.name,
     assertSafeRelPath: () => {},
@@ -33,8 +37,12 @@ const Company = require('../models/Company');
 const Deployment = require('../models/Deployment');
 const LocalProject = require('../models/LocalProject');
 const CodeFile = require('../models/CodeFile');
+const { findPersonalWorkspace, ensurePersonalWorkspace } = require('../utils/personalWorkspace');
 const deploymentsRouter = require('../routes/deployments');
 const { backfillFileContent } = require('../utils/deployContent');
+
+const USER_ID = '507f1f77bcf86cd799439011';
+const PERSONAL_ID = '507f1f77bcf86cd799439099';
 
 const companyQuery = (result) => ({
     select: () => ({ lean: async () => result }),
@@ -52,6 +60,9 @@ describe('deployment tenant scoping', () => {
         process.env.DEPLOY_SSH_HOST = 'deploy.example.com';
         process.env.DEPLOY_SSH_KEY = 'key';
         Company.findOne.mockReturnValue(companyQuery(null));
+        Company.findById.mockReturnValue(companyQuery(null));
+        findPersonalWorkspace.mockResolvedValue({ _id: PERSONAL_ID, userId: USER_ID, type: 'personal' });
+        ensurePersonalWorkspace.mockResolvedValue({ _id: PERSONAL_ID, userId: USER_ID, type: 'personal' });
         CodeFile.find.mockReturnValue({ lean: async () => [] });
     });
 
@@ -72,11 +83,12 @@ describe('deployment tenant scoping', () => {
         expect(CodeFile.find).not.toHaveBeenCalled();
     });
 
-    test('rejects a project whose stored workspace belongs to another tenant', async () => {
+    test('never reads files from a project workspace that belongs to another tenant', async () => {
+        const foreignWorkspaceId = '507f1f77bcf86cd799439012';
         LocalProject.findOne.mockReturnValue({
             lean: async () => ({
                 _id: '507f1f77bcf86cd799439013',
-                workspaceId: '507f1f77bcf86cd799439012',
+                workspaceId: foreignWorkspaceId,
             }),
         });
 
@@ -84,16 +96,28 @@ describe('deployment tenant scoping', () => {
             .post('/api/deployments')
             .send({ subdomain: 'victim-app', projectId: '507f1f77bcf86cd799439013' });
 
-        expect(response.status).toBe(403);
-        expect(CodeFile.find).not.toHaveBeenCalled();
+        // The project belongs to the caller, so a stale/foreign workspace id
+        // falls back to their personal scope instead of locking them out.
+        expect(response.status).toBe(400);
+        expect(CodeFile.find).toHaveBeenCalledWith({
+            project: '507f1f77bcf86cd799439013',
+            $or: [
+                { company: PERSONAL_ID },
+                { company: USER_ID, createdBy: USER_ID },
+            ],
+        });
+        expect(CodeFile.find).not.toHaveBeenCalledWith(expect.objectContaining({
+            company: foreignWorkspaceId,
+        }));
     });
 
     test('allows a workspace the caller belongs to', async () => {
         const workspaceId = '507f1f77bcf86cd799439014';
-        Company.findOne.mockReturnValue(companyQuery({
+        Company.findById.mockReturnValue(companyQuery({
             _id: workspaceId,
-            owner: '507f1f77bcf86cd799439011',
+            owner: USER_ID,
             members: [],
+            isActive: true,
         }));
         LocalProject.findOne.mockReturnValue({
             lean: async () => ({
@@ -113,10 +137,11 @@ describe('deployment tenant scoping', () => {
     test('an empty selected project never falls back to workspace files', async () => {
         const workspaceId = '507f1f77bcf86cd799439014';
         const projectId = '507f1f77bcf86cd799439013';
-        Company.findOne.mockReturnValue(companyQuery({
+        Company.findById.mockReturnValue(companyQuery({
             _id: workspaceId,
-            owner: '507f1f77bcf86cd799439011',
+            owner: USER_ID,
             members: [],
+            isActive: true,
         }));
         LocalProject.findOne.mockReturnValue({
             lean: async () => ({ _id: projectId, workspaceId }),
@@ -131,6 +156,64 @@ describe('deployment tenant scoping', () => {
         expect(response.status).toBe(400);
         expect(CodeFile.find).toHaveBeenCalledTimes(1);
         expect(CodeFile.find).toHaveBeenCalledWith({ project: projectId, company: workspaceId });
+    });
+
+    test('accepts the caller personal workspace id as companyId', async () => {
+        const response = await request(app)
+            .post('/api/deployments')
+            .send({ subdomain: 'my-app', companyId: PERSONAL_ID });
+
+        // Access must not be denied for the caller's own personal workspace.
+        expect(response.status).toBe(400);
+        expect(response.body.error).toMatch(/No files available/i);
+    });
+
+    test('deploys a personal project whose stored workspace is the personal subscription id', async () => {
+        const projectId = '507f1f77bcf86cd799439013';
+        LocalProject.findOne.mockReturnValue({
+            lean: async () => ({ _id: projectId, workspaceId: PERSONAL_ID }),
+        });
+
+        // This is exactly the editor payload: companyId mirrors the project's
+        // personal workspace id.
+        const response = await request(app)
+            .post('/api/deployments')
+            .send({ subdomain: 'my-app', projectId, companyId: PERSONAL_ID });
+
+        expect(response.status).toBe(400);
+        expect(response.body.error).toMatch(/no deployable files/i);
+        expect(CodeFile.find).toHaveBeenCalledWith({
+            project: projectId,
+            $or: [
+                { company: PERSONAL_ID },
+                { company: USER_ID, createdBy: USER_ID },
+            ],
+        });
+    });
+
+    test('falls back to the personal workspace for a stale project workspace id', async () => {
+        const projectId = '507f1f77bcf86cd799439013';
+        const staleWorkspaceId = '507f1f77bcf86cd7994390aa';
+        LocalProject.findOne.mockReturnValue({
+            lean: async () => ({
+                _id: projectId,
+                workspaceId: staleWorkspaceId,
+            }),
+        });
+
+        // The editor mirrors the project's workspace into companyId.
+        const response = await request(app)
+            .post('/api/deployments')
+            .send({ subdomain: 'my-app', projectId, companyId: staleWorkspaceId });
+
+        expect(response.status).toBe(400);
+        expect(CodeFile.find).toHaveBeenCalledWith({
+            project: projectId,
+            $or: [
+                { company: PERSONAL_ID },
+                { company: USER_ID, createdBy: USER_ID },
+            ],
+        });
     });
 
     test('rejects a deployment run that loses the atomic claim', async () => {
