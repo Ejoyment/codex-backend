@@ -1,16 +1,20 @@
 import { useEffect, useState } from 'react';
 import Head from 'next/head';
-import { ExternalLink, Figma as FigmaIcon, Loader2, Plus, RefreshCw } from 'lucide-react';
+import { useRouter } from 'next/router';
+import { Figma as FigmaIcon, Loader2, Plus, RefreshCw, Sparkles, Trash2 } from 'lucide-react';
 import AuthGuard from '../components/AuthGuard';
 import BrandIcon from '../components/BrandIcon';
 import Sidebar from '../components/Sidebar';
+import FigmaFrameBrowser from '../components/figma/FigmaFrameBrowser';
+import FigmaCodePanel from '../components/figma/FigmaCodePanel';
+import FigmaPluginCard from '../components/figma/FigmaPluginCard';
 import useAuthStore from '../store/authStore';
 import { apiFetch, figmaApi } from '../lib/api';
 
 const STEPS = [
-  { number: '01', title: 'Browse projects', description: 'Access connected Figma files in one place.' },
-  { number: '02', title: 'Select sections', description: 'Choose the exact frame you want to build.' },
-  { number: '03', title: 'Prepare for code', description: 'Create implementation-ready tasks.' },
+  { number: '01', title: 'Send designs', description: 'Use the Buildrs Figma plugin or a file link.' },
+  { number: '02', title: 'Pick frames', description: 'Browse pages and choose the exact frame to build.' },
+  { number: '03', title: 'Code it exactly', description: 'Convert to code or hand it to an AI task.' },
 ];
 
 export default function FigmaPage() {
@@ -27,6 +31,57 @@ export default function FigmaPage() {
   const [fileUrl, setFileUrl] = useState('');
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState('');
+  const router = useRouter();
+  const [openFileKey, setOpenFileKey] = useState(null);
+  const [highlightNodeId, setHighlightNodeId] = useState(null);
+  const [codeFrame, setCodeFrame] = useState(null);
+
+  // Deep link from the Figma plugin: /figma?file=<key>&node=<id>
+  useEffect(() => {
+    if (!router.isReady) return;
+    const file = typeof router.query.file === 'string' ? router.query.file : null;
+    const node = typeof router.query.node === 'string' ? router.query.node : null;
+    if (file) {
+      setOpenFileKey(file);
+      setHighlightNodeId(node);
+    }
+  }, [router.isReady, router.query.file, router.query.node]);
+
+  const openFile = (fileKey, nodeId = null) => {
+    setOpenFileKey(fileKey);
+    setHighlightNodeId(nodeId);
+    router.replace({ pathname: '/figma', query: nodeId ? { file: fileKey, node: nodeId } : { file: fileKey } }, undefined, { shallow: true });
+  };
+
+  const closeFile = () => {
+    setOpenFileKey(null);
+    setHighlightNodeId(null);
+    router.replace('/figma', undefined, { shallow: true });
+    loadFiles();
+  };
+
+  const createTaskFromFrame = (frame, file) => {
+    router.push({
+      pathname: '/tasks',
+      query: {
+        newTask: '1',
+        figmaFileKey: file.key,
+        figmaFileName: file.name || '',
+        figmaNodeId: frame.id,
+        figmaNodeName: frame.name || '',
+      },
+    });
+  };
+
+  const removeFile = async (event, fileKey) => {
+    event.stopPropagation();
+    try {
+      const result = await figmaApi.removeFile(fileKey);
+      setFiles(result.files || []);
+    } catch (removeError) {
+      setFilesError(removeError.message || 'Could not remove that file');
+    }
+  };
 
   const loadFiles = async () => {
     setFilesLoading(true);
@@ -158,6 +213,14 @@ export default function FigmaPage() {
                 <span />
               </div>
             </div>
+          ) : connected && openFileKey ? (
+            <FigmaFrameBrowser
+              fileKey={openFileKey}
+              highlightNodeId={highlightNodeId}
+              onBack={closeFile}
+              onConvert={(frame) => setCodeFrame(frame)}
+              onCreateTask={createTaskFromFrame}
+            />
           ) : connected ? (
             <div className="figma-files-view">
               <div className="figma-files-heading">
@@ -165,7 +228,7 @@ export default function FigmaPage() {
                 <div>
                   <p className="figma-eyebrow">Figma connected</p>
                   <h2>{account ? `Connected as ${account}` : 'Your Figma files'}</h2>
-                  <p>Choose a design file to view it in Figma.</p>
+                  <p>Open a file to browse its frames, convert them to code, or link them to tasks.</p>
                 </div>
                 <button type="button" className="figma-refresh" onClick={loadFiles} disabled={filesLoading} aria-label="Refresh Figma files">
                   {filesLoading ? <Loader2 className="figma-spin" /> : <RefreshCw />}
@@ -173,7 +236,7 @@ export default function FigmaPage() {
                 </button>
               </div>
               <form className="figma-import" onSubmit={importFile}>
-                <label htmlFor="figma-file-url">Add a Figma file</label>
+                <label htmlFor="figma-file-url">Add a file by link</label>
                 <div className="figma-import-row">
                   <input
                     id="figma-file-url"
@@ -201,25 +264,49 @@ export default function FigmaPage() {
               ) : files.length ? (
                 <div className="figma-file-grid">
                   {files.map((file) => (
-                    <a
+                    <div
                       key={file.key}
+                      role="button"
+                      tabIndex={0}
                       className="figma-file-card"
-                      href={`https://www.figma.com/file/${encodeURIComponent(file.key)}`}
-                      target="_blank"
-                      rel="noreferrer"
+                      onClick={() => openFile(file.key, file.selection?.[0]?.id || null)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          openFile(file.key, file.selection?.[0]?.id || null);
+                        }
+                      }}
                     >
-                      <span className="figma-file-icon"><FigmaIcon /></span>
-                      <span className="figma-file-name">{file.name || 'Untitled file'}</span>
-                      <ExternalLink className="figma-file-external" />
-                    </a>
+                      {file.thumbnail_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img className="figma-file-thumb" src={file.thumbnail_url} alt="" loading="lazy" />
+                      ) : (
+                        <span className="figma-file-icon"><FigmaIcon /></span>
+                      )}
+                      <span className="figma-file-name">
+                        {file.name || 'Untitled file'}
+                        {file.source === 'plugin' ? (
+                          <small className="figma-file-badge"><Sparkles /> {file.selection?.length ? `${file.selection.length} frame${file.selection.length === 1 ? '' : 's'} sent` : 'From plugin'}</small>
+                        ) : null}
+                      </span>
+                      <button
+                        type="button"
+                        className="figma-file-remove"
+                        onClick={(event) => removeFile(event, file.key)}
+                        aria-label={`Remove ${file.name || 'file'} from Buildrs`}
+                      >
+                        <Trash2 />
+                      </button>
+                    </div>
                   ))}
                 </div>
               ) : (
                 <div className="figma-files-empty">
-                  <p>No Figma files added yet.</p>
-                  <span>Paste a Figma file link above to add it to your workspace.</span>
+                  <p>No Figma files yet.</p>
+                  <span>Send files from Figma with the Buildrs plugin below, or paste a file link above.</span>
                 </div>
               )}
+              <FigmaPluginCard />
             </div>
           ) : (
             <div className="figma-empty-state">
@@ -250,6 +337,9 @@ export default function FigmaPage() {
             </div>
           )}
         </section>
+        {codeFrame && openFileKey ? (
+          <FigmaCodePanel fileKey={openFileKey} frame={codeFrame} onClose={() => setCodeFrame(null)} />
+        ) : null}
       </main>
     </div>
   );

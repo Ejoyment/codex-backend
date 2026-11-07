@@ -491,6 +491,469 @@
   color: #fca5a5;
 }
 
+/* Library cards */
+.figma-file-card {
+  position: relative;
+  cursor: pointer;
+}
+
+.figma-file-card:focus-visible {
+  outline: 2px solid rgba(18, 212, 220, 0.6);
+  outline-offset: 2px;
+}
+
+.figma-file-thumb {
+  width: 44px;
+  height: 31px;
+  flex: 0 0 auto;
+  border-radius: 6px;
+  object-fit: cover;
+  background: #0b1017;
+}
+
+.figma-file-name small.figma-file-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: 0.2rem;
+  color: #19d2db;
+  font-size: 0.62rem;
+  font-weight: 500;
+}
+
+.figma-file-badge svg {
+  width: 0.7rem;
+  height: 0.7rem;
+}
+
+.figma-file-remove,
+.figma-icon-button {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #718096;
+  cursor: pointer;
+}
+
+.figma-file-remove:hover,
+.figma-icon-button:hover {
+  border-color: rgba(255, 255, 255, 0.1);
+  color: #d3dae4;
+}
+
+.figma-file-remove svg,
+.figma-icon-button svg {
+  width: 0.9rem;
+  height: 0.9rem;
+}
+
+/* Plugin card */
+.figma-plugin-card {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  border: 1px solid rgba(18, 212, 220, 0.18);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(18, 212, 220, 0.05), transparent), #10151e;
+}
+
+.figma-plugin-head {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.figma-plugin-head h3 {
+  margin: 0;
+  color: #e5ebf2;
+  font-size: 0.85rem;
+}
+
+.figma-plugin-head p,
+.figma-plugin-steps,
+.figma-plugin-meta {
+  margin: 0.3rem 0 0;
+  color: #8a96a8;
+  font-size: 0.7rem;
+}
+
+.figma-plugin-steps {
+  margin-top: 0.85rem;
+  padding-left: 1.1rem;
+  line-height: 1.7;
+}
+
+.figma-plugin-steps b,
+.figma-plugin-head b {
+  color: #c6ceda;
+}
+
+.figma-plugin-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: #19d2db;
+  font-weight: 550;
+}
+
+.figma-plugin-link svg {
+  width: 0.8rem;
+  height: 0.8rem;
+}
+
+.figma-plugin-token {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.4rem 0.5rem;
+  margin-top: 0.85rem;
+}
+
+.figma-plugin-token code {
+  overflow: hidden;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 7px;
+  background: #0b1017;
+  color: #d3dae4;
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: all;
+}
+
+.figma-plugin-token small {
+  grid-column: 1 / -1;
+  color: #f0b45b;
+  font-size: 0.65rem;
+}
+
+.figma-plugin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.85rem;
+}
+
+.figma-plugin-token button,
+.figma-plugin-actions button,
+.figma-primary,
+.figma-frame-actions button,
+.figma-code-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.5rem 0.8rem;
+  border: 1px solid rgba(18, 212, 220, 0.35);
+  border-radius: 7px;
+  background: rgba(18, 212, 220, 0.12);
+  color: #19d2db;
+  font-size: 0.68rem;
+  font-weight: 550;
+  cursor: pointer;
+}
+
+.figma-plugin-actions button.is-secondary {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: transparent;
+  color: #b7c1ce;
+}
+
+.figma-plugin-token button:disabled,
+.figma-plugin-actions button:disabled,
+.figma-primary:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.figma-plugin-token svg,
+.figma-plugin-actions svg,
+.figma-primary svg,
+.figma-frame-actions svg,
+.figma-code-copy svg,
+.figma-refresh svg {
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+a.figma-refresh {
+  text-decoration: none;
+}
+
+/* Frame browser */
+.figma-browser-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.figma-browser-title {
+  min-width: 0;
+  flex: 1;
+}
+
+.figma-browser-title h2 {
+  overflow: hidden;
+  margin: 0;
+  color: #e5ebf2;
+  font-size: 1rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.figma-browser-head .figma-refresh {
+  margin-left: 0;
+}
+
+.figma-page-tabs {
+  display: flex;
+  gap: 0.35rem;
+  overflow-x: auto;
+  margin-top: 1.25rem;
+  padding-bottom: 0.25rem;
+}
+
+.figma-page-tabs button,
+.figma-code-tabs button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 7px;
+  background: #10151e;
+  color: #9aa6b8;
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+
+.figma-page-tabs button span {
+  color: #5f6b7d;
+  font-size: 0.62rem;
+}
+
+.figma-page-tabs button.is-active,
+.figma-code-tabs button.is-active {
+  border-color: rgba(18, 212, 220, 0.4);
+  background: rgba(18, 212, 220, 0.1);
+  color: #e5ebf2;
+}
+
+.figma-frame-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 0.85rem;
+  padding-top: 1rem;
+}
+
+.figma-frame-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: 10px;
+  background: #10151e;
+}
+
+.figma-frame-card.is-sent {
+  border-color: rgba(18, 212, 220, 0.45);
+  box-shadow: 0 0 0 1px rgba(18, 212, 220, 0.15);
+}
+
+.figma-frame-thumb {
+  position: relative;
+  display: grid;
+  height: 150px;
+  place-items: center;
+  overflow: hidden;
+  background: #0b1017;
+  color: #5f6b7d;
+  font-size: 0.7rem;
+}
+
+.figma-frame-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.figma-frame-thumb em {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(8, 12, 18, 0.85);
+  color: #19d2db;
+  font-size: 0.6rem;
+  font-style: normal;
+  font-weight: 600;
+}
+
+.figma-frame-thumb em svg {
+  width: 0.7rem;
+  height: 0.7rem;
+}
+
+.figma-frame-body {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.75rem 0.8rem 0;
+}
+
+.figma-frame-body strong {
+  overflow: hidden;
+  color: #d3dae4;
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.figma-frame-body small {
+  color: #718096;
+  font-size: 0.62rem;
+}
+
+.figma-frame-body code {
+  color: #9aa6b8;
+}
+
+.figma-frame-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.75rem 0.8rem 0.8rem;
+}
+
+.figma-frame-actions button {
+  padding: 0.4rem 0.6rem;
+  font-size: 0.64rem;
+}
+
+.figma-frame-actions button + button {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: transparent;
+  color: #b7c1ce;
+}
+
+.figma-frame-actions a {
+  display: inline-grid;
+  margin-left: auto;
+  place-items: center;
+  color: #718096;
+}
+
+/* Convert-to-code panel */
+.figma-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  background: rgba(3, 6, 10, 0.72);
+}
+
+.figma-code-panel {
+  display: flex;
+  width: min(960px, 100%);
+  max-height: 90vh;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 1.1rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  background: #0d121a;
+}
+
+.figma-code-panel header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.figma-code-panel h2 {
+  margin: 0;
+  color: #e5ebf2;
+  font-size: 1rem;
+}
+
+.figma-code-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.6rem;
+}
+
+.figma-code-controls label {
+  display: grid;
+  gap: 0.3rem;
+  color: #8a96a8;
+  font-size: 0.65rem;
+}
+
+.figma-code-controls label.is-wide {
+  min-width: 220px;
+  flex: 1;
+}
+
+.figma-code-controls select,
+.figma-code-controls input {
+  padding: 0.5rem 0.65rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 7px;
+  background: #0b1017;
+  color: #d3dae4;
+  font-size: 0.72rem;
+}
+
+.figma-code-output {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.figma-code-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.figma-code-copy {
+  margin-left: auto;
+}
+
+.figma-code-output pre {
+  overflow: auto;
+  min-height: 240px;
+  max-height: 55vh;
+  margin: 0;
+  padding: 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: #080c12;
+  color: #d3dae4;
+  font-size: 0.7rem;
+  line-height: 1.55;
+}
+
+.figma-code-hint {
+  margin: 0;
+  color: #8a96a8;
+  font-size: 0.72rem;
+}
+
 @media (min-width: 1280px) {
   .figma-page {
     padding-right: clamp(2rem, 2.5vw, 3.5rem);

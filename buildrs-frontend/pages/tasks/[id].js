@@ -466,7 +466,7 @@ export default function TaskDetails() {
                       ) : (
                         <>
                           <p className="tsk-overview-description">{task.description || 'No description has been added to this task yet.'}</p>
-                          {task.figmaNodeId && <div className="tsk-implementation-note"><Sparkles className="w-3.5 h-3.5" /><span>Figma frame linked: <code>{task.figmaNodeId}</code></span></div>}
+                          {(task.figmaNodeId || task.figmaFileKey) && <div className="tsk-implementation-note"><Sparkles className="w-3.5 h-3.5" /><span>Figma frame linked: <code>{task.figmaNodeName || task.figmaNodeId || task.figmaFileName}</code>{task.figmaFileKey ? ' — delegated agents receive its exact layout, colors, typography and copy.' : ' — add the Figma file on the task to give agents the design.'}</span></div>}
                         </>
                       )}
                     </section>
@@ -500,7 +500,11 @@ export default function TaskDetails() {
                           <span className="tsk-linked-card-copy"><b>SPEC</b><strong>{spec.title}</strong><small>{spec.specId || spec.status || 'Specification'}</small></span>
                           <ArrowUpRight className="w-3.5 h-3.5" />
                         </Link>)}
-                        {task.figmaNodeId && <div className="tsk-linked-card">
+                        {task.figmaFileKey ? <Link className="tsk-linked-card" href={{ pathname: '/figma', query: task.figmaNodeId ? { file: task.figmaFileKey, node: task.figmaNodeId } : { file: task.figmaFileKey } }}>
+                          <span className="tsk-linked-card-icon is-cyan"><Code2 className="w-4 h-4" /></span>
+                          <span className="tsk-linked-card-copy"><b>FIGMA</b><strong>{task.figmaNodeName || 'Design frame'}</strong><small>{task.figmaFileName || task.figmaNodeId || 'Whole file'}</small></span>
+                          <ArrowUpRight className="w-3.5 h-3.5" />
+                        </Link> : task.figmaNodeId && <div className="tsk-linked-card">
                           <span className="tsk-linked-card-icon is-cyan"><Code2 className="w-4 h-4" /></span>
                           <span className="tsk-linked-card-copy"><b>FIGMA</b><strong>Design frame</strong><small>{task.figmaNodeId}</small></span>
                         </div>}

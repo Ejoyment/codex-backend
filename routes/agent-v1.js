@@ -280,7 +280,7 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       const agentContextService = require('../utils/agentContextService');
       agentContextBundle = await agentContextService.buildBundle({
         userId: req.userId,
-        companyId: contextCompanyId,
+        companyId: isPersonal ? null : workspaceId,
         workspaceId: fileWorkspaceId,
         taskId: task?._id?.toString(),
         projectId: task?.projectId?.toString(),
@@ -293,13 +293,25 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       console.error('Failed to build agent context bundle for delegation:', ctxErr.message);
     }
 
+    // The linked Figma frame is the visual source of truth for the agent.
+    // Fetch failures (disconnected, no access) degrade to no design context.
+    let figmaContext = null;
+    if (task?.figmaFileKey) {
+      try {
+        const { buildFigmaTaskContext } = require('../utils/figmaContextService');
+        figmaContext = await buildFigmaTaskContext(req.userId, { fileKey: task.figmaFileKey, nodeId: task.figmaNodeId });
+      } catch (figmaErr) {
+        console.warn('Figma context unavailable for delegation:', figmaErr.message);
+      }
+    }
+
     const contextSnapshot = {
-      task: task ? { id: task._id.toString(), title: task.title, description: task.description, priority: task.priority, figmaNodeId: task.figmaNodeId } : { title: taskTitleValue, description: summary },
+      task: task ? { id: task._id.toString(), title: task.title, description: task.description, priority: task.priority, figmaNodeId: task.figmaNodeId, figmaFileKey: task.figmaFileKey || null } : { title: taskTitleValue, description: summary },
       projectId: taskProjectId,
       specs: specs.map((spec) => ({ ...spec, _id: spec._id.toString() })),
       codebaseSnapshot: { branch: baseBranch, files: codeFiles.map((file) => ({ path: file.path, name: file.name, language: file.language, content: file.content })) },
       architecturalRules: specs.flatMap((spec) => spec.architecturalRules || []),
-      figmaContext: null,
+      figmaContext,
       contextBundle: agentContextBundle,
       capturedAt: new Date(),
     };

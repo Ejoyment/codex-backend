@@ -79,9 +79,13 @@ function summarizeDesign(designContext, target) {
     });
   }
 
-  if (nodeTree) {
+  if (designContext.designSpec) {
+    lines.push(`\nFrame: ${designContext.nodeName || 'selected frame'} (node ${designContext.nodeId})`);
+    lines.push('Layer spec (indented = nested; sizes in px, positions relative to the frame):');
+    lines.push(designContext.designSpec);
+  } else if (nodeTree) {
     lines.push('\nNode tree summary:');
-    lines.push(typeof nodeTree === 'string' ? nodeTree : JSON.stringify(nodeTree).slice(0, 1500));
+    lines.push(typeof nodeTree === 'string' ? nodeTree : JSON.stringify(nodeTree).slice(0, 12000));
   }
 
   if (designSystem?.rawTokens?.spacing?.length) {
@@ -98,6 +102,7 @@ function summarizeDesign(designContext, target) {
 
 async function makeTitle(fileKey, nodeId, designContext) {
   const base = designContext.file?.name || 'Design';
+  if (designContext.nodeName) return `${base} / ${designContext.nodeName}`;
   return nodeId ? `${base} (node ${nodeId})` : base;
 }
 
@@ -125,6 +130,8 @@ router.post('/generate', authenticateToken, async (req, res) => {
           fileKey,
           file: context.file || null,
           nodeId: context.nodeId || null,
+          nodeName: context.nodeName || null,
+          designSpec: context.designSpec || null,
           designSystem: context.designSystem || context.rawTokens || {},
           components: context.components || context.designSystem?.components || [],
           nodeTree: context.nodeTree || null,

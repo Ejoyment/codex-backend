@@ -281,6 +281,18 @@ export const discordApi = {
 export const figmaApi = {
   listFiles: () => apiFetch('/api/figma/files'),
   addFile: (url) => apiFetch('/api/figma/files', { method: 'POST', body: JSON.stringify({ url }) }),
+  removeFile: (fileKey) => apiFetch(`/api/figma/files/${encodeURIComponent(fileKey)}`, { method: 'DELETE' }),
+  getFrames: (fileKey, { thumbnails = true } = {}) =>
+    apiFetch(`/api/figma/files/${encodeURIComponent(fileKey)}/frames${thumbnails ? '' : '?thumbnails=0'}`, { timeoutMs: 45000 }),
+  generateCode: ({ fileKey, nodeId, target = 'react', prompt = '' }) =>
+    apiFetch('/api/design-code/generate', {
+      method: 'POST',
+      body: JSON.stringify({ fileKey, nodeId, target, prompt }),
+      timeoutMs: 120000,
+    }),
+  getPluginStatus: () => apiFetch('/api/figma/plugin/status'),
+  createPluginToken: () => apiFetch('/api/figma/plugin/token', { method: 'POST' }),
+  revokePluginToken: () => apiFetch('/api/figma/plugin/token', { method: 'DELETE' }),
   getComments: (fileKey) => apiFetch(`/api/figma/files/${fileKey}/comments`),
   getStatus: () => apiFetch('/api/figma/status'),
 };

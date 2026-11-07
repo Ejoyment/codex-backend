@@ -6,6 +6,7 @@ import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch, projectApi } from '../lib/api';
 import CreateTaskWizard from '../components/CreateTaskWizard';
+import FigmaFramePicker from '../components/figma/FigmaFramePicker';
 import {
   Plus,
   X,
@@ -175,10 +176,21 @@ export default function Tasks() {
   }, [activeAgentTaskIds]);
 
   useEffect(() => {
-    if (router.isReady && router.query.action === 'new') {
+    if (router.isReady && (router.query.action === 'new' || router.query.newTask === '1')) {
       setShowWizard(true);
     }
-  }, [router.isReady, router.query.action]);
+  }, [router.isReady, router.query.action, router.query.newTask]);
+
+  // "Create task" from the Figma page prefills the linked frame.
+  const queryString = (key) => (typeof router.query[key] === 'string' ? router.query[key] : '');
+  const defaultFigma = queryString('figmaFileKey')
+    ? {
+      fileKey: queryString('figmaFileKey'),
+      fileName: queryString('figmaFileName'),
+      nodeId: queryString('figmaNodeId'),
+      nodeName: queryString('figmaNodeName'),
+    }
+    : null;
 
   useEffect(() => {
     if (!createdTask) return undefined;
@@ -365,6 +377,8 @@ export default function Tasks() {
                 specs={specs}
                 projectsError={projectsError}
                 defaultProjectId={typeof router.query.projectId === 'string' ? router.query.projectId : ''}
+                defaultFigma={defaultFigma}
+                key={defaultFigma ? `${defaultFigma.fileKey}:${defaultFigma.nodeId}` : 'new-task'}
               />
             </>
           ) : (
@@ -531,7 +545,7 @@ export default function Tasks() {
                                     </div>
                                     <div className="tsk-card-meta">
                                       <div><FileText className="w-3.5 h-3.5" /><span>Spec · {linkedSpec?.title || ((task.specIds || []).length ? `${task.specIds.length} attached` : 'No spec linked')}</span><ChevronRight className="w-3 h-3" /></div>
-                                      <div><GitBranch className="w-3.5 h-3.5" /><span>Figma · {task.figmaNodeId || 'No frame linked'}</span><ChevronRight className="w-3 h-3" /></div>
+                                      <div><GitBranch className="w-3.5 h-3.5" /><span>Figma · {task.figmaNodeName || task.figmaNodeId || task.figmaFileName || 'No frame linked'}</span><ChevronRight className="w-3 h-3" /></div>
                                     </div>
                                     <div className="tsk-card-footer">
                                       <span className="tsk-assignee"><span className="tsk-assignee-avatar">{(assignee || (task.agentSessionId ? 'AI' : '?')).slice(0, 1).toUpperCase()}</span>{assignee || (task.agentSessionId ? 'AI Agent' : 'Unassigned')}</span>
@@ -543,9 +557,24 @@ export default function Tasks() {
                                         <section>
                                           <h3 className="mb-2 text-xs font-semibold uppercase text-[#9aaeba]">Context</h3>
                                           <div className="grid gap-3 sm:grid-cols-2">
-                                            <label className="text-xs text-[#9aaeba]">Figma node or frame ID
-                                              <input className="ws-input mt-1" value={task.figmaNodeId || ''} onChange={(event) => setTasks((current) => current.map((item) => item.id === task.id ? { ...item, figmaNodeId: event.target.value } : item))} onBlur={(event) => saveTaskContext(task, { figmaNodeId: event.target.value, specIds: task.specIds || [] })} placeholder="Optional frame ID" />
-                                            </label>
+                                            <div className="text-xs text-[#9aaeba]">Figma design
+                                              <FigmaFramePicker
+                                                className="mt-1"
+                                                value={{
+                                                  fileKey: task.figmaFileKey || '',
+                                                  fileName: task.figmaFileName || '',
+                                                  nodeId: task.figmaNodeId || '',
+                                                  nodeName: task.figmaNodeName || '',
+                                                }}
+                                                disabled={contextSavingId === task.id}
+                                                onChange={(figma) => saveTaskContext(task, {
+                                                  figmaFileKey: figma.fileKey || null,
+                                                  figmaFileName: figma.fileName || null,
+                                                  figmaNodeId: figma.nodeId || null,
+                                                  figmaNodeName: figma.nodeName || null,
+                                                })}
+                                              />
+                                            </div>
                                             <label className="text-xs text-[#9aaeba]">Blocked by
                                               <select className="ws-select mt-1 min-h-10" multiple value={(task.blockedBy || []).map((id) => String(id?._id || id))} onChange={(event) => {
                                                 const blockedBy = [...event.target.selectedOptions].map((option) => option.value);

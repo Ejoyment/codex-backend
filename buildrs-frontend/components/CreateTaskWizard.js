@@ -13,6 +13,7 @@ import {
   X,
 } from 'lucide-react';
 import { agentApi, projectApi } from '../lib/api';
+import FigmaFramePicker, { EMPTY_FIGMA_LINK } from './figma/FigmaFramePicker';
 
 const STATUS_OPTIONS = [
   { value: 'backlog', label: 'To do' },
@@ -44,11 +45,12 @@ export default function CreateTaskWizard({
   specs = [],
   projectsError = '',
   defaultProjectId = '',
+  defaultFigma = null,
   demoMode = false,
   focusTargetRef,
 }) {
   const [task, setTask] = useState({
-    title: '',
+    title: defaultFigma?.nodeName ? `Implement ${defaultFigma.nodeName}` : '',
     description: '',
     taskType: 'local',
     status: 'backlog',
@@ -56,7 +58,7 @@ export default function CreateTaskWizard({
     dueDate: '',
     projectId: defaultProjectId,
     specIds: [],
-    figmaNodeId: '',
+    figma: { ...EMPTY_FIGMA_LINK, ...(defaultFigma || {}) },
     labels: [],
     labelInput: '',
     assignToMe: true,
@@ -120,7 +122,10 @@ export default function CreateTaskWizard({
         projectId: task.projectId || null,
         companyId: taskWorkspaceId,
         specIds: task.specIds,
-        figmaNodeId: task.figmaNodeId.trim() || null,
+        figmaFileKey: task.figma.fileKey || null,
+        figmaFileName: task.figma.fileName || null,
+        figmaNodeId: task.figma.nodeId || null,
+        figmaNodeName: task.figma.nodeName || null,
         labels: task.labels,
         assignToMe: task.assignToMe,
       };
@@ -165,7 +170,9 @@ export default function CreateTaskWizard({
         projectId: result.task.projectId || task.projectId || null,
         labels: result.task.labels || task.labels,
         assigneeName: result.task.assigneeName || (task.assignToMe ? userName : ''),
-        figmaNodeId: result.task.figmaNodeId || task.figmaNodeId || null,
+        figmaNodeId: result.task.figmaNodeId || task.figma.nodeId || null,
+        figmaFileKey: result.task.figmaFileKey || task.figma.fileKey || null,
+        figmaNodeName: result.task.figmaNodeName || task.figma.nodeName || null,
         specIds: result.task.specIds || task.specIds,
         ...(delegationResult?.success ? {
           status: 'in_progress',
@@ -323,13 +330,13 @@ export default function CreateTaskWizard({
                 </details>
               </div>
 
-              <label className="tsk-create-context-card">
+              <div className="tsk-create-context-card">
                 <span className="tsk-create-context-title">
                   <span><Layout className="w-4 h-4" /></span>
-                  <span><strong>Figma design</strong><small>Design file or selected frame</small></span>
+                  <span><strong>Figma design</strong><small>The AI agent codes this frame exactly</small></span>
                 </span>
-                <input className="tsk-figma-input" value={task.figmaNodeId} onChange={(event) => updateTask('figmaNodeId', event.target.value)} placeholder="Figma node ID (optional)" />
-              </label>
+                <FigmaFramePicker value={task.figma} onChange={(figma) => updateTask('figma', figma)} disabled={submitting} />
+              </div>
             </div>
 
             <details className="tsk-create-advanced">

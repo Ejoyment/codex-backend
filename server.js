@@ -269,7 +269,18 @@ app.set('trust proxy', 1);
 app.use(require('./utils/httpErrors').requestIdMiddleware);
 
 // Middleware
-app.use(cors({
+// The Figma plugin UI runs in a sandboxed iframe (Origin: "null"). Its routes
+// authenticate with a bearer plugin token and never use cookies, so they get
+// an any-origin, non-credentialed CORS policy; every other route keeps the
+// strict allowlist below.
+const figmaPluginCors = cors({
+    origin: true,
+    credentials: false,
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Authorization', 'Content-Type'],
+    maxAge: 600,
+});
+const appCors = cors({
     origin: function (origin, callback) {
         // Extra origins (preview deploys) come from CORS_EXTRA_ORIGINS only.
         // Never wildcard a public suffix (*.onrender.com): anyone can host
@@ -298,7 +309,15 @@ app.use(cors({
         }
     },
     credentials: true
-}));
+});
+// Pairing (`/plugin/token`, `/plugin/status`) is called by the Buildrs web
+// app with the user's session, so it stays on the strict policy.
+const FIGMA_PLUGIN_PUBLIC_PATHS = new Set(['/api/figma/plugin/me', '/api/figma/plugin/push']);
+app.use((req, res, next) => (
+    FIGMA_PLUGIN_PUBLIC_PATHS.has(req.path)
+        ? figmaPluginCors(req, res, next)
+        : appCors(req, res, next)
+));
 // Large-payload routes (deployment file lists, GitHub push) exceed
 // express.json()'s 100kb default, which silently 413s big projects before
 // the route handler runs. Parse them with a bigger cap first; the global

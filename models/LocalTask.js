@@ -33,6 +33,11 @@ const localTaskSchema = new mongoose.Schema({
     },
     specIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Spec' }],
     figmaNodeId: { type: String, default: null },
+    // Figma file the node belongs to; required for the agent to fetch the
+    // design. Names are display-only caches.
+    figmaFileKey: { type: String, default: null },
+    figmaFileName: { type: String, default: null },
+    figmaNodeName: { type: String, default: null },
     blockedBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'LocalTask' }],
     branch: { type: String, default: null },
     pullRequestId: { type: String, default: null },

@@ -1,10 +1,41 @@
 const axios = require('axios');
 const DesignToken = require('../models/DesignToken');
+const { normalizeNodeId, renderDesignSpec } = require('./figmaDesignSpec');
+
+async function refreshFigmaToken(integration) {
+    // Figma expects client credentials via HTTP Basic auth on this endpoint.
+    const basicAuth = Buffer.from(
+        `${process.env.FIGMA_CLIENT_ID}:${process.env.FIGMA_CLIENT_SECRET}`
+    ).toString('base64');
+    const response = await axios.post(
+        'https://api.figma.com/v1/oauth/refresh',
+        new URLSearchParams({ refresh_token: integration.refreshToken }),
+        {
+            headers: {
+                'Authorization': `Basic ${basicAuth}`,
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            timeout: 15000
+        }
+    );
+    integration.accessToken = response.data.access_token;
+    integration.expiresAt = new Date(Date.now() + response.data.expires_in * 1000);
+    await integration.save();
+    return integration;
+}
 
 async function getFigmaIntegration(userId) {
     const Integration = require('../models/Integration');
     const integration = await Integration.findOne({ userId, provider: 'figma', isActive: true });
     if (!integration) throw new Error('Figma not connected');
+    if (integration.expiresAt && new Date() > integration.expiresAt && integration.refreshToken) {
+        try {
+            return await refreshFigmaToken(integration);
+        } catch (error) {
+            console.error('Figma token refresh error:', error.response?.data || error.message);
+            throw new Error('Figma token expired. Please reconnect.');
+        }
+    }
     return integration;
 }
 
@@ -334,8 +365,9 @@ function summarizeNodeTree(node, depth = 0, maxDepth = 5) {
  * @param {string} contextType - 'codegen' (default) or 'audit'
  * @returns {Promise<object>} Unified design context
  */
-async function getDesignContext(userId, fileKey, nodeId = null, contextType = 'codegen') {
+async function getDesignContext(userId, fileKey, rawNodeId = null, contextType = 'codegen') {
     const integration = await getFigmaIntegration(userId);
+    const nodeId = rawNodeId ? (normalizeNodeId(rawNodeId) || rawNodeId) : null;
 
     // 1. Fetch the live Figma file/node structure
     const endpoint = nodeId
@@ -396,9 +428,13 @@ async function getDesignContext(userId, fileKey, nodeId = null, contextType = 'c
     const context = {
         fileKey,
         nodeId: nodeId || null,
+        nodeName: rootNode?.name || null,
         file: fileMeta,
         fetchedAt: new Date().toISOString(),
         nodeTree,
+        // Exact, line-per-layer spec (dimensions, layout, colors, text) the
+        // model can implement against without guessing.
+        designSpec: nodeId && rootNode ? renderDesignSpec(rootNode) : null,
         designSystem: tokensResult.designSystem || tokensResult,
         tokenCount: tokensResult.tokenCount || 0,
         components,
@@ -413,8 +449,77 @@ async function getDesignContext(userId, fileKey, nodeId = null, contextType = 'c
     return context;
 }
 
+// Rendered PNG URLs for nodes (short-lived Figma CDN links).
+async function getNodeImageUrls(accessToken, fileKey, nodeIds, { scale = 1, format = 'png' } = {}) {
+    const ids = [...new Set((nodeIds || []).filter(Boolean))].slice(0, 50);
+    if (!ids.length) return {};
+    const data = await figmaAPI(
+        accessToken,
+        `/images/${encodeURIComponent(fileKey)}?ids=${encodeURIComponent(ids.join(','))}&scale=${scale}&format=${format}`
+    );
+    return data?.images || {};
+}
+
+/**
+ * Design context for an AI agent implementing a task linked to a Figma frame.
+ * Returns a plain, serialisable object (stored on AgentExecution snapshots).
+ */
+async function buildFigmaTaskContext(userId, { fileKey, nodeId }) {
+    if (!fileKey) return null;
+    const context = await getDesignContext(userId, fileKey, nodeId || null, 'codegen');
+    let imageUrl = null;
+    if (context.nodeId) {
+        try {
+            const integration = await getFigmaIntegration(userId);
+            const images = await getNodeImageUrls(integration.accessToken, fileKey, [context.nodeId], { scale: 1 });
+            imageUrl = images[context.nodeId] || null;
+        } catch (error) {
+            console.warn('Figma frame image unavailable:', error.message);
+        }
+    }
+    return {
+        fileKey,
+        fileName: context.file?.name || null,
+        nodeId: context.nodeId,
+        nodeName: context.nodeName,
+        imageUrl,
+        designSpec: context.designSpec || null,
+        designSystem: context.designSystem || null,
+        components: (context.components || []).slice(0, 40),
+        fetchedAt: context.fetchedAt,
+    };
+}
+
+// Prompt block for the agent. Kept here so codegen and agents share wording.
+function toFigmaPromptBlock(figmaContext) {
+    if (!figmaContext) return '';
+    const lines = [
+        'FIGMA DESIGN (implement this exactly; it is the visual source of truth)',
+        `File: ${figmaContext.fileName || 'Figma file'} (key ${figmaContext.fileKey})`,
+        figmaContext.nodeId ? `Frame: ${figmaContext.nodeName || 'frame'} (node ${figmaContext.nodeId})` : 'Frame: whole file',
+        figmaContext.imageUrl ? `Rendered frame preview: ${figmaContext.imageUrl}` : '',
+        'Rules: match dimensions, spacing, auto-layout direction/gap/padding, colors (hex), radii, shadows, font family/size/weight/line-height, and the exact text content. Coordinates are relative to the frame origin. Use responsive layout (flex/grid) that reproduces the auto-layout, not absolute positioning, unless a layer is marked absolute.',
+    ].filter(Boolean);
+    const colors = figmaContext.designSystem?.colors;
+    if (Array.isArray(colors) && colors.length) {
+        lines.push('', 'Design tokens (colors):');
+        colors.slice(0, 40).forEach((c) => {
+            const value = typeof c?.value === 'object' ? JSON.stringify(c.value) : (c?.value ?? '');
+            lines.push(`  - ${c?.name || c}: ${value}`.trimEnd());
+        });
+    }
+    if (figmaContext.designSpec) {
+        lines.push('', 'Layer spec (indented = nested):', figmaContext.designSpec);
+    }
+    return lines.join('\n');
+}
+
 module.exports = {
     getFigmaIntegration,
+    refreshFigmaToken,
+    getNodeImageUrls,
+    buildFigmaTaskContext,
+    toFigmaPromptBlock,
     figmaAPI,
     ingestDesignTokens,
     getDesignTokensForAI,
