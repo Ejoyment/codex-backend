@@ -65,7 +65,7 @@
   <section id="pair" class="hidden">
     <label for="token">Buildrs plugin token</label>
     <input id="token" type="password" placeholder="bfp_…" autocomplete="off" />
-    <p class="muted" style="margin-top:6px">In Buildrs open <b>Figma → Figma plugin → Generate token</b> and paste it here.</p>
+    <p class="muted" style="margin-top:6px">In <a id="buildrs-link">Buildrs</a> connect Figma, then open <b>Figma → Figma plugin → Generate token</b> and paste it here. No Buildrs account yet? Sign up free at buildrshq.dev.</p>
     <button id="save-token">Connect</button>
   </section>
 
@@ -73,6 +73,7 @@
     <div class="card">
       <div class="row"><b id="file-name">Untitled</b><a id="disconnect">Disconnect</a></div>
       <div class="muted" id="account"></div>
+      <div class="muted hidden" id="linked">Linked to Buildrs · <a id="relink">Change file link</a></div>
     </div>
 
     <div id="link-file" class="hidden">
@@ -127,6 +128,7 @@
     $('main').classList.toggle('hidden', !state.token);
     $('file-name').textContent = state.fileName || 'Untitled';
     $('link-file').classList.toggle('hidden', Boolean(state.fileKey));
+    $('linked').classList.toggle('hidden', !state.fileKey);
     $('open').classList.toggle('hidden', !state.openUrl);
 
     var list = $('selection');
@@ -166,6 +168,16 @@
         setStatus('Connected.', 'success');
       }
     });
+  };
+
+  $('buildrs-link').onclick = function () {
+    post({ type: 'open-url', url: 'https://buildrshq.dev/figma' });
+  };
+
+  $('relink').onclick = function () {
+    state.openUrl = null;
+    post({ type: 'clear-file-key' });
+    setStatus('Paste the link of this file to relink it.');
   };
 
   $('disconnect').onclick = function () {

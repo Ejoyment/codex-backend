@@ -5,8 +5,12 @@
 
 var TOKEN_KEY = 'buildrsPluginToken';
 var FILE_KEY_DATA = 'buildrsFileKey';
+// Per-user fallback (document name → file key) for files the user can only
+// view, where writing plugin data to the document is not allowed.
+var FILE_LINKS_KEY = 'buildrsFileLinks';
+var userFileLinks = {};
 
-figma.showUI(__html__, { width: 360, height: 520, themeColors: true });
+figma.showUI(__html__, { width: 360, height: 540, themeColors: true });
 
 function pageOf(node) {
   var current = node;
@@ -30,9 +34,25 @@ function describeSelection() {
 }
 
 function fileKey() {
-  // figma.fileKey is only exposed to private/development plugins; otherwise
-  // fall back to the key the user linked once for this document.
-  return figma.fileKey || figma.root.getPluginData(FILE_KEY_DATA) || null;
+  // figma.fileKey is only exposed to private plugins. Community plugins use
+  // the key the user linked once: stored on the document when they can edit
+  // it, otherwise in their own client storage.
+  return figma.fileKey
+    || figma.root.getPluginData(FILE_KEY_DATA)
+    || userFileLinks[figma.root.name]
+    || null;
+}
+
+function saveFileKey(key) {
+  var value = key ? String(key) : '';
+  try {
+    figma.root.setPluginData(FILE_KEY_DATA, value);
+  } catch (error) {
+    // View-only file or Dev Mode: the document can't be written.
+  }
+  if (value) userFileLinks[figma.root.name] = value;
+  else delete userFileLinks[figma.root.name];
+  return figma.clientStorage.setAsync(FILE_LINKS_KEY, userFileLinks);
 }
 
 function postState() {
@@ -44,8 +64,12 @@ function postState() {
   });
 }
 
-figma.clientStorage.getAsync(TOKEN_KEY).then(function (token) {
-  figma.ui.postMessage({ type: 'token', token: token || null });
+Promise.all([
+  figma.clientStorage.getAsync(TOKEN_KEY),
+  figma.clientStorage.getAsync(FILE_LINKS_KEY),
+]).then(function (values) {
+  userFileLinks = values[1] && typeof values[1] === 'object' ? values[1] : {};
+  figma.ui.postMessage({ type: 'token', token: values[0] || null });
   postState();
 });
 
@@ -64,8 +88,9 @@ figma.ui.onmessage = function (message) {
       figma.ui.postMessage({ type: 'token', token: null });
     });
   } else if (message.type === 'save-file-key') {
-    if (message.fileKey) figma.root.setPluginData(FILE_KEY_DATA, String(message.fileKey));
-    postState();
+    saveFileKey(message.fileKey).then(postState, postState);
+  } else if (message.type === 'clear-file-key') {
+    saveFileKey('').then(postState, postState);
   } else if (message.type === 'notify') {
     figma.notify(String(message.text || ''), { error: Boolean(message.error) });
   } else if (message.type === 'open-url') {
