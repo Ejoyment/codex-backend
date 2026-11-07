@@ -50,6 +50,44 @@ describe('git service working-tree paths', () => {
     ).resolves.toBe('export default function Page() {}');
   });
 
+  test('recreates a missing agent worktree from its existing branch', async () => {
+    const executionId = 'abcdefabcdefabcdefabcdef';
+    const worktreePath = gitService.agentWorktreePath(workspaceId, null, executionId);
+    const git = simpleGit(workspacePath);
+    await git.init();
+    await git.addConfig('user.name', 'Test Agent');
+    await git.addConfig('user.email', 'agent@example.test');
+    await fs.writeFile(path.join(workspacePath, 'README.md'), 'base');
+    await git.add('README.md');
+    await git.commit('base commit');
+    const defaultBranch = (await git.raw(['symbolic-ref', '--short', 'HEAD'])).trim();
+    await git.checkoutLocalBranch('feature/agent-review');
+    await fs.writeFile(path.join(workspacePath, 'styles.css'), 'h1 { color: red; }');
+    await git.add('styles.css');
+    await git.commit('agent styles');
+    await git.checkout(defaultBranch);
+    gitService.repositories.set(workspaceId, git);
+
+    // Simulate a tmp cleaner removing the worktree directory entirely.
+    await fs.rm(worktreePath, { recursive: true, force: true });
+
+    const restored = await gitService.ensureAgentWorktree(
+      workspaceId,
+      'feature/agent-review',
+      'main',
+      null,
+      executionId
+    );
+
+    expect(restored).toMatchObject({ success: true, recreated: true, branchCreated: false });
+    await expect(fs.readFile(path.join(worktreePath, 'styles.css'), 'utf8'))
+      .resolves.toBe('h1 { color: red; }');
+
+    await gitService.removeAgentWorktree(workspaceId, null, executionId);
+    gitService.repositories.delete(gitService.repositoryKey(workspaceId, null, executionId));
+    gitService.workspacePaths.delete(gitService.repositoryKey(workspaceId, null, executionId));
+  });
+
   test('rejects paths that escape the working tree', async () => {
     const result = await gitService.writeWorkingTree(workspaceId, [{
       path: '../outside.js',

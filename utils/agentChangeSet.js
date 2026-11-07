@@ -536,6 +536,107 @@ function applyChangesToFileList(changes = [], originalFiles = []) {
   return Array.from(byPath.values());
 }
 
+function metaValue(execution, key) {
+  const meta = execution?.metadata;
+  if (!meta) return undefined;
+  if (typeof meta.get === 'function') return meta.get(key);
+  return meta[key];
+}
+
+/**
+ * Normalize the changes an execution has already proposed. A follow-up run
+ * starts from this state (the reviewed branch contents), not from the VFS,
+ * which still holds the pre-agent files until approval.
+ */
+function pendingChanges(execution) {
+  const seen = new Set();
+  const changes = [];
+  for (const change of execution?.proposedChanges || []) {
+    if (!change || !isSafeRelativePath(change.path)) continue;
+    const filePath = cleanPath(change.path).replace(/^\/+/, '');
+    if (seen.has(filePath)) continue;
+    seen.add(filePath);
+    const action = change.action === 'delete' ? 'delete' : (change.action || 'update');
+    changes.push({
+      path: filePath,
+      action,
+      content: action === 'delete' ? '' : (change.content || ''),
+      language: change.language || languageFor(filePath),
+    });
+  }
+  return changes;
+}
+
+/**
+ * Files the agent should see for a follow-up: the VFS list with the
+ * execution's previously proposed changes applied on top.
+ */
+function filesWithPendingChanges(execution, codeFiles = []) {
+  return applyChangesToFileList(pendingChanges(execution), codeFiles);
+}
+
+/**
+ * Cumulative change set for a follow-up. New changes win, but files the agent
+ * edited in an earlier turn are retained so approving the run applies the whole
+ * reviewed state to the VFS instead of only the latest turn.
+ */
+function mergePendingChanges(execution, changes = []) {
+  const merged = new Map();
+  for (const change of [...pendingChanges(execution), ...(changes || [])]) {
+    if (!isSafeRelativePath(change.path)) continue;
+    const filePath = cleanPath(change.path).replace(/^\/+/, '');
+    const action = change.action === 'delete' ? 'delete' : (change.action || 'update');
+    merged.set(filePath, {
+      path: filePath,
+      action,
+      content: action === 'delete' ? '' : (change.content || ''),
+      language: change.language || languageFor(filePath),
+    });
+  }
+  return [...merged.values()];
+}
+
+/**
+ * Make sure the execution still has a working tree before a follow-up runs.
+ * When the branch had to be recreated (tmp repo was wiped), replay the
+ * previously proposed changes so the branch keeps the state the user reviewed.
+ */
+async function ensureExecutionWorktree(execution, { workspaceId = null, projectId = null } = {}) {
+  const branch = execution?.branch || metaValue(execution, 'agentBranch');
+  if (!workspaceId || !branch) return { success: true, skipped: true };
+  const executionId = String(execution._id || '');
+  if (!/^[a-f\d]{24}$/i.test(executionId)) {
+    return { success: false, error: 'Invalid execution ID' };
+  }
+
+  const ensured = await gitService.ensureAgentWorktree(
+    workspaceId,
+    branch,
+    execution.baseBranch || 'main',
+    projectId,
+    executionId
+  );
+  if (!ensured.success) return ensured;
+  if (!ensured.branchCreated) return ensured;
+
+  const previous = pendingChanges(execution);
+  if (!previous.length) return ensured;
+
+  const restored = await stageChanges(workspaceId, previous, {
+    message: `Agent: restore ${execution.taskTitle || 'task'} changes before follow-up`.slice(0, 200),
+    branch,
+    projectId,
+    executionId,
+  });
+  if (!restored.success || !restored.committed) {
+    return {
+      success: false,
+      error: restored.error || restored.reason || 'could not restore previously proposed changes',
+    };
+  }
+  return { ...ensured, replayed: previous.length };
+}
+
 /**
  * Write staged changes into the isolated agent working tree and commit them on
  * the current (agent) branch. Never touches the VFS.
@@ -725,6 +826,10 @@ module.exports = {
   buildChangeset,
   summarize,
   applyChangesToFileList,
+  pendingChanges,
+  filesWithPendingChanges,
+  mergePendingChanges,
+  ensureExecutionWorktree,
   stageChanges,
   applyToVFS,
   rollbackVFS,

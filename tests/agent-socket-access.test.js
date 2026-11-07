@@ -46,6 +46,7 @@ jest.mock('../utils/gitService', () => ({
   ensureBaseCommit: jest.fn(),
   createBranch: jest.fn(),
   createAgentWorktree: jest.fn(),
+  ensureAgentWorktree: jest.fn(),
   removeAgentWorktree: jest.fn(),
   writeWorkingTree: jest.fn(),
   commitWorkingTree: jest.fn(),
@@ -164,6 +165,7 @@ beforeEach(() => {
   gitService.ensureBaseCommit.mockResolvedValue({ success: true });
   gitService.createBranch.mockResolvedValue({ success: true });
   gitService.createAgentWorktree.mockResolvedValue({ success: true });
+  gitService.ensureAgentWorktree.mockResolvedValue({ success: true, recreated: false, branchCreated: false });
   gitService.removeAgentWorktree.mockResolvedValue({ success: true });
 });
 
