@@ -6,7 +6,11 @@
  */
 jest.mock('../models/CodeFile', () => ({ find: jest.fn(), create: jest.fn() }));
 jest.mock('../utils/codeSearchService', () => ({ updateFile: jest.fn(), deleteFile: jest.fn() }));
-jest.mock('../utils/gitService', () => ({ writeWorkingTree: jest.fn(), commitWorkingTree: jest.fn() }));
+jest.mock('../utils/gitService', () => ({
+  writeWorkingTree: jest.fn(),
+  commitWorkingTree: jest.fn(),
+  ensureAgentWorktree: jest.fn(),
+}));
 
 const CodeFile = require('../models/CodeFile');
 const codeSearchService = require('../utils/codeSearchService');
@@ -173,6 +177,105 @@ describe('stageChanges', () => {
       committed: false,
       reason: 'nothing to commit',
     });
+  });
+});
+
+describe('follow-up change helpers', () => {
+  const execution = (over = {}) => ({
+    _id: 'a'.repeat(24),
+    branch: 'feature/agent',
+    baseBranch: 'main',
+    taskTitle: 'Build landing page',
+    metadata: {},
+    proposedChanges: [
+      { path: 'src/App.jsx', action: 'update', content: 'previous App' },
+      { path: 'src/theme.css', action: 'create', content: 'body {}' },
+    ],
+    ...over,
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    gitService.ensureAgentWorktree.mockResolvedValue({ success: true, branchCreated: false, recreated: false });
+    gitService.writeWorkingTree.mockResolvedValue({ success: true, written: 1 });
+    gitService.commitWorkingTree.mockResolvedValue({ success: true, commit: 'abc123' });
+  });
+
+  test('filesWithPendingChanges overlays earlier proposals onto the VFS files', () => {
+    const files = [
+      { path: '/src', name: 'App.jsx', language: 'javascript', content: 'original App' },
+      { path: '/src', name: 'index.js', language: 'javascript', content: 'entry' },
+    ];
+
+    const context = agentChangeSet.filesWithPendingChanges(execution(), files);
+
+    expect(context.find((file) => file.name === 'App.jsx').content).toBe('previous App');
+    expect(context.find((file) => file.name === 'index.js').content).toBe('entry');
+    expect(context.find((file) => file.name === 'theme.css')).toMatchObject({
+      path: '/src',
+      content: 'body {}',
+    });
+  });
+
+  test('mergePendingChanges keeps earlier files and lets the latest turn override them', () => {
+    const merged = agentChangeSet.mergePendingChanges(execution(), [
+      { path: 'src/App.jsx', action: 'update', language: 'javascript', content: 'new App' },
+      { path: 'src/styles/main.css', action: 'create', language: 'css', content: 'h1 {}' },
+    ]);
+
+    const byPath = new Map(merged.map((change) => [change.path, change]));
+    expect(byPath.get('src/App.jsx').content).toBe('new App');
+    expect(byPath.get('src/theme.css').content).toBe('body {}');
+    expect(byPath.get('src/styles/main.css').content).toBe('h1 {}');
+  });
+
+  test('ensureExecutionWorktree replays the previous proposal when the branch was recreated', async () => {
+    gitService.ensureAgentWorktree.mockResolvedValue({
+      success: true,
+      branch: 'feature/agent',
+      branchCreated: true,
+      recreated: true,
+    });
+
+    const result = await agentChangeSet.ensureExecutionWorktree(execution(), {
+      workspaceId: 'workspace-1',
+      projectId: null,
+    });
+
+    expect(gitService.ensureAgentWorktree).toHaveBeenCalledWith(
+      'workspace-1',
+      'feature/agent',
+      'main',
+      null,
+      'a'.repeat(24)
+    );
+    expect(gitService.writeWorkingTree).toHaveBeenCalledWith(
+      'workspace-1',
+      expect.arrayContaining([expect.objectContaining({ path: 'src/theme.css' })]),
+      null,
+      'a'.repeat(24)
+    );
+    expect(result).toMatchObject({ success: true, replayed: 2 });
+  });
+
+  test('ensureExecutionWorktree does not replay when the branch survived', async () => {
+    const result = await agentChangeSet.ensureExecutionWorktree(execution(), {
+      workspaceId: 'workspace-1',
+      projectId: null,
+    });
+
+    expect(gitService.writeWorkingTree).not.toHaveBeenCalled();
+    expect(result.success).toBe(true);
+    expect(result.replayed).toBeUndefined();
+  });
+
+  test('ensureExecutionWorktree surfaces a failed restore', async () => {
+    gitService.ensureAgentWorktree.mockResolvedValue({ success: false, error: 'disk full' });
+
+    await expect(agentChangeSet.ensureExecutionWorktree(execution(), {
+      workspaceId: 'workspace-1',
+      projectId: null,
+    })).resolves.toMatchObject({ success: false, error: 'disk full' });
   });
 });
 

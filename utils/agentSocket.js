@@ -404,10 +404,22 @@ class AgentSocketHandler {
         project = await LocalProject.findById(projectId).lean();
       }
 
+      // Follow-ups reuse the execution branch. Restore the tmpdir worktree if
+      // it was removed by a restart/tmp cleaner before doing any model work.
+      if (workspaceId) {
+        const ensured = await agentChangeSet.ensureExecutionWorktree(execution, { workspaceId, projectId });
+        if (!ensured.success) {
+          throw new Error(`Could not prepare agent branch ${metaValue(execution, 'agentBranch') || execution.branch || 'branch'}: ${ensured.error}`);
+        }
+      }
+
       const snapshotFiles = execution.contextSnapshot?.codebaseSnapshot?.files || [];
       const codeFiles = workspaceId
         ? await CodeFile.find(projectFileQuery(workspaceId, projectId)).select('path name language content').lean()
         : snapshotFiles;
+      // A follow-up edits the state proposed by earlier turns, not the
+      // pre-agent VFS (which stays untouched until approval).
+      const contextFiles = agentChangeSet.filesWithPendingChanges(execution, codeFiles);
 
       let contextSummary = '';
       const contextBundle = execution.contextSnapshot?.contextBundle;
@@ -432,7 +444,7 @@ class AgentSocketHandler {
         taskTitle: execution.taskTitle,
         project,
         specs,
-        codeFiles,
+        codeFiles: contextFiles,
         contextSummary,
         priorAttempt: hasPriorAttempt ? priorAttempt : null,
         branch: metaValue(execution, 'agentBranch') || execution.branch,
@@ -456,7 +468,7 @@ class AgentSocketHandler {
       const result = await agentRunner.requestChangeSet({
         messages,
         codeContext,
-        codeFiles,
+        codeFiles: contextFiles,
         provider,
         model,
         localPrivacyMode,
@@ -519,7 +531,9 @@ class AgentSocketHandler {
 
       // Stage the proposal on the isolated agent branch; VFS stays untouched
       // until the user approves.
-      const changes = result.changes;
+      // Cumulative change set: a follow-up keeps earlier turns so approval
+      // applies the whole reviewed branch state to the VFS.
+      const changes = agentChangeSet.mergePendingChanges(execution, result.changes);
       const { filesChanged, diffSummary } = agentChangeSet.summarize(changes, codeFiles);
       if (workspaceId) {
         const staged = await agentChangeSet.stageChanges(workspaceId, changes, {

@@ -470,6 +470,103 @@ class GitService {
     }
   }
 
+  /**
+   * Re-create an execution's isolated worktree if it is missing.
+   *
+   * Agent worktrees live under `os.tmpdir()`, which is not durable: a server
+   * restart, tmp cleaner, or host redeploy can delete the worktree (and even
+   * the parent repo) while an execution is still awaiting review. Follow-up
+   * instructions then fail with ENOENT when staging. This restores the worktree
+   * from the execution branch when it survives, or recreates the branch from
+   * the base branch when it does not. Callers replay previously proposed
+   * changes when `branchCreated` is true.
+   */
+  async ensureAgentWorktree(workspaceId, branchName, baseBranch = 'main', projectId = null, executionId) {
+    try {
+      assertValidWorkspaceId(workspaceId);
+      assertSafeBranch(branchName, 'branchName');
+      assertSafeBranch(baseBranch || 'main', 'baseBranch');
+      const worktreePath = this.agentWorktreePath(workspaceId, projectId, executionId);
+      const worktreeKey = this.repositoryKey(workspaceId, projectId, executionId);
+
+      return await this.withRepositoryLock(workspaceId, projectId, async () => {
+        // A cached handle may point at a repo directory that a tmp cleaner
+        // removed. Drop it so getGit() recreates the directory.
+        const repositoryKey = this.repositoryKey(workspaceId, projectId);
+        const repositoryPath = this.workspacePaths.get(repositoryKey) || this.repositoryPath(workspaceId, projectId);
+        const repositoryExists = await fs.access(repositoryPath).then(() => true).catch(() => false);
+        if (!repositoryExists) {
+          this.repositories.delete(repositoryKey);
+          this.workspacePaths.delete(repositoryKey);
+        }
+
+        const initializedRepo = await this.init(workspaceId, {}, projectId);
+        if (!initializedRepo.success) {
+          throw new Error(initializedRepo.error || 'Could not initialize project Git repository');
+        }
+        const git = await this.getGit(workspaceId, projectId);
+
+        // The cached handle for this execution may point at a deleted path.
+        this.repositories.delete(worktreeKey);
+        this.workspacePaths.delete(worktreeKey);
+
+        // Drop registrations for worktrees whose directories vanished.
+        await git.raw(['worktree', 'prune']).catch(() => {});
+
+        const branchList = await git.branchLocal();
+        let branchCreated = false;
+        if (!branchList.all.includes(branchName)) {
+          const initialized = await this.ensureBaseCommit(
+            workspaceId,
+            baseBranch || 'main',
+            'Initialize project from VFS',
+            projectId
+          );
+          if (!initialized.success) {
+            throw new Error(initialized.error || 'Could not initialize base branch');
+          }
+          branchCreated = true;
+        }
+
+        const worktrees = await git.raw(['worktree', 'list', '--porcelain']);
+        const registered = worktrees.split('\n').some((line) => line === `worktree ${worktreePath}`);
+
+        if (registered && !branchCreated) {
+          try {
+            const existing = simpleGit(worktreePath);
+            const status = await existing.status();
+            if (status.current === branchName) {
+              this.repositories.set(worktreeKey, existing);
+              this.workspacePaths.set(worktreeKey, worktreePath);
+              return { success: true, branch: branchName, worktreePath, recreated: false, branchCreated };
+            }
+          } catch (error) {
+            // Stale or unusable registration: fall through and recreate it.
+          }
+        }
+
+        if (registered) {
+          await git.raw(['worktree', 'remove', '--force', worktreePath]).catch(() => {});
+        }
+        await fs.rm(worktreePath, { recursive: true, force: true });
+        await fs.mkdir(path.dirname(worktreePath), { recursive: true });
+        if (branchCreated) {
+          await git.raw(['worktree', 'add', '-b', branchName, worktreePath, baseBranch || 'main']);
+        } else {
+          await git.raw(['worktree', 'add', worktreePath, branchName]);
+        }
+
+        const recreated = simpleGit(worktreePath);
+        this.repositories.set(worktreeKey, recreated);
+        this.workspacePaths.set(worktreeKey, worktreePath);
+        return { success: true, branch: branchName, worktreePath, recreated: true, branchCreated };
+      });
+    } catch (error) {
+      console.error('Git ensure agent worktree error:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
   async removeAgentWorktree(workspaceId, projectId, executionId, { branchName = null, deleteBranch = false } = {}) {
     try {
       assertValidWorkspaceId(workspaceId);

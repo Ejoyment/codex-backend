@@ -152,6 +152,19 @@ async function runAgent() {
     const codeFiles = await loadCodeFiles(workspaceId, projectId, snapshot.codebaseSnapshot?.files || []);
     const project = await loadProject(execution, task, projectId);
 
+    // A follow-up reuses the execution's branch. Worktrees live in tmpdir, so
+    // restore the worktree/branch if a restart or tmp cleaner removed it before
+    // the run starts; otherwise staging fails with ENOENT after the model work.
+    if (workspaceId) {
+      const ensured = await agentChangeSet.ensureExecutionWorktree(execution, { workspaceId, projectId });
+      if (!ensured.success) {
+        throw new Error(`Could not prepare agent branch ${execution.branch || 'branch'}: ${ensured.error}`);
+      }
+    }
+    // Follow-ups continue from the previously proposed changes, not from the
+    // pre-agent VFS (which stays untouched until approval).
+    const contextFiles = agentChangeSet.filesWithPendingChanges(execution, codeFiles);
+
     let contextSummary = '';
     if (snapshot.contextBundle) {
       try {
@@ -174,7 +187,7 @@ async function runAgent() {
       taskTitle: execution.taskTitle,
       project,
       specs,
-      codeFiles,
+      codeFiles: contextFiles,
       contextSummary,
       priorAttempt: priorAttemptFrom(execution),
       branch: execution.branch,
@@ -193,7 +206,7 @@ async function runAgent() {
     const result = await agentRunner.requestChangeSet({
       messages,
       codeContext,
-      codeFiles,
+      codeFiles: contextFiles,
       provider,
       model,
       localPrivacyMode,
@@ -274,7 +287,9 @@ async function runAgent() {
     // Turn the model's proposal into a real, reviewable change set and stage it
     // on the isolated agent branch. The VFS is untouched until a human approves,
     // so no unverified change is ever visible in the editor.
-    const changes = result.changes;
+    // Keep earlier turns in the cumulative change set so approving a follow-up
+    // applies the whole reviewed branch state, then diff against the VFS base.
+    const changes = agentChangeSet.mergePendingChanges(execution, result.changes);
     const { filesChanged, diffSummary } = agentChangeSet.summarize(changes, codeFiles);
     let staged = { success: true, committed: false, skipped: true };
     if (workspaceId) {
