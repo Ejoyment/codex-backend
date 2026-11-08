@@ -28,49 +28,53 @@ function figmaCallbackUrl() {
 async function getFigmaIntegration(userId) {
     const integration = await Integration.findOne({ userId, provider: 'figma', isActive: true });
     if (!integration) throw new Error('Figma not connected');
-    
-    // Check if token expired
-    if (integration.expiresAt && new Date() > integration.expiresAt) {
-        try {
-            const refreshed = await refreshFigmaToken(integration);
-            return refreshed;
-        } catch (error) {
-            throw new Error('Figma token expired. Please reconnect.');
-        }
+
+    // Token still fresh — return as-is.
+    if (!integration.expiresAt || new Date() < integration.expiresAt) return integration;
+
+    // Token expired — attempt a silent refresh.
+    try {
+        return await refreshFigmaToken(integration);
+    } catch (error) {
+        console.error('Figma token refresh failed:', error.response?.data || error.message);
+        // Mark integration inactive so the UI shows "reconnect" instead of a
+        // cryptic 403 on every subsequent request.
+        integration.isActive = false;
+        await integration.save().catch(() => {});
+        throw new Error('Figma token expired. Please reconnect Figma from the integrations page.');
     }
-    
-    return integration;
 }
 
 async function refreshFigmaToken(integration) {
-    try {
-        // Figma expects client credentials via HTTP Basic auth on this endpoint.
-        const basicAuth = Buffer.from(
-            `${process.env.FIGMA_CLIENT_ID}:${process.env.FIGMA_CLIENT_SECRET}`
-        ).toString('base64');
+    // Figma's refresh endpoint is the same token URL with grant_type=refresh_token,
+    // not a separate /refresh path.
+    const basicAuth = Buffer.from(
+        `${process.env.FIGMA_CLIENT_ID}:${process.env.FIGMA_CLIENT_SECRET}`
+    ).toString('base64');
 
-        const response = await axios.post(
-            'https://api.figma.com/v1/oauth/refresh',
-            new URLSearchParams({ refresh_token: integration.refreshToken }),
-            {
-                headers: {
-                    'Authorization': `Basic ${basicAuth}`,
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                },
-                timeout: 15000
-            }
-        );
-        
-        const data = response.data;
-        integration.accessToken = data.access_token;
-        integration.expiresAt = new Date(Date.now() + data.expires_in * 1000);
-        await integration.save();
-        
-        return integration;
-    } catch (error) {
-        console.error('Figma token refresh error:', error);
-        throw error;
-    }
+    const response = await axios.post(
+        'https://api.figma.com/v1/oauth/token',
+        new URLSearchParams({
+            grant_type: 'refresh_token',
+            refresh_token: integration.refreshToken,
+        }),
+        {
+            headers: {
+                'Authorization': `Basic ${basicAuth}`,
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            timeout: 15000,
+        }
+    );
+
+    const data = response.data;
+    if (!data.access_token) throw new Error('No access_token in Figma refresh response');
+
+    integration.accessToken = data.access_token;
+    integration.expiresAt = new Date(Date.now() + (data.expires_in || 7776000) * 1000);
+    if (data.refresh_token) integration.refreshToken = data.refresh_token;
+    await integration.save();
+    return integration;
 }
 
 // Figma's REST API cannot enumerate the files a user can open: `/v1/me` has no
@@ -260,10 +264,19 @@ router.post('/files/sync', authenticateToken, async (req, res) => {
 function figmaAccessError(res, error) {
     const status = error.response?.status;
     if (status === 404) {
-        return res.status(404).json({ success: false, message: 'That Figma file was not found.' });
+        return res.status(404).json({ success: false, message: 'That Figma file was not found. It may have been deleted or moved.' });
     }
     if (status === 403) {
-        return res.status(403).json({ success: false, message: 'Your Figma account does not have access to that file.' });
+        return res.status(403).json({
+            success: false,
+            message: 'Figma denied access to that file. Your OAuth token may have expired — disconnect and reconnect Figma from the integrations page, then try again.',
+        });
+    }
+    if (status === 401) {
+        return res.status(401).json({
+            success: false,
+            message: 'Your Figma session expired. Please reconnect Figma from the integrations page.',
+        });
     }
     return null;
 }
@@ -602,8 +615,9 @@ router.get('/callback', async (req, res) => {
                 refreshToken: refresh_token,
                 expiresAt: new Date(Date.now() + expires_in * 1000),
                 isActive: true,
-                accountEmail: meResponse.data.email,
-                connectedAt: new Date()
+                providerEmail: meResponse.data.email,
+                providerUserId: String(meResponse.data.id || ''),
+                providerUsername: meResponse.data.handle || '',
             },
             { upsert: true, new: true }
         );

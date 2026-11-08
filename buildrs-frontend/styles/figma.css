@@ -414,12 +414,35 @@
 .figma-files-error {
   display: block;
   margin: 0.45rem 0 0;
-  color: #778398;
-  font-size: 0.7rem;
+  color: #fca5a5;
+  font-size: 0.72rem;
 }
 
-.figma-files-error {
+.figma-frame-error {
+  margin: 0.75rem 0;
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(252, 165, 165, 0.25);
+  border-radius: 9px;
+  background: rgba(252, 165, 165, 0.07);
+}
+
+.figma-frame-error p {
+  margin: 0;
   color: #fca5a5;
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.figma-frame-error-link {
+  display: inline-block;
+  margin-top: 0.5rem;
+  color: #19d2db;
+  font-size: 0.72rem;
+  text-decoration: none;
+}
+
+.figma-frame-error-link:hover {
+  text-decoration: underline;
 }
 
 /* Library cards */
