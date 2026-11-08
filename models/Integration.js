@@ -26,6 +26,11 @@ const integrationSchema = new mongoose.Schema({
         set: encryptSecret,
         get: decryptSecret,
     },
+    personalAccessToken: {
+        type: String,
+        set: encryptSecret,
+        get: decryptSecret,
+    },
     expiresAt: Date,
     providerUserId: String,
     providerUsername: String,
@@ -87,5 +92,11 @@ integrationSchema.pre('updateMany', function (next) {
 
 // Index for faster queries
 integrationSchema.index({ userId: 1, provider: 1 }, { unique: true });
+
+// Resolve the effective Figma token: a Personal Access Token takes precedence
+// over OAuth and has full read access with no scope restrictions.
+integrationSchema.methods.getFigmaToken = function () {
+    return this.personalAccessToken || this.accessToken;
+};
 
 module.exports = mongoose.model('Integration', integrationSchema);

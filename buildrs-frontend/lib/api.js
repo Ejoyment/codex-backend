@@ -302,6 +302,8 @@ export const figmaApi = {
     }),
   getComments: (fileKey) => apiFetch(`/api/figma/files/${fileKey}/comments`),
   getStatus: () => apiFetch('/api/figma/status'),
+  savePersonalAccessToken: (token) =>
+    apiFetch('/api/figma/personal-access-token', { method: 'POST', body: JSON.stringify({ token }) }),
 };
 
 export const slackApi = {
