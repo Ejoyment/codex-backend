@@ -888,6 +888,59 @@ router.post('/personal-access-token', authenticateToken, async (req, res) => {
         if (typeof integration.markModified === 'function') integration.markModified('personalAccessToken');
         await integration.save();
 
+        // Auto-discover teams/folders using the PAT so designs appear immediately
+        try {
+            const teamsResponse = await axios.get('https://api.figma.com/v1/teams', {
+                headers: { Authorization: `Bearer ${token.trim()}` },
+                timeout: 15000
+            });
+
+            const teams = teamsResponse.data?.teams || [];
+            const sources = [];
+            for (const team of teams) {
+                try {
+                    const teamFolders = await axios.get(
+                        'https://api.figma.com/v1/teams/' + encodeURIComponent(team.id) + '/folders',
+                        { headers: { Authorization: `Bearer ${token.trim()}` }, timeout: 15000 }
+                    );
+                    const folderRoots = (teamFolders.data?.folders || []).map((folder) => ({
+                        id: String(folder.id),
+                        name: folder.name || 'Untitled folder',
+                        parentId: null,
+                        depth: 1
+                    }));
+
+                    if (folderRoots.length > 0) {
+                        const library = await fetchSourceLibrary(token.trim(), {
+                            type: 'team',
+                            id: team.id,
+                            name: team.name || 'Figma team'
+                        });
+
+                        if (library && library.folders) {
+                            sources.push({
+                                type: 'team',
+                                id: team.id,
+                                name: library.name || team.name || 'Figma team',
+                                folders: library.folders,
+                                fileCount: library.fileCount || 0,
+                                addedAt: new Date().toISOString()
+                            });
+                        }
+                    }
+                } catch (teamErr) {
+                    console.error('Failed to fetch team ' + team.id + ' folders:', teamErr.message);
+                }
+            }
+
+            if (sources.length > 0) {
+                const existing = readFigmaSources(integration).filter((source) => !sources.some((s) => s.type === source.type && s.id === source.id));
+                await writeFigmaSources(integration, [...sources, ...existing]);
+            }
+        } catch (discoveryErr) {
+            console.error('Figma PAT auto-discovery error:', discoveryErr.message);
+        }
+
         return res.json({ success: true, message: 'Personal access token saved.' });
     } catch (error) {
         return sendInternalError(req, res, error);

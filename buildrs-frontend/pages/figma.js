@@ -262,14 +262,13 @@ export default function FigmaPage() {
               )}
               {filesError && <p className="figma-files-error" role="alert">{filesError}</p>}
               <FigmaLibrary
-                library={library}
+                files={files}
                 loading={filesLoading}
                 account={account}
                 onRefresh={refreshFiles}
                 onOpenFile={(fileKey) => openFile(fileKey)}
                 onAddSource={addLibrarySource}
                 onRemoveSource={removeLibrarySource}
-                onReconnect={connectFigma}
               />
             </div>
           ) : (
