@@ -24,7 +24,7 @@ function FileCard({ file, onOpen }) {
   );
 }
 
-export default function FigmaLibrary({ files = [], loading = false, account = '', onRefresh, onOpenFile }) {
+export default function FigmaLibrary({ files = [], loading = false, account = '', hasPat = false, onRefresh, onOpenFile }) {
   const [query, setQuery] = useState('');
   const q = query.trim().toLowerCase();
 
@@ -93,16 +93,30 @@ export default function FigmaLibrary({ files = [], loading = false, account = ''
           </div>
           <div className="flib-empty-body">
             <strong>No designs found</strong>
-            <p>
-              Install the <b>Buildrs Figma Helper</b> Chrome extension. It reads your Figma recent files
-              via your signed-in figma.com tab and syncs them here — no links to paste, no OAuth scopes.
-            </p>
-            <ol className="flib-install-steps">
-              <li>Install the Buildrs Figma Helper from the Chrome Web Store (or load the figma-helper folder unpacked).</li>
-              <li>Open Buildrs, sign in, then visit this Figma page once to link your account.</li>
-              <li>Keep a signed-in <code>figma.com</code> tab open.</li>
-              <li>Click the Buildrs Figma Helper icon &rarr; <em>Sync now</em>. Your designs appear here.</li>
-            </ol>
+            {hasPat ? (
+              <>
+                <p>
+                  Your Figma account is connected but no designs have been discovered yet. Click{' '}
+                  <button type="button" onClick={onRefresh} className="flib-refresh-link">
+                    Refresh
+                  </button>{' '}
+                  to load your files.
+                </p>
+              </>
+            ) : (
+              <>
+                <p>
+                  Install the <b>Buildrs Figma Helper</b> Chrome extension. It reads your Figma recent files
+                  via your signed-in figma.com tab and syncs here — no links to paste, no OAuth scopes.
+                </p>
+                <ol className="flib-install-steps">
+                  <li>Install the Buildrs Figma Helper from the Chrome Web Store (or load the figma-helper folder unpacked).</li>
+                  <li>Open Buildrs, sign in, then visit this Figma page once to link your account.</li>
+                  <li>Keep a signed-in <code>figma.com</code> tab open.</li>
+                  <li>Click the Buildrs Figma Helper icon &rarr; <em>Sync now</em>. Your designs appear here.</li>
+                </ol>
+              </>
+            )}
           </div>
         </div>
       )}
