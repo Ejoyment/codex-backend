@@ -23,6 +23,7 @@ export default function FigmaPage() {
   const [connected, setConnected] = useState(false);
   const [account, setAccount] = useState('');
   const [hasPat, setHasPat] = useState(false);
+  const [library, setLibrary] = useState(null);
   const [files, setFiles] = useState([]);
   const [helperSyncedAt, setHelperSyncedAt] = useState(null);
   const [statusLoading, setStatusLoading] = useState(true);
@@ -52,16 +53,17 @@ export default function FigmaPage() {
     }
   }, [router.isReady, router.query.file, router.query.node, router.query.error]);
 
-  const loadFiles = useCallback(async () => {
+  const loadFiles = useCallback(async ({ refresh = false } = {}) => {
     setFilesLoading(true);
     setFilesError('');
     try {
-      const result = await figmaApi.listFiles();
+      const result = await figmaApi.getLibrary({ refresh });
       if (!result.success) throw new Error(result.message || 'Could not load your Figma designs');
-      setFiles(Array.isArray(result.files) ? result.files : []);
+      setLibrary(result);
+      setFiles(result.linkedFiles || []);
       setHelperSyncedAt(result.helperSyncedAt || null);
     } catch (loadError) {
-      console.error('Failed to load Figma files:', loadError);
+      console.error('Failed to load Figma library:', loadError);
       setFilesError(loadError.message || 'Could not load your Figma designs');
     } finally {
       setFilesLoading(false);
@@ -137,7 +139,7 @@ export default function FigmaPage() {
 
   const refreshFiles = () => {
     window.postMessage({ source: 'buildrs-web', type: 'FIGMA_SYNC_REQUEST' }, window.location.origin);
-    loadFiles();
+    loadFiles({ refresh: true });
   };
 
   const connectFigma = async () => {
@@ -173,6 +175,30 @@ export default function FigmaPage() {
       setPatError(saveError.message || 'Could not save token');
     } finally {
       setSavingPat(false);
+    }
+  };
+
+  const addLibrarySource = async (url) => {
+    try {
+      const result = await figmaApi.addLibrarySource(url);
+      if (!result.success) throw new Error(result.message || 'Could not add that team');
+      await loadFiles();
+    } catch (addError) {
+      console.error('Failed to add Figma source:', addError);
+      setFilesError(addError.message || 'Could not add that team');
+    }
+  };
+
+  const removeLibrarySource = async (type, id) => {
+    try {
+      await figmaApi.removeLibrarySource(type, id);
+      setLibrary((current) => current && {
+        ...current,
+        sources: current.sources.filter((source) => !(source.type === type && source.id === id)),
+      });
+    } catch (removeError) {
+      console.error('Failed to remove Figma source:', removeError);
+      setFilesError(removeError.message || 'Could not remove that team');
     }
   };
 
@@ -255,12 +281,15 @@ export default function FigmaPage() {
               )}
               {filesError && <p className="figma-files-error" role="alert">{filesError}</p>}
               <FigmaLibrary
-                files={files}
+                library={library}
                 loading={filesLoading}
                 helperSyncedAt={helperSyncedAt}
                 account={account}
                 onRefresh={refreshFiles}
                 onOpenFile={(fileKey) => openFile(fileKey)}
+                onAddSource={addLibrarySource}
+                onRemoveSource={removeLibrarySource}
+                onReconnect={connectFigma}
               />
             </div>
           ) : (

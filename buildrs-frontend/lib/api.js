@@ -304,6 +304,10 @@ export const figmaApi = {
   getStatus: () => apiFetch('/api/figma/status'),
   savePersonalAccessToken: (token) =>
     apiFetch('/api/figma/personal-access-token', { method: 'POST', body: JSON.stringify({ token }) }),
+  addLibrarySource: (url) =>
+    apiFetch('/api/figma/library/sources', { method: 'POST', body: JSON.stringify({ url }), timeoutMs: 90000 }),
+  removeLibrarySource: (type, id) =>
+    apiFetch(`/api/figma/library/sources/${encodeURIComponent(type)}/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 };
 
 export const slackApi = {
