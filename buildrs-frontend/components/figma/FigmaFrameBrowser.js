@@ -19,7 +19,7 @@ export default function FigmaFrameBrowser({ fileKey, highlightNodeId, onBack, on
     setLoading(true);
     setError('');
 
-    const loadWithHelper = () => {
+    const loadWithHelper = (attempt = 1) => {
       return new Promise((resolve, reject) => {
         const handler = (event) => {
           if (event.source !== window) return;
@@ -40,8 +40,12 @@ export default function FigmaFrameBrowser({ fileKey, highlightNodeId, onBack, on
         window.postMessage({ source: 'buildrs-web', type: 'FIGMA_GET_FILE_REQUEST', fileKey }, window.location.origin);
         setTimeout(() => {
           window.removeEventListener('message', handler);
-          reject(new Error('Helper response timeout'));
-        }, 15000);
+          if (attempt < 2) {
+            resolve(loadWithHelper(attempt + 1));
+          } else {
+            reject(new Error('Helper response timeout'));
+          }
+        }, 8000);
       });
     };
 
