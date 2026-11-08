@@ -1,9 +1,9 @@
 /**
- * Figma file import/listing.
+ * Figma file listing + helper sync.
  *
- * Figma no longer exposes a user's teams from `/v1/me`, so the file picker
- * cannot discover files automatically. Files are imported from a pasted link
- * and stored on the integration. Listing must never 500 (which blanked the
+ * Figma's REST API cannot enumerate the files a user can open, so the Buildrs
+ * browser helper reads the user's own Figma recent files and posts them to
+ * `POST /api/figma/files/sync`. Listing must never 500 (which blanked the
  * Figma page with "Something went wrong").
  */
 const express = require('express');
@@ -83,13 +83,25 @@ describe('GET /api/figma/files', () => {
         const response = await request(app).get('/api/figma/files');
 
         expect(response.status).toBe(200);
-        expect(response.body).toEqual({ success: true, connected: false, files: [] });
+        expect(response.body).toEqual({
+            success: true,
+            connected: false,
+            files: [],
+            helperSyncedAt: null,
+        });
     });
 
-    test('returns saved files without calling Figma again', async () => {
+    test('returns helper-synced files without calling Figma again', async () => {
         const integration = makeIntegration({
             metadata: new Map([
-                ['figmaFiles', [{ key: 'savedfilekey1234567890', name: 'Saved design', thumbnail_url: null }]],
+                ['figmaFiles', [{
+                    key: 'savedfilekey1234567890',
+                    name: 'Saved design',
+                    thumbnail_url: 'https://cdn.figma.com/thumb.png',
+                    last_modified: '2026-11-01T12:00:00Z',
+                    source: 'helper',
+                }]],
+                ['helperSyncedAt', '2026-11-02T09:00:00.000Z'],
             ]),
         });
         Integration.findOne.mockResolvedValue(integration);
@@ -101,18 +113,36 @@ describe('GET /api/figma/files', () => {
             {
                 key: 'savedfilekey1234567890',
                 name: 'Saved design',
-                thumbnail_url: null,
-                last_modified: null,
-                addedAt: null,
-                source: 'link',
-                selection: [],
-                pushedAt: null,
+                thumbnail_url: 'https://cdn.figma.com/thumb.png',
+                last_modified: '2026-11-01T12:00:00Z',
+                source: 'helper',
             },
         ]);
+        expect(response.body.helperSyncedAt).toBe('2026-11-02T09:00:00.000Z');
         expect(axios).not.toHaveBeenCalled();
     });
 
-    test('an empty library answers with guidance instead of calling Figma', async () => {
+    test('drops malformed stored entries instead of trusting the snapshot', async () => {
+        const integration = makeIntegration({
+            metadata: new Map([
+                ['figmaFiles', [
+                    { key: 'validkey123456789012', name: 'Valid' },
+                    { key: 'bad key!', name: 'Invalid' },
+                    { name: 'No key' },
+                    null,
+                ]],
+            ]),
+        });
+        Integration.findOne.mockResolvedValue(integration);
+
+        const response = await request(app).get('/api/figma/files');
+
+        expect(response.status).toBe(200);
+        expect(response.body.files).toHaveLength(1);
+        expect(response.body.files[0].key).toBe('validkey123456789012');
+    });
+
+    test('an empty snapshot answers with helper guidance instead of calling Figma', async () => {
         Integration.findOne.mockResolvedValue(makeIntegration());
 
         const response = await request(app).get('/api/figma/files');
@@ -120,104 +150,121 @@ describe('GET /api/figma/files', () => {
         expect(response.status).toBe(200);
         expect(response.body.success).toBe(true);
         expect(response.body.files).toEqual([]);
-        expect(response.body.message).toMatch(/paste a figma file link/i);
+        expect(response.body.message).toMatch(/figma helper/i);
         expect(axios).not.toHaveBeenCalled();
     });
 
-});
+    test('a storage failure returns an actionable empty list, not a 500', async () => {
+        Integration.findOne.mockRejectedValue(new Error('db offline'));
 
-describe('POST /api/figma/files', () => {
-    test('imports a file from a pasted link', async () => {
-        const integration = makeIntegration();
-        Integration.findOne.mockResolvedValue(integration);
-        axios.mockResolvedValue({
-            data: {
-                name: 'Marketing site',
-                lastModified: '2026-11-01T12:00:00Z',
-                thumbnailUrl: 'https://cdn.figma.com/thumb.png',
-            },
-        });
-
-        const response = await request(app)
-            .post('/api/figma/files')
-            .send({ url: 'https://www.figma.com/design/abcdefghijklmnopqrstuv/Marketing?node-id=0-1' });
+        const response = await request(app).get('/api/figma/files');
 
         expect(response.status).toBe(200);
         expect(response.body.success).toBe(true);
-        expect(response.body.file).toEqual({
-            key: 'abcdefghijklmnopqrstuv',
-            name: 'Marketing site',
-            thumbnail_url: 'https://cdn.figma.com/thumb.png',
-            last_modified: '2026-11-01T12:00:00Z',
-            addedAt: expect.any(String),
-            source: 'link',
-            selection: [],
-            pushedAt: null,
-        });
-        expect(axios).toHaveBeenCalledWith(expect.objectContaining({
-            url: 'https://api.figma.com/v1/files/abcdefghijklmnopqrstuv?depth=1',
-        }));
-        expect(integration.metadata.get('figmaFiles')).toHaveLength(1);
-        expect(integration.save).toHaveBeenCalled();
+        expect(response.body.files).toEqual([]);
+        expect(response.body.message).toMatch(/helper/i);
     });
+});
 
-    test('accepts a raw file key and dedupes repeat imports', async () => {
-        const integration = makeIntegration({
-            metadata: new Map([
-                ['figmaFiles', [{ key: 'abcdefghijklmnopqrstuv', name: 'Old name', thumbnail_url: null }]],
-            ]),
-        });
+describe('POST /api/figma/files/sync', () => {
+    test('stores sanitized, deduped helper files and the sync timestamp', async () => {
+        const integration = makeIntegration();
         Integration.findOne.mockResolvedValue(integration);
-        axios.mockResolvedValue({ data: { name: 'New name' } });
 
         const response = await request(app)
-            .post('/api/figma/files')
-            .send({ fileKey: 'abcdefghijklmnopqrstuv' });
+            .post('/api/figma/files/sync')
+            .send({
+                files: [
+                    {
+                        key: 'abcdefghijklmnopqrstuv',
+                        name: '  Marketing site  ',
+                        thumbnail_url: 'https://cdn.figma.com/thumb.png',
+                        last_modified: '2026-11-01T12:00:00Z',
+                    },
+                    { key: 'abcdefghijklmnopqrstuv', name: 'Duplicate key' },
+                    { key: 'bad key!', name: 'Invalid key' },
+                    { key: 'secondkey1234567890', name: 'Second design', thumbnail_url: 'javascript:alert(1)' },
+                ],
+            });
 
         expect(response.status).toBe(200);
-        expect(response.body.files).toHaveLength(1);
-        expect(response.body.files[0].name).toBe('New name');
-    });
-
-    test('rejects a non-file link', async () => {
-        Integration.findOne.mockResolvedValue(makeIntegration());
-
-        const response = await request(app)
-            .post('/api/figma/files')
-            .send({ url: 'https://www.figma.com/team/123/Team' });
-
-        expect(response.status).toBe(400);
-        expect(response.body.message).toMatch(/paste a figma file link/i);
+        expect(response.body.success).toBe(true);
+        expect(response.body.files).toEqual([
+            {
+                key: 'abcdefghijklmnopqrstuv',
+                name: 'Marketing site',
+                thumbnail_url: 'https://cdn.figma.com/thumb.png',
+                last_modified: '2026-11-01T12:00:00Z',
+                source: 'helper',
+            },
+            {
+                key: 'secondkey1234567890',
+                name: 'Second design',
+                thumbnail_url: null,
+                last_modified: null,
+                source: 'helper',
+            },
+        ]);
+        expect(integration.metadata.get('figmaFiles')).toEqual(response.body.files);
+        expect(integration.metadata.get('helperSyncedAt')).toEqual(expect.any(String));
+        expect(integration.save).toHaveBeenCalled();
         expect(axios).not.toHaveBeenCalled();
     });
 
-    test('reports missing access as 403', async () => {
-        Integration.findOne.mockResolvedValue(makeIntegration());
-        axios.mockRejectedValue(axiosError(403));
+    test('replaces the previous snapshot on every sync', async () => {
+        const integration = makeIntegration({
+            metadata: new Map([
+                ['figmaFiles', [{ key: 'oldkey1234567890123', name: 'Old design', source: 'helper' }]],
+            ]),
+        });
+        Integration.findOne.mockResolvedValue(integration);
 
         const response = await request(app)
-            .post('/api/figma/files')
-            .send({ fileKey: 'abcdefghijklmnopqrstuv' });
+            .post('/api/figma/files/sync')
+            .send({ files: [{ key: 'newkey1234567890123', name: 'New design' }] });
 
-        expect(response.status).toBe(403);
-        expect(response.body.message).toMatch(/does not have access/i);
+        expect(response.status).toBe(200);
+        expect(response.body.files.map((file) => file.key)).toEqual(['newkey1234567890123']);
+        expect(integration.metadata.get('figmaFiles').map((file) => file.key)).toEqual(['newkey1234567890123']);
     });
 
-    test('reports a missing file as 404', async () => {
+    test('caps the snapshot at 200 files', async () => {
+        const integration = makeIntegration();
+        Integration.findOne.mockResolvedValue(integration);
+        const files = Array.from({ length: 205 }, (_, index) => ({ key: `file${index}`, name: `File ${index}` }));
+
+        const response = await request(app).post('/api/figma/files/sync').send({ files });
+
+        expect(response.status).toBe(200);
+        expect(response.body.files).toHaveLength(200);
+    });
+
+    test('rejects a payload without a files array', async () => {
         Integration.findOne.mockResolvedValue(makeIntegration());
-        axios.mockRejectedValue(axiosError(404));
 
         const response = await request(app)
-            .post('/api/figma/files')
-            .send({ fileKey: 'abcdefghijklmnopqrstuv' });
+            .post('/api/figma/files/sync')
+            .send({ files: 'nope' });
 
-        expect(response.status).toBe(404);
-        expect(response.body.message).toMatch(/was not found/i);
+        expect(response.status).toBe(400);
+        expect(response.body.success).toBe(false);
+        expect(response.body.message).toMatch(/files list/i);
+    });
+
+    test('rejects syncing when Figma is not connected', async () => {
+        Integration.findOne.mockResolvedValue(null);
+
+        const response = await request(app)
+            .post('/api/figma/files/sync')
+            .send({ files: [] });
+
+        expect(response.status).toBe(400);
+        expect(response.body.message).toMatch(/connect figma/i);
     });
 });
 
 describe('GET /api/figma/files/:fileKey/frames', () => {
-    test('lists pages and top-level frames with thumbnails and saves the file', async () => {
+    test('lists pages and top-level frames with thumbnails', async () => {
         const integration = makeIntegration();
         Integration.findOne.mockResolvedValue(integration);
         axios
@@ -256,7 +303,6 @@ describe('GET /api/figma/files/:fileKey/frames', () => {
         expect(axios).toHaveBeenNthCalledWith(1, expect.objectContaining({
             url: 'https://api.figma.com/v1/files/abcdefghijklmnopqrstuv?depth=2',
         }));
-        expect(integration.metadata.get('figmaFiles')[0]).toEqual(expect.objectContaining({ key: 'abcdefghijklmnopqrstuv', name: 'App' }));
     });
 
     test('still returns frames when thumbnails fail', async () => {
@@ -280,90 +326,5 @@ describe('GET /api/figma/files/:fileKey/frames', () => {
         const response = await request(app).get('/api/figma/files/abcdefghijklmnopqrstuv/frames');
 
         expect(response.status).toBe(403);
-    });
-});
-
-describe('Figma plugin', () => {
-    const USER_ID = '507f1f77bcf86cd799439011';
-
-    async function pairedIntegration() {
-        const integration = makeIntegration();
-        Integration.findOne.mockResolvedValue(integration);
-        const response = await request(app).post('/api/figma/plugin/token');
-        expect(response.status).toBe(200);
-        return { integration, token: response.body.token };
-    }
-
-    test('generates a token and stores only its hash', async () => {
-        const { integration, token } = await pairedIntegration();
-
-        expect(token).toMatch(new RegExp(`^bfp_${USER_ID}_[A-Za-z0-9_-]{32,}$`));
-        const storedHash = integration.metadata.get('pluginTokenHash');
-        expect(storedHash).toMatch(/^[a-f0-9]{64}$/);
-        expect(JSON.stringify([...integration.metadata.entries()])).not.toContain(token);
-    });
-
-    test('rejects a malformed or unknown token', async () => {
-        await pairedIntegration();
-
-        const malformed = await request(app).get('/api/figma/plugin/me').set('Authorization', 'Bearer nope');
-        expect(malformed.status).toBe(401);
-
-        const forged = await request(app)
-            .get('/api/figma/plugin/me')
-            .set('Authorization', `Bearer bfp_${USER_ID}_${'x'.repeat(43)}`);
-        expect(forged.status).toBe(401);
-    });
-
-    test('a rotated token invalidates the previous one', async () => {
-        const { token: first } = await pairedIntegration();
-        await request(app).post('/api/figma/plugin/token');
-
-        const response = await request(app).get('/api/figma/plugin/me').set('Authorization', `Bearer ${first}`);
-        expect(response.status).toBe(401);
-    });
-
-    test('push saves the file and selected frames', async () => {
-        const { integration, token } = await pairedIntegration();
-        axios.mockResolvedValueOnce({ data: { name: 'Checkout', thumbnailUrl: 'thumb.png' } });
-
-        const response = await request(app)
-            .post('/api/figma/plugin/push')
-            .set('Authorization', `Bearer ${token}`)
-            .send({
-                fileUrl: 'https://www.figma.com/design/abcdefghijklmnopqrstuv/Checkout',
-                selection: [{ id: '12:34', name: 'Payment', type: 'FRAME', pageId: '0:1', pageName: 'Flows' }, { id: 'bogus' }],
-            });
-
-        expect(response.status).toBe(200);
-        expect(response.body.file).toEqual(expect.objectContaining({
-            key: 'abcdefghijklmnopqrstuv',
-            name: 'Checkout',
-            source: 'plugin',
-            selection: [{ id: '12:34', name: 'Payment', type: 'FRAME', pageId: '0:1', pageName: 'Flows' }],
-        }));
-        expect(integration.metadata.get('figmaFiles')).toHaveLength(1);
-        expect(integration.metadata.get('pluginLastPushAt')).toEqual(expect.any(String));
-    });
-
-    test('push asks for the file link when the plugin has no file key', async () => {
-        const { token } = await pairedIntegration();
-
-        const response = await request(app)
-            .post('/api/figma/plugin/push')
-            .set('Authorization', `Bearer ${token}`)
-            .send({ selection: [] });
-
-        expect(response.status).toBe(400);
-        expect(response.body.code).toBe('FILE_KEY_REQUIRED');
-        expect(axios).not.toHaveBeenCalled();
-    });
-
-    test('revoking the token disconnects the plugin', async () => {
-        const { token } = await pairedIntegration();
-        await request(app).delete('/api/figma/plugin/token');
-
-        const response = await request(app).get('/api/figma/plugin/me').set('Authorization', `Bearer ${token}`);
-        expect(response.status).toBe(401);
     });
 });

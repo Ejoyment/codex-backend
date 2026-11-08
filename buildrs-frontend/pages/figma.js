@@ -1,21 +1,20 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
-import { Figma as FigmaIcon, Loader2, Plus, Sparkles, Trash2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import AuthGuard from '../components/AuthGuard';
 import BrandIcon from '../components/BrandIcon';
 import Sidebar from '../components/Sidebar';
 import FigmaFrameBrowser from '../components/figma/FigmaFrameBrowser';
 import FigmaCodePanel from '../components/figma/FigmaCodePanel';
-import FigmaPluginCard from '../components/figma/FigmaPluginCard';
 import FigmaLibrary from '../components/figma/FigmaLibrary';
 import useAuthStore from '../store/authStore';
 import { apiFetch, figmaApi } from '../lib/api';
 
 const STEPS = [
-  { number: '01', title: 'Send designs', description: 'Use the Buildrs Figma plugin or a file link.' },
-  { number: '02', title: 'Pick frames', description: 'Browse pages and choose the exact frame to build.' },
-  { number: '03', title: 'Code it exactly', description: 'Convert to code or hand it to an AI task.' },
+  { number: '01', title: 'Connect Figma', description: 'Authorize Buildrs to read the designs you can already open.' },
+  { number: '02', title: 'Install the helper', description: 'Your recent files sync automatically. No links, no plugin.' },
+  { number: '03', title: 'Assign frames', description: 'Open a design, pick a frame, and hand it to an agent or task.' },
 ];
 
 export default function FigmaPage() {
@@ -24,21 +23,18 @@ export default function FigmaPage() {
   const [connected, setConnected] = useState(false);
   const [account, setAccount] = useState('');
   const [files, setFiles] = useState([]);
+  const [helperSyncedAt, setHelperSyncedAt] = useState(null);
   const [statusLoading, setStatusLoading] = useState(true);
   const [filesLoading, setFilesLoading] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState('');
   const [filesError, setFilesError] = useState('');
-  const [fileUrl, setFileUrl] = useState('');
-  const [importing, setImporting] = useState(false);
-  const [importError, setImportError] = useState('');
-  const [library, setLibrary] = useState(null);
   const router = useRouter();
   const [openFileKey, setOpenFileKey] = useState(null);
   const [highlightNodeId, setHighlightNodeId] = useState(null);
   const [codeFrame, setCodeFrame] = useState(null);
 
-  // Deep link from the Figma plugin: /figma?file=<key>&node=<id>
+  // Deep link: /figma?file=<key>&node=<id>
   useEffect(() => {
     if (!router.isReady) return;
     const file = typeof router.query.file === 'string' ? router.query.file : null;
@@ -51,6 +47,62 @@ export default function FigmaPage() {
       setError('Figma connection failed. Make sure the Buildrs Figma app allows every requested permission, then try again.');
     }
   }, [router.isReady, router.query.file, router.query.node, router.query.error]);
+
+  const loadFiles = useCallback(async () => {
+    setFilesLoading(true);
+    setFilesError('');
+    try {
+      const result = await figmaApi.listFiles();
+      if (!result.success) throw new Error(result.message || 'Could not load your Figma designs');
+      setFiles(Array.isArray(result.files) ? result.files : []);
+      setHelperSyncedAt(result.helperSyncedAt || null);
+    } catch (loadError) {
+      console.error('Failed to load Figma files:', loadError);
+      setFilesError(loadError.message || 'Could not load your Figma designs');
+    } finally {
+      setFilesLoading(false);
+    }
+  }, []);
+
+  // The helper content script relays a sync request to the extension and posts
+  // the result back here, so visiting the page refreshes the design list.
+  useEffect(() => {
+    if (!connected) return undefined;
+    const onMessage = (event) => {
+      if (event.source !== window) return;
+      const data = event.data || {};
+      if (data.source === 'buildrs-helper' && data.type === 'FIGMA_SYNC_RESULT') {
+        loadFiles();
+      }
+    };
+    window.addEventListener('message', onMessage);
+    window.postMessage({ source: 'buildrs-web', type: 'FIGMA_SYNC_REQUEST' }, window.location.origin);
+    return () => window.removeEventListener('message', onMessage);
+  }, [connected, loadFiles]);
+
+  useEffect(() => {
+    let active = true;
+    const loadStatus = async () => {
+      setStatusLoading(true);
+      setError('');
+      try {
+        const result = await figmaApi.getStatus();
+        if (!result.success) throw new Error(result.message || 'Could not check your Figma connection');
+        if (!active) return;
+        setConnected(Boolean(result.connected));
+        setAccount(result.account || '');
+        if (result.connected) await loadFiles();
+      } catch (statusError) {
+        console.error('Failed to check Figma connection:', statusError);
+        if (active) setError(statusError.message || 'Could not check your Figma connection');
+      } finally {
+        if (active) setStatusLoading(false);
+      }
+    };
+
+    loadStatus();
+    return () => { active = false; };
+  }, [loadFiles]);
 
   const openFile = (fileKey, nodeId = null) => {
     setOpenFileKey(fileKey);
@@ -78,110 +130,10 @@ export default function FigmaPage() {
     });
   };
 
-  const removeFile = async (event, fileKey) => {
-    event.stopPropagation();
-    try {
-      const result = await figmaApi.removeFile(fileKey);
-      setFiles(result.files || []);
-    } catch (removeError) {
-      setFilesError(removeError.message || 'Could not remove that file');
-    }
+  const refreshFiles = () => {
+    window.postMessage({ source: 'buildrs-web', type: 'FIGMA_SYNC_REQUEST' }, window.location.origin);
+    loadFiles();
   };
-
-  // Library = linked teams/folders (full folder trees) + individually added files.
-  const loadFiles = async ({ refresh = false } = {}) => {
-    setFilesLoading(true);
-    setFilesError('');
-    try {
-      const result = await figmaApi.getLibrary({ refresh });
-      if (!result.success) throw new Error(result.message || 'Could not load your Figma designs');
-      setLibrary(result);
-      setFiles(result.linkedFiles || []);
-    } catch (loadError) {
-      console.error('Failed to load Figma library:', loadError);
-      setFilesError(loadError.message || 'Could not load your Figma designs');
-    } finally {
-      setFilesLoading(false);
-    }
-  };
-
-  const addLibrarySource = async (url) => {
-    const result = await figmaApi.addLibrarySource(url);
-    if (!result.success) throw new Error(result.message || 'Could not add that team');
-    await loadFiles();
-  };
-
-  const removeLibrarySource = async (type, id) => {
-    try {
-      await figmaApi.removeLibrarySource(type, id);
-      setLibrary((current) => current && {
-        ...current,
-        sources: current.sources.filter((source) => !(source.type === type && source.id === id)),
-      });
-    } catch (removeError) {
-      setFilesError(removeError.message || 'Could not remove that team');
-    }
-  };
-
-  const importFile = async (event) => {
-    event.preventDefault();
-    const url = fileUrl.trim();
-    if (!url) return;
-
-    setImporting(true);
-    setImportError('');
-    try {
-      const result = await figmaApi.addFile(url);
-      if (!result.success) throw new Error(result.message || 'Could not add that Figma file');
-      setFiles(result.files || (result.file ? [result.file] : []));
-      setFilesError('');
-      setFileUrl('');
-    } catch (importFailure) {
-      console.error('Failed to add Figma file:', importFailure);
-      setImportError(importFailure.message || 'Could not add that Figma file');
-    } finally {
-      setImporting(false);
-    }
-  };
-
-  useEffect(() => {
-    let active = true;
-    const loadStatus = async () => {
-      setStatusLoading(true);
-      setError('');
-      try {
-        const result = await figmaApi.getStatus();
-        if (!result.success) throw new Error(result.message || 'Could not check your Figma connection');
-        if (!active) return;
-        setConnected(Boolean(result.connected));
-        setAccount(result.account || '');
-        if (result.connected) {
-          setFilesLoading(true);
-          try {
-            const libraryResult = await figmaApi.getLibrary();
-            if (!libraryResult.success) throw new Error(libraryResult.message || 'Could not load your Figma designs');
-            if (active) {
-              setLibrary(libraryResult);
-              setFiles(libraryResult.linkedFiles || []);
-            }
-          } catch (loadError) {
-            console.error('Failed to load Figma library:', loadError);
-            if (active) setFilesError(loadError.message || 'Could not load your Figma designs');
-          } finally {
-            if (active) setFilesLoading(false);
-          }
-        }
-      } catch (statusError) {
-        console.error('Failed to check Figma connection:', statusError);
-        if (active) setError(statusError.message || 'Could not check your Figma connection');
-      } finally {
-        if (active) setStatusLoading(false);
-      }
-    };
-
-    loadStatus();
-    return () => { active = false; };
-  }, []);
 
   const connectFigma = async () => {
     setConnecting(true);
@@ -262,110 +214,12 @@ export default function FigmaPage() {
               {filesError && <p className="figma-files-error" role="alert">{filesError}</p>}
 
               <FigmaLibrary
-                library={library}
+                files={files}
                 loading={filesLoading}
-                onRefresh={() => loadFiles({ refresh: true })}
+                helperSyncedAt={helperSyncedAt}
+                onRefresh={refreshFiles}
                 onOpenFile={(fileKey) => openFile(fileKey)}
-                onAddSource={addLibrarySource}
-                onRemoveSource={removeLibrarySource}
-                onReconnect={connectFigma}
               />
-
-              {files.length ? (
-                <section className="figma-lib-source" aria-labelledby="figma-added-title">
-                  <header>
-                    <span className="figma-file-icon"><FigmaIcon /></span>
-                    <div>
-                      <strong id="figma-added-title">Recently opened &amp; added files</strong>
-                      <small>{files.length} file{files.length === 1 ? '' : 's'}</small>
-                    </div>
-                  </header>
-                  <div className="figma-file-grid">
-                    {files.map((file) => (
-                      <div
-                        key={file.key}
-                        role="button"
-                        tabIndex={0}
-                        className="figma-file-card"
-                        onClick={() => openFile(file.key, file.selection?.[0]?.id || null)}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault();
-                            openFile(file.key, file.selection?.[0]?.id || null);
-                          }
-                        }}
-                      >
-                        {file.thumbnail_url ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img className="figma-file-thumb" src={file.thumbnail_url} alt="" loading="lazy" />
-                        ) : (
-                          <span className="figma-file-icon"><FigmaIcon /></span>
-                        )}
-                        <span className="figma-file-name">
-                          {file.name || 'Untitled file'}
-                          {file.source === 'plugin' ? (
-                            <small className="figma-file-badge"><Sparkles /> {file.selection?.length ? `${file.selection.length} frame${file.selection.length === 1 ? '' : 's'} sent` : 'From plugin'}</small>
-                          ) : null}
-                        </span>
-                        <button
-                          type="button"
-                          className="figma-file-remove"
-                          onClick={(event) => removeFile(event, file.key)}
-                          aria-label={`Remove ${file.name || 'file'} from Buildrs`}
-                        >
-                          <Trash2 />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              ) : (
-                // No files added yet - show prominent add-file section
-                <div className="figma-files-view">
-                  <div className="figma-files-heading">
-                    <div className="figma-brand-mark is-connected"><BrandIcon platform="figma" /></div>
-                    <div>
-                      <p className="figma-eyebrow">Figma connected</p>
-                      <h2>{account ? `Connected as ${account}` : 'Your Figma designs'}</h2>
-                      <p>No designs added yet. Paste a Figma file link to start using your designs with Buildrs.</p>
-                    </div>
-                  </div>
-                  {filesError && <p className="figma-files-error" role="alert">{filesError}</p>}
-                  <div className="figma-import-card">
-                    <div className="figma-import-header">
-                      <span className="figma-file-icon"><FigmaIcon /></span>
-                      <div>
-                        <strong>Add your first Figma file</strong>
-                        <small>Paste a Figma file link (File → Share → Copy link in Figma)</small>
-                      </div>
-                    </div>
-                    <form className="figma-import" onSubmit={importFile}>
-                      <div className="figma-import-row">
-                        <input
-                          id="figma-file-url"
-                          type="text"
-                          inputMode="url"
-                          autoComplete="off"
-                          placeholder="https://www.figma.com/design/…"
-                          value={fileUrl}
-                          onChange={(event) => setFileUrl(event.target.value)}
-                          disabled={importing}
-                          placeholder="https://www.figma.com/design/XXXXXX/Your-File-Name"
-                        />
-                        <button type="submit" disabled={importing || !fileUrl.trim()}>
-                          {importing ? <Loader2 className="figma-spin" /> : <Plus />}
-                          <span>{importing ? 'Adding...' : 'Add file'}</span>
-                        </button>
-                      </div>
-                    </form>
-                    {importError && <p className="figma-files-error" role="alert">{importError}</p>}
-                    <p className="figma-import-hint">
-                      Once added, your file will appear here and you can pick frames to convert to code or hand off to AI tasks.
-                    </p>
-                  </div>
-                  <FigmaPluginCard />
-                </div>
-              )}
             </div>
           ) : (
             <div className="figma-empty-state">
@@ -392,7 +246,7 @@ export default function FigmaPage() {
                 {connecting ? <Loader2 className="figma-spin" /> : <BrandIcon platform="figma" />}
                 {connecting ? 'Connecting...' : 'Connect to Figma'}
               </button>
-              <span className="figma-permission-note">You’ll be asked to let Buildrs read your Figma files and folders.</span>
+              <span className="figma-permission-note">You’ll be asked to let Buildrs read your Figma files.</span>
             </div>
           )}
         </section>

@@ -1,0 +1,104 @@
+:root {
+  color-scheme: dark;
+  --bg: #0b1017;
+  --panel: #10151e;
+  --line: rgba(255, 255, 255, 0.08);
+  --text: #e4e9f1;
+  --muted: #8c97a8;
+  --accent: #19d2db;
+  --danger: #f0b45b;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  width: 320px;
+  margin: 0;
+  padding: 16px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 13px;
+}
+
+header {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.logo { width: 34px; height: 34px; border-radius: 8px; }
+
+h1 { margin: 0; font-size: 14px; font-weight: 650; }
+header p { margin: 2px 0 0; color: var(--muted); font-size: 11px; }
+
+main { padding-top: 12px; }
+
+.stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.stats div {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel);
+}
+
+.stats span { display: block; font-size: 15px; font-weight: 650; }
+.stats small { display: block; margin-top: 2px; color: var(--muted); font-size: 10px; }
+
+button {
+  width: 100%;
+  margin-top: 8px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button:disabled { cursor: wait; opacity: 0.6; }
+
+.primary {
+  border: 1px solid rgba(18, 212, 220, 0.4);
+  background: rgba(18, 212, 220, 0.16);
+  color: var(--accent);
+}
+
+.secondary {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+}
+
+.link {
+  margin-top: 4px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.error {
+  margin: 0 0 4px;
+  padding: 8px 10px;
+  border: 1px solid rgba(240, 180, 91, 0.35);
+  border-radius: 8px;
+  background: rgba(240, 180, 91, 0.1);
+  color: var(--danger);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.hint {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
