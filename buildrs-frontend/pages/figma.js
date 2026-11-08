@@ -13,8 +13,8 @@ import { apiFetch, figmaApi } from '../lib/api';
 
 const STEPS = [
   { number: '01', title: 'Connect Figma', description: 'Authorize Buildrs to read your designs.' },
-  { number: '02', title: 'Add a Personal Access Token', description: 'Paste a Figma PAT so Buildrs can open your files.' },
-  { number: '03', title: 'Pick a frame', description: 'Convert it to code or hand it to an AI task.' },
+  { number: '02', title: 'Install the Buildrs Figma Helper', description: 'Add the Chrome extension. It reads your Figma recent files via your own signed-in figma.com tab — no links to paste.' },
+  { number: '03', title: 'Pick a frame', description: 'Open a design, select frames, and hand them to an AI task.' },
 ];
 
 export default function FigmaPage() {
@@ -22,16 +22,12 @@ export default function FigmaPage() {
   const subscription = useAuthStore((state) => state.subscription);
   const [connected, setConnected] = useState(false);
   const [account, setAccount] = useState('');
-  const [hasPat, setHasPat] = useState(false);
   const [files, setFiles] = useState([]);
   const [statusLoading, setStatusLoading] = useState(true);
   const [filesLoading, setFilesLoading] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState('');
   const [filesError, setFilesError] = useState('');
-  const [patInput, setPatInput] = useState('');
-  const [savingPat, setSavingPat] = useState(false);
-  const [patError, setPatError] = useState('');
   const router = useRouter();
   const [openFileKey, setOpenFileKey] = useState(null);
   const [highlightNodeId, setHighlightNodeId] = useState(null);
@@ -77,7 +73,6 @@ export default function FigmaPage() {
         if (!active) return;
         setConnected(Boolean(result.connected));
         setAccount(result.account || '');
-        setHasPat(Boolean(result.hasPat));
         if (result.connected) await loadFiles();
       } catch (statusError) {
         console.error('Failed to check Figma connection:', statusError);
@@ -137,26 +132,6 @@ export default function FigmaPage() {
     }
   };
 
-  const savePat = async () => {
-    const token = patInput.trim();
-    if (!token) return;
-    setSavingPat(true);
-    setPatError('');
-    try {
-      const result = await figmaApi.savePersonalAccessToken(token);
-      if (!result.success) throw new Error(result.message || 'Could not save token');
-      setHasPat(true);
-      setPatInput('');
-      setPatError('');
-      await loadFiles();
-    } catch (saveError) {
-      console.error('Failed to save PAT:', saveError);
-      setPatError(saveError.message || 'Could not save token');
-    } finally {
-      setSavingPat(false);
-    }
-  };
-
   const content = (
     <div className="workspace-container">
       <Sidebar user={user} subscription={subscription} />
@@ -209,31 +184,6 @@ export default function FigmaPage() {
             />
           ) : connected ? (
             <div className="figma-files-view">
-              {!hasPat && (
-                <section className="figma-pat-setup" aria-labelledby="figma-pat-title">
-                  <h3 id="figma-pat-title">Add Figma Personal Access Token</h3>
-                  <p>Paste a Figma Personal Access Token so Buildrs can open your files. Generate one at Figma Settings → Security → Personal Access Tokens.</p>
-                  {patError && <p className="figma-files-error" role="alert">{patError}</p>}
-                  <form className="figma-import" onSubmit={(e) => { e.preventDefault(); savePat(); }}>
-                    <div className="figma-import-row">
-                      <input
-                        id="figma-pat"
-                        type="text"
-                        inputMode="text"
-                        autoComplete="off"
-                        placeholder="figma_pat_..."
-                        value={patInput}
-                        onChange={(e) => setPatInput(e.target.value)}
-                        disabled={savingPat}
-                      />
-                      <button type="submit" disabled={savingPat || !patInput.trim()}>
-                        {savingPat ? <Loader2 className="figma-spin" /> : null}
-                        {savingPat ? 'Saving...' : 'Save token'}
-                      </button>
-                    </div>
-                  </form>
-                </section>
-              )}
               {filesError && <p className="figma-files-error" role="alert">{filesError}</p>}
               <FigmaLibrary
                 files={files}

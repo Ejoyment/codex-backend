@@ -305,6 +305,9 @@ export const figmaApi = {
     apiFetch(`/api/figma/library${refresh ? '?refresh=1' : ''}`, { timeoutMs: 90000 }),
   savePersonalAccessToken: (token) =>
     apiFetch('/api/figma/personal-access-token', { method: 'POST', body: JSON.stringify({ token }) }),
+  getPluginStatus: () => apiFetch('/api/figma/plugin/status'),
+  createPluginToken: () => apiFetch('/api/figma/plugin/token', { method: 'POST' }),
+  revokePluginToken: () => apiFetch('/api/figma/plugin/token', { method: 'DELETE' }),
 };
 
 export const slackApi = {
