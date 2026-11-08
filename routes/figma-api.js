@@ -368,7 +368,7 @@ function handleFigmaError(req, res, error) {
         return res.status(400).json({ success: false, message: 'Connect Figma first.' });
     }
     if (figmaAccessError(res, error)) return;
-    return handleFigmaError(req, res, error);
+    return res.status(500).json({ success: false, message: error.message || 'Figma API error' });
 }
 
 // Pages and top-level frames of a file, with rendered thumbnails, for the

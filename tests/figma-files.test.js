@@ -38,6 +38,7 @@ function makeIntegration({ metadata = new Map(), expiresAt = null } = {}) {
         accessToken: 'figma-token',
         expiresAt,
         metadata,
+        getFigmaToken: () => 'figma-token',
         save: jest.fn(async function save() { return this; }),
     };
 }
