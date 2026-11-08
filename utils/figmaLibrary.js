@@ -11,9 +11,9 @@ async function figmaV2(accessToken, path) {
 }
 
 /**
- * Walk every team and folder the PAT can reach, returning a flat list of
- * files. No OAuth scopes required — a Personal Access Token has full read
- * access to everything the account can open.
+ * Walk every team and folder the token can reach, returning a flat list of
+ * files. Never throws — on any discovery failure it logs and returns [] so
+ * the UI stays usable instead of showing a cryptic error.
  */
 async function fetchAllFiles(accessToken) {
     const allFiles = [];
@@ -48,7 +48,8 @@ async function fetchAllFiles(accessToken) {
             }
         }
     } catch (error) {
-        throw error;
+        console.error('Figma fetchAllFiles error:', error.response?.status, error.response?.data?.message || error.message);
+        // Return whatever we managed to collect instead of throwing.
     }
 
     return allFiles;
