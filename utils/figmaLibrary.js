@@ -1,10 +1,14 @@
 const axios = require('axios');
 
 async function figmaV2(accessToken, path) {
+    const isPat = String(accessToken || '').startsWith('figd_');
+    const headers = {};
+    if (isPat) headers['X-Figma-Token'] = accessToken;
+    else headers['Authorization'] = `Bearer ${accessToken}`;
     const response = await axios({
         method: 'GET',
         url: `https://api.figma.com/v2${path}`,
-        headers: { Authorization: `Bearer ${accessToken}` },
+        headers,
         timeout: 20000,
     });
     return response.data;

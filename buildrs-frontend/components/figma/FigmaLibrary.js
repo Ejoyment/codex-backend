@@ -1,6 +1,18 @@
 import { useMemo, useState } from 'react';
 import { Figma as FigmaIcon, Loader2, RefreshCw, Search } from 'lucide-react';
 
+const FIGMA_FILE_URL_RE = /^https?:\/\/(?:www\.)?figma\.com\/(?:file|design|board|proto|slides)\/([A-Za-z0-9]+)/i;
+const FIGMA_FILE_KEY_RE = /^[A-Za-z0-9]{10,}$/;
+
+function parseFileKey(input) {
+    const raw = String(input || '').trim();
+    if (!raw) return null;
+    const match = raw.match(FIGMA_FILE_URL_RE);
+    if (match) return match[1];
+    if (/figma\.com/i.test(raw)) return null;
+    return FIGMA_FILE_KEY_RE.test(raw) ? raw : null;
+}
+
 function FileCard({ file, onOpen }) {
   return (
     <button
@@ -26,6 +38,7 @@ function FileCard({ file, onOpen }) {
 
 export default function FigmaLibrary({ files = [], loading = false, account = '', hasPat = false, onRefresh, onOpenFile }) {
   const [query, setQuery] = useState('');
+  const [fileKeyInput, setFileKeyInput] = useState('');
   const q = query.trim().toLowerCase();
 
   const visible = useMemo(
@@ -96,12 +109,39 @@ export default function FigmaLibrary({ files = [], loading = false, account = ''
             {hasPat ? (
               <>
                 <p>
-                  Your Figma account is connected but no designs have been discovered yet. Click{' '}
-                  <button type="button" onClick={onRefresh} className="flib-refresh-link">
-                    Refresh
-                  </button>{' '}
-                  to load your files.
+                  Your Figma account is connected but no designs have been discovered yet. Figma's API
+                  doesn't let us list your files with a Personal Access Token, so you can open a file by
+                  pasting its link below, or sync via the Chrome extension.
                 </p>
+                <div className="flib-paste-row">
+                  <input
+                    type="text"
+                    placeholder="https://www.figma.com/design/FILE_KEY/… or just FILE_KEY"
+                    value={fileKeyInput}
+                    onChange={(e) => setFileKeyInput(e.target.value)}
+                    className="flib-paste-input"
+                  />
+                  <button
+                    type="button"
+                    className="flib-paste-btn"
+                    onClick={() => {
+                      const key = parseFileKey(fileKeyInput);
+                      if (key) {
+                        onOpenFile(key);
+                      }
+                    }}
+                    disabled={!fileKeyInput.trim()}
+                  >
+                    Open
+                  </button>
+                </div>
+                <p className="flib-paste-hint">
+                  File key is the string after <code>/design/</code> in your Figma file URL. Or install the
+                  <b>Buildrs Figma Helper</b> Chrome extension to sync your recent files automatically.
+                </p>
+                <button type="button" onClick={onRefresh} className="flib-refresh-link">
+                  <RefreshCw className="w-4 h-4" /> Refresh
+                </button>
               </>
             ) : (
               <>
