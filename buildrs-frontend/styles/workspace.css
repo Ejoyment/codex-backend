@@ -107,6 +107,114 @@
   width: 0.7rem;
   height: 0.7rem;
   flex: 0 0 auto;
+  transition: transform 0.2s ease;
+}
+
+.workspace-global-header .ail-branch-selector svg:last-child.rotate-180 {
+  transform: rotate(180deg);
+}
+
+.workspace-global-header .ail-branch-wrap {
+  position: relative;
+}
+
+.workspace-global-header .ail-branch-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 180px;
+  max-width: 280px;
+  background: #101d2c;
+  border: 1px solid rgba(68, 117, 151, 0.42);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.4);
+  z-index: 100;
+  overflow: hidden;
+}
+
+.workspace-global-header .ail-drop-section {
+  padding: 0.4rem 0.6rem;
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #748194;
+  border-bottom: 1px solid rgba(116, 129, 148, 0.15);
+}
+
+.workspace-global-header .ail-drop-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  border: none;
+  background: transparent;
+  color: #c7d2dd;
+  font-size: 0.7rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.workspace-global-header .ail-drop-item:hover {
+  background: rgba(18, 220, 229, 0.08);
+}
+
+.workspace-global-header .ail-drop-item.is-active {
+  background: rgba(18, 220, 229, 0.12);
+  color: #12dce5;
+}
+
+.workspace-global-header .ail-drop-item svg {
+  flex-shrink: 0;
+  color: #9aaeba;
+}
+
+.workspace-global-header .ail-drop-item.is-active svg {
+  color: #12dce5;
+}
+
+.workspace-global-header .ail-global-search-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 32px;
+  padding: 0 0.65rem;
+  margin-left: auto;
+  border: 1px solid rgba(68, 117, 151, 0.36);
+  border-radius: 999px;
+  background: #1b2434;
+  color: #9aaeba;
+  font-size: 0.65rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.workspace-global-header .ail-global-search-trigger:hover {
+  border-color: rgba(18, 220, 229, 0.5);
+  background: #1f2a3d;
+  color: #dee2f6;
+}
+
+.workspace-global-header .ail-global-search-trigger svg {
+  width: 0.9rem;
+  height: 0.9rem;
+  flex: 0 0 auto;
+}
+
+.workspace-global-header .ail-global-search-trigger kbd {
+  font-family: var(--figma-font-mono);
+  font-size: 0.55rem;
+  padding: 0.1rem 0.3rem;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  color: #748194;
+}
+
+.workspace-global-header .ail-global-search-trigger span {
+  white-space: nowrap;
 }
 
 .workspace-global-header .ail-global-chip {
@@ -780,7 +888,8 @@
   }
 
   .workspace-global-header .ail-branch-selector,
-  .workspace-global-header .ail-global-chip {
+  .workspace-global-header .ail-global-chip,
+  .workspace-global-header .ail-global-search-trigger {
     display: none;
   }
 

@@ -77,6 +77,11 @@ export default function Sidebar({
   ciStatus,
   deployStatus,
   searchContent,
+  onSearch,
+  availableBranches,
+  selectedBranch,
+  onBranchSelect,
+  branchError,
 }) {
   const pathname = usePathname();
 
@@ -89,6 +94,11 @@ export default function Sidebar({
         ciStatus={ciStatus}
         deployStatus={deployStatus}
         searchContent={searchContent}
+        onSearch={onSearch}
+        availableBranches={availableBranches}
+        selectedBranch={selectedBranch}
+        onBranchSelect={onBranchSelect}
+        branchError={branchError}
       />
       <aside className="workspace-sidebar">
         {/* <div className="sidebar-logo">
