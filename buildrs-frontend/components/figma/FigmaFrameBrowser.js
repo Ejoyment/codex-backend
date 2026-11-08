@@ -55,7 +55,14 @@ export default function FigmaFrameBrowser({ fileKey, highlightNodeId, onBack, on
         </button>
       </div>
 
-      {error ? <p className="figma-files-error" role="alert">{error}</p> : null}
+      {error ? (
+        <div className="figma-frame-error" role="alert">
+          <p>{error}</p>
+          {(error.toLowerCase().includes('expired') || error.toLowerCase().includes('denied') || error.toLowerCase().includes('reconnect')) && (
+            <a href="/integrations" className="figma-frame-error-link">Go to integrations →</a>
+          )}
+        </div>
+      ) : null}
 
       {loading && !data ? (
         <div className="figma-panel-loading"><Loader2 className="figma-spin" /><span>Loading pages and frames…</span></div>
