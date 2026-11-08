@@ -43,6 +43,19 @@
     });
   }
 
+  function requestGetFile(fileKey) {
+    chrome.runtime.sendMessage({ type: 'FIGMA_GET_FILE', fileKey }, (response) => {
+      void chrome.runtime.lastError;
+      window.postMessage({
+        source: 'buildrs-helper',
+        type: 'FIGMA_GET_FILE_RESULT',
+        ok: Boolean(response?.ok),
+        data: response?.data || null,
+        error: response?.error || null,
+      }, window.location.origin);
+    });
+  }
+
   sendAuth();
   window.addEventListener('focus', sendAuth);
   window.addEventListener('storage', sendAuth);
@@ -52,6 +65,9 @@
     const data = event.data || {};
     if (data.source === 'buildrs-web' && data.type === 'FIGMA_SYNC_REQUEST') {
       requestSync();
+    }
+    if (data.source === 'buildrs-web' && data.type === 'FIGMA_GET_FILE_REQUEST') {
+      requestGetFile(data.fileKey);
     }
   });
 })();
