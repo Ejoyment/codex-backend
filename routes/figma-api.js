@@ -396,7 +396,13 @@ router.get('/files/:fileKey', authenticateToken, async (req, res) => {
 router.get('/library', authenticateToken, async (req, res) => {
     try {
         const integration = await getFigmaIntegration(req.userId);
-        const files = await fetchAllFiles(integration.getFigmaToken());
+        let files = await fetchAllFiles(integration.getFigmaToken());
+
+        // If PAT discovery found nothing, fall back to the OAuth token
+        if (files.length === 0 && integration.accessToken !== integration.getFigmaToken()) {
+            files = await fetchAllFiles(integration.accessToken);
+        }
+
         return res.json({
             success: true,
             connected: true,
