@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "Buildrs Figma Helper",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Sync your Figma recent files to Buildrs so you can assign frames to agents without pasting links.",
-  "permissions": ["storage", "scripting", "tabs", "alarms"],
+  "permissions": ["storage", "scripting", "tabs", "alarms", "activeTab"],
   "host_permissions": [
     "https://www.figma.com/*",
     "https://codex-backend-7utu.onrender.com/*",

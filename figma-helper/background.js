@@ -313,26 +313,36 @@ async function getFile(fileKey) {
   if (!tab?.id) throw new Error('Could not open Figma in this browser.');
 
   try {
-    await waitForTabComplete(tab.id);
+    await waitForTabComplete(tab.id, 45000);
+
+    let lastError;
     let injection;
-    try {
-      [injection] = await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: fetchFileInPage,
-        args: [fileKey],
-      });
-      console.log('Helper: Injection result:', injection?.result);
-    } catch (error) {
-      console.error('Helper: Scripting error:', error);
-      throw new Error('Could not read this Figma file. Make sure you are signed in to Figma.');
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        [injection] = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: fetchFileInPage,
+          args: [fileKey],
+        });
+        console.log('Helper: Injection result (attempt', attempt, '):', injection?.result);
+        break;
+      } catch (error) {
+        lastError = error;
+        console.error('Helper: Scripting error (attempt', attempt, '):', error);
+        if (attempt < 2) await new Promise((r) => setTimeout(r, 1000));
+      }
+    }
+
+    if (!injection) {
+      throw new Error('Could not inject into Figma. Reload the Buildrs Figma Helper extension at chrome://extensions, then try again.');
     }
 
     const result = injection?.result;
-    if (!result) throw new Error('Could not read this Figma file.');
+    if (!result) throw new Error('Figma did not respond. Make sure you are signed in to figma.com, then try again.');
     if (!result.ok) {
       console.error('Helper: Figma returned error', result.status, result.sample);
       if (result.status === 403) {
-        throw new Error('Figma denied access to this file. Try opening it once in a Figma tab first.');
+        throw new Error('Figma denied access to this file. Open it once in a Figma tab, then try again.');
       }
       throw new Error(`Figma returned ${result.status}.`);
     }
