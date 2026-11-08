@@ -144,8 +144,14 @@ async function fetchFileInPage(fileKey) {
       return { ok: false, status: json.status, json, sample: text.slice(0, 300) };
     }
 
-    // Check multiple response structures for the document node.
-    const doc = json?.document || json?.file?.document || json?.meta?.document;
+    // Figma's web API returns the document at different paths depending on depth
+    // and response shape. Check all plausible locations.
+    const doc =
+      json?.document ||
+      json?.file?.document ||
+      json?.meta?.document ||
+      json?.result?.document ||
+      json?.data?.document;
 
     return {
       ok: response.ok,
