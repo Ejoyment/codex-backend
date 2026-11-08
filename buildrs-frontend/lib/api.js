@@ -291,7 +291,6 @@ export const discordApi = {
 };
 
 export const figmaApi = {
-  listFiles: () => apiFetch('/api/figma/files'),
   getFrames: (fileKey, { thumbnails = true } = {}) =>
     apiFetch(`/api/figma/files/${encodeURIComponent(fileKey)}/frames${thumbnails ? '' : '?thumbnails=0'}`, { timeoutMs: 45000 }),
   generateCode: ({ fileKey, nodeId, target = 'react', prompt = '' }) =>
@@ -306,10 +305,6 @@ export const figmaApi = {
     apiFetch(`/api/figma/library${refresh ? '?refresh=1' : ''}`, { timeoutMs: 90000 }),
   savePersonalAccessToken: (token) =>
     apiFetch('/api/figma/personal-access-token', { method: 'POST', body: JSON.stringify({ token }) }),
-  addLibrarySource: (url) =>
-    apiFetch('/api/figma/library/sources', { method: 'POST', body: JSON.stringify({ url }), timeoutMs: 90000 }),
-  removeLibrarySource: (type, id) =>
-    apiFetch(`/api/figma/library/sources/${encodeURIComponent(type)}/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 };
 
 export const slackApi = {

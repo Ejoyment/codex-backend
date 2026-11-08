@@ -1,21 +1,5 @@
 const axios = require('axios');
 
-const TEAM_URL_RE = /figma\.com\/files\/(?:\d+\/)?team\/(\d+)/i;
-const FOLDER_URL_RE = /figma\.com\/files\/(?:\d+\/)?(?:project|folder)\/(\d+)/i;
-
-const DEFAULT_LIMITS = { maxFolders: 120, maxDepth: 4, concurrency: 4 };
-
-function parseFigmaSourceUrl(input) {
-    const raw = String(input || '').trim();
-    if (!raw) return null;
-    const folder = raw.match(FOLDER_URL_RE);
-    if (folder) return { type: 'folder', id: folder[1] };
-    const team = raw.match(TEAM_URL_RE);
-    if (team) return { type: 'team', id: team[1] };
-    if (/^\d{6,}$/.test(raw)) return { type: 'team', id: raw };
-    return null;
-}
-
 async function figmaV2(accessToken, path) {
     const response = await axios({
         method: 'GET',
@@ -26,130 +10,61 @@ async function figmaV2(accessToken, path) {
     return response.data;
 }
 
-async function mapLimit(items, limit, fn) {
-    const results = new Array(items.length);
-    let next = 0;
-    async function worker() {
-        while (next < items.length) {
-            const index = next++;
-            results[index] = await fn(items[index], index);
-        }
-    }
-    await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
-    return results;
-}
+/**
+ * Walk every team and folder the PAT can reach, returning a flat list of
+ * files. No OAuth scopes required — a Personal Access Token has full read
+ * access to everything the account can open.
+ */
+async function fetchAllFiles(accessToken) {
+    const allFiles = [];
+    const seen = new Set();
 
-function toFile(file, folder) {
-    return {
-        key: file.key,
-        name: file.name || 'Untitled file',
-        thumbnail_url: file.thumbnail_url || null,
-        last_modified: file.last_modified || null,
-        folderId: folder.id,
-        folderName: folder.name,
-    };
-}
+    try {
+        const teams = await figmaV2(accessToken, '/teams');
+        for (const team of teams.teams || []) {
+            const stack = [{ id: team.id, name: team.name, type: 'team' }];
+            while (stack.length) {
+                const node = stack.pop();
 
-async function walkFolders(accessToken, roots, limits) {
-    const folders = new Map();
-    let frontier = roots.slice(0, limits.maxFolders);
-    roots.slice(0, limits.maxFolders).forEach((root) => folders.set(root.id, { ...root, files: [], childIds: [] }));
-    let truncated = roots.length > limits.maxFolders;
-
-    while (frontier.length) {
-        const discovered = [];
-        await mapLimit(frontier, limits.concurrency, async (folder) => {
-            const entry = folders.get(folder.id);
-            const [filesResult, childrenResult] = await Promise.allSettled([
-                figmaV2(accessToken, `/folders/${encodeURIComponent(folder.id)}/files`),
-                folder.depth < limits.maxDepth
-                    ? figmaV2(accessToken, `/folders/${encodeURIComponent(folder.id)}/folders`)
-                    : Promise.resolve({ folders: [] }),
-            ]);
-            if (filesResult.status === 'fulfilled') {
-                entry.files = (filesResult.value?.files || []).filter((file) => file?.key).map((file) => toFile(file, entry));
-            }
-            if (childrenResult.status === 'fulfilled') {
-                for (const child of childrenResult.value?.folders || []) {
-                    if (!child?.id || folders.has(child.id)) continue;
-                    if (folders.size >= limits.maxFolders) {
-                        truncated = true;
-                        break;
+                if (node.type === 'team') {
+                    const folders = await figmaV2(accessToken, `/teams/${node.id}/folders`);
+                    stack.push(...(folders.folders || []).map(f => ({ id: f.id, name: f.name, type: 'folder', parent: node.name })));
+                } else {
+                    const files = await figmaV2(accessToken, `/folders/${node.id}/files`);
+                    for (const file of files.files || []) {
+                        if (!file.key || seen.has(file.key)) continue;
+                        seen.add(file.key);
+                        allFiles.push({
+                            key: file.key,
+                            name: file.name || 'Untitled file',
+                            thumbnail_url: file.thumbnail_url || null,
+                            last_modified: file.last_modified || null,
+                            folderName: node.parent || 'Files',
+                        });
                     }
-                    const stub = { id: String(child.id), name: child.name || 'Untitled folder', parentId: folder.id, depth: folder.depth + 1 };
-                    folders.set(stub.id, { ...stub, files: [], childIds: [] });
-                    entry.childIds.push(stub.id);
-                    discovered.push(stub);
+                    const children = await figmaV2(accessToken, `/folders/${node.id}/folders`);
+                    stack.push(...(children.folders || []).map(f => ({ id: f.id, name: f.name, type: 'folder', parent: node.name })));
                 }
             }
-        });
-        frontier = discovered;
+        }
+    } catch (error) {
+        throw error;
     }
 
-    return { folders, truncated };
-}
-
-function buildTree(folderMap, ids) {
-    return ids
-        .map((id) => folderMap.get(id))
-        .filter(Boolean)
-        .map((folder) => ({
-            id: folder.id,
-            name: folder.name,
-            files: folder.files,
-            folders: buildTree(folderMap, folder.childIds),
-        }));
-}
-
-function countFiles(folders) {
-    return folders.reduce((sum, folder) => sum + folder.files.length + countFiles(folder.folders), 0);
-}
-
-async function fetchTeamLibrary(accessToken, teamId, options = {}) {
-    const limits = { ...DEFAULT_LIMITS, ...options };
-    const team = await figmaV2(accessToken, `/teams/${encodeURIComponent(teamId)}/folders`);
-    const roots = (team?.folders || [])
-        .filter((folder) => folder?.id)
-        .map((folder) => ({ id: String(folder.id), name: folder.name || 'Untitled folder', parentId: null, depth: 1 }));
-    const { folders, truncated } = await walkFolders(accessToken, roots, limits);
-    const tree = buildTree(folders, roots.map((root) => root.id));
-    return { type: 'team', id: String(teamId), name: team?.name || 'Figma team', folders: tree, fileCount: countFiles(tree), truncated };
-}
-
-async function fetchFolderLibrary(accessToken, folderId, options = {}) {
-    const limits = { ...DEFAULT_LIMITS, ...options };
-    const meta = await figmaV2(accessToken, `/folders/${encodeURIComponent(folderId)}/files`);
-    const root = { id: String(folderId), name: meta?.name || 'Figma folder', parentId: null, depth: 1 };
-    const { folders, truncated } = await walkFolders(accessToken, [root], limits);
-    const [tree] = buildTree(folders, [root.id]);
-    return {
-        type: 'folder',
-        id: root.id,
-        name: tree?.name || root.name,
-        folders: tree?.folders || [],
-        files: tree?.files || [],
-        fileCount: tree ? countFiles([tree]) : 0,
-        truncated,
-    };
-}
-
-async function fetchSourceLibrary(accessToken, source, options) {
-    return source.type === 'folder'
-        ? fetchFolderLibrary(accessToken, source.id, options)
-        : fetchTeamLibrary(accessToken, source.id, options);
+    return allFiles;
 }
 
 function describeFigmaError(error) {
     const status = error?.response?.status;
     const providerMessage = String(error?.response?.data?.message || error?.response?.data?.err || '');
     if (status === 403 && /scope/i.test(providerMessage)) {
-        return { status: 403, code: 'FIGMA_SCOPE', message: 'Figma did not grant folder access. Use a Personal Access Token to bypass scope limits.' };
+        return { status: 403, code: 'FIGMA_SCOPE', message: 'Use a Personal Access Token to bypass scope limits.' };
     }
     if (status === 403) {
-        return { status: 403, code: 'FIGMA_FORBIDDEN', message: 'Your Figma account cannot open that team or folder. Check the link, or reconnect Figma with the account that has access.' };
+        return { status: 403, code: 'FIGMA_FORBIDDEN', message: 'Your Figma account cannot open that resource.' };
     }
     if (status === 404) {
-        return { status: 404, code: 'FIGMA_NOT_FOUND', message: 'That Figma team or folder was not found. Copy the link from the Figma file browser and try again.' };
+        return { status: 404, code: 'FIGMA_NOT_FOUND', message: 'That Figma resource was not found.' };
     }
     if (status === 429) {
         return { status: 429, code: 'FIGMA_RATE_LIMITED', message: 'Figma is rate limiting requests. Try again in a minute.' };
@@ -158,10 +73,6 @@ function describeFigmaError(error) {
 }
 
 module.exports = {
-    parseFigmaSourceUrl,
-    fetchTeamLibrary,
-    fetchFolderLibrary,
-    fetchSourceLibrary,
+    fetchAllFiles,
     describeFigmaError,
-    countFiles,
 };

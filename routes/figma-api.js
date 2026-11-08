@@ -9,7 +9,7 @@ const { authenticateToken } = require('../middleware/auth');
 const { buildFigmaAuthorizeUrl } = require('../utils/figmaOAuth');
 const { parseFigmaUrl, listPagesAndFrames } = require('../utils/figmaDesignSpec');
 const { getNodeImageUrls } = require('../utils/figmaContextService');
-const { parseFigmaSourceUrl, fetchSourceLibrary, describeFigmaError } = require('../utils/figmaLibrary');
+const { fetchAllFiles, describeFigmaError } = require('../utils/figmaLibrary');
 const crypto = require('crypto');
 
 // Normalize the backend origin so a `BACKEND_URL` ending in `/api` or a slash
@@ -391,136 +391,23 @@ router.get('/files/:fileKey', authenticateToken, async (req, res) => {
     }
 });
 
-// ===== FOLDER LIBRARY (folders:read) =====
-//
-// Linked teams/folders are stored on the integration as `figmaSources`; their
-// folder trees are read live (cached briefly: folder endpoints are Tier 2).
-
-const LIBRARY_CACHE_TTL_MS = 2 * 60 * 1000;
-const libraryCache = new Map();
-
-function readFigmaSources(integration) {
-    const sources = integration?.metadata?.get?.('figmaSources');
-    return Array.isArray(sources)
-        ? sources.filter((source) => source && ['team', 'folder'].includes(source.type) && source.id)
-        : [];
-}
-
-async function writeFigmaSources(integration, sources) {
-    if (!integration.metadata) integration.metadata = new Map();
-    integration.metadata.set('figmaSources', sources.slice(0, 20));
-    if (typeof integration.markModified === 'function') integration.markModified('metadata');
-    await integration.save();
-}
-
-function libraryCacheKey(userId, source) {
-    return `${userId}:${source.type}:${source.id}`;
-}
-
-async function loadSourceLibrary(userId, accessToken, source, { refresh = false } = {}) {
-    const key = libraryCacheKey(userId, source);
-    const cached = libraryCache.get(key);
-    if (!refresh && cached && Date.now() - cached.at < LIBRARY_CACHE_TTL_MS) return cached.data;
-    const data = await fetchSourceLibrary(accessToken, source);
-    libraryCache.set(key, { at: Date.now(), data });
-    if (libraryCache.size > 500) libraryCache.delete(libraryCache.keys().next().value);
-    return data;
-}
-
-// Every linked team/folder with its folder tree and files, plus files added
-// individually (link or plugin).
+// List every file the PAT (or OAuth token) can reach — flat list, no folder
+// navigation, no URL pasting required.
 router.get('/library', authenticateToken, async (req, res) => {
     try {
-        const integration = await Integration.findOne({ userId: req.userId, provider: 'figma', isActive: true });
-        if (!integration) return res.json({ success: true, connected: false, sources: [], linkedFiles: [] });
-
-        const active = await getFigmaIntegration(req.userId);
-        const refresh = req.query.refresh === '1';
-        const sources = await Promise.all(readFigmaSources(integration).map(async (source) => {
-            try {
-                const library = await loadSourceLibrary(req.userId, active.getFigmaToken(), source, { refresh });
-                return { ...library, addedAt: source.addedAt || null };
-            } catch (error) {
-                const described = describeFigmaError(error);
-                return { type: source.type, id: source.id, name: source.name, addedAt: source.addedAt || null, folders: [], files: [], fileCount: 0, error: described.message, errorCode: described.code };
-            }
-        }));
-
+        const integration = await getFigmaIntegration(req.userId);
+        const files = await fetchAllFiles(integration.getFigmaToken());
         return res.json({
             success: true,
             connected: true,
-            needsReconnect: !(integration.scopes || []).includes('folders:read'),
-            sources,
-            linkedFiles: readSavedFigmaFiles(integration),
+            files,
         });
     } catch (error) {
         if (/Figma (not connected|token expired)/.test(error.message)) {
-            return res.json({ success: true, connected: false, sources: [], linkedFiles: [], message: error.message });
+            return res.json({ success: true, connected: false, files: [], message: error.message });
         }
-        return sendInternalError(req, res, error);
-    }
-});
-
-// Link a team (or a single folder) by pasting its Figma link.
-router.post('/library/sources', authenticateToken, async (req, res) => {
-    try {
-        const integration = await getFigmaIntegration(req.userId);
-        const parsed = parseFigmaSourceUrl(req.body?.url);
-        if (!parsed) {
-            return res.status(400).json({
-                success: false,
-                message: 'Paste a Figma team or folder link, e.g. https://www.figma.com/files/team/123456789/My-Team',
-            });
-        }
-
-        let library;
-        try {
-            library = await loadSourceLibrary(req.userId, integration.getFigmaToken(), parsed, { refresh: true });
-        } catch (error) {
-            const described = describeFigmaError(error);
-            return res.status(described.status).json({ success: false, code: described.code, message: described.message });
-        }
-
-        const existing = readFigmaSources(integration).filter((source) => !(source.type === parsed.type && source.id === parsed.id));
-        await writeFigmaSources(integration, [
-            { type: parsed.type, id: parsed.id, name: library.name, addedAt: new Date().toISOString() },
-            ...existing,
-        ]);
-        return res.json({ success: true, source: library });
-    } catch (error) {
-        if (error.message === 'Figma not connected') {
-            return res.status(400).json({ success: false, message: 'Connect Figma first.' });
-        }
-        return sendInternalError(req, res, error);
-    }
-});
-
-router.delete('/library/sources/:type/:id', authenticateToken, async (req, res) => {
-    try {
-        const integration = await Integration.findOne({ userId: req.userId, provider: 'figma', isActive: true });
-        if (!integration) return res.json({ success: true });
-        const { type, id } = req.params;
-        await writeFigmaSources(integration, readFigmaSources(integration).filter((source) => !(source.type === type && source.id === id)));
-        libraryCache.delete(libraryCacheKey(req.userId, { type, id }));
-        return res.json({ success: true });
-    } catch (error) {
-        return sendInternalError(req, res, error);
-    }
-});
-
-// Remove a file from the user's Buildrs library (does not touch Figma).
-router.delete('/files/:fileKey', authenticateToken, async (req, res) => {
-    try {
-        const integration = await Integration.findOne({ userId: req.userId, provider: 'figma', isActive: true });
-        if (!integration) return res.json({ success: true, files: [] });
-        const remaining = readSavedFigmaFiles(integration).filter((file) => file.key !== req.params.fileKey);
-        if (!integration.metadata) integration.metadata = new Map();
-        integration.metadata.set('figmaFiles', remaining);
-        if (typeof integration.markModified === 'function') integration.markModified('metadata');
-        await integration.save();
-        return res.json({ success: true, files: remaining });
-    } catch (error) {
-        return sendInternalError(req, res, error);
+        const described = describeFigmaError(error);
+        return res.status(described.status).json({ success: false, code: described.code, message: described.message });
     }
 });
 
@@ -887,59 +774,6 @@ router.post('/personal-access-token', authenticateToken, async (req, res) => {
         integration.personalAccessToken = token.trim();
         if (typeof integration.markModified === 'function') integration.markModified('personalAccessToken');
         await integration.save();
-
-        // Auto-discover teams/folders using the PAT so designs appear immediately
-        try {
-            const teamsResponse = await axios.get('https://api.figma.com/v1/teams', {
-                headers: { Authorization: `Bearer ${token.trim()}` },
-                timeout: 15000
-            });
-
-            const teams = teamsResponse.data?.teams || [];
-            const sources = [];
-            for (const team of teams) {
-                try {
-                    const teamFolders = await axios.get(
-                        'https://api.figma.com/v1/teams/' + encodeURIComponent(team.id) + '/folders',
-                        { headers: { Authorization: `Bearer ${token.trim()}` }, timeout: 15000 }
-                    );
-                    const folderRoots = (teamFolders.data?.folders || []).map((folder) => ({
-                        id: String(folder.id),
-                        name: folder.name || 'Untitled folder',
-                        parentId: null,
-                        depth: 1
-                    }));
-
-                    if (folderRoots.length > 0) {
-                        const library = await fetchSourceLibrary(token.trim(), {
-                            type: 'team',
-                            id: team.id,
-                            name: team.name || 'Figma team'
-                        });
-
-                        if (library && library.folders) {
-                            sources.push({
-                                type: 'team',
-                                id: team.id,
-                                name: library.name || team.name || 'Figma team',
-                                folders: library.folders,
-                                fileCount: library.fileCount || 0,
-                                addedAt: new Date().toISOString()
-                            });
-                        }
-                    }
-                } catch (teamErr) {
-                    console.error('Failed to fetch team ' + team.id + ' folders:', teamErr.message);
-                }
-            }
-
-            if (sources.length > 0) {
-                const existing = readFigmaSources(integration).filter((source) => !sources.some((s) => s.type === source.type && s.id === source.id));
-                await writeFigmaSources(integration, [...sources, ...existing]);
-            }
-        } catch (discoveryErr) {
-            console.error('Figma PAT auto-discovery error:', discoveryErr.message);
-        }
 
         return res.json({ success: true, message: 'Personal access token saved.' });
     } catch (error) {
