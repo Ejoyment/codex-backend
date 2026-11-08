@@ -19,42 +19,82 @@
     }
 
     authReady = new Promise((resolve) => {
-      chrome.runtime.sendMessage({ type: 'BUILDRS_AUTH', authToken, apiBase }, () => {
-        // Reading lastError prevents "Unchecked runtime.lastError" noise when
-        // the service worker is restarting.
-        void chrome.runtime.lastError;
+      try {
+        chrome.runtime.sendMessage({ type: 'BUILDRS_AUTH', authToken, apiBase }, () => {
+          void chrome.runtime.lastError;
+          resolve();
+        });
+      } catch (error) {
         resolve();
-      });
+      }
     });
     return authReady;
   }
 
   function requestSync() {
     authReady.then(() => {
-      chrome.runtime.sendMessage({ type: 'FIGMA_SYNC' }, (response) => {
-        void chrome.runtime.lastError;
+      try {
+        chrome.runtime.sendMessage({ type: 'FIGMA_SYNC' }, (response) => {
+          if (chrome.runtime.lastError) {
+            window.postMessage({
+              source: 'buildrs-helper',
+              type: 'FIGMA_SYNC_RESULT',
+              ok: false,
+              error: 'Extension context invalidated. Refresh this Buildrs page and try again.',
+              count: 0,
+            }, window.location.origin);
+            return;
+          }
+          window.postMessage({
+            source: 'buildrs-helper',
+            type: 'FIGMA_SYNC_RESULT',
+            ok: Boolean(response?.ok),
+            error: response?.error || null,
+            count: Number(response?.count) || 0,
+          }, window.location.origin);
+        });
+      } catch (error) {
         window.postMessage({
           source: 'buildrs-helper',
           type: 'FIGMA_SYNC_RESULT',
-          ok: Boolean(response?.ok),
-          error: response?.error || null,
-          count: Number(response?.count) || 0,
+          ok: false,
+          error: 'Extension context invalidated. Refresh this Buildrs page and try again.',
+          count: 0,
         }, window.location.origin);
-      });
+      }
     });
   }
 
   function requestGetFile(fileKey) {
-    chrome.runtime.sendMessage({ type: 'FIGMA_GET_FILE', fileKey }, (response) => {
-      void chrome.runtime.lastError;
+    try {
+      chrome.runtime.sendMessage({ type: 'FIGMA_GET_FILE', fileKey }, (response) => {
+        if (chrome.runtime.lastError) {
+          window.postMessage({
+            source: 'buildrs-helper',
+            type: 'FIGMA_GET_FILE_RESULT',
+            ok: false,
+            data: null,
+            error: 'Extension context invalidated. Refresh this Buildrs page and try again.',
+          }, window.location.origin);
+          return;
+        }
+        window.postMessage({
+          source: 'buildrs-helper',
+          type: 'FIGMA_GET_FILE_RESULT',
+          ok: Boolean(response?.ok),
+          data: response?.data || null,
+          error: response?.error || null,
+        }, window.location.origin);
+      });
+    } catch (error) {
       window.postMessage({
         source: 'buildrs-helper',
         type: 'FIGMA_GET_FILE_RESULT',
-        ok: Boolean(response?.ok),
-        data: response?.data || null,
-        error: response?.error || null,
+        ok: false,
+        data: null,
+        error: 'Extension context invalidated. Refresh this Buildrs page and try again.',
       }, window.location.origin);
-    });
+    }
   }
 
   sendAuth();
