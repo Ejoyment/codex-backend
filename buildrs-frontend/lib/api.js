@@ -291,6 +291,7 @@ export const discordApi = {
 };
 
 export const figmaApi = {
+  listFiles: () => apiFetch('/api/figma/files'),
   getFrames: (fileKey, { thumbnails = true } = {}) =>
     apiFetch(`/api/figma/files/${encodeURIComponent(fileKey)}/frames${thumbnails ? '' : '?thumbnails=0'}`, { timeoutMs: 45000 }),
   generateCode: ({ fileKey, nodeId, target = 'react', prompt = '' }) =>
