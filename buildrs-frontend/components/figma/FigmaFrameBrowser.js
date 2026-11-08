@@ -21,20 +21,27 @@ export default function FigmaFrameBrowser({ fileKey, highlightNodeId, onBack, on
 
     const loadWithHelper = () => {
       return new Promise((resolve, reject) => {
-        chrome.runtime.sendMessage(
-          { type: 'FIGMA_GET_FILE', fileKey },
-          (response) => {
-            if (chrome.runtime.lastError || !response?.ok) {
-              reject(new Error(response?.error || 'Could not load file via helper'));
-            } else {
-              resolve({
-                success: true,
-                file: { key: fileKey, name: response.data.name },
-                pages: response.data.pages || [],
-              });
-            }
+        const handler = (event) => {
+          if (event.source !== window) return;
+          const d = event.data || {};
+          if (d.source !== 'buildrs-helper' || d.type !== 'FIGMA_GET_FILE_RESULT') return;
+          window.removeEventListener('message', handler);
+          if (d.ok) {
+            resolve({
+              success: true,
+              file: { key: fileKey, name: d.data?.name || fileKey },
+              pages: d.data?.pages || [],
+            });
+          } else {
+            reject(new Error(d.error || 'Could not load file via helper'));
           }
-        );
+        };
+        window.addEventListener('message', handler);
+        window.postMessage({ source: 'buildrs-web', type: 'FIGMA_GET_FILE_REQUEST', fileKey }, window.location.origin);
+        setTimeout(() => {
+          window.removeEventListener('message', handler);
+          reject(new Error('Helper response timeout'));
+        }, 15000);
       });
     };
 
@@ -49,7 +56,6 @@ export default function FigmaFrameBrowser({ fileKey, highlightNodeId, onBack, on
       })
       .catch((helperError) => {
         console.warn('Helper failed, falling back to backend:', helperError.message);
-        // Fallback to original backend call
         figmaApi.getFrames(fileKey)
           .then((result) => {
             if (!active) return;
