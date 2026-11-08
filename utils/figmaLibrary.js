@@ -12,44 +12,38 @@ async function figmaV2(accessToken, path) {
 
 /**
  * Walk every team and folder the token can reach, returning a flat list of
- * files. Never throws — on any discovery failure it logs and returns [] so
- * the UI stays usable instead of showing a cryptic error.
+ * files. Throws on discovery failure so the route can surface a real error.
  */
 async function fetchAllFiles(accessToken) {
     const allFiles = [];
     const seen = new Set();
 
-    try {
-        const teams = await figmaV2(accessToken, '/teams');
-        for (const team of teams.teams || []) {
-            const stack = [{ id: team.id, name: team.name, type: 'team' }];
-            while (stack.length) {
-                const node = stack.pop();
+    const teams = await figmaV2(accessToken, '/teams');
+    for (const team of teams.teams || []) {
+        const stack = [{ id: team.id, name: team.name, type: 'team' }];
+        while (stack.length) {
+            const node = stack.pop();
 
-                if (node.type === 'team') {
-                    const folders = await figmaV2(accessToken, `/teams/${node.id}/folders`);
-                    stack.push(...(folders.folders || []).map(f => ({ id: f.id, name: f.name, type: 'folder', parent: node.name })));
-                } else {
-                    const files = await figmaV2(accessToken, `/folders/${node.id}/files`);
-                    for (const file of files.files || []) {
-                        if (!file.key || seen.has(file.key)) continue;
-                        seen.add(file.key);
-                        allFiles.push({
-                            key: file.key,
-                            name: file.name || 'Untitled file',
-                            thumbnail_url: file.thumbnail_url || null,
-                            last_modified: file.last_modified || null,
-                            folderName: node.parent || 'Files',
-                        });
-                    }
-                    const children = await figmaV2(accessToken, `/folders/${node.id}/folders`);
-                    stack.push(...(children.folders || []).map(f => ({ id: f.id, name: f.name, type: 'folder', parent: node.name })));
+            if (node.type === 'team') {
+                const folders = await figmaV2(accessToken, `/teams/${node.id}/folders`);
+                stack.push(...(folders.folders || []).map(f => ({ id: f.id, name: f.name, type: 'folder', parent: node.name })));
+            } else {
+                const files = await figmaV2(accessToken, `/folders/${node.id}/files`);
+                for (const file of files.files || []) {
+                    if (!file.key || seen.has(file.key)) continue;
+                    seen.add(file.key);
+                    allFiles.push({
+                        key: file.key,
+                        name: file.name || 'Untitled file',
+                        thumbnail_url: file.thumbnail_url || null,
+                        last_modified: file.last_modified || null,
+                        folderName: node.parent || 'Files',
+                    });
                 }
+                const children = await figmaV2(accessToken, `/folders/${node.id}/folders`);
+                stack.push(...(children.folders || []).map(f => ({ id: f.id, name: f.name, type: 'folder', parent: node.name })));
             }
         }
-    } catch (error) {
-        console.error('Figma fetchAllFiles error:', error.response?.status, error.response?.data?.message || error.message);
-        // Return whatever we managed to collect instead of throwing.
     }
 
     return allFiles;
