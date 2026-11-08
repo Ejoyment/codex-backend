@@ -17,6 +17,9 @@
   "background": {
     "service_worker": "background.js"
   },
+  "externally_connectable": {
+    "matches": ["https://buildrshq.dev/*", "https://www.buildrshq.dev/*", "http://localhost:3000/*", "http://127.0.0.1:3000/*"]
+  },
   "action": {
     "default_title": "Buildrs Figma Helper",
     "default_popup": "popup.html",
