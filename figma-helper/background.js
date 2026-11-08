@@ -115,8 +115,42 @@ async function fetchRecentFilesInPage(url) {
   };
 }
 
+// Recursively search a parsed JSON value for a Figma DOCUMENT root node.
+// Figma's web API wraps the document at varying depths and keys; walking the
+// object tree directly is more robust than guessing shallow paths.
+function findDocumentNode(value, depth = 0) {
+  if (depth > 12) return null;
+  if (value && typeof value === 'object') {
+    if (value.type === 'DOCUMENT' && Array.isArray(value.children)) return value;
+    if (value.document && typeof value.document === 'object') {
+      const found = findDocumentNode(value.document, depth + 1);
+      if (found) return found;
+    }
+    if (value.file && typeof value.file === 'object') {
+      const found = findDocumentNode(value.file, depth + 1);
+      if (found) return found;
+    }
+    if (value.meta && typeof value.meta === 'object') {
+      const found = findDocumentNode(value.meta, depth + 1);
+      if (found) return found;
+    }
+    if (value.result && typeof value.result === 'object') {
+      const found = findDocumentNode(value.result, depth + 1);
+      if (found) return found;
+    }
+    if (value.data && typeof value.data === 'object') {
+      const found = findDocumentNode(value.data, depth + 1);
+      if (found) return found;
+    }
+    for (const key of Object.keys(value)) {
+      const found = findDocumentNode(value[key], depth + 1);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
 async function fetchFileInPage(fileKey) {
-  // Try multiple depth values: Figma's web API response shape varies by depth.
   for (const depth of [2, 1, null]) {
     const url = depth
       ? `https://www.figma.com/api/files/${encodeURIComponent(fileKey)}?depth=${depth}`
@@ -144,22 +178,20 @@ async function fetchFileInPage(fileKey) {
       return { ok: false, status: json.status, json, sample: text.slice(0, 300) };
     }
 
-    // Figma's web API returns the document at different paths depending on depth
-    // and response shape. Check all plausible locations.
-    const doc =
-      json?.document ||
-      json?.file?.document ||
-      json?.meta?.document ||
-      json?.result?.document ||
-      json?.data?.document;
+    // Figma's web API nests the document at varying depths. Search recursively
+    // for a DOCUMENT root node instead of guessing shallow paths.
+    const doc = findDocumentNode(json);
 
-    return {
-      ok: response.ok,
-      status: response.status,
-      json,
-      sample: text.slice(0, 300),
-      document: doc || null,
-    };
+    if (doc) {
+      return {
+        ok: response.ok,
+        status: response.status,
+        json,
+        sample: text.slice(0, 300),
+        document: doc,
+      };
+    }
+    // Try the next depth value if no document node was found.
   }
 
   return { ok: false, status: 0, json: null, sample: '', document: null };
