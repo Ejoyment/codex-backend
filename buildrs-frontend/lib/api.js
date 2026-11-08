@@ -14,6 +14,14 @@ export function normalizeApiBaseUrl(raw) {
 }
 
 export const API_BASE_URL = normalizeApiBaseUrl(process.env.NEXT_PUBLIC_API_URL || '');
+// The Buildrs Figma helper reads this to know which backend to sync files to.
+if (typeof window !== 'undefined' && API_BASE_URL) {
+  try {
+    localStorage.setItem('buildrsApiBase', API_BASE_URL);
+  } catch (error) {
+    // Storage can be unavailable (private mode); the helper has a default.
+  }
+}
 // Realtime endpoints share the backend origin unless overridden — never fall
 // back to localhost in production (REST-on-render + socket-on-localhost is a
 // guaranteed split failure).
@@ -280,14 +288,6 @@ export const discordApi = {
 
 export const figmaApi = {
   listFiles: () => apiFetch('/api/figma/files'),
-  addFile: (url) => apiFetch('/api/figma/files', { method: 'POST', body: JSON.stringify({ url }) }),
-  getLibrary: ({ refresh = false } = {}) =>
-    apiFetch(`/api/figma/library${refresh ? '?refresh=1' : ''}`, { timeoutMs: 90000 }),
-  addLibrarySource: (url) =>
-    apiFetch('/api/figma/library/sources', { method: 'POST', body: JSON.stringify({ url }), timeoutMs: 90000 }),
-  removeLibrarySource: (type, id) =>
-    apiFetch(`/api/figma/library/sources/${encodeURIComponent(type)}/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  removeFile: (fileKey) => apiFetch(`/api/figma/files/${encodeURIComponent(fileKey)}`, { method: 'DELETE' }),
   getFrames: (fileKey, { thumbnails = true } = {}) =>
     apiFetch(`/api/figma/files/${encodeURIComponent(fileKey)}/frames${thumbnails ? '' : '?thumbnails=0'}`, { timeoutMs: 45000 }),
   generateCode: ({ fileKey, nodeId, target = 'react', prompt = '' }) =>
@@ -296,9 +296,6 @@ export const figmaApi = {
       body: JSON.stringify({ fileKey, nodeId, target, prompt }),
       timeoutMs: 120000,
     }),
-  getPluginStatus: () => apiFetch('/api/figma/plugin/status'),
-  createPluginToken: () => apiFetch('/api/figma/plugin/token', { method: 'POST' }),
-  revokePluginToken: () => apiFetch('/api/figma/plugin/token', { method: 'DELETE' }),
   getComments: (fileKey) => apiFetch(`/api/figma/files/${fileKey}/comments`),
   getStatus: () => apiFetch('/api/figma/status'),
 };

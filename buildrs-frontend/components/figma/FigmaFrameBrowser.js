@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Code2, ExternalLink, ListPlus, Loader2, RefreshCw, Sparkles } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ArrowLeft, Code2, ExternalLink, ListPlus, Loader2, RefreshCw } from 'lucide-react';
 import { figmaApi } from '../../lib/api';
 
 export function figmaFrameUrl(fileKey, nodeId) {
@@ -23,24 +23,18 @@ export default function FigmaFrameBrowser({ fileKey, highlightNodeId, onBack, on
         if (!active) return;
         if (!result.success) throw new Error(result.message || 'Could not load this file');
         setData(result);
-        const targetIds = new Set([highlightNodeId, ...(result.selection || []).map((node) => node.id)].filter(Boolean));
-        const pageWithTarget = result.pages.find((page) => page.frames.some((frame) => targetIds.has(frame.id)))
-          || result.pages.find((page) => (result.selection || []).some((node) => node.pageId === page.id));
-        setPageId((pageWithTarget || result.pages.find((page) => page.frames.length) || result.pages[0])?.id || null);
+        const pageWithTarget = result.pages.find((page) => page.frames.some((frame) => frame.id === highlightNodeId))
+          || result.pages.find((page) => page.frames.length)
+          || result.pages[0];
+        setPageId(pageWithTarget?.id || null);
       })
       .catch((loadError) => active && setError(loadError.message || 'Could not load this file'))
       .finally(() => active && setLoading(false));
     return () => { active = false; };
   }, [fileKey, highlightNodeId, reloadKey]);
 
-  const sentIds = useMemo(
-    () => new Set([highlightNodeId, ...((data?.selection) || []).map((node) => node.id)].filter(Boolean)),
-    [data, highlightNodeId]
-  );
   const page = data?.pages.find((candidate) => candidate.id === pageId) || null;
-  const frames = page
-    ? [...page.frames].sort((a, b) => Number(sentIds.has(b.id)) - Number(sentIds.has(a.id)))
-    : [];
+  const frames = page ? page.frames : [];
 
   return (
     <div className="figma-browser">
@@ -86,7 +80,7 @@ export default function FigmaFrameBrowser({ fileKey, highlightNodeId, onBack, on
           {frames.length ? (
             <div className="figma-frame-grid">
               {frames.map((frame) => (
-                <article key={frame.id} className={`figma-frame-card ${sentIds.has(frame.id) ? 'is-sent' : ''}`}>
+                <article key={frame.id} className={`figma-frame-card ${frame.id === highlightNodeId ? 'is-highlighted' : ''}`}>
                   <div className="figma-frame-thumb">
                     {frame.thumbnailUrl ? (
                       // Figma CDN renders are short-lived signed URLs; next/image can't cache them.
@@ -95,7 +89,6 @@ export default function FigmaFrameBrowser({ fileKey, highlightNodeId, onBack, on
                     ) : (
                       <span>{frame.width && frame.height ? `${frame.width} × ${frame.height}` : frame.type.toLowerCase()}</span>
                     )}
-                    {sentIds.has(frame.id) ? <em><Sparkles /> Sent from Figma</em> : null}
                   </div>
                   <div className="figma-frame-body">
                     <strong title={frame.name}>{frame.name}</strong>

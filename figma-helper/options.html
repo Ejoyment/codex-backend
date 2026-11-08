@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Buildrs Figma Helper Settings</title>
+  <link rel="stylesheet" href="popup.css">
+  <style>
+    body { width: auto; max-width: 620px; margin: 0 auto; padding: 28px; }
+    label { display: block; margin-top: 16px; color: var(--muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+    input { width: 100%; margin-top: 6px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--text); font: inherit; }
+    input:focus { border-color: rgba(18, 212, 220, 0.45); outline: none; }
+    .actions { display: flex; gap: 10px; margin-top: 20px; }
+    .actions button { width: auto; min-width: 120px; margin-top: 0; }
+    .saved { margin-top: 12px; color: var(--accent); font-size: 12px; }
+    ol { color: var(--muted); font-size: 12px; line-height: 1.7; padding-left: 18px; }
+  </style>
+</head>
+<body>
+  <header>
+    <img src="icons/icon48.png" alt="" class="logo">
+    <div>
+      <h1>Buildrs Figma Helper</h1>
+      <p>Settings</p>
+    </div>
+  </header>
+
+  <main>
+    <label for="api-base">Buildrs API base</label>
+    <input id="api-base" type="url" placeholder="https://codex-backend-7utu.onrender.com" autocomplete="off">
+
+    <label for="frontend-base">Buildrs web app base</label>
+    <input id="frontend-base" type="url" placeholder="https://buildrshq.dev" autocomplete="off">
+
+    <div class="actions">
+      <button id="save" type="button" class="primary">Save settings</button>
+      <button id="sync" type="button" class="secondary">Sync now</button>
+    </div>
+    <p id="message" class="saved" hidden></p>
+    <p id="error" class="error" hidden></p>
+
+    <h2 style="font-size:13px;margin-top:24px;">How syncing works</h2>
+    <ol>
+      <li>Open Buildrs and sign in. The helper reads your Buildrs token from the page.</li>
+      <li>Keep a signed-in <code>figma.com</code> tab available.</li>
+      <li>Click <em>Sync now</em>. Your Figma recent files appear on the Buildrs Figma page automatically.</li>
+    </ol>
+    <p class="hint">Only file keys, names, thumbnails and modified dates are sent to Buildrs. Your Figma cookies and password never leave your browser.</p>
+  </main>
+
+  <script src="options.js"></script>
+</body>
+</html>

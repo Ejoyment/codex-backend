@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Buildrs Figma Helper</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <img src="icons/icon48.png" alt="" class="logo">
+    <div>
+      <h1>Buildrs Figma Helper</h1>
+      <p id="status-line">Checking connection…</p>
+    </div>
+  </header>
+
+  <main>
+    <div class="stats">
+      <div><span id="file-count">0</span><small>designs synced</small></div>
+      <div><span id="last-sync">Never</span><small>last sync</small></div>
+    </div>
+
+    <p id="error" class="error" hidden></p>
+
+    <button id="sync" type="button" class="primary">Sync now</button>
+    <button id="open-figma" type="button" class="secondary">Open Buildrs Figma page</button>
+    <button id="options" type="button" class="link">Settings</button>
+
+    <p class="hint">
+      Keep a figma.com tab open and signed in. Buildrs reads only your recent file list —
+      never your designs or your Figma password.
+    </p>
+  </main>
+
+  <script src="popup.js"></script>
+</body>
+</html>

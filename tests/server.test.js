@@ -275,26 +275,20 @@ describe('Server', () => {
     expect(res.status).toBe(403);
     expect(res.body.success).toBe(false);
   });
-  test('Figma plugin routes accept the sandboxed plugin origin without credentials', async () => {
+
+  test('the Figma helper sync route accepts extension origins without credentials', async () => {
     const preflight = await request(app)
-      .options('/api/figma/plugin/push')
-      .set('Origin', 'null')
+      .options('/api/figma/files/sync')
+      .set('Origin', 'chrome-extension://abcdefghijklmnop')
       .set('Access-Control-Request-Method', 'POST')
       .set('Access-Control-Request-Headers', 'authorization,content-type');
     expect(preflight.status).toBe(204);
-    expect(preflight.headers['access-control-allow-origin']).toBe('null');
+    expect(preflight.headers['access-control-allow-origin']).toBe('chrome-extension://abcdefghijklmnop');
     expect(preflight.headers['access-control-allow-credentials']).toBeUndefined();
 
-    const res = await request(app).get('/api/figma/plugin/me').set('Origin', 'null');
-    expect(res.status).toBe(401);
-    expect(res.headers['access-control-allow-origin']).toBe('null');
-  });
-
-  test('plugin pairing and other routes keep the strict CORS allowlist', async () => {
-    const pairing = await request(app).post('/api/figma/plugin/token').set('Origin', 'null');
-    expect(pairing.status).toBe(403);
-
-    const other = await request(app).get('/api/health').set('Origin', 'null');
+    const other = await request(app)
+      .get('/api/health')
+      .set('Origin', 'chrome-extension://abcdefghijklmnop');
     expect(other.status).toBe(403);
   });
 });

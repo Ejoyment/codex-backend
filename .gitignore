@@ -93,7 +93,7 @@ temp/
 # Audit workbench (5MB+ reports/graphs, local only — see PR #27)
 docs/audit/
 
-# Downloadable Figma plugin (rebuilt with npm run build:figma-plugin)
-!buildrs-frontend/public/downloads/buildrs-figma-plugin.zip
-!figma-plugin/ui.html
-!figma-plugin/PUBLISHING.md
+# Downloadable Figma helper extension (rebuilt with npm run build:figma-helper)
+!buildrs-frontend/public/downloads/buildrs-figma-helper.zip
+!figma-helper/*.html
+!figma-helper/README.md

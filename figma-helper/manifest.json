@@ -1,0 +1,49 @@
+{
+  "manifest_version": 3,
+  "name": "Buildrs Figma Helper",
+  "version": "1.0.0",
+  "description": "Sync your Figma recent files to Buildrs so you can assign frames to agents without pasting links.",
+  "permissions": ["storage", "scripting", "tabs", "alarms"],
+  "host_permissions": [
+    "https://www.figma.com/*",
+    "https://codex-backend-7utu.onrender.com/*",
+    "https://*.buildrshq.dev/*",
+    "http://localhost:3000/*",
+    "http://localhost:3001/*",
+    "http://127.0.0.1:3000/*",
+    "http://127.0.0.1:3001/*"
+  ],
+  "optional_host_permissions": ["https://*/*", "http://*/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Buildrs Figma Helper",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "options_page": "options.html",
+  "content_scripts": [
+    {
+      "matches": [
+        "https://buildrshq.dev/*",
+        "https://www.buildrshq.dev/*",
+        "http://localhost:3000/*",
+        "http://localhost:3001/*",
+        "http://127.0.0.1:3000/*",
+        "http://127.0.0.1:3001/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
