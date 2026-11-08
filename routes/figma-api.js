@@ -164,6 +164,48 @@ async function figmaAPI(accessToken, endpoint, method = 'GET', data = null) {
  *       500:
  *         description: Internal server error
  */
+// Temporary debug: test the stored OAuth token against Figma directly.
+// Remove this route once the access issue is confirmed resolved.
+router.get('/debug-token', authenticateToken, async (req, res) => {
+    try {
+        const integration = await Integration.findOne({ userId: req.userId, provider: 'figma', isActive: true });
+        if (!integration) return res.json({ connected: false });
+
+        const tokenPreview = String(integration.accessToken || '').slice(0, 12) + '…';
+        const expiresAt = integration.expiresAt;
+        const expired = expiresAt ? new Date() > new Date(expiresAt) : null;
+
+        // Try a live call to /v1/me
+        let figmaMe = null;
+        let figmaError = null;
+        try {
+            const r = await axios.get('https://api.figma.com/v1/me', {
+                headers: { Authorization: `Bearer ${integration.accessToken}` },
+                timeout: 10000,
+            });
+            figmaMe = { email: r.data.email, handle: r.data.handle, id: r.data.id };
+        } catch (err) {
+            figmaError = {
+                status: err.response?.status,
+                data: err.response?.data,
+                message: err.message,
+            };
+        }
+
+        return res.json({
+            connected: true,
+            tokenPreview,
+            expiresAt,
+            expired,
+            providerEmail: integration.providerEmail,
+            figmaMe,
+            figmaError,
+        });
+    } catch (err) {
+        return res.status(500).json({ error: err.message });
+    }
+});
+
 // Get current user
 router.get('/me', authenticateToken, async (req, res) => {
     try {
