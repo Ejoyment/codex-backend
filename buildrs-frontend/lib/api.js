@@ -302,6 +302,8 @@ export const figmaApi = {
     }),
   getComments: (fileKey) => apiFetch(`/api/figma/files/${fileKey}/comments`),
   getStatus: () => apiFetch('/api/figma/status'),
+  getLibrary: ({ refresh = false } = {}) =>
+    apiFetch(`/api/figma/library${refresh ? '?refresh=1' : ''}`, { timeoutMs: 90000 }),
   savePersonalAccessToken: (token) =>
     apiFetch('/api/figma/personal-access-token', { method: 'POST', body: JSON.stringify({ token }) }),
   addLibrarySource: (url) =>

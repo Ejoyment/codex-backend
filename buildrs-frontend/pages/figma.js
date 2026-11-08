@@ -12,9 +12,9 @@ import useAuthStore from '../store/authStore';
 import { apiFetch, figmaApi } from '../lib/api';
 
 const STEPS = [
-  { number: '01', title: 'Connect Figma', description: 'Authorize Buildrs to read the designs you can already open.' },
-  { number: '02', title: 'Install the helper', description: 'Your recent files sync automatically. No links, no plugin.' },
-  { number: '03', title: 'Assign frames', description: 'Open a design, pick a frame, and hand it to an agent or task.' },
+  { number: '01', title: 'Connect Figma', description: 'Authorize Buildrs to read your designs.' },
+  { number: '02', title: 'Add a Personal Access Token', description: 'Paste a Figma PAT so Buildrs can open your files.' },
+  { number: '03', title: 'Pick a frame', description: 'Convert it to code or hand it to an AI task.' },
 ];
 
 export default function FigmaPage() {
@@ -25,7 +25,6 @@ export default function FigmaPage() {
   const [hasPat, setHasPat] = useState(false);
   const [library, setLibrary] = useState(null);
   const [files, setFiles] = useState([]);
-  const [helperSyncedAt, setHelperSyncedAt] = useState(null);
   const [statusLoading, setStatusLoading] = useState(true);
   const [filesLoading, setFilesLoading] = useState(false);
   const [connecting, setConnecting] = useState(false);
@@ -61,7 +60,6 @@ export default function FigmaPage() {
       if (!result.success) throw new Error(result.message || 'Could not load your Figma designs');
       setLibrary(result);
       setFiles(result.linkedFiles || []);
-      setHelperSyncedAt(result.helperSyncedAt || null);
     } catch (loadError) {
       console.error('Failed to load Figma library:', loadError);
       setFilesError(loadError.message || 'Could not load your Figma designs');
@@ -69,22 +67,6 @@ export default function FigmaPage() {
       setFilesLoading(false);
     }
   }, []);
-
-  // The helper content script relays a sync request to the extension and posts
-  // the result back here, so visiting the page refreshes the design list.
-  useEffect(() => {
-    if (!connected) return undefined;
-    const onMessage = (event) => {
-      if (event.source !== window) return;
-      const data = event.data || {};
-      if (data.source === 'buildrs-helper' && data.type === 'FIGMA_SYNC_RESULT') {
-        loadFiles();
-      }
-    };
-    window.addEventListener('message', onMessage);
-    window.postMessage({ source: 'buildrs-web', type: 'FIGMA_SYNC_REQUEST' }, window.location.origin);
-    return () => window.removeEventListener('message', onMessage);
-  }, [connected, loadFiles]);
 
   useEffect(() => {
     let active = true;
@@ -138,7 +120,6 @@ export default function FigmaPage() {
   };
 
   const refreshFiles = () => {
-    window.postMessage({ source: 'buildrs-web', type: 'FIGMA_SYNC_REQUEST' }, window.location.origin);
     loadFiles({ refresh: true });
   };
 
@@ -257,7 +238,7 @@ export default function FigmaPage() {
               {!hasPat && (
                 <section className="figma-pat-setup" aria-labelledby="figma-pat-title">
                   <h3 id="figma-pat-title">Add Figma Personal Access Token</h3>
-                  <p>Bypass OAuth scope limits by pasting a Figma Personal Access Token. Generate one at Figma Settings → Security → Personal Access Tokens.</p>
+                  <p>Paste a Figma Personal Access Token so Buildrs can open your files. Generate one at Figma Settings → Security → Personal Access Tokens.</p>
                   {patError && <p className="figma-files-error" role="alert">{patError}</p>}
                   <form className="figma-import" onSubmit={(e) => { e.preventDefault(); savePat(); }}>
                     <div className="figma-import-row">
@@ -283,7 +264,6 @@ export default function FigmaPage() {
               <FigmaLibrary
                 library={library}
                 loading={filesLoading}
-                helperSyncedAt={helperSyncedAt}
                 account={account}
                 onRefresh={refreshFiles}
                 onOpenFile={(fileKey) => openFile(fileKey)}
