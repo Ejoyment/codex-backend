@@ -3585,70 +3585,22 @@ export default function Editor() {
         <link rel="icon" href="/buildrs.png" />
       </Head>
 
-      <div className="workspace-container ed-workspace-shell">
+<div className="workspace-container ed-workspace-shell">
         <Sidebar
           user={user}
           subscription={subscription}
           headerBranch={selectedBranch || gitStatus?.branch || selectedRepo?.default_branch || selectedRepo?.defaultBranch || selectedProject?.defaultBranch || 'main'}
+          availableBranches={availableBranches}
+          selectedBranch={selectedBranch || gitStatus?.branch || selectedRepo?.default_branch || selectedRepo?.defaultBranch || selectedProject?.defaultBranch || 'main'}
+          onBranchSelect={chooseBranch}
+          branchError={branchError}
+          onSearch={() => {
+            setPaletteQuery('');
+            setPaletteIndex(0);
+            setPaletteOpen(true);
+          }}
         />
         <main className="workspace-main ed-workspace-main">
-          <header className="ed-global-header">
-            <div className="ed-global-context">
-              <div className="ed-branch-wrap">
-              <button
-                type="button"
-                className="ed-global-branch"
-                onClick={() => setBranchMenuOpen((open) => !open)}
-                title="Switch branch"
-              >
-                <GitBranch className="w-3.5 h-3.5" />
-                <span>{selectedBranch || gitStatus?.branch || 'main'}</span>
-                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${branchMenuOpen ? 'rotate-180' : ''}`} />
-              </button>
-              {branchMenuOpen && (
-                <div className="ed-branch-menu">
-                  {branchError && <div className="ed-drop-section">{branchError}</div>}
-                  {availableBranches.map((branch) => (
-                    <button
-                      key={branch}
-                      type="button"
-                      className={`ed-drop-item ${branch === selectedBranch ? 'is-active' : ''}`}
-                      onClick={() => chooseBranch(branch)}
-                    >
-                      <GitBranch className="w-3.5 h-3.5" />
-                      <span>{branch}</span>
-                      {branch === selectedBranch && <CheckCircle className="w-3.5 h-3.5 ml-auto" />}
-                    </button>
-                  ))}
-                  {!availableBranches.length && !branchError && (
-                    <div className="ed-drop-section">No branches available</div>
-                  )}
-                </div>
-              )}
-              </div>
-              {gitStatus && (
-                <span className={`ed-global-status ${modifiedCount ? 'is-changed' : 'is-clean'}`}>
-                  <span />
-                  {modifiedCount ? `${modifiedCount} changes` : 'Working tree clean'}
-                </span>
-              )}
-            </div>
-            <button
-              type="button"
-              className="ed-global-search-trigger"
-              onClick={() => {
-                setPaletteQuery('');
-                setPaletteIndex(0);
-                setPaletteOpen(true);
-              }}
-              aria-label="Search files and editor commands"
-            >
-              <Search className="w-4 h-4" />
-              <span>Search specs, diff, agents</span>
-              <kbd>⌘K</kbd>
-            </button>
-
-          </header>
           <div className="ed-page">
             {/* ---- Editor workspace ---- */}
             <div className="ed-body">
