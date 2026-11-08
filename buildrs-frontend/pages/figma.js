@@ -364,8 +364,8 @@ export default function FigmaPage() {
                     </p>
                   </div>
                   <FigmaPluginCard />
-                </section>
-              ) : null}
+                </div>
+              )}
             </div>
           ) : (
             <div className="figma-empty-state">
