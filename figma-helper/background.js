@@ -116,30 +116,47 @@ async function fetchRecentFilesInPage(url) {
 }
 
 async function fetchFileInPage(fileKey) {
-  const url = `https://www.figma.com/api/files/${encodeURIComponent(fileKey)}?depth=2`;
-  const headers = { accept: 'application/json', 'x-csrf-bypass': 'yes' };
-  const tsid = document.cookie.match(/(?:^|;\s*)tsid=([^;]+)/);
-  if (tsid) headers.tsid = decodeURIComponent(tsid[1]);
+  // Try multiple depth values: Figma's web API response shape varies by depth.
+  for (const depth of [2, 1, null]) {
+    const url = depth
+      ? `https://www.figma.com/api/files/${encodeURIComponent(fileKey)}?depth=${depth}`
+      : `https://www.figma.com/api/files/${encodeURIComponent(fileKey)}`;
 
-  let response = await fetch(url, { credentials: 'include', headers });
-  let text = await response.text();
-  if (!response.ok) {
-    response = await fetch(url, { credentials: 'include' });
-    text = await response.text();
+    const headers = { accept: 'application/json', 'x-csrf-bypass': 'yes' };
+    const tsid = document.cookie.match(/(?:^|;\s*)tsid=([^;]+)/);
+    if (tsid) headers.tsid = decodeURIComponent(tsid[1]);
+
+    let response;
+    try {
+      response = await fetch(url, { credentials: 'include', headers });
+    } catch (error) {
+      continue;
+    }
+
+    let text;
+    try { text = await response.text(); } catch { continue; }
+
+    let json = null;
+    try { json = JSON.parse(text); } catch { json = null; }
+
+    // Figma sometimes embeds an error status inside a 200 response.
+    if (json && typeof json.status === 'number' && json.status >= 400) {
+      return { ok: false, status: json.status, json, sample: text.slice(0, 300) };
+    }
+
+    // Check multiple response structures for the document node.
+    const doc = json?.document || json?.file?.document || json?.meta?.document;
+
+    return {
+      ok: response.ok,
+      status: response.status,
+      json,
+      sample: text.slice(0, 300),
+      document: doc || null,
+    };
   }
 
-  let json = null;
-  try {
-    json = JSON.parse(text);
-  } catch (error) {
-    json = null;
-  }
-  return {
-    ok: response.ok,
-    status: response.status,
-    json,
-    sample: text.slice(0, 300),
-  };
+  return { ok: false, status: 0, json: null, sample: '', document: null };
 }
 
 function mapRecentFiles(payload) {
@@ -283,15 +300,16 @@ async function getFile(fileKey) {
     }
 
     const file = result.json;
-    if (!file?.document) {
+    const document = result.document || file?.document;
+    if (!document) {
       throw new Error('Figma did not return file data.');
     }
 
     return {
-      name: file.name,
-      lastModified: file.lastModified,
-      editorType: file.editorType,
-      pages: extractPagesAndFrames(file.document),
+      name: result.json?.name || file?.name || 'Untitled file',
+      lastModified: result.json?.lastModified || file?.lastModified || null,
+      editorType: result.json?.editorType || file?.editorType || null,
+      pages: extractPagesAndFrames(document),
     };
   } finally {
     if (created && tab.id) {
