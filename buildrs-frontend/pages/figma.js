@@ -23,7 +23,6 @@ export default function FigmaPage() {
   const [connected, setConnected] = useState(false);
   const [account, setAccount] = useState('');
   const [hasPat, setHasPat] = useState(false);
-  const [library, setLibrary] = useState(null);
   const [files, setFiles] = useState([]);
   const [statusLoading, setStatusLoading] = useState(true);
   const [filesLoading, setFilesLoading] = useState(false);
@@ -52,25 +51,13 @@ export default function FigmaPage() {
     }
   }, [router.isReady, router.query.file, router.query.node, router.query.error]);
 
-  function extractAllFiles(sources, linkedFiles) {
-    const files = [];
-    function walk(folder) {
-      files.push(...(folder.files || []));
-      (folder.folders || []).forEach(walk);
-    }
-    (sources || []).forEach(walk);
-    files.push(...(linkedFiles || []));
-    return [...new Map(files.map((f) => [f.key, f])).values()];
-  }
-
   const loadFiles = useCallback(async ({ refresh = false } = {}) => {
     setFilesLoading(true);
     setFilesError('');
     try {
       const result = await figmaApi.getLibrary({ refresh });
       if (!result.success) throw new Error(result.message || 'Could not load your Figma designs');
-      setLibrary(result);
-      setFiles(extractAllFiles(result.sources || [], result.linkedFiles || []));
+      setFiles(Array.isArray(result.files) ? result.files : []);
     } catch (loadError) {
       console.error('Failed to load Figma library:', loadError);
       setFilesError(loadError.message || 'Could not load your Figma designs');
@@ -170,30 +157,6 @@ export default function FigmaPage() {
     }
   };
 
-  const addLibrarySource = async (url) => {
-    try {
-      const result = await figmaApi.addLibrarySource(url);
-      if (!result.success) throw new Error(result.message || 'Could not add that team');
-      await loadFiles();
-    } catch (addError) {
-      console.error('Failed to add Figma source:', addError);
-      setFilesError(addError.message || 'Could not add that team');
-    }
-  };
-
-  const removeLibrarySource = async (type, id) => {
-    try {
-      await figmaApi.removeLibrarySource(type, id);
-      setLibrary((current) => current && {
-        ...current,
-        sources: current.sources.filter((source) => !(source.type === type && source.id === id)),
-      });
-    } catch (removeError) {
-      console.error('Failed to remove Figma source:', removeError);
-      setFilesError(removeError.message || 'Could not remove that team');
-    }
-  };
-
   const content = (
     <div className="workspace-container">
       <Sidebar user={user} subscription={subscription} />
@@ -278,8 +241,6 @@ export default function FigmaPage() {
                 account={account}
                 onRefresh={refreshFiles}
                 onOpenFile={(fileKey) => openFile(fileKey)}
-                onAddSource={addLibrarySource}
-                onRemoveSource={removeLibrarySource}
               />
             </div>
           ) : (

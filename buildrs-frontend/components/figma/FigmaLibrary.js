@@ -24,15 +24,7 @@ function FileCard({ file, onOpen }) {
   );
 }
 
-export default function FigmaLibrary({
-  files = [],
-  loading = false,
-  account = '',
-  onRefresh,
-  onOpenFile,
-  onAddSource,
-  onRemoveSource,
-}) {
+export default function FigmaLibrary({ files = [], loading = false, account = '', onRefresh, onOpenFile }) {
   const [query, setQuery] = useState('');
   const q = query.trim().toLowerCase();
 
@@ -95,20 +87,13 @@ export default function FigmaLibrary({
           <p className="flib-no-results">No designs match &ldquo;{query}&rdquo;.</p>
         )
       ) : (
-        <div className="flib-install">
-          <div className="flib-install-body">
-            <strong>No designs added yet</strong>
-            <p>Paste a Figma team or folder link to bring in your designs. Every file in it will appear here.</p>
-            {onAddSource ? (
-              <form className="flib-install-form" onSubmit={(e) => { e.preventDefault(); }}>
-                <input
-                  type="text"
-                  placeholder="https://www.figma.com/files/team/123456789/Your-Team"
-                  aria-label="Figma team or folder link"
-                />
-                <button type="submit">Add team</button>
-              </form>
-            ) : null}
+        <div className="flib-empty">
+          <div className="flib-install-icon">
+            <FigmaIcon />
+          </div>
+          <div className="flib-empty-body">
+            <strong>No designs found</strong>
+            <p>Save your Figma Personal Access Token above to load your teams and folders.</p>
           </div>
         </div>
       )}
