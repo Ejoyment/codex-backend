@@ -18,18 +18,52 @@ export default function FigmaFrameBrowser({ fileKey, highlightNodeId, onBack, on
     let active = true;
     setLoading(true);
     setError('');
-    figmaApi.getFrames(fileKey)
+
+    const loadWithHelper = () => {
+      return new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage(
+          { type: 'FIGMA_GET_FILE', fileKey },
+          (response) => {
+            if (chrome.runtime.lastError || !response?.ok) {
+              reject(new Error(response?.error || 'Could not load file via helper'));
+            } else {
+              resolve({
+                success: true,
+                file: { key: fileKey, name: response.data.name },
+                pages: response.data.pages || [],
+              });
+            }
+          }
+        );
+      });
+    };
+
+    loadWithHelper()
       .then((result) => {
         if (!active) return;
-        if (!result.success) throw new Error(result.message || 'Could not load this file');
         setData(result);
         const pageWithTarget = result.pages.find((page) => page.frames.some((frame) => frame.id === highlightNodeId))
           || result.pages.find((page) => page.frames.length)
           || result.pages[0];
         setPageId(pageWithTarget?.id || null);
       })
-      .catch((loadError) => active && setError(loadError.message || 'Could not load this file'))
+      .catch((helperError) => {
+        console.warn('Helper failed, falling back to backend:', helperError.message);
+        // Fallback to original backend call
+        figmaApi.getFrames(fileKey)
+          .then((result) => {
+            if (!active) return;
+            if (!result.success) throw new Error(result.message || 'Could not load this file');
+            setData(result);
+            const pageWithTarget = result.pages.find((page) => page.frames.some((frame) => frame.id === highlightNodeId))
+              || result.pages.find((page) => page.frames.length)
+              || result.pages[0];
+            setPageId(pageWithTarget?.id || null);
+          })
+          .catch((loadError) => active && setError(loadError.message || 'Could not load this file'));
+      })
       .finally(() => active && setLoading(false));
+
     return () => { active = false; };
   }, [fileKey, highlightNodeId, reloadKey]);
 

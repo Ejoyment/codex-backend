@@ -115,6 +115,33 @@ async function fetchRecentFilesInPage(url) {
   };
 }
 
+async function fetchFileInPage(fileKey) {
+  const url = `https://www.figma.com/api/files/${encodeURIComponent(fileKey)}?depth=2`;
+  const headers = { accept: 'application/json', 'x-csrf-bypass': 'yes' };
+  const tsid = document.cookie.match(/(?:^|;\s*)tsid=([^;]+)/);
+  if (tsid) headers.tsid = decodeURIComponent(tsid[1]);
+
+  let response = await fetch(url, { credentials: 'include', headers });
+  let text = await response.text();
+  if (!response.ok) {
+    response = await fetch(url, { credentials: 'include' });
+    text = await response.text();
+  }
+
+  let json = null;
+  try {
+    json = JSON.parse(text);
+  } catch (error) {
+    json = null;
+  }
+  return {
+    ok: response.ok,
+    status: response.status,
+    json,
+    sample: text.slice(0, 300),
+  };
+}
+
 function mapRecentFiles(payload) {
   const list = payload?.meta?.recent_files || payload?.recent_files || payload?.files;
   if (!Array.isArray(list)) {
@@ -225,6 +252,83 @@ function syncNow() {
   return activeSync;
 }
 
+async function getFile(fileKey) {
+  console.log('Helper: Fetching file', fileKey);
+  const { tab, created } = await getFigmaTab();
+  if (!tab?.id) throw new Error('Could not open Figma in this browser.');
+
+  try {
+    await waitForTabComplete(tab.id);
+    let injection;
+    try {
+      [injection] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: fetchFileInPage,
+        args: [fileKey],
+      });
+      console.log('Helper: Injection result:', injection?.result);
+    } catch (error) {
+      console.error('Helper: Scripting error:', error);
+      throw new Error('Could not read this Figma file. Make sure you are signed in to Figma.');
+    }
+
+    const result = injection?.result;
+    if (!result) throw new Error('Could not read this Figma file.');
+    if (!result.ok) {
+      console.error('Helper: Figma returned error', result.status, result.sample);
+      if (result.status === 403) {
+        throw new Error('Figma denied access to this file. Try opening it once in a Figma tab first.');
+      }
+      throw new Error(`Figma returned ${result.status}.`);
+    }
+
+    const file = result.json;
+    if (!file?.document) {
+      throw new Error('Figma did not return file data.');
+    }
+
+    return {
+      name: file.name,
+      lastModified: file.lastModified,
+      editorType: file.editorType,
+      pages: extractPagesAndFrames(file.document),
+    };
+  } finally {
+    if (created && tab.id) {
+      chrome.tabs.remove(tab.id, () => void chrome.runtime.lastError);
+    }
+  }
+}
+
+function extractPagesAndFrames(document) {
+  const pages = [];
+  if (!document?.children) return pages;
+
+  for (const page of document.children) {
+    if (page.type !== 'CANVAS') continue;
+    const frames = [];
+    if (page.children) {
+      for (const node of page.children) {
+        if (node.type === 'FRAME' || node.type === 'SECTION' || node.type === 'COMPONENT') {
+          frames.push({
+            id: node.id,
+            name: node.name,
+            type: node.type,
+            width: node.absoluteBoundingBox?.width || 0,
+            height: node.absoluteBoundingBox?.height || 0,
+          });
+        }
+      }
+    }
+    pages.push({
+      id: page.id,
+      name: page.name,
+      frames,
+    });
+  }
+  return pages;
+}
+
 async function handleAuth(message) {
   const token = typeof message.authToken === 'string' && message.authToken ? message.authToken : null;
   const apiBase = normalizeBase(message.apiBase);
@@ -255,6 +359,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       lastSyncError: settings.lastSyncError,
       fileCount: settings.fileCount,
     })).catch((error) => sendResponse({ ok: false, error: error.message }));
+    return true;
+  }
+  if (message.type === 'FIGMA_GET_FILE') {
+    getFile(message.fileKey)
+      .then((data) => sendResponse({ ok: true, data }))
+      .catch((error) => sendResponse({ ok: false, error: error.message }));
     return true;
   }
   return false;

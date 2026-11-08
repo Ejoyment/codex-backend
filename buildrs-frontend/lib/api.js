@@ -13,7 +13,11 @@ export function normalizeApiBaseUrl(raw) {
     .replace(/\/+$/, '');
 }
 
-export const API_BASE_URL = normalizeApiBaseUrl(process.env.NEXT_PUBLIC_API_URL || '');
+export const API_BASE_URL = normalizeApiBaseUrl(
+  typeof window !== 'undefined' 
+    ? (localStorage.getItem('buildrsApiBase') || process.env.NEXT_PUBLIC_API_URL || '')
+    : (process.env.NEXT_PUBLIC_API_URL || '')
+);
 // The Buildrs Figma helper reads this to know which backend to sync files to.
 if (typeof window !== 'undefined' && API_BASE_URL) {
   try {
