@@ -22,6 +22,7 @@ export default function FigmaPage() {
   const subscription = useAuthStore((state) => state.subscription);
   const [connected, setConnected] = useState(false);
   const [account, setAccount] = useState('');
+  const [hasPat, setHasPat] = useState(false);
   const [files, setFiles] = useState([]);
   const [statusLoading, setStatusLoading] = useState(true);
   const [filesLoading, setFilesLoading] = useState(false);
@@ -73,6 +74,7 @@ export default function FigmaPage() {
         if (!active) return;
         setConnected(Boolean(result.connected));
         setAccount(result.account || '');
+        setHasPat(Boolean(result.hasPat));
         if (result.connected) await loadFiles();
       } catch (statusError) {
         console.error('Failed to check Figma connection:', statusError);
@@ -182,6 +184,31 @@ export default function FigmaPage() {
               onConvert={(frame) => setCodeFrame(frame)}
               onCreateTask={createTaskFromFrame}
             />
+          ) : connected && !hasPat ? (
+            <div className="figma-pat-setup">
+              <div className="figma-brand-mark">
+                <BrandIcon platform="figma" />
+                <span />
+              </div>
+              <p className="figma-eyebrow">Figma connected</p>
+              <h2>Save your Figma Personal Access Token</h2>
+              <p className="figma-description">
+                Buildrs needs a Figma Personal Access Token to read your design files directly.<br className="figma-desktop-break" />
+                Create one in Figma at Settings → Personal access tokens (enable 'file_content:read'),<br />
+                then paste it below. No browser extension required.
+              </p>
+              <a
+                href="/integrations"
+                className="figma-connect-main"
+                onClick={(e) => { e.preventDefault(); router.push('/integrations'); }}
+              >
+                <BrandIcon platform="figma" />
+                Go to Integrations → Save PAT
+              </a>
+              <span className="figma-permission-note">
+                Once saved, your designs will appear here. Click any design to browse frames, convert to code, or assign to an agent.
+              </span>
+            </div>
           ) : connected ? (
             <div className="figma-files-view">
               {filesError && <p className="figma-files-error" role="alert">{filesError}</p>}
@@ -189,6 +216,7 @@ export default function FigmaPage() {
                 files={files}
                 loading={filesLoading}
                 account={account}
+                hasPat={hasPat}
                 onRefresh={refreshFiles}
                 onOpenFile={(fileKey) => openFile(fileKey)}
               />
