@@ -3,7 +3,7 @@ import Head from 'next/head';
 import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
-import { apiFetch } from '../lib/api';
+import { apiFetch, figmaApi } from '../lib/api';
 import useToastStore from '../store/toastStore';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Link2, Unlink, ExternalLink, Loader2, Plug2, User, RefreshCw } from 'lucide-react';
@@ -57,6 +57,9 @@ export default function Integrations() {
   const [error, setError] = useState(null);
   const [connecting, setConnecting] = useState(null);
   const [disconnecting, setDisconnecting] = useState(null);
+  const [figmaPat, setFigmaPat] = useState('');
+  const [savingPat, setSavingPat] = useState(false);
+  const [patSaved, setPatSaved] = useState(false);
   const toast = useToastStore();
   const [confirmDisconnect, setConfirmDisconnect] = useState(null);
   const [clock, setClock] = useState('');
@@ -87,6 +90,36 @@ export default function Integrations() {
   useEffect(() => {
     fetchIntegrations();
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const data = await figmaApi.getStatus();
+        if (active && data?.hasPat) setPatSaved(true);
+      } catch {
+        // Figma status unavailable; PAT input still shown.
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
+  const handleSaveFigmaPat = async () => {
+    const token = figmaPat.trim();
+    if (!token) return;
+    setSavingPat(true);
+    try {
+      await figmaApi.savePersonalAccessToken(token);
+      setPatSaved(true);
+      setFigmaPat('');
+      toast.success('Figma personal access token saved');
+      fetchIntegrations();
+    } catch (err) {
+      toast.error(err.message || 'Failed to save Figma token');
+    } finally {
+      setSavingPat(false);
+    }
+  };
 
   const getStatus = (providerKey) => {
     return integrations.find((i) => i.provider === providerKey);
@@ -344,6 +377,41 @@ export default function Integrations() {
                           </button>
                         )}
                       </div>
+
+                      {provider.key === 'figma' && isActive && (
+                        <div className="int-pat-section">
+                          <p className="int-pat-label">
+                            {patSaved ? 'Personal access token saved ✓' : 'Figma Personal Access Token (optional)'}
+                          </p>
+                          <div className="int-pat-row">
+                            <input
+                              type="password"
+                              placeholder="figd_…"
+                              value={figmaPat}
+                              onChange={(e) => setFigmaPat(e.target.value)}
+                              disabled={savingPat}
+                              className="int-pat-input"
+                            />
+                            <button
+                              type="button"
+                              className={`btn-workspace ${patSaved ? 'btn-secondary' : 'btn-primary'}`}
+                              onClick={handleSaveFigmaPat}
+                              disabled={savingPat || !figmaPat.trim() || patSaved}
+                            >
+                              {savingPat ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : patSaved ? (
+                                'Saved'
+                              ) : (
+                                'Save'
+                              )}
+                            </button>
+                          </div>
+                          <p className="int-pat-hint">
+                            Create one in Figma: Settings → Personal access tokens → 'file_content:read'. This lets Buildrs read your design files directly — no browser extension needed.
+                          </p>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
