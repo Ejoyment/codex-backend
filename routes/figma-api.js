@@ -149,13 +149,19 @@ function readSavedFigmaFiles(integration) {
 
 async function figmaAPI(accessToken, endpoint, method = 'GET', data = null) {
     try {
+        const isPat = String(accessToken || '').startsWith('figd_');
+        const headers = {
+            'Content-Type': 'application/json'
+        };
+        if (isPat) {
+            headers['X-Figma-Token'] = accessToken;
+        } else {
+            headers['Authorization'] = `Bearer ${accessToken}`;
+        }
         const response = await axios({
             method,
             url: `https://api.figma.com/v1${endpoint}`,
-            headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'Content-Type': 'application/json'
-            },
+            headers,
             data,
             timeout: 20000
         });
