@@ -19,6 +19,15 @@ export default function FigmaFrameBrowser({ fileKey, highlightNodeId, onBack, on
     setLoading(true);
     setError('');
 
+    const applyResult = (result) => {
+      if (!active) return;
+      setData(result);
+      const pageWithTarget = result.pages.find((page) => page.frames.some((frame) => frame.id === highlightNodeId))
+        || result.pages.find((page) => page.frames.length)
+        || result.pages[0];
+      setPageId(pageWithTarget?.id || null);
+    };
+
     const loadWithHelper = (attempt = 1) => {
       return new Promise((resolve, reject) => {
         const handler = (event) => {
@@ -49,30 +58,30 @@ export default function FigmaFrameBrowser({ fileKey, highlightNodeId, onBack, on
       });
     };
 
-    loadWithHelper()
+    // Try the backend first — it works with a saved Personal Access Token,
+    // no browser extension needed. Fall back to the extension helper if the
+    // backend can't reach the file (e.g. no PAT, OAuth lacks file_content:read).
+    figmaApi.getFrames(fileKey)
       .then((result) => {
         if (!active) return;
-        setData(result);
-        const pageWithTarget = result.pages.find((page) => page.frames.some((frame) => frame.id === highlightNodeId))
-          || result.pages.find((page) => page.frames.length)
-          || result.pages[0];
-        setPageId(pageWithTarget?.id || null);
+        if (!result.success) throw new Error(result.message || 'Could not load this file');
+        applyResult(result);
+        setLoading(false);
       })
-      .catch((helperError) => {
-        console.warn('Helper failed, falling back to backend:', helperError.message);
-        figmaApi.getFrames(fileKey)
+      .catch((backendError) => {
+        if (!active) return;
+        console.warn('Backend failed, trying extension helper:', backendError.message);
+        loadWithHelper()
           .then((result) => {
             if (!active) return;
-            if (!result.success) throw new Error(result.message || 'Could not load this file');
-            setData(result);
-            const pageWithTarget = result.pages.find((page) => page.frames.some((frame) => frame.id === highlightNodeId))
-              || result.pages.find((page) => page.frames.length)
-              || result.pages[0];
-            setPageId(pageWithTarget?.id || null);
+            applyResult(result);
           })
-          .catch((loadError) => active && setError(loadError.message || 'Could not load this file'));
-      })
-      .finally(() => active && setLoading(false));
+          .catch((helperError) => {
+            if (!active) return;
+            setError(helperError.message || backendError.message || 'Could not load this file');
+          })
+          .finally(() => active && setLoading(false));
+      });
 
     return () => { active = false; };
   }, [fileKey, highlightNodeId, reloadKey]);
