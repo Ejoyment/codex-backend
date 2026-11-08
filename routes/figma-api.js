@@ -70,7 +70,7 @@ async function refreshFigmaToken(integration) {
     const data = response.data;
     if (!data.access_token) throw new Error('No access_token in Figma refresh response');
 
-    integration.accessToken = data.access_token;
+        integration.accessToken = data.access_token;
     integration.expiresAt = new Date(Date.now() + (data.expires_in || 7776000) * 1000);
     if (data.refresh_token) integration.refreshToken = data.refresh_token;
     await integration.save();
@@ -171,7 +171,7 @@ router.get('/debug-token', authenticateToken, async (req, res) => {
         const integration = await Integration.findOne({ userId: req.userId, provider: 'figma', isActive: true });
         if (!integration) return res.json({ connected: false });
 
-        const tokenPreview = String(integration.accessToken || '').slice(0, 12) + '…';
+        const tokenPreview = String(integration.getFigmaToken() || '').slice(0, 12) + '…';
         const expiresAt = integration.expiresAt;
         const expired = expiresAt ? new Date() > new Date(expiresAt) : null;
 
@@ -180,7 +180,7 @@ router.get('/debug-token', authenticateToken, async (req, res) => {
         let figmaError = null;
         try {
             const r = await axios.get('https://api.figma.com/v1/me', {
-                headers: { Authorization: `Bearer ${integration.accessToken}` },
+                headers: { Authorization: `Bearer ${integration.getFigmaToken()}` },
                 timeout: 10000,
             });
             figmaMe = { email: r.data.email, handle: r.data.handle, id: r.data.id };
@@ -210,7 +210,7 @@ router.get('/debug-token', authenticateToken, async (req, res) => {
 router.get('/me', authenticateToken, async (req, res) => {
     try {
         const integration = await getFigmaIntegration(req.userId);
-        const user = await figmaAPI(integration.accessToken, '/me');
+        const user = await figmaAPI(integration.getFigmaToken(), '/me');
         res.json({ success: true, user });
     } catch (error) {
         return sendInternalError(req, res, error);
@@ -335,7 +335,7 @@ router.get('/files/:fileKey/frames', authenticateToken, async (req, res) => {
 
         let file;
         try {
-            file = await figmaAPI(integration.accessToken, `/files/${encodeURIComponent(fileKey)}?depth=2`);
+            file = await figmaAPI(integration.getFigmaToken(), `/files/${encodeURIComponent(fileKey)}?depth=2`);
         } catch (error) {
             if (figmaAccessError(res, error)) return;
             throw error;
@@ -346,7 +346,7 @@ router.get('/files/:fileKey/frames', authenticateToken, async (req, res) => {
         if (req.query.thumbnails !== '0') {
             const frameIds = pages.flatMap((page) => page.frames.map((frame) => frame.id)).slice(0, 50);
             try {
-                const images = await getNodeImageUrls(integration.accessToken, fileKey, frameIds, { scale: 0.5 });
+                const images = await getNodeImageUrls(integration.getFigmaToken(), fileKey, frameIds, { scale: 0.5 });
                 pages.forEach((page) => page.frames.forEach((frame) => {
                     frame.thumbnailUrl = images[frame.id] || null;
                 }));
@@ -383,7 +383,7 @@ router.get('/files/:fileKey', authenticateToken, async (req, res) => {
         const { fileKey } = req.params;
         const { geometry = 'paths' } = req.query;
         
-        const file = await figmaAPI(integration.accessToken, `/files/${fileKey}?geometry=${geometry}`);
+        const file = await figmaAPI(integration.getFigmaToken(), `/files/${fileKey}?geometry=${geometry}`);
         res.json({ success: true, file });
     } catch (error) {
         return sendInternalError(req, res, error);
@@ -397,7 +397,7 @@ router.get('/files/:fileKey/nodes', authenticateToken, async (req, res) => {
         const { fileKey } = req.params;
         const { ids } = req.query; // Comma-separated node IDs
         
-        const nodes = await figmaAPI(integration.accessToken, `/files/${fileKey}/nodes?ids=${ids}`);
+        const nodes = await figmaAPI(integration.getFigmaToken(), `/files/${fileKey}/nodes?ids=${ids}`);
         res.json({ success: true, nodes });
     } catch (error) {
         return sendInternalError(req, res, error);
@@ -411,7 +411,7 @@ router.get('/images/:fileKey', authenticateToken, async (req, res) => {
         const { fileKey } = req.params;
         const { ids, scale = 1, format = 'png' } = req.query;
         
-        const images = await figmaAPI(integration.accessToken, `/images/${fileKey}?ids=${ids}&scale=${scale}&format=${format}`);
+        const images = await figmaAPI(integration.getFigmaToken(), `/images/${fileKey}?ids=${ids}&scale=${scale}&format=${format}`);
         res.json({ success: true, images });
     } catch (error) {
         return sendInternalError(req, res, error);
@@ -424,7 +424,7 @@ router.get('/files/:fileKey/versions', authenticateToken, async (req, res) => {
         const integration = await getFigmaIntegration(req.userId);
         const { fileKey } = req.params;
         
-        const versions = await figmaAPI(integration.accessToken, `/files/${fileKey}/versions`);
+        const versions = await figmaAPI(integration.getFigmaToken(), `/files/${fileKey}/versions`);
         res.json({ success: true, versions: versions.versions });
     } catch (error) {
         return sendInternalError(req, res, error);
@@ -437,7 +437,7 @@ router.get('/files/:fileKey/comments', authenticateToken, async (req, res) => {
         const integration = await getFigmaIntegration(req.userId);
         const { fileKey } = req.params;
         
-        const comments = await figmaAPI(integration.accessToken, `/files/${fileKey}/comments`);
+        const comments = await figmaAPI(integration.getFigmaToken(), `/files/${fileKey}/comments`);
         res.json({ success: true, comments: comments.comments });
     } catch (error) {
         return sendInternalError(req, res, error);
@@ -451,7 +451,7 @@ router.post('/files/:fileKey/comments', authenticateToken, async (req, res) => {
         const { fileKey } = req.params;
         const { message, client_meta } = req.body;
         
-        const comment = await figmaAPI(integration.accessToken, `/files/${fileKey}/comments`, 'POST', { message, client_meta });
+        const comment = await figmaAPI(integration.getFigmaToken(), `/files/${fileKey}/comments`, 'POST', { message, client_meta });
         res.json({ success: true, comment });
     } catch (error) {
         return sendInternalError(req, res, error);
@@ -464,7 +464,7 @@ router.get('/teams/:teamId/projects', authenticateToken, async (req, res) => {
         const integration = await getFigmaIntegration(req.userId);
         const { teamId } = req.params;
         
-        const projects = await figmaAPI(integration.accessToken, `/teams/${teamId}/projects`);
+        const projects = await figmaAPI(integration.getFigmaToken(), `/teams/${teamId}/projects`);
         res.json({ success: true, projects: projects.projects });
     } catch (error) {
         return sendInternalError(req, res, error);
@@ -477,7 +477,7 @@ router.get('/projects/:projectId/files', authenticateToken, async (req, res) => 
         const integration = await getFigmaIntegration(req.userId);
         const { projectId } = req.params;
         
-        const files = await figmaAPI(integration.accessToken, `/projects/${projectId}/files`);
+        const files = await figmaAPI(integration.getFigmaToken(), `/projects/${projectId}/files`);
         res.json({ success: true, files: files.files });
     } catch (error) {
         return sendInternalError(req, res, error);
@@ -490,7 +490,7 @@ router.get('/components/:key', authenticateToken, async (req, res) => {
         const integration = await getFigmaIntegration(req.userId);
         const { key } = req.params;
         
-        const component = await figmaAPI(integration.accessToken, `/components/${key}`);
+        const component = await figmaAPI(integration.getFigmaToken(), `/components/${key}`);
         res.json({ success: true, component: component.meta });
     } catch (error) {
         return sendInternalError(req, res, error);
@@ -503,7 +503,7 @@ router.get('/component_sets/:key', authenticateToken, async (req, res) => {
         const integration = await getFigmaIntegration(req.userId);
         const { key } = req.params;
         
-        const componentSet = await figmaAPI(integration.accessToken, `/component_sets/${key}`);
+        const componentSet = await figmaAPI(integration.getFigmaToken(), `/component_sets/${key}`);
         res.json({ success: true, componentSet: componentSet.meta });
     } catch (error) {
         return sendInternalError(req, res, error);
@@ -516,7 +516,7 @@ router.get('/styles/:key', authenticateToken, async (req, res) => {
         const integration = await getFigmaIntegration(req.userId);
         const { key } = req.params;
         
-        const style = await figmaAPI(integration.accessToken, `/styles/${key}`);
+        const style = await figmaAPI(integration.getFigmaToken(), `/styles/${key}`);
         res.json({ success: true, style: style.meta });
     } catch (error) {
         return sendInternalError(req, res, error);
@@ -700,7 +700,8 @@ router.get('/status', authenticateToken, async (req, res) => {
             connected: !!integration,
             account: integration
                 ? (integration.providerEmail || integration.providerUsername || null)
-                : null
+                : null,
+            hasPat: integration ? Boolean(integration.personalAccessToken) : false,
         });
     } catch (error) {
         return sendInternalError(req, res, error);
@@ -730,6 +731,30 @@ router.delete('/disconnect', authenticateToken, async (req, res) => {
         );
 
         res.json({ success: true, message: 'Figma disconnected' });
+    } catch (error) {
+        return sendInternalError(req, res, error);
+    }
+});
+
+// Save a Figma Personal Access Token. PATs have full read access with no
+// scope restrictions, bypassing OAuth scope issues entirely.
+router.post('/personal-access-token', authenticateToken, async (req, res) => {
+    try {
+        const { token } = req.body;
+        if (!token || typeof token !== 'string') {
+            return res.status(400).json({ success: false, message: 'Personal access token is required.' });
+        }
+
+        const integration = await Integration.findOne({ userId: req.userId, provider: 'figma' });
+        if (!integration) {
+            return res.status(400).json({ success: false, message: 'Connect Figma first.' });
+        }
+
+        integration.personalAccessToken = token.trim();
+        if (typeof integration.markModified === 'function') integration.markModified('personalAccessToken');
+        await integration.save();
+
+        return res.json({ success: true, message: 'Personal access token saved.' });
     } catch (error) {
         return sendInternalError(req, res, error);
     }
