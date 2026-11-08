@@ -203,20 +203,12 @@ export default function FigmaPage() {
             />
           ) : connected ? (
             <div className="figma-files-view">
-              <div className="figma-files-heading">
-                <div className="figma-brand-mark is-connected"><BrandIcon platform="figma" /></div>
-                <div>
-                  <p className="figma-eyebrow">Figma connected</p>
-                  <h2>{account ? `Connected as ${account}` : 'Your Figma designs'}</h2>
-                  <p>Open any design to pick a frame, convert it to code, or hand it to an AI task.</p>
-                </div>
-              </div>
               {filesError && <p className="figma-files-error" role="alert">{filesError}</p>}
-
               <FigmaLibrary
                 files={files}
                 loading={filesLoading}
                 helperSyncedAt={helperSyncedAt}
+                account={account}
                 onRefresh={refreshFiles}
                 onOpenFile={(fileKey) => openFile(fileKey)}
               />
