@@ -410,7 +410,7 @@ export default function DeploymentPage() {
 
         <main className="workspace-main">
           <div className="workspace-content">
-            <div className="dash-content deploy-page">
+            <div className="deploy-page">
               {error && <p className="deploy-banner-error">{error}</p>}
 
               {!selectedId ? (

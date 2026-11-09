@@ -16426,7 +16426,10 @@
    bg #0F131C, card #090E16, border #1A2735, accent #12DCE5, success #35D69A
    ========================================================================== */
 
-.deploy-page { --deploy-accent: #12dce5; }
+/* Full-width like the Projects page (p-6 inside .workspace-main): cards
+   stretch edge-to-edge with only the small container padding — the old
+   .dash-content rule (max-width: 1240px; margin: 0 auto) centered them. */
+.deploy-page { --deploy-accent: #12dce5; width: 100%; max-width: none; margin: 0; }
 
 .deploy-banner-error {
   padding: 0.6rem 0.9rem;
