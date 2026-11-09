@@ -54,7 +54,10 @@ export default function AuthGuard({ children }) {
         }
       }
 
-      if (current && !current.onboardingCompleted) {
+      // Redirecting to the route we are already on re-triggers a route change on
+      // every render, and Next's head commit resets window scroll each time —
+      // which made /onboarding impossible to scroll. Only bounce from elsewhere.
+      if (current && !current.onboardingCompleted && router.pathname !== '/onboarding') {
         router.replace('/onboarding');
       }
     };

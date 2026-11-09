@@ -4,6 +4,7 @@ import '../styles/globals.css';
 import '../styles/workspace.css';
 import '../styles/figma.css';
 import '../styles/marketing.css';
+import '../styles/onboarding.css';
 import '../styles/auth.css';
 import { Inter, Roboto_Mono } from 'next/font/google';
 import ErrorBoundary from '../components/ErrorBoundary';

@@ -110,6 +110,23 @@ const userSchema = new mongoose.Schema({
         type: [String],
         default: []
     },
+    // Answers from the guided setup flow. Kept separate from the legacy
+    // role/goals fields so product can read preferences without guessing
+    // which array holds which meaning.
+    onboarding: {
+        useMode: { type: String, enum: ['solo', 'team'] },
+        useCase: { type: String },
+        focus: { type: String },
+        focusExtras: { type: [String], default: [] },
+        startMode: { type: String, enum: ['template', 'scratch'] },
+        template: { type: String },
+        githubConnected: { type: Boolean, default: false },
+        invites: [{
+            email: { type: String },
+            role: { type: String, enum: ['editor', 'viewer'], default: 'editor' }
+        }],
+        completedAt: { type: Date }
+    },
     onboardingCompleted: {
         type: Boolean,
         default: false
