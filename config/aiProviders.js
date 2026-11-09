@@ -27,6 +27,7 @@ const PROVIDERS = Object.freeze({
     apiKeyEnv: 'GEMINI_API_KEY',
     modelEnv: 'AI_MODEL',
     defaultModel: 'gemini-3.8-flash',
+    endpoint: 'https://generativelanguage.googleapis.com/v1beta2/models/',
   }),
   mistral: Object.freeze({
     implemented: true,
@@ -52,7 +53,7 @@ const PROVIDERS = Object.freeze({
     type: 'cloud',
     apiKeyEnv: 'HUGGINGFACE_API_KEY',
     modelEnv: 'HUGGINGFACE_MODEL',
-    defaultModel: 'meta-llama/Meta-Llama-3.1-8B-Instruct',
+    defaultModel: 'Qwen/Qwen3.8-27B',
     endpoint: 'https://api-inference.huggingface.co/models/',
   }),
 });
