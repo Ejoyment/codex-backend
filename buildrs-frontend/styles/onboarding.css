@@ -1,0 +1,726 @@
+/* Guided onboarding — uses the .mkt tokens from marketing.css (teal accent,
+   elevated near-black surfaces) so setup matches the marketing site. */
+
+.onb-page {
+  padding: 132px 20px 96px;
+  min-height: 100vh;
+}
+
+.onb-shell {
+  width: 100%;
+  max-width: 880px;
+  margin: 0 auto;
+}
+
+.onb-card {
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 26px 28px 22px;
+}
+
+@media (max-width: 640px) {
+  .onb-page {
+    padding: 104px 14px 64px;
+  }
+  .onb-card {
+    padding: 20px 18px 18px;
+    border-radius: 14px;
+  }
+}
+
+/* ---- accessibility ---- */
+.onb-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* The step heading receives focus on step changes (tabIndex=-1); a ring around
+   a whole heading reads as a bug, and the live region already announces it. */
+.onb-title:focus,
+.onb-title:focus-visible {
+  outline: none;
+}
+
+.onb-card :is(button, input, select):focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+
+/* .mkt-input:focus turns the outline off in favour of a border tint, which is
+   too subtle for keyboard users — restore a ring for focus-visible only. */
+.onb-card :is(.mkt-input, .mkt-select):focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 1px;
+}
+
+/* ---- step rail ---- */
+.onb-steps {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.onb-step-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.onb-step-item:last-child {
+  flex: 0 0 auto;
+}
+
+.onb-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.onb-step-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  border: 1px solid var(--line-2);
+  font-family: var(--figma-font-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+
+.onb-step-label {
+  font-size: 12px;
+  color: var(--ink-3);
+  letter-spacing: -0.01em;
+}
+
+.onb-step.active .onb-step-dot {
+  background: var(--teal);
+  border-color: var(--teal);
+  color: #0a0d15;
+}
+
+.onb-step.active .onb-step-label {
+  color: var(--ink);
+}
+
+.onb-step.done .onb-step-dot {
+  border-color: rgba(18, 220, 229, 0.5);
+  color: var(--teal);
+  background: var(--teal-soft);
+}
+
+.onb-step.done .onb-step-label {
+  color: var(--ink-2);
+}
+
+.onb-connector {
+  flex: 1;
+  height: 1px;
+  margin: 0 10px;
+  background: var(--line);
+  min-width: 8px;
+}
+
+.onb-connector.done {
+  background: rgba(18, 220, 229, 0.45);
+}
+
+@media (max-width: 760px) {
+  .onb-step-label {
+    display: none;
+  }
+  .onb-step-item {
+    gap: 6px;
+  }
+}
+
+/* ---- body ---- */
+.onb-body {
+  padding-top: 26px;
+}
+
+.onb-title {
+  margin: 0;
+  font-size: clamp(22px, 3.2vw, 30px);
+  font-weight: 620;
+  letter-spacing: -0.025em;
+  line-height: 1.12;
+  color: var(--ink);
+}
+
+.onb-sub {
+  margin: 8px 0 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+
+.onb-mt {
+  margin-top: 24px;
+}
+
+.onb-mt-sm {
+  margin-top: 14px;
+}
+
+.onb-mb-0 {
+  margin-bottom: 0;
+}
+
+.onb-question {
+  margin: 26px 0 10px;
+  font-family: var(--figma-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.onb-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+@media (max-width: 640px) {
+  .onb-grid-2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.onb-input-locked {
+  color: var(--ink-2);
+  background: rgba(255, 255, 255, 0.02);
+  cursor: default;
+}
+
+/* ---- selectable cards ---- */
+.onb-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  padding: 14px 16px 15px;
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.012);
+  color: inherit;
+  cursor: pointer;
+  transition: border-color 0.16s ease, background 0.16s ease;
+}
+
+.onb-choice:hover {
+  border-color: rgba(18, 220, 229, 0.45);
+}
+
+.onb-choice.is-selected {
+  border-color: var(--teal);
+  background: var(--teal-soft);
+}
+
+.onb-choice-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.onb-choice-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  color: var(--ink-2);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.onb-choice.is-selected .onb-choice-icon {
+  color: var(--teal);
+  border-color: rgba(18, 220, 229, 0.45);
+}
+
+.onb-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 1px solid var(--line-2);
+  color: #0a0d15;
+}
+
+.onb-check.is-on {
+  background: var(--teal);
+  border-color: var(--teal);
+}
+
+.onb-choice-title {
+  font-size: 14px;
+  font-weight: 550;
+  color: var(--ink);
+}
+
+.onb-choice-hint {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-3);
+}
+
+/* ---- panels ---- */
+.onb-panel {
+  margin-top: 14px;
+  padding: 16px;
+  border: 1px dashed var(--line-2);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.012);
+}
+
+.onb-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.onb-optional {
+  font-family: var(--figma-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.onb-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+
+.onb-invite-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.onb-invite-role {
+  width: 108px;
+  flex: 0 0 auto;
+}
+
+.onb-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.onb-icon-btn:hover {
+  color: var(--ink);
+  border-color: rgba(18, 220, 229, 0.45);
+}
+
+.onb-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--teal);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.onb-add:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ---- chips ---- */
+.onb-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.onb-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.onb-chip:hover {
+  border-color: rgba(18, 220, 229, 0.45);
+  color: var(--ink);
+}
+
+.onb-chip.is-selected {
+  border-color: var(--teal);
+  background: var(--teal-soft);
+  color: var(--teal);
+}
+
+.onb-chip-static {
+  cursor: default;
+  font-family: var(--figma-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--ink-2);
+}
+
+.onb-chip-static:hover {
+  border-color: var(--line-2);
+  color: var(--ink-2);
+}
+
+/* ---- setup step ---- */
+.onb-segment {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.onb-segment-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.onb-segment-btn:hover {
+  color: var(--ink);
+}
+
+.onb-segment-btn.is-selected {
+  background: rgba(18, 220, 229, 0.12);
+  border-color: rgba(18, 220, 229, 0.35);
+  color: var(--teal);
+}
+
+.onb-template {
+  margin-top: 14px;
+  padding: 18px;
+  border: 1px solid rgba(18, 220, 229, 0.4);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(18, 220, 229, 0.06), rgba(18, 220, 229, 0.01)),
+    var(--bg);
+}
+
+.onb-template-quiet {
+  border-color: var(--line-2);
+  background: var(--bg);
+}
+
+.onb-template-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.onb-tag {
+  font-family: var(--figma-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--ink-3);
+}
+
+.onb-recommended {
+  font-family: var(--figma-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--teal);
+}
+
+.onb-template-title {
+  margin: 8px 0 0;
+  font-size: 15px;
+  font-weight: 560;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.onb-tools {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.onb-tool-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.012);
+}
+
+.onb-tool-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  color: var(--ink-2);
+}
+
+.onb-tool-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.onb-tool-name {
+  font-size: 13px;
+  font-weight: 520;
+  color: var(--ink);
+}
+
+.onb-tool-status {
+  font-family: var(--figma-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+}
+
+.onb-tool-status.is-connected {
+  color: var(--teal);
+}
+
+/* ---- ready step ---- */
+.onb-primary-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  margin-top: 10px;
+  padding: 16px 18px;
+  text-align: left;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  background: var(--bg);
+  color: inherit;
+  cursor: pointer;
+  transition: border-color 0.16s ease, background 0.16s ease;
+}
+
+.onb-primary-card:hover {
+  border-color: rgba(18, 220, 229, 0.45);
+}
+
+.onb-primary-card.is-selected {
+  border-color: var(--teal);
+  background:
+    linear-gradient(180deg, rgba(18, 220, 229, 0.07), rgba(18, 220, 229, 0.01)),
+    var(--bg);
+}
+
+.onb-primary-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  border: 1px solid rgba(18, 220, 229, 0.45);
+  color: var(--teal);
+}
+
+.onb-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.012);
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: border-color 0.16s ease, background 0.16s ease;
+}
+
+.onb-tile:hover {
+  border-color: rgba(18, 220, 229, 0.45);
+}
+
+.onb-tile.is-selected {
+  border-color: var(--teal);
+  background: var(--teal-soft);
+}
+
+.onb-tile.is-selected > svg {
+  color: var(--teal);
+}
+
+.onb-tile-title {
+  font-size: 13.5px;
+  font-weight: 550;
+  color: var(--ink);
+}
+
+/* ---- actions ---- */
+.onb-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 26px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.onb-actions-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.onb-note {
+  font-family: var(--figma-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+}
+
+@media (max-width: 560px) {
+  .onb-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .onb-actions-right {
+    justify-content: flex-end;
+  }
+  .onb-note {
+    order: 2;
+    text-align: right;
+  }
+}
+
+.onb-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 9px 16px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.onb-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.onb-btn-ghost {
+  color: var(--ink-2);
+  border-color: transparent;
+}
+
+.onb-btn-ghost:hover:not(:disabled) {
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.onb-btn-primary {
+  background: var(--teal);
+  border-color: var(--teal);
+  color: #0a0d15;
+  font-weight: 560;
+}
+
+.onb-btn-primary:hover:not(:disabled) {
+  background: #68f7ff;
+  border-color: #68f7ff;
+}
+
+.onb-spin {
+  animation: onb-spin 0.9s linear infinite;
+}
+
+@keyframes onb-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.onb-error {
+  margin: 16px 0 0;
+  font-size: 12.5px;
+  color: #ff8080;
+}
+
+.onb-footnote {
+  margin: 14px 0 0;
+  text-align: center;
+  font-family: var(--figma-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+}

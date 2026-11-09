@@ -7,6 +7,9 @@ const path = require('path');
 const fs = require('fs');
 const User = require('../models/User');
 const Subscription = require('../models/Subscription');
+const Company = require('../models/Company');
+const Invitation = require('../models/Invitation');
+const Integration = require('../models/Integration');
 const rateLimit = require('express-rate-limit');
 const emailService = require('../utils/emailServiceResend');
 const {
@@ -1065,6 +1068,37 @@ router.delete('/delete-account', authenticateToken, async (req, res) => {
  *                 items:
  *                   type: string
  *                 example: ["improve-productivity", "ai-assistance"]
+ *               useMode:
+ *                 type: string
+ *                 enum: [solo, team]
+ *               invites:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     email:
+ *                       type: string
+ *                     role:
+ *                       type: string
+ *                       enum: [editor, viewer]
+ *               useCase:
+ *                 type: string
+ *                 example: web
+ *               focus:
+ *                 type: string
+ *                 example: developer
+ *               focusExtras:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               startMode:
+ *                 type: string
+ *                 enum: [template, scratch]
+ *               template:
+ *                 type: string
+ *                 example: nextjs
+ *               skipped:
+ *                 type: boolean
  *     responses:
  *       200:
  *         description: Onboarding completed successfully
@@ -1084,30 +1118,174 @@ router.post('/complete-onboarding', authenticateToken, async (req, res) => {
             });
         }
 
-        const { fullName, company, teamSize, role, goals } = req.body;
+        const {
+            fullName,
+            email,
+            company,
+            teamSize,
+            role,
+            goals,
+            useMode,
+            invites,
+            useCase,
+            focus,
+            focusExtras,
+            startMode,
+            template,
+            skipped
+        } = req.body || {};
 
-        // Update user profile
-        user.fullName = fullName || user.fullName;
-        user.company = company;
-        user.teamSize = teamSize;
-        user.role = role || [];
-        user.goals = goals || [];
+        const publicUser = (doc) => ({
+            id: doc._id,
+            _id: doc._id,
+            fullName: doc.fullName,
+            email: doc.email,
+            role: doc.role,
+            company: doc.company,
+            teamSize: doc.teamSize,
+            goals: doc.goals,
+            onboarding: doc.onboarding,
+            onboardingCompleted: doc.onboardingCompleted
+        });
+
+        // "Cancel" on the first step resolves setup without inventing answers:
+        // the user lands in the app and can finish from Settings later.
+        if (skipped === true) {
+            user.onboardingCompleted = true;
+            await user.save();
+            return res.json({
+                success: true,
+                message: 'Onboarding skipped',
+                user: publicUser(user)
+            });
+        }
+
+        const cleanString = (value, max = 120) =>
+            typeof value === 'string' ? value.trim().slice(0, max) : undefined;
+        const cleanList = (value, max = 12) =>
+            Array.isArray(value)
+                ? [...new Set(
+                    value
+                        .filter((item) => typeof item === 'string' && item.trim())
+                        .map((item) => item.trim().slice(0, 80))
+                )].slice(0, max)
+                : [];
+
+        const name = cleanString(fullName);
+        if (fullName !== undefined && (!name || name.length < 2)) {
+            return res.status(400).json({ success: false, message: 'Please provide your name' });
+        }
+        const nextEmail = cleanString(email, 254);
+        if (email !== undefined && (!nextEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(nextEmail))) {
+            return res.status(400).json({ success: false, message: 'Please provide a valid email' });
+        }
+
+        const inviteList = Array.isArray(invites)
+            ? invites
+                .filter((invite) => invite && typeof invite.email === 'string')
+                .map((invite) => ({
+                    email: invite.email.trim().toLowerCase(),
+                    role: invite.role === 'viewer' ? 'viewer' : 'editor'
+                }))
+                .filter((invite) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(invite.email))
+                .filter((invite, index, list) => list.findIndex((item) => item.email === invite.email) === index)
+                .slice(0, 8)
+            : [];
+
+        const resolvedMode = useMode === 'team' ? 'team' : useMode === 'solo' ? 'solo' : undefined;
+        const focusValue = cleanString(focus, 40);
+        const roleList = cleanList(role);
+        const goalList = cleanList(goals);
+
+        // Update user profile (legacy fields stay in sync so older screens and
+        // settings read the same answers as the new nested block).
+        if (name) user.fullName = name;
+        // Email is prefilled and read-only in the flow: changing the account
+        // address needs its own verification step, so it is never taken here.
+        if (company !== undefined) user.company = cleanString(company) || undefined;
+        user.role = roleList.length ? roleList : focusValue ? [focusValue] : user.role;
+        if (Array.isArray(goals)) user.goals = goalList;
+
+        const resolvedTeamSize = cleanString(teamSize, 40);
+        if (resolvedTeamSize) user.teamSize = resolvedTeamSize;
+        else if (resolvedMode === 'solo') user.teamSize = 'Just me';
+        else if (resolvedMode === 'team') user.teamSize = String(inviteList.length + 1);
+
+        let githubConnected = Boolean(user.onboarding?.githubConnected);
+        try {
+            const githubIntegration = await Integration.findOne({
+                userId,
+                provider: 'github',
+                isActive: true
+            });
+            githubConnected = Boolean(githubIntegration);
+        } catch (integrationError) {
+            console.error('Onboarding GitHub status error:', integrationError.message);
+        }
+
+        user.onboarding = {
+            useMode: resolvedMode || user.onboarding?.useMode,
+            useCase: cleanString(useCase, 60) || user.onboarding?.useCase,
+            focus: focusValue || user.onboarding?.focus,
+            focusExtras: cleanList(focusExtras),
+            startMode: startMode === 'scratch' ? 'scratch' : 'template',
+            template: cleanString(template, 40) || undefined,
+            githubConnected,
+            invites: inviteList,
+            completedAt: new Date()
+        };
         user.onboardingCompleted = true;
-        
+
         await user.save();
+
+        // Teammates invited during setup only become real invitations once the
+        // user owns a workspace — invites stay on the profile until then.
+        if (inviteList.length) {
+            try {
+                const ownedCompany = await Company.findOne({ owner: userId });
+                if (ownedCompany) {
+                    for (const invite of inviteList) {
+                        const existingUser = await User.findOne({ email: invite.email });
+                        const isMember = existingUser
+                            && ownedCompany.members.some((member) => String(member.user) === String(existingUser._id));
+                        if (isMember) continue;
+
+                        const pending = await Invitation.findOne({
+                            email: invite.email,
+                            company: ownedCompany._id,
+                            status: 'pending'
+                        });
+                        if (pending) continue;
+
+                        const invitation = await Invitation.create({
+                            email: invite.email,
+                            company: ownedCompany._id,
+                            invitedBy: userId,
+                            role: invite.role === 'viewer' ? 'viewer' : 'member',
+                            message: `${user.fullName || 'A teammate'} invited you to their BuildrsHQ workspace.`
+                        });
+
+                        try {
+                            await enqueueEmailJob(
+                                'invitation',
+                                `invitation:${invitation._id}:${invitation.metadata.sentCount}`,
+                                { invitationId: invitation._id }
+                            );
+                        } catch (queueError) {
+                            console.error('Failed to queue invitation email:', queueError.message);
+                        }
+                    }
+                }
+            } catch (inviteError) {
+                // A failed invite must not block onboarding — the answers are saved.
+                console.error('Onboarding invite error:', inviteError.message);
+            }
+        }
 
         res.json({
             success: true,
             message: 'Onboarding completed successfully',
-            user: {
-                id: user._id,
-                fullName: user.fullName,
-                email: user.email,
-                role: user.role,
-                company: user.company,
-                teamSize: user.teamSize,
-                onboardingCompleted: user.onboardingCompleted
-            }
+            user: publicUser(user)
         });
 
     } catch (error) {

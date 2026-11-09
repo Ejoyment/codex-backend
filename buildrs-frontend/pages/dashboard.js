@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import Sidebar from '../components/Sidebar';
@@ -77,11 +77,22 @@ export default function Dashboard() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [showDevTabNav, setShowDevTabNav] = useState('Terminal');
   const [isCreatingProject, setIsCreatingProject] = useState(false);
+  const openedNewProjectRef = useRef(false);
 
 
   useEffect(() => {
     setHasHydrated(true);
   }, []);
+
+  // Onboarding hands off with ?newProject=1 so "Create your first project"
+  // lands directly in the existing wizard.
+  useEffect(() => {
+    if (!router.isReady || openedNewProjectRef.current) return;
+    if (router.query.newProject !== '1') return;
+    openedNewProjectRef.current = true;
+    setIsCreatingProject(true);
+    router.replace('/dashboard', undefined, { shallow: true });
+  }, [router]);
 
   const searchResults = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
