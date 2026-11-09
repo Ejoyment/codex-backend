@@ -8,6 +8,27 @@ const supportTicketSchema = new mongoose.Schema({
             return 'TKT-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9).toUpperCase();
         }
     },
+    // Short, human-readable reference shown on the support success screen
+    // (Figma: "BH-10428"). ticketId stays the internal/capability identifier.
+    referenceNumber: {
+        type: String,
+        unique: true,
+        sparse: true
+    },
+    // Support Center path: which guided topic (or direct message) was used.
+    category: {
+        type: String,
+        enum: ['general', 'billing', 'account', 'plans', 'technical', 'direct'],
+        default: 'general'
+    },
+    attachments: [{
+        name: String,
+        size: Number,
+        mimeType: String,
+        url: String,
+        key: String,
+        storage: String
+    }],
     userId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',

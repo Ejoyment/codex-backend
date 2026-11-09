@@ -333,7 +333,16 @@ export function getDemoApiResponse(path, options = {}) {
   if (pathname === '/api/support/agent/tickets') return success({ tickets: [{ _id: 'demo-ticket', ticketId: 'BR-204', subject: 'Help connecting a repository', status: 'open', priority: 'medium', customer: { name: 'Taylor Reed', email: 'taylor@example.com' }, createdAt: now(), messages: [] }] });
   if (/^\/api\/support\/agent\/tickets\/[^/]+\/(status|assign)$/.test(pathname)) return success({ updated: true });
   if (/^\/api\/support\/tickets\/[^/]+\/messages$/.test(pathname)) return success({ message: { content: 'Thanks for reaching out.' } });
-  if (pathname === '/api/support/tickets') return success({ tickets: [] });
+  if (pathname === '/api/support/tickets') {
+    if (method === 'POST') {
+      return success({
+        ticketId: 'demo-ticket',
+        referenceNumber: 'BH-10428',
+        ticket: { ticketId: 'demo-ticket', referenceNumber: 'BH-10428' },
+      });
+    }
+    return success({ tickets: [] });
+  }
   if (pathname === '/api/support/agent/logout') return success({ success: true });
   if (pathname === '/api/auth/delete-account') return success({ success: true });
   if (pathname === '/api/invitations') return success({ invitation: { id: 'demo-invitation' } });

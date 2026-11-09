@@ -18,7 +18,7 @@ const screens = [
   { id: 'deploy', label: 'Deploy', route: '/deploy?tour=1', duration: 8000 },
   { id: 'billing', label: 'Billing & Plans', route: '/settings?tab=billing&tour=1', duration: 8000 },
   { id: 'audit', label: 'Audit Report', route: '/audit?tour=1', duration: 8000 },
-  { id: 'support', label: 'Support Admin', route: '/support-admin?tour=1', duration: 8000 },
+  { id: 'support', label: 'Support Center', route: '/support?tour=1', duration: 8000 },
   { id: 'settings', label: 'Settings', route: '/settings?tab=profile&tour=1', duration: 8000 },
 ];
 
@@ -38,7 +38,7 @@ const labelsToScreenId = {
   Deploy: 'deploy',
   'Billing & Plans': 'billing',
   'Audit Report': 'audit',
-  'Support Admin': 'support',
+  'Support Center': 'support',
   Settings: 'settings',
 };
 
