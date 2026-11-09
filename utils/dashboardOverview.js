@@ -103,6 +103,8 @@ async function computeOverview(userId) {
         status: 'Healthy',
         branch: runningAgent?.branch || 'main',
         fullName: primaryProject ? `workspace/${primaryProject.name}` : (companyDocs[0]?.name || 'workspace'),
+        repoFullName: primaryProject?.githubRepoName || null,
+        technologies: Array.isArray(primaryProject?.technologies) ? primaryProject.technologies : [],
         updatedAt: primaryProject?.updatedAt || null,
         openTasks,
         agentsRunning: activeExecutions.length,
@@ -134,7 +136,7 @@ async function computeOverview(userId) {
             subtitle: `${dep.subdomain || dep.repoFullName || 'preview'} • ${relativeTime(dep.createdAt)}`,
             badge: dep.status === 'failed' ? 'DEPLOYMENT • FAILED' : 'DEPLOYMENT • IN PROGRESS',
             severity: dep.status === 'failed' ? 'error' : 'warning',
-            href: '/ci-cd',
+            href: '/deploy',
         });
     }
 
@@ -215,6 +217,7 @@ async function computeOverview(userId) {
         id: s._id,
         sessionId: s.sessionId,
         title: s.contextRef ? `Debug Room: ${s.contextRef}` : `Debug Room (${s.type})`,
+        contextRef: s.contextRef || null,
         type: s.type,
         participants: (s.participants || []).map((p) => initialsOf(p.name)),
         participantNames: (s.participants || []).map((p) => p.name).filter(Boolean),

@@ -9,7 +9,6 @@ import { useDashboard } from '../hooks/useDashboard';
 import CreateProjectWizard from '../components/CreateProjectWizard';
 import {
   Plus,
-  RotateCw,
   Search,
   ChevronDown,
   Sparkles,
@@ -72,7 +71,6 @@ export default function Dashboard() {
   const { trial, overview, projects, tasks, loading, loadStats, loadOverview, loadProjects, loadTasks } = useDashboard(dashboardUserId);
 
   const [hasHydrated, setHasHydrated] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [showDevTabNav, setShowDevTabNav] = useState('Terminal');
@@ -127,12 +125,6 @@ export default function Dashboard() {
     setSearchOpen(false);
     setSearchQuery('');
     router.push(href);
-  };
-
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    await Promise.all([loadStats(), loadOverview(), loadProjects(), loadTasks()]);
-    setRefreshing(false);
   };
 
   const handleSearch = (e) => {
@@ -224,7 +216,7 @@ export default function Dashboard() {
             />
           ) : (
             <>
-              <div className="workspace-content dashboard-content p-8 max-w-[1680px] mx-auto w-full space-y-6">
+              <div className="workspace-content dashboard-content p-6 w-full space-y-6">
                 <TrialBanner trial={trial} />
 
                 {/* Greeting */}
@@ -246,15 +238,6 @@ export default function Dashboard() {
                     <div className="flex flex-wrap items-center gap-3">
                       <button
                         type="button"
-                        className="bg-[#182130] hover:bg-[#1f2636] border border-white/10 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition"
-                        onClick={handleRefresh}
-                        disabled={refreshing}
-                      >
-                        <RotateCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-                        Refresh
-                      </button>
-                      <button
-                        type="button"
                         className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition shadow-lg shadow-cyan-500/20"
                         onClick={() => setIsCreatingProject(true)} // <-- UPDATED HERE
                       >
@@ -271,47 +254,6 @@ export default function Dashboard() {
                       </button>
                     </div>
                   </div>
-                )}
-
-                {!loading && projects?.length > 0 && (
-                  <section className="dashboard-projects-section rounded-xl border border-white/[0.07] bg-[#0d1119] p-4">
-                    <div className="mb-3 flex items-center justify-between">
-                      <div>
-                        <h2 className="text-sm font-semibold text-white">Projects</h2>
-                        <p className="mt-1 text-[11px] text-zinc-500">Projects available in your workspace</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => router.push('/projects')}
-                        className="text-[11px] font-medium text-cyan-400 transition hover:text-cyan-300"
-                      >
-                        View all
-                      </button>
-                    </div>
-                    <div className="dashboard-project-grid grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-                      {projects.map((project, index) => (
-                        <article
-                          key={project.id || `${project.type}-${project.name}-${index}`}
-                          className="rounded-md border border-white/5 bg-white/[0.02] p-4"
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-400">
-                              <FolderKanban className="h-3.5 w-3.5" />
-                            </div>
-                            <div className="min-w-0">
-                              <h3 className="truncate text-xs font-semibold text-white">{project.name}</h3>
-                              <p className="mt-0.5 text-[10px] capitalize text-zinc-500">
-                                {project.type || 'project'} · {project.status || 'active'}
-                              </p>
-                            </div>
-                          </div>
-                          <p className="mt-2 line-clamp-2 min-h-8 text-[10px] leading-relaxed text-zinc-500">
-                            {project.description || 'No description provided.'}
-                          </p>
-                        </article>
-                      ))}
-                    </div>
-                  </section>
                 )}
 
                 {loading ? (
@@ -340,7 +282,7 @@ export default function Dashboard() {
                       <h3 className="text-sm font-semibold text-white">{projects?.length ? 'Your project workspace is ready' : 'No active projects'}</h3>
                       <p className="mt-1 text-[11px] text-zinc-500">
                         {projects?.length
-                          ? 'Your projects are listed above. Create a task to start making progress.'
+                          ? 'Your workspace is ready. Create a task to start making progress.'
                           : 'You haven’t created any projects yet. Start building your first workspace.'}
                       </p>
                       <button
@@ -483,26 +425,29 @@ export default function Dashboard() {
                   <div className="space-y-4">
                     {/* Workspace overview */}
                     <div className="rounded-xl border border-white/[0.07] bg-[#0d1119] p-4">
-                      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-white/5">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-cyan-500/10 text-cyan-400">
-                            <FolderKanban className="h-4 w-4" />
+                      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+                            <Layers className="h-4 w-4" />
                           </div>
-                          <div>
-                            <div className="flex items-center gap-2.5">
-                              <h2 className="text-sm font-semibold text-white">{ws?.name}</h2>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2.5 flex-wrap">
+                              <h2 className="text-base font-semibold text-white">{ws?.name}</h2>
                               <span className="flex items-center gap-1 text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/20 font-medium">
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> {ws?.status}
                               </span>
                             </div>
-                            <p className="text-[10px] text-zinc-500 mt-1">
-                              {ws?.fullName} · {ws?.branch} {ws?.updatedAt ? `· updated ${relativeTime(ws.updatedAt)}` : ''}
+                            <p className="text-[11px] text-zinc-500 mt-1 flex items-center gap-1.5 flex-wrap">
+                              <GitBranch className="h-3 w-3 shrink-0" />
+                              <span className="truncate">{ws?.repoFullName || ws?.fullName}</span>
+                              {ws?.technologies?.length > 0 && <span>· {ws.technologies.slice(0, 2).join(' + ')}</span>}
+                              {ws?.updatedAt ? <span>· Updated {relativeTime(ws.updatedAt)}</span> : null}
                             </p>
                           </div>
                         </div>
                         <button
                           type="button"
-                          className="rounded-md bg-cyan-500 px-3 py-1.5 text-[11px] font-semibold text-slate-950 transition hover:bg-cyan-400 self-start lg:self-auto inline-flex items-center gap-1.5 group"
+                          className="rounded-lg bg-[#1a2230] hover:bg-[#1d263b] border border-white/10 px-4 py-2 text-xs font-semibold text-cyan-400 transition self-start lg:self-center inline-flex items-center gap-2 group shrink-0"
                           onClick={() => router.push('/editor')}
                         >
                           Continue building
@@ -510,23 +455,18 @@ export default function Dashboard() {
                         </button>
                       </div>
 
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-4">
-                        <div>
-                          <div className="text-lg font-bold text-white">{ws?.openTasks ?? 0}</div>
-                          <div className="text-[10px] text-zinc-500 mt-1">Open tasks</div>
-                        </div>
-                        <div>
-                          <div className="text-lg font-bold text-white">{ws?.agentsRunning ?? 0}</div>
-                          <div className="text-[10px] text-zinc-500 mt-1">Agents running</div>
-                        </div>
-                        <div>
-                          <div className="text-lg font-bold text-white">{ws?.validationPercent != null ? `${ws.validationPercent}%` : '—'}</div>
-                          <div className="text-[10px] text-zinc-500 mt-1">Validation</div>
-                        </div>
-                        <div>
-                          <div className="text-lg font-bold text-white">{ws?.branch || 'main'}</div>
-                          <div className="text-[10px] text-zinc-500 mt-1">Active branch</div>
-                        </div>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 mt-4">
+                        {[
+                          { value: ws?.openTasks ?? 0, label: 'Open tasks' },
+                          { value: ws?.agentsRunning ?? 0, label: 'Agents running' },
+                          { value: ws?.validationPercent != null ? `${ws.validationPercent}%` : '—', label: 'Validation' },
+                          { value: ws?.branch || 'main', label: 'Active branch' },
+                        ].map((stat) => (
+                          <div key={stat.label} className="rounded-lg border border-white/[0.07] bg-white/[0.02] px-3.5 py-2.5">
+                            <div className="text-base font-bold text-white leading-none truncate">{stat.value}</div>
+                            <div className="text-[10px] text-zinc-500 mt-1.5">{stat.label}</div>
+                          </div>
+                        ))}
                       </div>
                     </div>
 
@@ -564,6 +504,9 @@ export default function Dashboard() {
                                 ? { Icon: Layers, cls: 'bg-amber-500/10 text-amber-400 border-amber-500/20' }
                                 : { Icon: Sparkles, cls: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20' };
                             const ActionIcon = ic.Icon;
+                            const actionLabel = item.actionLabel
+                              || (item.type === 'validation' ? 'Inspect failures'
+                                : item.type === 'deployment' ? 'Review deploy' : 'Review changes');
                             return (
                               <div key={item.id} className="rounded-md border border-white/5 bg-white/[0.02] p-3 flex flex-col md:flex-row md:items-center justify-between gap-3 transition">
                                 <div className="flex items-start gap-3">
@@ -583,7 +526,7 @@ export default function Dashboard() {
                                   className="rounded-md bg-[#1a2230] px-3 py-1 text-[10px] font-medium text-cyan-400 hover:bg-[#1d263b] transition shrink-0 self-end md:self-auto"
                                   onClick={() => router.push(item.href || '/tasks')}
                                 >
-                                  Review →
+                                  {actionLabel} <span aria-hidden="true">›</span>
                                 </button>
                               </div>
                             );
@@ -596,9 +539,7 @@ export default function Dashboard() {
                     <div className="rounded-xl border border-white/[0.07] bg-[#0d1119] p-4">
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-2">
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-cyan-500/10 text-cyan-400">
-                            <Terminal className="h-4 w-4" />
-                          </div>
+                          <Activity className="h-4 w-4 text-cyan-400" />
                           <h3 className="text-sm font-semibold text-white">Active Development</h3>
                         </div>
                         {overview.activeDevelopment && (
@@ -620,46 +561,66 @@ export default function Dashboard() {
                         <>
                           <div className="rounded-md border border-white/5 bg-white/[0.02] p-3 mb-3">
                             <div className="flex items-center justify-between mb-2">
-                              <div>
-                                <div className="text-[10px] text-cyan-400 font-semibold">{overview.activeDevelopment.taskCode}</div>
-                                <h4 className="text-xs font-semibold text-white mt-0.5">{overview.activeDevelopment.taskTitle}</h4>
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+                                  <Sparkles className="h-3.5 w-3.5" />
+                                </div>
+                                <div className="min-w-0">
+                                  <h4 className="text-xs font-semibold text-white truncate">{overview.activeDevelopment.taskTitle}</h4>
+                                  <p className="text-[10px] text-zinc-500 mt-0.5">{overview.activeDevelopment.taskCode}{overview.activeDevelopment.branch ? ` · ${overview.activeDevelopment.branch}` : ''}</p>
+                                </div>
                               </div>
-                              <span className="text-[10px] font-bold bg-cyan-500/10 text-cyan-400 px-2 py-0.5 rounded border border-cyan-500/20">
+                              <span className="text-[10px] font-bold bg-cyan-500/10 text-cyan-400 px-2 py-0.5 rounded-full border border-cyan-500/20 shrink-0">
                                 {overview.activeDevelopment.status}
                               </span>
                             </div>
-                            <div className="text-[11px] text-zinc-500 mb-3">{overview.activeDevelopment.stepText}</div>
-
-                            <div className="w-full bg-white/5 h-1.5 rounded-full overflow-hidden mb-3">
-                              <div className="bg-gradient-to-r from-cyan-500 to-emerald-400 h-full rounded-full transition-all duration-500" style={{ width: `${overview.activeDevelopment.progressPercent}%` }} />
+                            <div className="flex items-center justify-between text-[11px] text-zinc-500 mt-3 mb-1.5">
+                              <span>{overview.activeDevelopment.stepText}</span>
+                              <span className="text-zinc-400 font-medium">{overview.activeDevelopment.progressPercent}%</span>
                             </div>
 
-                            <div className="flex items-center gap-4 text-[11px] text-zinc-500">
-                              <span className="flex items-center gap-1 text-zinc-300">
-                                <span className="w-2 h-2 rounded-full bg-cyan-400" /> {overview.activeDevelopment.branch || 'agent'}
+                            <div className="w-full bg-white/5 h-1.5 rounded-full overflow-hidden mb-3">
+                              <div className="bg-cyan-400 h-full rounded-full transition-all duration-500" style={{ width: `${overview.activeDevelopment.progressPercent}%` }} />
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-2 text-[10px] text-zinc-400">
+                              <span className="inline-flex items-center gap-1 rounded-md bg-white/[0.04] border border-white/5 px-2 py-1">
+                                <GitBranch className="h-3 w-3" /> {overview.activeDevelopment.branch || 'agent'}
                               </span>
-                              <span>·</span>
-                              <span>{overview.activeDevelopment.filesChanged} files</span>
-                              <span>·</span>
-                              <span>{overview.activeDevelopment.checks} checks</span>
+                              <span className="inline-flex items-center gap-1 rounded-md bg-white/[0.04] border border-white/5 px-2 py-1">
+                                <FileCode className="h-3 w-3" /> {overview.activeDevelopment.filesChanged} files
+                              </span>
+                              <span className="inline-flex items-center gap-1 rounded-md bg-white/[0.04] border border-white/5 px-2 py-1">
+                                <CheckCircle2 className="h-3 w-3 text-emerald-400" /> {overview.activeDevelopment.checks} checks
+                              </span>
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-4 border-b border-white/5 pb-2 mb-3 text-[11px] text-zinc-500">
-                            {['Terminal', 'Logs'].map((tab) => (
+                          <div className="flex items-center gap-5 border-b border-white/5 pb-0 mb-3 text-[11px] text-zinc-500">
+                            {['Terminal', 'Diff', 'Validation'].map((tab) => (
                               <button
                                 key={tab}
                                 type="button"
                                 onClick={() => setShowDevTabNav(tab)}
-                                className={`pb-1 transition ${showDevTabNav === tab ? 'border-b border-cyan-400 text-cyan-400' : 'hover:text-white'}`}
+                                className={`pb-2 -mb-px transition ${showDevTabNav === tab ? 'border-b-2 border-cyan-400 text-cyan-400 font-semibold' : 'hover:text-white'}`}
                               >
                                 {tab}
                               </button>
                             ))}
                           </div>
 
-                          <div className="rounded-lg border border-cyan-500/10 bg-[#0a0d15] p-3 font-mono text-[10px] leading-relaxed text-zinc-500 overflow-x-auto whitespace-pre-wrap min-h-[64px]">
-                            {overview.activeDevelopment.terminalLog || 'No output captured yet.'}
+                          <div className="rounded-lg bg-[#0a0d15] p-3 font-mono text-[10px] leading-relaxed text-zinc-400 overflow-x-auto whitespace-pre-wrap min-h-[64px]">
+                            {showDevTabNav === 'Terminal' && (overview.activeDevelopment.terminalLog || 'No output captured yet.')}
+                            {showDevTabNav === 'Diff' && (
+                              overview.activeDevelopment.filesChanged > 0
+                                ? `${overview.activeDevelopment.filesChanged} file${overview.activeDevelopment.filesChanged === 1 ? '' : 's'} changed on ${overview.activeDevelopment.branch || 'agent'} — open the Editor to review the diff.`
+                                : 'No diff available yet.'
+                            )}
+                            {showDevTabNav === 'Validation' && (
+                              overview.activeDevelopment.checks > 0
+                                ? `${overview.activeDevelopment.checks} validation check${overview.activeDevelopment.checks === 1 ? '' : 's'} recorded for this run.`
+                                : 'No validation results yet.'
+                            )}
                           </div>
                         </>
                       )}
@@ -728,13 +689,14 @@ export default function Dashboard() {
                             <p className="mt-1 text-[10px] text-zinc-500">Recent activities will show up here.</p>
                           </div>
                         ) : (
-                          <div className="space-y-3">
+                          <div className="relative space-y-4">
+                            <span className="pointer-events-none absolute left-[13px] top-2 bottom-2 w-px bg-white/[0.07]" aria-hidden="true" />
                             {overview.recentActivity.map((item) => {
                               const meta = ACTIVITY_ICON[item.type] || ACTIVITY_ICON.system;
                               const Icon = meta.Icon;
                               return (
-                                <div key={item.id} className="flex items-start gap-3">
-                                  <div className={`w-7 h-7 rounded-lg border flex items-center justify-center shrink-0 mt-0.5 ${meta.cls}`}>
+                                <div key={item.id} className="relative flex items-start gap-3">
+                                  <div className={`relative z-10 w-7 h-7 rounded-lg border flex items-center justify-center shrink-0 bg-[#0d1119] ${meta.cls}`}>
                                     <Icon className="w-3.5 h-3.5" />
                                   </div>
                                   <div className="min-w-0">
@@ -787,7 +749,7 @@ export default function Dashboard() {
                             </div>
                             <button
                               type="button"
-                              className="mt-1 inline-flex w-full items-center justify-center rounded-md bg-cyan-500 px-3 py-1.5 text-[11px] font-semibold text-slate-950 transition hover:bg-cyan-400"
+                              className="mt-1 inline-flex w-full items-center justify-center rounded-md bg-[#1a2230] hover:bg-[#1d263b] border border-white/10 px-3 py-2 text-[11px] font-semibold text-cyan-400 transition"
                               onClick={() => router.push('/deploy')}
                             >
                               Prepare deployment
@@ -799,13 +761,24 @@ export default function Dashboard() {
                       <div className="rounded-xl border border-white/[0.07] bg-[#0d1119] p-4">
                         <div className="flex items-center justify-between mb-3">
                           <div className="flex items-center gap-2">
-                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-400">
-                              <Radio className="h-4 w-4" />
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-400">
+                              <Terminal className="h-4 w-4" />
                             </div>
-                            <h3 className="text-sm font-semibold text-white">Debug Rooms</h3>
+                            <div className="min-w-0">
+                              <h3 className="text-sm font-semibold text-white truncate">
+                                {overview.debugRooms[0]?.title || 'Debug Rooms'}
+                              </h3>
+                              {overview.debugRooms[0]?.participantNames?.length > 0 && (
+                                <p className="text-[10px] text-zinc-500 mt-0.5 truncate">
+                                  {overview.debugRooms[0].participantNames.join(' and ')} debugging
+                                </p>
+                              )}
+                            </div>
                           </div>
                           {overview.debugRooms.length > 0 && (
-                            <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/20">LIVE</span>
+                            <span className="flex items-center gap-1 text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/20 font-medium shrink-0">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Live
+                            </span>
                           )}
                         </div>
 
@@ -831,7 +804,7 @@ export default function Dashboard() {
                                 <div className="flex items-center gap-3 min-w-0">
                                   <div className="flex -space-x-2 shrink-0">
                                     {room.participants.map((p, idx) => (
-                                      <span key={idx} className="flex h-7 w-7 items-center justify-center rounded-full bg-cyan-500/20 text-[10px] font-bold text-cyan-300 border border-cyan-500/40">
+                                      <span key={idx} className={`flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-bold border ${idx % 2 === 0 ? 'bg-white/10 text-zinc-200 border-white/20' : 'bg-blue-500/20 text-blue-300 border-blue-500/40'}`}>
                                         {p}
                                       </span>
                                     ))}
@@ -840,10 +813,10 @@ export default function Dashboard() {
                                 </div>
                                 <button
                                   type="button"
-                                  className="rounded-md bg-[#1a2230] px-3 py-1 text-[10px] font-medium text-cyan-400 hover:bg-[#1d263b] transition shrink-0"
+                                  className="text-[11px] font-medium text-cyan-400 hover:text-cyan-300 transition shrink-0 inline-flex items-center gap-1"
                                   onClick={() => router.push('/meeting-room')}
                                 >
-                                  Join →
+                                  Join room <ArrowRight className="h-3 w-3" />
                                 </button>
                               </div>
                             ))}
@@ -872,11 +845,14 @@ export default function Dashboard() {
                           </div>
                         ) : (
                           <div className="space-y-3">
-                            {overview.recentActivity.filter((a) => a.type === 'code' || a.type === 'git').slice(0, 4).map((item) => (
+                            {overview.recentActivity.filter((a) => a.type === 'code' || a.type === 'git').slice(0, 4).map((item) => {
+                              const meta = ACTIVITY_ICON[item.type] || ACTIVITY_ICON.code;
+                              const Icon = meta.Icon;
+                              return (
                               <div key={item.id} className="flex items-start justify-between gap-4">
                                 <div className="flex items-start gap-3 min-w-0">
-                                  <div className="w-7 h-7 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 shrink-0 mt-0.5">
-                                    <GitBranch className="w-3.5 h-3.5" />
+                                  <div className={`w-7 h-7 rounded-lg border flex items-center justify-center shrink-0 mt-0.5 ${meta.cls}`}>
+                                    <Icon className="w-3.5 h-3.5" />
                                   </div>
                                   <div className="min-w-0">
                                     <p className="text-xs font-semibold text-white truncate">{item.title}</p>
@@ -885,7 +861,8 @@ export default function Dashboard() {
                                 </div>
                                 <span className="text-[11px] text-zinc-500 shrink-0">{item.relativeTime}</span>
                               </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         )}
                       </div>
@@ -930,7 +907,7 @@ export default function Dashboard() {
                                     </div>
                                   </div>
                                   {conn.status === 'warn' && (
-                                    <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded text-[10px] font-bold shrink-0">check</span>
+                                    <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0">1 issue</span>
                                   )}
                                 </div>
                               );
