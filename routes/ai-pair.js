@@ -350,6 +350,9 @@ router.post('/session', authenticateToken, async (req, res) => {
     try {
         const { repositoryId, repositoryName, repositoryOwner, branch, sessionName, language } = req.body;
         
+        console.log('[AI Session Create] body:', req.body);
+        console.log('[AI Session Create] companyId:', req.body.companyId, 'workspaceId:', req.body.workspaceId);
+
         const session = await AIPairSession.create({
             userId: req.userId,
             repositoryId,
@@ -679,6 +682,12 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
     try {
         const { sessionId, message, codeContext = {}, enableActions = false, useAgentLoop = false, companyId, taskId, projectId, provider, model } = req.body || {};
 
+        console.log('[AI Chat] Request body keys:', Object.keys(req.body || {}));
+        console.log('[AI Chat] companyId from body:', companyId, 'type:', typeof companyId);
+        console.log('[AI Chat] codeContext.workspace.id:', codeContext?.workspace?.id, 'type:', typeof codeContext?.workspace?.id);
+        console.log('[AI Chat] sessionId:', sessionId);
+        console.log('[AI Chat] userId:', req.userId);
+
         if (typeof message !== 'string' || !message.trim()) {
             return res.status(400).json({
                 success: false,
@@ -742,13 +751,25 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
             // was created for. codeContext.workspace.id is only a fallback
             // for sessions without a workspace binding.
             const sessionWorkspaceId = session.workspaceId || session.companyId || null;
-            const requestedAgentWorkspaceId = sessionWorkspaceId || codeContext?.workspace?.id || companyWorkspaceId || null;
+            const contextWorkspaceId = codeContext?.workspace?.id || null;
+            // Treat empty strings as null to properly fall back to personal workspace
+            const requestedAgentWorkspaceId = sessionWorkspaceId || contextWorkspaceId || companyWorkspaceId || null;
             if (requestedAgentWorkspaceId) {
                 const access = await assertWorkspaceAccess(requestedAgentWorkspaceId, req.userId);
                 if (!access.ok) {
                     return res.status(403).json({ success: false, message: access.reason || 'Workspace access denied' });
                 }
                 agentWorkspaceId = access.workspaceId;
+            } else {
+                // No explicit workspace - resolve personal workspace for the user
+                console.log('[AI Chat] No workspace ID provided, resolving personal workspace');
+                const personalAccess = await assertWorkspaceAccess(null, req.userId);
+                if (personalAccess.ok) {
+                    agentWorkspaceId = personalAccess.workspaceId;
+                    console.log('[AI Chat] Resolved personal workspace:', agentWorkspaceId);
+                } else {
+                    console.error('[AI Chat] Failed to resolve personal workspace:', personalAccess.reason);
+                }
             }
 
             // A task-bound agent may only see its own project. Resolve it from
