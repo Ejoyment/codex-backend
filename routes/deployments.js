@@ -17,6 +17,7 @@ const depService = require('../utils/deploymentService');
 const { normalizeEnv, toEnvObject, redact } = require('../utils/deployEnv');
 const { redeployDeployment, resetSelfHealState } = require('../utils/agentAutoDeploy');
 const { validateDeployFiles, backfillFileContent, limits: deployLimits } = require('../utils/deployContent');
+const { normalizeDeployContext } = require('../utils/deployContext');
 const { addAuditLog } = require('../utils/auditLogService');
 const { notifyDeploymentEvent } = require('../utils/notificationTriggers');
 
@@ -285,6 +286,18 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
             ? (repo.fullName || (repo.owner && repo.name ? `${repo.owner}/${repo.name}` : null))
             : null;
         const projectKey = projectId ? String(projectId) : null;
+        // Branch / environment / commit + requested build settings. Omitting
+        // them on a redeploy preserves the existing deployment's values.
+        let deployContext;
+        try {
+            deployContext = normalizeDeployContext(req.body, {
+                existing: deployment,
+                project,
+                subdomain: sanitized,
+            });
+        } catch (ctxErr) {
+            return res.status(400).json({ error: ctxErr.message });
+        }
         const buildRunId = randomUUID();
         if (deployment) {
             deployment = await Deployment.findOneAndUpdate(
@@ -301,6 +314,7 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
                         projectKey,
                         repoFullName,
                         workspaceId: workspaceId ? String(workspaceId) : null,
+                        ...deployContext,
                         env: envEntries,
                         status: 'building',
                         buildRunId,
@@ -341,6 +355,7 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
                     projectKey,
                     repoFullName,
                     workspaceId: workspaceId ? String(workspaceId) : null,
+                    ...deployContext,
                     subdomain: sanitized,
                     env: envEntries,
                     status: 'building',
@@ -369,7 +384,14 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
             event: 'deployment.created',
             category: 'deployment',
             target: `${sanitized}.buildrshq.dev`,
-            details: { projectId: projectId || null, deployment: deployId.toString(), source: source || 'local' },
+            details: {
+                projectId: projectId || null,
+                deployment: deployId.toString(),
+                source: source || 'local',
+                branch: deployContext.branch,
+                environment: deployContext.environment,
+                commit: deployContext.commit,
+            },
             req
         });
 

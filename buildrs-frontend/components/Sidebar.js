@@ -56,7 +56,7 @@ const NAV_SECTIONS = [
     label: 'SHIP',
     items: [
       { href: '/source-code', label: 'Git & PRs', icon: Database },
-      { href: '/ci-cd', label: 'Deploy', icon: Rocket },
+      { href: '/deploy', label: 'Deploy', icon: Rocket },
     ],
   },
   {
@@ -120,7 +120,9 @@ export default function Sidebar({
               <div className="flex flex-col gap-0.5">
                 {section.items.map((item) => {
                   const Icon = item.icon;
-                  const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href + '/'));
+                  const isActive = pathname === item.href
+                    || (item.href !== '/dashboard' && pathname.startsWith(item.href + '/'))
+                    || (item.href === '/deploy' && pathname === '/ci-cd');
                   return (
                     <Link
                       key={item.href + item.label}
