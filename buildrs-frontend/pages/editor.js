@@ -1769,6 +1769,9 @@ export default function Editor() {
       repositoryName: selectedRepo?.name || selectedProject?.name || 'workspace',
       repositoryOwner: selectedRepo?.owner?.login || selectedRepo?.owner || selectedProject?.owner || user?.username || 'local',
       branch: selectedBranch || selectedRepo?.default_branch || selectedProject?.defaultBranch || 'main',
+      // Only pass companyId if there's an actual team workspace (not personal)
+      companyId: selectedCompany?._id || null,
+      workspaceId: selectedProject?.workspaceId || workspaceId || null,
     };
 
     const data = await apiFetch('/api/ai-pair/session', {
@@ -1958,7 +1961,8 @@ export default function Editor() {
     setAiLoading(true);
     try {
       const session = await ensureAiSession();
-      const companyId = selectedProject?.workspaceId || selectedCompany?._id;
+      // Only pass companyId if there's an actual team workspace
+      const companyId = selectedCompany?._id || null;
       const shouldUseAgentLoop = /fix|refactor|review|debug|ship|patch|build|deploy/i.test(input);
       // Never ship secrets to the model: .env* files are stripped from AI
       // context (paste values explicitly if the question needs them).
@@ -1991,7 +1995,7 @@ export default function Editor() {
           useAgentLoop: shouldUseAgentLoop,
             codeContext: {
               workspace: {
-                id: selectedProject?.workspaceId || workspaceId || selectedRepo?._id || 'local-workspace',
+                id: selectedProject?.workspaceId || workspaceId || selectedCompany?._id,
                 name: selectedProject?.name || selectedRepo?.name || 'workspace',
               },
             files: safeFiles.map((file) => ({ id: file._id || file.id, name: file.name, path: file.path, language: file.language })),
