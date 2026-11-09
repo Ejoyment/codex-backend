@@ -17193,3 +17193,46 @@
   .notif-row-side { width: 100%; align-items: flex-start; }
   .notif-empty-card { min-height: 380px; }
 }
+
+/* ==========================================================================
+   Overview header buttons (Figma 46:39777)
+   New Project: solid #12DCE5 + glow. Delegate to AI: dark + cyan outline.
+   Both are text-only in the design (no icons), ~44px tall, 10px radius.
+   ========================================================================== */
+
+.ov-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.8rem 1.4rem;
+  border-radius: 10px;
+  border: none;
+  background: #12dce5;
+  color: #07152b;
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 0 22px rgba(18, 220, 229, 0.28);
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+.ov-btn-primary:hover { background: #68f7ff; transform: translateY(-1px); }
+
+.ov-btn-outline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.8rem 1.4rem;
+  border-radius: 10px;
+  border: 1px solid rgba(18, 220, 229, 0.4);
+  background: rgba(18, 220, 229, 0.04);
+  color: #12dce5;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.ov-btn-outline:hover { background: rgba(18, 220, 229, 0.1); border-color: rgba(18, 220, 229, 0.6); }

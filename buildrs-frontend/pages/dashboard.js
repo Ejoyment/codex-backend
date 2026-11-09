@@ -223,7 +223,7 @@ export default function Dashboard() {
                 {(loading || !isEmpty) && (
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2">
                     <div>
-                      <p className="text-xs uppercase tracking-wider text-zinc-500 font-semibold mb-1">DEVELOPMENT COMMAND CENTER</p>
+                      <p className="text-xs uppercase tracking-wider text-[#12dce5] font-semibold mb-1">DEVELOPMENT COMMAND CENTER</p>
                       <h1 className="text-3xl font-bold tracking-tight text-white">
                         {formatGreeting()}, {greetingName}.
                       </h1>
@@ -235,21 +235,19 @@ export default function Dashboard() {
                             : 'Your workspace is up to date.'}
                       </p>
                     </div>
-                    <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex flex-wrap items-center gap-3.5">
                       <button
                         type="button"
-                        className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition shadow-lg shadow-cyan-500/20"
-                        onClick={() => setIsCreatingProject(true)} // <-- UPDATED HERE
+                        className="ov-btn-primary"
+                        onClick={() => setIsCreatingProject(true)}
                       >
-                        <Plus className="w-4 h-4" />
                         New Project
                       </button>
                       <button
                         type="button"
-                        className="bg-[#182130] hover:bg-[#1f2636] border border-white/10 text-cyan-400 px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition"
+                        className="ov-btn-outline"
                         onClick={() => router.push('/ai-pair')}
                       >
-                        <Sparkles className="w-4 h-4" />
                         Delegate to AI
                       </button>
                     </div>
