@@ -58,11 +58,21 @@ async function resolveExecutionWorkspace(execution, userId) {
   const stored = metaValue(execution, 'workspaceId');
   if (!stored) return { ok: true, workspaceId: null };
   const access = await assertWorkspaceAccess(stored, userId);
-  if (!access.ok) return { ok: false, reason: access.reason };
-  if (String(stored) !== access.workspaceId) {
-    setMetaValue(execution, 'workspaceId', access.workspaceId);
+  if (access.ok) {
+    if (String(stored) !== access.workspaceId) {
+      setMetaValue(execution, 'workspaceId', access.workspaceId);
+    }
+    return { ok: true, workspaceId: access.workspaceId };
   }
-  return { ok: true, workspaceId: access.workspaceId };
+  // Stored workspace is invalid (e.g., user id string, or old team workspace user left)
+  // Fall back to personal workspace
+  console.log('[resolveExecutionWorkspace] Stored workspace invalid, falling back to personal:', stored);
+  const personalAccess = await assertWorkspaceAccess(null, userId);
+  if (personalAccess.ok) {
+    setMetaValue(execution, 'workspaceId', personalAccess.workspaceId);
+    return { ok: true, workspaceId: personalAccess.workspaceId };
+  }
+  return { ok: false, reason: access.reason };
 }
 
 function spawnAgentWorker(executionId, taskId, workspaceId, projectId, specIds, provider, model, localPrivacyMode, timeoutMs = 900000) {
