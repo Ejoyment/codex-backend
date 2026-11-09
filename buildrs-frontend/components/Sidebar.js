@@ -20,6 +20,7 @@ import {
   Brain,
   LifeBuoy,
   Figma,
+  Bell,
 } from 'lucide-react';
 import { getAvatarUrl } from '../lib/utils';
 import WorkspaceGlobalHeader from './WorkspaceGlobalHeader';
@@ -48,7 +49,7 @@ const NAV_SECTIONS = [
     items: [
       { href: '/meeting-room', label: 'Debug Room', icon: Radio },
       { href: '/teams', label: 'Team', icon: Users },
-      { href: '/team-memory', label: 'Team Memory', icon: Brain },
+      { href: '/integration', label: 'Integration', icon: Brain },
     ],
   },
   {
@@ -63,7 +64,8 @@ const NAV_SECTIONS = [
     items: [
       { href: '/billing', label: 'Billing & Plans', icon: Plug2 },
       { href: '/audit', label: 'Audit Report', icon: ShieldCheck },
-      { href: '/support-admin', label: 'Support Admin', icon: LifeBuoy },
+      { href: '/notifications', label: 'Notifications', icon: Bell },
+      { href: '/support', label: 'Support Center', icon: LifeBuoy },
       { href: '/settings', label: 'Settings', icon: Settings },
     ],
   },
