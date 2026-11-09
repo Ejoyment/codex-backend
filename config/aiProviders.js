@@ -26,7 +26,7 @@ const PROVIDERS = Object.freeze({
     type: 'cloud',
     apiKeyEnv: 'GEMINI_API_KEY',
     modelEnv: 'AI_MODEL',
-    defaultModel: 'gemini-2.0-flash-exp',
+    defaultModel: 'gemini-3.8-flash',
   }),
   mistral: Object.freeze({
     implemented: true,

@@ -682,11 +682,13 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
     try {
         const { sessionId, message, codeContext = {}, enableActions = false, useAgentLoop = false, companyId, taskId, projectId, provider, model } = req.body || {};
 
+        console.log('[AI Chat] ===== REQUEST START =====');
         console.log('[AI Chat] Request body keys:', Object.keys(req.body || {}));
-        console.log('[AI Chat] companyId from body:', companyId, 'type:', typeof companyId);
-        console.log('[AI Chat] codeContext.workspace.id:', codeContext?.workspace?.id, 'type:', typeof codeContext?.workspace?.id);
+        console.log('[AI Chat] companyId from body:', companyId, 'type:', typeof companyId, 'isEmptyString:', companyId === '');
+        console.log('[AI Chat] codeContext.workspace:', JSON.stringify(codeContext?.workspace, null, 2));
         console.log('[AI Chat] sessionId:', sessionId);
         console.log('[AI Chat] userId:', req.userId);
+        console.log('[AI Chat] useAgentLoop:', useAgentLoop);
 
         if (typeof message !== 'string' || !message.trim()) {
             return res.status(400).json({
