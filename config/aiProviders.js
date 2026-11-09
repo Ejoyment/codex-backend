@@ -14,7 +14,7 @@ const PROVIDERS = Object.freeze({
     type: 'cloud',
     apiKeyEnv: 'OPENROUTER_API_KEY',
     modelEnv: 'OPENROUTER_MODEL',
-    defaultModel: 'anthropic/claude-opus-5.5',
+    defaultModel: 'anthropic/claude-3.5-sonnet',
     endpoint: 'https://openrouter.ai/api/v1/chat/completions',
     // OpenRouter is OpenAI-compatible: standard messages array, Bearer auth,
     // json_object response format. Claude models accessed via OpenRouter
@@ -26,7 +26,7 @@ const PROVIDERS = Object.freeze({
     type: 'cloud',
     apiKeyEnv: 'GEMINI_API_KEY',
     modelEnv: 'AI_MODEL',
-    defaultModel: 'gemini-1.5-flash',
+    defaultModel: 'gemini-2.0-flash-exp',
   }),
   mistral: Object.freeze({
     implemented: true,
@@ -34,7 +34,7 @@ const PROVIDERS = Object.freeze({
     type: 'cloud',
     apiKeyEnv: 'MISTRAL_API_KEY',
     modelEnv: 'MISTRAL_MODEL',
-    defaultModel: 'mistral-tiny',
+    defaultModel: 'mistral-small-latest',
     endpoint: 'https://api.mistral.ai/v1/chat/completions',
   }),
   groq: Object.freeze({
@@ -43,7 +43,7 @@ const PROVIDERS = Object.freeze({
     type: 'cloud',
     apiKeyEnv: 'GROQ_API_KEY',
     modelEnv: 'GROQ_MODEL',
-    defaultModel: 'openai/gpt-oss-120b',
+    defaultModel: 'llama-3.3-70b-versatile',
     endpoint: 'https://api.groq.com/openai/v1/chat/completions',
   }),
   huggingface: Object.freeze({
@@ -52,7 +52,7 @@ const PROVIDERS = Object.freeze({
     type: 'cloud',
     apiKeyEnv: 'HUGGINGFACE_API_KEY',
     modelEnv: 'HUGGINGFACE_MODEL',
-    defaultModel: 'mistralai/Mistral-7B-Instruct-v0.2',
+    defaultModel: 'meta-llama/Meta-Llama-3.1-8B-Instruct',
     endpoint: 'https://api-inference.huggingface.co/models/',
   }),
 });
