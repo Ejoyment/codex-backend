@@ -49,7 +49,7 @@ const NAV_SECTIONS = [
     items: [
       { href: '/meeting-room', label: 'Debug Room', icon: Radio },
       { href: '/teams', label: 'Team', icon: Users },
-      { href: '/integration', label: 'Integration', icon: Brain },
+      { href: '/integrations', label: 'Integrations', icon: Brain },
     ],
   },
   {
