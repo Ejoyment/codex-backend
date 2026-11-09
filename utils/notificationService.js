@@ -241,19 +241,23 @@ class NotificationService {
 
     // ---------------------------------------------------------------- reads
 
-    static async getNotifications(userId, { limit = DEFAULT_LIMIT, skip = 0, unreadOnly = false } = {}) {
+    static async getNotifications(userId, { limit = DEFAULT_LIMIT, skip = 0, unreadOnly = false, readOnly = false } = {}) {
         const id = idOf(userId);
         const safeLimit = Math.min(Math.max(parseInt(limit, 10) || DEFAULT_LIMIT, 1), MAX_LIMIT);
         const safeSkip = Math.max(parseInt(skip, 10) || 0, 0);
 
         return Notification.find({
             userId: id,
-            ...(unreadOnly ? { read: false } : {}),
+            ...(readOnly ? { read: true } : unreadOnly ? { read: false } : {}),
         })
             .sort({ createdAt: -1 })
             .skip(safeSkip)
             .limit(safeLimit)
             .lean({ virtuals: true });
+    }
+
+    static async getTotalCount(userId) {
+        return Notification.countDocuments({ userId: idOf(userId) });
     }
 
     static async getUnreadCount(userId) {
@@ -287,6 +291,15 @@ class NotificationService {
         ).lean();
     }
 
+    /** Scoped by userId so one user can never touch another's notification. */
+    static async markAsUnread(notificationId, userId) {
+        return Notification.findOneAndUpdate(
+            { _id: notificationId, userId: idOf(userId) },
+            { read: false, readAt: null },
+            { new: true }
+        ).lean();
+    }
+
     static async markAllAsRead(userId) {
         const result = await Notification.updateMany(
             { userId: idOf(userId), read: false },
@@ -301,6 +314,23 @@ class NotificationService {
             userId: idOf(userId),
         });
         return result ? result.toObject() : null;
+    }
+
+    /**
+     * Bulk delete for the Notifications page "Select All" mode. Ids are
+     * validated + deduped and the delete is always scoped to the caller,
+     * so a foreign id in the list simply matches nothing.
+     */
+    static async deleteNotifications(userId, ids) {
+        const validIds = [...new Set(
+            (Array.isArray(ids) ? ids : []).filter((id) => mongoose.Types.ObjectId.isValid(id))
+        )].slice(0, 100);
+        if (!validIds.length) return 0;
+        const result = await Notification.deleteMany({
+            userId: idOf(userId),
+            _id: { $in: validIds },
+        });
+        return result.deletedCount || 0;
     }
 
     static async deleteAllRead(userId) {

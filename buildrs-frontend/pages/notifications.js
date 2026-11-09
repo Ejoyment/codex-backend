@@ -1,8 +1,10 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { Bell, CheckCheck, Trash2, Volume2, VolumeX, Loader2 } from 'lucide-react';
+import {
+  BellOff, Square, SquareCheckBig, Trash2, Loader2, Settings2,
+} from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
@@ -10,10 +12,11 @@ import {
   useNotificationStore,
   notificationApi,
   markAsRead,
+  markAsUnread,
   markAllAsRead,
+  deleteNotifications,
   clearReadNotifications,
 } from '../store/notificationStore';
-import { playTestSound } from '../lib/notificationSound';
 
 const CATEGORY_LABELS = {
   messages: 'Messages',
@@ -27,51 +30,120 @@ const CATEGORY_LABELS = {
 };
 
 const PAGE_SIZE = 30;
+const FILTERS = [
+  { key: 'all', label: 'All' },
+  { key: 'unread', label: 'Unread' },
+  { key: 'read', label: 'Read' },
+];
 
-function timeAgo(iso) {
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return '';
-  const diff = Math.max(0, Math.floor((Date.now() - then) / 1000));
-  if (diff < 60) return 'just now';
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
-  return new Date(then).toLocaleDateString();
+function formatNotificationTime(iso) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  const now = new Date();
+  const sameDay = date.toDateString() === now.toDateString();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const isYesterday = date.toDateString() === yesterday.toDateString();
+  const time = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase();
+  if (sameDay) return `Today ${time}`;
+  if (isYesterday) return `Yesterday ${time}`;
+  return `${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} ${time}`;
+}
+
+function matchesFilter(notification, filter) {
+  if (filter === 'unread') return !notification.read;
+  if (filter === 'read') return Boolean(notification.read);
+  return true;
 }
 
 export default function Notifications() {
   const router = useRouter();
   const items = useNotificationStore((s) => s.items);
   const count = useNotificationStore((s) => s.count);
-  const muted = useNotificationStore((s) => s.muted);
   const preferences = useNotificationStore((s) => s.preferences);
-  const toggleMuted = useNotificationStore((s) => s.toggleMuted);
   const setPreferences = useNotificationStore((s) => s.setPreferences);
   const user = useAuthStore((s) => s.user);
   const subscription = useAuthStore((s) => s.subscription);
 
-  const [older, setOlder] = useState([]);
-  const [unreadOnly, setUnreadOnly] = useState(false);
+  const [filter, setFilter] = useState('all');
+  const [list, setList] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [filteredTotal, setFilteredTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState(() => new Set());
+  const [showPrefs, setShowPrefs] = useState(false);
   const [savingPref, setSavingPref] = useState(false);
+  const fetchedRef = useRef(0);
+  const filterRef = useRef(filter);
+  filterRef.current = filter;
+
+  const fetchPage = useCallback(async (skip, currentFilter) => {
+    const res = await notificationApi.list({
+      limit: PAGE_SIZE,
+      skip,
+      unreadOnly: currentFilter === 'unread' ? 'true' : undefined,
+      readOnly: currentFilter === 'read' ? 'true' : undefined,
+    });
+    return res;
+  }, []);
 
   useEffect(() => {
-    setOlder([]);
-  }, [unreadOnly]);
+    let cancelled = false;
+    setLoading(true);
+    setSelectMode(false);
+    setSelected(new Set());
+    fetchedRef.current = 0;
+    (async () => {
+      try {
+        const res = await fetchPage(0, filter);
+        if (cancelled || !res?.success) return;
+        const rows = res.notifications || [];
+        setList(rows);
+        fetchedRef.current = rows.length;
+        setTotal(res.total ?? rows.length);
+        setFilteredTotal(res.filteredTotal ?? rows.length);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [filter, fetchPage]);
+
+  // Live socket arrivals (prepended to the shared store) join the page list
+  // when they match the active filter.
+  useEffect(() => {
+    if (!items.length) return;
+    setList((prev) => {
+      const fresh = items.filter(
+        (n) => !prev.some((p) => p._id === n._id) && matchesFilter(n, filterRef.current)
+      );
+      if (!fresh.length) return prev;
+      setTotal((t) => t + fresh.length);
+      setFilteredTotal((t) => t + fresh.length);
+      return [...fresh, ...prev];
+    });
+  }, [items]);
 
   const loadMore = useCallback(async () => {
     setLoadingMore(true);
     try {
-      const res = await notificationApi.list({
-        limit: PAGE_SIZE,
-        skip: items.length + older.length,
-        unreadOnly: unreadOnly ? 'true' : undefined,
-      });
-      if (res?.success) setOlder((prev) => [...prev, ...(res.notifications || [])]);
+      const res = await fetchPage(fetchedRef.current, filterRef.current);
+      if (res?.success) {
+        const rows = res.notifications || [];
+        fetchedRef.current += rows.length;
+        setList((prev) => {
+          const known = new Set(prev.map((n) => n._id));
+          return [...prev, ...rows.filter((n) => !known.has(n._id))];
+        });
+        if (typeof res.total === 'number') setTotal(res.total);
+        if (typeof res.filteredTotal === 'number') setFilteredTotal(res.filteredTotal);
+      }
     } finally {
       setLoadingMore(false);
     }
-  }, [items.length, older.length, unreadOnly]);
+  }, [fetchPage]);
 
   const toggleCategory = async (key) => {
     const next = !preferences?.categories?.[key];
@@ -96,134 +168,268 @@ export default function Notifications() {
     }
   };
 
-  const all = [...items, ...older];
+  const toggleSelected = (id) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectMode) {
+      setSelectMode(false);
+      setSelected(new Set());
+      return;
+    }
+    setSelectMode(true);
+    setSelected(new Set(list.map((n) => n._id)));
+  };
+
+  const handleDeleteSelected = async () => {
+    const ids = [...selected];
+    if (!ids.length) return;
+    if (!window.confirm(`Delete ${ids.length} selected notification${ids.length === 1 ? '' : 's'}?`)) return;
+    await deleteNotifications(ids);
+    setList((prev) => prev.filter((n) => !selected.has(n._id)));
+    setTotal((t) => Math.max(0, t - ids.length));
+    setFilteredTotal((t) => Math.max(0, t - ids.length));
+    setSelectMode(false);
+    setSelected(new Set());
+  };
+
+  const handleMarkAllRead = async () => {
+    await markAllAsRead();
+    setList((prev) => prev.map((n) => ({ ...n, read: true })));
+  };
+
+  const handleToggleRead = (notification) => {
+    const nextRead = !notification.read;
+    setList((prev) => prev.map((n) => (n._id === notification._id ? { ...n, read: nextRead } : n)));
+    if (nextRead) markAsRead(notification._id);
+    else markAsUnread(notification._id);
+  };
+
+  const openNotification = (notification) => {
+    if (!notification.read) {
+      setList((prev) => prev.map((n) => (n._id === notification._id ? { ...n, read: true } : n)));
+      markAsRead(notification._id);
+    }
+    if (notification.link) {
+      if (/^https?:\/\//.test(notification.link)) window.open(notification.link, '_blank', 'noopener');
+      else router.push(notification.link);
+    }
+  };
+
+  const readCount = Math.max(0, total - count);
   const categories = preferences?.categories || {};
+  const hasMore = list.length < filteredTotal;
 
   return (
     <AuthGuard>
       <Head>
         <title>Notifications | BuildrsHQ</title>
+        <link rel="icon" href="/buildrs.png" />
       </Head>
       <div className="workspace-container">
         <Sidebar user={user} subscription={subscription} />
         <main className="workspace-main">
-          <header className="workspace-header dash-header">
-            <div>
-              <p className="dash-crumb">BuildrsHQ <span className="sep">/</span> Notifications</p>
-              <h1 className="dash-title">Notifications</h1>
-            </div>
-            <div className="notif-page-actions">
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={() => {
-                  const nextMuted = toggleMuted();
-                  if (nextMuted) playTestSound();
-                }}
-                title={muted ? 'Unmute sounds' : 'Mute sounds'}
-              >
-                {muted ? <VolumeX size={16} /> : <Volume2 size={16} />}
-                {muted ? 'Sounds off' : 'Sounds on'}
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={markAllAsRead}
-                disabled={!count}
-              >
-                <CheckCheck size={16} /> Mark all read
-              </button>
-              <button type="button" className="btn btn-ghost" onClick={clearReadNotifications}>
-                <Trash2 size={16} /> Clear read
-              </button>
-            </div>
-          </header>
+          <div className="workspace-content">
+            <div className="notif-page">
+              <header className="notif-head">
+                <p className="notif-crumb">Manage / Notification</p>
+                <h1 className="notif-title">Notifications</h1>
+                <p className="notif-subtitle">
+                  Stay updated on project activities, tasks, AI agents, audits and workspace events
+                </p>
+              </header>
 
-          <section className="notif-prefs">
-            <h2>What should notify you</h2>
-            <div className="notif-pref-grid">
-              {Object.keys(CATEGORY_LABELS).map((key) => (
-                <label key={key} className="notif-pref-toggle">
-                  <input
-                    type="checkbox"
-                    checked={categories[key] !== false}
-                    disabled={savingPref || preferences?.enabled === false}
-                    onChange={() => toggleCategory(key)}
-                  />
-                  <span>{CATEGORY_LABELS[key]}</span>
-                </label>
-              ))}
-            </div>
-            <label className="notif-pref-toggle">
-              <input
-                type="checkbox"
-                checked={preferences?.soundWhenHiddenOnly !== false}
-                disabled={savingPref}
-                onChange={toggleHiddenOnly}
-              />
-              <span>Play sound only when this tab is in the background</span>
-            </label>
-          </section>
-
-          <div className="notif-filter">
-            <button
-              type="button"
-              className={`notif-chip ${!unreadOnly ? 'active' : ''}`}
-              onClick={() => setUnreadOnly(false)}
-            >
-              All
-            </button>
-            <button
-              type="button"
-              className={`notif-chip ${unreadOnly ? 'active' : ''}`}
-              onClick={() => setUnreadOnly(true)}
-            >
-              Unread {count > 0 ? `(${count})` : ''}
-            </button>
-          </div>
-
-          <div className="notif-page-list">
-            {all.length === 0 && (
-              <div className="notif-empty-page">
-                <Bell size={28} />
-                <p>Nothing here yet. Activity on your tasks, channels, agents and deployments will show up here.</p>
-              </div>
-            )}
-
-            {all.map((notification) => (
-              <button
-                key={notification._id}
-                type="button"
-                className={`notif-page-row ${notification.read ? '' : 'notif-page-row-unread'}`}
-                onClick={() => {
-                  if (!notification.read) markAsRead(notification._id);
-                  if (notification.link) router.push(notification.link);
-                }}
-              >
-                <div className="notif-page-row-main">
-                  <span className="notif-page-title">{notification.title}</span>
-                  <span className="notif-page-message">{notification.message}</span>
+              <div className="notif-toolbar">
+                <div className="notif-filters" role="tablist" aria-label="Filter notifications">
+                  {FILTERS.map(({ key, label }) => {
+                    const badge = key === 'unread' ? count : key === 'read' ? readCount : null;
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        role="tab"
+                        aria-selected={filter === key}
+                        className={`notif-filter-btn ${filter === key ? 'active' : ''}`}
+                        onClick={() => setFilter(key)}
+                      >
+                        {label}
+                        {badge !== null && badge > 0 && (
+                          <span className="notif-count-badge">{badge}</span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
-                <span className="notif-page-time">{timeAgo(notification.createdAt)}</span>
-                {!notification.read && <span className="notif-unread-dot" />}
-              </button>
-            ))}
 
-            {all.length > 0 && (
-              <button
-                type="button"
-                className="btn btn-ghost notif-load-more"
-                onClick={loadMore}
-                disabled={loadingMore}
-              >
-                {loadingMore && <Loader2 size={15} className="notif-spin" />} Load more
-              </button>
-            )}
+                <div className="notif-actions">
+                  {selectMode ? (
+                    <>
+                      <button type="button" className="notif-action-btn" onClick={toggleSelectAll}>
+                        <SquareCheckBig className="notif-action-icon checked" />
+                        Unselect All
+                      </button>
+                      <button
+                        type="button"
+                        className="notif-action-btn notif-action-danger"
+                        onClick={handleDeleteSelected}
+                        disabled={!selected.size}
+                      >
+                        <Trash2 className="notif-action-icon" />
+                        Delete All{selected.size ? ` (${selected.size})` : ''}
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button type="button" className="notif-action-btn" onClick={toggleSelectAll} disabled={!list.length}>
+                        <Square className="notif-action-icon" />
+                        Select All
+                      </button>
+                      <button type="button" className="notif-action-btn" onClick={handleMarkAllRead} disabled={!count}>
+                        <Square className="notif-action-icon" />
+                        Mark all as Read
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {loading ? (
+                <div className="notif-empty-card">
+                  <Loader2 className="w-6 h-6 notif-spin" />
+                  <p className="notif-muted">Loading notifications…</p>
+                </div>
+              ) : list.length === 0 ? (
+                <div className="notif-empty-card">
+                  <span className="notif-empty-icon"><BellOff className="w-7 h-7" /></span>
+                  <p className="notif-empty-eyebrow">Zero_Notifications</p>
+                  <h2 className="notif-empty-title">No Notification Received</h2>
+                  <p className="notif-muted">All your notifications activities on the platform will be shown here</p>
+                </div>
+              ) : (
+                <div className="notif-rows">
+                  {list.map((notification) => {
+                    const isSelected = selected.has(notification._id);
+                    return (
+                      <article
+                        key={notification._id}
+                        className={`notif-row-card ${isSelected ? 'notif-row-selected' : ''}`}
+                        onClick={() => {
+                          if (selectMode) toggleSelected(notification._id);
+                          else openNotification(notification);
+                        }}
+                      >
+                        {selectMode && (
+                          <button
+                            type="button"
+                            className={`notif-check ${isSelected ? 'checked' : ''}`}
+                            aria-label={isSelected ? 'Deselect notification' : 'Select notification'}
+                            aria-pressed={isSelected}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleSelected(notification._id);
+                            }}
+                          >
+                            {isSelected ? <SquareCheckBig className="w-5 h-5" /> : <Square className="w-5 h-5" />}
+                          </button>
+                        )}
+
+                        <div className="notif-row-main">
+                          <h3 className="notif-row-title">
+                            {!notification.read && <span className="notif-unread-dot" />}
+                            {notification.title}
+                          </h3>
+                          <p className="notif-row-message">{notification.message}</p>
+                        </div>
+
+                        {!selectMode && (
+                          <div className="notif-row-side">
+                            <span className="notif-row-time">{formatNotificationTime(notification.createdAt)}</span>
+                            <div className="notif-row-actions">
+                              <button
+                                type="button"
+                                className="notif-text-btn"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleToggleRead(notification);
+                                }}
+                              >
+                                {notification.read ? 'Mark as Unread' : 'Mark as Read'}
+                              </button>
+                              <button
+                                type="button"
+                                className="notif-open-btn"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openNotification(notification);
+                                }}
+                              >
+                                Open
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+
+              {hasMore && (
+                <div className="notif-load-more-wrap">
+                  <button type="button" className="notif-load-more-btn" onClick={loadMore} disabled={loadingMore}>
+                    {loadingMore && <Loader2 className="w-4 h-4 notif-spin" />}
+                    Load more
+                  </button>
+                </div>
+              )}
+
+              <div className="notif-foot">
+                <button type="button" className="notif-prefs-toggle" onClick={() => setShowPrefs((v) => !v)}>
+                  <Settings2 className="w-4 h-4" />
+                  Notification preferences
+                </button>
+                <p className="notif-muted">
+                  Notifications are kept for 30 days. <Link href="/settings">Preferences</Link>
+                </p>
+                {showPrefs && (
+                  <div className="notif-prefs-card">
+                    <h2 className="notif-prefs-title">What should notify you</h2>
+                    <div className="notif-pref-grid">
+                      {Object.keys(CATEGORY_LABELS).map((key) => (
+                        <label key={key} className="notif-pref-toggle">
+                          <input
+                            type="checkbox"
+                            checked={categories[key] !== false}
+                            disabled={savingPref || preferences?.enabled === false}
+                            onChange={() => toggleCategory(key)}
+                          />
+                          <span>{CATEGORY_LABELS[key]}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <label className="notif-pref-toggle">
+                      <input
+                        type="checkbox"
+                        checked={preferences?.soundWhenHiddenOnly !== false}
+                        disabled={savingPref}
+                        onChange={toggleHiddenOnly}
+                      />
+                      <span>Play sound only when this tab is in the background</span>
+                    </label>
+                    <button type="button" className="notif-text-btn" onClick={clearReadNotifications}>
+                      Clear read notifications
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
-
-          <p className="notif-footnote">
-            Notifications are kept for 30 days. <Link href="/settings">Preferences</Link>
-          </p>
         </main>
       </div>
     </AuthGuard>

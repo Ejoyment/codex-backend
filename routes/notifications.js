@@ -41,20 +41,34 @@ const asyncRoute = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next
 // Get user notifications
 router.get('/', auth, async (req, res) => {
     try {
-        const { limit, skip, unreadOnly } = req.query;
+        const { limit, skip, unreadOnly, readOnly } = req.query;
         const userId = currentUserId(req);
 
-        const [notifications, count, byCategory] = await Promise.all([
+        const [notifications, count, byCategory, total] = await Promise.all([
             NotificationService.getNotifications(userId, {
                 limit,
                 skip,
                 unreadOnly: unreadOnly === 'true',
+                readOnly: readOnly === 'true',
             }),
             NotificationService.getUnreadCount(userId),
             NotificationService.getUnreadByCategory(userId),
+            NotificationService.getTotalCount(userId),
         ]);
 
-        res.json({ success: true, notifications, count, byCategory });
+        res.json({
+            success: true,
+            notifications,
+            count,
+            byCategory,
+            total,
+            // Size of the page the caller asked for (for "load more").
+            filteredTotal: readOnly === 'true'
+                ? Math.max(0, total - count)
+                : unreadOnly === 'true'
+                    ? count
+                    : total,
+        });
     } catch (error) {
         console.error('Get notifications error:', error);
         res.status(500).json({
@@ -155,6 +169,58 @@ router.put('/:id/read', auth, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Failed to mark notification as read'
+        });
+    }
+});
+
+/**
+ * @swagger
+ * /api/notifications/{id}/unread:
+ *   put:
+ *     summary: Mark notification as unread
+ *     tags:
+ *       - Notifications
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Notification ID
+ *     responses:
+ *       200:
+ *         description: Notification marked as unread
+ *       404:
+ *         description: Notification not found
+ *       401:
+ *         description: Unauthorized
+ */
+// Mark notification as unread
+router.put('/:id/unread', auth, async (req, res) => {
+    try {
+        const userId = currentUserId(req);
+        const notificationId = req.params.id;
+
+        const notification = await NotificationService.markAsUnread(notificationId, userId);
+
+        if (!notification) {
+            return res.status(404).json({
+                success: false,
+                message: 'Notification not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            notification
+        });
+    } catch (error) {
+        console.error('Mark as unread error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to mark notification as unread'
         });
     }
 });
@@ -301,6 +367,62 @@ router.put('/preferences', auth, async (req, res) => {
     } catch (error) {
         console.error('Update notification preferences error:', error);
         res.status(500).json({ success: false, message: 'Failed to update preferences' });
+    }
+});
+
+/**
+ * @swagger
+ * /api/notifications:
+ *   delete:
+ *     summary: Delete multiple notifications (bulk "Delete All" on the page)
+ *     tags:
+ *       - Notifications
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               ids:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *     responses:
+ *       200:
+ *         description: Notifications deleted (scoped to the caller)
+ *       400:
+ *         description: No valid ids supplied
+ *       401:
+ *         description: Unauthorized
+ */
+// Delete multiple notifications. Declared before /:id so the base path is
+// never mistaken for an id.
+router.delete('/', auth, async (req, res) => {
+    try {
+        const userId = currentUserId(req);
+        const ids = req.body?.ids;
+        if (!Array.isArray(ids) || !ids.length) {
+            return res.status(400).json({
+                success: false,
+                message: 'ids must be a non-empty array'
+            });
+        }
+
+        const deletedCount = await NotificationService.deleteNotifications(userId, ids);
+
+        res.json({
+            success: true,
+            deletedCount
+        });
+    } catch (error) {
+        console.error('Bulk delete notifications error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to delete notifications'
+        });
     }
 });
 

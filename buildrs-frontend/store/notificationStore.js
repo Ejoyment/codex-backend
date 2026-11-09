@@ -60,6 +60,17 @@ export const useNotificationStore = create((set, get) => ({
       };
     }),
 
+  // Only increment when this call is what flipped the row back to unread.
+  markUnread: (id) =>
+    set((state) => {
+      const target = state.items.find((n) => n._id === id);
+      const wasRead = Boolean(target && target.read);
+      return {
+        items: state.items.map((n) => (n._id === id ? { ...n, read: false } : n)),
+        count: wasRead ? state.count + 1 : state.count,
+      };
+    }),
+
   markAllRead: () =>
     set((state) => ({ items: state.items.map((n) => ({ ...n, read: true })), count: 0, byCategory: {} })),
 
@@ -69,6 +80,16 @@ export const useNotificationStore = create((set, get) => ({
       return {
         items: state.items.filter((n) => n._id !== id),
         count: target && !target.read && state.count > 0 ? state.count - 1 : state.count,
+      };
+    }),
+
+  removeMany: (ids) =>
+    set((state) => {
+      const idSet = new Set(ids);
+      const removedUnread = state.items.filter((n) => idSet.has(n._id) && !n.read).length;
+      return {
+        items: state.items.filter((n) => !idSet.has(n._id)),
+        count: Math.max(0, state.count - removedUnread),
       };
     }),
 
@@ -107,8 +128,15 @@ export const notificationApi = {
   },
   unreadCount: () => apiFetch('/api/notifications/unread-count'),
   markRead: (id) => apiFetch(`/api/notifications/${id}/read`, { method: 'PUT' }),
+  markUnread: (id) => apiFetch(`/api/notifications/${id}/unread`, { method: 'PUT' }),
   markAllRead: () => apiFetch('/api/notifications/read-all', { method: 'PUT' }),
   remove: (id) => apiFetch(`/api/notifications/${id}`, { method: 'DELETE' }),
+  removeMany: (ids) =>
+    apiFetch('/api/notifications', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    }),
   clearRead: () => apiFetch('/api/notifications/read-all', { method: 'DELETE' }),
   getPreferences: () => apiFetch('/api/notifications/preferences'),
   updatePreferences: (patch) =>
@@ -226,11 +254,34 @@ export async function markAllAsRead() {
   }
 }
 
+export async function markAsUnread(id) {
+  useNotificationStore.getState().markUnread(id);
+  try {
+    await notificationApi.markUnread(id);
+  } finally {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('buildrs:notification-read-at', String(Date.now()));
+    }
+  }
+}
+
 export async function deleteNotification(id) {
   const store = useNotificationStore.getState();
   store.remove(id);
   try {
     await notificationApi.remove(id);
+  } catch {
+    refreshCount();
+  }
+}
+
+export async function deleteNotifications(ids) {
+  const unique = [...new Set(ids)].filter(Boolean);
+  if (!unique.length) return;
+  const store = useNotificationStore.getState();
+  store.removeMany(unique);
+  try {
+    await notificationApi.removeMany(unique);
   } catch {
     refreshCount();
   }
