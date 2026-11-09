@@ -31,6 +31,51 @@ const deploymentSchema = new mongoose.Schema({
         type: String,
         default: null
     },
+    // Deployment context from the Deployment page (Figma 718:67538). See
+    // utils/deployContext.js — branch/environment/commit describe what the
+    // deploy was launched from; framework/buildCommand/rootDirectory/
+    // outputDirectory/region are the requested build settings shown back
+    // on the details screen (the Docker build itself is auto-detected).
+    branch: {
+        type: String,
+        default: null,
+        trim: true
+    },
+    environment: {
+        type: String,
+        enum: ['Production', 'Preview'],
+        default: null
+    },
+    commit: {
+        type: String,
+        default: null,
+        trim: true
+    },
+    framework: {
+        type: String,
+        default: null,
+        trim: true
+    },
+    buildCommand: {
+        type: String,
+        default: null,
+        trim: true
+    },
+    rootDirectory: {
+        type: String,
+        default: null,
+        trim: true
+    },
+    outputDirectory: {
+        type: String,
+        default: null,
+        trim: true
+    },
+    region: {
+        type: String,
+        default: null,
+        trim: true
+    },
     subdomain: {
         type: String,
         required: true,
@@ -190,6 +235,8 @@ const deploymentSchema = new mongoose.Schema({
 });
 
 deploymentSchema.index({ userId: 1, createdAt: -1 });
+deploymentSchema.index({ userId: 1, environment: 1, createdAt: -1 });
+deploymentSchema.index({ userId: 1, branch: 1, createdAt: -1 });
 deploymentSchema.index({ subdomain: 1 }, { unique: true });
 deploymentSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 // Self-heal poller: due failures, scoped to the recent lookback window.

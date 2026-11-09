@@ -15,7 +15,7 @@ const screens = [
   { id: 'team', label: 'Team', route: '/teams?tour=1', duration: 8000 },
   { id: 'memory', label: 'Team Memory', route: '/team-memory?tour=1', duration: 8000 },
   { id: 'git', label: 'Git & PRs', route: '/source-code?tour=1', duration: 8000 },
-  { id: 'deploy', label: 'Deploy', route: '/ci-cd?tour=1', duration: 8000 },
+  { id: 'deploy', label: 'Deploy', route: '/deploy?tour=1', duration: 8000 },
   { id: 'billing', label: 'Billing & Plans', route: '/settings?tab=billing&tour=1', duration: 8000 },
   { id: 'audit', label: 'Audit Report', route: '/audit?tour=1', duration: 8000 },
   { id: 'support', label: 'Support Admin', route: '/support-admin?tour=1', duration: 8000 },

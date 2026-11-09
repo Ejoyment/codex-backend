@@ -777,7 +777,7 @@ export default function Dashboard() {
                             <button
                               type="button"
                               className="mt-1 inline-flex w-full items-center justify-center rounded-md bg-cyan-500 px-3 py-1.5 text-[11px] font-semibold text-slate-950 transition hover:bg-cyan-400"
-                              onClick={() => router.push('/ci-cd')}
+                              onClick={() => router.push('/deploy')}
                             >
                               Prepare deployment
                             </button>
