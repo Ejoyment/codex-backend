@@ -930,7 +930,7 @@ router.delete('/delete-account', authenticateToken, async (req, res) => {
             ['TeamActivity', () => require('../models/TeamActivity').deleteMany({ user: userId })],
             ['Message', () => require('../models/Message').deleteMany({ sender: userId })],
             ['DebugHandoff', () => require('../models/DebugHandoff').deleteMany({ createdBy: userId })],
-            ['DebugRoom', () => require('../models/DebugRoom').deleteMany({ $or: [{ host: userId }, { createdBy: userId }, { 'participants.userId': userId }] })],
+            ['PersistentDebugRoom', () => require('../models/PersistentDebugRoom').deleteMany({ $or: [{ host: userId }, { createdBy: userId }, { 'participants.userId': userId }] })],
             ['EphemeralSandbox', () => require('../models/EphemeralSandbox').deleteMany({ createdBy: userId })],
             ['DesignSyncSession', () => require('../models/DesignSyncSession').deleteMany({ createdBy: userId })]
         ];

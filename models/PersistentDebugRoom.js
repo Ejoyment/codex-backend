@@ -232,4 +232,7 @@ debugRoomSchema.index({ createdBy: 1, lastActiveAt: -1 });
 debugRoomSchema.index({ 'participants.userId': 1, lastActiveAt: -1 });
 debugRoomSchema.index({ 'invites.email': 1 });
 
-module.exports = mongoose.model('DebugRoom', debugRoomSchema);
+// The Phase 3 ephemeral rooms already register the `DebugRoom` model (see
+// server/models/DebugRoomModel.js). Use a distinct name so both models can be
+// loaded in the same process without Mongoose's OverwriteModelError.
+module.exports = mongoose.model('PersistentDebugRoom', debugRoomSchema);

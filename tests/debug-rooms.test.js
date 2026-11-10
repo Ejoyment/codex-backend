@@ -77,8 +77,8 @@ jest.doMock('../models/CodeFile', () => {
 const savedRooms = [];
 let roomCounter = 0;
 
-jest.doMock('../models/DebugRoom', () => {
-    class MockDebugRoom {
+jest.doMock('../models/PersistentDebugRoom', () => {
+    class MockPersistentDebugRoom {
         constructor(data) {
             Object.assign(this, data);
             this._id = data._id || `room-${roomCounter += 1}`;
@@ -114,7 +114,7 @@ jest.doMock('../models/DebugRoom', () => {
             return Promise.resolve(savedRooms.some((room) => room.roomId === query.roomId));
         }
     }
-    return MockDebugRoom;
+    return MockPersistentDebugRoom;
 });
 
 const debugRoomsRouter = require('../routes/debug-rooms');
