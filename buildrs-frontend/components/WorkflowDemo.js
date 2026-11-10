@@ -11,14 +11,14 @@ const screens = [
   { id: 'agent', label: 'AI Agent', route: '/ai-pair?tour=1', duration: 9000 },
   { id: 'specs', label: 'Specs', route: '/specs?tour=1', duration: 8000 },
   { id: 'mcp', label: 'MCP Server', route: '/mcp?tour=1', duration: 8000 },
-  { id: 'debug', label: 'Debug Room', route: '/meeting-room?tour=1', duration: 8000 },
+  { id: 'debug', label: 'Debug Room', route: '/debug-room?tour=1', duration: 8000 },
   { id: 'team', label: 'Team', route: '/teams?tour=1', duration: 8000 },
   { id: 'memory', label: 'Team Memory', route: '/team-memory?tour=1', duration: 8000 },
   { id: 'git', label: 'Git & PRs', route: '/source-code?tour=1', duration: 8000 },
   { id: 'deploy', label: 'Deploy', route: '/deploy?tour=1', duration: 8000 },
   { id: 'billing', label: 'Billing & Plans', route: '/settings?tab=billing&tour=1', duration: 8000 },
   { id: 'audit', label: 'Audit Report', route: '/audit?tour=1', duration: 8000 },
-  { id: 'support', label: 'Support Admin', route: '/support-admin?tour=1', duration: 8000 },
+  { id: 'support', label: 'Support Center', route: '/support?tour=1', duration: 8000 },
   { id: 'settings', label: 'Settings', route: '/settings?tab=profile&tour=1', duration: 8000 },
 ];
 
@@ -38,7 +38,7 @@ const labelsToScreenId = {
   Deploy: 'deploy',
   'Billing & Plans': 'billing',
   'Audit Report': 'audit',
-  'Support Admin': 'support',
+  'Support Center': 'support',
   Settings: 'settings',
 };
 

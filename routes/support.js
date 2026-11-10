@@ -1,5 +1,8 @@
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
+const path = require('path');
+const crypto = require('crypto');
 const SupportTicket = require('../models/SupportTicket');
 const SupportAgent = require('../models/SupportAgent');
 const jwt = require('jsonwebtoken');
@@ -8,6 +11,56 @@ const { supportTicketLimiter, supportReplyLimiter } = require('../middleware/rat
 const { MAX_TICKET_MESSAGES } = require('../utils/retention');
 const { isLockedOut, recordFailure, clearLockout } = require('../models/AuthLockout');
 const { isUserSessionValid } = require('../middleware/auth');
+const {
+    MAX_BYTES: MAX_ATTACHMENT_BYTES,
+    MAX_FILES: MAX_ATTACHMENTS,
+    ALLOWED_MIME: ATTACHMENT_MIME,
+    saveSupportAttachment,
+} = require('../utils/supportAttachmentStorage');
+
+const TICKET_CATEGORIES = new Set(['general', 'billing', 'account', 'plans', 'technical', 'direct']);
+
+// Attachments for the Support Center flow. Stored in memory so the storage
+// helper can pick R2 (configured) or the local uploads directory.
+const attachmentUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+        fileSize: MAX_ATTACHMENT_BYTES,
+        files: MAX_ATTACHMENTS,
+    },
+    fileFilter: (req, file, cb) => {
+        const allowedExts = ['.png', '.jpg', '.jpeg', '.pdf'];
+        const ext = path.extname(file.originalname || '').toLowerCase();
+        const mime = String(file.mimetype || '').toLowerCase();
+        if (allowedExts.includes(ext) && ATTACHMENT_MIME.has(mime)) {
+            return cb(null, true);
+        }
+        cb(new Error('Only PNG, JPG, or PDF files are allowed'));
+    },
+});
+
+function receiveAttachments(req, res, next) {
+    attachmentUpload.array('attachments', MAX_ATTACHMENTS)(req, res, (error) => {
+        if (!error) return next();
+        const message = error.code === 'LIMIT_FILE_SIZE'
+            ? 'Attachments must be 10MB or smaller'
+            : error.code === 'LIMIT_FILE_COUNT'
+                ? `You can attach up to ${MAX_ATTACHMENTS} files`
+                : (error.message || 'Attachment upload failed');
+        return res.status(400).json({ success: false, message });
+    });
+}
+
+async function generateReferenceNumber() {
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+        const candidate = `BH-${crypto.randomInt(10000, 100000)}`;
+        // eslint-disable-next-line no-await-in-loop
+        const taken = await SupportTicket.exists({ referenceNumber: candidate });
+        if (!taken) return candidate;
+    }
+    return `BH-${String(Date.now()).slice(-5)}`;
+}
+
 
 // Rate limiting for support agent login (same as main auth)
 const supportLoginLimiter = rateLimit({
@@ -318,10 +371,11 @@ router.post('/tickets/:ticketId/messages', supportReplyLimiter, async (req, res)
     }
 });
 
-// Create Support Ticket (Public) — now handles both backend and frontend field names
-router.post('/tickets', supportTicketLimiter, async (req, res) => {
+// Create Support Ticket (Public) — now handles both backend and frontend field names.
+// Accepts JSON or multipart/form-data (Support Center attachments).
+router.post('/tickets', supportTicketLimiter, receiveAttachments, async (req, res) => {
     try {
-        const { subject, guestName, guestEmail, message, description, content, userId, priority } = req.body;
+        const { subject, guestName, guestEmail, message, description, content, userId, priority, category } = req.body;
         const ticketMessage = message || description || content;
 
         if (!subject || !ticketMessage) {
@@ -351,12 +405,25 @@ router.post('/tickets', supportTicketLimiter, async (req, res) => {
             return res.status(403).json({ success: false, message: 'Ticket owner does not match the authenticated user' });
         }
 
+        const attachments = [];
+        for (const file of req.files || []) {
+            // eslint-disable-next-line no-await-in-loop
+            attachments.push(await saveSupportAttachment(file));
+        }
+
+        const normalizedCategory = TICKET_CATEGORIES.has(String(category || '').toLowerCase())
+            ? String(category).toLowerCase()
+            : 'general';
+
         const ticket = new SupportTicket({
             subject: subject.trim(),
             guestName: guestName || 'Guest',
             guestEmail,
             userId: authenticatedUserId,
             priority: priority || 'medium',
+            category: normalizedCategory,
+            referenceNumber: await generateReferenceNumber(),
+            attachments,
             messages: [{
                 sender: 'user',
                 senderName: guestName || 'Guest',
@@ -370,6 +437,7 @@ router.post('/tickets', supportTicketLimiter, async (req, res) => {
         res.json({
             success: true,
             ticketId: ticket.ticketId,
+            referenceNumber: ticket.referenceNumber,
             ticket
         });
     } catch (error) {

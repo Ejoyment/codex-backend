@@ -29,7 +29,7 @@ async function resolveMemoryWorkspace(workspaceId, userId) {
     return { ok: true, workspaceId: access.workspaceId };
 }
 
-router.get('/providers', authenticateToken, async (req, res) => {
+async function collectAiProviders() {
     const cloudProviders = aiService.getProviderInfo()
         .filter((provider) => provider.available)
         .map((provider) => ({
@@ -58,7 +58,78 @@ router.get('/providers', authenticateToken, async (req, res) => {
     const defaultProvider = providers.some((provider) => provider.key === preferredProvider)
         ? preferredProvider
         : providers[0]?.key || null;
+    return { providers, defaultProvider };
+}
+
+function firstModelFor(provider, override) {
+    if (!provider) return null;
+    if (provider.type === 'local') {
+        const models = provider.models || [];
+        return override && models.includes(override) ? override : models[0] || null;
+    }
+    // Cloud providers are pinned to exactly one configured model; a client
+    // override can't invent another one without failing the real request.
+    return provider.model || null;
+}
+
+function describeModel(provider, model) {
+    if (!provider || !model) return null;
+    return {
+        provider: provider.key,
+        providerName: provider.name,
+        model,
+        type: provider.type
+    };
+}
+
+router.get('/providers', authenticateToken, async (req, res) => {
+    const { providers, defaultProvider } = await collectAiProviders();
     res.json({ success: true, providers, defaultProvider });
+});
+
+/**
+ * GET /api/ai-pair/model-config
+ * The Debug Room "AI Model Config" panel must reflect the deployment's real
+ * provider configuration, not a hard-coded marketing name. Returns the model
+ * that agent runs use by default and the model reserved for fast tasks
+ * (AI_FAST_PROVIDER when set, otherwise the fast-inference provider, then the
+ * default provider).
+ */
+router.get('/model-config', authenticateToken, async (req, res, next) => {
+    try {
+        const { providers, defaultProvider } = await collectAiProviders();
+        const defaultEntry = providers.find((provider) => provider.key === defaultProvider) || null;
+        const defaultModel = describeModel(defaultEntry, firstModelFor(defaultEntry));
+
+        const requestedFast = process.env.AI_FAST_PROVIDER;
+        const fastEntry = (requestedFast && providers.find((provider) => provider.key === requestedFast))
+            || providers.find((provider) => provider.key === 'groq')
+            || defaultEntry;
+        const fastModel = describeModel(
+            fastEntry,
+            firstModelFor(fastEntry, String(process.env.AI_FAST_MODEL || '').trim() || null)
+        );
+
+        const localProviders = providers.filter((provider) => provider.type === 'local');
+        const preferredLocal = process.env.LOCAL_AI_PROVIDER || 'ollama';
+        const privacyEntry = localProviders.find((provider) => provider.key === preferredLocal) || localProviders[0] || null;
+
+        res.json({
+            success: true,
+            defaultModel,
+            fastModel,
+            privacy: {
+                available: Boolean(privacyEntry) || aiRouterService.localPrivacyMode,
+                enabled: aiRouterService.localPrivacyMode,
+                provider: privacyEntry?.key || null,
+                providerName: privacyEntry?.name || null,
+                model: firstModelFor(privacyEntry)
+            },
+            providers
+        });
+    } catch (error) {
+        next(error);
+    }
 });
 
 // Middleware to check AI usage limits
