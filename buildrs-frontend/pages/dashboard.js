@@ -385,7 +385,7 @@ export default function Dashboard() {
                             <p><span className="text-cyan-400">›</span> Waiting for connection...</p>
                           </div>
                           <span className="mt-2 h-1 w-1 rounded-full bg-emerald-400" />
-                          <button type="button" className="mt-2 rounded-md bg-[#1a2230] px-3 py-1 text-[10px] font-medium text-cyan-400 hover:bg-[#1d263b]" onClick={() => router.push('/meeting-room')}>
+                          <button type="button" className="mt-2 rounded-md bg-[#1a2230] px-3 py-1 text-[10px] font-medium text-cyan-400 hover:bg-[#1d263b]" onClick={() => router.push('/debug-room')}>
                             <Plus className="mr-1 inline h-3 w-3" /> Start New Session
                           </button>
                         </div>
@@ -790,7 +790,7 @@ export default function Dashboard() {
                             <button
                               type="button"
                               className="mt-2 rounded-md bg-cyan-500 px-3 py-1 text-[10px] font-semibold text-slate-950 transition hover:bg-cyan-400"
-                              onClick={() => router.push('/meeting-room')}
+                              onClick={() => router.push('/debug-room')}
                             >
                               Start session
                             </button>
@@ -812,7 +812,7 @@ export default function Dashboard() {
                                 <button
                                   type="button"
                                   className="text-[11px] font-medium text-cyan-400 hover:text-cyan-300 transition shrink-0 inline-flex items-center gap-1"
-                                  onClick={() => router.push('/meeting-room')}
+                                  onClick={() => router.push('/debug-room')}
                                 >
                                   Join room <ArrowRight className="h-3 w-3" />
                                 </button>

@@ -41,6 +41,8 @@ check-*.html
 check-*.bat
 debug-*.js
 !routes/debug-handoff.js
+!routes/debug-rooms.js
+!buildrs-frontend/pages/debug-room.js
 !tests/debug-*.test.js
 debug-*.bat
 diagnose-*.bat

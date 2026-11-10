@@ -61,6 +61,7 @@ const trialBillingRoutes = require('./routes/trial-billing');
 const paystackBillingRoutes = require('./routes/paystack-billing');
 const supportRoutes = require('./routes/support');
 const notificationsRoutes = require('./routes/notifications');
+const debugRoomsRoutes = require('./routes/debug-rooms');
 const waitlistRoutes = require('./routes/waitlist');
 
 const app = express();
@@ -480,6 +481,7 @@ app.use('/api/paystack-billing', legacyBillingDeprecation('legacy Paystack billi
 app.use('/api/flutterwave-billing', legacyBillingDeprecation('legacy Flutterwave billing API'), flutterwaveBillingRoutes);
 app.use('/api/support', supportRoutes);
 app.use('/api/notifications', notificationsRoutes);
+app.use('/api/debug-rooms', debugRoomsRoutes);
 // Public waitlist — signup, live counter and release blast (no auth)
 app.use('/api/waitlist', waitlistRoutes);
 

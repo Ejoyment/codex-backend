@@ -1,3 +1,5 @@
+import { getDebugRoomDemoResponse } from './debugRoomDemoFixtures';
+
 const projectFixtures = [
   {
     id: 'demo-buildrs-web',
@@ -172,6 +174,9 @@ export function getDemoApiResponse(path, options = {}) {
   const url = new URL(path, 'http://buildrs-demo.local');
   const pathname = url.pathname;
   const method = (options.method || 'GET').toUpperCase();
+
+  const debugRoomDemo = getDebugRoomDemoResponse(pathname, method, options.body);
+  if (debugRoomDemo) return success(debugRoomDemo);
 
   if (pathname === '/api/dashboard/data') {
     return success({

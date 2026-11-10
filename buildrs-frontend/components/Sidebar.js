@@ -47,8 +47,8 @@ const NAV_SECTIONS = [
   {
     label: 'COLLABORATE',
     items: [
-      { href: '/meeting-room', label: 'Debug Room', icon: Radio },
       { href: '/teams', label: 'Team', icon: Users },
+      { href: '/debug-room', label: 'Debug Room', icon: Radio },
       { href: '/integrations', label: 'Integrations', icon: Brain },
     ],
   },
