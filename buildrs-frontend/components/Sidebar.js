@@ -7,7 +7,7 @@ import {
   Users,
   FileCode2,
   Sparkles,
-  Database,
+  GitPullRequest,
   Plug2,
   Settings,
   ShieldCheck,
@@ -55,7 +55,7 @@ const NAV_SECTIONS = [
   {
     label: 'SHIP',
     items: [
-      { href: '/source-code', label: 'Git & PRs', icon: Database },
+      { href: '/source-code', label: 'Git & PRs', icon: GitPullRequest },
       { href: '/deploy', label: 'Deploy', icon: Rocket },
     ],
   },

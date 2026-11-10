@@ -7,6 +7,7 @@ const jwt = require('jsonwebtoken');
 const { authenticateToken } = require('../middleware/auth');
 const { createStateToken, verifyStateToken } = require('../utils/oauthState');
 const { getGitHubIntegration, githubAPI } = require('../utils/githubApiClient');
+const { enrichBranches, enrichPullRequests, getRepoMeta } = require('../utils/githubOverview');
 
 // ===== REPOSITORIES =====
 
@@ -242,21 +243,53 @@ router.get('/repos/:owner/:repo/branches', authenticateToken, async (req, res) =
     try {
         const integration = await getGitHubIntegration(req.userId);
         const { owner, repo } = req.params;
-        
+        const includeSummary = req.query.summary === '1' || req.query.summary === 'true';
+        const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 40, 1), 100);
+
         const branches = await githubAPI(integration.accessToken, `/repos/${owner}/${repo}/branches?per_page=100`);
-        
-        res.json({
+
+        if (!includeSummary) {
+            return res.json({
+                success: true,
+                branches: branches.map(branch => ({
+                    name: branch.name,
+                    protected: branch.protected,
+                    commit: {
+                        sha: branch.commit.sha,
+                        url: branch.commit.url
+                    }
+                }))
+            });
+        }
+
+        let defaultBranch = req.query.defaultBranch || '';
+        if (!defaultBranch) {
+            try {
+                const meta = await getRepoMeta(integration.accessToken, owner, repo);
+                defaultBranch = meta.default_branch || '';
+            } catch (error) {
+                defaultBranch = '';
+            }
+        }
+        if (!defaultBranch) {
+            defaultBranch = branches.some(branch => branch.name === 'main') ? 'main' : 'master';
+        }
+
+        const enriched = await enrichBranches(integration.accessToken, owner, repo, branches, {
+            defaultBranch,
+            limit,
+        });
+
+        return res.json({
             success: true,
-            branches: branches.map(branch => ({
-                name: branch.name,
-                protected: branch.protected,
-                commit: {
-                    sha: branch.commit.sha,
-                    url: branch.commit.url
-                }
-            }))
+            defaultBranch,
+            totalBranches: branches.length,
+            branches: enriched,
         });
     } catch (error) {
+        if (error.code === 'GITHUB_NOT_CONNECTED' || error.message === 'GitHub not connected') {
+            return res.json({ success: true, connected: false, branches: [] });
+        }
         return sendInternalError(req, res, error);
     }
 });
@@ -823,28 +856,33 @@ router.get('/repos/:owner/:repo/pulls', authenticateToken, async (req, res) => {
     try {
         const integration = await getGitHubIntegration(req.userId);
         const { owner, repo } = req.params;
-        const { state = 'open', per_page = 30, page = 1 } = req.query;
-        
-        const pulls = await githubAPI(integration.accessToken, `/repos/${owner}/${repo}/pulls?state=${state}&per_page=${per_page}&page=${page}`);
-        
+        const state = ['open', 'closed', 'all'].includes(req.query.state) ? req.query.state : 'open';
+        const perPage = Math.min(Math.max(parseInt(req.query.per_page, 10) || 30, 1), 100);
+        const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+        const includeChecks = req.query.checks === '1' || req.query.checks === 'true';
+        const sort = ['created', 'updated', 'popularity', 'long-running'].includes(req.query.sort)
+            ? req.query.sort
+            : 'updated';
+        const direction = req.query.direction === 'asc' ? 'asc' : 'desc';
+
+        const pulls = await githubAPI(
+            integration.accessToken,
+            `/repos/${owner}/${repo}/pulls?state=${state}&per_page=${perPage}&page=${page}&sort=${sort}&direction=${direction}`
+        );
+
+        const pullRequests = await enrichPullRequests(integration.accessToken, owner, repo, pulls, {
+            includeChecks,
+            limit: perPage,
+        });
+
         res.json({
             success: true,
-            pullRequests: pulls.map(pr => ({
-                id: pr.id,
-                number: pr.number,
-                title: pr.title,
-                body: pr.body,
-                state: pr.state,
-                user: pr.user.login,
-                head: pr.head.ref,
-                base: pr.base.ref,
-                createdAt: pr.created_at,
-                updatedAt: pr.updated_at,
-                url: pr.html_url,
-                mergeable: pr.mergeable
-            }))
+            pullRequests,
         });
     } catch (error) {
+        if (error.code === 'GITHUB_NOT_CONNECTED' || error.message === 'GitHub not connected') {
+            return res.json({ success: true, connected: false, pullRequests: [] });
+        }
         return sendInternalError(req, res, error);
     }
 });
