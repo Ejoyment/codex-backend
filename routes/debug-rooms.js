@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const router = express.Router();
 const { authenticateToken } = require('../middleware/auth');
 const { sendInternalError } = require('../utils/httpErrors');
-const DebugRoom = require('../models/DebugRoom');
+const PersistentDebugRoom = require('../models/PersistentDebugRoom');
 const Company = require('../models/Company');
 const User = require('../models/User');
 const CodeFile = require('../models/CodeFile');
@@ -201,10 +201,10 @@ async function findRoom(idOrSlug) {
     const raw = String(idOrSlug || '').trim();
     if (!raw) return null;
     if (mongoose.isValidObjectId(raw)) {
-        const byId = await DebugRoom.findById(raw);
+        const byId = await PersistentDebugRoom.findById(raw);
         if (byId) return byId;
     }
-    return DebugRoom.findOne({ roomId: cleanName(raw) });
+    return PersistentDebugRoom.findOne({ roomId: cleanName(raw) });
 }
 
 function appendActivity(room, viewer, action, target = '') {
@@ -226,7 +226,7 @@ async function generateRoomId(name) {
     for (let suffix = 1; suffix <= 50; suffix += 1) {
         const candidate = suffix === 1 ? base : `${base}-${suffix}`;
         // eslint-disable-next-line no-await-in-loop
-        const exists = await DebugRoom.exists({ roomId: candidate });
+        const exists = await PersistentDebugRoom.exists({ roomId: candidate });
         if (!exists) return candidate;
     }
     return `${base}-${Date.now().toString(36).slice(-4)}`;
@@ -259,7 +259,7 @@ router.get('/', authenticateToken, async (req, res) => {
         if (viewer.email) filters.push({ 'invites.email': viewer.email });
         if (companyIds.length > 0) filters.push({ companyId: { $in: companyIds } });
 
-        const rooms = await DebugRoom.find({ $or: filters })
+        const rooms = await PersistentDebugRoom.find({ $or: filters })
             .sort({ lastActiveAt: -1 })
             .limit(50);
 
@@ -330,7 +330,7 @@ router.post('/', authenticateToken, async (req, res) => {
             ? req.body.context
             : {};
 
-        const room = new DebugRoom({
+        const room = new PersistentDebugRoom({
             roomId,
             name,
             description,
