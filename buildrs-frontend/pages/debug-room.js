@@ -33,11 +33,6 @@ import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch, isDemoTourActive } from '../lib/api';
 
-const AI_MODEL_CONFIG = {
-  agent: 'Claude Sonnet 5',
-  fast: 'Claude Haiku 4.5',
-};
-
 const TABS = [
   { id: 'code', label: 'Code' },
   { id: 'investigation', label: 'Investigation' },
@@ -182,23 +177,48 @@ function SessionActivity({ activity }) {
   );
 }
 
-function AiModelConfig() {
+function AiModelConfig({ config, loading, error }) {
+  const defaultModel = config?.defaultModel || null;
+  const fastModel = config?.fastModel || null;
+  const privacy = config?.privacy || null;
+
+  const renderModel = (entry) => {
+    if (loading) return <p className="dbgr-ai-value is-muted">Loading configured model…</p>;
+    if (!entry) return <p className="dbgr-ai-value is-muted">Not configured</p>;
+    return (
+      <>
+        <p className="dbgr-ai-value">{entry.model}</p>
+        <p className="dbgr-ai-provider">{entry.providerName}</p>
+      </>
+    );
+  };
+
   return (
     <section className="dbgr-panel dbgr-ai-panel">
       <h2 className="dbgr-panel-title">AI Model Config</h2>
       <div className="dbgr-ai-field">
         <p className="dbgr-card-label">Default Agent Model</p>
-        <p className="dbgr-ai-value">{AI_MODEL_CONFIG.agent}</p>
+        {renderModel(defaultModel)}
       </div>
       <div className="dbgr-ai-field">
         <p className="dbgr-card-label">Fast Tasks Model</p>
-        <p className="dbgr-ai-value">{AI_MODEL_CONFIG.fast}</p>
+        {renderModel(fastModel)}
       </div>
+      {error && <p className="dbgr-ai-note">{error}</p>}
+      {!loading && !error && !defaultModel && (
+        <p className="dbgr-ai-note">No AI provider is configured. Add a provider key to enable agent runs.</p>
+      )}
       <div className="dbgr-privacy">
         <span className="dbgr-privacy-icon"><Lock className="h-4 w-4" /></span>
         <div>
-          <p className="dbgr-privacy-title">Privacy Mode Available</p>
-          <p className="dbgr-privacy-copy">Route sensitive tasks to local models</p>
+          <p className="dbgr-privacy-title">
+            {privacy?.available ? 'Privacy Mode Available' : 'Privacy Mode Not Connected'}
+          </p>
+          <p className="dbgr-privacy-copy">
+            {privacy?.available
+              ? (privacy.model ? `Local route: ${privacy.providerName} · ${privacy.model}` : 'Route sensitive tasks to local models')
+              : 'Connect Ollama or LM Studio to route sensitive tasks locally'}
+          </p>
           <Link href="/ai-pair" className="dbgr-link">Configure &rarr;</Link>
         </div>
       </div>
@@ -1021,6 +1041,9 @@ export default function DebugRoomPage() {
   const [investigationError, setInvestigationError] = useState('');
   const [chatDraft, setChatDraft] = useState('');
   const [sendingChat, setSendingChat] = useState(false);
+  const [modelConfig, setModelConfig] = useState(null);
+  const [modelConfigLoading, setModelConfigLoading] = useState(true);
+  const [modelConfigError, setModelConfigError] = useState('');
 
   const loadRooms = useCallback(async () => {
     setRoomsLoading(true);
@@ -1055,6 +1078,22 @@ export default function DebugRoomPage() {
   useEffect(() => {
     loadRooms();
   }, [loadRooms]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setModelConfigLoading(true);
+    apiFetch('/api/ai-pair/model-config')
+      .then((result) => {
+        if (!cancelled) setModelConfig(result);
+      })
+      .catch((err) => {
+        if (!cancelled) setModelConfigError(err.message || 'Could not load AI model configuration.');
+      })
+      .finally(() => {
+        if (!cancelled) setModelConfigLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (!roomParam) {
@@ -1389,7 +1428,7 @@ export default function DebugRoomPage() {
 
                   <div className="dbgr-lower">
                     <SessionActivity activity={activity} />
-                    <AiModelConfig />
+                    <AiModelConfig config={modelConfig} loading={modelConfigLoading} error={modelConfigError} />
                   </div>
                 </>
               )}
