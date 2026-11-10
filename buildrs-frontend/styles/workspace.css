@@ -18679,6 +18679,27 @@
   color: #ffffff;
   font-size: 0.95rem;
   font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.dbgr-ai-value.is-muted {
+  color: #9aaeba;
+  font-weight: 400;
+}
+
+.dbgr-ai-provider {
+  margin: 0.2rem 0 0;
+  color: #12dce5;
+  font-family: var(--figma-font-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.04em;
+}
+
+.dbgr-ai-note {
+  margin: 0.6rem 0 0;
+  color: #9aaeba;
+  font-size: 0.72rem;
+  line-height: 1.5;
 }
 
 .dbgr-privacy {

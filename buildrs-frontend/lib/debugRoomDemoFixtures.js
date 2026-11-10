@@ -309,6 +309,19 @@ function touchActivity(room, action, target) {
 }
 
 export function getDebugRoomDemoResponse(pathname, method, rawBody) {
+  if (pathname === '/api/ai-pair/model-config' && method === 'GET') {
+    // Mirrors the shape and real model identifiers returned by the backend so
+    // the demo tour doesn't display invented model names.
+    const groq = { provider: 'groq', providerName: 'Groq (Fast Inference)', model: 'openai/gpt-oss-120b', type: 'cloud' };
+    return {
+      success: true,
+      defaultModel: groq,
+      fastModel: groq,
+      privacy: { available: false, enabled: false, provider: null, providerName: null, model: null },
+      providers: [groq],
+    };
+  }
+
   if (pathname === '/api/debug-rooms' && method === 'GET') {
     return { rooms };
   }
