@@ -17193,3 +17193,1080 @@
   .notif-row-side { width: 100%; align-items: flex-start; }
   .notif-empty-card { min-height: 380px; }
 }
+
+/* ==========================================================================
+   Git & PRs dashboard
+   ========================================================================== */
+
+.gitpr-page {
+  max-width: 1240px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.gitpr-header-copy {
+  min-width: 0;
+}
+
+.gitpr-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.gitpr-header .dash-title {
+  font-size: 1.72rem;
+  letter-spacing: -0.035em;
+}
+
+.gitpr-subtitle {
+  margin: 0.4rem 0 0;
+  color: #748194;
+  font-size: 0.72rem;
+}
+
+.gitpr-repo-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: 320px;
+  padding: 0.2rem 0.55rem;
+  border: 1px solid rgba(68, 117, 151, 0.35);
+  border-radius: 999px;
+  background: rgba(18, 220, 229, 0.06);
+  color: #9fb3c2;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.62rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gitpr-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex: 0 0 auto;
+}
+
+.gitpr-repo-select {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  height: 36px;
+  padding: 0 0.65rem;
+  border: 1px solid rgba(68, 117, 151, 0.4);
+  border-radius: 8px;
+  background: #101d2c;
+  color: #9aaeba;
+}
+
+.gitpr-repo-select select {
+  max-width: 210px;
+  appearance: none;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #d6e1ea;
+  font-size: 0.7rem;
+  padding-right: 1rem;
+  cursor: pointer;
+}
+
+.gitpr-repo-select option {
+  background: #101d2c;
+  color: #d6e1ea;
+}
+
+.gitpr-select-chevron {
+  width: 0.8rem;
+  height: 0.8rem;
+  flex: 0 0 auto;
+  pointer-events: none;
+}
+
+.gitpr-new-pr,
+.gitpr-btn,
+.gitpr-review-btn,
+.gitpr-icon-btn,
+.gitpr-tab,
+.gitpr-filter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease, transform 0.16s ease;
+}
+
+.gitpr-new-pr {
+  height: 42px;
+  padding: 0 1.25rem;
+  background: linear-gradient(135deg, #20e6e0, #0fb9c9);
+  color: #032026;
+  font-size: 0.72rem;
+  font-weight: 700;
+  box-shadow: 0 8px 22px -12px rgba(18, 220, 229, 0.75);
+}
+
+.gitpr-new-pr:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.04);
+}
+
+.gitpr-new-pr:disabled,
+.gitpr-btn:disabled,
+.gitpr-icon-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.gitpr-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--ws-border);
+}
+
+.gitpr-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.gitpr-tab {
+  height: 44px;
+  padding: 0 0.55rem;
+  background: transparent;
+  color: #8fa2b1;
+  font-size: 0.9rem;
+  font-weight: 600;
+  border-bottom: 2px solid transparent;
+  border-radius: 6px 6px 0 0;
+}
+
+.gitpr-tab:hover {
+  color: #d6e1ea;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.gitpr-tab.is-active {
+  color: #12dce5;
+  border-bottom-color: #12dce5;
+  background: rgba(18, 220, 229, 0.05);
+}
+
+.gitpr-tab-count {
+  display: inline-flex;
+  min-width: 1.45rem;
+  height: 1.35rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.36rem;
+  border-radius: 999px;
+  background: rgba(116, 129, 148, 0.2);
+  color: #a9b7c4;
+  font-size: 0.62rem;
+  font-weight: 700;
+}
+
+.gitpr-tab.is-active .gitpr-tab-count {
+  background: rgba(18, 220, 229, 0.14);
+  color: #12dce5;
+}
+
+.gitpr-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.gitpr-toolbar-note,
+.gitpr-section-note {
+  color: #748194;
+  font-size: 0.62rem;
+}
+
+.gitpr-icon-btn {
+  width: 32px;
+  height: 32px;
+  background: #101d2c;
+  border-color: rgba(68, 117, 151, 0.35);
+  color: #9aaeba;
+}
+
+.gitpr-icon-btn:hover:not(:disabled) {
+  color: #12dce5;
+  border-color: rgba(18, 220, 229, 0.35);
+}
+
+.gitpr-inline-icon {
+  width: 0.85rem;
+  height: 0.85rem;
+  flex: 0 0 auto;
+}
+
+.gitpr-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  padding-top: 0.15rem;
+}
+
+.gitpr-filter-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.gitpr-segmented {
+  display: inline-flex;
+  gap: 0.55rem;
+}
+
+.gitpr-filter {
+  height: 38px;
+  padding: 0 1.2rem;
+  border: 1px solid rgba(68, 117, 151, 0.32);
+  border-radius: 9px;
+  background: transparent;
+  color: #8fa2b1;
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.gitpr-filter:hover {
+  border-color: rgba(18, 220, 229, 0.35);
+  color: #d6e1ea;
+}
+
+.gitpr-filter.is-active {
+  border-color: rgba(18, 220, 229, 0.62);
+  background: rgba(18, 220, 229, 0.035);
+  color: #12dce5;
+  box-shadow: inset 0 0 0 1px rgba(18, 220, 229, 0.1);
+}
+
+.gitpr-pr-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.gitpr-pr-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: center;
+  padding: 1.1rem 1.2rem;
+  border: 1px solid var(--ws-border);
+  border-radius: 10px;
+  background: linear-gradient(180deg, #101822, #0d141d);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset;
+  transition: border-color 0.16s ease, transform 0.16s ease;
+}
+
+.gitpr-pr-card:hover {
+  border-color: rgba(68, 117, 151, 0.55);
+  transform: translateY(-1px);
+}
+
+.gitpr-pr-card.is-merged {
+  opacity: 0.9;
+}
+
+.gitpr-pr-main {
+  min-width: 0;
+}
+
+.gitpr-pr-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+}
+
+.gitpr-pr-state {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: rgba(18, 220, 229, 0.08);
+  color: #12dce5;
+}
+
+.gitpr-pr-state.is-merged {
+  background: rgba(168, 120, 255, 0.1);
+  color: #b899ff;
+}
+
+.gitpr-pr-state.is-closed {
+  background: rgba(255, 107, 107, 0.08);
+  color: #ff8585;
+}
+
+.gitpr-pr-state-icon {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.gitpr-pr-heading {
+  min-width: 0;
+  flex: 1;
+}
+
+.gitpr-pr-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.gitpr-pr-title-row h2 {
+  margin: 0;
+  color: #e3e9f1;
+  font-size: 0.98rem;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.gitpr-draft {
+  padding: 0.1rem 0.4rem;
+  border: 1px solid rgba(116, 129, 148, 0.45);
+  border-radius: 999px;
+  color: #9aaeba;
+  font-size: 0.52rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.gitpr-label {
+  padding: 0.12rem 0.38rem;
+  border: 1px solid;
+  border-radius: 999px;
+  font-size: 0.52rem;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.gitpr-pr-branch {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0.32rem 0 0;
+  color: #748194;
+  font-size: 0.62rem;
+}
+
+.gitpr-pr-branch > span {
+  color: #9aaeba;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+
+.gitpr-pr-branch code,
+.gitpr-branch-name {
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+
+.gitpr-pr-branch code {
+  max-width: 240px;
+  overflow: hidden;
+  padding: 0.08rem 0.32rem;
+  border-radius: 4px;
+  background: rgba(116, 129, 148, 0.12);
+  color: #aebdca;
+  font-size: 0.58rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gitpr-pr-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 0.65rem;
+  padding-left: 37px;
+  color: #748194;
+  font-size: 0.62rem;
+}
+
+.gitpr-linked-task,
+.gitpr-pr-user,
+.gitpr-updated,
+.gitpr-branch-author,
+.gitpr-branch-delta,
+.gitpr-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.gitpr-linked-task {
+  color: #9fb3c2;
+}
+
+.gitpr-stat {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.58rem;
+}
+
+.gitpr-stat.is-add {
+  color: #54d99a;
+}
+
+.gitpr-stat.is-del {
+  color: #ff8585;
+}
+
+.gitpr-pr-user img,
+.gitpr-branch-author img {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.gitpr-avatar-fallback {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(18, 220, 229, 0.14);
+  color: #12dce5;
+  font-size: 0.5rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.gitpr-pr-side {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  flex: 0 0 auto;
+}
+
+.gitpr-check {
+  padding: 0.24rem 0.5rem;
+  border: 1px solid rgba(116, 129, 148, 0.25);
+  border-radius: 999px;
+  color: #9aaeba;
+  font-size: 0.56rem;
+  white-space: nowrap;
+}
+
+.gitpr-check-icon {
+  width: 0.72rem;
+  height: 0.72rem;
+}
+
+.gitpr-check.is-success {
+  border-color: rgba(84, 217, 154, 0.25);
+  background: rgba(84, 217, 154, 0.06);
+  color: #54d99a;
+}
+
+.gitpr-check.is-pending {
+  border-color: rgba(229, 184, 74, 0.25);
+  background: rgba(229, 184, 74, 0.06);
+  color: #e5b84a;
+}
+
+.gitpr-check.is-failure {
+  border-color: rgba(255, 133, 133, 0.3);
+  background: rgba(255, 133, 133, 0.06);
+  color: #ff8585;
+}
+
+.gitpr-updated {
+  color: #748194;
+  font-size: 0.56rem;
+  white-space: nowrap;
+}
+
+.gitpr-review-btn {
+  height: 30px;
+  padding: 0 0.7rem;
+  border-color: rgba(68, 117, 151, 0.45);
+  background: #142130;
+  color: #d6e1ea;
+  font-size: 0.62rem;
+  font-weight: 650;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.gitpr-review-btn:hover {
+  border-color: rgba(18, 220, 229, 0.45);
+  color: #12dce5;
+}
+
+.gitpr-branch-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.gitpr-branch-card {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.25rem;
+  padding: 1rem 1.2rem;
+  border: 1px solid var(--ws-border);
+  border-radius: 10px;
+  background: linear-gradient(180deg, #101822, #0d141d);
+  transition: border-color 0.16s ease, transform 0.16s ease;
+}
+
+.gitpr-branch-card:hover {
+  border-color: rgba(68, 117, 151, 0.55);
+  transform: translateY(-1px);
+}
+
+.gitpr-branch-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.gitpr-branch-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.gitpr-branch-icon {
+  width: 0.95rem;
+  height: 0.95rem;
+  color: #8fa2b1;
+}
+
+.gitpr-branch-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.16rem 0.45rem;
+  border: 1px solid rgba(116, 129, 148, 0.25);
+  border-radius: 999px;
+  color: #9aaeba;
+  font-size: 0.52rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.gitpr-status-dot {
+  width: 0.3rem;
+  height: 0.3rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.gitpr-branch-status.is-active {
+  border-color: rgba(84, 217, 154, 0.25);
+  background: rgba(84, 217, 154, 0.06);
+  color: #54d99a;
+}
+
+.gitpr-branch-status.is-stale {
+  border-color: rgba(229, 184, 74, 0.25);
+  background: rgba(229, 184, 74, 0.06);
+  color: #e5b84a;
+}
+
+.gitpr-branch-status.is-protected {
+  border-color: rgba(18, 220, 229, 0.25);
+  background: rgba(18, 220, 229, 0.06);
+  color: #12dce5;
+}
+
+.gitpr-default-badge {
+  padding: 0.12rem 0.4rem;
+  border-radius: 4px;
+  background: rgba(116, 129, 148, 0.14);
+  color: #9aaeba;
+  font-size: 0.5rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.gitpr-branch-name {
+  margin: 0;
+  color: #e3e9f1;
+  font-size: 0.98rem;
+  font-weight: 650;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gitpr-branch-author-line {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin: 0.38rem 0 0;
+  color: #8fa2b1;
+  font-size: 0.64rem;
+}
+
+.gitpr-branch-author-line img {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.gitpr-branch-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  margin-top: 0.8rem;
+  color: #748194;
+  font-size: 0.62rem;
+}
+
+.gitpr-branch-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+
+.gitpr-branch-delta.is-ahead {
+  color: #54d99a;
+}
+
+.gitpr-branch-delta.is-behind {
+  color: #ff8585;
+}
+
+.gitpr-branch-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex: 0 0 auto;
+}
+
+.gitpr-checkout-btn {
+  border: 0;
+  background: transparent;
+  color: #b7c5d1;
+  font: inherit;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.gitpr-checkout-btn:hover {
+  color: #12dce5;
+}
+
+.gitpr-btn {
+  height: 30px;
+  padding: 0 0.7rem;
+  font-size: 0.62rem;
+  font-weight: 650;
+}
+
+.gitpr-btn.is-ghost {
+  border-color: rgba(68, 117, 151, 0.4);
+  background: #121d2a;
+  color: #b7c5d1;
+}
+
+.gitpr-btn.is-ghost:hover {
+  border-color: rgba(18, 220, 229, 0.4);
+  color: #12dce5;
+}
+
+.gitpr-btn.is-primary {
+  border-color: rgba(18, 220, 229, 0.4);
+  background: rgba(18, 220, 229, 0.1);
+  color: #12dce5;
+}
+
+.gitpr-btn.is-primary:hover:not(:disabled) {
+  background: rgba(18, 220, 229, 0.16);
+}
+
+
+.gitpr-section-title {
+  margin: 0;
+  color: #d6e1ea;
+  font-size: 0.76rem;
+  font-weight: 650;
+}
+
+.gitpr-section-sub {
+  margin: 0.18rem 0 0;
+  color: #748194;
+  font-size: 0.6rem;
+}
+
+.gitpr-empty,
+.gitpr-state-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1.5rem;
+  border: 1px dashed rgba(68, 117, 151, 0.32);
+  border-radius: 12px;
+  background: rgba(16, 24, 34, 0.55);
+  text-align: center;
+}
+
+.gitpr-empty-icon {
+  width: 1.6rem;
+  height: 1.6rem;
+  margin-bottom: 0.65rem;
+  color: #4f6274;
+}
+
+.gitpr-empty h3,
+.gitpr-state-card h2 {
+  margin: 0;
+  color: #d6e1ea;
+  font-size: 0.86rem;
+  font-weight: 650;
+}
+
+.gitpr-empty p,
+.gitpr-state-card p {
+  max-width: 380px;
+  margin: 0.35rem 0 0.9rem;
+  color: #748194;
+  font-size: 0.68rem;
+  line-height: 1.55;
+}
+
+.gitpr-state-card {
+  border-style: solid;
+  padding: 4rem 1.5rem;
+}
+
+.gitpr-state-card.is-error {
+  border-color: rgba(255, 133, 133, 0.25);
+}
+
+.gitpr-state-icon {
+  display: inline-flex;
+  width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0.8rem;
+  border-radius: 12px;
+  background: rgba(18, 220, 229, 0.08);
+  color: #12dce5;
+}
+
+.gitpr-state-icon svg {
+  width: 1.3rem;
+  height: 1.3rem;
+}
+
+.gitpr-state-card.is-error .gitpr-state-icon {
+  background: rgba(255, 133, 133, 0.08);
+  color: #ff8585;
+}
+
+.gitpr-inline-error {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid rgba(255, 133, 133, 0.25);
+  border-radius: 8px;
+  background: rgba(255, 133, 133, 0.05);
+  color: #ffb0b0;
+  font-size: 0.66rem;
+}
+
+.gitpr-inline-error button {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: #ff8585;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.gitpr-skeleton-card {
+  height: 92px;
+  border-radius: 10px;
+  background: linear-gradient(90deg, #101822 25%, #162231 50%, #101822 75%);
+  background-size: 200% 100%;
+  animation: gitpr-shimmer 1.6s ease-in-out infinite;
+}
+
+.gitpr-skeleton-card.is-branch {
+  height: 178px;
+}
+
+@keyframes gitpr-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.gitpr-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(3, 7, 12, 0.76);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.gitpr-modal {
+  width: min(560px, 100%);
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+  padding: 1.1rem;
+  border: 1px solid rgba(68, 117, 151, 0.45);
+  border-radius: 14px;
+  background: #0d151f;
+  box-shadow: 0 28px 70px -24px rgba(0, 0, 0, 0.8);
+}
+
+.gitpr-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.gitpr-modal-kicker {
+  margin: 0 0 0.3rem;
+  color: #12dce5;
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+.gitpr-modal-head h2 {
+  margin: 0;
+  color: #edf2f7;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.gitpr-modal-repo {
+  margin: 0.25rem 0 0;
+  color: #748194;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.6rem;
+}
+
+.gitpr-modal-close {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(116, 129, 148, 0.25);
+  border-radius: 8px;
+  background: #121d2a;
+  color: #9aaeba;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.gitpr-modal-close:hover {
+  color: #fff;
+}
+
+.gitpr-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.85rem;
+  color: #9aaeba;
+  font-size: 0.62rem;
+  font-weight: 600;
+}
+
+.gitpr-field input,
+.gitpr-field textarea,
+.gitpr-field select {
+  width: 100%;
+  border: 1px solid rgba(68, 117, 151, 0.4);
+  border-radius: 8px;
+  outline: 0;
+  background: #101d2c;
+  color: #e3e9f1;
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 400;
+  padding: 0.55rem 0.65rem;
+}
+
+.gitpr-field textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.gitpr-field input:focus,
+.gitpr-field textarea:focus,
+.gitpr-field select:focus {
+  border-color: rgba(18, 220, 229, 0.55);
+  box-shadow: 0 0 0 2px rgba(18, 220, 229, 0.08);
+}
+
+.gitpr-field-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.gitpr-form-error {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.8rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid rgba(255, 133, 133, 0.25);
+  border-radius: 8px;
+  background: rgba(255, 133, 133, 0.05);
+  color: #ffb0b0;
+  font-size: 0.63rem;
+}
+
+.gitpr-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.55rem;
+  margin-top: 0.35rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid rgba(116, 129, 148, 0.14);
+}
+
+.gitpr-toast {
+  position: fixed;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  z-index: 130;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  max-width: 420px;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid rgba(18, 220, 229, 0.35);
+  border-radius: 9px;
+  background: #0d1b23;
+  color: #b9f7f8;
+  font-size: 0.66rem;
+  box-shadow: 0 18px 45px -20px rgba(0, 0, 0, 0.8);
+}
+
+.gitpr-toast .gitpr-inline-icon {
+  color: #12dce5;
+}
+
+@media (max-width: 1100px) {
+  .gitpr-header {
+    align-items: flex-start;
+  }
+
+  .gitpr-header-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .gitpr-repo-select select {
+    max-width: 160px;
+  }
+
+  .gitpr-pr-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .gitpr-pr-side {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    padding-left: 37px;
+  }
+}
+
+@media (max-width: 780px) {
+  .gitpr-header {
+    flex-direction: column;
+    gap: 0.8rem;
+  }
+
+  .gitpr-header-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .gitpr-new-pr {
+    flex: 1;
+  }
+
+  .gitpr-branch-card {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .gitpr-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .gitpr-toolbar-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .gitpr-field-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .gitpr-pr-meta {
+    padding-left: 0;
+  }
+
+  .gitpr-pr-side {
+    padding-left: 0;
+  }
+
+  .gitpr-section-note {
+    display: none;
+  }
+
+  .gitpr-toast {
+    right: 0.75rem;
+    left: 0.75rem;
+    bottom: 0.75rem;
+    max-width: none;
+  }
+}
