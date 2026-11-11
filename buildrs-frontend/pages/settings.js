@@ -18,10 +18,8 @@ import {
   formatDate,
 } from '../lib/billingCopy';
 import {
-  User,
   Shield,
   CreditCard,
-  Plug,
   Camera,
   Save,
   ExternalLink,
@@ -35,6 +33,12 @@ import {
   ArrowUpRight,
   XCircle,
   Check,
+  Bot,
+  KeyRound,
+  Eye,
+  EyeOff,
+  CheckCircle2,
+  X,
 } from 'lucide-react';
 import useToastStore from '../store/toastStore';
 
@@ -62,10 +66,19 @@ const PROVIDER_META = {
 };
 
 const TABS = [
-  { id: 'profile', label: 'Profile', icon: User },
-  { id: 'security', label: 'Security', icon: Shield },
-  { id: 'billing', label: 'Billing', icon: CreditCard },
-  { id: 'integrations', label: 'Integrations', icon: Plug },
+  { id: 'profile', label: 'Profile and Account' },
+  { id: 'ai', label: 'AI Models Configuration' },
+  { id: 'security', label: 'Security' },
+  { id: 'billing', label: 'Billing' },
+  { id: 'integrations', label: 'Integrations' },
+];
+
+const PASSWORD_RULES = [
+  { id: 'length', label: 'At least 8 characters', test: (v) => v.length >= 8 },
+  { id: 'upper', label: 'One uppercase letter', test: (v) => /[A-Z]/.test(v) },
+  { id: 'lower', label: 'One lowercase letter', test: (v) => /[a-z]/.test(v) },
+  { id: 'number', label: 'One number', test: (v) => /\d/.test(v) },
+  { id: 'symbol', label: 'One special character', test: (v) => /[^A-Za-z0-9]/.test(v) },
 ];
 
 const FREE_TIER = 'developer';
@@ -655,14 +668,14 @@ export default function Settings() {
       : null;
     return TABS.some((t) => t.id === initial) ? initial : 'profile';
   });
-  const [name, setName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [role, setRole] = useState('');
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [integrations, setIntegrations] = useState([]);
   const [loadingIntegrations, setLoadingIntegrations] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
-  const [clock, setClock] = useState('');
   const [crop, setCrop] = useState(null);
   const [cropZoom, setCropZoom] = useState(1);
   const [cropPan, setCropPan] = useState({ x: 0, y: 0 });
@@ -673,6 +686,31 @@ export default function Settings() {
   const toast = useToastStore();
   const [deleteText, setDeleteText] = useState('');
   const [deleting, setDeleting] = useState(false);
+
+  const [modelConfig, setModelConfig] = useState(null);
+  const [modelConfigLoading, setModelConfigLoading] = useState(false);
+  const [modelConfigError, setModelConfigError] = useState('');
+
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [passwordBusy, setPasswordBusy] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordFieldErrors, setPasswordFieldErrors] = useState({});
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
+
+  const fullName = `${firstName} ${lastName}`.replace(/\s+/g, ' ').trim();
+  const activeRole = Array.isArray(role) ? role.join(', ') : (role || 'Member');
+  const tier = normalizeTier(subscription?.tier);
+  const currentPlan = planById(tier) || FREE_PLAN;
+  const isBusiness = ['team_standard', 'team_premium', 'enterprise'].includes(tier);
+  const passwordChecks = PASSWORD_RULES.map((rule) => ({ ...rule, passed: rule.test(newPassword) }));
+  const passwordValid = passwordChecks.every((rule) => rule.passed);
+  const passwordsMatch = confirmPassword.length > 0 && newPassword === confirmPassword;
 
   const handleDeleteAccount = async () => {
     if (deleteText !== 'DELETE' || deleting) return;
@@ -704,19 +742,11 @@ export default function Settings() {
   };
 
   useEffect(() => {
-    const tick = () => {
-      setClock(new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }));
-    };
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, []);
-
-  useEffect(() => {
-    if (user) {
-      setName(user.fullName || '');
-      setRole(user.role || '');
-    }
+    if (!user) return;
+    const parts = (user.fullName || '').trim().split(/\s+/);
+    setFirstName(parts.shift() || '');
+    setLastName(parts.join(' '));
+    setRole(user.role || '');
   }, [user]);
 
   useEffect(() => {
@@ -734,6 +764,23 @@ export default function Settings() {
     }
   }, [activeTab, subscription, setSubscription]);
 
+  const loadModelConfig = useCallback(async () => {
+    setModelConfigLoading(true);
+    setModelConfigError('');
+    try {
+      const data = await apiFetch('/api/ai-pair/model-config');
+      setModelConfig(data);
+    } catch (err) {
+      setModelConfigError(err.message || 'Could not load AI model configuration.');
+    } finally {
+      setModelConfigLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'ai' && !modelConfig) loadModelConfig();
+  }, [activeTab, modelConfig, loadModelConfig]);
+
   const validateField = useCallback((value) => {
     const result = validate(value, ['required', 'fullName', 'noScript']);
     setFieldErrors((prev) => {
@@ -743,10 +790,18 @@ export default function Settings() {
     return result.valid;
   }, []);
 
+  const resetProfileForm = useCallback(() => {
+    if (!user) return;
+    const parts = (user.fullName || '').trim().split(/\s+/);
+    setFirstName(parts.shift() || '');
+    setLastName(parts.join(' '));
+    setFieldErrors({});
+  }, [user]);
+
   const saveProfile = async (e) => {
     e.preventDefault();
     if (!submitGuard.acquire()) return;
-    if (!validateField(name)) { submitGuard.release(); return; }
+    if (!validateField(fullName)) { submitGuard.release(); return; }
 
     const rl = rateLimit('settings-save', { maxAttempts: 5, windowMs: 60000 });
     if (!rl.allowed) {
@@ -759,7 +814,7 @@ export default function Settings() {
     try {
       const data = await apiFetch('/api/profile', {
         method: 'PUT',
-        body: JSON.stringify({ fullName: name, email: user.email }),
+        body: JSON.stringify({ fullName, email: user.email }),
       });
       if (data.user) {
         if (!isDemoTourActive()) {
@@ -946,6 +1001,75 @@ export default function Settings() {
   const getIntegration = (providerId) =>
     integrations.find((i) => i.provider === providerId);
 
+  const finishPasswordChange = () => {
+    clearAuth();
+    router.replace('/sign_in');
+  };
+
+  const closePassword = () => {
+    if (passwordBusy) return;
+    if (passwordSuccess) {
+      finishPasswordChange();
+      return;
+    }
+    setPasswordOpen(false);
+    setPasswordSuccess(false);
+    setPasswordError('');
+    setPasswordFieldErrors({});
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setShowCurrent(false);
+    setShowNew(false);
+    setShowConfirm(false);
+  };
+
+  const clearPasswordFieldError = (key) => {
+    setPasswordFieldErrors((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  };
+
+  const submitPassword = async (e) => {
+    e.preventDefault();
+    if (passwordBusy) return;
+    const errors = {};
+    if (!currentPassword) errors.current = 'Enter your current password.';
+    if (!passwordValid) errors.next = 'Password does not meet the requirements below.';
+    if (!confirmPassword) errors.confirm = 'Confirm your new password.';
+    else if (newPassword !== confirmPassword) errors.confirm = "Passwords don't match.";
+    setPasswordFieldErrors(errors);
+    setPasswordError('');
+    if (Object.keys(errors).length > 0) return;
+
+    const rl = rateLimit('settings-password', { maxAttempts: 5, windowMs: 60000 });
+    if (!rl.allowed) {
+      setPasswordError(`Too many attempts. Wait ${rl.retryAfter}s.`);
+      return;
+    }
+
+    setPasswordBusy(true);
+    try {
+      await apiFetch('/api/auth/change-password', {
+        method: 'POST',
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      setPasswordSuccess(true);
+    } catch (err) {
+      const message = err.message || 'Could not change your password.';
+      if (/current password is incorrect/i.test(message)) {
+        setPasswordFieldErrors({ current: 'Current password is incorrect.' });
+      } else {
+        setPasswordError(message);
+      }
+    } finally {
+      setPasswordBusy(false);
+    }
+  };
+
   const profilePictureUrl = getAvatarUrl(user, user?.fullName || user?.name || 'User');
 
   return (
@@ -959,170 +1083,335 @@ export default function Settings() {
         <Sidebar user={user} subscription={subscription} />
 
         <main className="workspace-main">
-          <header className="workspace-header dash-header">
-            <div>
-              <p className="dash-crumb">
-                BuildrsHQ <span className="sep">/</span> Settings
-              </p>
-              <h1 className="dash-title">Settings</h1>
-              <div className="dash-statusline">
-                <span className="status-indicator status-online" />
-                <span>Account &amp; workspace preferences</span>
-                <span className="dash-clock">· {clock || '—:——:——'}</span>
-              </div>
-            </div>
-          </header>
+          <div className="workspace-content set-page">
+            <header className="set-page-head">
+              <p className="set-breadcrumb">Manage <span>/</span> Settings</p>
+              <h1 className="set-title">Settings</h1>
+              <p className="set-subtitle">Manage account, AI preferences, Security Settings</p>
+            </header>
 
-          <div className="workspace-content">
-            <div className="set-shell">
-              <nav className="set-tabs">
-                {TABS.map(({ id, label, icon: Icon }) => (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => setActiveTab(id)}
-                    className={`set-tab ${activeTab === id ? 'is-active' : ''}`}
-                  >
-                    <Icon className="w-4 h-4" />
-                    {label}
-                  </button>
-                ))}
-              </nav>
+            <nav className="set-tabs" role="tablist" aria-label="Settings sections">
+              {TABS.map(({ id, label }) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === id}
+                  onClick={() => setActiveTab(id)}
+                  className={`set-tab ${activeTab === id ? 'is-active' : ''}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </nav>
 
-              <div className="set-body">
-                {activeTab === 'profile' && (
-                  <form onSubmit={saveProfile} className="space-y-6 max-w-xl">
-                    <div className="flex items-center gap-4">
+            <div className="set-body">
+              {activeTab === 'profile' && (
+                <>
+                  <form onSubmit={saveProfile} className="set-card" noValidate>
+                    <div className="set-card-head">
+                      <h2 className="set-card-title">Profile</h2>
+                      <p className="set-card-sub">Manage your profile settings</p>
+                    </div>
+
+                    <div className="set-profile-banner">
                       <img
                         src={profilePictureUrl}
                         alt={user?.fullName || 'User'}
-                        className="set-av"
+                        className="set-avatar"
                         onError={(e) => {
                           if (e.currentTarget.src !== profilePictureUrl) return;
                           const fallback = `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.fullName || user?.name || 'User')}&background=3b82f6&color=fff&size=128`;
                           e.currentTarget.src = fallback;
                         }}
                       />
-                      <div>
-                        <label className="btn-workspace btn-secondary cursor-pointer inline-flex items-center gap-2">
-                          <Camera className="w-4 h-4" />
-                          {uploading ? 'Uploading...' : 'Change Photo'}
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={onPickPicture}
-                            className="hidden"
-                            disabled={uploading}
-                          />
-                        </label>
-                        <p className="set-note">JPG, PNG. Max 5MB.</p>
+                      <div className="set-profile-copy">
+                        <p className="set-profile-name">{user?.fullName || fullName || 'Your profile'}</p>
+                        <p className="set-profile-email">{user?.email || '—'}</p>
                       </div>
+                      <label className="set-btn set-btn-ghost set-upload-btn">
+                        <Camera className="set-btn-icon" />
+                        {uploading ? 'Uploading…' : 'Update Profile Pic'}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={onPickPicture}
+                          className="set-file-input"
+                          disabled={uploading}
+                        />
+                      </label>
                     </div>
 
-                    <div>
-                      <label className="ws-label">Full Name</label>
-                      <input
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        onBlur={() => validateField(name)}
-                        className={`ws-input ${fieldErrors.fullName ? 'field-error' : ''}`}
-                        autoComplete="name"
-                        maxLength={100}
-                      />
-                      {fieldErrors.fullName && <p className="std-field-error">{fieldErrors.fullName}</p>}
+                    <div className="set-form-grid">
+                      <label className="set-field">
+                        <span className="set-label">First Name</span>
+                        <input
+                          value={firstName}
+                          onChange={(e) => setFirstName(e.target.value)}
+                          onBlur={() => validateField(fullName)}
+                          className={`set-input ${fieldErrors.fullName ? 'is-error' : ''}`}
+                          autoComplete="given-name"
+                          maxLength={60}
+                        />
+                      </label>
+                      <label className="set-field">
+                        <span className="set-label">Last Name</span>
+                        <input
+                          value={lastName}
+                          onChange={(e) => setLastName(e.target.value)}
+                          onBlur={() => validateField(fullName)}
+                          className={`set-input ${fieldErrors.fullName ? 'is-error' : ''}`}
+                          autoComplete="family-name"
+                          maxLength={60}
+                        />
+                      </label>
+                      <label className="set-field set-field-full">
+                        <span className="set-label">Email Address</span>
+                        <input
+                          value={user?.email || ''}
+                          disabled
+                          className="set-input"
+                          autoComplete="email"
+                        />
+                      </label>
                     </div>
+                    {fieldErrors.fullName && <p className="set-field-error">{fieldErrors.fullName}</p>}
 
-                    <div>
-                      <label className="ws-label">Email</label>
-                      <input
-                        value={user?.email || ''}
-                        disabled
-                        className="ws-input opacity-60 cursor-not-allowed"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="ws-label">Role</label>
-                      <input
-                        value={role}
-                        disabled
-                        className="ws-input opacity-60 cursor-not-allowed capitalize"
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between gap-3 pt-1">
-                      <button
-                        type="submit"
-                        disabled={saving}
-                        className="btn-workspace btn-primary"
-                      >
-                        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                        {saving ? 'Saving...' : 'Save Changes'}
+                    <div className="set-card-actions">
+                      <button type="button" className="set-btn set-btn-secondary" onClick={resetProfileForm} disabled={saving}>
+                        Cancel
                       </button>
-                      <span className="set-hint">Changes apply across your workspace</span>
+                      <button type="submit" className="set-btn set-btn-primary" disabled={saving}>
+                        {saving ? <Loader2 className="set-btn-icon animate-spin" /> : <Save className="set-btn-icon" />}
+                        {saving ? 'Saving…' : 'Save Changes'}
+                      </button>
                     </div>
                   </form>
-                )}
 
-                {activeTab === 'security' && (
-                  <div className="max-w-xl space-y-6">
-                    <div className="set-gate">
-                      <div className="set-gate-ico">
-                        <Shield className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <h3 className="mem-rule" style={{ marginBottom: '0.15rem' }}>Security Settings</h3>
-                        <p className="set-hint">Password change and 2FA are coming soon.</p>
+                  <section className="set-card">
+                    <div className="set-card-head">
+                      <h2 className="set-card-title">Account</h2>
+                      <p className="set-card-sub">Manage your account settings</p>
+                    </div>
+
+                    <div className="set-form-grid">
+                      <label className="set-field">
+                        <span className="set-label">Account Type</span>
+                        <select
+                          className="set-input set-select"
+                          value={isBusiness ? 'business' : 'personal'}
+                          disabled
+                        >
+                          <option value="personal">Personal</option>
+                          <option value="business">Business</option>
+                        </select>
+                      </label>
+                      <label className="set-field">
+                        <span className="set-label">Role</span>
+                        <input className="set-input" value={activeRole} disabled />
+                      </label>
+                      <div className="set-field set-field-full">
+                        <span className="set-label">Subscription Plan</span>
+                        <div className="set-plan-box">
+                          <div>
+                            <p className="set-plan-name">
+                              {currentPlan.name}
+                              {subscription?.status === 'trial' ? ' · Trial' : ''}
+                            </p>
+                            <p className="set-plan-meta">
+                              {isBusiness ? 'Business workspace' : 'Individual workspace'}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            className="set-btn set-btn-ghost"
+                            onClick={() => setActiveTab('billing')}
+                          >
+                            Upgrade
+                          </button>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="set-gate" style={{ borderColor: 'rgba(236,20,20,0.3)', background: 'rgba(236,20,20,0.04)' }}>
-                      <div className="set-gate-ico" style={{ background: 'rgba(236,20,20,0.12)', color: '#ec1414' }}>
-                        <AlertTriangle className="w-4 h-4" />
+                    <div className="set-card-actions">
+                      <button type="button" className="set-btn set-btn-secondary" onClick={resetProfileForm} disabled={saving}>
+                        Cancel
+                      </button>
+                      <button type="button" className="set-btn set-btn-primary" onClick={saveProfile} disabled={saving}>
+                        {saving ? <Loader2 className="set-btn-icon animate-spin" /> : <Save className="set-btn-icon" />}
+                        {saving ? 'Saving…' : 'Save Changes'}
+                      </button>
+                    </div>
+                  </section>
+                </>
+              )}
+
+              {activeTab === 'ai' && (
+                <section className="set-card">
+                  <div className="set-card-head">
+                    <h2 className="set-card-title">AI Models Configuration</h2>
+                    <p className="set-card-sub">The models powering agents, fast tasks and private routing</p>
+                  </div>
+
+                  {modelConfigLoading ? (
+                    <div className="set-loading">
+                      <Loader2 className="set-btn-icon animate-spin" />
+                      Loading model configuration…
+                    </div>
+                  ) : modelConfigError ? (
+                    <div className="set-inline-error">
+                      <AlertTriangle className="set-error-icon" />
+                      <div>
+                        <p className="set-row-title">AI configuration unavailable</p>
+                        <p className="set-row-sub">{modelConfigError}</p>
+                        <button type="button" className="set-btn set-btn-secondary set-retry-btn" onClick={loadModelConfig}>
+                          Retry
+                        </button>
                       </div>
-                      <div className="flex-1">
-                        <h3 className="mem-rule" style={{ marginBottom: '0.15rem', color: '#ec1414' }}>Delete Account</h3>
-                        <p className="set-hint" style={{ marginBottom: '0.75rem' }}>
-                          Permanently deletes your profile, projects, files, AI sessions, messages, deployments
-                          and usage data. Your integration connections (GitHub, Figma, Slack, Notion, Discord)
-                          and synced data such as GitHub repos are kept. This cannot be undone.
-                        </p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="set-model-grid">
+                        <div className="set-model-card">
+                          <span className="set-model-icon"><Bot className="set-btn-icon" /></span>
+                          <p className="set-model-label">Default Agent Model</p>
+                          <p className="set-model-name">{modelConfig?.defaultModel?.model || 'Not configured'}</p>
+                          <p className="set-model-provider">
+                            {modelConfig?.defaultModel?.providerName || 'Add a provider key to enable agent runs'}
+                          </p>
+                        </div>
+                        <div className="set-model-card">
+                          <span className="set-model-icon"><Zap className="set-btn-icon" /></span>
+                          <p className="set-model-label">Fast Tasks Model</p>
+                          <p className="set-model-name">{modelConfig?.fastModel?.model || 'Not configured'}</p>
+                          <p className="set-model-provider">
+                            {modelConfig?.fastModel?.providerName || 'Falls back to the default agent model'}
+                          </p>
+                        </div>
+                        <div className="set-model-card">
+                          <span className="set-model-icon"><Shield className="set-btn-icon" /></span>
+                          <p className="set-model-label">Privacy Mode</p>
+                          <p className="set-model-name">
+                            {modelConfig?.privacy?.available ? 'Available' : 'Not connected'}
+                          </p>
+                          <p className="set-model-provider">
+                            {modelConfig?.privacy?.available
+                              ? `${modelConfig.privacy.providerName || 'Local provider'}${modelConfig.privacy.model ? ` · ${modelConfig.privacy.model}` : ''}`
+                              : 'Connect Ollama or LM Studio to route sensitive tasks locally'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {Array.isArray(modelConfig?.providers) && modelConfig.providers.length > 0 && (
+                        <div className="set-provider-block">
+                          <p className="set-label">Available providers</p>
+                          <div className="set-provider-chips">
+                            {modelConfig.providers.map((provider) => (
+                              <span key={provider.key} className="set-provider-chip">
+                                {provider.name || provider.key}
+                                <span className="set-provider-type">{provider.type || 'cloud'}</span>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="set-card-actions">
+                        <button type="button" className="set-btn set-btn-secondary" onClick={() => router.push('/ai-pair')}>
+                          Open AI Pair
+                        </button>
+                        <button type="button" className="set-btn set-btn-primary" onClick={() => router.push('/ai-pair')}>
+                          Configure Models
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </section>
+              )}
+
+              {activeTab === 'security' && (
+                <>
+                  <section className="set-card">
+                    <div className="set-card-head">
+                      <h2 className="set-card-title">Security</h2>
+                      <p className="set-card-sub">Manage your password and account protections</p>
+                    </div>
+
+                    <div className="set-security-list">
+                      <div className="set-security-row">
+                        <span className="set-security-icon"><KeyRound className="set-btn-icon" /></span>
+                        <div className="set-security-copy">
+                          <p className="set-row-title">Password</p>
+                          <p className="set-row-sub">Use a unique password with at least 8 characters.</p>
+                        </div>
+                        <button type="button" className="set-btn set-btn-ghost" onClick={() => setPasswordOpen(true)}>
+                          Change password
+                        </button>
+                      </div>
+                      <div className="set-security-row">
+                        <span className="set-security-icon"><Shield className="set-btn-icon" /></span>
+                        <div className="set-security-copy">
+                          <p className="set-row-title">Two-factor authentication</p>
+                          <p className="set-row-sub">Add a second step when signing in to your account.</p>
+                        </div>
+                        <span className="set-tag">Coming soon</span>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="set-card set-card-danger">
+                    <div className="set-card-head">
+                      <h2 className="set-card-title">Delete Account</h2>
+                      <p className="set-card-sub">Permanently remove your account and workspace data</p>
+                    </div>
+
+                    <div className="set-danger-body">
+                      <p className="set-danger-copy">
+                        Permanently deletes your profile, projects, files, AI sessions, messages, deployments
+                        and usage data. Your integration connections (GitHub, Figma, Slack, Notion, Discord)
+                        and synced data such as GitHub repos are kept. This cannot be undone.
+                      </p>
+                      <label className="set-field">
+                        <span className="set-label">Type DELETE to confirm</span>
                         <input
                           type="text"
                           value={deleteText}
                           onChange={(e) => setDeleteText(e.target.value)}
-                          placeholder="Type DELETE to confirm"
-                          className="ws-input w-full"
-                          style={{ marginBottom: '0.5rem' }}
+                          placeholder="DELETE"
+                          className="set-input"
                           autoComplete="off"
                         />
+                      </label>
+                      <div className="set-card-actions">
                         <button
                           type="button"
                           onClick={handleDeleteAccount}
                           disabled={deleteText !== 'DELETE' || deleting}
-                          className="btn-workspace btn-secondary text-[#ec1414] border-[rgba(236,20,20,0.3)] hover:bg-[rgba(236,20,20,0.08)] opacity-60 cursor-not-allowed"
-                          style={
-                            deleteText === 'DELETE' && !deleting
-                              ? { opacity: 1, cursor: 'pointer' }
-                              : undefined
-                          }
+                          className="set-btn set-btn-danger"
                         >
-                          {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                          {deleting ? 'Deleting...' : 'Delete my account'}
+                          {deleting ? <Loader2 className="set-btn-icon animate-spin" /> : <Trash2 className="set-btn-icon" />}
+                          {deleting ? 'Deleting…' : 'Delete my account'}
                         </button>
                       </div>
                     </div>
+                  </section>
+                </>
+              )}
+
+              {activeTab === 'billing' && <BillingTab router={router} toast={toast} />}
+
+              {activeTab === 'integrations' && (
+                <section className="set-card">
+                  <div className="set-card-head">
+                    <h2 className="set-card-title">Integrations</h2>
+                    <p className="set-card-sub">Connect the tools your team already uses</p>
                   </div>
-                )}
 
-                {activeTab === 'billing' && <BillingTab router={router} toast={toast} />}
-
-                {activeTab === 'integrations' && (
-                  <div className="space-y-3 max-w-2xl">
+                  <div className="set-integrations">
                     {loadingIntegrations && (
-                      <div className="flex items-center gap-2 set-hint py-2">
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Loading integrations...
+                      <div className="set-loading">
+                        <Loader2 className="set-btn-icon animate-spin" />
+                        Loading integrations…
                       </div>
                     )}
                     {!loadingIntegrations &&
@@ -1134,7 +1423,7 @@ export default function Settings() {
                           <div key={id} className="set-int-row">
                             <div className="set-int-brand">
                               <div
-                                className="int-ico"
+                                className="set-int-icon"
                                 style={{ backgroundColor: color + '18', color }}
                               >
                                 {label.charAt(0)}
@@ -1148,28 +1437,24 @@ export default function Settings() {
                                 </p>
                               </div>
                             </div>
-                            <div className="flex items-center gap-3 flex-shrink-0">
-                              {connected && (
-                                <span className="pill" style={{ background: 'rgba(3,186,3,0.12)', color: '#03ba03' }}>
-                                  Connected
-                                </span>
-                              )}
+                            <div className="set-int-actions">
+                              {connected && <span className="set-status-pill">Connected</span>}
                               {connected ? (
                                 <button
                                   type="button"
                                   onClick={() => disconnectProvider(id)}
-                                  className="btn-workspace btn-secondary text-xs inline-flex items-center gap-1"
+                                  className="set-btn set-btn-secondary set-btn-sm"
                                 >
-                                  <Unplug className="w-3 h-3" />
+                                  <Unplug className="set-btn-icon" />
                                   Disconnect
                                 </button>
                               ) : (
                                 <button
                                   type="button"
                                   onClick={() => connectProvider(id)}
-                                  className="btn-workspace btn-primary text-xs inline-flex items-center gap-1"
+                                  className="set-btn set-btn-ghost set-btn-sm"
                                 >
-                                  <ExternalLink className="w-3 h-3" />
+                                  <ExternalLink className="set-btn-icon" />
                                   Connect
                                 </button>
                               )}
@@ -1178,12 +1463,146 @@ export default function Settings() {
                         );
                       })}
                   </div>
-                )}
-              </div>
+                </section>
+              )}
             </div>
           </div>
         </main>
       </div>
+
+      {passwordOpen && (
+        <div className="set-modal-backdrop" role="presentation" onClick={closePassword}>
+          <div
+            className="set-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="set-password-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {passwordSuccess ? (
+              <div className="set-password-success">
+                <span className="set-success-icon"><CheckCircle2 className="set-success-glyph" /></span>
+                <h2 id="set-password-title" className="set-modal-title">Password changed</h2>
+                <p className="set-modal-sub">
+                  Your password was updated. For your security, every session has been signed out.
+                </p>
+                <button type="button" className="set-btn set-btn-primary" onClick={finishPasswordChange}>
+                  Sign in again
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={submitPassword} noValidate>
+                <div className="set-modal-head">
+                  <div>
+                    <h2 id="set-password-title" className="set-modal-title">New Password</h2>
+                    <p className="set-modal-sub">Enter your current password and choose a new one.</p>
+                  </div>
+                  <button type="button" className="set-modal-close" onClick={closePassword} aria-label="Close">
+                    <X className="set-btn-icon" />
+                  </button>
+                </div>
+
+                {passwordError && (
+                  <div className="set-modal-alert" role="alert">
+                    <AlertTriangle className="set-error-icon" />
+                    {passwordError}
+                  </div>
+                )}
+
+                <label className="set-field">
+                  <span className="set-label">Current Password</span>
+                  <div className="set-password-input">
+                    <input
+                      type={showCurrent ? 'text' : 'password'}
+                      value={currentPassword}
+                      onChange={(e) => { setCurrentPassword(e.target.value); clearPasswordFieldError('current'); }}
+                      className={`set-input ${passwordFieldErrors.current ? 'is-error' : ''}`}
+                      autoComplete="current-password"
+                    />
+                    <button
+                      type="button"
+                      className="set-eye-btn"
+                      onClick={() => setShowCurrent((v) => !v)}
+                      aria-label={showCurrent ? 'Hide current password' : 'Show current password'}
+                    >
+                      {showCurrent ? <EyeOff className="set-btn-icon" /> : <Eye className="set-btn-icon" />}
+                    </button>
+                  </div>
+                  {passwordFieldErrors.current && <span className="set-field-error">{passwordFieldErrors.current}</span>}
+                </label>
+
+                <label className="set-field">
+                  <span className="set-label">New Password</span>
+                  <div className="set-password-input">
+                    <input
+                      type={showNew ? 'text' : 'password'}
+                      value={newPassword}
+                      onChange={(e) => { setNewPassword(e.target.value); clearPasswordFieldError('next'); }}
+                      className={`set-input ${passwordFieldErrors.next ? 'is-error' : ''}`}
+                      autoComplete="new-password"
+                    />
+                    <button
+                      type="button"
+                      className="set-eye-btn"
+                      onClick={() => setShowNew((v) => !v)}
+                      aria-label={showNew ? 'Hide new password' : 'Show new password'}
+                    >
+                      {showNew ? <EyeOff className="set-btn-icon" /> : <Eye className="set-btn-icon" />}
+                    </button>
+                  </div>
+                  {passwordFieldErrors.next && <span className="set-field-error">{passwordFieldErrors.next}</span>}
+                </label>
+
+                <ul className="set-password-rules">
+                  {passwordChecks.map((rule) => (
+                    <li key={rule.id} className={rule.passed ? 'is-pass' : 'is-fail'}>
+                      {rule.passed ? <Check className="set-rule-icon" /> : <X className="set-rule-icon" />}
+                      {rule.label}
+                    </li>
+                  ))}
+                </ul>
+
+                <label className="set-field">
+                  <span className="set-label">Confirm New Password</span>
+                  <div className="set-password-input">
+                    <input
+                      type={showConfirm ? 'text' : 'password'}
+                      value={confirmPassword}
+                      onChange={(e) => { setConfirmPassword(e.target.value); clearPasswordFieldError('confirm'); }}
+                      className={`set-input ${
+                        passwordFieldErrors.confirm || (confirmPassword && !passwordsMatch) ? 'is-error' : ''
+                      }`}
+                      autoComplete="new-password"
+                    />
+                    <button
+                      type="button"
+                      className="set-eye-btn"
+                      onClick={() => setShowConfirm((v) => !v)}
+                      aria-label={showConfirm ? 'Hide confirmation password' : 'Show confirmation password'}
+                    >
+                      {showConfirm ? <EyeOff className="set-btn-icon" /> : <Eye className="set-btn-icon" />}
+                    </button>
+                  </div>
+                  {passwordFieldErrors.confirm && <span className="set-field-error">{passwordFieldErrors.confirm}</span>}
+                  {!passwordFieldErrors.confirm && confirmPassword && !passwordsMatch && (
+                    <span className="set-field-error">Passwords don&apos;t match.</span>
+                  )}
+                </label>
+
+                <div className="set-modal-actions">
+                  <button type="button" className="set-btn set-btn-secondary" onClick={closePassword} disabled={passwordBusy}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="set-btn set-btn-primary" disabled={passwordBusy}>
+                    {passwordBusy ? <Loader2 className="set-btn-icon animate-spin" /> : <KeyRound className="set-btn-icon" />}
+                    {passwordBusy ? 'Updating…' : 'Update Password'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
 
       {crop && (
         <div className="pfp-overlay" role="dialog" aria-modal="true" aria-label="Crop profile photo">
