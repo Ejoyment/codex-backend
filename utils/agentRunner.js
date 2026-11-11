@@ -19,6 +19,7 @@
 
 const aiRouterService = require('./aiRouterService');
 const agentChangeSet = require('./agentChangeSet');
+const { designGuidanceFor } = require('./designStandards');
 
 const DEFAULT_CONTEXT_FILES = parseInt(process.env.AGENT_CONTEXT_FILES, 10) || 18;
 const DEFAULT_MANIFEST_LIMIT = parseInt(process.env.AGENT_MANIFEST_LIMIT, 10) || 500;
@@ -308,8 +309,18 @@ function buildAgentContext({
     '- Make the smallest coherent set of changes that fully implements the request. It is better to change one real file correctly than to describe ten hypothetical ones.',
     '- Do not claim you applied, tested, or committed changes. The application stages and validates your proposal.',
     '',
-    agentChangeSet.CHANGE_FORMAT_INSTRUCTIONS,
   );
+
+  // UI tasks get the shared design baseline; backend-only work skips it so the
+  // prompt stays focused. figmaSummary already carries a linked design.
+  const designBlock = figmaSummary
+    ? ''
+    : designGuidanceFor([title, description, project?.technologies, task.description]);
+  if (designBlock) {
+    systemLines.push(designBlock, '');
+  }
+
+  systemLines.push(agentChangeSet.CHANGE_FORMAT_INSTRUCTIONS);
 
   const messages = [{ role: 'system', content: systemLines.join('\n') }];
 

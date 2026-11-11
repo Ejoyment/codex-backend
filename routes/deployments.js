@@ -16,7 +16,7 @@ const { enforceDeploymentLimit } = require('../middleware/tierEnforcement');
 const depService = require('../utils/deploymentService');
 const { normalizeEnv, toEnvObject, redact } = require('../utils/deployEnv');
 const { redeployDeployment, resetSelfHealState } = require('../utils/agentAutoDeploy');
-const { validateDeployFiles, backfillFileContent, limits: deployLimits } = require('../utils/deployContent');
+const { validateDeployFiles, backfillFileContent, appendMissingStylesheets, limits: deployLimits } = require('../utils/deployContent');
 const { normalizeDeployContext } = require('../utils/deployContext');
 const { addAuditLog } = require('../utils/auditLogService');
 const { notifyDeploymentEvent } = require('../utils/notificationTriggers');
@@ -219,17 +219,36 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
             // A selected project deploys only that project's files. Never
             // widen an empty project to the whole workspace: that could
             // publish another project's source under this subdomain.
+            const fileScope = projectScope.personal
+                ? {
+                    $or: [
+                        { company: projectScope.workspaceId },
+                        // Legacy personal files were keyed by user id.
+                        { company: String(req.userId), createdBy: req.userId },
+                    ],
+                }
+                : { company: projectScope.workspaceId };
+
             if (!files.length) {
-                const fileScope = projectScope.personal
-                    ? {
-                        $or: [
-                            { company: projectScope.workspaceId },
-                            // Legacy personal files were keyed by user id.
-                            { company: String(req.userId), createdBy: req.userId },
-                        ],
-                    }
-                    : { company: projectScope.workspaceId };
                 files = await CodeFile.find({ project: projectId, ...fileScope }).lean();
+            } else {
+                // The client sends its open buffers; a stylesheet it never
+                // opened (or one saved after the explorer loaded) would be
+                // missing and the published site would render unstyled. Pull
+                // the project's stylesheets and add only the ones absent from
+                // the payload, so unsaved buffer content still wins.
+                const stylesheets = await CodeFile.find({
+                    $and: [
+                        { project: projectId, ...fileScope },
+                        {
+                            $or: [
+                                { language: { $in: ['css', 'scss', 'sass', 'less', 'stylus'] } },
+                                { name: /\.(css|scss|sass|less|styl)$/i },
+                            ],
+                        },
+                    ],
+                }).lean();
+                files = appendMissingStylesheets(files, stylesheets);
             }
         }
 

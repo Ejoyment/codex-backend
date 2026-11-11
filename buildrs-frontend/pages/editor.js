@@ -2827,10 +2827,14 @@ export default function Editor() {
       const key = getFileKey(f);
       const hasBuffer = key in openContentsRef.current;
       const hasParked = key in parkedRef.current;
-      // For GitHub repo entries that were never opened or parked, there is no
-      // resolvable content — pushing them with empty content would wipe the
-      // remote file. Workspace CodeFiles always carry content in file.content.
-      if (selectedRepo && !selectedProject && !hasBuffer && !hasParked && file.content === undefined) return false;
+      // Repo entries that were never opened or parked ship as metadata only:
+      // the server backfills their bytes from the repo tarball (or the blob
+      // API via `sha`). Dropping them would deploy just the handful of files
+      // the user happened to open — a stylesheet nobody opened would be left
+      // out and the site would publish unstyled.
+      if (selectedRepo && !selectedProject && !hasBuffer && !hasParked && file.content === undefined && !file.sha) {
+        return false;
+      }
       return true;
     }).map((file) => {
       const key = getFileKey(file);

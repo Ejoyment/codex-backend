@@ -21,6 +21,7 @@ const { assertWorkspaceAccess } = require('../utils/workspaceAuth');
 const { ensurePersonalWorkspace } = require('../utils/personalWorkspace');
 const { userCanAccessProject } = require('../utils/specAccess');
 const { boundedLimit } = require('../utils/queryLimits');
+const { designGuidanceFor } = require('../utils/designStandards');
 
 async function resolveMemoryWorkspace(workspaceId, userId) {
     if (!workspaceId) return { ok: true, workspaceId: null };
@@ -1089,7 +1090,10 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
    - Use create_multiple_files with ALL files needed
    - Include complete, working code in each file
    - Organize files in proper paths (e.g., "/styles/main.css", "/scripts/app.js")
+   - Ship the stylesheet as its own CSS file and link it from the HTML - never bury the whole design in inline style attributes
    - DO NOT show code blocks - return actions instead
+
+${designGuidanceFor([message, codeContext?.currentFile?.name, codeContext?.currentFile?.language], { always: true })}
 
 4. Response format when creating files:
 {
