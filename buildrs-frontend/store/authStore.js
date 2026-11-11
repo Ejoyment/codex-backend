@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { clearApiCache } from '../lib/api';
 
 function readStoredJson(key, fallback = null) {
   if (typeof window === 'undefined') return fallback;
@@ -64,6 +65,7 @@ const useAuthStore = create(
 
       clearAuth: () => {
         if (typeof window !== 'undefined') {
+          clearApiCache();
           localStorage.removeItem('authToken');
           localStorage.removeItem('user');
           localStorage.removeItem('subscription');

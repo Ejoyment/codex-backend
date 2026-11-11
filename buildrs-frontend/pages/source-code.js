@@ -320,11 +320,11 @@ export default function GitAndPullRequests() {
     [repos, activeRepoFullName],
   );
 
-  const loadRepos = useCallback(async () => {
+  const loadRepos = useCallback(async (force = false) => {
     setReposLoading(true);
     setRepoError(null);
     try {
-      const data = await apiFetch('/api/github/repos?per_page=100&sort=updated');
+      const data = await apiFetch('/api/github/repos?per_page=100&sort=updated', force ? { forceRefresh: true } : undefined);
       if (!data?.success) throw new Error(data?.message || 'Could not load repositories');
       const list = data.repositories || [];
       setGithubConnected(data.connected !== false);
@@ -382,8 +382,9 @@ export default function GitAndPullRequests() {
     if (typeof window !== 'undefined') localStorage.setItem(REPO_STORAGE_KEY, activeRepo.fullName);
   }, [activeRepo]);
 
-  const loadRepoData = useCallback(async (repo) => {
+  const loadRepoData = useCallback(async (repo, { forceRefresh = false } = {}) => {
     if (!repo) return;
+    const fresh = forceRefresh ? { forceRefresh: true } : {};
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
     const owner = encodeURIComponent(repo.owner);
@@ -396,13 +397,13 @@ export default function GitAndPullRequests() {
     const [branchResult, pullResult, taskResult] = await Promise.allSettled([
       apiFetch(
         `/api/github/repos/${owner}/${name}/branches?summary=1&limit=40&defaultBranch=${encodeURIComponent(defaultBranch)}`,
-        { timeoutMs: 60000 },
+        { timeoutMs: 60000, ...fresh },
       ),
       apiFetch(
         `/api/github/repos/${owner}/${name}/pulls?state=all&per_page=30&checks=1&sort=updated`,
-        { timeoutMs: 60000 },
+        { timeoutMs: 60000, ...fresh },
       ),
-      apiFetch('/api/projects/tasks'),
+      apiFetch('/api/projects/tasks', forceRefresh ? { forceRefresh: true } : undefined),
     ]);
 
     if (requestIdRef.current !== requestId) return;
@@ -544,7 +545,7 @@ export default function GitAndPullRequests() {
     if (pullRequest.html_url || pullRequest.url) {
       window.open(pullRequest.html_url || pullRequest.url, '_blank', 'noopener');
     }
-    if (activeRepo) loadRepoData(activeRepo);
+    if (activeRepo) loadRepoData(activeRepo, { forceRefresh: true });
   };
 
   const connectedEmpty = !reposLoading && githubConnected && repos.length === 0 && !repoError;
@@ -625,7 +626,7 @@ export default function GitAndPullRequests() {
                   <div className="gitpr-state-icon"><AlertCircle /></div>
                   <h2>Could not load repositories</h2>
                   <p>{repoError}</p>
-                  <button type="button" className="gitpr-btn is-primary" onClick={loadRepos}>
+                  <button type="button" className="gitpr-btn is-primary" onClick={() => loadRepos(true)}>
                     <RefreshCw className="gitpr-inline-icon" /> Retry
                   </button>
                 </div>
@@ -679,7 +680,7 @@ export default function GitAndPullRequests() {
                       <button
                         type="button"
                         className="gitpr-icon-btn"
-                        onClick={() => activeRepo && loadRepoData(activeRepo)}
+                        onClick={() => activeRepo && loadRepoData(activeRepo, { forceRefresh: true })}
                         disabled={dataLoading}
                         aria-label="Refresh repository activity"
                       >
@@ -692,7 +693,7 @@ export default function GitAndPullRequests() {
                     <div className="gitpr-inline-error">
                       <AlertCircle className="gitpr-inline-icon" />
                       <span>{dataError}</span>
-                      <button type="button" onClick={() => activeRepo && loadRepoData(activeRepo)}>Retry</button>
+                      <button type="button" onClick={() => activeRepo && loadRepoData(activeRepo, { forceRefresh: true })}>Retry</button>
                     </div>
                   )}
 

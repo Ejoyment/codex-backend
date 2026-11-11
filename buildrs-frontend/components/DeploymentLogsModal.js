@@ -99,7 +99,7 @@ export function DeploymentLogsModal({ deploymentId, onClose, onUpdate }) {
   const fetchDetail = useCallback(async () => {
     if (!deploymentId) return false;
     try {
-      const data = await apiFetch(`/api/deployments/${deploymentId}`);
+      const data = await apiFetch(`/api/deployments/${deploymentId}`, { noCache: true });
       if (data?.deployment) {
         statusRef.current = data.deployment.status;
         setDeployment(data.deployment);

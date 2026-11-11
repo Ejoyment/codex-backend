@@ -53,15 +53,16 @@ export default function CreateProjectWizard({
   });
   const [showCustomTechnologyInput, setShowCustomTechnologyInput] = useState(false);
 
-  const loadGitHubRepositories = useCallback(async () => {
+  const loadGitHubRepositories = useCallback(async (force = false) => {
     if (demoMode) {
       setGithubLoading(false);
       return;
     }
     setGithubLoading(true);
     setGithubError('');
+    const options = force ? { forceRefresh: true } : undefined;
     try {
-      const status = await integrationApi.github();
+      const status = await integrationApi.github(options);
       const connected = Boolean(status?.connected);
       setGithubConnected(connected);
       setGithubAccount(status?.account || status?.username || '');
@@ -69,7 +70,7 @@ export default function CreateProjectWizard({
         setGithubRepos([]);
         return;
       }
-      const data = await githubApi.listRepos({ per_page: 100, sort: 'updated' });
+      const data = await githubApi.listRepos({ per_page: 100, sort: 'updated' }, options);
       setGithubRepos(Array.isArray(data?.repositories) ? data.repositories : []);
     } catch (error) {
       setGithubConnected(false);
@@ -131,7 +132,7 @@ export default function CreateProjectWizard({
 
     const poll = async () => {
       try {
-        const response = await projectApi.getProvisioning(projectId);
+        const response = await projectApi.getProvisioning(projectId, { noCache: true });
         if (!active) return;
         if (response?.project) {
           setCreatedProject((current) => ({ ...current, ...response.project }));
@@ -585,7 +586,7 @@ export default function CreateProjectWizard({
                         <p className="text-[10px] text-zinc-400">
                           {githubAccount ? `Connected as ${githubAccount}` : 'GitHub connected'}
                         </p>
-                        <button type="button" onClick={loadGitHubRepositories} className="text-zinc-500 hover:text-white" aria-label="Refresh GitHub repositories">
+                        <button type="button" onClick={() => loadGitHubRepositories(true)} className="text-zinc-500 hover:text-white" aria-label="Refresh GitHub repositories">
                           <RefreshCw className="h-3 w-3" />
                         </button>
                       </div>

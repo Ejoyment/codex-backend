@@ -73,11 +73,11 @@ export default function Integrations() {
     return () => clearInterval(id);
   }, []);
 
-  const fetchIntegrations = async () => {
+  const fetchIntegrations = async (force = false) => {
     try {
       setLoading(true);
       setError(null);
-      const data = await apiFetch('/api/integrations');
+      const data = await apiFetch('/api/integrations', force ? { forceRefresh: true } : undefined);
       setIntegrations(data.integrations || []);
     } catch (err) {
       console.error('Failed to load integrations:', err);
@@ -206,7 +206,7 @@ export default function Integrations() {
                 <Plug2 className="w-3 h-3" style={{ color: '#12dce5' }} />
                 {connectedCount}/{availableCount} connected
               </span>
-              <button type="button" className="btn-workspace btn-secondary" onClick={fetchIntegrations}>
+              <button type="button" className="btn-workspace btn-secondary" onClick={() => fetchIntegrations(true)}>
                 <RefreshCw className="w-4 h-4" />
                 Refresh
               </button>

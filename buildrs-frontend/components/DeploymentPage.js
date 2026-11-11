@@ -170,9 +170,9 @@ export default function DeploymentPage() {
   const [deploying, setDeploying] = useState(false);
   const [wizardError, setWizardError] = useState(null);
 
-  const loadDeployments = useCallback(async () => {
+  const loadDeployments = useCallback(async (options = {}) => {
     try {
-      const data = await apiFetch('/api/deployments');
+      const data = await apiFetch('/api/deployments', options);
       if (data?.deployments) setDeployments(data.deployments);
       setError(null);
     } catch (err) {
@@ -188,7 +188,7 @@ export default function DeploymentPage() {
   const anyInFlight = deployments.some((d) => !TERMINAL.includes(d.status));
   useEffect(() => {
     if (!anyInFlight) return undefined;
-    const id = setInterval(loadDeployments, 5000);
+    const id = setInterval(() => loadDeployments({ noCache: true }), 5000);
     return () => clearInterval(id);
   }, [anyInFlight, loadDeployments]);
 

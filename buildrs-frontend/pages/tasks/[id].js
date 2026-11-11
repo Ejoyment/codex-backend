@@ -161,7 +161,7 @@ export default function TaskDetails() {
     let active = true;
     const refreshExecution = async () => {
       try {
-        const result = await agentApi.status(task.id);
+        const result = await agentApi.status(task.id, { noCache: true });
         if (!active || result.success === false || !result.execution) return;
         const execution = result.execution;
         const lastFailure = [...(execution.terminalLog || [])].reverse()

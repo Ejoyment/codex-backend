@@ -556,7 +556,7 @@ export default function AiPair() {
   useEffect(() => {
     if (activeView !== 'runs') return undefined;
     fetchAgentSessions();
-    const id = setInterval(() => fetchAgentSessions(), 5000);
+    const id = setInterval(() => fetchAgentSessions(undefined, { noCache: true }), 5000);
     return () => clearInterval(id);
   }, [activeView, selectedExecution?._id]);
 
@@ -614,11 +614,11 @@ export default function AiPair() {
     }
   }
 
-  async function fetchAgentSessions(preferredId) {
+  async function fetchAgentSessions(preferredId, options = {}) {
     const requestId = ++agentSessionsRequestRef.current;
     setLoadingAgentSessions(true);
     try {
-      const data = await apiFetch('/api/v1/agent/sessions');
+      const data = await apiFetch('/api/v1/agent/sessions', options);
       const loadedSessions = data.sessions || [];
       if (requestId !== agentSessionsRequestRef.current) return;
       setAgentSessions(loadedSessions);
@@ -649,10 +649,10 @@ export default function AiPair() {
     router.replace({ pathname: router.pathname, query }, undefined, { shallow: true });
   }
 
-  async function fetchAiProviders() {
+  async function fetchAiProviders(force = false) {
     setLoadingAiProviders(true);
     try {
-      const data = await apiFetch('/api/ai-pair/providers');
+      const data = await apiFetch('/api/ai-pair/providers', force ? { forceRefresh: true } : undefined);
       if (!data.success) throw new Error(data.message || 'Could not load AI models');
       setAiProviders(data.providers || []);
       const saved = selectedAiModel || (() => {
@@ -953,7 +953,7 @@ export default function AiPair() {
                   </div>
                 )}
                 <footer>
-                  <button type="button" className="btn-workspace btn-secondary" onClick={fetchAiProviders} disabled={loadingAiProviders}>Refresh models</button>
+                  <button type="button" className="btn-workspace btn-secondary" onClick={() => fetchAiProviders(true)} disabled={loadingAiProviders}>Refresh models</button>
                   <button type="button" className="btn-workspace btn-secondary" onClick={() => setShowModelPicker(false)}>Cancel</button>
                   <button type="button" className="btn-workspace btn-primary" onClick={saveAiModel} disabled={loadingAiProviders || !draftAiModel}>Use model</button>
                 </footer>

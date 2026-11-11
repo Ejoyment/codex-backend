@@ -33,16 +33,238 @@ export const SOCKET_URL = normalizeApiBaseUrl(process.env.NEXT_PUBLIC_SOCKET_URL
 const DEFAULT_TIMEOUT_MS = 15000;
 const MAX_RETRIES = 2;
 
+// ---------------------------------------------------------------------------
+// Client-side GET cache
+//
+// Pages used to refetch everything on every mount, so navigating away and back
+// flashed loading skeletons and paid for data the app already had. Successful
+// GET responses are now cached per user (memory + sessionStorage) for a short
+// window. Mutations invalidate the resource they touched, and live/polling
+// callers opt out with `{ noCache: true }` so they keep seeing fresh data.
+// ---------------------------------------------------------------------------
+const GET_CACHE_TTL_MS = 5 * 60 * 1000;
+const GET_CACHE_PREFIX = 'buildrs-api-cache-v1';
+const GET_CACHE_MAX_ENTRIES = 120;
+// Large payloads (repo trees, file contents) don't belong in sessionStorage;
+// keep them in memory-only so we never blow the per-origin quota.
+const GET_CACHE_MAX_PERSIST_CHARS = 400 * 1024;
+
+const getCacheMemory = new Map();
+let getCacheMemoryUserId = null;
+
+function getCacheUserId() {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem('user') || localStorage.getItem('auth-storage');
+    if (!raw) return 'anon';
+    const parsed = JSON.parse(raw);
+    const user = parsed?.user || parsed?.state?.user || parsed;
+    return String(user?._id || user?.id || user?.email || 'anon');
+  } catch {
+    return 'anon';
+  }
+}
+
+function ensureCacheUser(userId) {
+  if (getCacheMemoryUserId !== userId) {
+    getCacheMemory.clear();
+    getCacheMemoryUserId = userId;
+  }
+}
+
+function buildGetCacheKey(path) {
+  const userId = getCacheUserId();
+  if (!userId) return null;
+  ensureCacheUser(userId);
+  return `${GET_CACHE_PREFIX}:${userId}:${path}`;
+}
+
+function pruneMemoryCache() {
+  while (getCacheMemory.size > GET_CACHE_MAX_ENTRIES) {
+    const oldest = getCacheMemory.keys().next().value;
+    if (oldest === undefined) return;
+    getCacheMemory.delete(oldest);
+  }
+}
+
+function pruneSessionCache() {
+  if (typeof window === 'undefined') return;
+  const entries = [];
+  try {
+    for (let i = 0; i < window.sessionStorage.length; i += 1) {
+      const key = window.sessionStorage.key(i);
+      if (!key || !key.startsWith(GET_CACHE_PREFIX)) continue;
+      let at = 0;
+      try {
+        at = JSON.parse(window.sessionStorage.getItem(key) || '{}').at || 0;
+      } catch {
+        at = 0;
+      }
+      entries.push({ key, at });
+    }
+    entries
+      .sort((a, b) => a.at - b.at)
+      .slice(0, Math.max(1, Math.ceil(entries.length / 2)))
+      .forEach(({ key }) => window.sessionStorage.removeItem(key));
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+function readGetCache(key, ttlMs) {
+  const now = Date.now();
+  const mem = getCacheMemory.get(key);
+  if (mem) {
+    if (now - mem.at <= ttlMs) {
+      try {
+        return { hit: true, data: JSON.parse(mem.json) };
+      } catch {
+        getCacheMemory.delete(key);
+      }
+    } else {
+      getCacheMemory.delete(key);
+    }
+  }
+  if (typeof window === 'undefined') return { hit: false };
+  try {
+    const raw = window.sessionStorage.getItem(key);
+    if (!raw) return { hit: false };
+    const entry = JSON.parse(raw);
+    if (!entry || typeof entry.at !== 'number' || now - entry.at > ttlMs) {
+      window.sessionStorage.removeItem(key);
+      return { hit: false };
+    }
+    const data = JSON.parse(entry.json);
+    getCacheMemory.set(key, entry);
+    pruneMemoryCache();
+    return { hit: true, data };
+  } catch {
+    return { hit: false };
+  }
+}
+
+function writeGetCache(key, data) {
+  let json;
+  try {
+    json = JSON.stringify(data);
+  } catch {
+    return;
+  }
+  if (typeof json !== 'string') return;
+  const entry = { at: Date.now(), json };
+  // Re-insert so the Map keeps recency order for pruning.
+  getCacheMemory.delete(key);
+  getCacheMemory.set(key, entry);
+  pruneMemoryCache();
+
+  if (typeof window === 'undefined' || json.length > GET_CACHE_MAX_PERSIST_CHARS) return;
+  try {
+    window.sessionStorage.setItem(key, JSON.stringify(entry));
+  } catch {
+    pruneSessionCache();
+    try {
+      window.sessionStorage.setItem(key, JSON.stringify(entry));
+    } catch {
+      /* quota still exceeded — memory cache still works */
+    }
+  }
+}
+
+/** Resource bucket for a path: /api/company/123/members -> /api/company */
+function getCacheScope(path) {
+  const clean = String(path || '').split('?')[0];
+  const parts = clean.split('/').filter(Boolean);
+  if (parts[0] !== 'api') return parts[0] ? `/${parts[0]}` : '';
+  if (parts[1] === 'v1' && parts[2]) return `/api/v1/${parts[2]}`;
+  return parts[1] ? `/api/${parts[1]}` : '/api';
+}
+
+function pathMatchesScope(requestPath, scope) {
+  return requestPath === scope
+    || requestPath.startsWith(`${scope}/`)
+    || requestPath.startsWith(`${scope}?`);
+}
+
+/**
+ * Some GETs are one-shot handshakes rather than data: OAuth authorize URLs
+ * carry a single-use `state`, so replaying a cached one breaks the next
+ * connect attempt.
+ */
+function isNonCacheablePath(path) {
+  const clean = String(path || '').split('?')[0].toLowerCase();
+  return clean.endsWith('/connect') || clean.endsWith('/auth');
+}
+
+function removeCacheKeys(predicate) {
+  for (const key of Array.from(getCacheMemory.keys())) {
+    if (predicate(key)) getCacheMemory.delete(key);
+  }
+  if (typeof window === 'undefined') return;
+  try {
+    const doomed = [];
+    for (let i = 0; i < window.sessionStorage.length; i += 1) {
+      const key = window.sessionStorage.key(i);
+      if (key && key.startsWith(GET_CACHE_PREFIX) && predicate(key)) doomed.push(key);
+    }
+    doomed.forEach((key) => window.sessionStorage.removeItem(key));
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+/**
+ * Drop every cached GET for a resource bucket (e.g. `/api/notifications`).
+ * Called automatically after successful mutations; exported so callers that
+ * update data out-of-band (sockets, optimistic flows) can do the same.
+ */
+export function invalidateApiCache(scope) {
+  const userId = getCacheUserId();
+  if (!userId || !scope) return;
+  ensureCacheUser(userId);
+  const prefix = `${GET_CACHE_PREFIX}:${userId}:`;
+  removeCacheKeys((key) => (
+    key.startsWith(prefix) && pathMatchesScope(key.slice(prefix.length), scope)
+  ));
+}
+
+/** Wipe the whole client cache (logout / user switch). */
+export function clearApiCache() {
+  getCacheMemory.clear();
+  getCacheMemoryUserId = null;
+  if (typeof window === 'undefined') return;
+  try {
+    const doomed = [];
+    for (let i = 0; i < window.sessionStorage.length; i += 1) {
+      const key = window.sessionStorage.key(i);
+      if (key && key.startsWith(GET_CACHE_PREFIX)) doomed.push(key);
+    }
+    doomed.forEach((key) => window.sessionStorage.removeItem(key));
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+function invalidateForMutation(path) {
+  invalidateApiCache(getCacheScope(path));
+}
+
 export async function apiFetch(path, options = {}) {
   if (isDemoTourActive()) {
     return getDemoApiResponse(path, options);
   }
 
-  const { timeoutMs = DEFAULT_TIMEOUT_MS, ...requestOptions } = options;
+  const {
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    noCache = false,
+    forceRefresh = false,
+    cacheTtlMs = GET_CACHE_TTL_MS,
+    ...requestOptions
+  } = options;
   const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
 
   if (token && isTokenExpired(token)) {
     if (typeof window !== 'undefined') {
+      clearApiCache();
       localStorage.removeItem('authToken');
       localStorage.removeItem('user');
       localStorage.removeItem('subscription');
@@ -60,6 +282,18 @@ export async function apiFetch(path, options = {}) {
     if (!rl.allowed) {
       throw new Error(`Too many requests. Try again in ${rl.retryAfter}s`);
     }
+  }
+
+  // Cached reads only apply to browser GETs of plain data endpoints.
+  // Handshakes, demo fixtures and server-side rendering always hit the source.
+  const cacheable = method === 'GET'
+    && !noCache
+    && !isNonCacheablePath(path)
+    && typeof window !== 'undefined';
+  const cacheKey = cacheable ? buildGetCacheKey(path) : null;
+  if (cacheKey && !forceRefresh) {
+    const cached = readGetCache(cacheKey, cacheTtlMs);
+    if (cached.hit) return cached.data;
   }
 
   const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
@@ -101,6 +335,7 @@ export async function apiFetch(path, options = {}) {
 
       if (res.status === 401) {
         if (typeof window !== 'undefined' && !options.returnErrorData) {
+          clearApiCache();
           localStorage.removeItem('authToken');
           localStorage.removeItem('user');
           localStorage.removeItem('subscription');
@@ -120,6 +355,15 @@ export async function apiFetch(path, options = {}) {
         error.status = res.status;
         error.data = data;
         throw error;
+      }
+
+      if (method !== 'GET' && res.ok) {
+        // The write succeeded, so anything cached for this resource is stale.
+        invalidateForMutation(path);
+      }
+
+      if (cacheable && cacheKey && res.ok) {
+        writeGetCache(cacheKey, data);
       }
 
       return data;
@@ -206,8 +450,8 @@ export const companyApi = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  getMyCompanies: async () => {
-    const data = await apiFetch('/api/company/my-companies');
+  getMyCompanies: async (options = {}) => {
+    const data = await apiFetch('/api/company/my-companies', options);
     return { ...data, companies: normalizeCompanies(data.companies) };
   },
   getDetails: (companyId) => apiFetch(`/api/company/${companyId}`),
@@ -243,8 +487,8 @@ export const billingApi = {
 };
 
 export const integrationApi = {
-  list: () => apiFetch('/api/integrations'),
-  github: () => apiFetch('/api/github/status'),
+  list: (options = {}) => apiFetch('/api/integrations', options),
+  github: (options = {}) => apiFetch('/api/github/status', options),
   slack: () => apiFetch('/api/slack/status'),
   discord: () => apiFetch('/api/discord/status'),
   notion: () => apiFetch('/api/notion/connect'),
@@ -252,22 +496,22 @@ export const integrationApi = {
 };
 
 export const dashboardApi = {
-  getData: () => apiFetch('/api/dashboard/data'),
-  getOverview: () => apiFetch('/api/dashboard/overview'),
-  getPlatformData: (platform) => apiFetch(`/api/dashboard/data/${platform}`),
+  getData: (options = {}) => apiFetch('/api/dashboard/data', options),
+  getOverview: (options = {}) => apiFetch('/api/dashboard/overview', options),
+  getPlatformData: (platform, options = {}) => apiFetch(`/api/dashboard/data/${platform}`, options),
   sync: (platform) => apiFetch(`/api/dashboard/sync/${platform}`, { method: 'POST' }),
 };
 
 export const githubApi = {
-  listRepos: (params = {}) => {
+  listRepos: (params = {}, options = {}) => {
     const qs = new URLSearchParams(params).toString();
-    return apiFetch(`/api/github/repos${qs ? `?${qs}` : ''}`);
+    return apiFetch(`/api/github/repos${qs ? `?${qs}` : ''}`, options);
   },
   getRepo: (owner, repo) => apiFetch(`/api/github/repos/${owner}/${repo}`),
   getBranches: (owner, repo) => apiFetch(`/api/github/repos/${owner}/${repo}/branches`),
-  getCommits: (owner, repo, params = {}) => {
+  getCommits: (owner, repo, params = {}, options = {}) => {
     const qs = new URLSearchParams(params).toString();
-    return apiFetch(`/api/github/repos/${owner}/${repo}/commits${qs ? `?${qs}` : ''}`);
+    return apiFetch(`/api/github/repos/${owner}/${repo}/commits${qs ? `?${qs}` : ''}`, options);
   },
   getIssues: (owner, repo, params = {}) => {
     const qs = new URLSearchParams(params).toString();
@@ -277,21 +521,21 @@ export const githubApi = {
     const qs = new URLSearchParams(params).toString();
     return apiFetch(`/api/github/repos/${owner}/${repo}/pulls${qs ? `?${qs}` : ''}`);
   },
-  getStatus: () => apiFetch('/api/github/status'),
+  getStatus: (options = {}) => apiFetch('/api/github/status', options),
 };
 
 export const discordApi = {
-  getGuilds: () => apiFetch('/api/discord/guilds'),
-  getGuildChannels: (guildId) => apiFetch(`/api/discord/guilds/${guildId}/channels`),
-  getChannelMessages: (channelId, params = {}) => {
+  getGuilds: (options = {}) => apiFetch('/api/discord/guilds', options),
+  getGuildChannels: (guildId, options = {}) => apiFetch(`/api/discord/guilds/${guildId}/channels`, options),
+  getChannelMessages: (channelId, params = {}, options = {}) => {
     const qs = new URLSearchParams(params).toString();
-    return apiFetch(`/api/discord/channels/${channelId}/messages${qs ? `?${qs}` : ''}`);
+    return apiFetch(`/api/discord/channels/${channelId}/messages${qs ? `?${qs}` : ''}`, options);
   },
   getStatus: () => apiFetch('/api/discord/status'),
 };
 
 export const figmaApi = {
-  listFiles: () => apiFetch('/api/figma/files'),
+  listFiles: (options = {}) => apiFetch('/api/figma/files', options),
   getFrames: (fileKey, { thumbnails = true } = {}) =>
     apiFetch(`/api/figma/files/${encodeURIComponent(fileKey)}/frames${thumbnails ? '' : '?thumbnails=0'}`, { timeoutMs: 45000 }),
   generateCode: ({ fileKey, nodeId, target = 'react', prompt = '' }) =>
@@ -300,7 +544,7 @@ export const figmaApi = {
       body: JSON.stringify({ fileKey, nodeId, target, prompt }),
       timeoutMs: 120000,
     }),
-  getComments: (fileKey) => apiFetch(`/api/figma/files/${fileKey}/comments`),
+  getComments: (fileKey, options = {}) => apiFetch(`/api/figma/files/${fileKey}/comments`, options),
   getStatus: () => apiFetch('/api/figma/status'),
   getLibrary: ({ refresh = false } = {}) =>
     apiFetch(`/api/figma/library${refresh ? '?refresh=1' : ''}`, { timeoutMs: 90000 }),
@@ -312,13 +556,13 @@ export const figmaApi = {
 };
 
 export const slackApi = {
-  listConversations: (params = {}) => {
+  listConversations: (params = {}, options = {}) => {
     const qs = new URLSearchParams(params).toString();
-    return apiFetch(`/api/slack/conversations/list${qs ? `?${qs}` : ''}`);
+    return apiFetch(`/api/slack/conversations/list${qs ? `?${qs}` : ''}`, options);
   },
-  getHistory: (channelId, params = {}) => {
+  getHistory: (channelId, params = {}, options = {}) => {
     const qs = new URLSearchParams(params).toString();
-    return apiFetch(`/api/slack/conversations/history/${channelId}${qs ? `?${qs}` : ''}`);
+    return apiFetch(`/api/slack/conversations/history/${channelId}${qs ? `?${qs}` : ''}`, options);
   },
   getStatus: () => apiFetch('/api/slack/status'),
 };
@@ -350,9 +594,9 @@ export const messagingApi = {
 };
 
 export const meetingApi = {
-  list: (companyId, params = {}) => {
+  list: (companyId, params = {}, options = {}) => {
     const qs = new URLSearchParams({ companyId, ...params }).toString();
-    return apiFetch(`/api/meetings${qs ? `?${qs}` : ''}`);
+    return apiFetch(`/api/meetings${qs ? `?${qs}` : ''}`, options);
   },
   create: (data) =>
     apiFetch('/api/meetings', {
@@ -370,20 +614,20 @@ export const supportApi = {
 };
 
 export const projectApi = {
-  list: () => apiFetch('/api/projects'),
+  list: (options = {}) => apiFetch('/api/projects', options),
   create: (data) =>
     apiFetch('/api/projects', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
   get: (projectId) => apiFetch(`/api/projects/${projectId}`),
-  getProvisioning: (projectId) => apiFetch(`/api/projects/${projectId}/provisioning`),
+  getProvisioning: (projectId, options = {}) => apiFetch(`/api/projects/${projectId}/provisioning`, options),
   retryProvisioning: (projectId) =>
     apiFetch(`/api/projects/${projectId}/provisioning/retry`, {
       method: 'POST',
     }),
   listProjectFiles: (projectId) => apiFetch(`/api/projects/${projectId}/files`),
-  listTasks: () => apiFetch('/api/projects/tasks'),
+  listTasks: (options = {}) => apiFetch('/api/projects/tasks', options),
   getTask: (taskId) => apiFetch(`/api/projects/tasks/${taskId}`),
   createTask: (data) =>
     apiFetch('/api/projects/tasks', {
@@ -399,7 +643,8 @@ export const projectApi = {
 };
 
 export const collaborationApi = {
-  getCompanyProjects: (companyId) => apiFetch(`/api/collaboration/${companyId}/projects`),
+  getCompanyProjects: (companyId, options = {}) =>
+    apiFetch(`/api/collaboration/${companyId}/projects`, options),
 };
 
 export const agentApi = {
@@ -409,8 +654,8 @@ export const agentApi = {
       body: JSON.stringify(data),
       timeoutMs: 300000,
     }),
-  sessions: () => apiFetch('/api/v1/agent/sessions'),
-  status: (taskId) => apiFetch(`/api/v1/agent/status/${taskId}`),
+  sessions: (options = {}) => apiFetch('/api/v1/agent/sessions', options),
+  status: (taskId, options = {}) => apiFetch(`/api/v1/agent/status/${taskId}`, options),
   approve: (executionId, taskId) =>
     apiFetch('/api/v1/agent/approve', {
       method: 'POST',
