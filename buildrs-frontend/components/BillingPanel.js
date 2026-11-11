@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import useAuthStore from '../store/authStore';
 import { subscriptionApi } from '../lib/api';
+import CheckoutModal from './CheckoutModal';
 import { PLANS, FREE_PLAN, planById, planName, planDirection, yearlySavingsPercent } from '../lib/plans';
 import {
   statusMeta,
@@ -140,6 +141,7 @@ function BillingConfirmDialog({ copy, busy, onCancel, onConfirm }) {
 
 export default function BillingPanel({ router, toast }) {
   const subscription = useAuthStore((s) => s.subscription);
+  const user = useAuthStore((s) => s.user);
   const setSubscription = useAuthStore((s) => s.setSubscription);
 
   const [state, setState] = useState(null);
@@ -148,6 +150,7 @@ export default function BillingPanel({ router, toast }) {
   const [busy, setBusy] = useState(null);
   const [dialog, setDialog] = useState(null);
   const [interval, setInterval] = useState('monthly');
+  const [checkout, setCheckout] = useState(null);
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -167,6 +170,18 @@ export default function BillingPanel({ router, toast }) {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Deep link: /billing?upgrade=pro&interval=yearly opens the checkout modal,
+  // so pricing CTAs can land on billing instead of the legacy /checkout page.
+  useEffect(() => {
+    const query = router.query || {};
+    if (typeof query.upgrade === 'string' && PLANS.some((p) => p.id === query.upgrade)) {
+      setCheckout({
+        planId: query.upgrade,
+        interval: query.interval === 'yearly' ? 'yearly' : 'monthly',
+      });
+    }
+  }, [router.query]);
 
   const runAction = async (key, fn, successMessage) => {
     setBusy(key);
@@ -188,7 +203,9 @@ export default function BillingPanel({ router, toast }) {
     runAction('downgrade', () => subscriptionApi.changePlan(dialog.tier), 'Plan change scheduled');
   const resume = () => runAction('resume', () => subscriptionApi.resume(), 'Your plan will continue');
 
-  const goToCheckout = (tier) => router.push(`/checkout?plan=${tier}&interval=${interval}`);
+  // Checkout happens in a modal on this page — the billing page never routes
+  // to /checkout. The hosted provider page is the only hand-off.
+  const openCheckout = (tier) => setCheckout({ planId: tier, interval });
   const toggleOverage = (enabled) =>
     runAction(
       'overage',
@@ -296,6 +313,17 @@ export default function BillingPanel({ router, toast }) {
         onConfirm={dialog && dialog.kind === 'cancel' ? confirmCancel : confirmDowngrade}
       />
 
+      {checkout && (
+        <CheckoutModal
+          planId={checkout.planId}
+          interval={checkout.interval}
+          state={state}
+          user={user}
+          onClose={() => setCheckout(null)}
+          toast={toast}
+        />
+      )}
+
       {/* Current plan */}
       <section className="blp-current" aria-label="Current plan">
         <div className="blp-current-main">
@@ -326,7 +354,7 @@ export default function BillingPanel({ router, toast }) {
             className="btn-workspace btn-secondary blp-current-cta"
             onClick={() => {
               if (state.tier === 'enterprise') router.push('/contact?topic=enterprise-billing');
-              else goToCheckout(state.isFree ? 'pro' : state.tier);
+              else openCheckout(state.isFree ? 'pro' : state.tier);
             }}
             title={
               state.tier === 'enterprise'
@@ -394,7 +422,7 @@ export default function BillingPanel({ router, toast }) {
           <button
             type="button"
             className="btn-workspace btn-primary bill-pending-cta"
-            onClick={() => goToCheckout(state.tier)}
+            onClick={() => openCheckout(state.tier)}
           >
             Update payment
           </button>
@@ -488,7 +516,7 @@ export default function BillingPanel({ router, toast }) {
                   onClick={() => {
                     if (isCurrent) return;
                     if (option.contactSales) router.push('/contact?topic=enterprise-billing');
-                    else if (direction === 'upgrade') goToCheckout(option.id);
+                    else if (direction === 'upgrade') openCheckout(option.id);
                     else setDialog({ kind: 'downgrade', tier: option.id, copy: downgradeCopy(state, option.id) });
                   }}
                 >
