@@ -110,11 +110,11 @@ export default function Tasks() {
     return () => clearInterval(id);
   }, []);
 
-  const loadTasks = useCallback(async () => {
+  const loadTasks = useCallback(async (force = false) => {
     try {
       setLoading(true);
       setError(null);
-      const data = await apiFetch('/api/projects/tasks');
+      const data = await apiFetch('/api/projects/tasks', force ? { forceRefresh: true } : undefined);
       if (data.success === false) throw new Error(data.message || 'Failed to load tasks');
       setTasks((data.tasks || []).map(normalizeTask));
     } catch (err) {
@@ -138,7 +138,7 @@ export default function Tasks() {
       const taskIds = activeAgentTaskIds.split(',');
       const updates = await Promise.all(taskIds.map(async (taskId) => {
         try {
-          const result = await apiFetch(`/api/v1/agent/status/${taskId}`);
+          const result = await apiFetch(`/api/v1/agent/status/${taskId}`, { noCache: true });
           if (!result.execution) return null;
           const execution = result.execution;
           const lastFailure = [...(execution.terminalLog || [])].reverse()
@@ -316,7 +316,7 @@ export default function Tasks() {
           model: modelPreference?.model,
         }),
       });
-      if (result.success) await loadTasks();
+      if (result.success) await loadTasks(true);
     } catch (error) {
       setActionError(error.message || 'Could not delegate this task');
     } finally {
@@ -397,7 +397,7 @@ export default function Tasks() {
                     type="button"
                     className="btn-workspace btn-secondary tsk-refresh-button"
                     title="Refresh tasks"
-                    onClick={loadTasks}
+                    onClick={() => loadTasks(true)}
                     disabled={loading}
                   >
                     <RotateCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />

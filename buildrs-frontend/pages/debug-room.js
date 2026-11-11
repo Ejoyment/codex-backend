@@ -1115,7 +1115,7 @@ export default function DebugRoomPage() {
     if (!roomParam) return undefined;
     const interval = setInterval(async () => {
       try {
-        const result = await apiFetch(`/api/debug-rooms/${encodeURIComponent(roomParam)}`);
+        const result = await apiFetch(`/api/debug-rooms/${encodeURIComponent(roomParam)}`, { noCache: true });
         if (result.room) {
           setActiveRoom((prev) => (prev && prev.id === result.room.id ? result.room : prev));
         }

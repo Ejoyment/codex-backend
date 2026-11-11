@@ -67,7 +67,7 @@ export default function ProjectDetails({ projectId, onBack, onCreateTask }) {
     if (!project || !['pending', 'provisioning'].includes(project.provisioningStatus)) return undefined;
     let active = true;
     const timer = setInterval(() => {
-      projectApi.getProvisioning(projectId)
+      projectApi.getProvisioning(projectId, { noCache: true })
         .then((response) => {
           if (active && response?.project) {
             setProject((current) => ({ ...current, ...response.project }));

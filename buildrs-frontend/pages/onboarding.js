@@ -154,7 +154,7 @@ export default function Onboarding() {
       pollRef.current = setInterval(async () => {
         attempts += 1;
         try {
-          const status = await githubApi.getStatus();
+          const status = await githubApi.getStatus({ noCache: true });
           if (status?.connected) {
             clearInterval(pollRef.current);
             try {

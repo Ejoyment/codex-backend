@@ -63,11 +63,11 @@ function formatTime(timestamp) {
 
 async function fetchGitHubActivity() {
   try {
-    const data = await githubApi.listRepos({ per_page: 5 });
+    const data = await githubApi.listRepos({ per_page: 5 }, { noCache: true });
     if (!data.success || !data.repositories?.length) return [];
 
     const repo = data.repositories[0];
-    const commitsData = await githubApi.getCommits(repo.owner, repo.name, { per_page: 3 });
+    const commitsData = await githubApi.getCommits(repo.owner, repo.name, { per_page: 3 }, { noCache: true });
     if (!commitsData.success || !commitsData.commits) return [];
 
     return commitsData.commits.map((commit) => ({
@@ -84,15 +84,15 @@ async function fetchGitHubActivity() {
 
 async function fetchDiscordActivity() {
   try {
-    const guildsData = await discordApi.getGuilds();
+    const guildsData = await discordApi.getGuilds({ noCache: true });
     if (!guildsData.success || !guildsData.guilds?.length) return [];
 
     const guild = guildsData.guilds[0];
-    const channelsData = await discordApi.getGuildChannels(guild.id);
+    const channelsData = await discordApi.getGuildChannels(guild.id, { noCache: true });
     if (!channelsData.success || !channelsData.channels?.length) return [];
 
     const channel = channelsData.channels[0];
-    const messagesData = await discordApi.getChannelMessages(channel.id, { limit: 3 });
+    const messagesData = await discordApi.getChannelMessages(channel.id, { limit: 3 }, { noCache: true });
     if (!messagesData.success || !messagesData.messages) return [];
 
     return messagesData.messages.map((msg) => ({
@@ -109,11 +109,11 @@ async function fetchDiscordActivity() {
 
 async function fetchFigmaActivity() {
   try {
-    const filesData = await figmaApi.listFiles();
+    const filesData = await figmaApi.listFiles({ noCache: true });
     if (!filesData.success || !filesData.files?.length) return [];
 
     const file = filesData.files[0];
-    const commentsData = await figmaApi.getComments(file.key);
+    const commentsData = await figmaApi.getComments(file.key, { noCache: true });
     if (!commentsData.success || !commentsData.comments) return [];
 
     return commentsData.comments.slice(0, 3).map((comment) => ({
@@ -130,11 +130,11 @@ async function fetchFigmaActivity() {
 
 async function fetchSlackActivity() {
   try {
-    const channelsData = await slackApi.listConversations({ limit: 5 });
+    const channelsData = await slackApi.listConversations({ limit: 5 }, { noCache: true });
     if (!channelsData.success || !channelsData.channels?.length) return [];
 
     const channel = channelsData.channels[0];
-    const messagesData = await slackApi.getHistory(channel.id, { limit: 3 });
+    const messagesData = await slackApi.getHistory(channel.id, { limit: 3 }, { noCache: true });
     if (!messagesData.success || !messagesData.messages) return [];
 
     return messagesData.messages.map((msg) => ({
@@ -190,7 +190,7 @@ export function useDashboard(userId) {
 
   const loadDashboardData = useCallback(() => {
     if (!dashboardDataRequest.current || dashboardDataRequest.current.userId !== currentUserId) {
-      const request = { userId: currentUserId, promise: dashboardApi.getData() };
+      const request = { userId: currentUserId, promise: dashboardApi.getData({ noCache: true }) };
       dashboardDataRequest.current = request;
       request.promise.then(
         () => {
@@ -229,7 +229,7 @@ export function useDashboard(userId) {
 
   const loadOverview = useCallback(async () => {
     try {
-      const result = await dashboardApi.getOverview();
+      const result = await dashboardApi.getOverview({ noCache: true });
       if (!isCurrentUser()) return;
       const nextOverview = result.success && result.data ? result.data : null;
       setOverview(nextOverview);
@@ -291,7 +291,7 @@ export function useDashboard(userId) {
       const collected = [];
 
       try {
-        const localData = await projectApi.list();
+        const localData = await projectApi.list({ noCache: true });
         if (localData.success && localData.projects) {
           collected.push(
             ...localData.projects.map((project) => ({
@@ -314,7 +314,7 @@ export function useDashboard(userId) {
       }
 
       try {
-        const githubData = await githubApi.listRepos({ per_page: 5, sort: 'updated' });
+        const githubData = await githubApi.listRepos({ per_page: 5, sort: 'updated' }, { noCache: true });
         if (githubData.success && githubData.repositories) {
           collected.push(
             ...githubData.repositories.map((repo) => ({
@@ -334,10 +334,10 @@ export function useDashboard(userId) {
       }
 
       try {
-        const companiesData = await companyApi.getMyCompanies();
+        const companiesData = await companyApi.getMyCompanies({ noCache: true });
         const companyId = companiesData.success ? companiesData.companies?.[0]?._id : null;
         if (companyId) {
-          const projectsData = await collaborationApi.getCompanyProjects(companyId);
+          const projectsData = await collaborationApi.getCompanyProjects(companyId, { noCache: true });
           if (projectsData.success && projectsData.projects) {
             collected.push(
               ...projectsData.projects.map((project) => ({
@@ -376,7 +376,7 @@ export function useDashboard(userId) {
 
   const loadTasks = useCallback(async () => {
     try {
-      const data = await projectApi.listTasks();
+      const data = await projectApi.listTasks({ noCache: true });
       if (isCurrentUser()) {
         const nextTasks = data.success ? (data.tasks || []) : [];
         setTasks(nextTasks);
@@ -392,7 +392,7 @@ export function useDashboard(userId) {
 
   const loadCompanies = useCallback(async () => {
     try {
-      const data = await companyApi.getMyCompanies();
+      const data = await companyApi.getMyCompanies({ noCache: true });
       if (isCurrentUser()) {
         const nextCompanies = data.success ? (data.companies || []) : [];
         setCompanies(nextCompanies);
@@ -408,13 +408,13 @@ export function useDashboard(userId) {
 
   const loadMeetings = useCallback(async () => {
     try {
-      const companiesData = await companyApi.getMyCompanies();
+      const companiesData = await companyApi.getMyCompanies({ noCache: true });
       const companies = companiesData.success ? companiesData.companies : [];
       const upcoming = [];
 
       for (const company of companies) {
         try {
-          const data = await meetingApi.list(company.id, { upcoming: 'true' });
+          const data = await meetingApi.list(company.id, { upcoming: 'true' }, { noCache: true });
           if (data.success && data.meetings) {
             upcoming.push(...data.meetings);
           }

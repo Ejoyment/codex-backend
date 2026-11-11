@@ -38,11 +38,11 @@ export default function Projects() {
     ? Math.round(projects.reduce((total, project) => total + (Number(project.progress) || 0), 0) / projects.length)
     : 0;
 
-  const loadProjects = useCallback(async () => {
+  const loadProjects = useCallback(async (force = false) => {
     setLoadingProjects(true);
     setProjectsError('');
     try {
-      const response = await projectApi.list();
+      const response = await projectApi.list(force ? { forceRefresh: true } : undefined);
       if (!response.success || !Array.isArray(response.projects)) {
         throw new Error(response.message || 'Could not load projects.');
       }
@@ -167,7 +167,7 @@ export default function Projects() {
                 <p role="alert" className="text-sm text-rose-400">{projectsError}</p>
                 <button
                   type="button"
-                  onClick={loadProjects}
+                  onClick={() => loadProjects(true)}
                   className="mt-4 inline-flex items-center gap-2 rounded-lg border border-white/10 px-4 py-2 text-xs font-semibold text-white transition hover:bg-white/5"
                 >
                   <RefreshCw className="h-3.5 w-3.5" /> Try again

@@ -5,7 +5,7 @@ import { diffLines } from 'diff';
 import AuthGuard from '../components/AuthGuard';
 import Sidebar from '../components/Sidebar';
 import useAuthStore from '../store/authStore';
-import { apiFetch, projectApi, API_BASE_URL, SOCKET_URL, agentApi, companyApi, githubApi, isDemoTourActive } from '../lib/api';
+import { apiFetch, projectApi, API_BASE_URL, SOCKET_URL, agentApi, companyApi, githubApi, isDemoTourActive, invalidateApiCache } from '../lib/api';
 import * as editorDrafts from '../lib/editorDrafts';
 import { registerEditorSnippets } from '../lib/monacoExtras';
 import { normalizeMarkers, countProblems, setRunProblems } from '../lib/monacoDiagnostics';
@@ -459,10 +459,10 @@ export default function Editor() {
       try {
         let exec = null;
         if (taskId) {
-          const data = await agentApi.status(taskId);
+          const data = await agentApi.status(taskId, { noCache: true });
           exec = data?.execution || null;
         } else {
-          const data = await agentApi.sessions();
+          const data = await agentApi.sessions({ noCache: true });
           exec = (data?.sessions || []).find((s) => String(s._id) === String(backendId)) || null;
         }
         if (exec) {
@@ -1754,9 +1754,9 @@ export default function Editor() {
     return out;
   }
 
-  async function loadDeployments() {
+  async function loadDeployments(options = {}) {
     try {
-      const data = await apiFetch('/api/deployments').catch(() => null);
+      const data = await apiFetch('/api/deployments', options).catch(() => null);
       if (data && data.deployments) setDeployments(data.deployments);
     } catch {}
   }
@@ -2791,6 +2791,12 @@ export default function Editor() {
   }
 
   async function reloadFiles() {
+    // Manual refresh must bypass the GET cache so the file tree reflects
+    // changes made outside this tab.
+    invalidateApiCache('/api/code-editor');
+    invalidateApiCache('/api/projects');
+    invalidateApiCache('/api/github');
+    invalidateApiCache('/api/git');
     if (selectedProject) {
       await loadProjectFiles(selectedProject._id || selectedProject.id);
     } else if (selectedRepo) {
@@ -2874,7 +2880,7 @@ export default function Editor() {
     pollTimersRef.current[subdomain] = setInterval(async () => {
       tries += 1;
       try {
-        const data = await apiFetch(`/api/deployments/${id}`);
+        const data = await apiFetch(`/api/deployments/${id}`, { noCache: true });
         const d = data?.deployment;
         if (d) {
           setDeployments((prev) => prev.map((x) => (x._id === id
@@ -3985,7 +3991,7 @@ export default function Editor() {
                   <div className="ed-sidebar-head">
                     <span className="ed-sidebar-title">Debug</span>
                     <div className="ed-sidebar-actions">
-                      <button type="button" className="ed-sidebar-btn" onClick={loadDeployments} title="Refresh deployments"><RefreshCw className="w-3.5 h-3.5" /></button>
+                      <button type="button" className="ed-sidebar-btn" onClick={() => loadDeployments({ forceRefresh: true })} title="Refresh deployments"><RefreshCw className="w-3.5 h-3.5" /></button>
                     </div>
                   </div>
                   <div className="ed-sidebar-body">
@@ -4814,7 +4820,7 @@ export default function Editor() {
                         <button type="button" className="btn-workspace btn-primary" onClick={handleDeploy}>
                           <Rocket className="w-4 h-4" /> New Deployment
                         </button>
-                        <button type="button" className="btn-workspace btn-secondary" onClick={loadDeployments}>
+                        <button type="button" className="btn-workspace btn-secondary" onClick={() => loadDeployments({ forceRefresh: true })}>
                           <RefreshCw className="w-3.5 h-3.5" /> Refresh
                         </button>
                         {deployScopeId && (
