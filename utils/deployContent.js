@@ -61,6 +61,57 @@ function fileBytes(f) {
         : Buffer.byteLength(content, 'utf8');
 }
 
+// Stylesheets are the one file class a deployment cannot recover from if it is
+// missing: the markup still ships, so the site loads unstyled instead of
+// failing loudly. Matched by extension because language tags are inconsistent
+// across the editor, the agent and GitHub tree listings.
+const STYLESHEET_EXT_RE = /\.(css|scss|sass|less|styl)$/i;
+
+function isStylesheet(file) {
+    const name = String(file?.name || '');
+    if (STYLESHEET_EXT_RE.test(name)) return true;
+    // GitHub tree / editor entries sometimes carry only the full path.
+    const rel = String(file?.path || '').replace(/\\/g, '/');
+    const base = rel.split('/').filter(Boolean).pop() || '';
+    return STYLESHEET_EXT_RE.test(base);
+}
+
+/**
+ * Append project stylesheets that the caller left out of the payload.
+ *
+ * The deploy form sends the editor's current buffers; a stylesheet that was
+ * never opened (or was created after the explorer loaded) could be absent even
+ * though it exists in the project, which publishes an unstyled site. Only
+ * missing files are added, so unsaved buffer content always wins.
+ */
+function appendMissingStylesheets(files, projectFiles) {
+    const list = Array.isArray(files) ? files : [];
+    if (!Array.isArray(projectFiles) || projectFiles.length === 0) return list;
+
+    const present = new Set(list.map((f) => fileKey(f)));
+    const extras = [];
+    for (const file of projectFiles) {
+        if (!file) continue;
+        const rawPath = typeof file.path === 'string' ? file.path : '';
+        const rawName = typeof file.name === 'string' ? file.name : '';
+        if (!rawName && !rawPath) continue;
+        const name = rawName || rawPath.split('/').filter(Boolean).pop();
+        const entry = { ...file, name };
+        if (!isStylesheet(entry)) continue;
+        const key = fileKey(entry);
+        if (present.has(key)) continue;
+        present.add(key);
+        extras.push({
+            name,
+            path: rawPath || '/',
+            content: typeof file.content === 'string' ? file.content : '',
+            language: file.language || 'css',
+            encoding: file.encoding === 'base64' ? 'base64' : undefined,
+        });
+    }
+    return extras.length ? [...list, ...extras] : list;
+}
+
 // Content came from GitHub/tarball as raw bytes: keep binary files as
 // base64 (flagged) so utf8 round-trips never corrupt them; store text as-is.
 function looksBinary(buf) {
@@ -342,6 +393,8 @@ module.exports = {
     fileBytes,
     looksBinary,
     applyContent,
+    isStylesheet,
+    appendMissingStylesheets,
     validateDeployFiles,
     backfillFileContent,
     limits,
