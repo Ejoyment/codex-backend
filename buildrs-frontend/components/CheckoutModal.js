@@ -97,6 +97,16 @@ export default function CheckoutModal({ planId, interval: initialInterval, state
 
     setBusy(true);
     try {
+      // Remembered so the provider return can label the receipt "Payment
+      // Successful" (first purchase) or "Upgrade Successful" (plan change).
+      try {
+        sessionStorage.setItem(
+          'buildrs:checkout-intent',
+          JSON.stringify({ fromTier: state?.tier || 'developer', planId: selectedPlan, interval })
+        );
+      } catch (err) {
+        // Ignore — the confirmation falls back to the generic headline.
+      }
       if (provider === 'stripe') {
         const data = await apiFetch('/api/v1/billing/subscription/create-checkout', {
           method: 'POST',
