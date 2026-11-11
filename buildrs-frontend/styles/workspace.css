@@ -17154,6 +17154,42 @@
 .notif-row-card:hover { border-color: rgba(18, 220, 229, 0.3); }
 .notif-row-selected { border-color: rgba(18, 220, 229, 0.55); background: rgba(18, 220, 229, 0.04); }
 
+/* Urgent rows (failures, expiring trial) carry a red edge + tag so they are
+   never mistaken for routine activity. */
+.notif-row-urgent {
+  border-color: rgba(236, 20, 20, 0.4);
+  background: rgba(236, 20, 20, 0.045);
+  box-shadow: inset 3px 0 0 #ec1414;
+}
+.notif-row-urgent:hover { border-color: rgba(236, 20, 20, 0.62); }
+.notif-row-urgent .notif-row-title { color: #ffd7d7; }
+
+.notif-urgent-tag {
+  padding: 0.1rem 0.45rem;
+  border: 1px solid rgba(236, 20, 20, 0.45);
+  border-radius: 999px;
+  background: rgba(236, 20, 20, 0.1);
+  color: #ff8f8f;
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* Server-owned rows (the trial reminder) — visible, not dismissible. */
+.notif-row-note {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.45rem;
+  color: #8b98a8;
+  font-size: 0.72rem;
+}
+.notif-row-note-icon { width: 11px; height: 11px; flex: 0 0 auto; color: #e5b84a; }
+.notif-lock-icon { color: #e5b84a; }
+.notif-lock-inline { margin-left: 0.3rem; color: #e5b84a; vertical-align: -1px; }
+
 .notif-check {
   background: none;
   border: none;

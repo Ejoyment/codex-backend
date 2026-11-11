@@ -309,34 +309,54 @@ class NotificationService {
     }
 
     static async deleteNotification(notificationId, userId) {
-        const result = await Notification.findOneAndDelete({
+        const existing = await Notification.findOne({
             _id: notificationId,
             userId: idOf(userId),
-        });
-        return result ? result.toObject() : null;
+        })
+            .select('locked')
+            .lean();
+
+        if (!existing) return { status: 'missing' };
+        // System-owned rows (the trial reminder) outlive the user's intent:
+        // they disappear when the server decides they are no longer relevant.
+        if (existing.locked) return { status: 'locked' };
+
+        await Notification.deleteOne({ _id: existing._id });
+        return { status: 'deleted' };
     }
 
     /**
      * Bulk delete for the Notifications page "Select All" mode. Ids are
      * validated + deduped and the delete is always scoped to the caller,
-     * so a foreign id in the list simply matches nothing.
+     * so a foreign id in the list simply matches nothing. Locked rows are
+     * skipped rather than failing the whole batch.
      */
     static async deleteNotifications(userId, ids) {
         const validIds = [...new Set(
             (Array.isArray(ids) ? ids : []).filter((id) => mongoose.Types.ObjectId.isValid(id))
         )].slice(0, 100);
-        if (!validIds.length) return 0;
-        const result = await Notification.deleteMany({
-            userId: idOf(userId),
-            _id: { $in: validIds },
-        });
-        return result.deletedCount || 0;
+        if (!validIds.length) return { deletedCount: 0, skipped: 0 };
+
+        const scope = { userId: idOf(userId), _id: { $in: validIds } };
+
+        // Only locked rows count as skipped: ids the caller does not own are
+        // silently ignored, exactly like before.
+        const [lockedCount, result] = await Promise.all([
+            Notification.countDocuments({ ...scope, locked: true }),
+            Notification.deleteMany({ ...scope, locked: { $ne: true } }),
+        ]);
+
+        return {
+            deletedCount: result.deletedCount || 0,
+            skipped: lockedCount || 0,
+        };
     }
 
     static async deleteAllRead(userId) {
         const result = await Notification.deleteMany({
             userId: idOf(userId),
             read: true,
+            locked: { $ne: true },
         });
         return result.deletedCount || 0;
     }

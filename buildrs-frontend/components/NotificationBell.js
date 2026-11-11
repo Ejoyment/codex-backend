@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
-import { Bell, Check, CheckCheck, Trash2, Volume2, VolumeX, Loader2 } from 'lucide-react';
+import { Bell, Check, CheckCheck, Trash2, Volume2, VolumeX, Loader2, Lock } from 'lucide-react';
 import {
   useNotificationStore,
   markAsRead,
@@ -23,6 +23,7 @@ const TONE = {
   deployment_healed: 'var(--success, #03ba03)',
   payment_failed: 'var(--danger, #ec1414)',
   payment_succeeded: 'var(--success, #03ba03)',
+  trial_expiring: 'var(--danger, #ec1414)',
   deployment_succeeded: 'var(--success, #03ba03)',
   spec_verified: 'var(--success, #03ba03)',
   spec_failed: 'var(--danger, #ec1414)',
@@ -67,7 +68,12 @@ function NotificationRow({ notification, onOpen }) {
         </span>
       )}
       <span className="notif-body">
-        <span className="notif-title">{notification.title}</span>
+        <span className="notif-title">
+          {notification.title}
+          {notification.locked && (
+            <Lock size={10} className="notif-lock-inline" aria-label="Can't be deleted until the trial ends" />
+          )}
+        </span>
         <span className="notif-message">{notification.message}</span>
         <span className="notif-time">{timeAgo(notification.createdAt)}</span>
       </span>

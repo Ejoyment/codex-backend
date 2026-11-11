@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { authenticateToken: auth } = require('../middleware/auth');
 const NotificationService = require('../utils/notificationService');
+const { syncTrialNotification } = require('../utils/trialNotification');
 
 const currentUserId = (req) => req.userId || req.user?.userId || req.user?.id;
 
@@ -43,6 +44,11 @@ router.get('/', auth, async (req, res) => {
     try {
         const { limit, skip, unreadOnly, readOnly } = req.query;
         const userId = currentUserId(req);
+
+        // The trial reminder is server-owned: reconcile it before reading so
+        // the list is never missing it during a trial, and never keeps it
+        // after one ends.
+        await syncTrialNotification(userId);
 
         const [notifications, count, byCategory, total] = await Promise.all([
             NotificationService.getNotifications(userId, {
@@ -106,6 +112,7 @@ router.get('/', auth, async (req, res) => {
 router.get('/unread-count', auth, async (req, res) => {
     try {
         const userId = currentUserId(req);
+        await syncTrialNotification(userId);
         const count = await NotificationService.getUnreadCount(userId);
 
         res.json({
@@ -411,11 +418,16 @@ router.delete('/', auth, async (req, res) => {
             });
         }
 
-        const deletedCount = await NotificationService.deleteNotifications(userId, ids);
+        const { deletedCount, skipped } = await NotificationService.deleteNotifications(userId, ids);
 
         res.json({
             success: true,
-            deletedCount
+            deletedCount,
+            skipped,
+            // The UI keeps locked rows visible and explains why.
+            message: skipped
+                ? `${skipped} notification${skipped === 1 ? '' : 's'} can't be deleted until the trial ends`
+                : 'Notifications deleted'
         });
     } catch (error) {
         console.error('Bulk delete notifications error:', error);
@@ -434,10 +446,18 @@ router.delete('/:id', auth, async (req, res) => {
 
         const result = await NotificationService.deleteNotification(notificationId, userId);
 
-        if (!result) {
+        if (result.status === 'missing') {
             return res.status(404).json({
                 success: false,
                 message: 'Notification not found'
+            });
+        }
+
+        if (result.status === 'locked') {
+            return res.status(409).json({
+                success: false,
+                code: 'NOTIFICATION_LOCKED',
+                message: 'This notification stays until your trial ends'
             });
         }
 
