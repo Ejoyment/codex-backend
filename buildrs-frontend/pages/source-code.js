@@ -367,12 +367,15 @@ export default function GitAndPullRequests() {
 
   const activeProject = useMemo(() => {
     if (!activeRepo) return null;
-    const fullName = activeRepo.fullName.toLowerCase();
-    const repoName = activeRepo.name.toLowerCase();
+    // Repo payloads come from the API, but a partial record (or a stale tour
+    // fixture) must not take the page down.
+    const fullName = String(activeRepo.fullName || '').toLowerCase();
+    const repoName = String(activeRepo.name || '').toLowerCase();
+    if (!fullName && !repoName) return null;
     return projects.find((project) => {
       const name = String(project.githubRepoName || '').toLowerCase();
       const url = String(project.githubRepoUrl || '').toLowerCase();
-      return url.includes(fullName) || name === fullName || name === repoName;
+      return (fullName && url.includes(fullName)) || name === fullName || name === repoName;
     }) || null;
   }, [projects, activeRepo]);
 

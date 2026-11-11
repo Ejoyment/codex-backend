@@ -257,7 +257,22 @@ export function getDemoApiResponse(path, options = {}) {
     return success({ connected: true, isConnected: true, status: 'connected' });
   }
   if (pathname === '/api/github/repos' || pathname === '/api/ai-pair/repos') {
-    return success({ repositories: [{ id: 201, name: 'buildrs-web', full_name: 'buildrshq/buildrs-web', owner: 'buildrshq', language: 'TypeScript', private: true, url: 'https://github.com/buildrshq/buildrs-web' }] });
+    return success({
+      repositories: [{
+        id: 201,
+        name: 'buildrs-web',
+        fullName: 'buildrshq/buildrs-web',
+        owner: 'buildrshq',
+        description: 'Workspace web app for BuildrsHQ',
+        language: 'TypeScript',
+        private: true,
+        url: 'https://github.com/buildrshq/buildrs-web',
+        defaultBranch: 'main',
+        stars: 12,
+        forks: 2,
+        openIssues: 3,
+      }],
+    });
   }
   if (/^\/api\/github\/repos\/[^/]+\/[^/]+\/(branches|commits|issues|pulls)$/.test(pathname)) {
     const key = pathname.split('/').pop();
