@@ -20893,8 +20893,11 @@
    borders, #12DCE5 accent.
    ========================================================================== */
 
+/* The head and the panel are siblings, not flex children of a gapped
+   container, so the separation has to live here — 1.5rem matches the
+   Deployment page's head-to-content rhythm (`.deploy-head`). */
 .bill-page-head {
-  margin-bottom: 0;
+  margin-bottom: 1.5rem;
 }
 
 .blp {
