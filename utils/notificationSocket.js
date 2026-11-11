@@ -5,6 +5,7 @@
 // connection for the lifetime of the session.
 const { resolveSocketUser } = require('./socketAuth');
 const NotificationService = require('./notificationService');
+const { syncTrialNotification } = require('./trialNotification');
 
 module.exports = (io) => {
     const ns = io.of('/notifications');
@@ -28,6 +29,12 @@ module.exports = (io) => {
         // guaranteed-live channel, so keep it cheap to re-sync after reconnect.
         socket.on('notification:sync', async (ack) => {
             try {
+                // Reconnect is the cheapest moment to reconcile server-owned
+                // rows (trial reminder appearing / expiring).
+                const sync = await syncTrialNotification(socket.userId);
+                if (sync.created && sync.notification) {
+                    socket.emit('notification:new', sync.notification);
+                }
                 const count = await NotificationService.getUnreadCount(socket.userId);
                 const byCategory = await NotificationService.getUnreadByCategory(socket.userId);
                 const payload = { count, byCategory };

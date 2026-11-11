@@ -104,6 +104,14 @@ const notificationSchema = new mongoose.Schema(
         readAt: { type: Date, default: null },
 
         /**
+         * Server-owned rows the user may not delete. The trial reminder uses
+         * this: it exists for exactly as long as the trial does, and is removed
+         * by the server (not the user) when the trial ends. Deletes filter on
+         * it, so a direct API call cannot remove the row either.
+         */
+        locked: { type: Boolean, default: false },
+
+        /**
          * Collapse repeats of the same event (e.g. repeated mentions in one
          * thread) inside the dedupe window instead of flooding the list.
          */

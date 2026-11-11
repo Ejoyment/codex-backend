@@ -3,7 +3,6 @@ import Head from 'next/head';
 import { useRouter } from 'next/router';
 import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
-import TrialBanner from '../components/TrialBanner';
 import useAuthStore from '../store/authStore';
 import { useDashboard } from '../hooks/useDashboard';
 import CreateProjectWizard from '../components/CreateProjectWizard';
@@ -68,7 +67,7 @@ export default function Dashboard() {
   const user = useAuthStore((s) => s.user);
   const subscription = useAuthStore((s) => s.subscription);
   const dashboardUserId = user?._id || user?.id || user?.userId || null;
-  const { trial, overview, projects, tasks, loading, loadStats, loadOverview, loadProjects, loadTasks } = useDashboard(dashboardUserId);
+  const { overview, projects, tasks, loading, loadStats, loadOverview, loadProjects, loadTasks } = useDashboard(dashboardUserId);
 
   const [hasHydrated, setHasHydrated] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -217,7 +216,8 @@ export default function Dashboard() {
           ) : (
             <>
               <div className="workspace-content dashboard-content p-6 w-full space-y-6">
-                <TrialBanner trial={trial} />
+                {/* The trial reminder lives in notifications now, so the
+                    dashboard opens straight onto the work itself. */}
 
                 {/* Greeting */}
                 {(loading || !isEmpty) && (

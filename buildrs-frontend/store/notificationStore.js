@@ -201,6 +201,10 @@ export function connectNotifications() {
   });
   socket.on('disconnect', () => useNotificationStore.getState().setConnected(false));
   socket.on('notification:new', handleIncoming);
+  // Server-owned rows (the trial reminder) are removed when they stop applying.
+  socket.on('notification:removed', ({ id } = {}) => {
+    if (id) useNotificationStore.getState().remove(id);
+  });
   socket.on('notification:count', ({ count, byCategory }) =>
     useNotificationStore.getState().setCount(count || 0, byCategory)
   );
@@ -277,13 +281,18 @@ export async function deleteNotification(id) {
 
 export async function deleteNotifications(ids) {
   const unique = [...new Set(ids)].filter(Boolean);
-  if (!unique.length) return;
+  if (!unique.length) return null;
   const store = useNotificationStore.getState();
   store.removeMany(unique);
   try {
-    await notificationApi.removeMany(unique);
+    const res = await notificationApi.removeMany(unique);
+    // Locked rows are refused by the server; pull the authoritative list so
+    // they reappear instead of vanishing from this tab only.
+    if (res?.skipped) await loadNotifications();
+    return res;
   } catch {
     refreshCount();
+    return null;
   }
 }
 

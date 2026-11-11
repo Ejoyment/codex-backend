@@ -38,6 +38,16 @@ function emitNotification(userId, payload) {
     return false;
 }
 
+// A server-owned notification disappeared (e.g. the trial ended). Clients use
+// this to drop the row immediately instead of waiting for the next refetch.
+function emitNotificationRemoved(userId, payload) {
+    if (_io && userId) {
+        _io.of('/notifications').to(`user:${userId}`).emit('notification:removed', payload);
+        return true;
+    }
+    return false;
+}
+
 function emitProfileUpdate(userId, profileData) {
     if (!_io) return;
 
@@ -71,4 +81,4 @@ function emitWorkspaceChange(workspaceId, event, data) {
     terminalNamespace.emit('workspace:change', payload);
 }
 
-module.exports = { setIO, emitCollab, emitSandbox, emitAgentProgress, emitNotification, emitProfileUpdate, emitWorkspaceChange };
+module.exports = { setIO, emitCollab, emitSandbox, emitAgentProgress, emitNotification, emitNotificationRemoved, emitProfileUpdate, emitWorkspaceChange };

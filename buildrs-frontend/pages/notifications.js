@@ -3,11 +3,12 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import {
-  BellOff, Square, SquareCheckBig, Trash2, Loader2, Settings2,
+  BellOff, Square, SquareCheckBig, Trash2, Loader2, Settings2, Lock,
 } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
+import useToastStore from '../store/toastStore';
 import {
   useNotificationStore,
   notificationApi,
@@ -35,6 +36,25 @@ const FILTERS = [
   { key: 'unread', label: 'Unread' },
   { key: 'read', label: 'Read' },
 ];
+
+// Failures and anything else the platform marks `high` read red, so an urgent
+// row is recognisable before reading it. The trial reminder is one of these.
+const URGENT_TYPES = new Set([
+  'payment_failed',
+  'deployment_failed',
+  'deployment_heal_failed',
+  'spec_failed',
+  'agent_failed',
+  'trial_expiring',
+  'system_alert',
+]);
+
+const isUrgent = (notification) =>
+  notification.priority === 'high' || URGENT_TYPES.has(notification.type);
+
+// Server-owned rows: present for as long as the condition lasts, not until the
+// user dismisses them (the trial reminder disappears when the trial ends).
+const isLocked = (notification) => notification.locked === true;
 
 function formatNotificationTime(iso) {
   const date = new Date(iso);
@@ -64,6 +84,7 @@ export default function Notifications() {
   const setPreferences = useNotificationStore((s) => s.setPreferences);
   const user = useAuthStore((s) => s.user);
   const subscription = useAuthStore((s) => s.subscription);
+  const toast = useToastStore();
 
   const [filter, setFilter] = useState('all');
   const [list, setList] = useState([]);
@@ -169,6 +190,11 @@ export default function Notifications() {
   };
 
   const toggleSelected = (id) => {
+    const target = list.find((n) => n._id === id);
+    if (target && isLocked(target)) {
+      toast.info('This notification stays until your trial ends');
+      return;
+    }
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -184,19 +210,26 @@ export default function Notifications() {
       return;
     }
     setSelectMode(true);
-    setSelected(new Set(list.map((n) => n._id)));
+    // Locked rows are not deletable, so they must not be pulled into a batch.
+    setSelected(new Set(list.filter((n) => !isLocked(n)).map((n) => n._id)));
   };
 
   const handleDeleteSelected = async () => {
-    const ids = [...selected];
+    const ids = [...selected].filter((id) => {
+      const target = list.find((n) => n._id === id);
+      return !target || !isLocked(target);
+    });
     if (!ids.length) return;
     if (!window.confirm(`Delete ${ids.length} selected notification${ids.length === 1 ? '' : 's'}?`)) return;
-    await deleteNotifications(ids);
-    setList((prev) => prev.filter((n) => !selected.has(n._id)));
+    const res = await deleteNotifications(ids);
+    setList((prev) => prev.filter((n) => !selected.has(n._id) || isLocked(n)));
     setTotal((t) => Math.max(0, t - ids.length));
     setFilteredTotal((t) => Math.max(0, t - ids.length));
     setSelectMode(false);
     setSelected(new Set());
+    if (res?.skipped) {
+      toast.info('Locked notifications stay until your trial ends');
+    }
   };
 
   const handleMarkAllRead = async () => {
@@ -315,10 +348,14 @@ export default function Notifications() {
                 <div className="notif-rows">
                   {list.map((notification) => {
                     const isSelected = selected.has(notification._id);
+                    const urgent = isUrgent(notification);
+                    const locked = isLocked(notification);
                     return (
                       <article
                         key={notification._id}
-                        className={`notif-row-card ${isSelected ? 'notif-row-selected' : ''}`}
+                        className={`notif-row-card ${isSelected ? 'notif-row-selected' : ''} ${
+                          urgent ? 'notif-row-urgent' : ''
+                        } ${locked ? 'notif-row-locked' : ''}`}
                         onClick={() => {
                           if (selectMode) toggleSelected(notification._id);
                           else openNotification(notification);
@@ -328,14 +365,27 @@ export default function Notifications() {
                           <button
                             type="button"
                             className={`notif-check ${isSelected ? 'checked' : ''}`}
-                            aria-label={isSelected ? 'Deselect notification' : 'Select notification'}
+                            aria-label={
+                              locked
+                                ? 'This notification cannot be deleted'
+                                : isSelected
+                                  ? 'Deselect notification'
+                                  : 'Select notification'
+                            }
                             aria-pressed={isSelected}
+                            aria-disabled={locked}
                             onClick={(e) => {
                               e.stopPropagation();
                               toggleSelected(notification._id);
                             }}
                           >
-                            {isSelected ? <SquareCheckBig className="w-5 h-5" /> : <Square className="w-5 h-5" />}
+                            {locked ? (
+                              <Lock className="w-5 h-5 notif-lock-icon" />
+                            ) : isSelected ? (
+                              <SquareCheckBig className="w-5 h-5" />
+                            ) : (
+                              <Square className="w-5 h-5" />
+                            )}
                           </button>
                         )}
 
@@ -343,8 +393,15 @@ export default function Notifications() {
                           <h3 className="notif-row-title">
                             {!notification.read && <span className="notif-unread-dot" />}
                             {notification.title}
+                            {urgent && <span className="notif-urgent-tag">Urgent</span>}
                           </h3>
                           <p className="notif-row-message">{notification.message}</p>
+                          {locked && (
+                            <p className="notif-row-note">
+                              <Lock className="notif-row-note-icon" aria-hidden="true" />
+                              Can&apos;t be deleted — removed automatically when your trial ends
+                            </p>
+                          )}
                         </div>
 
                         {!selectMode && (
