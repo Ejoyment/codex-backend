@@ -20885,3 +20885,374 @@
     width: 100%;
   }
 }
+
+/* ============================================================================
+   Billing & Plans — user-facing frame (Figma 718:74747)
+   Current-plan banner, platform plan cards and transaction history. The
+   palette matches the rest of the workspace: #0A0D15 surfaces, #263446
+   borders, #12DCE5 accent.
+   ========================================================================== */
+
+.bill-page-head {
+  margin-bottom: 0;
+}
+
+.blp {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  width: 100%;
+}
+
+.blp-muted {
+  margin: 0;
+  color: #7d8ea1;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.blp-eyebrow {
+  margin: 0 0 0.55rem;
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #7d8ea1;
+}
+
+/* ---------------------------- Current plan ------------------------------ */
+
+.blp-current {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  border: 1px solid #263446;
+  border-radius: 12px;
+  background: #090e16;
+  padding: 20px 24px;
+}
+
+.blp-current-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.blp-current-title {
+  margin: 0;
+  color: #fff;
+  font-size: 1.35rem;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+}
+
+.blp-current .blp-muted { margin-top: 0.35rem; }
+
+.blp-current-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.4rem;
+  text-align: right;
+}
+
+.blp-current-price {
+  margin: 0;
+  color: #fff;
+  font-size: 1.55rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.blp-current-price span {
+  margin-left: 0.18rem;
+  color: #7d8ea1;
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.blp-current-cta {
+  margin-top: 0.25rem;
+}
+
+.blp-notice { margin-top: -12px; }
+
+/* --------------------------- Section headers ---------------------------- */
+
+.blp-section-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.blp-section-title {
+  margin: 0 0 0.2rem;
+  color: #fff;
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* ------------------------------ Plan grid ------------------------------- */
+
+.blp-plans {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.blp-plan {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  border: 1px solid #263446;
+  border-radius: 12px;
+  background: #090e16;
+  padding: 20px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.blp-plan:hover { border-color: #35516b; }
+
+.blp-plan.is-current {
+  border-color: rgba(18, 220, 229, 0.55);
+  background: rgba(18, 220, 229, 0.035);
+  box-shadow: inset 0 0 0 1px rgba(18, 220, 229, 0.15);
+}
+
+.blp-plan.is-featured:not(.is-current) {
+  border-color: rgba(18, 220, 229, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(18, 220, 229, 0.08);
+}
+
+.blp-plan-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.blp-plan-name {
+  margin: 0;
+  color: #fff;
+  font-size: 0.92rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.blp-tag {
+  border: 1px solid #263446;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 0.15rem 0.5rem;
+  color: #9aaebe;
+  font-size: 0.55rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.blp-tag-current {
+  border-color: rgba(18, 220, 229, 0.45);
+  background: rgba(18, 220, 229, 0.12);
+  color: #12dce5;
+}
+
+.blp-plan-blurb {
+  margin: 0;
+  color: #7d8ea1;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  min-height: 2.1em;
+}
+
+.blp-plan-price {
+  margin: 0;
+  color: #fff;
+  font-size: 1.8rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.blp-plan-price span {
+  margin-left: 0.25rem;
+  color: #7d8ea1;
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.blp-features {
+  display: flex;
+  flex-direction: column;
+  gap: 0.42rem;
+  list-style: none;
+  margin: 0.15rem 0 0.6rem;
+  padding: 0.85rem 0 0;
+  border-top: 1px solid rgba(38, 52, 70, 0.7);
+}
+
+.blp-features li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  color: #9aaebe;
+  font-size: 0.7rem;
+  line-height: 1.45;
+}
+
+.blp-check {
+  flex: 0 0 auto;
+  width: 13px;
+  height: 13px;
+  margin-top: 1px;
+  color: #12dce5;
+}
+
+.blp-plan-cta {
+  width: 100%;
+  margin-top: auto;
+  justify-content: center;
+}
+
+/* --------------------------- Transaction table -------------------------- */
+
+.blp-table {
+  border: 1px solid #263446;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #080d14;
+}
+
+.blp-table-head,
+.blp-table-row {
+  display: grid;
+  grid-template-columns: 1fr 0.9fr 0.8fr 0.8fr 1.05fr 1fr 1fr;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 18px;
+}
+
+.blp-table-head {
+  background: rgba(255, 255, 255, 0.025);
+  color: #7d8ea1;
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.blp-table-row {
+  border-top: 1px solid #1a3345;
+  color: #9aaebe;
+  font-size: 0.76rem;
+}
+
+.blp-table-invoice { color: #e8eef5; font-weight: 500; }
+.blp-table-method { text-align: right; }
+
+.blp-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  border: 1px dashed #263446;
+  border-radius: 12px;
+  background: #090e16;
+  padding: 2.5rem 1.5rem;
+  text-align: center;
+}
+
+.blp-empty-icon {
+  width: 22px;
+  height: 22px;
+  margin-bottom: 0.35rem;
+  color: #12dce5;
+}
+
+.blp-empty-title {
+  margin: 0;
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.blp-empty .blp-muted { max-width: 32rem; }
+
+/* ------------------------- Subscription settings ------------------------ */
+
+.blp-manage {
+  border: 1px solid #263446;
+  border-radius: 12px;
+  background: #090e16;
+  padding: 20px;
+}
+
+.blp-details {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin: 0 0 4px;
+}
+
+.blp-details > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.blp-details dt {
+  color: #7d8ea1;
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.blp-details dd {
+  margin: 0;
+  color: #e8eef5;
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.blp-overage { margin-top: 16px; }
+
+.blp-manage-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+/* ------------------------------ Responsive ------------------------------ */
+
+@media (max-width: 1180px) {
+  .blp-plans { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 760px) {
+  .blp { gap: 24px; }
+  .blp-plans { grid-template-columns: 1fr; }
+  .blp-details { grid-template-columns: 1fr; }
+  .blp-current { flex-direction: column; align-items: flex-start; }
+  .blp-current-side { align-items: flex-start; text-align: left; }
+  .blp-table { overflow-x: auto; }
+  .blp-table-head,
+  .blp-table-row { min-width: 820px; }
+  .blp-manage { padding: 16px; }
+}
