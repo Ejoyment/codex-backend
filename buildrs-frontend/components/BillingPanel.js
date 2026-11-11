@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import useAuthStore from '../store/authStore';
 import { subscriptionApi } from '../lib/api';
 import CheckoutModal from './CheckoutModal';
+import PaymentSuccessModal from './PaymentSuccessModal';
 import { PLANS, FREE_PLAN, planById, planName, planDirection, yearlySavingsPercent } from '../lib/plans';
 import {
   statusMeta,
@@ -151,6 +152,7 @@ export default function BillingPanel({ router, toast }) {
   const [dialog, setDialog] = useState(null);
   const [interval, setInterval] = useState('monthly');
   const [checkout, setCheckout] = useState(null);
+  const [paymentResult, setPaymentResult] = useState(null);
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -182,6 +184,38 @@ export default function BillingPanel({ router, toast }) {
       });
     }
   }, [router.query]);
+
+  // Provider callbacks land on /payment-success, which verifies the reference
+  // and forwards here with ?payment=success|failed. The success dialog prints
+  // over this page so the purchase visibly completes where it started.
+  const reportedFailure = useRef(false);
+  const shownResult = useRef(false);
+  useEffect(() => {
+    const query = router.query || {};
+    if (query.payment === 'success' && !shownResult.current) {
+      shownResult.current = true;
+      let variant = 'payment';
+      try {
+        const intent = JSON.parse(sessionStorage.getItem('buildrs:checkout-intent') || 'null');
+        if (intent && intent.fromTier && intent.fromTier !== 'developer') variant = 'upgrade';
+        sessionStorage.removeItem('buildrs:checkout-intent');
+      } catch (err) {
+        // sessionStorage unavailable (private mode) — the generic variant is fine.
+      }
+      setPaymentResult({ variant });
+    } else if (query.payment === 'failed' && !reportedFailure.current) {
+      reportedFailure.current = true;
+      toast.error('We could not confirm that payment. Your plan has not changed.');
+    }
+  }, [router.query, toast]);
+
+  // Dropping the query flag keeps a refresh from re-opening the dialog.
+  const dismissPaymentResult = () => {
+    setPaymentResult(null);
+    shownResult.current = false;
+    const { payment, provider, ...rest } = router.query || {};
+    router.replace({ pathname: router.pathname, query: rest }, undefined, { shallow: true });
+  };
 
   const runAction = async (key, fn, successMessage) => {
     setBusy(key);
@@ -321,6 +355,15 @@ export default function BillingPanel({ router, toast }) {
           user={user}
           onClose={() => setCheckout(null)}
           toast={toast}
+        />
+      )}
+
+      {paymentResult && state && (
+        <PaymentSuccessModal
+          state={state}
+          user={user}
+          variant={paymentResult.variant}
+          onClose={dismissPaymentResult}
         />
       )}
 
