@@ -492,15 +492,6 @@ export default function GitAndPullRequests() {
   }, [pullRequests, prFilter]);
 
   const branchNames = useMemo(() => branches.map((branch) => branch.name), [branches]);
-  const activePullRequest = useMemo(
-    () => pullRequests.find((pr) => pr.head === selectedBranch && pr.state === 'open') || null,
-    [pullRequests, selectedBranch],
-  );
-  const ciStatus = activePullRequest?.checks?.state === 'failure'
-    ? { label: 'CI Failing', tone: 'error' }
-    : activePullRequest?.checks?.state === 'pending'
-      ? { label: 'CI Running', tone: 'warn' }
-      : { label: 'CI Passing', tone: 'ok' };
 
   const defaultHeadBranch = () => {
     const defaultBranch = activeRepo?.defaultBranch || 'main';
@@ -566,8 +557,6 @@ export default function GitAndPullRequests() {
           availableBranches={branchNames}
           selectedBranch={selectedBranch}
           onBranchSelect={handleBranchSelect}
-          ciStatus={ciStatus}
-          deployStatus={{ label: 'Staging Live', tone: 'ok' }}
         />
 
         <main className="workspace-main">

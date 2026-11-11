@@ -220,8 +220,6 @@ export function getDemoApiResponse(path, options = {}) {
         shipReadiness: { percent: 92, checks: [{ label: 'Build', status: 'passed' }, { label: 'Tests', status: 'passed' }] },
         debugRooms: [],
         connections: integrationsFixture,
-        ciStatus: { label: 'CI Passing', tone: 'ok' },
-        deployStatus: { label: 'Staging Live', tone: 'ok' },
       },
     });
   }

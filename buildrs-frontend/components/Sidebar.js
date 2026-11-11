@@ -76,8 +76,6 @@ export default function Sidebar({
   subscription,
   headerBranch,
   onWorkspaceClick,
-  ciStatus,
-  deployStatus,
   searchContent,
   onSearch,
   availableBranches,
@@ -93,8 +91,6 @@ export default function Sidebar({
         user={user}
         branch={headerBranch}
         onWorkspaceClick={onWorkspaceClick}
-        ciStatus={ciStatus}
-        deployStatus={deployStatus}
         searchContent={searchContent}
         onSearch={onSearch}
         availableBranches={availableBranches}

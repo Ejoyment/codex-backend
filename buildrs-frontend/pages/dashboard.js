@@ -163,8 +163,6 @@ export default function Dashboard() {
           subscription={subscription}
           headerBranch={ws?.branch || 'main'}
           onWorkspaceClick={() => router.push('/workspace')}
-          ciStatus={overview?.ciStatus}
-          deployStatus={overview?.deployStatus}
           searchContent={(
             <form onSubmit={handleSearch} className="ail-global-search">
               <Search className="h-4 w-4 text-zinc-400" />

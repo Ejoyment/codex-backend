@@ -17,15 +17,6 @@ export default function TaskWorkspaceTopBar({ user, selectedCompany, onWorkspace
       </button>
 
       <div className="flex items-center gap-4">
-        <div className="hidden items-center gap-2 lg:flex">
-          <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-400">
-            CI Passing
-          </span>
-          <span className="rounded-full border border-blue-500/20 bg-blue-500/10 px-2.5 py-1 text-xs font-medium text-blue-400">
-            Staging Live
-          </span>
-        </div>
-
         <label className="relative hidden w-72 md:block">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
           <input
