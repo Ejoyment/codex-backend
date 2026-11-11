@@ -217,62 +217,6 @@
   white-space: nowrap;
 }
 
-.workspace-global-header .ail-global-chip {
-  display: inline-flex;
-  height: 18px;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 0.3rem;
-  padding: 0 0.55rem;
-  border: 1px solid;
-  border-radius: 999px;
-  font-size: 0.55rem;
-  white-space: nowrap;
-}
-
-.workspace-global-header .ail-global-chip i {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-}
-
-.workspace-global-header .ail-global-chip.is-ci {
-  border-color: rgba(27, 177, 54, 0.6);
-  background: rgba(20, 106, 35, 0.22);
-  color: #54d468;
-}
-
-.workspace-global-header .ail-global-chip.is-ci i {
-  background: #36da58;
-}
-
-.workspace-global-header .ail-global-chip.is-ci.is-error,
-.workspace-global-header .ail-global-chip.is-ci.is-error i,
-.workspace-global-header .ail-global-chip.is-staging.is-error,
-.workspace-global-header .ail-global-chip.is-staging.is-error i {
-  border-color: rgba(236,20,20,0.6);
-  background: rgba(127, 29, 29, 0.22);
-  color: #ec1414;
-}
-
-.workspace-global-header .ail-global-chip.is-ci.is-warning,
-.workspace-global-header .ail-global-chip.is-ci.is-warning i,
-.workspace-global-header .ail-global-chip.is-staging.is-warning,
-.workspace-global-header .ail-global-chip.is-staging.is-warning i {
-  border-color: rgba(245, 158, 11, 0.5);
-  background: rgba(120, 53, 15, 0.22);
-  color: #e5b84a;
-}
-
-.workspace-global-header .ail-global-chip.is-staging {
-  border-color: rgba(31, 115, 237, 0.56);
-  background: rgba(20, 69, 135, 0.2);
-  color: #78aaff;
-}
-
-.workspace-global-header .ail-global-chip.is-staging i {
-  background: #438bff;
-}
 
 .workspace-global-header .ail-global-search {
   display: flex;
@@ -888,7 +832,6 @@
   }
 
   .workspace-global-header .ail-branch-selector,
-  .workspace-global-header .ail-global-chip,
   .workspace-global-header .ail-global-search-trigger {
     display: none;
   }
@@ -14814,44 +14757,6 @@
   flex: 0 0 auto;
 }
 
-.ail-agent-page .ail-global-chip {
-  display: inline-flex;
-  height: 18px;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 0.3rem;
-  padding: 0 0.55rem;
-  border: 1px solid;
-  border-radius: 999px;
-  font-size: 0.55rem;
-  white-space: nowrap;
-}
-
-.ail-agent-page .ail-global-chip i {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-}
-
-.ail-agent-page .ail-global-chip.is-ci {
-  border-color: rgba(27, 177, 54, 0.6);
-  background: rgba(20, 106, 35, 0.22);
-  color: #54d468;
-}
-
-.ail-agent-page .ail-global-chip.is-ci i {
-  background: #36da58;
-}
-
-.ail-agent-page .ail-global-chip.is-staging {
-  border-color: rgba(31, 115, 237, 0.56);
-  background: rgba(20, 69, 135, 0.2);
-  color: #78aaff;
-}
-
-.ail-agent-page .ail-global-chip.is-staging i {
-  background: #438bff;
-}
 
 .ail-agent-page .ail-global-search {
   display: flex;
@@ -15160,8 +15065,7 @@
     height: 24px;
   }
 
-  .ail-agent-page .ail-branch-selector,
-  .ail-agent-page .ail-global-chip {
+  .ail-agent-page .ail-branch-selector {
     display: none;
   }
 

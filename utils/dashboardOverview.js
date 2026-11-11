@@ -292,24 +292,6 @@ async function computeOverview(userId) {
         });
     }
 
-    // ---- Topbar CI / deploy status ----
-    const latestDeploy = deployments[0] || null;
-    let ciStatus = null;
-    if (validationExecs.length > 0) {
-        ciStatus = {
-            label: validationPassed === validationExecs.length ? 'Checks Passing' : 'Checks Failing',
-            tone: validationPassed === validationExecs.length ? 'ok' : 'error',
-        };
-    }
-    let deployStatus = null;
-    if (latestDeploy) {
-        const live = latestDeploy.status === 'success';
-        deployStatus = {
-            label: live ? 'Staging Live' : `Deploy ${latestDeploy.status}`,
-            tone: live ? 'ok' : (latestDeploy.status === 'failed' ? 'error' : 'warn'),
-        };
-    }
-
     return {
         workspace,
         needsAttention,
@@ -319,8 +301,6 @@ async function computeOverview(userId) {
         debugRooms,
         recentActivity,
         connections,
-        ciStatus,
-        deployStatus,
         isEmpty:
             projects.length === 0 &&
             tasks.length === 0 &&

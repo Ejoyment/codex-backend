@@ -1557,7 +1557,6 @@
   .pdemo .workspace-global-header .ail-global-brand strong { font-size: 12px; }
   .pdemo .workspace-global-header .ail-global-search,
   .pdemo .workspace-global-header .ail-branch-selector,
-  .pdemo .workspace-global-header .ail-global-chip,
   .pdemo .workspace-global-header > .ail-global-tools > .pdemo-icon-button { display: none; }
   .pdemo .workspace-global-header .ail-global-tools { justify-content: flex-end; gap: 9px; }
   .pdemo-tour-label { display: inline-flex; font-size: 0; letter-spacing: 0; }

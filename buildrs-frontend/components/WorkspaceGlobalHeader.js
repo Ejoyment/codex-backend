@@ -9,8 +9,6 @@ export default function WorkspaceGlobalHeader({
   user,
   branch = 'main',
   onWorkspaceClick,
-  ciStatus = { label: 'CI Passing', tone: 'ok' },
-  deployStatus = { label: 'Staging Live', tone: 'ok' },
   searchContent,
   onSearch,
   availableBranches = [],
@@ -81,8 +79,6 @@ export default function WorkspaceGlobalHeader({
             </div>
           )}
         </div>
-        {ciStatus && <span className={`ail-global-chip is-ci ${ciStatus.tone === 'error' ? 'is-error' : ciStatus.tone === 'warn' ? 'is-warning' : ''}`}><i />{ciStatus.label}</span>}
-        {deployStatus && <span className={`ail-global-chip is-staging ${deployStatus.tone === 'error' ? 'is-error' : deployStatus.tone === 'warn' ? 'is-warning' : ''}`}><i />{deployStatus.label}</span>}
         {searchContent ? (
           searchContent
         ) : onSearch ? (
