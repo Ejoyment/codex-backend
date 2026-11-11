@@ -6,6 +6,7 @@
 jest.mock('../utils/aiRouterService', () => ({ routeChat: jest.fn() }));
 
 const {
+    DESIGN_DIRECTIONS,
     DESIGN_STANDARDS,
     DESIGN_STANDARDS_BRIEF,
     isUiWork,
@@ -58,6 +59,22 @@ describe('designGuidanceFor', () => {
             expect(block).toMatch(/stylesheet/i);
             expect(block).toMatch(/colou?r/i);
         }
+    });
+
+    test('forces a direction instead of one generic template', () => {
+        expect(DESIGN_DIRECTIONS.length).toBeGreaterThanOrEqual(5);
+        for (const direction of DESIGN_DIRECTIONS) {
+            expect(DESIGN_STANDARDS).toContain(direction);
+        }
+        expect(DESIGN_STANDARDS).toMatch(/choose a direction before code/i);
+        expect(DESIGN_STANDARDS_BRIEF).toMatch(/deliberate direction/i);
+    });
+
+    test('names the clichés that make output read as AI-generated', () => {
+        for (const cliche of [/gradient text/i, /glassmorphism/i, /emoji/i, /three icon cards|three cards/i]) {
+            expect(DESIGN_STANDARDS).toMatch(cliche);
+        }
+        expect(DESIGN_STANDARDS_BRIEF).toMatch(/gradient text|glassmorphism/i);
     });
 });
 
