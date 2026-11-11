@@ -4,6 +4,7 @@ import {
   AlertTriangle, ServerCrash, RefreshCw,
 } from 'lucide-react';
 import { apiFetch } from '../lib/api';
+import useDeploymentRealtime, { applyDeploymentPatch } from '../lib/useDeploymentRealtime';
 
 const POLL_MS = 2000;
 const TERMINAL = ['success', 'failed', 'stopped'];
@@ -102,7 +103,14 @@ export function DeploymentLogsModal({ deploymentId, onClose, onUpdate }) {
       const data = await apiFetch(`/api/deployments/${deploymentId}`, { noCache: true });
       if (data?.deployment) {
         statusRef.current = data.deployment.status;
-        setDeployment(data.deployment);
+        setDeployment((prev) => {
+          // Streamed chunks are ahead of the debounced DB write; a poll must
+          // not drop the tail that is already visible.
+          if (prev && (prev.buildLogs || '').length > (data.deployment.buildLogs || '').length) {
+            return { ...data.deployment, buildLogs: prev.buildLogs, runtimeLogs: prev.runtimeLogs };
+          }
+          return data.deployment;
+        });
         setFetchError(null);
         onUpdateRef.current?.(data.deployment);
       }
@@ -128,6 +136,14 @@ export function DeploymentLogsModal({ deploymentId, onClose, onUpdate }) {
     tick();
     return () => { cancelled = true; if (timer) clearTimeout(timer); };
   }, [fetchDetail]);
+
+  // Live stream: status, steps and log chunks arrive immediately; polling
+  // above is only the fallback.
+  useDeploymentRealtime(useCallback((update) => {
+    if (String(update.deploymentId) !== String(deploymentId)) return;
+    if (update.deployment?.status) statusRef.current = update.deployment.status;
+    setDeployment((prev) => applyDeploymentPatch(prev || { _id: deploymentId }, update));
+  }, [deploymentId]));
 
   // Auto-scroll the log view while new output arrives (if pinned to bottom).
   const logText = tab === 'build' ? (deployment?.buildLogs || '') : (deployment?.runtimeLogs || '');

@@ -16,7 +16,8 @@ const { enforceDeploymentLimit } = require('../middleware/tierEnforcement');
 const depService = require('../utils/deploymentService');
 const { normalizeEnv, toEnvObject, redact } = require('../utils/deployEnv');
 const { redeployDeployment, resetSelfHealState } = require('../utils/agentAutoDeploy');
-const { validateDeployFiles, backfillFileContent, appendMissingStylesheets, limits: deployLimits } = require('../utils/deployContent');
+const { validateDeployFiles, backfillFileContent, mergeProjectFiles, limits: deployLimits } = require('../utils/deployContent');
+const { emitDeploymentUpdate } = require('../utils/realtimeBus');
 const { normalizeDeployContext } = require('../utils/deployContext');
 const { addAuditLog } = require('../utils/auditLogService');
 const { notifyDeploymentEvent } = require('../utils/notificationTriggers');
@@ -216,39 +217,20 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
             }
             workspaceScope = projectScope;
 
-            // A selected project deploys only that project's files. Never
-            // widen an empty project to the whole workspace: that could
-            // publish another project's source under this subdomain.
-            const fileScope = projectScope.personal
-                ? {
-                    $or: [
-                        { company: projectScope.workspaceId },
-                        // Legacy personal files were keyed by user id.
-                        { company: String(req.userId), createdBy: req.userId },
-                    ],
-                }
-                : { company: projectScope.workspaceId };
-
+            // A selected project deploys exactly that project's files. The
+            // project is proven to belong to the caller above, so `project` is
+            // the authoritative scope; scoping by workspace as well used to
+            // hide files whose `company` no longer matched the project
+            // (moved projects, agent/terminal writes) — including stylesheets,
+            // which then deployed as empty files.
+            const projectFiles = await CodeFile.find({ project: projectId }).lean();
             if (!files.length) {
-                files = await CodeFile.find({ project: projectId, ...fileScope }).lean();
+                files = projectFiles;
             } else {
-                // The client sends its open buffers; a stylesheet it never
-                // opened (or one saved after the explorer loaded) would be
-                // missing and the published site would render unstyled. Pull
-                // the project's stylesheets and add only the ones absent from
-                // the payload, so unsaved buffer content still wins.
-                const stylesheets = await CodeFile.find({
-                    $and: [
-                        { project: projectId, ...fileScope },
-                        {
-                            $or: [
-                                { language: { $in: ['css', 'scss', 'sass', 'less', 'stylus'] } },
-                                { name: /\.(css|scss|sass|less|styl)$/i },
-                            ],
-                        },
-                    ],
-                }).lean();
-                files = appendMissingStylesheets(files, stylesheets);
+                // The client sends its open buffers. Fill empty/metadata-only
+                // entries from stored content and append every stored file the
+                // payload omitted, so a stylesheet nobody opened still ships.
+                files = mergeProjectFiles(files, projectFiles);
             }
         }
 
@@ -279,6 +261,9 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
             language: f.language || 'plaintext',
             sha: f.sha || undefined,
             encoding: f.encoding === 'base64' ? 'base64' : undefined,
+            // Respect an intentional empty buffer; otherwise the server
+            // backfills the real bytes from the project or repository.
+            _resolved: f._resolved === true ? true : undefined,
         }));
 
         if (!normalizedFiles.length) {
@@ -425,12 +410,45 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
             }
         });
 
+        emitDeploymentUpdate(req.userId, {
+            deploymentId: deployId,
+            deployment: {
+                _id: deployId,
+                status: 'building',
+                steps: INITIAL_STEPS(),
+                deployedUrl: null,
+                httpUrl: null,
+            },
+        });
+
         setImmediate(async () => {
             // ---- Observability state (Render-style log streaming) ----
             let buildLog = '';
             let logFlushTimer = null;
             let finished = false;
             let liveSteps = INITIAL_STEPS();
+            let liveStatus = 'building';
+            // Real-time fan-out: status/steps and log chunks go straight to the
+            // user's sockets instead of waiting for the next poll.
+            let rtLogBuffer = '';
+            let rtLogTimer = null;
+
+            const emitUpdate = (payload) => emitDeploymentUpdate(req.userId, { deploymentId: deployId, ...payload });
+            const flushRealtimeLogs = () => {
+                rtLogTimer = null;
+                if (!rtLogBuffer) return;
+                const chunk = rtLogBuffer;
+                rtLogBuffer = '';
+                emitUpdate({ logChunk: chunk });
+            };
+            const emitState = (extra = {}) => emitUpdate({
+                deployment: {
+                    _id: deployId,
+                    status: liveStatus,
+                    steps: liveSteps.map(s => ({ ...s })),
+                    ...extra,
+                },
+            });
 
             const flushLogs = async () => {
                 logFlushTimer = null;
@@ -462,6 +480,8 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
                         buildLog = `${buildLog.slice(0, 150000)}\n... [earlier build output omitted] ...\n${buildLog.slice(-900000)}`;
                     }
                     if (!logFlushTimer) logFlushTimer = setTimeout(flushLogs, 1200);
+                    rtLogBuffer += chunk;
+                    if (!rtLogTimer) rtLogTimer = setTimeout(flushRealtimeLogs, 120);
                 },
                 onStep: ({ name, status, detail }) => {
                     if (finished) return;
@@ -480,13 +500,17 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
                     }
                     const extra = {};
                     if (name === 'deploy' && status === 'running') extra.status = 'deploying';
+                    if (extra.status) liveStatus = extra.status;
                     persistSteps(extra);
+                    emitState();
                 },
             };
 
             const persistFailure = async (depErr) => {
                 finished = true;
                 if (logFlushTimer) { clearTimeout(logFlushTimer); logFlushTimer = null; }
+                if (rtLogTimer) { clearTimeout(rtLogTimer); rtLogTimer = null; }
+                rtLogBuffer = '';
                 const failedStep = liveSteps.find(s => s.status === 'running');
                 // Mark every in-flight step failed (normally only the last one
                 // is running; deploy completes before verify starts). Steps
@@ -559,6 +583,22 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
                     userId: req.userId,
                     detail: publicErrorMessage || 'The deployment failed.',
                 });
+                if (failedDeployment) {
+                    liveStatus = 'failed';
+                    emitUpdate({
+                        deployment: {
+                            _id: deployId,
+                            status: 'failed',
+                            steps: liveSteps.map(s => ({ ...s })),
+                            errorMessage: publicErrorMessage,
+                            fault,
+                            failureStage: failureStage || 'platform',
+                            deployedUrl: null,
+                            httpUrl: null,
+                        },
+                        buildLogs: depService.capLogTail(logTail),
+                    });
+                }
                 // Hand the failure to the background repair worker. This is
                 // fire-and-forget: scheduling must never fail the request.
                 if (failedDeployment) {
@@ -660,6 +700,8 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
 
                 finished = true;
                 if (logFlushTimer) { clearTimeout(logFlushTimer); logFlushTimer = null; }
+                if (rtLogTimer) { clearTimeout(rtLogTimer); rtLogTimer = null; }
+                rtLogBuffer = '';
                 // Service emitted each step; make sure none are left dangling.
                 liveSteps.forEach(s => {
                     if (s.status !== 'done') {
@@ -692,6 +734,21 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
                     return;
                 }
                 console.log(`[deploy] ${sanitized}.buildrshq.dev is live`);
+                liveStatus = 'success';
+                emitUpdate({
+                    deployment: {
+                        _id: deployId,
+                        status: 'success',
+                        steps: liveSteps.map(s => ({ ...s })),
+                        deployedUrl: url,
+                        httpUrl,
+                        errorMessage: null,
+                        fault: null,
+                        failureStage: null,
+                    },
+                    buildLogs: depService.capLogTail(buildLog),
+                    runtimeLogs: String(runtimeLogs).slice(-200000),
+                });
                 notifyDeploymentEvent({
                     type: 'deployment_succeeded',
                     deployment: { _id: deployId, environment: sanitized, company: workspaceId || null },
@@ -813,6 +870,17 @@ router.delete('/:id', authenticateToken, async (req, res) => {
                 { $unset: { buildRunId: 1 } }
             );
         }
+
+        emitDeploymentUpdate(req.userId, {
+            deploymentId: id,
+            deployment: {
+                _id: id,
+                status: 'stopped',
+                steps: stopping.steps || [],
+                deployedUrl: null,
+                httpUrl: null,
+            },
+        });
 
         let stopCompanyId = null;
         try {

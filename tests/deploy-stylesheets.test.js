@@ -15,6 +15,7 @@ const { execFileSync } = require('child_process');
 const {
     isStylesheet,
     appendMissingStylesheets,
+    mergeProjectFiles,
     validateDeployFiles,
     fileKey,
 } = require('../utils/deployContent');
@@ -108,6 +109,66 @@ describe('appendMissingStylesheets', () => {
             { path: '/', name: 'compiled.css', content: 'AAAA', encoding: 'base64' },
         ]);
         expect(merged[0]).toMatchObject({ name: 'compiled.css', encoding: 'base64' });
+    });
+});
+
+describe('mergeProjectFiles', () => {
+    const stored = [
+        { path: '/', name: 'index.html', language: 'html', content: '<link rel="stylesheet" href="/styles.css">' },
+        { path: '/', name: 'styles.css', language: 'css', content: 'body { background: #111; }' },
+        { path: '/styles', name: 'theme.scss', language: 'scss', content: '$accent: #4f9cf9;' },
+    ];
+
+    test('fills a metadata-only stylesheet entry with stored content', () => {
+        // Exactly what the editor sends for a file it never opened: the path
+        // and name are present, content is empty and not resolved.
+        const payload = [
+            { path: '/', name: 'index.html', content: '<link rel="stylesheet" href="/styles.css">', _resolved: true },
+            { path: '/', name: 'styles.css', content: '', _resolved: false },
+        ];
+        const merged = mergeProjectFiles(payload, stored);
+        const css = merged.find((f) => f.name === 'styles.css');
+
+        expect(css.content).toBe('body { background: #111; }');
+        expect(css._resolved).toBe(true);
+    });
+
+    test('appends every stored file the payload omitted', () => {
+        const merged = mergeProjectFiles([{ path: '/', name: 'index.html', content: '<html></html>' }], stored);
+        expect(merged.map((f) => f.name)).toEqual(
+            expect.arrayContaining(['index.html', 'styles.css', 'theme.scss'])
+        );
+        expect(merged).toHaveLength(3);
+        expect(merged.find((f) => f.name === 'theme.scss')).toMatchObject({
+            path: '/styles',
+            language: 'scss',
+        });
+    });
+
+    test('keeps unsaved browser content and intentional empty files', () => {
+        const payload = [
+            { path: '/', name: 'styles.css', content: 'body { color: blue; }', _resolved: true },
+            { path: '/styles', name: 'theme.scss', content: '', _resolved: true },
+        ];
+        const merged = mergeProjectFiles(payload, stored);
+
+        expect(merged.find((f) => f.name === 'styles.css').content).toBe('body { color: blue; }');
+        expect(merged.find((f) => f.name === 'theme.scss').content).toBe('');
+    });
+
+    test('matches path shapes without duplicating', () => {
+        const merged = mergeProjectFiles(
+            [{ path: '/styles/theme.scss', name: 'theme.scss', content: '', _resolved: false }],
+            stored
+        );
+        expect(merged.filter((f) => f.name === 'theme.scss')).toHaveLength(1);
+        expect(merged.find((f) => f.name === 'theme.scss').content).toBe('$accent: #4f9cf9;');
+    });
+
+    test('is a no-op without stored files', () => {
+        const payload = [{ path: '/', name: 'index.html', content: '' }];
+        expect(mergeProjectFiles(payload, [])).toBe(payload);
+        expect(mergeProjectFiles(payload, null)).toBe(payload);
     });
 });
 

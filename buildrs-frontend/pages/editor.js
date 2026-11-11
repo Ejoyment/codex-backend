@@ -22,6 +22,7 @@ import { io } from 'socket.io-client';
 import useToastStore from '../store/toastStore';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import DeploymentLogsModal from '../components/DeploymentLogsModal';
+import useDeploymentRealtime from '../lib/useDeploymentRealtime';
 import { useCurrentCompany } from '../hooks/useCurrentCompany';
 import { normalizeTier, tierDisplayLabel, tierDisplayDetail } from '../lib/tier';
 
@@ -1760,6 +1761,15 @@ export default function Editor() {
       if (data && data.deployments) setDeployments(data.deployments);
     } catch {}
   }
+
+  // Deployment status arrives over the socket instead of waiting for the next
+  // list refresh, so the editor and the log modal agree immediately.
+  useDeploymentRealtime(useCallback((update) => {
+    const patch = update.deployment;
+    if (!patch) return;
+    const id = String(update.deploymentId);
+    setDeployments((prev) => prev.map((d) => (String(d._id) === id ? { ...d, ...patch } : d)));
+  }, []));
 
   async function ensureAiSession() {
     if (aiSessionRef.current) return aiSessionRef.current;

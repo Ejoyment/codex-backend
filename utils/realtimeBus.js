@@ -27,6 +27,20 @@ function emitAgentProgress(userId, payload) {
     }
 }
 
+// Push a deployment's status/steps/log chunk to the owning user's sockets on
+// /collab. That namespace already joins every connection to `agent:<userId>`,
+// so no extra join handshake is needed. Payload shape:
+//   { deploymentId, deployment?: { status, steps, ... }, logChunk?, buildLogs? }
+function emitDeploymentUpdate(userId, payload) {
+    if (!_io || !userId) return false;
+    _io.of('/collab').to(`agent:${userId}`).emit('deployment:update', {
+        userId: String(userId),
+        timestamp: new Date().toISOString(),
+        ...payload,
+    });
+    return true;
+}
+
 // Push a notification to a user's sockets on the /notifications namespace.
 // Called after the notification row is persisted, so a client that misses the
 // push can still fetch it from the REST API.
@@ -81,4 +95,4 @@ function emitWorkspaceChange(workspaceId, event, data) {
     terminalNamespace.emit('workspace:change', payload);
 }
 
-module.exports = { setIO, emitCollab, emitSandbox, emitAgentProgress, emitNotification, emitNotificationRemoved, emitProfileUpdate, emitWorkspaceChange };
+module.exports = { setIO, emitCollab, emitSandbox, emitAgentProgress, emitDeploymentUpdate, emitNotification, emitNotificationRemoved, emitProfileUpdate, emitWorkspaceChange };

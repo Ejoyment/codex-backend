@@ -5,6 +5,7 @@ import Sidebar from './Sidebar';
 import AuthGuard from './AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch, projectApi } from '../lib/api';
+import useDeploymentRealtime, { applyDeploymentPatch } from '../lib/useDeploymentRealtime';
 import {
   ArrowLeft,
   ExternalLink,
@@ -184,6 +185,20 @@ export default function DeploymentPage() {
 
   useEffect(() => { loadDeployments(); }, [loadDeployments]);
 
+  // Instant status/steps/logs from the server. Polling below stays as a
+  // fallback for missed events and older backends.
+  useDeploymentRealtime(useCallback((update) => {
+    const id = String(update.deploymentId);
+    if (update.deployment) {
+      // Never copy log payloads into list rows.
+      const summary = { ...update.deployment };
+      delete summary.buildLogs;
+      delete summary.runtimeLogs;
+      setDeployments((prev) => prev.map((d) => (String(d._id) === id ? { ...d, ...summary } : d)));
+    }
+    setDetail((prev) => (prev && String(prev._id) === id ? applyDeploymentPatch(prev, update) : prev));
+  }, []));
+
   // Keep the list fresh while anything is still building/deploying.
   const anyInFlight = deployments.some((d) => !TERMINAL.includes(d.status));
   useEffect(() => {
@@ -197,7 +212,14 @@ export default function DeploymentPage() {
     try {
       const data = await apiFetch(`/api/deployments/${id}`);
       if (data?.deployment) {
-        setDetail(data.deployment);
+        setDetail((prev) => {
+          // Realtime log chunks can be ahead of the debounced DB flush; never
+          // let a poll truncate output that already reached the screen.
+          if (prev && (prev.buildLogs || '').length > (data.deployment.buildLogs || '').length) {
+            return { ...data.deployment, buildLogs: prev.buildLogs, runtimeLogs: prev.runtimeLogs };
+          }
+          return data.deployment;
+        });
         setDeployments((prev) => prev.map((d) => (d._id === id
           ? { ...d, status: data.deployment.status, deployedUrl: data.deployment.deployedUrl }
           : d)));

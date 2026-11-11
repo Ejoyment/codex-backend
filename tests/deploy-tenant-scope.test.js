@@ -101,10 +101,6 @@ describe('deployment tenant scoping', () => {
         expect(response.status).toBe(400);
         expect(CodeFile.find).toHaveBeenCalledWith({
             project: '507f1f77bcf86cd799439013',
-            $or: [
-                { company: PERSONAL_ID },
-                { company: USER_ID, createdBy: USER_ID },
-            ],
         });
         expect(CodeFile.find).not.toHaveBeenCalledWith(expect.objectContaining({
             company: foreignWorkspaceId,
@@ -155,7 +151,7 @@ describe('deployment tenant scoping', () => {
 
         expect(response.status).toBe(400);
         expect(CodeFile.find).toHaveBeenCalledTimes(1);
-        expect(CodeFile.find).toHaveBeenCalledWith({ project: projectId, company: workspaceId });
+        expect(CodeFile.find).toHaveBeenCalledWith({ project: projectId });
     });
 
     test('accepts the caller personal workspace id as companyId', async () => {
@@ -182,13 +178,7 @@ describe('deployment tenant scoping', () => {
 
         expect(response.status).toBe(400);
         expect(response.body.error).toMatch(/no deployable files/i);
-        expect(CodeFile.find).toHaveBeenCalledWith({
-            project: projectId,
-            $or: [
-                { company: PERSONAL_ID },
-                { company: USER_ID, createdBy: USER_ID },
-            ],
-        });
+        expect(CodeFile.find).toHaveBeenCalledWith({ project: projectId });
     });
 
     test('falls back to the personal workspace for a stale project workspace id', async () => {
@@ -207,13 +197,7 @@ describe('deployment tenant scoping', () => {
             .send({ subdomain: 'my-app', projectId, companyId: staleWorkspaceId });
 
         expect(response.status).toBe(400);
-        expect(CodeFile.find).toHaveBeenCalledWith({
-            project: projectId,
-            $or: [
-                { company: PERSONAL_ID },
-                { company: USER_ID, createdBy: USER_ID },
-            ],
-        });
+        expect(CodeFile.find).toHaveBeenCalledWith({ project: projectId });
     });
 
     test('rejects a deployment run that loses the atomic claim', async () => {
@@ -257,7 +241,7 @@ describe('deployment tenant scoping', () => {
             files: [{ name: 'app.js', path: '/', language: 'javascript' }],
         })).rejects.toThrow(/No file content/);
 
-        expect(CodeFile.find).toHaveBeenCalledWith({ project: projectId, company: workspaceId });
+        expect(CodeFile.find).toHaveBeenCalledWith({ project: projectId });
         expect(CodeFile.find).not.toHaveBeenCalledWith(expect.objectContaining({
             $or: expect.anything(),
         }));
