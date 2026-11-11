@@ -7,6 +7,7 @@ const depService = require('./deploymentService');
 const { toEnvObject } = require('./deployEnv');
 const { validateDeployFiles, backfillFileContent, limits: deployLimits } = require('./deployContent');
 const { notifyDeploymentEvent } = require('./notificationTriggers');
+const { emitDeploymentUpdate } = require('./realtimeBus');
 
 function resetSelfHealState(deployment) {
   deployment.selfHeal = {
@@ -63,11 +64,35 @@ async function redeployDeployment({
 
   const subdomain = deployment.subdomain;
   let buildLogs = '';
+  let rtLogBuffer = '';
+  let rtLogTimer = null;
+  const emitUpdate = (payload) => emitDeploymentUpdate(userId, { deploymentId: deployment._id, ...payload });
+  const flushRtLogs = () => {
+    rtLogTimer = null;
+    if (!rtLogBuffer) return;
+    const chunk = rtLogBuffer;
+    rtLogBuffer = '';
+    emitUpdate({ logChunk: chunk });
+  };
+  const emitState = () => emitUpdate({
+    deployment: {
+      _id: deployment._id,
+      status: deployment.status,
+      steps: (deployment.steps || []).map((step) => ({ ...step })),
+      deployedUrl: deployment.deployedUrl || null,
+      errorMessage: deployment.errorMessage || null,
+      fault: deployment.fault || null,
+      failureStage: deployment.failureStage || null,
+    },
+  });
   const steps = ['prepare', 'build', 'deploy', 'verify'].map((name) => ({ name, status: 'pending' }));
   const hooks = {
     onLog(chunk) {
-      buildLogs += String(chunk || '');
+      const text = String(chunk || '');
+      buildLogs += text;
       if (buildLogs.length > 1200000) buildLogs = buildLogs.slice(-900000);
+      rtLogBuffer += text;
+      if (!rtLogTimer) rtLogTimer = setTimeout(flushRtLogs, 120);
     },
     onStep({ name, status, detail }) {
       let step = steps.find((item) => item.name === name);
@@ -84,6 +109,7 @@ async function redeployDeployment({
       deployment.save().catch((error) => {
         console.error('[agent-auto-deploy] could not persist deployment progress:', error.message);
       });
+      emitState();
     },
   };
 
@@ -96,6 +122,7 @@ async function redeployDeployment({
   deployment.steps = steps;
   deployment.expiresAt = null;
   await deployment.save();
+  emitState();
   notifyDeploymentEvent({
     type: 'deployment_started',
     deployment: { _id: deployment._id, environment: subdomain, company: workspaceId },
@@ -104,7 +131,7 @@ async function redeployDeployment({
   });
 
   try {
-    const files = await CodeFile.find({ project: resolvedProjectId, company: workspaceId })
+    const files = await CodeFile.find({ project: resolvedProjectId })
       .select('name path content language')
       .lean();
     if (!files.length) throw new Error('The approved project has no files to deploy.');
@@ -148,6 +175,22 @@ async function redeployDeployment({
     deployment.buildLogs = depService.capLogTail(buildLogs);
     deployment.runtimeLogs = String(result.runtimeLogs || '').slice(-200000);
     await deployment.save();
+    if (rtLogTimer) { clearTimeout(rtLogTimer); rtLogTimer = null; }
+    rtLogBuffer = '';
+    emitUpdate({
+      deployment: {
+        _id: deployment._id,
+        status: 'success',
+        steps: steps.map((step) => ({ ...step })),
+        deployedUrl: deployment.deployedUrl,
+        httpUrl: deployment.httpUrl,
+        errorMessage: null,
+        fault: null,
+        failureStage: null,
+      },
+      buildLogs: deployment.buildLogs,
+      runtimeLogs: deployment.runtimeLogs,
+    });
     notifyDeploymentEvent({
       type: 'deployment_succeeded',
       deployment: { _id: deployment._id, environment: subdomain, company: workspaceId },
@@ -166,6 +209,21 @@ async function redeployDeployment({
     if (error.runtimeLogs) deployment.runtimeLogs = String(error.runtimeLogs).slice(-200000);
     deployment.expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     await deployment.save();
+    if (rtLogTimer) { clearTimeout(rtLogTimer); rtLogTimer = null; }
+    rtLogBuffer = '';
+    emitUpdate({
+      deployment: {
+        _id: deployment._id,
+        status: 'failed',
+        steps: steps.map((step) => ({ ...step })),
+        deployedUrl: null,
+        errorMessage: deployment.errorMessage,
+        fault: deployment.fault,
+        failureStage: deployment.failureStage,
+      },
+      buildLogs: deployment.buildLogs,
+      runtimeLogs: deployment.runtimeLogs,
+    });
     notifyDeploymentEvent({
       type: 'deployment_failed',
       deployment: { _id: deployment._id, environment: subdomain, company: workspaceId },

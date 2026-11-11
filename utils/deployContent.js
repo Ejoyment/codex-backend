@@ -112,6 +112,71 @@ function appendMissingStylesheets(files, projectFiles) {
     return extras.length ? [...list, ...extras] : list;
 }
 
+function storedFileEntry(file) {
+    const rawPath = typeof file.path === 'string' ? file.path : '';
+    const rawName = typeof file.name === 'string' ? file.name : '';
+    const name = rawName || rawPath.split('/').filter(Boolean).pop() || '';
+    return {
+        name,
+        path: rawPath || '/',
+        content: typeof file.content === 'string' ? file.content : '',
+        language: file.language || 'plaintext',
+        encoding: file.encoding === 'base64' ? 'base64' : undefined,
+    };
+}
+
+/**
+ * Merge a project's stored files into the payload the browser sent.
+ *
+ * The editor sends its current buffers, but files it never opened arrive as
+ * metadata only (`content: ''`, `_resolved: false`). Deploying those as-is
+ * publishes empty files — most visibly a stylesheet, which leaves the site
+ * looking unstyled while every other file works. Stored content therefore
+ * fills empty entries and every stored file missing from the payload is
+ * appended, so a deploy always contains the whole project.
+ *
+ * Precedence: unsaved browser content (`_resolved` or non-empty) always wins;
+ * an intentionally empty file (`_resolved: true` with `content: ''`) stays
+ * empty. Only files belonging to this project are supplied by the caller,
+ * which has already verified project ownership.
+ */
+function mergeProjectFiles(files, projectFiles) {
+    const list = Array.isArray(files) ? files : [];
+    if (!Array.isArray(projectFiles) || projectFiles.length === 0) return list;
+
+    const storedByKey = new Map();
+    for (const file of projectFiles) {
+        if (!file) continue;
+        const entry = storedFileEntry(file);
+        if (!entry.name) continue;
+        storedByKey.set(fileKey(entry), entry);
+    }
+
+    const seen = new Set();
+    const merged = list.map((file) => {
+        const key = fileKey(file);
+        seen.add(key);
+        const stored = storedByKey.get(key);
+        const hasContent = typeof file.content === 'string' && file.content !== '';
+        // Buffer content (including an intentional empty file) is final.
+        if (!stored || file._resolved === true || hasContent) return file;
+        return {
+            ...file,
+            content: stored.content,
+            language: file.language || stored.language,
+            _resolved: true,
+        };
+    });
+
+    for (const [key, stored] of storedByKey) {
+        if (seen.has(key)) continue;
+        seen.add(key);
+        merged.push({ ...stored, _resolved: true });
+    }
+
+    return merged;
+}
+
 // Content came from GitHub/tarball as raw bytes: keep binary files as
 // base64 (flagged) so utf8 round-trips never corrupt them; store text as-is.
 function looksBinary(buf) {
@@ -307,21 +372,13 @@ async function backfillFileContent({ userId, projectId, workspaceId, personal = 
 
     // 1) Project files: merge content from the CodeFile collection (the
     // project file list API is metadata-only). A record with content '' is a
-    // genuinely empty file — resolved, not pending. Scope to the selected
-    // project only; widening to the workspace could pull another project's
-    // source into this deployment.
+    // genuinely empty file — resolved, not pending. The project was already
+    // proven to belong to the caller, so `project` is the correct boundary:
+    // filtering by the project's workspace as well hid files whose `company`
+    // no longer matched (moved projects, agent/terminal writes), which is how
+    // stylesheets ended up deployed as empty files.
     if (projectId) {
-        // Personal workspaces store the Subscription _id on CodeFile.company;
-        // older personal files may still be keyed by the owner's user id.
-        const fileScope = personal
-            ? {
-                $or: [
-                    { company: workspaceId },
-                    { company: String(userId), createdBy: userId },
-                ],
-            }
-            : { company: workspaceId };
-        const dbFiles = await CodeFile.find({ project: projectId, ...fileScope }).lean();
+        const dbFiles = await CodeFile.find({ project: projectId }).lean();
         const byKey = new Map();
         for (const dbf of dbFiles) {
             byKey.set(fileKey(dbf), typeof dbf.content === 'string' ? dbf.content : '');
@@ -395,6 +452,7 @@ module.exports = {
     applyContent,
     isStylesheet,
     appendMissingStylesheets,
+    mergeProjectFiles,
     validateDeployFiles,
     backfillFileContent,
     limits,
