@@ -50,7 +50,7 @@ export default function TrialBanner({ trial }) {
         </div>
         <button
           type="button"
-          onClick={() => router.push('/settings?tab=billing')}
+          onClick={() => router.push('/billing')}
           className="px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
           style={{ background: '#12dce5', color: '#0a0d15' }}
         >
