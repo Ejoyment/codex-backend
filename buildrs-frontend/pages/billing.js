@@ -1,5 +1,5 @@
-import { useRouter } from 'next/router';
 import Head from 'next/head';
+import { useRouter } from 'next/router';
 import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
 import BillingPanel from '../components/BillingPanel';
@@ -24,10 +24,12 @@ export default function Billing() {
 
         <main className="workspace-main">
           <div className="workspace-content set-page">
-            <header className="set-page-head">
-              <p className="set-breadcrumb">Manage <span>/</span> Billing</p>
-              <h1 className="set-title">Billing &amp; Plans</h1>
-              <p className="set-subtitle">Manage your plan, usage and payment method</p>
+            <header className="set-page-head bill-page-head">
+              <div>
+                <p className="set-breadcrumb">Manage <span>/</span> Billing &amp; Plans</p>
+                <h1 className="set-title">Billing &amp; Plans</h1>
+                <p className="set-subtitle">Manage your subscriptions, statements, and payment method</p>
+              </div>
             </header>
 
             <div className="set-body">
