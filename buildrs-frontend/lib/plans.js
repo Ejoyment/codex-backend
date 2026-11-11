@@ -2,8 +2,8 @@
  * Canonical plan catalog — the single source of truth for plan names, prices,
  * and copy across checkout and the settings billing tab.
  *
- * These were previously hardcoded inside pages/checkout.js, which meant the
- * billing tab had no way to show real prices and the two surfaces could drift.
+ * These used to be hardcoded per surface, which meant the billing tab had no
+ * way to show real prices and the pages could drift.
  * Backend tier names must match `id` exactly (see utils/tierNames.js TIERS).
  */
 
