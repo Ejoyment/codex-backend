@@ -11322,7 +11322,9 @@
   flex: 1;
 }
 
-.notif-title {
+/* Dropdown row title. Scoped to the row so page-level headings that share the
+   `.notif-title` class cannot resize it. */
+.notif-row .notif-title {
   font-size: 0.76rem;
   font-weight: 600;
   color: var(--ws-text);
@@ -16976,7 +16978,9 @@
   color: #12dce5;
   margin-bottom: 0.4rem;
 }
-.notif-title { font-size: 1.75rem; font-weight: 700; letter-spacing: -0.02em; color: #fff; line-height: 1.1; }
+/* Scoped to the page header: `.notif-title` is also the dropdown row title,
+   and an unscoped 1.75rem heading rule blew those rows up. */
+.notif-head .notif-title { font-size: 1.75rem; font-weight: 700; letter-spacing: -0.02em; color: #fff; line-height: 1.1; }
 .notif-subtitle { color: var(--figma-text-faint); font-size: 0.9rem; margin-top: 0.4rem; }
 .notif-muted { color: var(--figma-text-faint); font-size: 0.85rem; }
 
