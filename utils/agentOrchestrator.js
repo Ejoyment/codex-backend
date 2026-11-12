@@ -1361,9 +1361,12 @@ const previousIteration = session.iterations[session.iterations.length - 1];
                 timeoutMs,
                 provider: context.provider,
                 model: context.model,
-                // Autonomous background runs must not stop because the
-                // preferred provider is rate-limited or down.
-                allowProviderFallback: context.allowProviderFallback === true,
+                // Autonomous background runs explicitly request failover. When
+                // the caller has no opinion, let aiService fail over on an
+                // outage instead of failing the run on a transient 503.
+                ...(typeof context.allowProviderFallback === 'boolean'
+                    ? { allowProviderFallback: context.allowProviderFallback }
+                    : {}),
             });
 
             // Parse LLM response

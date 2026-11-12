@@ -10,6 +10,8 @@
     "test:watch": "jest --watch --forceExit --detectOpenHandles",
     "test:ci": "jest --coverage --ci --forceExit --detectOpenHandles",
     "test:spec": "jest --testPathPattern='spec' --forceExit --detectOpenHandles",
+    "check:ai": "node scripts/ai-model-check.js",
+    "check:ai:live": "node scripts/ai-model-check.js --live",
     "build:figma-helper": "mkdir -p buildrs-frontend/public/downloads && rm -f buildrs-frontend/public/downloads/buildrs-figma-helper.zip && cd figma-helper && zip -q -X -r ../buildrs-frontend/public/downloads/buildrs-figma-helper.zip manifest.json background.js content.js popup.html popup.css popup.js options.html options.js README.md icons"
   },
   "keywords": [

@@ -13,6 +13,7 @@ function resetSelfHealState(deployment) {
   deployment.selfHeal = {
     status: null,
     attempts: 0,
+    outageRetries: 0,
     lastAttemptAt: null,
     nextAttemptAt: null,
     completedAt: null,

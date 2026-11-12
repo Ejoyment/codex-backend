@@ -24,6 +24,7 @@ const { ensurePersonalWorkspace } = require('./personalWorkspace');
 const { redeployDeployment } = require('./agentAutoDeploy');
 const { detectRuntime } = require('./deploymentService');
 const { normalizeEnv, toObject } = require('./deployEnv');
+const { isProviderOutageError } = require('./aiResilience');
 const { notifyDeploymentEvent } = require('./notificationTriggers');
 
 function readInt(name, fallback) {
@@ -57,10 +58,15 @@ const AGENT_MAX_TOKENS = readInt('DEPLOY_SELF_HEAL_AGENT_MAX_TOKENS', 512);
 // a whole-minute boundary. A token-limit retry should not fire until that
 // window has had a chance to clear, otherwise it is rejected again.
 const TOKEN_LIMIT_BACKOFF_MS = readInt('DEPLOY_SELF_HEAL_TOKEN_LIMIT_BACKOFF_MS', 65000);
+// A provider outage (Gemini 503 "high demand", 429, gateway/network) is not a
+// failed repair. Retry it after a shorter delay and do NOT consume a repair
+// attempt, otherwise three API 503s would permanently give up on the deploy.
+const MODEL_OUTAGE_BACKOFF_MS = readInt('DEPLOY_SELF_HEAL_MODEL_OUTAGE_BACKOFF_MS', 120000);
+const MAX_MODEL_OUTAGE_RETRIES = readInt('DEPLOY_SELF_HEAL_MODEL_OUTAGE_RETRIES', 15);
 const TOKEN_LIMIT_PATTERN = 'request too large|tokens per minute|rate_limit_exceeded|context_length_exceeded|maximum context length|too many tokens|reduce your message size';
 // A rejected/absent provider key is not a code problem and retrying it just
 // burns the repair budget. Surface it to the user instead.
-const PROVIDER_CONFIG_PATTERN = 'invalid api key|incorrect api key|invalid_api_key|unauthorized|authentication failed|no ai providers configured|is selected but not configured';
+const PROVIDER_CONFIG_PATTERN = 'invalid api key|incorrect api key|invalid_api_key|api key not valid|unauthorized|authentication failed|permission denied|no ai providers configured|is selected but not configured';
 
 // Autonomous repairs may read broadly, and may run the project's own build and
 // tests to verify a fix before redeploying. run_tests executes in the sandbox
@@ -196,6 +202,41 @@ async function markSucceeded(deployment, summary, workspaceId) {
 async function markRetry(deployment, error, workspaceId) {
   const attempts = Number(deployment?.selfHeal?.attempts) || 1;
   const message = String(error?.message || error || 'Self-heal attempt failed').slice(0, 1000);
+  const outageRetries = Number(deployment?.selfHeal?.outageRetries) || 0;
+
+  // The provider/model was temporarily unavailable (Gemini 503 "high demand",
+  // 429, gateway/network error). That is not evidence the repair is wrong, so
+  // wait and retry without spending one of the limited repair attempts.
+  if (isProviderOutageError(message) && outageRetries < MAX_MODEL_OUTAGE_RETRIES) {
+    const nextAttemptAt = new Date(Date.now() + MODEL_OUTAGE_BACKOFF_MS);
+    const summary = `AI provider temporarily unavailable (${outageRetries + 1}/${MAX_MODEL_OUTAGE_RETRIES})`;
+    await Deployment.updateOne(
+      { _id: deployment._id, 'selfHeal.status': 'running' },
+      {
+        $set: {
+          'selfHeal.status': 'pending',
+          'selfHeal.nextAttemptAt': nextAttemptAt,
+          'selfHeal.lastError': message,
+          'selfHeal.summary': summary,
+          'selfHeal.progress': `${summary}: ${message}. Retrying the repair automatically.`,
+        },
+        // Give the repair attempt back: the model never evaluated the fix.
+        $inc: { 'selfHeal.outageRetries': 1, 'selfHeal.attempts': -1 },
+      }
+    );
+    notifyDeploymentEvent({
+      type: 'deployment_healing',
+      deployment: deploymentNotificationTarget(deployment, workspaceId),
+      userId: deployment.userId,
+      detail: `${summary}. Retrying automatically in ${Math.round(MODEL_OUTAGE_BACKOFF_MS / 1000)}s.`,
+    });
+    return {
+      retry: true,
+      modelOutage: true,
+      attempts: Math.max(0, attempts - 1),
+      nextAttemptAt,
+    };
+  }
 
   if (attempts >= MAX_ATTEMPTS) {
     return markGaveUp(

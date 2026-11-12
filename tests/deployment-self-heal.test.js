@@ -697,6 +697,41 @@ describe('deployment self-heal worker', () => {
     }));
   });
 
+  test('waits out a model outage without spending a repair attempt', async () => {
+    // Already at the attempt cap: an API 503 must not permanently give up on
+    // a deployment whose code was never evaluated.
+    Deployment.findOneAndUpdate.mockResolvedValue(deployment({
+      fault: 'user',
+      failureStage: 'build',
+      selfHeal: { status: 'running', attempts: 3, outageRetries: 0 },
+    }));
+    agentOrchestrator.executeAgenticLoop.mockResolvedValue({
+      success: false,
+      iterations: [],
+      error: '[GoogleGenerativeAI Error]: [503 Service Unavailable] This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.',
+    });
+
+    const result = await selfHeal.processDeployment('deployment-id');
+
+    expect(result).toMatchObject({ retry: true, modelOutage: true });
+    expect(result.gaveUp).toBeUndefined();
+    expect(redeployDeployment).not.toHaveBeenCalled();
+
+    const retryWrite = Deployment.updateOne.mock.calls.find(
+      ([filter, update]) => filter?._id === 'deployment-id'
+        && filter?.['selfHeal.status'] === 'running'
+        && update?.$inc?.['selfHeal.outageRetries'] === 1
+    );
+    expect(retryWrite).toBeTruthy();
+    expect(retryWrite[1].$inc['selfHeal.attempts']).toBe(-1);
+    expect(retryWrite[1].$set['selfHeal.status']).toBe('pending');
+    expect(retryWrite[1].$set['selfHeal.nextAttemptAt']).toBeInstanceOf(Date);
+
+    expect(notifyDeploymentEvent).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'deployment_healing',
+    }));
+  });
+
   test('includes the container runtime logs in the repair prompt', () => {
     const goal = selfHeal.buildHealingGoal(
       deployment({

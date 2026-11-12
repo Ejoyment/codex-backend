@@ -7,14 +7,42 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { providerDefinitions, implementedProviderNames } = require('../config/aiProviders');
 const { parsePrivacyMode } = require('./aiPrivacy');
+const { classifyAiError, retryDelayMs, sleep, DEFAULT_MAX_RETRIES } = require('./aiResilience');
 
 // Outbound LLM calls must stay bounded, including provider failover.
 const AI_REQUEST_TIMEOUT_MS = parseInt(process.env.AI_REQUEST_TIMEOUT_MS, 10) || 60000;
+const AI_MAX_RETRIES = Number.isFinite(parseInt(process.env.AI_MAX_RETRIES, 10))
+    ? Math.max(0, Math.min(parseInt(process.env.AI_MAX_RETRIES, 10), 5))
+    : DEFAULT_MAX_RETRIES;
+// A provider that just failed transiently is skipped for a short while so a
+// multi-step agent run does not stall on the same dead model every iteration.
+const PROVIDER_COOLDOWN_MS = parseInt(process.env.AI_PROVIDER_COOLDOWN_MS, 10) || 60000;
+// A rejected key will not heal itself in a minute; stop burning requests.
+const PROVIDER_AUTH_COOLDOWN_MS = parseInt(process.env.AI_PROVIDER_AUTH_COOLDOWN_MS, 10) || 300000;
 // Agent runs need enough of the repo to make real cross-file changes. Keep the
 // bounds configurable so a deployment can trade context for cost/latency.
 const MAX_CONTEXT_FILES = parseInt(process.env.AI_CONTEXT_FILES, 10) || 16;
 const MAX_FILE_CONTEXT_CHARS = parseInt(process.env.AI_CONTEXT_FILE_CHARS, 10) || 20000;
 const MAX_TOTAL_FILE_CONTEXT_CHARS = parseInt(process.env.AI_CONTEXT_TOTAL_CHARS, 10) || 120000;
+
+/**
+ * Turn a non-2xx provider response into an error the retry layer understands:
+ * status and Retry-After must survive so 429/503 back off correctly.
+ */
+async function providerHttpError(name, response) {
+    let detail = '';
+    try {
+        detail = String(await response.text()).slice(0, 2000);
+    } catch (_) {}
+    const error = new Error(`${name} API error (${response.status}): ${detail || response.statusText}`);
+    error.status = response.status;
+    const retryAfter = response.headers?.get?.('retry-after');
+    if (retryAfter) {
+        const seconds = Number(retryAfter);
+        if (Number.isFinite(seconds)) error.retryAfterMs = Math.max(0, seconds * 1000);
+    }
+    return error;
+}
 
 // Providers such as Groq count the requested output budget toward their
 // tokens-per-minute limit. Callers that only need a small JSON decision (the
@@ -30,6 +58,10 @@ function resolveMaxTokens(codeContext, fallback) {
 class AIService {
     constructor() {
         this.provider = process.env.AI_PROVIDER || 'auto'; // auto, gemini, mistral, groq
+        // Per-provider runtime state (failures/cooldown), used to skip a
+        // provider that just returned 503 instead of retrying it every step.
+        this.providerHealth = {};
+        this.maxRetries = AI_MAX_RETRIES;
         this.initializeProviders();
     }
 
@@ -72,21 +104,41 @@ class AIService {
      * requests could be sent to a provider different from the caller's choice.
      */
     resolveProvider(requested) {
+        const explicit = requested && requested !== 'auto';
         const configuredProvider = this.provider && this.provider !== 'auto'
             ? this.provider
             : null;
-        const provider = requested && requested !== 'auto'
-            ? requested
-            : configuredProvider || Object.keys(this.providers).find((key) => this.providers[key].available);
 
+        // An explicit request is validated strictly: never silently serve a
+        // different provider than the caller named.
+        if (explicit) {
+            if (!this.providers[requested]) {
+                throw new Error(`AI provider "${requested}" is not supported by this service.`);
+            }
+            if (!this.providers[requested].available) {
+                throw new Error(`AI provider "${requested}" is selected but not configured. Add its API key or select an available provider.`);
+            }
+            return requested;
+        }
+
+        if (configuredProvider) {
+            if (!this.providers[configuredProvider]) {
+                throw new Error(`AI provider "${configuredProvider}" is not supported by this service.`);
+            }
+            if (this.providers[configuredProvider].available) return configuredProvider;
+            // A stale default (the key was removed or renamed) must not take
+            // the whole platform down when another provider is configured.
+            const alternate = Object.keys(this.providers).find((key) => this.providers[key].available);
+            if (alternate) {
+                console.warn(`[ai] AI_PROVIDER="${configuredProvider}" is not configured; using "${alternate}"`);
+                return alternate;
+            }
+            throw new Error(`AI provider "${configuredProvider}" is selected but not configured. Add its API key or select an available provider.`);
+        }
+
+        const provider = Object.keys(this.providers).find((key) => this.providers[key].available);
         if (!provider) {
             throw new Error('No AI provider configured. Please add an API key to the environment.');
-        }
-        if (!this.providers[provider]) {
-            throw new Error(`AI provider "${provider}" is not supported by this service.`);
-        }
-        if (!this.providers[provider].available) {
-            throw new Error(`AI provider "${provider}" is selected but not configured. Add its API key or select an available provider.`);
         }
         return provider;
     }
@@ -141,56 +193,53 @@ class AIService {
             : AI_REQUEST_TIMEOUT_MS;
         const deadline = Date.now() + timeoutMs;
         const tried = Array.isArray(codeContext._tried) ? [...codeContext._tried] : [];
+        // A provider preference is a preference, not a promise to fail: when
+        // the chosen provider is temporarily unavailable, another configured
+        // provider must be able to finish the request (deployment self-heal
+        // runs unattended and cannot ask the user to try again later). Only an
+        // explicit `allowProviderFallback: false` hard-pins the provider.
         const allowProviderFallback = typeof codeContext.allowProviderFallback === 'boolean'
             ? codeContext.allowProviderFallback
-            : !(codeContext.provider && codeContext.provider !== 'auto') &&
-                !(this.provider && this.provider !== 'auto');
+            : true;
+        const allowModelFallback = codeContext.allowModelFallback !== false;
         let lastError;
 
         while (provider) {
             const providerConfig = this.providers[provider];
             const remainingMs = deadline - Date.now();
             if (remainingMs <= 0) {
-                lastError = new Error('AI request timed out');
+                lastError = lastError || new Error('AI request timed out');
                 break;
             }
 
-            console.log(`Using AI provider: ${providerConfig.name}`);
+            console.log(`Using AI provider: ${providerConfig.name} (${providerConfig.model})`);
             try {
                 const requestContext = {
                     ...codeContext,
                     timeoutMs: remainingMs,
                     signal: codeContext.signal || AbortSignal.timeout(remainingMs),
                 };
-                let result;
-                switch (provider) {
-                    case 'gemini':
-                        result = await this.chatGemini(messages, requestContext);
-                        break;
-                    case 'mistral':
-                        result = await this.chatMistral(messages, requestContext);
-                        break;
-                    case 'groq':
-                        result = await this.chatGroq(messages, requestContext);
-                        break;
-                    case 'openrouter':
-                        result = await this.chatOpenRouter(messages, requestContext);
-                        break;
-                    case 'huggingface':
-                        result = await this.chatHuggingFace(messages, requestContext);
-                        break;
-                    default:
-                        throw new Error(`Unknown provider: ${provider}`);
-                }
-                if (!result?.success || typeof result.content !== 'string' || !result.content.trim()) {
-                    throw new Error(result?.error || `${providerConfig.name} returned an empty response`);
-                }
+                const result = await this.requestWithRetries(
+                    provider,
+                    providerConfig,
+                    messages,
+                    requestContext,
+                    { deadline, allowModelFallback }
+                );
+                this.markProviderSuccess(provider);
                 return result;
             } catch (error) {
                 lastError = error;
                 tried.push(provider);
-                console.error(`Error with ${provider}:`, error?.message || String(error));
-                provider = allowProviderFallback ? this.getFallbackProvider(provider, tried) : null;
+                const info = classifyAiError(error);
+                this.markProviderFailure(provider, error, info);
+                console.error(`Error with ${provider} (${info.kind}):`, error?.message || String(error));
+                // Fail over only when the provider itself is unavailable or
+                // the model is gone. A malformed request or an unknown error
+                // would fail the same way everywhere; report the real error.
+                const canFailover = allowProviderFallback
+                    && (info.retryable || info.modelMissing || info.kind === 'auth' || error.isEmptyResponse);
+                provider = canFailover ? this.getFallbackProvider(provider, tried) : null;
             }
         }
 
@@ -198,6 +247,154 @@ class AIService {
             success: false,
             error: lastError?.message || 'AI request failed: no available provider succeeded',
         };
+    }
+
+    /**
+     * Models to try on one provider, in order. The primary comes from the
+     * request (a pinned model) or the provider config; the rest are the
+     * provider's fallback models (env-configurable). A Gemini 503 is usually
+     * model-specific, so switching model inside the provider is faster than
+     * switching provider.
+     */
+    modelCandidates(provider, requestedModel) {
+        const config = this.providers[provider];
+        if (!config) return [];
+        return [...new Set([
+            requestedModel || config.model,
+            ...(config.fallbackModels || []),
+        ].filter(Boolean))];
+    }
+
+    /**
+     * Call one provider with retries. Transient errors (429/5xx/network) are
+     * retried with backoff; a missing/overloaded model moves to the provider's
+     * next model; auth and token-limit errors fail immediately.
+     */
+    async requestWithRetries(provider, config, messages, requestContext, options = {}) {
+        const { deadline, allowModelFallback } = options;
+        const models = allowModelFallback
+            ? this.modelCandidates(provider, requestContext.model)
+            : [requestContext.model || config.model];
+        const configuredRetries = Number.isFinite(Number(requestContext.aiMaxRetries))
+            ? Number(requestContext.aiMaxRetries)
+            : this.maxRetries;
+        const maxAttempts = Math.max(1, Math.min(configuredRetries, 5) + 1);
+        let lastError;
+
+        for (let modelIndex = 0; modelIndex < models.length; modelIndex += 1) {
+            const model = models[modelIndex];
+            for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+                const remainingMs = deadline - Date.now();
+                if (remainingMs <= 0) {
+                    throw lastError || new Error('AI request timed out');
+                }
+
+                try {
+                    const result = await this.callProvider(provider, messages, {
+                        ...requestContext,
+                        model,
+                    });
+                    if (result && result.success === false) {
+                        // Providers that return an error envelope instead of
+                        // throwing still carry a retryable message/status.
+                        throw new Error(result.error || `${config.name} request failed`);
+                    }
+                    if (!result?.success || typeof result.content !== 'string' || !result.content.trim()) {
+                        const empty = new Error(result?.error || `${config.name} returned an empty response`);
+                        empty.isEmptyResponse = true;
+                        throw empty;
+                    }
+                    return result;
+                } catch (error) {
+                    lastError = error;
+                    const info = classifyAiError(error);
+
+                    // The caller must fix a key or the prompt size; retrying
+                    // here only burns the deployment's repair budget.
+                    if (info.kind === 'auth' || info.kind === 'token_limit') throw error;
+
+                    const hasNextModel = modelIndex < models.length - 1;
+                    const retrySameModel = info.retryable && !error.isEmptyResponse && attempt < maxAttempts;
+
+                    if (retrySameModel) {
+                        const delay = retryDelayMs(attempt, { retryAfterMs: info.retryAfterMs });
+                        if (Date.now() + delay < deadline) {
+                            console.warn(
+                                `[ai] ${provider}/${model} ${info.kind} failure ` +
+                                `(attempt ${attempt}/${maxAttempts}); retrying in ${delay}ms`
+                            );
+                            await sleep(delay, requestContext.signal);
+                            continue;
+                        }
+                    }
+
+                    // Out of retries for this model. A provider/model-side
+                    // failure can still succeed on the provider's next model.
+                    if (hasNextModel && (info.retryable || info.modelMissing || error.isEmptyResponse)) {
+                        console.warn(`[ai] ${provider}/${model} failed (${info.kind}); trying ${models[modelIndex + 1]}`);
+                        break;
+                    }
+                    throw error;
+                }
+            }
+        }
+
+        throw lastError || new Error(`${config.name} returned no response`);
+    }
+
+    async callProvider(provider, messages, codeContext) {
+        switch (provider) {
+            case 'gemini':
+                return this.chatGemini(messages, codeContext);
+            case 'mistral':
+                return this.chatMistral(messages, codeContext);
+            case 'groq':
+                return this.chatGroq(messages, codeContext);
+            case 'openrouter':
+                return this.chatOpenRouter(messages, codeContext);
+            case 'huggingface':
+                return this.chatHuggingFace(messages, codeContext);
+            default:
+                throw new Error(`Unknown provider: ${provider}`);
+        }
+    }
+
+    providerHealthEntry(name) {
+        if (!this.providerHealth[name]) {
+            this.providerHealth[name] = {
+                failures: 0,
+                cooldownUntil: 0,
+                lastError: null,
+                lastFailureAt: null,
+                lastSuccessAt: null,
+            };
+        }
+        return this.providerHealth[name];
+    }
+
+    isProviderCooling(name) {
+        const entry = this.providerHealth[name];
+        return Boolean(entry?.cooldownUntil && entry.cooldownUntil > Date.now());
+    }
+
+    markProviderSuccess(name) {
+        const entry = this.providerHealthEntry(name);
+        entry.failures = 0;
+        entry.cooldownUntil = 0;
+        entry.lastError = null;
+        entry.lastSuccessAt = new Date();
+    }
+
+    markProviderFailure(name, error, info = classifyAiError(error)) {
+        const entry = this.providerHealthEntry(name);
+        entry.failures += 1;
+        entry.lastError = String(error?.message || error || 'AI request failed').slice(0, 500);
+        entry.lastFailureAt = new Date();
+        if (info.kind === 'auth') {
+            entry.cooldownUntil = Date.now() + PROVIDER_AUTH_COOLDOWN_MS;
+        } else if (info.retryable) {
+            entry.cooldownUntil = Date.now() + PROVIDER_COOLDOWN_MS;
+        }
     }
 
     /**
@@ -249,7 +446,12 @@ Please:
     getFallbackProvider(currentProvider, tried = []) {
         const providers = Object.keys(this.providers);
         const attempted = new Set([...(Array.isArray(tried) ? tried : []), currentProvider]);
-        return providers.find((p) => !attempted.has(p) && this.providers[p].available);
+        const candidates = providers.filter((p) => !attempted.has(p) && this.providers[p].available);
+        // Prefer a provider that is not cooling down from a recent outage.
+        // If every candidate is cooling, still try one: a short cooldown must
+        // not turn into a hard outage for an unattended repair run.
+        const ready = candidates.filter((p) => !this.isProviderCooling(p));
+        return (ready.length ? ready : candidates)[0];
     }
 
     // Gemini Implementation
@@ -317,8 +519,7 @@ Please:
         });
 
         if (!response.ok) {
-            const error = await response.text();
-            throw new Error(`Mistral API error: ${error}`);
+            throw await providerHttpError('Mistral', response);
         }
 
         const data = await response.json();
@@ -396,8 +597,7 @@ Please:
         });
 
         if (!response.ok) {
-            const error = await response.text();
-            throw new Error(`Groq API error: ${error}`);
+            throw await providerHttpError('Groq', response);
         }
 
         const data = await response.json();
@@ -451,8 +651,7 @@ Please:
         });
 
         if (!response.ok) {
-            const error = await response.text();
-            throw new Error(`Hugging Face API error: ${error}`);
+            throw await providerHttpError('Hugging Face', response);
         }
 
         const data = await response.json();
@@ -511,8 +710,7 @@ Please:
         });
 
         if (!response.ok) {
-            const error = await response.text();
-            throw new Error(`OpenRouter API error: ${error}`);
+            throw await providerHttpError('OpenRouter', response);
         }
 
         const data = await response.json();
@@ -676,8 +874,35 @@ Your capabilities:
             name: key,
             displayName: config.name,
             available: config.available,
-            model: config.model
+            model: config.model,
+            fallbackModels: config.fallbackModels || [],
         }));
+    }
+
+    /**
+     * Safe, network-free snapshot for /api/health and the model check script.
+     * Never includes API keys. `status` is 'unconfigured', 'cooling' (recent
+     * transient failure, still skipped for a short while) or 'ready'.
+     */
+    getHealthSummary() {
+        const now = Date.now();
+        return {
+            defaultProvider: this.provider,
+            maxRetries: this.maxRetries,
+            providers: this.getProviderInfo().map((provider) => {
+                const entry = this.providerHealth[provider.name] || {};
+                const cooling = Number(entry.cooldownUntil) > now;
+                return {
+                    ...provider,
+                    provider: provider.name,
+                    status: !provider.available ? 'unconfigured' : (cooling ? 'cooling' : 'ready'),
+                    cooldownUntil: cooling ? new Date(entry.cooldownUntil).toISOString() : null,
+                    lastError: entry.lastError || null,
+                    lastFailureAt: entry.lastFailureAt ? new Date(entry.lastFailureAt).toISOString() : null,
+                    lastSuccessAt: entry.lastSuccessAt ? new Date(entry.lastSuccessAt).toISOString() : null,
+                };
+            }),
+        };
     }
 }
 
