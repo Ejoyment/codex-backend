@@ -214,9 +214,9 @@ export default function Index() {
           </div>
 
           {/* Self-running product walkthrough, presented as a full-bleed workspace. */}
-          <div className="pdemo-full-bleed mt-16">
+          {/* <div className="pdemo-full-bleed mt-16">
             <WorkflowDemo />
-          </div>
+          </div> */}
         </section>
 
         {/* ── Live strip ───────────────────────────────────── */}
