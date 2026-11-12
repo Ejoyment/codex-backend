@@ -66,4 +66,31 @@ describe('AI provider registry', () => {
         expect(() => aiService.resolveProvider('gpt-4o'))
             .toThrow(/provider "gpt-4o" is not supported/i);
     });
+
+    test('every configured provider has fallback models that are not its primary', () => {
+        const definitions = require('../config/aiProviders').providerDefinitions();
+        for (const [name, definition] of Object.entries(definitions)) {
+            expect(Array.isArray(definition.fallbackModels)).toBe(true);
+            expect(definition.fallbackModels).not.toContain(definition.model);
+            if (IMPLEMENTED.includes(name) && name !== 'huggingface') {
+                // Self-heal needs a second model to try when the primary is
+                // overloaded ("This model is experiencing high demand").
+                expect(definition.fallbackModels.length).toBeGreaterThan(0);
+            }
+        }
+    });
+
+    test('fallback models are configurable per provider', () => {
+        const { providerDefinitions } = require('../config/aiProviders');
+        const previous = process.env.GEMINI_FALLBACK_MODELS;
+        process.env.GEMINI_FALLBACK_MODELS = 'gemini-3.7-flash,gemini-3.8-flash';
+        try {
+            const gemini = providerDefinitions().gemini;
+            // The primary is removed from its own fallback list.
+            expect(gemini.fallbackModels).toEqual(['gemini-3.7-flash']);
+        } finally {
+            if (previous === undefined) delete process.env.GEMINI_FALLBACK_MODELS;
+            else process.env.GEMINI_FALLBACK_MODELS = previous;
+        }
+    });
 });

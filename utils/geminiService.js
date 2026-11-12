@@ -9,7 +9,7 @@ class GeminiService {
         }
         
         this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-        this.model = process.env.AI_MODEL || 'gemini-2.0-flash-exp';
+        this.model = process.env.AI_MODEL || 'gemini-3.8-flash';
         this.maxTokens = parseInt(process.env.AI_MAX_TOKENS) || 8192;
         this.temperature = parseFloat(process.env.AI_TEMPERATURE) || 0.7;
     }

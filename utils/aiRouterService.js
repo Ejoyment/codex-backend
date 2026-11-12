@@ -45,17 +45,37 @@ class AIRouterService {
     const configuredProvider = process.env.AI_PROVIDER && process.env.AI_PROVIDER !== 'auto'
       ? process.env.AI_PROVIDER
       : null;
-    const provider = requestedProvider || configuredProvider ||
-      Object.keys(this.providers).find((key) => this.providers[key].available);
 
+    // An explicit selection is never replaced by a different provider.
+    if (requestedProvider) {
+      if (!this.providers[requestedProvider]) {
+        throw new Error(`AI provider "${requestedProvider}" is not supported. Choose a configured provider or set AI_PROVIDER to a supported provider.`);
+      }
+      if (!this.providers[requestedProvider].available) {
+        throw new Error(`AI provider "${requestedProvider}" is selected but not configured. Add its API key or select an available provider.`);
+      }
+      return { provider: requestedProvider, substitutedFrom: null };
+    }
+
+    if (configuredProvider) {
+      if (!this.providers[configuredProvider]) {
+        throw new Error(`AI provider "${configuredProvider}" is not supported. Choose a configured provider or set AI_PROVIDER to a supported provider.`);
+      }
+      if (this.providers[configuredProvider].available) {
+        return { provider: configuredProvider, substitutedFrom: null };
+      }
+      // A stale default key removal should not disable AI entirely.
+      const alternate = Object.keys(this.providers).find((key) => this.providers[key].available);
+      if (alternate) {
+        console.warn(`[ai] AI_PROVIDER="${configuredProvider}" is not configured; using "${alternate}"`);
+        return { provider: alternate, substitutedFrom: configuredProvider };
+      }
+      throw new Error(`AI provider "${configuredProvider}" is selected but not configured. Add its API key or select an available provider.`);
+    }
+
+    const provider = Object.keys(this.providers).find((key) => this.providers[key].available);
     if (!provider) {
       throw new Error('No AI provider configured. Add an API key for Gemini, Mistral, Groq, or Hugging Face.');
-    }
-    if (!this.providers[provider]) {
-      throw new Error(`AI provider "${provider}" is not supported. Choose a configured provider or set AI_PROVIDER to a supported provider.`);
-    }
-    if (!this.providers[provider].available) {
-      throw new Error(`AI provider "${provider}" is selected but not configured. Add its API key or select an available provider.`);
     }
     return { provider, substitutedFrom: null };
   }
@@ -150,11 +170,13 @@ class AIRouterService {
       messages,
       requestContext,
       provider,
-      !this.hasExplicitProviderPreference(requestedProvider)
+      // `undefined` lets aiService apply its default (fail over on transient
+      // provider outages); an explicit boolean still wins.
+      typeof options.allowProviderFallback === 'boolean' ? options.allowProviderFallback : undefined
     );
   }
 
-  async routeCloud(messages, codeContext, provider, allowProviderFallback = false) {
+  async routeCloud(messages, codeContext, provider, allowProviderFallback) {
     this.checkRateLimit(provider);
     const aiService = require('./aiService');
     const result = await aiService.chat(messages, {

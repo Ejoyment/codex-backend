@@ -635,12 +635,32 @@ app.get('/api/docs', (req, res) => {
     });
 });
 
-// Health check
+// Health check. The AI provider snapshot is configuration + recent failure
+// state only (no keys, no outbound calls), so a dead model is visible without
+// making the health endpoint slow or expensive.
 app.get('/api/health', (req, res) => {
+    let ai = null;
+    try {
+        const aiService = require('./utils/aiService');
+        const summary = aiService.getHealthSummary();
+        ai = {
+            defaultProvider: summary.defaultProvider,
+            ready: summary.providers.filter((provider) => provider.available && provider.status !== 'cooling').length,
+            providers: summary.providers.map((provider) => ({
+                provider: provider.name,
+                model: provider.model,
+                status: provider.status,
+                lastError: provider.lastError,
+            })),
+        };
+    } catch (error) {
+        ai = { error: error.message };
+    }
     res.json({ 
         status: 'OK', 
         message: 'CODEX INC Backend is running',
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        ai
     });
 });
 

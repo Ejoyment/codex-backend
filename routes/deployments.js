@@ -80,6 +80,7 @@ router.get('/', authenticateToken, async (req, res) => {
                     selfHeal: {
                         status: null,
                         attempts: 0,
+                        outageRetries: 0,
                         lastAttemptAt: null,
                         nextAttemptAt: null,
                         completedAt: null,
@@ -335,6 +336,7 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
                         selfHeal: {
                             status: null,
                             attempts: 0,
+                            outageRetries: 0,
                             lastAttemptAt: null,
                             nextAttemptAt: null,
                             completedAt: null,

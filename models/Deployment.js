@@ -171,6 +171,12 @@ const deploymentSchema = new mongoose.Schema({
             type: Number,
             default: 0
         },
+        // Retries caused by the AI provider/model being temporarily down.
+        // These do not consume `attempts`: an outage is not a failed repair.
+        outageRetries: {
+            type: Number,
+            default: 0
+        },
         lastAttemptAt: {
             type: Date,
             default: null
