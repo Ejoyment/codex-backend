@@ -3,38 +3,34 @@ const CodeFile = require('../models/CodeFile');
 const vfs = require('./virtualFileSystem');
 const { ensurePersonalWorkspace } = require('./personalWorkspace');
 const { getGitHubIntegration, githubAPI } = require('./githubApiClient');
+const { listRepoTree } = require('./githubTree');
 
+// There is deliberately no file-count or total-size limit here. Large
+// repositories are imported in batches and large individual files are listed
+// with `contentOmitted` so deployment can stream their bytes from GitHub
+// instead of storing them in a single MongoDB document (16MB hard limit).
 const PROVISIONING_LIMITS = {
-    maxFiles: 500,
-    maxFileBytes: 1024 * 1024,
-    maxTotalBytes: 10 * 1024 * 1024,
-    concurrency: 5
+    concurrency: 8,
+    batchSize: 200,
+    maxStoredContentBytes: 8 * 1024 * 1024
 };
 
+// Only directories that are never useful in a deployed build are skipped.
+// Build output (dist/build/.next), vendored dependencies and generated assets
+// are intentionally imported: a prebuilt static site or a committed vendor
+// tree must deploy exactly as it exists in the repository.
 const SKIPPED_DIRECTORIES = new Set([
     '.git',
-    '.next',
-    '.nuxt',
-    '.svelte-kit',
+    '.hg',
+    '.svn',
     '.turbo',
     '.venv',
     'venv',
     'node_modules',
-    'vendor',
-    'dist',
-    'build',
-    'coverage',
+    'bower_components',
     '__pycache__',
     'Pods',
     'DerivedData'
-]);
-
-const BINARY_EXTENSIONS = new Set([
-    '.7z', '.a', '.avi', '.bmp', '.class', '.dll', '.dmg', '.doc', '.docx',
-    '.eot', '.exe', '.flac', '.gif', '.gz', '.ico', '.jar', '.jpeg', '.jpg',
-    '.m4a', '.mkv', '.mov', '.mp3', '.mp4', '.o', '.otf', '.pdf', '.png',
-    '.psd', '.so', '.tar', '.tiff', '.ttf', '.wav', '.webm', '.webp', '.woff',
-    '.woff2', '.xls', '.xlsx', '.zip'
 ]);
 
 const SECRET_FILE_NAMES = new Set([
@@ -366,8 +362,9 @@ function shouldSkipPath(repoPath) {
     if (base.startsWith('.env.') && base !== '.env.example') return true;
     if (base.endsWith('.pem') || base.endsWith('.key') || base.endsWith('.p12') || base.endsWith('.jks')) return true;
 
-    const extension = base.includes('.') ? `.${base.split('.').pop()}` : '';
-    return BINARY_EXTENSIONS.has(extension);
+    // Binary assets (images, fonts, archives, ...) are imported too: they are
+    // part of the deployable project and are stored base64-encoded.
+    return false;
 }
 
 function isBinaryBuffer(buffer) {
@@ -421,39 +418,77 @@ async function ensureProjectWorkspace(project) {
     return project.workspaceId;
 }
 
+function storedSize(file) {
+    if (Number.isFinite(file.size)) return file.size;
+    if (file.encoding === 'base64') {
+        return Buffer.byteLength(String(file.content || ''), 'base64');
+    }
+    return Buffer.byteLength(String(file.content || ''), 'utf8');
+}
+
 async function writeProjectFiles(project, userId, files) {
     if (!files.length) return 0;
 
     const workspaceId = await ensureProjectWorkspace(project);
     const now = new Date();
-    const operations = files.map((file) => ({
-        updateOne: {
-            filter: {
-                project: project._id,
-                company: workspaceId,
-                path: file.path,
-                name: file.name
-            },
-            update: {
-                $set: {
-                    language: file.language,
-                    content: file.content,
-                    lastModifiedBy: userId,
-                    updatedAt: now,
-                    size: Buffer.byteLength(file.content, 'utf8')
-                },
-                $setOnInsert: {
-                    createdBy: userId,
-                    createdAt: now
-                }
-            },
-            upsert: true
-        }
-    }));
+    const batchSize = 100;
+    let written = 0;
 
-    await CodeFile.bulkWrite(operations, { ordered: false, timestamps: false });
+    // Chunk the writes: a 10k-file repository produces a bulkWrite payload too
+    // large to build (and hold) in one operation.
+    for (let offset = 0; offset < files.length; offset += batchSize) {
+        const batch = files.slice(offset, offset + batchSize);
+        const operations = batch.map((file) => ({
+            updateOne: {
+                filter: {
+                    project: project._id,
+                    company: workspaceId,
+                    path: file.path,
+                    name: file.name
+                },
+                update: {
+                    $set: {
+                        language: file.language,
+                        content: file.content,
+                        encoding: file.encoding === 'base64' ? 'base64' : undefined,
+                        contentOmitted: file.contentOmitted === true,
+                        lastModifiedBy: userId,
+                        updatedAt: now,
+                        size: storedSize(file)
+                    },
+                    $setOnInsert: {
+                        createdBy: userId,
+                        createdAt: now
+                    }
+                },
+                upsert: true
+            }
+        }));
+
+        try {
+            await CodeFile.bulkWrite(operations, { ordered: false, timestamps: false });
+            written += batch.length;
+        } catch (error) {
+            console.warn(
+                `[provisioning] bulk write failed for ${batch.length} file(s): ${error.message}; retrying individually`
+            );
+            // Isolate a single unwritable document (e.g. an unexpectedly huge
+            // file) instead of losing the rest of the batch.
+            for (const operation of operations) {
+                try {
+                    await CodeFile.bulkWrite([operation], { ordered: false, timestamps: false });
+                    written += 1;
+                } catch (opError) {
+                    const path = operation.updateOne.filter.path;
+                    const name = operation.updateOne.filter.name;
+                    console.warn(`[provisioning] skipped ${path}/${name}: ${opError.message}`);
+                }
+            }
+        }
+    }
+
     vfs.invalidateIndex(String(workspaceId));
-    return files.length;
+    return written;
 }
 
 function starterSpec(project) {
@@ -540,7 +575,13 @@ async function mapWithConcurrency(items, limit, mapper) {
 }
 
 async function fetchBlob(accessToken, owner, repo, sha) {
-    const blob = await githubAPI(accessToken, `/repos/${owner}/${repo}/git/blobs/${sha}`);
+    const blob = await githubAPI(
+        accessToken,
+        `/repos/${owner}/${repo}/git/blobs/${sha}`,
+        'GET',
+        null,
+        { timeout: 120000 }
+    );
     if (blob.encoding === 'base64') {
         return Buffer.from(blob.content || '', 'base64');
     }
@@ -561,16 +602,17 @@ async function importGitHub(project, userId) {
         integration.accessToken,
         `/repos/${repoRef.owner}/${repoRef.repo}/git/commits/${refData.object.sha}`
     );
-    const treeData = await githubAPI(
+    // Never rejects a repository because GitHub's recursive tree response was
+    // truncated; the helper walks directories instead.
+    const tree = await listRepoTree(
         integration.accessToken,
-        `/repos/${repoRef.owner}/${repoRef.repo}/git/trees/${commitData.tree.sha}?recursive=1`
+        repoRef.owner,
+        repoRef.repo,
+        commitData.tree.sha,
+        { concurrency: PROVISIONING_LIMITS.concurrency }
     );
 
-    if (treeData.truncated) {
-        throw provisioningError('REPOSITORY_TOO_LARGE', 'Repository tree is truncated.');
-    }
-
-    const candidates = (treeData.tree || []).filter((item) => (
+    const candidates = tree.filter((item) => (
         item.type === 'blob' &&
         !shouldSkipPath(item.path)
     ));
@@ -579,64 +621,81 @@ async function importGitHub(project, userId) {
         throw provisioningError('NO_IMPORTABLE_FILES', 'Repository has no importable files.');
     }
 
-    if (candidates.length > PROVISIONING_LIMITS.maxFiles) {
-        throw provisioningError('REPOSITORY_TOO_LARGE', 'Repository has too many files.');
-    }
-
-    let totalBytes = 0;
-    const selected = [];
-    for (const candidate of candidates) {
-        if (Number(candidate.size) > PROVISIONING_LIMITS.maxFileBytes) continue;
-        totalBytes += Number(candidate.size) || 0;
-        if (totalBytes > PROVISIONING_LIMITS.maxTotalBytes) {
-            throw provisioningError('REPOSITORY_TOO_LARGE', 'Repository exceeds the import size limit.');
-        }
-        selected.push(candidate);
-    }
-
-    if (!selected.length) {
-        throw provisioningError('NO_IMPORTABLE_FILES', 'Repository has no importable text files.');
-    }
-
-    const imported = await mapWithConcurrency(
-        selected,
-        PROVISIONING_LIMITS.concurrency,
-        async (item) => {
-            const split = splitRepoPath(item.path);
-            if (!split) return null;
-
-            const buffer = await fetchBlob(
-                integration.accessToken,
-                repoRef.owner,
-                repoRef.repo,
-                item.sha
-            );
-
-            if (buffer.length > PROVISIONING_LIMITS.maxFileBytes || isBinaryBuffer(buffer)) {
-                return null;
-            }
-
-            return {
-                path: split.path,
-                name: split.name,
-                language: languageForPath(split.fullPath),
-                content: buffer.toString('utf8')
-            };
-        }
-    );
-
-    const files = imported.filter(Boolean);
-    if (!files.length) {
-        throw provisioningError('NO_IMPORTABLE_FILES', 'Repository has no importable text files.');
-    }
-
     project.githubRepoName = repoRef.fullName;
     project.githubRepoUrl = repoRef.url;
     project.defaultBranch = branch;
     await project.save();
 
-    await writeProjectFiles(project, userId, files);
-    return files.length;
+    // Fetch + persist in batches so a huge repository never needs every blob
+    // in memory at once.
+    let written = 0;
+    for (let offset = 0; offset < candidates.length; offset += PROVISIONING_LIMITS.batchSize) {
+        const batch = candidates.slice(offset, offset + PROVISIONING_LIMITS.batchSize);
+        const imported = await mapWithConcurrency(
+            batch,
+            PROVISIONING_LIMITS.concurrency,
+            async (item) => {
+                const split = splitRepoPath(item.path);
+                if (!split) return null;
+
+                const declaredSize = Number(item.size) || 0;
+                const base = {
+                    path: split.path,
+                    name: split.name,
+                    language: languageForPath(split.fullPath),
+                    size: declaredSize
+                };
+
+                // Above the MongoDB-safe content size, list the file without
+                // fetching it. Deployment streams the bytes from GitHub.
+                if (declaredSize > PROVISIONING_LIMITS.maxStoredContentBytes) {
+                    return { ...base, content: '', contentOmitted: true };
+                }
+
+                let buffer;
+                try {
+                    buffer = await fetchBlob(
+                        integration.accessToken,
+                        repoRef.owner,
+                        repoRef.repo,
+                        item.sha
+                    );
+                } catch (error) {
+                    // A single unreadable blob (API limit, transient 5xx, LFS
+                    // pointer) must not fail the whole import.
+                    console.warn(`[provisioning] could not fetch ${item.path}: ${error.message}`);
+                    return { ...base, content: '', contentOmitted: true };
+                }
+
+                if (buffer.length > PROVISIONING_LIMITS.maxStoredContentBytes) {
+                    return { ...base, content: '', contentOmitted: true, size: buffer.length };
+                }
+
+                if (isBinaryBuffer(buffer)) {
+                    return {
+                        ...base,
+                        content: buffer.toString('base64'),
+                        encoding: 'base64',
+                        size: buffer.length
+                    };
+                }
+
+                return {
+                    ...base,
+                    content: buffer.toString('utf8'),
+                    size: buffer.length
+                };
+            }
+        );
+
+        written += await writeProjectFiles(project, userId, imported.filter(Boolean));
+    }
+
+    if (!written) {
+        throw provisioningError('NO_IMPORTABLE_FILES', 'Repository has no importable files.');
+    }
+
+    return written;
 }
 
 async function claimProvisioning(projectId) {

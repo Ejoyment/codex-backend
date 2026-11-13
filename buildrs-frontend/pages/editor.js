@@ -2860,6 +2860,11 @@ export default function Editor() {
         fullPath: fileFullPath(file),
         content: contentValue,
         language: file.language || 'plaintext',
+        encoding: file.encoding === 'base64' ? 'base64' : undefined,
+        // Metadata from the project API: bytes deliberately kept outside the
+        // editor/DB (large or binary files). The server resolves them.
+        contentOmitted: file.contentOmitted === true ? true : undefined,
+        size: Number.isFinite(file.size) ? file.size : undefined,
         // GitHub blob sha lets the backend resolve content via the blob API
         // when the tarball fetch can't cover a file.
         sha: file.sha || undefined,

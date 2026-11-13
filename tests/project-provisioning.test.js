@@ -20,8 +20,7 @@ const {
     retryProvisioning,
     normalizeRepoName,
     normalizeBranch,
-    shouldSkipPath,
-    PROVISIONING_LIMITS
+    shouldSkipPath
 } = require('../utils/projectProvisioningService');
 
 function projectFixture(overrides = {}) {
@@ -74,10 +73,11 @@ describe('project provisioning service', () => {
         expect(() => normalizeBranch('main:prod')).toThrow();
     });
 
-    test('skips dependency, binary, and secret paths', () => {
+    test('skips dependency and secret paths but imports binary assets', () => {
         expect(shouldSkipPath('node_modules/react/index.js')).toBe(true);
         expect(shouldSkipPath('src/.env.production')).toBe(true);
-        expect(shouldSkipPath('assets/logo.png')).toBe(true);
+        expect(shouldSkipPath('assets/logo.png')).toBe(false);
+        expect(shouldSkipPath('dist/bundle.js')).toBe(false);
         expect(shouldSkipPath('src/index.js')).toBe(false);
         expect(shouldSkipPath('.env.example')).toBe(false);
     });
@@ -161,20 +161,25 @@ describe('project provisioning service', () => {
             if (endpoint === '/repos/acme/widgets/git/blobs/blob-readme') {
                 return { encoding: 'base64', content: Buffer.from('# Widgets\n').toString('base64') };
             }
+            if (endpoint === '/repos/acme/widgets/git/blobs/blob-image') {
+                return { encoding: 'base64', content: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00]).toString('base64') };
+            }
             throw new Error(`Unexpected endpoint: ${endpoint}`);
         });
 
         const result = await provisionProject(project._id, project.userId);
 
         expect(result.provisioningStatus).toBe('ready');
-        expect(result.provisionedFileCount).toBe(2);
+        expect(result.provisionedFileCount).toBe(3);
         const operations = CodeFile.bulkWrite.mock.calls[0][0];
-        expect(operations.map((operation) => operation.updateOne.filter.path)).toEqual(['/src', '/']);
+        expect(operations.map((operation) => operation.updateOne.filter.path)).toEqual(['/src', '/', '/assets']);
+        const image = operations.find((operation) => operation.updateOne.filter.name === 'logo.png');
+        expect(image.updateOne.update.$set.encoding).toBe('base64');
         expect(project.githubRepoName).toBe('acme/widgets');
         expect(project.save).toHaveBeenCalled();
     });
 
-    test('rejects repositories whose tree is truncated', async () => {
+    test('walks a truncated tree instead of rejecting the repository', async () => {
         const project = projectFixture({
             sourceType: 'github',
             githubRepoName: 'acme/widgets'
@@ -192,23 +197,45 @@ describe('project provisioning service', () => {
             if (endpoint === '/repos/acme/widgets/git/trees/tree-sha?recursive=1') {
                 return { truncated: true, tree: [] };
             }
+            // Non-recursive walk: root then one subdirectory.
+            if (endpoint === '/repos/acme/widgets/git/trees/tree-sha') {
+                return {
+                    tree: [
+                        { path: 'src', type: 'tree', sha: 'tree-src' },
+                        { path: 'README.md', type: 'blob', sha: 'blob-readme', size: 12 }
+                    ]
+                };
+            }
+            if (endpoint === '/repos/acme/widgets/git/trees/tree-src') {
+                return { tree: [{ path: 'index.js', type: 'blob', sha: 'blob-index', size: 24 }] };
+            }
+            if (endpoint === '/repos/acme/widgets/git/blobs/blob-index') {
+                return { encoding: 'base64', content: Buffer.from('console.log(1);\n').toString('base64') };
+            }
+            if (endpoint === '/repos/acme/widgets/git/blobs/blob-readme') {
+                return { encoding: 'base64', content: Buffer.from('# Widgets\n').toString('base64') };
+            }
             throw new Error(`Unexpected endpoint: ${endpoint}`);
         });
 
         const result = await provisionProject(project._id, project.userId);
 
-        expect(result.provisioningStatus).toBe('failed');
-        expect(result.provisioningError).toContain('too large');
-        expect(CodeFile.bulkWrite).not.toHaveBeenCalled();
+        expect(result.provisioningStatus).toBe('ready');
+        expect(result.provisionedFileCount).toBe(2);
+        const names = CodeFile.bulkWrite.mock.calls
+            .flatMap((call) => call[0])
+            .map((operation) => operation.updateOne.filter.name);
+        expect(names).toEqual(expect.arrayContaining(['index.js', 'README.md']));
     });
 
-    test('rejects repositories above the file limit', async () => {
+    test('imports repositories far above the old file limit', async () => {
         const project = projectFixture({
             sourceType: 'github',
             githubRepoName: 'acme/widgets'
         });
         mockReadyProject(project);
         getGitHubIntegration.mockResolvedValue({ accessToken: 'token' });
+        const fileCount = 501;
         githubAPI.mockImplementation(async (_token, endpoint) => {
             if (endpoint === '/repos/acme/widgets') return { default_branch: 'main' };
             if (endpoint === '/repos/acme/widgets/git/ref/heads/main') {
@@ -219,7 +246,7 @@ describe('project provisioning service', () => {
             }
             if (endpoint === '/repos/acme/widgets/git/trees/tree-sha?recursive=1') {
                 return {
-                    tree: Array.from({ length: PROVISIONING_LIMITS.maxFiles + 1 }, (_, index) => ({
+                    tree: Array.from({ length: fileCount }, (_, index) => ({
                         path: `src/file-${index}.js`,
                         type: 'blob',
                         sha: `blob-${index}`,
@@ -227,13 +254,17 @@ describe('project provisioning service', () => {
                     }))
                 };
             }
+            const blobMatch = endpoint.match(/\/git\/blobs\/blob-(\d+)$/);
+            if (blobMatch) {
+                return { encoding: 'base64', content: Buffer.from(`// ${blobMatch[1]}\n`).toString('base64') };
+            }
             throw new Error(`Unexpected endpoint: ${endpoint}`);
         });
 
         const result = await provisionProject(project._id, project.userId);
 
-        expect(result.provisioningStatus).toBe('failed');
-        expect(CodeFile.bulkWrite).not.toHaveBeenCalled();
+        expect(result.provisioningStatus).toBe('ready');
+        expect(result.provisionedFileCount).toBe(fileCount);
     });
 
     test('does not reprovision an already ready project on retry', async () => {

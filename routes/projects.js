@@ -1039,7 +1039,7 @@ router.get('/:projectId/files', authenticateToken, async (req, res) => {
         const query = { project: projectId };
 
         const files = await CodeFile.find(query)
-            .select('name path language size updatedAt createdAt')
+            .select('name path language size encoding contentOmitted updatedAt createdAt')
             .sort({ path: 1, name: 1 })
             .lean();
 

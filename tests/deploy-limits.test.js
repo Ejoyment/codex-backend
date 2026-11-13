@@ -1,7 +1,7 @@
 /**
  * Large / robust project deployment validation:
  * - path safety that accepts real-world names (spaces, unicode, nesting)
- * - env-configurable file count/size caps (replaces the hard 200-file cap)
+ * - no file-count, per-file or total-size ceiling (any repository deploys)
  * - binary-safe tarball round-trips
  * - static entry generation with proper URL/HTML escaping
  */
@@ -22,7 +22,7 @@ const {
 } = require('../utils/deploymentService');
 const { validateDeployFiles, fileKey, fileBytes, looksBinary } = require('../utils/deployContent');
 
-const ENV_KEYS = ['DEPLOY_MAX_FILES', 'DEPLOY_MAX_FILE_BYTES', 'DEPLOY_MAX_TOTAL_BYTES'];
+const ENV_KEYS = ['DEPLOY_BACKFILL_TIMEOUT_MS'];
 const savedEnv = {};
 
 beforeEach(() => {
@@ -85,38 +85,27 @@ describe('validateDeployFiles', () => {
             content,
         }));
 
-    test('allows 250 files by default (old cap was a hard 200)', () => {
+    test('has no file-count ceiling', () => {
         expect(() => validateDeployFiles(makeFiles(250))).not.toThrow();
-    });
-
-    test('allows 1000 files by default', () => {
         expect(() => validateDeployFiles(makeFiles(1000))).not.toThrow();
+        expect(() => validateDeployFiles(makeFiles(5000))).not.toThrow();
     });
 
-    test('rejects over DEPLOY_MAX_FILES with a clear message', () => {
-        process.env.DEPLOY_MAX_FILES = '200';
-        expect(() => validateDeployFiles(makeFiles(201))).toThrow(/200-file deployment limit/);
-        expect(() => validateDeployFiles(makeFiles(200))).not.toThrow();
+    test('has no per-file size ceiling', () => {
+        const files = [{ name: 'big.txt', path: '/', content: 'x'.repeat(20 * 1024 * 1024) }];
+        expect(() => validateDeployFiles(files)).not.toThrow();
     });
 
-    test('rejects a file over DEPLOY_MAX_FILE_BYTES', () => {
-        process.env.DEPLOY_MAX_FILE_BYTES = '1024';
-        const files = [{ name: 'big.txt', path: '/', content: 'x'.repeat(2048) }];
-        expect(() => validateDeployFiles(files)).toThrow(/File too large: big\.txt/);
-    });
-
-    test('rejects a deployment over DEPLOY_MAX_TOTAL_BYTES', () => {
-        process.env.DEPLOY_MAX_TOTAL_BYTES = '3000';
-        const files = Array.from({ length: 5 }, (_, i) => ({
+    test('has no total-size ceiling', () => {
+        const files = Array.from({ length: 20 }, (_, i) => ({
             name: `f${i}.txt`,
             path: '/',
-            content: 'x'.repeat(1024),
+            content: 'x'.repeat(5 * 1024 * 1024),
         }));
-        expect(() => validateDeployFiles(files)).toThrow(/total limit/);
+        expect(() => validateDeployFiles(files)).not.toThrow();
     });
 
     test('counts base64 content by decoded bytes', () => {
-        process.env.DEPLOY_MAX_FILE_BYTES = '50';
         const raw = Buffer.alloc(100, 7);
         const files = [{
             name: 'img.png',
@@ -125,7 +114,6 @@ describe('validateDeployFiles', () => {
             encoding: 'base64',
         }];
         expect(fileBytes(files[0])).toBe(100);
-        expect(() => validateDeployFiles(files)).toThrow(/File too large/);
     });
 
     test('rejects unsafe paths but accepts spaces and unicode', () => {

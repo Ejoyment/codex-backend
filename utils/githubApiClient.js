@@ -17,7 +17,7 @@ async function getGitHubIntegration(userId) {
     return integration;
 }
 
-async function githubAPI(accessToken, endpoint, method = 'GET', data = null) {
+async function githubAPI(accessToken, endpoint, method = 'GET', data = null, options = {}) {
     try {
         const response = await axios({
             method,
@@ -28,7 +28,7 @@ async function githubAPI(accessToken, endpoint, method = 'GET', data = null) {
                 'User-Agent': 'CODEX-INC-App'
             },
             data,
-            timeout: 20000
+            timeout: options.timeout || 20000
         });
         return response.data;
     } catch (error) {

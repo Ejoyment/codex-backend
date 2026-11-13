@@ -69,6 +69,20 @@ const codeFileSchema = new mongoose.Schema({
         type: Number,
         default: 0
     },
+    // 'base64' marks binary content (images, fonts, archives). Deployment
+    // decodes it before writing the file; text files leave this unset.
+    encoding: {
+        type: String,
+        enum: ['base64'],
+        default: undefined
+    },
+    // True when the file exists in the project but its bytes were too large
+    // for a MongoDB document and were intentionally not stored. Deployment
+    // resolves the content from the source repository.
+    contentOmitted: {
+        type: Boolean,
+        default: false
+    },
     ydocState: {
         type: Buffer,
         default: null
@@ -144,7 +158,9 @@ codeFileSchema.index({ language: 1 });
 // Update size before saving
 codeFileSchema.pre('save', function(next) {
     if (this.content) {
-        this.size = Buffer.byteLength(this.content, 'utf8');
+        this.size = this.encoding === 'base64'
+            ? Buffer.byteLength(this.content, 'base64')
+            : Buffer.byteLength(this.content, 'utf8');
     }
     next();
 });
@@ -153,6 +169,9 @@ codeFileSchema.pre('save', function(next) {
 const _indexTimers = new Map();
 codeFileSchema.post('save', function(doc) {
     if (!doc.content || doc.content.length < 10) return;
+    // Binary payloads are base64 text and omitted files have no content;
+    // indexing either would pollute vector memory with unusable data.
+    if (doc.encoding === 'base64' || doc.contentOmitted) return;
 
     // Debounce: cancel previous timer for this file
     if (_indexTimers.has(doc._id.toString())) {

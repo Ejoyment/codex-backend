@@ -5,7 +5,7 @@ const LocalProject = require('../models/LocalProject');
 const TeamProject = require('../models/TeamProject');
 const depService = require('./deploymentService');
 const { toEnvObject } = require('./deployEnv');
-const { validateDeployFiles, backfillFileContent, limits: deployLimits } = require('./deployContent');
+const { validateDeployFiles, backfillFileContent, repoRefFromProject, limits: deployLimits } = require('./deployContent');
 const { notifyDeploymentEvent } = require('./notificationTriggers');
 const { emitDeploymentUpdate } = require('./realtimeBus');
 
@@ -133,7 +133,7 @@ async function redeployDeployment({
 
   try {
     const files = await CodeFile.find({ project: resolvedProjectId })
-      .select('name path content language')
+      .select('name path content language encoding contentOmitted size')
       .lean();
     if (!files.length) throw new Error('The approved project has no files to deploy.');
 
@@ -142,14 +142,34 @@ async function redeployDeployment({
       path: file.path || '/',
       content: typeof file.content === 'string' ? file.content : '',
       language: file.language || 'plaintext',
+      encoding: file.encoding === 'base64' ? 'base64' : undefined,
+      contentOmitted: file.contentOmitted === true ? true : undefined,
+      size: Number.isFinite(file.size) ? file.size : undefined,
     }));
     validateDeployFiles(normalizedFiles);
+    // The deployment row remembers the repository (owner/name) it came from;
+    // use it to resolve files whose bytes live in GitHub rather than MongoDB.
+    // Older deployments may not have repoFullName, so fall back to the
+    // project's GitHub source.
+    let repo = repoRefFromProject({
+      repoFullName: deployment.repoFullName,
+      defaultBranch: deployment.branch,
+    });
+    if (!repo) {
+      const project = await LocalProject.findById(resolvedProjectId)
+        .select('githubRepoName defaultBranch')
+        .lean()
+        || await TeamProject.findById(resolvedProjectId)
+          .select('githubRepoName defaultBranch')
+          .lean();
+      repo = repoRefFromProject(project);
+    }
     await backfillFileContent({
       userId,
       projectId: resolvedProjectId,
       workspaceId,
-      source: 'project',
-      repo: null,
+      source: repo ? 'github' : 'project',
+      repo,
       files: normalizedFiles,
       deadline: Date.now() + deployLimits().backfillTimeoutMs,
     });
