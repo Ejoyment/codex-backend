@@ -322,7 +322,10 @@ app.use((req, res, next) => (
 // express.json()'s 100kb default, which silently 413s big projects before
 // the route handler runs. Parse them with a bigger cap first; the global
 // parser below skips bodies already parsed (req._body set).
-app.use(['/api/deployments', '/api/github-advanced'], express.json({ limit: '50mb' }));
+app.use([
+    '/api/deployments',
+    '/api/github-advanced',
+], express.json({ limit: process.env.DEPLOY_BODY_LIMIT || '256mb' }));
 // Figma design snapshots carry a whole frame's node tree (layout, fills,
 // text) from the browser helper; the global 100kb default would 413 them.
 app.use(['/api/figma/snapshots', '/api/design-code'], express.json({ limit: '20mb' }));

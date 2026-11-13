@@ -16,7 +16,7 @@ const { enforceDeploymentLimit } = require('../middleware/tierEnforcement');
 const depService = require('../utils/deploymentService');
 const { normalizeEnv, toEnvObject, redact } = require('../utils/deployEnv');
 const { redeployDeployment, resetSelfHealState } = require('../utils/agentAutoDeploy');
-const { validateDeployFiles, backfillFileContent, mergeProjectFiles, limits: deployLimits } = require('../utils/deployContent');
+const { validateDeployFiles, backfillFileContent, mergeProjectFiles, repoRefFromProject, limits: deployLimits } = require('../utils/deployContent');
 const { emitDeploymentUpdate } = require('../utils/realtimeBus');
 const { normalizeDeployContext } = require('../utils/deployContext');
 const { addAuditLog } = require('../utils/auditLogService');
@@ -175,6 +175,7 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
 
         let files = Array.isArray(directFiles) && directFiles.length ? directFiles : [];
         let project = null;
+        let resolvedRepo = repo || null;
 
         if (projectId) {
             const validId = typeof projectId === 'string' && /^[0-9a-fA-F]{24}$/.test(projectId);
@@ -226,6 +227,15 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
                 // payload omitted, so a stylesheet nobody opened still ships.
                 files = mergeProjectFiles(files, projectFiles);
             }
+
+            // A project that was imported from GitHub can have files whose
+            // bytes were never stored in MongoDB (large/binary assets) or that
+            // the editor never loaded. Derive the repository here so backfill
+            // can stream those bytes from GitHub even when the client sent
+            // only a projectId (the deployment wizard / redeploy path).
+            if (!resolvedRepo) {
+                resolvedRepo = repoRefFromProject(project);
+            }
         }
 
         // No workspace was named by the client or a project: scope the
@@ -255,6 +265,10 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
             language: f.language || 'plaintext',
             sha: f.sha || undefined,
             encoding: f.encoding === 'base64' ? 'base64' : undefined,
+            // True when the DB/repo listing intentionally omitted the bytes.
+            // Backfill treats it as pending instead of an empty file.
+            contentOmitted: f.contentOmitted === true ? true : undefined,
+            size: Number.isFinite(f.size) ? f.size : undefined,
             // Respect an intentional empty buffer; otherwise the server
             // backfills the real bytes from the project or repository.
             _resolved: f._resolved === true ? true : undefined,
@@ -280,8 +294,8 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
         // Validate/normalise env vars. Undefined input keeps whatever the
         // deployment already has (a redeploy without touching the env form).
         const envEntries = normalizeEnv(directEnv, { existing: deployment ? deployment.env : [] });
-        const repoFullName = repo
-            ? (repo.fullName || (repo.owner && repo.name ? `${repo.owner}/${repo.name}` : null))
+        const repoFullName = resolvedRepo
+            ? (resolvedRepo.fullName || (resolvedRepo.owner && resolvedRepo.name ? `${resolvedRepo.owner}/${resolvedRepo.name}` : null))
             : null;
         const projectKey = projectId ? String(projectId) : null;
         // Branch / environment / commit + requested build settings. Omitting
@@ -642,7 +656,7 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
                 // outlive the deploy timeout.
                 const backfillDeadline = Date.now() + Math.min(
                     deployLimits().backfillTimeoutMs,
-                    Math.floor(DEPLOY_TIMEOUT * 0.6)
+                    Math.floor(DEPLOY_TIMEOUT * 0.8)
                 );
                 await backfillFileContent({
                     userId: req.userId,
@@ -650,7 +664,7 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
                     workspaceId,
                     personal: workspaceScope.personal === true,
                     source,
-                    repo,
+                    repo: resolvedRepo,
                     files: normalizedFiles,
                     deadline: backfillDeadline
                 });

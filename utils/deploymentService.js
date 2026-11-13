@@ -1,4 +1,4 @@
-const { exec, execSync } = require('child_process');
+const { spawn, execSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -77,33 +77,140 @@ function getKeyFile() {
   return file;
 }
 
+function sshArgs(command) {
+  const key = getKeyFile();
+  return [
+    '-i', key,
+    '-o', 'StrictHostKeyChecking=no',
+    '-o', 'UserKnownHostsFile=/dev/null',
+    '-o', 'ConnectTimeout=20',
+    '-o', 'ServerAliveInterval=30',
+    '-o', 'ServerAliveCountMax=3',
+    '-p', String(SSH_PORT),
+    `${SSH_USER}@${SSH_HOST}`,
+    command,
+  ];
+}
+
+// Run a command over SSH. Uses spawn (not exec) so a long docker build can
+// stream its output without Node buffering the whole log or enforcing
+// exec's maxBuffer, which used to kill large builds with ENOMEM/ERR_CHILD.
 function sshExec(command, input = null, onData = null) {
   return new Promise((resolve, reject) => {
+    if (!SSH_HOST) return reject(new Error('DEPLOY_SSH_HOST env not set'));
+
+    let proc;
     try {
-      if (!SSH_HOST) return reject(new Error('DEPLOY_SSH_HOST env not set'));
-      const key = getKeyFile();
-      const sshCmd = `ssh -i "${key}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=20 -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -p ${SSH_PORT} ${SSH_USER}@${SSH_HOST} ${JSON.stringify(command)}`;
-      const opts = { timeout: DEPLOY_TIMEOUT_MS, maxBuffer: 20 * 1024 * 1024, encoding: 'utf8' };
-      const proc = exec(sshCmd, opts);
-
-      if (input) proc.stdin.end(input);
-
-      let stdout = '';
-      let stderr = '';
-      proc.stdout.on('data', d => { stdout += d; if (onData) onData(String(d)); });
-      proc.stderr.on('data', d => { stderr += d; if (onData) onData(String(d)); });
-
-      proc.on('close', (code) => {
-        if (code !== 0) return reject(new Error(stderr || `Process exited with code ${code}`));
-        resolve(stdout.trim());
-      });
-      proc.on('error', err => {
-        if (err.killed) return reject(new Error('SSH command killed: timeout exceeded'));
-        reject(new Error((err.stderr || err.stdout || err.message || '').toString().trim()));
-      });
+      proc = spawn('ssh', sshArgs(String(command)), { stdio: ['pipe', 'pipe', 'pipe'] });
     } catch (err) {
-      reject(new Error(err.message || 'SSH command failed'));
+      return reject(new Error(err.message || 'SSH command failed'));
     }
+
+    // Keep a bounded copy for error messages; streaming consumers still get
+    // every chunk through onData.
+    const MAX_BUFFER = 8 * 1024 * 1024;
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+    const append = (current, chunk) => (
+      current.length >= MAX_BUFFER ? current : current + chunk.slice(0, MAX_BUFFER - current.length)
+    );
+
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      try { proc.kill('SIGKILL'); } catch (_) {}
+      reject(new Error('SSH command killed: timeout exceeded'));
+    }, DEPLOY_TIMEOUT_MS);
+
+    proc.stdin.on('error', () => {});
+    proc.stdout.on('data', (data) => {
+      const text = data.toString();
+      stdout = append(stdout, text);
+      if (onData) onData(text);
+    });
+    proc.stderr.on('data', (data) => {
+      const text = data.toString();
+      stderr = append(stderr, text);
+      if (onData) onData(text);
+    });
+    proc.on('error', (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(new Error(err.message || 'SSH command failed'));
+    });
+    proc.on('close', (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (code !== 0) {
+        return reject(new Error(stderr.trim() || `Process exited with code ${code}`));
+      }
+      resolve(stdout.trim());
+    });
+
+    if (input !== null && input !== undefined) proc.stdin.end(input);
+    else proc.stdin.end();
+  });
+}
+
+function assertSafeRemotePath(remotePath) {
+  if (remotePath.includes('..') || remotePath.includes('\n') || /[\u0000-\u001f\u007f\\$`]/.test(remotePath)) {
+    throw new Error('Invalid remote path');
+  }
+}
+
+// Stream a local file to the VPS. Used for the deployment tarball so a
+// multi-gigabyte repository is never base64-encoded into the Node heap.
+async function sshUploadFile(localPath, remotePath) {
+  assertSafeRemotePath(remotePath);
+  const parentDir = remotePath.includes('/')
+    ? remotePath.slice(0, remotePath.lastIndexOf('/'))
+    : '.';
+  await sshExec(`mkdir -p ${shq(parentDir)}`);
+
+  await new Promise((resolve, reject) => {
+    if (!SSH_HOST) return reject(new Error('DEPLOY_SSH_HOST env not set'));
+
+    let proc;
+    try {
+      proc = spawn('ssh', sshArgs(`cat > ${shq(remotePath)}`), { stdio: ['pipe', 'pipe', 'pipe'] });
+    } catch (err) {
+      return reject(new Error(err.message || 'SSH upload failed'));
+    }
+
+    let stderr = '';
+    let settled = false;
+    let timer = null;
+    const stream = fs.createReadStream(localPath);
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      try { stream.destroy(); } catch (_) {}
+      try { proc.kill('SIGKILL'); } catch (_) {}
+      fn(value);
+    };
+    timer = setTimeout(() => {
+      finish(reject, new Error('SSH upload killed: timeout exceeded'));
+    }, DEPLOY_TIMEOUT_MS);
+
+    stream.on('error', (err) => finish(reject, err));
+    proc.stdin.on('error', () => {});
+    proc.stderr.on('data', (data) => {
+      if (stderr.length < 1024 * 1024) stderr += data.toString();
+    });
+    proc.on('error', (err) => finish(reject, new Error(err.message || 'SSH upload failed')));
+    proc.on('close', (code) => {
+      if (settled) return;
+      if (code !== 0) {
+        return finish(reject, new Error(stderr.trim() || `SSH upload exited with code ${code}`));
+      }
+      finish(resolve);
+    });
+
+    stream.pipe(proc.stdin);
   });
 }
 
@@ -862,27 +969,29 @@ function createTarballSync(files) {
   const tarPath = path.join(os.tmpdir(), `deploy-${Date.now()}.tar.gz`);
   const tmpDir = path.join(os.tmpdir(), `deploy-src-${Date.now()}`);
   fs.mkdirSync(tmpDir, { recursive: true });
-  for (const file of files) {
-    const relPath = file.path.replace(/^\//, '');
-    assertSafeRelPath(relPath);
-    const fullPath = path.join(tmpDir, relPath);
-    fs.mkdirSync(path.dirname(fullPath), { recursive: true });
-    // Binary files carry base64 content + encoding flag; utf8 round-tripping
-    // them would corrupt images/fonts/wasm.
-    const buf = file.encoding === 'base64'
-      ? Buffer.from(String(file.content || ''), 'base64')
-      : Buffer.from(String(file.content || ''), 'utf8');
-    fs.writeFileSync(fullPath, buf);
-  }
   try {
+    for (const file of files) {
+      const relPath = file.path.replace(/^\//, '');
+      assertSafeRelPath(relPath);
+      const fullPath = path.join(tmpDir, relPath);
+      fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+      // Binary files carry base64 content + encoding flag; utf8 round-tripping
+      // them would corrupt images/fonts/wasm.
+      const buf = file.encoding === 'base64'
+        ? Buffer.from(String(file.content || ''), 'base64')
+        : Buffer.from(String(file.content || ''), 'utf8');
+      fs.writeFileSync(fullPath, buf);
+    }
     // COPYFILE_DISABLE: don't add macOS AppleDouble (._*) junk that breaks re-extraction
     execSync(`tar -czf '${tarPath}' -C '${tmpDir}' .`, {
       env: { ...process.env, COPYFILE_DISABLE: '1' }
     });
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  } catch (_) {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+  } catch (error) {
+    try { fs.rmSync(tarPath, { force: true }); } catch (__) {}
+    if (/Invalid file path/.test(error?.message || '')) throw error;
     throw new Error('Failed to create tarball');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   }
   return tarPath;
 }
@@ -958,10 +1067,14 @@ async function deployProject(subdomain, files, hooks = {}) {
 
   try {
     const tarPath = createTarballSync(fileEntries);
-    const tarB64 = Buffer.from(fs.readFileSync(tarPath)).toString('base64');
-    await writeRemoteFile(`${deploymentDir}/deploy.tar.gz`, tarB64, true);
-    await sshExec(`cd '${deploymentDir}' && tar -xzf deploy.tar.gz && rm deploy.tar.gz`);
-    fs.unlinkSync(tarPath);
+    try {
+      // Stream the archive to the VPS instead of base64-encoding the whole
+      // tarball into memory (which failed for large repositories).
+      await sshUploadFile(tarPath, `${deploymentDir}/deploy.tar.gz`);
+      await sshExec(`cd '${deploymentDir}' && tar -xzf deploy.tar.gz && rm deploy.tar.gz`);
+    } finally {
+      try { fs.rmSync(tarPath, { force: true }); } catch (_) {}
+    }
     const fileCount = await sshExec(`find ${deploymentDir} -type f | wc -l`).catch(() => '0');
     const fileList = await sshExec(`ls ${deploymentDir}`).catch(() => '');
     console.log(`[deploy] ${fileCount.trim()} files in ${deploymentDir}: ${fileList}`);
@@ -1144,9 +1257,7 @@ ${envArgs ? `${envArgs}\n` : ''}  --label 'traefik.enable=true' \\
 }
 
 async function writeRemoteFile(remotePath, content, isBase64 = false) {
-  if (remotePath.includes('..') || remotePath.includes('\n') || /[\u0000-\u001f\u007f\\$`]/.test(remotePath)) {
-    throw new Error('Invalid remote path');
-  }
+  assertSafeRemotePath(remotePath);
   const encoded = isBase64 ? content : Buffer.from(content || '').toString('base64');
   const parentDir = remotePath.includes('/')
     ? remotePath.slice(0, remotePath.lastIndexOf('/'))
@@ -1217,6 +1328,7 @@ async function isSubdomainTaken(subdomain) {
 
 module.exports = {
   sshExec,
+  sshUploadFile,
   writeRemoteFile,
   detectRuntime,
   deployProject,

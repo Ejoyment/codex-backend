@@ -1,8 +1,8 @@
 /**
  * Deployment file resolution + validation.
  *
- * - validateDeployFiles: env-configurable count/size caps and path safety
- *   checks that run BEFORE a deployment is created.
+ * - validateDeployFiles: path safety + secret checks that run BEFORE a
+ *   deployment is created. There is no file-count or size ceiling.
  * - backfillFileContent: fills metadata-only file lists (project file API /
  *   GitHub tree return paths without content) from the DB or from GitHub.
  *   GitHub fetches are tarball-first (one request for the whole repo,
@@ -27,17 +27,11 @@ function capInt(name, fallback) {
 
 function limits() {
     return {
-        maxFiles: capInt('DEPLOY_MAX_FILES', 1000),
-        maxFileBytes: capInt('DEPLOY_MAX_FILE_BYTES', 10 * 1024 * 1024),
-        maxTotalBytes: capInt('DEPLOY_MAX_TOTAL_BYTES', 50 * 1024 * 1024),
-        backfillTimeoutMs: capInt('DEPLOY_BACKFILL_TIMEOUT_MS', 120000),
+        // Deployments have no file-count or total-size ceiling. The only
+        // bound is how long content backfill may spend resolving missing
+        // bytes from the project DB / GitHub before the deploy timeout wins.
+        backfillTimeoutMs: capInt('DEPLOY_BACKFILL_TIMEOUT_MS', 600000),
     };
-}
-
-function fmtBytes(n) {
-    if (n >= 1024 * 1024) return `${Math.round(n / (1024 * 1024))}MB`;
-    if (n >= 1024) return `${Math.round(n / 1024)}KB`;
-    return `${n}B`;
 }
 
 // Normalize a file's directory + name into a stable key so content can be
@@ -122,6 +116,8 @@ function storedFileEntry(file) {
         content: typeof file.content === 'string' ? file.content : '',
         language: file.language || 'plaintext',
         encoding: file.encoding === 'base64' ? 'base64' : undefined,
+        contentOmitted: file.contentOmitted === true,
+        size: Number.isFinite(file.size) ? file.size : undefined,
     };
 }
 
@@ -160,10 +156,23 @@ function mergeProjectFiles(files, projectFiles) {
         const hasContent = typeof file.content === 'string' && file.content !== '';
         // Buffer content (including an intentional empty file) is final.
         if (!stored || file._resolved === true || hasContent) return file;
+        if (stored.contentOmitted) {
+            // The file exists but its bytes live in the repository, not the
+            // DB. Keep it pending so backfill can fetch the real content.
+            return {
+                ...file,
+                contentOmitted: true,
+                encoding: file.encoding || stored.encoding,
+                size: file.size ?? stored.size,
+            };
+        }
         return {
             ...file,
             content: stored.content,
             language: file.language || stored.language,
+            encoding: stored.encoding,
+            size: stored.size,
+            contentOmitted: false,
             _resolved: true,
         };
     });
@@ -171,7 +180,11 @@ function mergeProjectFiles(files, projectFiles) {
     for (const [key, stored] of storedByKey) {
         if (seen.has(key)) continue;
         seen.add(key);
-        merged.push({ ...stored, _resolved: true });
+        if (stored.contentOmitted) {
+            merged.push({ ...stored, content: '', _resolved: undefined });
+        } else {
+            merged.push({ ...stored, _resolved: true });
+        }
     }
 
     return merged;
@@ -196,15 +209,14 @@ function applyContent(f, buf) {
 
 // Runs before the Deployment document is created so bad payloads get a 400
 // instead of a failed deployment. Throws with a user-facing message.
+//
+// There is intentionally no file-count, per-file or total-size limit: a
+// repository of any size must deploy. Only safety rules remain (path traversal,
+// shell/control characters, secret files).
 function validateDeployFiles(files) {
-    const { maxFiles, maxFileBytes, maxTotalBytes } = limits();
     if (!Array.isArray(files) || files.length === 0) {
         throw new Error('Project has no deployable files.');
     }
-    if (files.length > maxFiles) {
-        throw new Error(`Too many files: ${files.length} exceeds the ${maxFiles}-file deployment limit.`);
-    }
-    let total = 0;
     for (const f of files) {
         if (!f || !f.name || typeof f.name !== 'string') {
             throw new Error('Invalid file path');
@@ -221,14 +233,6 @@ function validateDeployFiles(files) {
         if (isEnvSecret || baseName === '.npmrc' || baseName === '.netrc') {
             throw new Error(`Refusing to deploy secret file "${rel}". Remove it or use a deployment secret instead.`);
         }
-        const size = fileBytes(f);
-        if (size > maxFileBytes) {
-            throw new Error(`File too large: ${f.name} exceeds ${fmtBytes(maxFileBytes)}.`);
-        }
-        total += size;
-    }
-    if (total > maxTotalBytes) {
-        throw new Error(`Deployment too large: ${fmtBytes(total)} exceeds the ${fmtBytes(maxTotalBytes)} total limit.`);
     }
 }
 
@@ -257,10 +261,8 @@ async function fillFromTarball(repo, token, pendingFiles, endAt) {
             },
             params: repo.defaultBranch ? { ref: repo.defaultBranch } : undefined,
             responseType: 'stream',
-            timeout: Math.max(5000, Math.min(60000, endAt - Date.now())),
+            timeout: Math.max(5000, Math.min(600000, endAt - Date.now())),
             maxRedirects: 5,
-            maxContentLength: 200 * 1024 * 1024,
-            maxBodyLength: 200 * 1024 * 1024,
         });
 
         const tarFile = path.join(tmpRoot, 'repo.tar.gz');
@@ -275,7 +277,7 @@ async function fillFromTarball(repo, token, pendingFiles, endAt) {
         const extractDir = path.join(tmpRoot, 'x');
         fs.mkdirSync(extractDir);
         execFileSync('tar', ['-xzf', tarFile, '-C', extractDir], {
-            timeout: 60000,
+            timeout: Math.max(30000, Math.min(600000, endAt - Date.now())),
             env: { ...process.env, COPYFILE_DISABLE: '1' },
         });
 
@@ -367,7 +369,12 @@ async function fillFromGitHubApi(repo, token, files, endAt) {
 async function backfillFileContent({ userId, projectId, workspaceId, personal = false, source, repo, files, deadline }) {
     const { backfillTimeoutMs } = limits();
     const endAt = deadline || (Date.now() + backfillTimeoutMs);
-    const unresolved = () => files.filter(f => !f.content && !f._resolved);
+    // A file is pending when it has no content and is not an intentional empty
+    // buffer, OR when the DB intentionally omitted its bytes because they did
+    // not fit in a MongoDB document.
+    const unresolved = () => files.filter((f) => (
+        !f._resolved && (f.contentOmitted === true || !f.content)
+    ));
     if (!unresolved().length) return;
 
     // 1) Project files: merge content from the CodeFile collection (the
@@ -381,20 +388,30 @@ async function backfillFileContent({ userId, projectId, workspaceId, personal = 
         const dbFiles = await CodeFile.find({ project: projectId }).lean();
         const byKey = new Map();
         for (const dbf of dbFiles) {
-            byKey.set(fileKey(dbf), typeof dbf.content === 'string' ? dbf.content : '');
+            byKey.set(fileKey(dbf), dbf);
         }
         for (const f of unresolved()) {
-            if (byKey.has(fileKey(f))) {
-                f.content = byKey.get(fileKey(f));
-                f._resolved = true;
+            const stored = byKey.get(fileKey(f));
+            if (!stored) continue;
+            if (stored.contentOmitted) {
+                // Bytes deliberately live outside MongoDB; fetch them below.
+                f.contentOmitted = true;
+                if (stored.encoding === 'base64') f.encoding = 'base64';
+                if (Number.isFinite(stored.size)) f.size = stored.size;
+                continue;
             }
+            f.content = typeof stored.content === 'string' ? stored.content : '';
+            if (stored.encoding === 'base64') f.encoding = 'base64';
+            if (Number.isFinite(stored.size)) f.size = stored.size;
+            f.contentOmitted = false;
+            f._resolved = true;
         }
         if (!unresolved().length) return;
     }
 
     const stillPending = unresolved();
 
-    if (source !== 'github' || !repo || !repo.owner || !repo.name) {
+    if (!repo || !repo.owner || !repo.name) {
         // DB-backed deploy: keep today's lenient behavior — files missing
         // from the DB deploy as empty, but an entirely content-less payload
         // is a metadata-only list and must fail loudly.
@@ -410,7 +427,8 @@ async function backfillFileContent({ userId, projectId, workspaceId, personal = 
         return;
     }
 
-    // 2) GitHub repo deploy.
+    // 2) GitHub repo deploy (also used for project deploys whose omitted or
+    // binary files were never stored in MongoDB).
     const integration = await Integration.findOne({ userId, provider: 'github', isActive: true }).lean();
     if (!integration || !integration.accessToken) {
         throw new Error('Connect your GitHub account under Integrations to deploy repository files.');
@@ -445,6 +463,39 @@ async function backfillFileContent({ userId, projectId, workspaceId, personal = 
     }
 }
 
+/**
+ * Build a GitHub repo reference from a project/deployment record. Deployment
+ * needs the repo even when the browser sends only a projectId (the wizard
+ * redeploy path), so omitted/binary files can be streamed from GitHub.
+ */
+function repoRefFromProject(project) {
+    if (!project) return null;
+    const raw = String(
+        project.githubRepoName || project.repoFullName || project.githubRepoUrl || ''
+    ).trim();
+    if (!raw) return null;
+
+    let fullName = raw;
+    const urlMatch = raw.match(/github\.com[/:]([^/]+)\/([^/#?]+)/i);
+    if (urlMatch) {
+        fullName = `${urlMatch[1]}/${urlMatch[2].replace(/\.git$/i, '')}`;
+    } else {
+        fullName = fullName
+            .replace(/^https?:\/\/[^/]+\//i, '')
+            .replace(/\.git$/i, '')
+            .replace(/^\/+|\/+$/g, '');
+    }
+
+    const [owner, name] = fullName.split('/');
+    if (!owner || !name) return null;
+    return {
+        owner,
+        name,
+        fullName: `${owner}/${name}`,
+        defaultBranch: project.defaultBranch || null,
+    };
+}
+
 module.exports = {
     fileKey,
     fileBytes,
@@ -455,5 +506,6 @@ module.exports = {
     mergeProjectFiles,
     validateDeployFiles,
     backfillFileContent,
+    repoRefFromProject,
     limits,
 };

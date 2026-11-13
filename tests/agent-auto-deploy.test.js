@@ -11,6 +11,7 @@ jest.mock('../utils/deploymentService', () => ({
 jest.mock('../utils/deployContent', () => ({
   validateDeployFiles: jest.fn(),
   backfillFileContent: jest.fn(),
+  repoRefFromProject: jest.fn(() => null),
   limits: jest.fn(() => ({ backfillTimeoutMs: 1000 })),
 }));
 jest.mock('../utils/notificationTriggers', () => ({ notifyDeploymentEvent: jest.fn() }));
