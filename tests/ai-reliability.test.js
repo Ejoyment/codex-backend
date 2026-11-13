@@ -54,6 +54,7 @@ describe('AI request reliability', () => {
       await aiService.chatGroq([{ role: 'user', content: 'Inspect package.json' }], {
         agentMode: true,
         agentReasoning: true,
+        model: 'openai/gpt-oss-120b',
         availableTools: ['read_file', 'list_files'],
       });
 

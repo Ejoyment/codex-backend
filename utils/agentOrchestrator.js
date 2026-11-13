@@ -1540,7 +1540,6 @@ RESPOND WITH JSON ONLY.`;
                 provider: context.provider,
                 model: context.model,
                 allowProviderFallback: true,
-                ...(context.provider === 'groq' || !context.provider ? { response_format: { type: 'json_object' } } : {}),
             });
             if (!response?.success || !response.content) {
                 throw new Error(response?.error || 'AI returned an empty error analysis');
@@ -1564,13 +1563,38 @@ RESPOND WITH JSON ONLY.`;
                 };
             }
 
-            const normalized = {
-                shouldRetry: !!correction.shouldRetry,
-                reasoning: typeof correction.reasoning === 'string' ? correction.reasoning : 'No reasoning provided.',
-                adjustedParameters: correction.adjustedParameters && typeof correction.adjustedParameters === 'object' && !Array.isArray(correction.adjustedParameters) ? correction.adjustedParameters : null,
-                alternativeTool: typeof correction.alternativeTool === 'string' ? correction.alternativeTool : null,
+            // The model response is advisory but its shape is part of the
+            // contract: reject a malformed object instead of turning missing
+            // keys into a permissive retry with invented parameters.
+            const shapeError = (() => {
+                if (typeof correction?.shouldRetry !== 'boolean') return 'shouldRetry must be a boolean';
+                if (typeof correction.reasoning !== 'string' || !correction.reasoning.trim()) {
+                    return 'reasoning must be a non-empty string';
+                }
+                if (correction.adjustedParameters != null &&
+                    (typeof correction.adjustedParameters !== 'object' || Array.isArray(correction.adjustedParameters))) {
+                    return 'adjustedParameters must be an object or null';
+                }
+                if (correction.alternativeTool != null && typeof correction.alternativeTool !== 'string') {
+                    return 'alternativeTool must be a string or null';
+                }
+                return null;
+            })();
+            if (shapeError) {
+                return {
+                    shouldRetry: false,
+                    reasoning: `Malformed error analysis: ${shapeError}`,
+                    adjustedParameters: null,
+                    alternativeTool: null,
+                };
+            }
+
+            return {
+                shouldRetry: correction.shouldRetry,
+                reasoning: correction.reasoning.trim(),
+                adjustedParameters: correction.adjustedParameters || null,
+                alternativeTool: correction.alternativeTool || null,
             };
-            return normalized;
 
         } catch (error) {
             console.error('Failed to analyze error:', error);
