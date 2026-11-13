@@ -148,15 +148,24 @@ export default function FigmaPage() {
   };
 
   const refreshFiles = async () => {
-    if (helperReady) {
+    // Re-check on demand so installing/reloading the helper doesn't require a
+    // full page refresh.
+    const ready = helperReady || await figmaHelper.available({ force: true });
+    if (ready !== helperReady) setHelperReady(ready);
+
+    let syncError = null;
+    if (ready) {
       setFilesLoading(true);
       try {
         await figmaHelper.sync();
       } catch (error) {
+        syncError = error.message || 'Figma sync failed.';
         console.warn('Helper sync failed:', error.message);
       }
     }
+
     await loadFiles({ refresh: true });
+    if (syncError) setFilesError(syncError);
   };
 
   const connectFigma = async () => {
