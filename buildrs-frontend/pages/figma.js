@@ -10,6 +10,7 @@ import FigmaCodePanel from '../components/figma/FigmaCodePanel';
 import FigmaLibrary from '../components/figma/FigmaLibrary';
 import useAuthStore from '../store/authStore';
 import { apiFetch, figmaApi } from '../lib/api';
+import { figmaHelper } from '../lib/figmaHelper';
 
 const STEPS = [
   { number: '01', title: 'Connect Figma', description: 'Authorize Buildrs to read your designs.' },
@@ -33,6 +34,16 @@ export default function FigmaPage() {
   const [openFileKey, setOpenFileKey] = useState(null);
   const [highlightNodeId, setHighlightNodeId] = useState(null);
   const [codeFrame, setCodeFrame] = useState(null);
+  const [helperReady, setHelperReady] = useState(false);
+  const [preparingTask, setPreparingTask] = useState(false);
+
+  // The helper is the primary reader: it uses the user's own figma.com
+  // session, so designs, frames and codegen work without OAuth scopes.
+  useEffect(() => {
+    let active = true;
+    figmaHelper.available().then((ready) => { if (active) setHelperReady(ready); });
+    return () => { active = false; };
+  }, []);
 
   // Deep link: /figma?file=<key>&node=<id>
   useEffect(() => {
@@ -101,7 +112,29 @@ export default function FigmaPage() {
     loadFiles();
   };
 
-  const createTaskFromFrame = (frame, file) => {
+  // Save the frame before leaving for the task form so the agent can implement
+  // it later even though the browser (and its Figma session) is gone by then.
+  const createTaskFromFrame = async (frame, file) => {
+    setPreparingTask(true);
+    try {
+      if (await figmaHelper.available()) {
+        const frameData = await figmaHelper.getNode(file.key, frame.id);
+        if (frameData?.node) {
+          await figmaApi.saveSnapshot({
+            fileKey: file.key,
+            nodeId: frame.id,
+            nodeName: frameData.node.name || frame.name,
+            fileName: frameData.fileName || file.name,
+            node: frameData.node,
+          });
+        }
+      }
+    } catch (error) {
+      console.warn('Could not save this frame for the agent:', error.message);
+    } finally {
+      setPreparingTask(false);
+    }
+
     router.push({
       pathname: '/tasks',
       query: {
@@ -114,8 +147,16 @@ export default function FigmaPage() {
     });
   };
 
-  const refreshFiles = () => {
-    loadFiles({ refresh: true });
+  const refreshFiles = async () => {
+    if (helperReady) {
+      setFilesLoading(true);
+      try {
+        await figmaHelper.sync();
+      } catch (error) {
+        console.warn('Helper sync failed:', error.message);
+      }
+    }
+    await loadFiles({ refresh: true });
   };
 
   const connectFigma = async () => {
@@ -180,35 +221,11 @@ export default function FigmaPage() {
             <FigmaFrameBrowser
               fileKey={openFileKey}
               highlightNodeId={highlightNodeId}
+              preparingTask={preparingTask}
               onBack={closeFile}
               onConvert={(frame) => setCodeFrame(frame)}
               onCreateTask={createTaskFromFrame}
             />
-          ) : connected && !hasPat ? (
-            <div className="figma-pat-setup">
-              <div className="figma-brand-mark">
-                <BrandIcon platform="figma" />
-                <span />
-              </div>
-              <p className="figma-eyebrow">Figma connected</p>
-              <h2>Save your Figma Personal Access Token</h2>
-              <p className="figma-description">
-                Buildrs needs a Figma Personal Access Token to read your design files directly.<br className="figma-desktop-break" />
-                Create one in Figma at Settings → Personal access tokens (enable 'file_content:read'),<br />
-                then paste it below. No browser extension required.
-              </p>
-              <a
-                href="/integrations"
-                className="figma-connect-main"
-                onClick={(e) => { e.preventDefault(); router.push('/integrations'); }}
-              >
-                <BrandIcon platform="figma" />
-                Go to Integrations → Save PAT
-              </a>
-              <span className="figma-permission-note">
-                Once saved, your designs will appear here. Click any design to browse frames, convert to code, or assign to an agent.
-              </span>
-            </div>
           ) : connected ? (
             <div className="figma-files-view">
               {filesError && <p className="figma-files-error" role="alert">{filesError}</p>}
@@ -217,6 +234,7 @@ export default function FigmaPage() {
                 loading={filesLoading}
                 account={account}
                 hasPat={hasPat}
+                helperReady={helperReady}
                 onRefresh={refreshFiles}
                 onOpenFile={(fileKey) => openFile(fileKey)}
               />

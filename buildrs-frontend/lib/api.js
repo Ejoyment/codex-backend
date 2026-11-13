@@ -538,11 +538,17 @@ export const figmaApi = {
   listFiles: (options = {}) => apiFetch('/api/figma/files', options),
   getFrames: (fileKey, { thumbnails = true } = {}) =>
     apiFetch(`/api/figma/files/${encodeURIComponent(fileKey)}/frames${thumbnails ? '' : '?thumbnails=0'}`, { timeoutMs: 45000 }),
-  generateCode: ({ fileKey, nodeId, target = 'react', prompt = '' }) =>
+  generateCode: ({ fileKey, nodeId, target = 'react', prompt = '', node, nodeName, fileName }) =>
     apiFetch('/api/design-code/generate', {
       method: 'POST',
-      body: JSON.stringify({ fileKey, nodeId, target, prompt }),
+      body: JSON.stringify({ fileKey, nodeId, target, prompt, node, nodeName, fileName }),
       timeoutMs: 120000,
+    }),
+  saveSnapshot: ({ fileKey, nodeId, nodeName, fileName, node }) =>
+    apiFetch('/api/figma/snapshots', {
+      method: 'POST',
+      body: JSON.stringify({ fileKey, nodeId, nodeName, fileName, node }),
+      timeoutMs: 60000,
     }),
   getComments: (fileKey, options = {}) => apiFetch(`/api/figma/files/${fileKey}/comments`, options),
   getStatus: () => apiFetch('/api/figma/status'),

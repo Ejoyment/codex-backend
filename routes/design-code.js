@@ -7,6 +7,7 @@ const figmaContextService = require('../utils/figmaContextService');
 const teamMemoryService = require('../utils/teamMemoryService');
 const { addAuditLog } = require('../utils/auditLogService');
 const { getFigmaIntegration } = require('../utils/figmaContextService');
+const { saveDesignSnapshot } = require('../utils/figmaSnapshot');
 
 function targetPrompt(target) {
   const t = String(target || 'react').toLowerCase();
@@ -114,6 +115,23 @@ router.post('/generate', authenticateToken, async (req, res) => {
   }
 
   try {
+    // The browser helper can hand us the frame it read from the user's own
+    // Figma session. Storing it here means codegen works even when the OAuth
+    // token has no file scope.
+    if (req.body?.node && nodeId) {
+      try {
+        await saveDesignSnapshot(req.userId, {
+          fileKey,
+          nodeId,
+          nodeName: req.body?.nodeName,
+          fileName: req.body?.fileName,
+          node: req.body.node,
+        });
+      } catch (snapshotError) {
+        console.warn('Design snapshot rejected, trying live Figma:', snapshotError.message);
+      }
+    }
+
     let designContext = {
       fileKey,
       designSystem: {},

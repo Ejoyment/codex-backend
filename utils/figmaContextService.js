@@ -1,6 +1,7 @@
 const axios = require('axios');
 const DesignToken = require('../models/DesignToken');
 const { normalizeNodeId, renderDesignSpec } = require('./figmaDesignSpec');
+const { readDesignSnapshot } = require('./figmaSnapshot');
 
 async function refreshFigmaToken(integration) {
     // Figma expects client credentials via HTTP Basic auth on this endpoint.
@@ -352,22 +353,59 @@ function summarizeNodeTree(node, depth = 0, maxDepth = 5) {
     return summary;
 }
 
-/**
- * Build a comprehensive, unified design context for a Figma file (optionally
- * scoped to a single node).  This combines:
- *   • The live Figma node tree (summarised for AI consumption)
- *   • All previously-ingested design tokens from the database
- *   • A flattened "design system" block optimised for code generation
- *
- * @param {string} userId   - Authenticated user ID
- * @param {string} fileKey  - Figma file key
- * @param {string|null} nodeId - Optional Figma node ID to scope the context
- * @param {string} contextType - 'codegen' (default) or 'audit'
- * @returns {Promise<object>} Unified design context
- */
-async function getDesignContext(userId, fileKey, rawNodeId = null, contextType = 'codegen') {
+// A snapshot read from the user's browser wins while it is recent; after that
+// the live API wins, with the snapshot as a fallback if the token cannot read
+// the file (no PAT, missing file scope, expired connection).
+const SNAPSHOT_PREFER_MS = 12 * 60 * 60 * 1000;
+
+function contextFromRootNode({ fileKey, nodeId, rootNode, fileMeta, tokensResult, contextType, designSpec }) {
+    // Summarise the node tree for AI consumption
+    const nodeTree = rootNode ? summarizeNodeTree(rootNode) : null;
+
+    // Build a flat component list (top-level components / instances)
+    const components = [];
+    function collectComponents(node) {
+        if (!node) return;
+        if (node.type === 'COMPONENT' || node.type === 'COMPONENT_SET' || node.type === 'INSTANCE') {
+            components.push({
+                id: node.id,
+                name: node.name,
+                type: node.type,
+                componentKey: node.componentKey || node.componentId || null
+            });
+        }
+        if (Array.isArray(node.children)) {
+            node.children.forEach(collectComponents);
+        }
+    }
+    if (rootNode) collectComponents(rootNode);
+
+    const context = {
+        fileKey,
+        nodeId: nodeId || null,
+        nodeName: rootNode?.name || null,
+        file: fileMeta,
+        fetchedAt: new Date().toISOString(),
+        nodeTree,
+        // Exact, line-per-layer spec (dimensions, layout, colors, text) the
+        // model can implement against without guessing.
+        designSpec: designSpec || (nodeId && rootNode ? renderDesignSpec(rootNode) : null),
+        designSystem: tokensResult.designSystem || tokensResult,
+        tokenCount: tokensResult.tokenCount || 0,
+        components,
+        componentCount: components.length
+    };
+
+    // For 'audit' context type, include the raw grouped tokens as well
+    if (contextType === 'audit') {
+        context.rawTokens = tokensResult;
+    }
+
+    return context;
+}
+
+async function liveDesignContext(userId, fileKey, nodeId, contextType) {
     const integration = await getFigmaIntegration(userId);
-    const nodeId = rawNodeId ? (normalizeNodeId(rawNodeId) || rawNodeId) : null;
 
     // 1. Fetch the live Figma file/node structure
     const endpoint = nodeId
@@ -403,50 +441,60 @@ async function getDesignContext(userId, fileKey, rawNodeId = null, contextType =
     // 2. Retrieve stored design tokens
     const tokensResult = await getDesignTokensForAI(userId, fileKey, contextType);
 
-    // 3. Summarise the node tree for AI consumption
-    const nodeTree = rootNode ? summarizeNodeTree(rootNode) : null;
+    return contextFromRootNode({ fileKey, nodeId, rootNode, fileMeta, tokensResult, contextType });
+}
 
-    // 4. Build a flat component list (top-level components / instances)
-    const components = [];
-    function collectComponents(node) {
-        if (!node) return;
-        if (node.type === 'COMPONENT' || node.type === 'COMPONENT_SET' || node.type === 'INSTANCE') {
-            components.push({
-                id: node.id,
-                name: node.name,
-                type: node.type,
-                componentKey: node.componentKey || node.componentId || null
-            });
-        }
-        if (Array.isArray(node.children)) {
-            node.children.forEach(collectComponents);
+/**
+ * Unified design context for a file/frame.
+ *
+ * The Buildrs Figma Helper can push a frame read with the user's own Figma
+ * session, so a recent snapshot is used as-is — no REST call, no OAuth file
+ * scope required. When no snapshot exists the live API is used, and when the
+ * live API fails an older snapshot is still better than nothing.
+ *
+ * @param {string} userId   - Authenticated user ID
+ * @param {string} fileKey  - Figma file key
+ * @param {string|null} nodeId - Optional Figma node ID to scope the context
+ * @param {string} contextType - 'codegen' (default) or 'audit'
+ * @returns {Promise<object>} Unified design context
+ */
+async function getDesignContext(userId, fileKey, rawNodeId = null, contextType = 'codegen') {
+    const nodeId = rawNodeId ? (normalizeNodeId(rawNodeId) || rawNodeId) : null;
+
+    let snapshot = null;
+    if (nodeId) {
+        try {
+            snapshot = await readDesignSnapshot(userId, fileKey, nodeId);
+        } catch (error) {
+            snapshot = null;
         }
     }
-    if (rootNode) collectComponents(rootNode);
 
-    // 5. Assemble the unified context
-    const context = {
-        fileKey,
-        nodeId: nodeId || null,
-        nodeName: rootNode?.name || null,
-        file: fileMeta,
-        fetchedAt: new Date().toISOString(),
-        nodeTree,
-        // Exact, line-per-layer spec (dimensions, layout, colors, text) the
-        // model can implement against without guessing.
-        designSpec: nodeId && rootNode ? renderDesignSpec(rootNode) : null,
-        designSystem: tokensResult.designSystem || tokensResult,
-        tokenCount: tokensResult.tokenCount || 0,
-        components,
-        componentCount: components.length
+    const snapshotIsFresh = snapshot
+        && Date.now() - new Date(snapshot.updatedAt).getTime() < SNAPSHOT_PREFER_MS;
+
+    const fromSnapshot = async () => {
+        const tokensResult = await getDesignTokensForAI(userId, fileKey, contextType);
+        return contextFromRootNode({
+            fileKey,
+            nodeId,
+            rootNode: snapshot.document,
+            fileMeta: { name: snapshot.fileName || null, lastModified: snapshot.updatedAt || null },
+            tokensResult,
+            contextType,
+            designSpec: snapshot.designSpec || null
+        });
     };
 
-    // For 'audit' context type, include the raw grouped tokens as well
-    if (contextType === 'audit') {
-        context.rawTokens = tokensResult;
-    }
+    if (snapshot && snapshotIsFresh) return fromSnapshot();
 
-    return context;
+    try {
+        return await liveDesignContext(userId, fileKey, nodeId, contextType);
+    } catch (error) {
+        if (!snapshot) throw error;
+        console.warn('Live Figma read failed, using the helper snapshot:', error.message);
+        return fromSnapshot();
+    }
 }
 
 // Rendered PNG URLs for nodes (short-lived Figma CDN links).
