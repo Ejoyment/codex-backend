@@ -171,9 +171,24 @@ describe('Bug 5 — Workspace membership awareness', () => {
 });
 
 describe('API base URL and endpoints', () => {
-  test('lib/api.js requires the configured API origin without double /api', () => {
+  test('lib/api.js normalizes the configured API origin without double /api', () => {
     const api = readFrontend('lib/api.js');
-    expect(api).toMatch(/API_BASE_URL = normalizeApiBaseUrl\(process\.env\.NEXT_PUBLIC_API_URL \|\| ''\)/);
+
+    // Exercise the real implementation by extracting it, so formatting changes
+    // inside lib/api.js cannot break the assertion.
+    const match = api.match(/export function normalizeApiBaseUrl[\s\S]*?\n\}/);
+    expect(match).not.toBeNull();
+    const normalizeApiBaseUrl = new Function(
+      `${match[0].replace('export ', '')}; return normalizeApiBaseUrl;`
+    )();
+
+    expect(normalizeApiBaseUrl('https://api.example.com/')).toBe('https://api.example.com');
+    expect(normalizeApiBaseUrl('https://api.example.com/api')).toBe('https://api.example.com');
+    expect(normalizeApiBaseUrl('https://api.example.com/api/')).toBe('https://api.example.com');
+    expect(normalizeApiBaseUrl('')).toBe('');
+
+    expect(api).toMatch(/API_BASE_URL\s*=\s*normalizeApiBaseUrl\(/s);
+    expect(api).toMatch(/process\.env\.NEXT_PUBLIC_API_URL/);
     expect(api).not.toMatch(/onrender\.com/);
   });
 

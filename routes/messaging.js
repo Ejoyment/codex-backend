@@ -1,4 +1,4 @@
-const { sendInternalError } = require('../utils/httpErrors');
+const { sendError, sendInternalError } = require('../utils/httpErrors');
 const express = require('express');
 const router = express.Router();
 const Message = require('../models/Message');
@@ -126,7 +126,7 @@ router.post('/channels', authenticateToken, requireCompanyMember, async (req, re
         // Bad input is the client's fault; report it as such instead of an
         // opaque 500 that the UI can only surface as "something went wrong".
         if (error.name === 'ValidationError' || error.name === 'CastError') {
-            return res.status(400).json({ success: false, message: error.message });
+            return sendError(req, res, error);
         }
         // Lost the create race (partial unique index on live names).
         if (error.code === 11000) {

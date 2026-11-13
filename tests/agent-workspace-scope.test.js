@@ -420,6 +420,62 @@ describe('agent-v1 workspace authorization', () => {
     expect(gitService.deleteBranch).not.toHaveBeenCalled();
   });
 
+  test('cancel stops a running session, releases the task and deletes the branch', async () => {
+    const doc = execution({ status: 'running', taskId: TASK_A });
+    AgentExecution.findOne.mockResolvedValue(doc);
+    LocalTask.findOneAndUpdate.mockResolvedValue({});
+
+    const res = await request(app)
+      .post('/api/v1/agent/cancel')
+      .send({ executionId: EXEC_A });
+
+    expect(res.status).toBe(200);
+    expect(doc.status).toBe('cancelled');
+    expect(doc.completedAt).toBeInstanceOf(Date);
+    expect(doc.rejectionReason).toBe('Stopped by user');
+    expect(doc.save).toHaveBeenCalledTimes(1);
+    expect(LocalTask.findOneAndUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ _id: TASK_A, userId: USER_A, agentSessionId: EXEC_A }),
+      expect.objectContaining({
+        $set: expect.objectContaining({ status: 'backlog', agentSessionId: null }),
+      })
+    );
+    expect(gitService.removeAgentWorktree).toHaveBeenCalledWith(
+      WORKSPACE_A,
+      null,
+      EXEC_A,
+      expect.objectContaining({ branchName: 'feature/agent', deleteBranch: true })
+    );
+  });
+
+  test('cancel refuses a session that is awaiting review', async () => {
+    const doc = execution({ status: 'awaiting_review' });
+    AgentExecution.findOne.mockResolvedValue(doc);
+
+    const res = await request(app)
+      .post('/api/v1/agent/cancel')
+      .send({ executionId: EXEC_A });
+
+    expect(res.status).toBe(409);
+    expect(doc.status).toBe('awaiting_review');
+    expect(doc.save).not.toHaveBeenCalled();
+    expect(gitService.removeAgentWorktree).not.toHaveBeenCalled();
+  });
+
+  test('cancel refuses a session whose merge is already in flight', async () => {
+    const doc = execution({ status: 'approving' });
+    AgentExecution.findOne.mockResolvedValue(doc);
+
+    const res = await request(app)
+      .post('/api/v1/agent/cancel')
+      .send({ executionId: EXEC_A });
+
+    expect(res.status).toBe(409);
+    expect(res.body.message).toBe('This session is already being merged.');
+    expect(doc.save).not.toHaveBeenCalled();
+    expect(gitService.removeAgentWorktree).not.toHaveBeenCalled();
+  });
+
   test('tweak refuses a foreign workspace before charging credits', async () => {
     AgentExecution.findOne.mockResolvedValue(execution());
     Company.findById.mockReturnValue(leanDoc(null));

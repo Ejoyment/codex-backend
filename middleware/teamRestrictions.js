@@ -3,6 +3,7 @@ const Subscription = require('../models/Subscription');
 const jwt = require('jsonwebtoken');
 const { canonicalTier } = require('../utils/tierNames');
 const { isUserSessionValid } = require('./auth');
+const { resolveMemberLimit } = require('../utils/companyLimits');
 
 // Tier limits configuration
 const CORE_PAID_FEATURES = {
@@ -288,7 +289,7 @@ async function getCompanyLimits(companyId) {
         
         // Update company tier if it doesn't match
         if (company.subscription.tier !== ownerTier) {
-            const memberLimit = ownerTier === 'developer' ? 1 : ['pro', 'pro_plus'].includes(ownerTier) ? 10 : 999999;
+            const memberLimit = resolveMemberLimit(ownerTier, company.subscription.memberLimit);
             company.subscription.tier = ownerTier;
             company.subscription.memberLimit = memberLimit;
             await company.save();

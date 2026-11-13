@@ -132,53 +132,11 @@ router.post('/:id/run', authenticateToken, async (req, res) => {
         const isMember = company.members.some(m => m.user.toString() === req.userId);
         if (!isOwner && !isMember) return res.status(403).json({ success: false, message: 'Permission denied' });
 
-        const startedAt = Date.now();
-        const run = await PipelineRun.create({
-            pipeline: pipeline._id,
-            company: pipeline.company,
-            triggeredBy: req.userId,
-            status: 'running',
-            stageResults: pipeline.stages.map(s => ({ name: s.name, status: 'running', output: '' })),
+        return res.status(501).json({
+            success: false,
+            code: 'PIPELINE_EXECUTION_UNAVAILABLE',
+            message: 'Pipeline execution is not available yet. Run this workflow in your CI provider until an isolated runner is configured.',
         });
-
-        // Best-effort stage simulation: mark stages complete sequentially.
-        setImmediate(async () => {
-            try {
-                const results = [];
-                for (const stage of pipeline.stages) {
-                    await new Promise(r => setTimeout(r, 350 + Math.floor(Math.random() * 700)));
-                    const ok = !stage.command.includes('fail') && !stage.command.trim().startsWith('exit 1');
-                    results.push({ name: stage.name, status: ok ? 'success' : 'failed', output: ok ? `✓ ${stage.command}` : `✕ ${stage.command}` });
-                    if (!ok) break;
-                }
-                const allOk = results.every(r => r.status === 'success');
-                run.stageResults = results;
-                run.status = allOk ? 'success' : 'failed';
-                run.durationMs = Date.now() - startedAt;
-                run.error = allOk ? '' : `${results.filter(r => r.status === 'failed').length} stage(s) failed`;
-                await run.save();
-
-                pipeline.lastRun = new Date();
-                pipeline.lastStatus = run.status;
-                await pipeline.save();
-
-                addAuditLog({
-                    companyId: pipeline.company.toString(),
-                    actorId: req.userId,
-                    event: allOk ? 'pipeline.run_success' : 'pipeline.run_failed',
-                    category: 'system',
-                    target: pipeline.name,
-                    details: { pipelineId: pipeline._id.toString(), runId: run._id.toString() },
-                    req
-                });
-            } catch (e) {
-                run.status = 'failed';
-                run.error = e.message;
-                await run.save();
-            }
-        });
-
-        res.json({ success: true, run, message: `Pipeline "${pipeline.name}" started` });
     } catch (error) {
         return sendInternalError(req, res, error);
     }

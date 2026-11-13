@@ -1,4 +1,4 @@
-const { sendInternalError } = require('../utils/httpErrors');
+const { sendError, sendInternalError } = require('../utils/httpErrors');
 const express = require('express');
 const router = express.Router();
 const Standup = require('../models/Standup');
@@ -238,7 +238,7 @@ router.post('/', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         if (error.name === 'ValidationError' || error.name === 'CastError') {
-            return res.status(400).json({ success: false, message: error.message });
+            return sendError(req, res, error);
         }
         return sendInternalError(req, res, error);
     }
@@ -267,7 +267,7 @@ router.get('/', authenticateToken, async (req, res) => {
         res.json({ success: true, standups });
     } catch (error) {
         if (error.name === 'ValidationError' || error.name === 'CastError') {
-            return res.status(400).json({ success: false, message: error.message });
+            return sendError(req, res, error);
         }
         return sendInternalError(req, res, error);
     }

@@ -11,6 +11,7 @@
 const Subscription = require('../models/Subscription');
 const Company = require('../models/Company');
 const User = require('../models/User');
+const { cappedMemberLimit } = require('./companyLimits');
 
 class TeamBillingService {
     /**
@@ -192,6 +193,10 @@ class TeamBillingService {
     async _ensureCompanyMembership(company, userId, invitedBy) {
         const existing = company.members.find((m) => String(m.user) === String(userId));
         if (existing) return;
+        const memberLimit = cappedMemberLimit(company.subscription?.memberLimit);
+        if (company.members.length >= memberLimit) {
+            throw new Error('Team member limit reached. Upgrade your plan to add more members.');
+        }
         company.members.push({
             user: userId,
             role: 'member',

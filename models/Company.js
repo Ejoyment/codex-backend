@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { MAX_COMPANY_MEMBERS } = require('../utils/companyLimits');
 
 const companySchema = new mongoose.Schema({
     name: {
@@ -25,25 +26,31 @@ const companySchema = new mongoose.Schema({
         ref: 'User',
         required: true
     },
-    members: [{
-        user: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'User'
-        },
-        role: {
-            type: String,
-            enum: ['owner', 'admin', 'member', 'viewer'],
-            default: 'member'
-        },
-        joinedAt: {
-            type: Date,
-            default: Date.now
-        },
-        invitedBy: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'User'
+    members: {
+        type: [{
+            user: {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: 'User'
+            },
+            role: {
+                type: String,
+                enum: ['owner', 'admin', 'member', 'viewer'],
+                default: 'member'
+            },
+            joinedAt: {
+                type: Date,
+                default: Date.now
+            },
+            invitedBy: {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: 'User'
+            }
+        }],
+        validate: {
+            validator: (members) => !Array.isArray(members) || members.length <= MAX_COMPANY_MEMBERS,
+            message: `A company cannot have more than ${MAX_COMPANY_MEMBERS} members`
         }
-    }],
+    },
     settings: {
         allowMemberInvites: {
             type: Boolean,

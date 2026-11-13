@@ -39,7 +39,7 @@ const NAV_SECTIONS = [
     items: [
       { href: '/editor', label: 'Editor', icon: Edit3 },
       { href: '/figma', label: 'Figma', icon: Figma },
-      { href: '/ai-pair', label: 'AI Agent', icon: Sparkles },
+      { href: '/ai-agents', label: 'AI Agent', icon: Sparkles },
       { href: '/specs', label: 'Specs', icon: FileText },
       { href: '/mcp', label: 'MCP Server', icon: Server },
     ],

@@ -35,10 +35,7 @@ router.get('/pending', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Error fetching pending confirmations:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -119,10 +116,7 @@ router.post('/respond', authenticateToken, async (req, res) => {
         res.json(result);
     } catch (error) {
         console.error('Error responding to confirmation:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
+        return sendInternalError(req, res, error);
     }
 });
 

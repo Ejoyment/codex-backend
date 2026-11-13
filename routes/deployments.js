@@ -21,6 +21,7 @@ const { emitDeploymentUpdate } = require('../utils/realtimeBus');
 const { normalizeDeployContext } = require('../utils/deployContext');
 const { addAuditLog } = require('../utils/auditLogService');
 const { notifyDeploymentEvent } = require('../utils/notificationTriggers');
+const { publicDeployFailure } = require('../utils/deployFailure');
 
 // Keep in sync with DEPLOY_TIMEOUT_MS in utils/deploymentService.js — that is
 // the SSH-side command timeout (the docker build itself). The HTTP-side race
@@ -31,14 +32,6 @@ const DEPLOY_RACE_TIMEOUT = DEPLOY_TIMEOUT + 300000;
 // callback (server restart) — sweep it to failed. Must exceed
 // DEPLOY_RACE_TIMEOUT so an in-flight build is never marked stale.
 const STALE_DEPLOY_MS = DEPLOY_TIMEOUT + 600000;
-
-// Build errors can be huge (a full buildkit trace runs to several KB); keep
-// the stored message readable — head holds the failure reason, tail the end.
-function capErrorMessage(msg) {
-    const s = String(msg || 'Deployment failed');
-    if (s.length <= 4500) return s;
-    return `${s.slice(0, 1300)}\n... [truncated ${s.length - 4500} chars] ...\n${s.slice(-3200)}`;
-}
 
 // The Render-style pipeline steps shown in the deploy log viewer.
 const INITIAL_STEPS = () => ([
@@ -547,12 +540,22 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
                             ? 'Your build or startup exceeded the time limit.'
                             : 'Our build infrastructure did not respond in time — please retry.')), { fault, stage: failureStage });
                 }
-                const publicErrorMessage = fault === 'platform'
-                    ? 'Deployment failed due to a platform error. Please retry.'
-                    : capErrorMessage(depErr.message);
+                const publicErrorMessage = publicDeployFailure({
+                    fault,
+                    stage: failureStage,
+                    timedOutMessage: timedOut ? depErr.message : null,
+                });
+                // Raw provider/Docker diagnostics stay in the server log; the
+                // deployment and the logs modal only ever see the safe copy.
+                console.error('[deploy] failure detail', {
+                    deployment: deployId.toString(),
+                    stage: failureStage || 'platform',
+                    fault,
+                    detail: depErr.message,
+                });
                 const logTail = buildLog
-                    ? `${buildLog}\n--- DEPLOYMENT FAILED ---\n${depErr.message}\n`
-                    : `--- DEPLOYMENT FAILED ---\n${depErr.message}\n`;
+                    ? `${buildLog}\n--- DEPLOYMENT FAILED ---\n${publicErrorMessage}\n`
+                    : `--- DEPLOYMENT FAILED ---\n${publicErrorMessage}\n`;
                 let failedDeployment = null;
                 try {
                     failedDeployment = await Deployment.findOneAndUpdate(
@@ -767,10 +770,10 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
     } catch (error) {
         console.error('Create deployment error:', error);
         if (res.headersSent) return;
-        const msg = error.code === 11000
+        const message = error.code === 11000
             ? 'A deployment with this subdomain already exists.'
-            : error.message || 'Failed to start deployment';
-        res.status(500).json({ error: 'Failed to start deployment: ' + msg });
+            : 'Failed to start deployment';
+        res.status(500).json({ error: message });
     }
 });
 
@@ -905,7 +908,7 @@ router.delete('/:id', authenticateToken, async (req, res) => {
         res.json({ success: true, message: 'Deployment stopped and cleaned up' });
     } catch (error) {
         console.error('Delete deployment error:', error);
-        res.status(500).json({ message: 'Failed to stop deployment: ' + (error.message || 'unknown error') });
+        res.status(500).json({ message: 'Failed to stop deployment' });
     }
 });
 

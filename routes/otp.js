@@ -1,4 +1,5 @@
 const express = require('express');
+const { sendInternalError } = require('../utils/httpErrors');
 const crypto = require('crypto');
 const router = express.Router();
 const OTP = require('../models/OTP');
@@ -150,11 +151,7 @@ router.post('/send', otpLimiter, async (req, res) => {
 
     } catch (error) {
         console.error('Send OTP error:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Error sending OTP',
-            error: error.message 
-        });
+        return sendInternalError(req, res, error, { message: 'Error sending OTP' });
     }
 });
 
@@ -302,11 +299,7 @@ router.post('/verify', async (req, res) => {
 
     } catch (error) {
         console.error('Verify OTP error:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Error verifying OTP',
-            error: error.message 
-        });
+        return sendInternalError(req, res, error, { message: 'Error verifying OTP' });
     }
 });
 
@@ -394,11 +387,7 @@ router.post('/resend', otpLimiter, async (req, res) => {
 
     } catch (error) {
         console.error('Resend OTP error:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Error resending OTP',
-            error: error.message 
-        });
+        return sendInternalError(req, res, error, { message: 'Error resending OTP' });
     }
 });
 

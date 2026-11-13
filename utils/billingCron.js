@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const PaystackScheduler = require('./paystackScheduler');
 const StripeBillingScheduler = require('./billingScheduler');
 const FlutterwaveScheduler = require('./flutterwaveScheduler');
+const { reapStaleAgentExecutions } = require('./agentExecutionReaper');
 
 // Trial lifecycle scan bounds (audit finding: unbounded trial scan).
 // Reminders only start 3 days out, so trials ending later need no work this
@@ -89,6 +90,15 @@ class BillingCron {
                     }
                 } catch (error) {
                     console.error('Billing reaper error (non-fatal):', error.message);
+                }
+
+                try {
+                    const reapedExecutions = await reapStaleAgentExecutions();
+                    if (reapedExecutions.reaped > 0) {
+                        console.log(`✓ Agent execution reaper: ${reapedExecutions.reaped} stalled run(s) marked failed`);
+                    }
+                } catch (error) {
+                    console.error('Agent execution reaper error (non-fatal):', error.message);
                 }
 
                 // Trial lifecycle checks: find trials that have expired or are in last day
