@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Check, Code2, Copy, Loader2, X } from 'lucide-react';
 import { figmaApi } from '../../lib/api';
+import { figmaHelper } from '../../lib/figmaHelper';
 
 const TARGETS = [
   { value: 'react', label: 'React' },
@@ -22,7 +23,35 @@ export default function FigmaCodePanel({ fileKey, frame, onClose }) {
     setError('');
     setResult(null);
     try {
-      const data = await figmaApi.generateCode({ fileKey, nodeId: frame.id, target, prompt });
+      // Read the frame through the helper first: it uses the user's own Figma
+      // session, so codegen doesn't depend on an OAuth file scope. The backend
+      // stores this node as a snapshot before generating. If the helper isn't
+      // there, the backend falls back to the saved PAT/token.
+      let design = null;
+      try {
+        if (await figmaHelper.available()) {
+          const frameData = await figmaHelper.getNode(fileKey, frame.id);
+          if (frameData?.node) {
+            design = {
+              node: frameData.node,
+              nodeName: frameData.node.name || frame.name,
+              fileName: frameData.fileName || null,
+            };
+          }
+        }
+      } catch (helperError) {
+        console.warn('Could not read this frame with the helper:', helperError.message);
+      }
+
+      const data = await figmaApi.generateCode({
+        fileKey,
+        nodeId: frame.id,
+        target,
+        prompt,
+        node: design?.node,
+        nodeName: design?.nodeName,
+        fileName: design?.fileName,
+      });
       if (!data.success) throw new Error(data.message || 'Code generation failed');
       setResult(data);
       setActiveFile(0);

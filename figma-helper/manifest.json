@@ -1,9 +1,15 @@
 {
   "manifest_version": 3,
   "name": "Buildrs Figma Helper",
-  "version": "1.1.1",
-  "description": "Sync your Figma recent files to Buildrs so you can assign frames to agents without pasting links.",
-  "permissions": ["storage", "scripting", "tabs", "alarms", "activeTab"],
+  "version": "1.2.0",
+  "description": "Bring your Figma files and frames into Buildrs without pasting links.",
+  "permissions": [
+    "storage",
+    "scripting",
+    "tabs",
+    "alarms",
+    "activeTab"
+  ],
   "host_permissions": [
     "https://www.figma.com/*",
     "https://codex-backend-7utu.onrender.com/*",
@@ -13,12 +19,20 @@
     "http://127.0.0.1:3000/*",
     "http://127.0.0.1:3001/*"
   ],
-  "optional_host_permissions": ["https://*/*", "http://*/*"],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://*/*"
+  ],
   "background": {
     "service_worker": "background.js"
   },
   "externally_connectable": {
-    "matches": ["https://buildrshq.dev/*", "https://www.buildrshq.dev/*", "http://localhost:3000/*", "http://127.0.0.1:3000/*"]
+    "matches": [
+      "https://buildrshq.dev/*",
+      "https://www.buildrshq.dev/*",
+      "http://localhost:3000/*",
+      "http://127.0.0.1:3000/*"
+    ]
   },
   "action": {
     "default_title": "Buildrs Figma Helper",
@@ -43,9 +57,12 @@
         "http://localhost:3000/*",
         "http://localhost:3001/*",
         "http://127.0.0.1:3000/*",
-        "http://127.0.0.1:3001/*"
+        "http://127.0.0.1:3001/*",
+        "https://*.buildrshq.dev/*"
       ],
-      "js": ["content.js"],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_idle"
     }
   ]

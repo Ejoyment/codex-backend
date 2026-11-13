@@ -197,6 +197,144 @@ async function fetchFileInPage(fileKey) {
   return { ok: false, status: 0, json: null, sample: '', document: null };
 }
 
+/**
+ * Runs inside the figma.com tab. Returns one frame's full subtree, read with
+ * the user's own Figma session. This is what lets Buildrs convert a frame or
+ * hand it to an agent without any OAuth file scope.
+ */
+async function fetchNodeInPage(fileKey, nodeId) {
+  const headers = { accept: 'application/json', 'x-csrf-bypass': 'yes' };
+  const tsid = document.cookie.match(/(?:^|;\s*)tsid=([^;]+)/);
+  if (tsid) headers.tsid = decodeURIComponent(tsid[1]);
+
+  const wanted = String(nodeId);
+  const FIELD_NAMES = [
+    'name', 'visible', 'opacity', 'blendMode', 'isMask', 'clipsContent',
+    'rotation', 'cornerRadius', 'rectangleCornerRadii', 'cornerSmoothing',
+    'absoluteBoundingBox', 'absoluteRenderBounds', 'size',
+    'layoutMode', 'layoutWrap', 'itemSpacing', 'counterAxisSpacing',
+    'paddingLeft', 'paddingRight', 'paddingTop', 'paddingBottom',
+    'primaryAxisAlignItems', 'counterAxisAlignItems',
+    'primaryAxisSizingMode', 'counterAxisSizingMode',
+    'layoutSizingHorizontal', 'layoutSizingVertical',
+    'layoutGrow', 'layoutAlign', 'layoutPositioning', 'constraints',
+    'fills', 'strokes', 'strokeWeight', 'strokeAlign', 'strokeDashes',
+    'effects', 'characters', 'style',
+    'textAlignHorizontal', 'textAlignVertical', 'lineHeight', 'letterSpacing',
+    'componentKey', 'componentId', 'componentProperties', 'isAsset',
+  ];
+
+  function copyJson(value, depth = 0) {
+    if (value === null) return null;
+    const type = typeof value;
+    if (type === 'string') return value.slice(0, 4000);
+    if (type === 'number') return Number.isFinite(value) ? value : null;
+    if (type === 'boolean') return value;
+    if (type !== 'object' || depth > 8) return null;
+    if (Array.isArray(value)) return value.slice(0, 40).map((entry) => copyJson(entry, depth + 1));
+    const copy = {};
+    for (const key of Object.keys(value)) {
+      if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+      const entry = copyJson(value[key], depth + 1);
+      if (entry !== null || value[key] === null) copy[key] = entry;
+    }
+    return copy;
+  }
+
+  function trimNode(node, depth = 0) {
+    if (!node || typeof node !== 'object' || depth > 40) return null;
+    const id = typeof node.id === 'string' ? node.id.slice(0, 200) : null;
+    const type = typeof node.type === 'string' ? node.type.slice(0, 40) : null;
+    if (!id || !type) return null;
+    const clean = { id, type };
+    for (const field of FIELD_NAMES) {
+      if (!(field in node)) continue;
+      const value = node[field];
+      if (typeof value === 'string') clean[field] = value.slice(0, 4000);
+      else if (typeof value === 'number') { if (Number.isFinite(value)) clean[field] = value; }
+      else if (typeof value === 'boolean') clean[field] = value;
+      else if (value && typeof value === 'object') {
+        const copied = copyJson(value);
+        if (copied !== null) clean[field] = copied;
+      }
+    }
+    if (!clean.name) clean.name = type === 'CANVAS' ? 'Page' : 'Untitled layer';
+    if (Array.isArray(node.children) && depth < 40) {
+      const children = node.children.slice(0, 300).map((child) => trimNode(child, depth + 1)).filter(Boolean);
+      if (children.length) clean.children = children;
+    }
+    return clean;
+  }
+
+  function findNode(value, depth = 0) {
+    if (!value || typeof value !== 'object' || depth > 40) return null;
+    if (String(value.id) === wanted && (typeof value.type === 'string')) return value;
+    for (const key of Object.keys(value)) {
+      const found = findNode(value[key], depth + 1);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  async function readJson(response) {
+    const text = await response.text();
+    try {
+      return { ok: response.ok, status: response.status, json: JSON.parse(text) };
+    } catch (error) {
+      return { ok: false, status: response.status, json: null, sample: text.slice(0, 200) };
+    }
+  }
+
+  // 1. Node-scoped endpoint, mirroring the REST `/files/:key/nodes` shape.
+  try {
+    const response = await fetch(
+      `https://www.figma.com/api/files/${encodeURIComponent(fileKey)}/nodes?ids=${encodeURIComponent(nodeId)}`,
+      { credentials: 'include', headers }
+    );
+    const parsed = await readJson(response);
+    if (parsed.ok && parsed.json) {
+      const entry = parsed.json.nodes?.[wanted]
+        || parsed.json.nodes?.[wanted.replace(':', '-')]
+        || parsed.json.nodes?.[wanted.replace('-', ':')];
+      const node = entry?.document || findNode(parsed.json);
+      if (node) {
+        return { ok: true, status: parsed.status, fileName: parsed.json.name || null, node: trimNode(node) };
+      }
+    }
+  } catch (error) {
+    // Fall through to the whole-file document.
+  }
+
+  // 2. Whole-file document (no depth limit), then locate the frame.
+  try {
+    const response = await fetch(
+      `https://www.figma.com/api/files/${encodeURIComponent(fileKey)}`,
+      { credentials: 'include', headers }
+    );
+    const parsed = await readJson(response);
+    if (parsed.ok && parsed.json) {
+      const node = findNode(parsed.json);
+      if (node) {
+        return {
+          ok: true,
+          status: parsed.status,
+          fileName: parsed.json.name || parsed.json.file?.name || null,
+          node: trimNode(node),
+        };
+      }
+    }
+  } catch (error) {
+    // Reported below.
+  }
+
+  return {
+    ok: false,
+    status: 0,
+    node: null,
+    error: 'Figma did not return that frame. Open the file in Figma once, then try again.',
+  };
+}
+
 function mapRecentFiles(payload) {
   const list = payload?.meta?.recent_files || payload?.recent_files || payload?.files;
   if (!Array.isArray(list)) {
@@ -382,6 +520,9 @@ function extractPagesAndFrames(document) {
             type: node.type,
             width: node.absoluteBoundingBox?.width || 0,
             height: node.absoluteBoundingBox?.height || 0,
+            // Figma's web payloads sometimes include a render; otherwise the
+            // frame card falls back to its size/type.
+            thumbnailUrl: node.thumbnail_url || node.thumbnailUrl || null,
           });
         }
       }
@@ -393,6 +534,47 @@ function extractPagesAndFrames(document) {
     });
   }
   return pages;
+}
+
+// Full frame payloads are only re-read when the user opens the same frame
+// again within a few minutes; the file document can be large.
+const NODE_CACHE_TTL_MS = 5 * 60 * 1000;
+const nodeCache = new Map();
+
+async function getNode(fileKey, nodeId) {
+  const cacheKey = `${fileKey}:${nodeId}`;
+  const cached = nodeCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < NODE_CACHE_TTL_MS) return cached.data;
+
+  const { tab, created } = await getFigmaTab();
+  if (!tab?.id) throw new Error('Could not open Figma in this browser.');
+
+  try {
+    await waitForTabComplete(tab.id, 45000);
+    let injection;
+    try {
+      [injection] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: fetchNodeInPage,
+        args: [fileKey, nodeId],
+      });
+    } catch (error) {
+      throw new Error('Could not read Figma. Reload the Buildrs Figma Helper at chrome://extensions, then try again.');
+    }
+
+    const result = injection?.result;
+    if (!result) throw new Error('Figma did not respond. Make sure you are signed in to figma.com, then try again.');
+    if (!result.ok || !result.node) {
+      throw new Error(result.error || `Figma returned ${result.status}.`);
+    }
+
+    const data = { fileName: result.fileName || null, node: result.node };
+    nodeCache.set(cacheKey, { at: Date.now(), data });
+    if (nodeCache.size > 20) nodeCache.delete(nodeCache.keys().next().value);
+    return data;
+  } finally {
+    if (created && tab.id) chrome.tabs.remove(tab.id, () => void chrome.runtime.lastError);
+  }
 }
 
 async function handleAuth(message) {
@@ -431,6 +613,16 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     getFile(message.fileKey)
       .then((data) => sendResponse({ ok: true, data }))
       .catch((error) => sendResponse({ ok: false, error: error.message }));
+    return true;
+  }
+  if (message.type === 'FIGMA_GET_NODE') {
+    getNode(message.fileKey, message.nodeId)
+      .then((data) => sendResponse({ ok: true, data }))
+      .catch((error) => sendResponse({ ok: false, error: error.message }));
+    return true;
+  }
+  if (message.type === 'FIGMA_PING') {
+    sendResponse({ ok: true, version: chrome.runtime.getManifest().version });
     return true;
   }
   return false;

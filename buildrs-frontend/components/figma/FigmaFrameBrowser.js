@@ -1,87 +1,62 @@
 import { useEffect, useState } from 'react';
 import { ArrowLeft, Code2, ExternalLink, ListPlus, Loader2, RefreshCw } from 'lucide-react';
 import { figmaApi } from '../../lib/api';
+import { figmaHelper } from '../../lib/figmaHelper';
 
 export function figmaFrameUrl(fileKey, nodeId) {
   const base = `https://www.figma.com/design/${encodeURIComponent(fileKey)}`;
   return nodeId ? `${base}?node-id=${encodeURIComponent(String(nodeId).replace(':', '-'))}` : base;
 }
 
-export default function FigmaFrameBrowser({ fileKey, highlightNodeId, onBack, onConvert, onCreateTask }) {
+export default function FigmaFrameBrowser({ fileKey, highlightNodeId, preparingTask = false, onBack, onConvert, onCreateTask }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [pageId, setPageId] = useState(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [source, setSource] = useState('');
 
   useEffect(() => {
     let active = true;
     setLoading(true);
     setError('');
 
-    const applyResult = (result) => {
+    const applyResult = (result, loadedFrom) => {
       if (!active) return;
       setData(result);
+      setSource(loadedFrom);
       const pageWithTarget = result.pages.find((page) => page.frames.some((frame) => frame.id === highlightNodeId))
         || result.pages.find((page) => page.frames.length)
         || result.pages[0];
       setPageId(pageWithTarget?.id || null);
     };
 
-    const loadWithHelper = (attempt = 1) => {
-      return new Promise((resolve, reject) => {
-        const handler = (event) => {
-          if (event.source !== window) return;
-          const d = event.data || {};
-          if (d.source !== 'buildrs-helper' || d.type !== 'FIGMA_GET_FILE_RESULT') return;
-          window.removeEventListener('message', handler);
-          if (d.ok) {
-            resolve({
-              success: true,
-              file: { key: fileKey, name: d.data?.name || fileKey },
-              pages: d.data?.pages || [],
-            });
-          } else {
-            reject(new Error(d.error || 'Could not load file via helper'));
-          }
-        };
-        window.addEventListener('message', handler);
-        window.postMessage({ source: 'buildrs-web', type: 'FIGMA_GET_FILE_REQUEST', fileKey }, window.location.origin);
-        setTimeout(() => {
-          window.removeEventListener('message', handler);
-          if (attempt < 2) {
-            resolve(loadWithHelper(attempt + 1));
-          } else {
-            reject(new Error('Helper response timeout'));
-          }
-        }, 8000);
-      });
+    // The helper reads Figma with the user's own signed-in tab, so it works
+    // with no OAuth file scope. The backend is the fallback for people who
+    // saved a Personal Access Token instead.
+    const load = async () => {
+      let helperError = null;
+      if (await figmaHelper.available()) {
+        try {
+          applyResult(await figmaHelper.getFile(fileKey), 'helper');
+          return;
+        } catch (error) {
+          helperError = error;
+        }
+      }
+
+      try {
+        const result = await figmaApi.getFrames(fileKey);
+        if (!result.success) throw new Error(result.message || 'Could not load this file');
+        applyResult(result, 'api');
+      } catch (backendError) {
+        if (!active) return;
+        const message = backendError.message || 'Could not load this file';
+        setError(helperError ? `${message} ${helperError.message}` : message);
+      }
     };
 
-    // Try the backend first — it works with a saved Personal Access Token,
-    // no browser extension needed. Fall back to the extension helper if the
-    // backend can't reach the file (e.g. no PAT, OAuth lacks file_content:read).
-    figmaApi.getFrames(fileKey)
-      .then((result) => {
-        if (!active) return;
-        if (!result.success) throw new Error(result.message || 'Could not load this file');
-        applyResult(result);
-        setLoading(false);
-      })
-      .catch((backendError) => {
-        if (!active) return;
-        console.warn('Backend failed, trying extension helper:', backendError.message);
-        loadWithHelper()
-          .then((result) => {
-            if (!active) return;
-            applyResult(result);
-          })
-          .catch((helperError) => {
-            if (!active) return;
-            setError(helperError.message || backendError.message || 'Could not load this file');
-          })
-          .finally(() => active && setLoading(false));
-      });
+    load().finally(() => { if (active) setLoading(false); });
 
     return () => { active = false; };
   }, [fileKey, highlightNodeId, reloadKey]);
@@ -96,7 +71,7 @@ export default function FigmaFrameBrowser({ fileKey, highlightNodeId, onBack, on
           <ArrowLeft />
         </button>
         <div className="figma-browser-title">
-          <p className="figma-eyebrow">Design file</p>
+          <p className="figma-eyebrow">{source === 'helper' ? 'Design file · read from your Figma tab' : 'Design file'}</p>
           <h2>{data?.file?.name || 'Loading…'}</h2>
         </div>
         <a className="figma-refresh" href={figmaFrameUrl(fileKey)} target="_blank" rel="noreferrer">
@@ -163,8 +138,9 @@ export default function FigmaFrameBrowser({ fileKey, highlightNodeId, onBack, on
                     <button type="button" onClick={() => onConvert(frame, data.file)}>
                       <Code2 /><span>Convert to code</span>
                     </button>
-                    <button type="button" onClick={() => onCreateTask(frame, data.file)}>
-                      <ListPlus /><span>Create task</span>
+                    <button type="button" onClick={() => onCreateTask(frame, data.file)} disabled={preparingTask}>
+                      {preparingTask ? <Loader2 className="figma-spin" /> : <ListPlus />}
+                      <span>{preparingTask ? 'Preparing…' : 'Create task'}</span>
                     </button>
                     <a href={figmaFrameUrl(fileKey, frame.id)} target="_blank" rel="noreferrer" aria-label={`Open ${frame.name} in Figma`}>
                       <ExternalLink />

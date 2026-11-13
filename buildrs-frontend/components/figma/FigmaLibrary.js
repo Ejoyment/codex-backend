@@ -36,7 +36,7 @@ function FileCard({ file, onOpen }) {
   );
 }
 
-export default function FigmaLibrary({ files = [], loading = false, account = '', hasPat = false, onRefresh, onOpenFile }) {
+export default function FigmaLibrary({ files = [], loading = false, account = '', hasPat = false, helperReady = false, onRefresh, onOpenFile }) {
   const [query, setQuery] = useState('');
   const [fileKeyInput, setFileKeyInput] = useState('');
   const q = query.trim().toLowerCase();
@@ -71,13 +71,26 @@ export default function FigmaLibrary({ files = [], loading = false, account = ''
             className="flib-refresh"
             onClick={onRefresh}
             disabled={loading}
-            aria-label="Refresh"
+            aria-label={helperReady ? 'Sync from Figma' : 'Refresh'}
           >
             {loading ? <Loader2 className="figma-spin" /> : <RefreshCw />}
-            Refresh
+            {helperReady ? 'Sync from Figma' : 'Refresh'}
           </button>
         </div>
       </div>
+
+      {!helperReady && (
+        <div className="flib-helper-banner">
+          <div>
+            <strong>Turn on one-click design access</strong>
+            <p>
+              Install the Buildrs Figma Helper. It reads your recent files and frames through your own
+              signed-in <code>figma.com</code> tab, so nothing depends on OAuth scopes.
+            </p>
+          </div>
+          <a href="/downloads/buildrs-figma-helper.zip" download>Download the helper</a>
+        </div>
+      )}
 
       <div className="flib-heading">
         <h2>Your Figma designs</h2>
@@ -105,58 +118,56 @@ export default function FigmaLibrary({ files = [], loading = false, account = ''
             <FigmaIcon />
           </div>
           <div className="flib-empty-body">
-            <strong>No designs found</strong>
-            {hasPat ? (
+            <strong>No designs yet</strong>
+            {helperReady ? (
               <>
                 <p>
-                  Your Figma account is connected but no designs have been discovered yet. Figma's API
-                  doesn't let us list your files with a Personal Access Token, so you can open a file by
-                  pasting its link below, or sync via the Chrome extension.
-                </p>
-                <div className="flib-paste-row">
-                  <input
-                    type="text"
-                    placeholder="https://www.figma.com/design/FILE_KEY/… or just FILE_KEY"
-                    value={fileKeyInput}
-                    onChange={(e) => setFileKeyInput(e.target.value)}
-                    className="flib-paste-input"
-                  />
-                  <button
-                    type="button"
-                    className="flib-paste-btn"
-                    onClick={() => {
-                      const key = parseFileKey(fileKeyInput);
-                      if (key) {
-                        onOpenFile(key);
-                      }
-                    }}
-                    disabled={!fileKeyInput.trim()}
-                  >
-                    Open
-                  </button>
-                </div>
-                <p className="flib-paste-hint">
-                  File key is the string after <code>/design/</code> in your Figma file URL. Or install the
-                  <b>Buildrs Figma Helper</b> Chrome extension to sync your recent files automatically.
+                  Open <code>figma.com</code> in this browser and sign in, then click <b>Sync from Figma</b>.
+                  Your recent designs will appear here as cards.
                 </p>
                 <button type="button" onClick={onRefresh} className="flib-refresh-link">
-                  <RefreshCw className="w-4 h-4" /> Refresh
+                  <RefreshCw className="w-4 h-4" /> Sync now
                 </button>
               </>
             ) : (
               <>
                 <p>
-                  Install the <b>Buildrs Figma Helper</b> Chrome extension. It reads your Figma recent files
-                  via your signed-in figma.com tab and syncs here — no links to paste, no OAuth scopes.
+                  Install the <b>Buildrs Figma Helper</b>. It reads your Figma recent files through your
+                  signed-in <code>figma.com</code> tab — no links to paste, no OAuth scopes.
                 </p>
                 <ol className="flib-install-steps">
-                  <li>Install the Buildrs Figma Helper from the Chrome Web Store (or load the figma-helper folder unpacked).</li>
+                  <li><a href="/downloads/buildrs-figma-helper.zip" download>Download the helper</a> and load it unpacked at <code>chrome://extensions</code>.</li>
                   <li>Open Buildrs, sign in, then visit this Figma page once to link your account.</li>
-                  <li>Keep a signed-in <code>figma.com</code> tab open.</li>
-                  <li>Click the Buildrs Figma Helper icon &rarr; <em>Sync now</em>. Your designs appear here.</li>
+                  <li>Keep a signed-in <code>figma.com</code> tab open, then click <b>Refresh</b>.</li>
                 </ol>
               </>
             )}
+            <div className="flib-paste-row">
+              <input
+                type="text"
+                placeholder="https://www.figma.com/design/FILE_KEY/… or just FILE_KEY"
+                value={fileKeyInput}
+                onChange={(e) => setFileKeyInput(e.target.value)}
+                className="flib-paste-input"
+              />
+              <button
+                type="button"
+                className="flib-paste-btn"
+                onClick={() => {
+                  const key = parseFileKey(fileKeyInput);
+                  if (key) {
+                    onOpenFile(key);
+                  }
+                }}
+                disabled={!fileKeyInput.trim()}
+              >
+                Open
+              </button>
+            </div>
+            <p className="flib-paste-hint">
+              Have a link instead? Paste the file key after <code>/design/</code> in a Figma URL.
+              {hasPat ? ' Your saved Figma token is used as a fallback.' : ''}
+            </p>
           </div>
         </div>
       )}

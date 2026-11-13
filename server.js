@@ -323,6 +323,9 @@ app.use((req, res, next) => (
 // the route handler runs. Parse them with a bigger cap first; the global
 // parser below skips bodies already parsed (req._body set).
 app.use(['/api/deployments', '/api/github-advanced'], express.json({ limit: '50mb' }));
+// Figma design snapshots carry a whole frame's node tree (layout, fills,
+// text) from the browser helper; the global 100kb default would 413 them.
+app.use(['/api/figma/snapshots', '/api/design-code'], express.json({ limit: '20mb' }));
 app.use(express.json({
     // Phase 3 — capture exact raw bytes for payment webhook signature
     // verification (Stripe/Paystack/Flutterwave). express.json() consumes the

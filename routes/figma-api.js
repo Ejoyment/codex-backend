@@ -10,6 +10,7 @@ const { buildFigmaAuthorizeUrl } = require('../utils/figmaOAuth');
 const { normalizeNodeId, parseFigmaUrl, listPagesAndFrames } = require('../utils/figmaDesignSpec');
 const { getNodeImageUrls } = require('../utils/figmaContextService');
 const { fetchAllFiles, describeFigmaError } = require('../utils/figmaLibrary');
+const { saveDesignSnapshot } = require('../utils/figmaSnapshot');
 const crypto = require('crypto');
 
 // Normalize the backend origin so a `BACKEND_URL` ending in `/api` or a slash
@@ -444,23 +445,37 @@ router.get('/files/:fileKey', authenticateToken, async (req, res) => {
     }
 });
 
-// List every file the PAT (or OAuth token) can reach — flat list, no folder
-// navigation, no URL pasting required. Merges files discovered via the user's
-// Figma teams/folders with files pushed from the Buildrs Figma plugin.
+// The user's design library. Files synced by the Buildrs Figma Helper are
+// the source of truth (they need no Figma scope). Token/folder discovery is
+// only attempted when nothing has been synced yet, for PAT-only users.
 router.get('/library', authenticateToken, async (req, res) => {
     try {
-        const integration = await getFigmaIntegration(req.userId);
-        const tokenFiles = await fetchAllFiles(integration.getFigmaToken());
-        const savedFiles = readSavedFigmaFiles(integration);
-        const seen = new Set(tokenFiles.map((f) => f.key));
-        const merged = [
-            ...tokenFiles,
-            ...savedFiles.filter((saved) => seen.add(saved.key) && true),
-        ];
+        const integration = await Integration.findOne({
+            userId: req.userId,
+            provider: 'figma',
+            isActive: true,
+        });
+
+        if (!integration) {
+            return res.json({ success: true, connected: false, files: [], helperSyncedAt: null });
+        }
+
+        let files = readSavedFigmaFiles(integration);
+        if (!files.length) {
+            const token = integration.getFigmaToken?.();
+            if (token) {
+                files = await fetchAllFiles(token).catch(() => []);
+            }
+        }
+
         return res.json({
             success: true,
             connected: true,
-            files: merged,
+            files,
+            helperSyncedAt: integration.metadata?.get?.('helperSyncedAt') || null,
+            message: files.length
+                ? undefined
+                : 'Open figma.com in your browser, then click Sync from Figma.',
         });
     } catch (error) {
         if (/Figma (not connected|token expired)/.test(error.message)) {
@@ -468,6 +483,40 @@ router.get('/library', authenticateToken, async (req, res) => {
         }
         const described = describeFigmaError(error);
         return res.status(described.status).json({ success: false, code: described.code, message: described.message });
+    }
+});
+
+// Store a frame read by the Buildrs Figma Helper in the user's own Figma tab.
+// This is what makes opening a design, converting it to code, and handing a
+// frame to an agent work without any Figma OAuth file scope.
+router.post('/snapshots', authenticateToken, async (req, res) => {
+    try {
+        const fileKey = parseFigmaFileKey(req.body?.fileKey);
+        if (!fileKey) {
+            return res.status(400).json({ success: false, message: 'Send a valid Figma file key from the helper.' });
+        }
+
+        const snapshot = await saveDesignSnapshot(req.userId, {
+            fileKey,
+            nodeId: req.body?.nodeId,
+            nodeName: req.body?.nodeName,
+            fileName: req.body?.fileName,
+            node: req.body?.node,
+        });
+
+        return res.json({
+            success: true,
+            fileKey,
+            nodeId: snapshot.nodeId,
+            nodeName: snapshot.nodeName,
+            bytes: Buffer.byteLength(JSON.stringify(snapshot.document || {})),
+            updatedAt: snapshot.updatedAt,
+        });
+    } catch (error) {
+        if (error.statusCode === 400) {
+            return res.status(400).json({ success: false, message: error.message });
+        }
+        return handleFigmaError(req, res, error);
     }
 });
 

@@ -652,6 +652,50 @@
   font-size: 0.72rem;
 }
 
+/* Helper install banner */
+.flib-helper-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1.1rem;
+  padding: 0.8rem 0.95rem;
+  border: 1px solid rgba(18, 212, 220, 0.25);
+  border-radius: 9px;
+  background: rgba(18, 212, 220, 0.06);
+}
+
+.flib-helper-banner strong {
+  display: block;
+  margin-bottom: 0.2rem;
+  color: #dff6f7;
+  font-size: 0.76rem;
+}
+
+.flib-helper-banner p {
+  margin: 0;
+  color: #8b9bb0;
+  font-size: 0.68rem;
+  line-height: 1.5;
+}
+
+.flib-helper-banner a {
+  flex-shrink: 0;
+  padding: 0.45rem 0.8rem;
+  border: 1px solid rgba(18, 212, 220, 0.45);
+  border-radius: 7px;
+  background: rgba(18, 212, 220, 0.14);
+  color: #9beef1;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.flib-helper-banner a:hover {
+  background: rgba(18, 212, 220, 0.22);
+}
+
 /* File card grid */
 .flib-grid {
   display: grid;
