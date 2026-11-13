@@ -345,6 +345,63 @@ describe('agent-v1 workspace authorization', () => {
     );
   });
 
+  test('delegate bounds the context snapshot for a large imported repository', async () => {
+    findPersonalWorkspace.mockResolvedValue(company());
+
+    // 120 x 200 KB = 24 MB of source. Embedding all of it in the execution
+    // document exceeds MongoDB's 16 MB limit, which is what used to make
+    // "Delegate to AI" fail with a generic 500.
+    const manifest = Array.from({ length: 120 }, (_, index) => ({
+      _id: `${String(index).padStart(24, '0')}`,
+      path: 'src',
+      name: `file-${index}.js`,
+      language: 'javascript',
+      size: 200 * 1024,
+      contentOmitted: false,
+    }));
+    // Only the files that fit the 2 MB content budget are fetched.
+    const contentDocs = manifest.slice(0, 10).map((file) => ({
+      _id: file._id,
+      content: 'x'.repeat(200 * 1024),
+    }));
+    CodeFile.find
+      .mockReturnValueOnce(leanDoc(manifest))
+      .mockReturnValueOnce(leanDoc(contentDocs));
+
+    const res = await request(app)
+      .post('/api/v1/agent/delegate')
+      .send({ taskTitle: 'large repository task', workspaceId: USER_A });
+
+    expect(res.status).toBe(202);
+    const created = AgentExecution.create.mock.calls[0][0];
+    const snapshot = created.contextSnapshot;
+    const snapshotBytes = Buffer.byteLength(JSON.stringify(snapshot), 'utf8');
+
+    expect(snapshotBytes).toBeLessThan(16 * 1024 * 1024);
+    // Every file is still discoverable, but the bodies are bounded.
+    expect(snapshot.codebaseSnapshot.fileCount).toBe(manifest.length);
+    expect(snapshot.codebaseSnapshot.contentBytes).toBeLessThanOrEqual(2 * 1024 * 1024);
+    expect(snapshot.codebaseSnapshot.contentFiles).toBeLessThan(manifest.length);
+  });
+
+  test('delegate names the failing stage instead of returning a generic 500', async () => {
+    findPersonalWorkspace.mockResolvedValue(company());
+    gitService.createAgentWorktree.mockResolvedValue({
+      success: false,
+      error: 'spawn git ENOENT',
+    });
+
+    const res = await request(app)
+      .post('/api/v1/agent/delegate')
+      .send({ taskTitle: 'repo failure task', workspaceId: USER_A });
+
+    expect(res.status).toBe(503);
+    expect(res.body.code).toBe('AGENT_REPOSITORY_UNAVAILABLE');
+    expect(res.body.message).toContain('repository');
+    expect(res.body.message).not.toContain('spawn git ENOENT');
+    expect(AgentExecution.create).not.toHaveBeenCalled();
+  });
+
   test('delegate releases resources when the atomic task claim loses a race', async () => {
     Company.findById.mockReturnValue(leanDoc(company()));
     findPersonalWorkspace.mockResolvedValue(company());

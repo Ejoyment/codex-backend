@@ -23,10 +23,32 @@ const { Worker } = require('worker_threads');
 const path = require('path');
 const aiRouterService = require('../utils/aiRouterService');
 const { projectFileQuery, resolveProjectId } = require('../utils/fileScope');
+const { buildCodebaseSnapshot, selectSnapshotContentFiles, shrinkContextSnapshot } = require('../utils/agentContextSnapshot');
 
 // Delegate is the expensive cloud AI path: one pool credit per job. Failed
 // jobs refund below so only executions that actually ran consume budget.
 const AGENT_JOB_CREDIT_COST = CreditPoolService.AGENT_JOB_CREDIT_COST;
+
+// A failed delegation must tell the user what actually went wrong. These stages
+// are infrastructure/plumbing failures: the diagnostic stays in the log (and
+// Sentry) while the response names the part that failed and is safe to retry.
+const DELEGATE_STAGE_FAILURES = {
+  'prepare-repository': {
+    status: 503,
+    code: 'AGENT_REPOSITORY_UNAVAILABLE',
+    message: 'The agent could not prepare this project\'s repository. Please retry; if it keeps failing, contact support with the request id.',
+  },
+  'create-execution': {
+    status: 503,
+    code: 'AGENT_EXECUTION_CREATE_FAILED',
+    message: 'The agent run could not be created. Please retry; if it keeps failing, contact support with the request id.',
+  },
+  'start-worker': {
+    status: 503,
+    code: 'AGENT_WORKER_START_FAILED',
+    message: 'The agent could not start. Please retry; if it keeps failing, contact support with the request id.',
+  },
+};
 
 function refundAgentCredit(userId) {
   return CreditPoolService.refundCredits(userId, AGENT_JOB_CREDIT_COST).catch((err) => {
@@ -171,6 +193,9 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
   let taskClaim = null;
   let execution = null;
   let workerStarted = false;
+  // Tracks how far delegation got so a failure can be reported with an
+  // actionable message instead of a generic 500.
+  let stage = 'validate-request';
   try {
     const { taskId, taskTitle, sessionId, summary = '', provider: requestedProvider, model, localPrivacyMode: requestedLocalPrivacyMode = false } = req.body;
     let provider;
@@ -199,6 +224,7 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       return res.status(403).json({ success: false, message: 'Agent delegation requires Pro tier or higher. Use local BYOM.', requiresUpgrade: true });
     }
 
+    stage = 'load-task';
     let task = null;
     if (taskId) {
       task = await LocalTask.findOne({ _id: taskId, userId: req.userId });
@@ -219,6 +245,7 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       if (unresolvedBlockers) return res.status(409).json({ success: false, message: 'Resolve blocking tasks before delegation' });
     }
 
+    stage = 'resolve-workspace';
     const taskProjectId = resolveProjectId({ task });
     let taskProject = null;
     if (taskProjectId) {
@@ -297,6 +324,7 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       }
     }
 
+    stage = 'resolve-specs';
     const requestedSpecIds = [...new Set([...(req.body.specIds || []), ...(req.body.specId ? [req.body.specId] : []), ...(task?.specIds || []).map(String)])];
     // Specs belong to the task's project; the workspace check above only gates
     // the git branch, not which specs may be attached.
@@ -308,7 +336,30 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
     // Only the task's own project is readable by the agent. A delegated task
     // must never see another project's source just because both live in the
     // same workspace; unlinked tasks see only unassigned files.
-    const codeFiles = await CodeFile.find(projectFileQuery(fileWorkspaceId, taskProjectId)).select('path name language content').lean();
+    stage = 'load-files';
+    const fileQuery = projectFileQuery(fileWorkspaceId, taskProjectId);
+    // Read the manifest first. A large imported repository can be hundreds of
+    // MB, so loading every body just to keep a bounded fallback would make
+    // delegation memory-bound. Content is fetched only for the smallest text
+    // files that fit the snapshot budget.
+    const fileManifest = await CodeFile.find(fileQuery)
+      .select('path name language size encoding contentOmitted')
+      .lean();
+    const contentFiles = selectSnapshotContentFiles(fileManifest);
+    const contentById = new Map();
+    if (contentFiles.length) {
+      const contentDocs = await CodeFile.find({
+        ...fileQuery,
+        _id: { $in: contentFiles.map((file) => file._id) },
+      })
+        .select('content')
+        .lean();
+      for (const doc of contentDocs) contentById.set(String(doc._id), doc.content);
+    }
+    const codeFiles = fileManifest.map((file) => ({
+      ...file,
+      content: contentById.get(String(file._id)) || '',
+    }));
     const taskTitleValue = taskTitle || task?.title || 'Workspace task';
     const slug = taskTitleValue.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'task';
     // Re-delegating a failed task must not collide with the branch left behind
@@ -317,6 +368,7 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
     const baseBranch = 'main';
     const executionId = new AgentExecution()._id;
 
+    stage = 'build-context';
     // Build comprehensive context bundle for delegated agent
     let agentContextBundle = null;
     try {
@@ -348,17 +400,24 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       }
     }
 
-    const contextSnapshot = {
+    const contextSnapshot = shrinkContextSnapshot({
       task: task ? { id: task._id.toString(), title: task.title, description: task.description, priority: task.priority, figmaNodeId: task.figmaNodeId, figmaFileKey: task.figmaFileKey || null } : { title: taskTitleValue, description: summary },
       projectId: taskProjectId,
       specs: specs.map((spec) => ({ ...spec, _id: spec._id.toString() })),
-      codebaseSnapshot: { branch: baseBranch, files: codeFiles.map((file) => ({ path: file.path, name: file.name, language: file.language, content: file.content })) },
+      // Only a bounded fallback: the worker reads live project files, and the
+      // execution document must stay below MongoDB's 16 MB limit even for a
+      // repository with thousands of files.
+      codebaseSnapshot: buildCodebaseSnapshot(codeFiles, { branch: baseBranch }),
       architecturalRules: specs.flatMap((spec) => spec.architecturalRules || []),
       figmaContext,
       contextBundle: agentContextBundle,
       capturedAt: new Date(),
-    };
+    });
+    if (contextSnapshot.truncated) {
+      console.warn(`[agent-delegate] context snapshot exceeded ${contextSnapshot.maxBytes} bytes and was truncated (project ${taskProjectId || 'unassigned'})`);
+    }
 
+    stage = 'charge-credits';
     const credit = await CreditPoolService.deductCredits(req.userId, AGENT_JOB_CREDIT_COST);
     if (!credit.success) {
       return res.status(403).json({
@@ -371,6 +430,7 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
     }
     creditCharged = true;
 
+    stage = 'prepare-repository';
     const branchResult = await gitService.createAgentWorktree(
       workspaceId,
       branch,
@@ -383,6 +443,7 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
     }
     agentWorktree = { workspaceId, projectId: taskProjectId, executionId: executionId.toString() };
 
+    stage = 'create-execution';
     execution = await AgentExecution.create({
       _id: executionId,
       userId: req.userId,
@@ -423,6 +484,7 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
         branch: task.branch,
         agentExecution: task.agentExecution?.toObject?.() || task.agentExecution,
       };
+      stage = 'claim-task';
       const claimedTask = await LocalTask.findOneAndUpdate(
         {
           _id: task._id,
@@ -486,6 +548,7 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
     execution.status = 'running';
     execution.terminalLog.push({ timestamp: new Date(), type: 'start', message: `Started on ${branch}` });
     await execution.save();
+    stage = 'start-worker';
     const workerPromise = spawnAgentWorker(
       execution._id.toString(),
       taskId,
@@ -608,7 +671,7 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       creditCharged = false;
       await refundAgentCredit(req.userId);
     }
-    console.error('Delegate task error:', error);
+    console.error(`[agent-delegate] failed at stage "${stage}":`, error);
     if (error && error.status && error.status >= 400 && error.status < 500) {
       const safeMessages = {
         402: 'This agent request needs more credits than are available.',
@@ -622,6 +685,10 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
         success: false,
         message: safeMessages[error.status] || 'The agent request could not be completed.',
       });
+    }
+    const stageFailure = DELEGATE_STAGE_FAILURES[stage];
+    if (stageFailure) {
+      return sendInternalError(req, res, error, stageFailure);
     }
     return sendInternalError(req, res, error);
   }
