@@ -53,26 +53,34 @@ function setMetaValue(execution, key, value) {
 
 // Approve/reject/tweak re-check the workspace stored on the execution because
 // membership can change after delegation. Legacy rows may also hold the
-// caller's user id; access resolution stores the canonical Company id.
+// caller's user id, which assertWorkspaceAccess resolves to the caller's own
+// personal workspace; any other inaccessible id has to be refused, because
+// re-homing it would mutate a workspace the execution was never scoped to.
 async function resolveExecutionWorkspace(execution, userId) {
   const stored = metaValue(execution, 'workspaceId');
   if (!stored) return { ok: true, workspaceId: null };
   const access = await assertWorkspaceAccess(stored, userId);
-  if (access.ok) {
-    if (String(stored) !== access.workspaceId) {
-      setMetaValue(execution, 'workspaceId', access.workspaceId);
-    }
-    return { ok: true, workspaceId: access.workspaceId };
+  if (!access.ok) {
+    return { ok: false, reason: access.reason || 'Workspace access denied' };
   }
-  // Stored workspace is invalid (e.g., user id string, or old team workspace user left)
-  // Fall back to personal workspace
-  console.log('[resolveExecutionWorkspace] Stored workspace invalid, falling back to personal:', stored);
-  const personalAccess = await assertWorkspaceAccess(null, userId);
-  if (personalAccess.ok) {
-    setMetaValue(execution, 'workspaceId', personalAccess.workspaceId);
-    return { ok: true, workspaceId: personalAccess.workspaceId };
+  if (String(stored) !== access.workspaceId) {
+    setMetaValue(execution, 'workspaceId', access.workspaceId);
   }
-  return { ok: false, reason: access.reason };
+  return { ok: true, workspaceId: access.workspaceId };
+}
+
+// Workers are process-local: this lets the cancel route stop a run in the same
+// instance. Other instances can only mark the execution cancelled; their worker
+// callbacks check that state before writing a terminal result.
+const activeAgentWorkers = new Map();
+
+async function executionWasCancelled(executionId) {
+  try {
+    const fresh = await AgentExecution.findById(executionId).select('status').lean();
+    return fresh?.status === 'cancelled';
+  } catch (_) {
+    return false;
+  }
 }
 
 function spawnAgentWorker(executionId, taskId, workspaceId, projectId, specIds, provider, model, localPrivacyMode, timeoutMs = 900000) {
@@ -82,14 +90,20 @@ function spawnAgentWorker(executionId, taskId, workspaceId, projectId, specIds, 
     const worker = new Worker(workerPath, {
       workerData: { executionId, taskId, workspaceId, projectId: projectId || null, specIds, provider, model, localPrivacyMode },
     });
+    const workerKey = String(executionId);
+    activeAgentWorkers.set(workerKey, worker);
+    const releaseWorker = () => {
+      if (activeAgentWorkers.get(workerKey) === worker) activeAgentWorkers.delete(workerKey);
+    };
 
     const timeout = setTimeout(() => {
       if (settled) return;
       settled = true;
+      cleanup();
       try {
         worker.terminate();
       } catch (e) {}
-      AgentExecution.findByIdAndUpdate(executionId, {
+      AgentExecution.findByIdAndUpdate({ _id: executionId, status: { $ne: 'cancelled' } }, {
         status: 'failed',
         summary: `Agent execution timed out after ${Math.round(timeoutMs / 60000)} minutes`,
         completedAt: new Date(),
@@ -111,15 +125,19 @@ function spawnAgentWorker(executionId, taskId, workspaceId, projectId, specIds, 
 
     const cleanup = () => {
       if (timeout) clearTimeout(timeout);
+      releaseWorker();
     };
 
     worker.on('message', (msg) => {
       if (settled) return;
       if (msg.type === 'progress') {
         realtimeBus.emitAgentProgress(executionId, msg.payload);
-        AgentExecution.findByIdAndUpdate(executionId, {
-          $push: { terminalLog: { timestamp: new Date(), type: msg.payload.phase || 'progress', message: msg.payload.message || msg.payload.status || 'Agent progress' } },
-        }).catch((error) => console.error('[agent] could not persist progress:', error.message));
+        AgentExecution.findByIdAndUpdate(
+          { _id: executionId, status: { $in: ['queued', 'running', 'approving'] } },
+          {
+            $push: { terminalLog: { timestamp: new Date(), type: msg.payload.phase || 'progress', message: msg.payload.message || msg.payload.status || 'Agent progress' } },
+          }
+        ).catch((error) => console.error('[agent] could not persist progress:', error.message));
       } else if (msg.type === 'complete') {
         settled = true;
         cleanup();
@@ -165,7 +183,11 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       effectiveModel = aiRouterService.normalizeModel(provider, model);
       await aiRouterService.validateModel(provider, effectiveModel);
     } catch (error) {
-      return res.status(503).json({ success: false, message: error.message });
+      console.error('[agent] provider or model validation failed:', error.message);
+      return res.status(503).json({
+        success: false,
+        message: 'The selected provider or model is not available. Choose another model and try again.',
+      });
     }
 
     if (!taskId && !taskTitle) {
@@ -478,6 +500,7 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
     workerStarted = true;
 
     workerPromise.then(async (result) => {
+      if (await executionWasCancelled(execution._id)) return;
       const planOnly = Boolean(result?.planOnly);
       execution.status = 'awaiting_review';
       execution.completedAt = new Date();
@@ -508,6 +531,7 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
         } catch (e) { /* ignore */ }
       }
     }).catch(async (err) => {
+      if (await executionWasCancelled(execution._id)) return;
       const failureMessage = err.message || 'Agent execution failed without an error message';
       execution.status = 'failed';
       execution.completedAt = new Date();
@@ -586,7 +610,18 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
     }
     console.error('Delegate task error:', error);
     if (error && error.status && error.status >= 400 && error.status < 500) {
-      return res.status(error.status).json({ success: false, message: error.message });
+      const safeMessages = {
+        402: 'This agent request needs more credits than are available.',
+        403: 'You do not have access to run this agent request.',
+        404: 'The agent request could not be found.',
+        409: 'This agent request conflicts with another active job.',
+        413: 'This agent request is too large.',
+        429: 'Too many agent requests. Please wait and try again.',
+      };
+      return res.status(error.status).json({
+        success: false,
+        message: safeMessages[error.status] || 'The agent request could not be completed.',
+      });
     }
     return sendInternalError(req, res, error);
   }
@@ -766,6 +801,7 @@ router.post('/tweak', authenticateToken, async (req, res) => {
     const projectId = resolveProjectId({ execution });
     spawnAgentWorker(execution._id.toString(), targetTaskId, workspaceId, projectId, specIds, provider, model, localPrivacyMode)
       .then(async () => {
+        if (await executionWasCancelled(execution._id)) return;
         execution.status = 'awaiting_review';
         execution.completedAt = new Date();
         await execution.save();
@@ -779,6 +815,7 @@ router.post('/tweak', authenticateToken, async (req, res) => {
         }
       })
       .catch(async (error) => {
+        if (await executionWasCancelled(execution._id)) return;
         execution.status = 'failed';
         execution.completedAt = new Date();
         execution.terminalLog.push({ timestamp: new Date(), type: 'error', message: error.message });
@@ -802,6 +839,84 @@ router.post('/tweak', authenticateToken, async (req, res) => {
       creditCharged = false;
       await refundAgentCredit(req.userId);
     }
+    return sendInternalError(req, res, error);
+  }
+});
+
+router.post('/cancel', authenticateToken, async (req, res) => {
+  try {
+    const { executionId } = req.body;
+    if (!executionId) {
+      return res.status(400).json({ success: false, message: 'executionId is required' });
+    }
+    const execution = await AgentExecution.findOne({ _id: executionId, userId: req.userId });
+    if (!execution) {
+      return res.status(404).json({ success: false, message: 'Session not found' });
+    }
+    if (execution.status === 'cancelled') {
+      return res.json({ success: true, execution });
+    }
+    if (!['queued', 'running'].includes(execution.status)) {
+      const message = ['awaiting_review', 'awaiting_approval'].includes(execution.status)
+        ? 'This session is awaiting review. Reject it to discard the changes.'
+        : execution.status === 'approving'
+          ? 'This session is already being merged.'
+          : 'This session can no longer be stopped.';
+      return res.status(409).json({ success: false, message });
+    }
+
+    // Stop a worker running in this process before recording the state so it
+    // cannot append more progress. Callbacks in other processes are guarded by
+    // executionWasCancelled().
+    const workerKey = String(execution._id);
+    const worker = activeAgentWorkers.get(workerKey);
+    if (worker) {
+      try {
+        await worker.terminate();
+      } catch (terminateError) {
+        console.warn('[agent-cancel] worker termination failed:', terminateError.message);
+      }
+      activeAgentWorkers.delete(workerKey);
+    }
+
+    execution.status = 'cancelled';
+    execution.completedAt = new Date();
+    execution.rejectionReason = 'Stopped by user';
+    execution.terminalLog.push({ timestamp: new Date(), type: 'cancelled', message: 'Session stopped by user' });
+    execution.logs.push({ timestamp: new Date(), message: 'Session stopped by user' });
+    await execution.save();
+
+    if (execution.taskId) {
+      LocalTask.findOneAndUpdate(
+        { _id: execution.taskId, userId: req.userId, agentSessionId: execution._id },
+        {
+          $set: { status: 'backlog', agentSessionId: null, 'agentExecution.status': 'cancelled' },
+          $push: { 'agentExecution.logs': { timestamp: new Date(), message: 'Agent session stopped by user' } },
+          updatedAt: new Date(),
+        }
+      ).catch((taskError) => console.error('[agent-cancel] could not release task claim:', taskError.message));
+    }
+
+    const workspaceRef = metaValue(execution, 'workspaceId');
+    if (execution.branch && workspaceRef) {
+      try {
+        const cleanup = await gitService.removeAgentWorktree(
+          String(workspaceRef),
+          resolveProjectId({ execution }),
+          execution._id.toString(),
+          { branchName: execution.branch, deleteBranch: true }
+        );
+        if (cleanup && cleanup.success === false) {
+          console.warn('[agent-cancel] worktree cleanup failed:', cleanup.error || cleanup.message);
+        }
+      } catch (cleanupError) {
+        console.error('[agent-cancel] worktree cleanup failed:', cleanupError.message);
+      }
+    }
+
+    res.json({ success: true, execution });
+  } catch (error) {
+    console.error('Cancel execution error:', error);
     return sendInternalError(req, res, error);
   }
 });

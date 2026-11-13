@@ -10,6 +10,8 @@ const { authenticateToken } = require('../middleware/auth');
 const { canonicalTier } = require('../utils/tierNames');
 const { ensurePersonalWorkspace } = require('../utils/personalWorkspace');
 const companyRoleService = require('../server/services/companyRoleService');
+const { cappedMemberLimit, resolveMemberLimit } = require('../utils/companyLimits');
+const { sendError } = require('../utils/httpErrors');
 
 /**
  * @swagger
@@ -84,7 +86,7 @@ router.post('/create', authenticateToken, permissionMatrix.requirePermission('co
         }
         
         // Set member limit based on tier
-        const memberLimit = companyTier === 'developer' ? 1 : ['pro', 'pro_plus'].includes(companyTier) ? 10 : 999999;
+        const memberLimit = resolveMemberLimit(companyTier);
         
         const company = new Company({
             name,
@@ -124,10 +126,7 @@ router.post('/create', authenticateToken, permissionMatrix.requirePermission('co
         });
     } catch (error) {
         console.error('Create company error:', error);
-        res.status(500).json({
-            success: false,
-            message: error.message || 'Failed to create company'
-        });
+        return sendError(req, res, error, { message: 'Failed to create company' });
     }
 });
 
@@ -191,7 +190,7 @@ router.get('/my-companies', authenticateToken, async (req, res) => {
             
             // Update company tier if it doesn't match
             if (company.subscription.tier !== ownerTier) {
-                const memberLimit = ownerTier === 'developer' ? 1 : ['pro', 'pro_plus'].includes(ownerTier) ? 10 : 999999;
+                const memberLimit = resolveMemberLimit(ownerTier, company.subscription.memberLimit);
                 company.subscription.tier = ownerTier;
                 company.subscription.memberLimit = memberLimit;
                 companyUpdates.push({
@@ -339,7 +338,7 @@ router.get('/:companyId', authenticateToken, permissionMatrix.requirePermission(
         
         // Update company tier if it doesn't match owner's subscription
         if (company.subscription.tier !== ownerTier) {
-            const memberLimit = ownerTier === 'developer' ? 1 : ['pro', 'pro_plus'].includes(ownerTier) ? 10 : 999999;
+            const memberLimit = resolveMemberLimit(ownerTier, company.subscription.memberLimit);
             company.subscription.tier = ownerTier;
             company.subscription.memberLimit = memberLimit;
             await company.save();
@@ -536,7 +535,7 @@ router.post('/:companyId/invite', authenticateToken, permissionMatrix.requirePer
             });
         }
         
-        const memberLimit = company.subscription.memberLimit;
+        const memberLimit = cappedMemberLimit(company.subscription.memberLimit);
         if (company.members.length >= memberLimit) {
             return res.status(403).json({
                 success: false,
@@ -552,7 +551,7 @@ router.post('/:companyId/invite', authenticateToken, permissionMatrix.requirePer
                 $expr: {
                     $lt: [
                         { $size: { $ifNull: ['$members', []] } },
-                        { $ifNull: ['$subscription.memberLimit', 1] }
+                        memberLimit
                     ]
                 }
             },
@@ -573,10 +572,11 @@ router.post('/:companyId/invite', authenticateToken, permissionMatrix.requirePer
             if (latestCompany?.members.some((item) => item.user.toString() === invitedUser._id.toString())) {
                 return res.status(400).json({ success: false, message: 'User is already a member' });
             }
-            if (!latestCompany || latestCompany.members.length >= latestCompany.subscription.memberLimit) {
+            const latestLimit = cappedMemberLimit(latestCompany?.subscription?.memberLimit ?? memberLimit);
+            if (!latestCompany || latestCompany.members.length >= latestLimit) {
                 return res.status(403).json({
                     success: false,
-                    message: `Member limit reached (${latestCompany?.subscription?.memberLimit || memberLimit}). Upgrade your plan to add more members.`
+                    message: `Member limit reached (${latestLimit}). Upgrade your plan to add more members.`
                 });
             }
             return res.status(409).json({ success: false, message: 'Team membership changed. Refresh and try again.' });
@@ -812,7 +812,13 @@ router.post('/:companyId/logo', authenticateToken, async (req, res) => {
         
         upload(req, res, async (err) => {
             if (err) {
-                return res.status(400).json({ success: false, message: err.message });
+                if (err.code === 'LIMIT_FILE_SIZE') {
+                    return res.status(400).json({ success: false, message: 'Logo must be 5MB or smaller.' });
+                }
+                return res.status(400).json({
+                    success: false,
+                    message: 'Logo upload failed. Use a JPEG, PNG, GIF or WebP image under 5MB.',
+                });
             }
             
             if (!req.file) {
@@ -878,7 +884,7 @@ router.post('/:companyId/members/roles/bulk', authenticateToken, permissionMatri
 
         res.json({ success: true, data: result });
     } catch (error) {
-        res.status(error.statusCode || 500).json({ success: false, message: error.message });
+        return sendError(req, res, error);
     }
 });
 

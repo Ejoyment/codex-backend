@@ -177,11 +177,7 @@ router.post('/signup', authLimiter, async (req, res) => {
 
     } catch (error) {
         console.error('Signup error:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Error creating account',
-            error: error.message 
-        });
+        return sendInternalError(req, res, error, { message: 'Error creating account' });
     }
 });
 
@@ -327,11 +323,7 @@ router.post('/signin', authLimiter, async (req, res) => {
 
     } catch (error) {
         console.error('Signin error:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Error signing in',
-            error: error.message 
-        });
+        return sendInternalError(req, res, error, { message: 'Error signing in' });
     }
 });
 
@@ -654,11 +646,7 @@ router.put('/update-profile', authenticateToken, async (req, res) => {
 
     } catch (error) {
         console.error('Update profile error:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Error updating profile',
-            error: error.message 
-        });
+        return sendInternalError(req, res, error, { message: 'Error updating profile' });
     }
 });
 
@@ -754,11 +742,7 @@ router.post('/change-password', authLimiter, authenticateToken, async (req, res)
 
     } catch (error) {
         console.error('Change password error:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Error changing password',
-            error: error.message 
-        });
+        return sendInternalError(req, res, error, { message: 'Error changing password' });
     }
 });
 
@@ -804,11 +788,7 @@ router.post('/logout-all', authenticateToken, async (req, res) => {
 
     } catch (error) {
         console.error('Logout all error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error signing out all sessions',
-            error: error.message
-        });
+        return sendInternalError(req, res, error, { message: 'Error signing out all sessions' });
     }
 });
 
@@ -1026,11 +1006,7 @@ router.delete('/delete-account', authenticateToken, async (req, res) => {
 
     } catch (error) {
         console.error('Delete account error:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Error deleting account',
-            error: error.message 
-        });
+        return sendInternalError(req, res, error, { message: 'Error deleting account' });
     }
 });
 
@@ -1291,11 +1267,7 @@ router.post('/complete-onboarding', authenticateToken, async (req, res) => {
 
     } catch (error) {
         console.error('Complete onboarding error:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Error completing onboarding',
-            error: error.message 
-        });
+        return sendInternalError(req, res, error, { message: 'Error completing onboarding' });
     }
 });
 

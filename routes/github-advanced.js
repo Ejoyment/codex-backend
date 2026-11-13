@@ -159,7 +159,7 @@ router.post('/delete', authenticateToken, async (req, res) => {
         res.json({ success: true, commitSha: result.commit.sha });
     } catch (error) {
         console.error('Delete file error:', error);
-        res.status(502).json({ success: false, message: error.message });
+        return sendInternalError(req, res, error, { status: 502, message: 'GitHub request failed. Please try again.' });
     }
 });
 

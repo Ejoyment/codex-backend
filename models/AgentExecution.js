@@ -23,7 +23,7 @@ const agentExecutionSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['queued', 'idle', 'running', 'awaiting_review', 'awaiting_approval', 'approving', 'approved', 'rejected', 'completed', 'failed'],
+    enum: ['queued', 'idle', 'running', 'awaiting_review', 'awaiting_approval', 'approving', 'approved', 'rejected', 'cancelled', 'completed', 'failed'],
     default: 'idle',
   },
   model: { type: String, default: '' },
@@ -90,6 +90,8 @@ const agentExecutionSchema = new mongoose.Schema({
 
 agentExecutionSchema.index({ userId: 1, sessionId: 1, status: 1 });
 agentExecutionSchema.index({ createdAt: -1 });
+// Stale-run reaper scans running executions by age once a minute.
+agentExecutionSchema.index({ status: 1, updatedAt: 1 });
 
 agentExecutionSchema.post('save', function (doc) {
   const terminalStatuses = ['awaiting_review', 'awaiting_approval', 'approved', 'rejected', 'completed', 'failed'];
