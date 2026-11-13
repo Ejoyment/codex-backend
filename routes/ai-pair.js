@@ -731,7 +731,11 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
                 await aiRouterService.validateModel(selectedRouting.provider, effectiveModel);
             }
         } catch (error) {
-            return res.status(400).json({ success: false, message: error.message });
+            console.warn('[ai-pair] provider or model validation failed:', error.message);
+            return res.status(400).json({
+                success: false,
+                message: 'The selected provider or model is not available. Choose another model and try again.'
+            });
         }
 
         // Workspace/company ids drive server-side memory reads and agent file

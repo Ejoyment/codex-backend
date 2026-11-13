@@ -1,4 +1,5 @@
 const express = require('express');
+const { sendInternalError } = require('../utils/httpErrors');
 const router = express.Router();
 const paystack = require('../config/paystack');
 const { authenticateToken } = require('../middleware/auth');
@@ -138,11 +139,7 @@ router.post('/initialize', authenticateToken, async (req, res) => {
 
     } catch (error) {
         console.error('Initialize payment error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error initializing payment',
-            error: error.message
-        });
+        return sendInternalError(req, res, error, { message: 'Error initializing payment' });
     }
 });
 
@@ -279,11 +276,7 @@ router.post('/verify', authenticateToken, async (req, res) => {
 
     } catch (error) {
         console.error('Verify payment error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error verifying payment',
-            error: error.message
-        });
+        return sendInternalError(req, res, error, { message: 'Error verifying payment' });
     }
 });
 
@@ -357,11 +350,7 @@ router.get('/status', authenticateToken, async (req, res) => {
 
     } catch (error) {
         console.error('Get billing status error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error fetching billing status',
-            error: error.message
-        });
+        return sendInternalError(req, res, error, { message: 'Error fetching billing status' });
     }
 });
 
@@ -421,11 +410,7 @@ router.post('/cancel', authenticateToken, async (req, res) => {
 
     } catch (error) {
         console.error('Cancel subscription error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error canceling subscription',
-            error: error.message
-        });
+        return sendInternalError(req, res, error, { message: 'Error canceling subscription' });
     }
 });
 

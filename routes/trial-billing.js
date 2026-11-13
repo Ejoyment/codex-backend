@@ -1,4 +1,5 @@
 const express = require('express');
+const { sendInternalError } = require('../utils/httpErrors');
 const router = express.Router();
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const { authenticateToken } = require('../middleware/auth');
@@ -122,11 +123,7 @@ router.post('/setup-payment', authenticateToken, async (req, res) => {
 
     } catch (error) {
         console.error('Setup payment error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error setting up payment method',
-            error: error.message
-        });
+        return sendInternalError(req, res, error, { message: 'Error setting up payment method' });
     }
 });
 
@@ -197,11 +194,7 @@ router.get('/status', authenticateToken, async (req, res) => {
 
     } catch (error) {
         console.error('Get billing status error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error fetching billing status',
-            error: error.message
-        });
+        return sendInternalError(req, res, error, { message: 'Error fetching billing status' });
     }
 });
 
@@ -247,11 +240,7 @@ router.post('/cancel', authenticateToken, async (req, res) => {
 
     } catch (error) {
         console.error('Cancel subscription error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error canceling subscription',
-            error: error.message
-        });
+        return sendInternalError(req, res, error, { message: 'Error canceling subscription' });
     }
 });
 
@@ -309,11 +298,7 @@ router.get('/setup-intent', authenticateToken, async (req, res) => {
 
     } catch (error) {
         console.error('Create setup intent error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error creating setup intent',
-            error: error.message
-        });
+        return sendInternalError(req, res, error, { message: 'Error creating setup intent' });
     }
 });
 
