@@ -1,5 +1,7 @@
 .page {
-  padding: 30px 40px 72px;
+  /* .page shares an element with .workspace-main, whose 64px top padding
+     clears the fixed global header. Keep that offset here too. */
+  padding: calc(64px + 30px) 40px 72px;
   max-width: 1360px;
   color: #e8f3f7;
 }
@@ -9,12 +11,13 @@
 }
 
 .breadcrumb {
-  font-size: 11px;
+  font-size: 0.62rem;
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.16em;
+  line-height: 1.2;
   text-transform: uppercase;
-  color: #12dce5;
-  margin: 0 0 10px;
+  color: #12d6df;
+  margin: 0 0 0.55rem;
 }
 
 .headRow {
@@ -26,17 +29,18 @@
 }
 
 .title {
-  font-size: 30px;
-  line-height: 1.15;
-  font-weight: 650;
-  letter-spacing: -0.02em;
+  color: #f0f2f6;
+  font-size: 1.55rem;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.035em;
   margin: 0;
 }
 
 .subtitle {
-  color: #8fa3ad;
-  font-size: 14px;
-  margin: 8px 0 0;
+  color: #748094;
+  font-size: 0.72rem;
+  margin: 0.45rem 0 0;
 }
 
 .headActions {
@@ -1233,7 +1237,7 @@
 }
 
 @media (max-width: 760px) {
-  .page { padding: 22px 18px 56px; }
+  .page { padding: calc(64px + 22px) 18px 56px; }
   .sessionTableHead { display: none; }
   .sessionRow { grid-template-columns: minmax(0, 1fr) auto; row-gap: 10px; }
   .sessionRow > :nth-child(3) { grid-column: 1 / 2; }
