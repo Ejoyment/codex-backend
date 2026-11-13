@@ -40,7 +40,21 @@ async function findPersonalWorkspace(userId) {
     return doc || null;
 }
 
+/**
+ * Find a user's personal workspace by its stored id.
+ *
+ * Projects, files and agent executions store the Subscription `_id` as their
+ * workspace. Authorization therefore has to resolve that id even though it is
+ * not a Company. Legacy subscriptions may predate the `type` field, so the
+ * lookup matches on ownership alone.
+ */
+async function findPersonalWorkspaceById(userId, workspaceId) {
+    if (!mongoose.isValidObjectId(userId) || !mongoose.isValidObjectId(workspaceId)) return null;
+    return Subscription.findOne({ _id: workspaceId, userId });
+}
+
 module.exports = {
     ensurePersonalWorkspace,
     findPersonalWorkspace,
+    findPersonalWorkspaceById,
 };
