@@ -241,11 +241,15 @@ async function fetchNodeInPage(fileKey, nodeId) {
     return copy;
   }
 
-  function trimNode(node, depth = 0) {
-    if (!node || typeof node !== 'object' || depth > 40) return null;
+  // Keep the payload under the backend's 8 MB snapshot limit: cap the total
+  // node count and per-node children, not just depth.
+  const MAX_NODES = 12000;
+  function trimNode(node, depth = 0, state = { count: 0 }) {
+    if (!node || typeof node !== 'object' || depth > 40 || state.count >= MAX_NODES) return null;
     const id = typeof node.id === 'string' ? node.id.slice(0, 200) : null;
     const type = typeof node.type === 'string' ? node.type.slice(0, 40) : null;
     if (!id || !type) return null;
+    state.count += 1;
     const clean = { id, type };
     for (const field of FIELD_NAMES) {
       if (!(field in node)) continue;
@@ -260,7 +264,12 @@ async function fetchNodeInPage(fileKey, nodeId) {
     }
     if (!clean.name) clean.name = type === 'CANVAS' ? 'Page' : 'Untitled layer';
     if (Array.isArray(node.children) && depth < 40) {
-      const children = node.children.slice(0, 300).map((child) => trimNode(child, depth + 1)).filter(Boolean);
+      const children = [];
+      for (const child of node.children.slice(0, 300)) {
+        const trimmed = trimNode(child, depth + 1, state);
+        if (trimmed) children.push(trimmed);
+        if (state.count >= MAX_NODES) break;
+      }
       if (children.length) clean.children = children;
     }
     return clean;
