@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 const Company = require('../models/Company');
-const { findPersonalWorkspace, ensurePersonalWorkspace } = require('./personalWorkspace');
+const { findPersonalWorkspace, findPersonalWorkspaceById, ensurePersonalWorkspace } = require('./personalWorkspace');
 
 function normalizeWorkspaceId(value) {
     if (!value) return null;
@@ -43,9 +43,22 @@ async function resolveWorkspaceForUser(workspaceId, userId) {
     const workspace = await Company.findById(requestedId)
         .select('_id owner members isActive')
         .lean();
-    if (!workspace || workspace.isActive === false) return null;
-    if (!isMember(workspace, userId)) return null;
-    return { workspace, personal: false };
+    if (workspace) {
+        if (workspace.isActive === false) return null;
+        if (!isMember(workspace, userId)) return null;
+        return { workspace, personal: false };
+    }
+
+    // A personal workspace is a Subscription, not a Company. Projects, files
+    // and executions store the Subscription `_id`, so accept it when the
+    // caller owns it — otherwise approving or rejecting their own agent run
+    // is denied with "Workspace not found or access denied".
+    const personal = await findPersonalWorkspaceById(userId, requestedId);
+    if (personal && String(personal._id) === requestedId) {
+        return { workspace: personal, personal: true };
+    }
+
+    return null;
 }
 
 async function canonicalWorkspaceId(workspaceId, userId) {
