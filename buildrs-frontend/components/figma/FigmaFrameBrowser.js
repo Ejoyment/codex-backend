@@ -36,7 +36,9 @@ export default function FigmaFrameBrowser({ fileKey, highlightNodeId, preparingT
     // saved a Personal Access Token instead.
     const load = async () => {
       let helperError = null;
-      if (await figmaHelper.available()) {
+      // Force a check: a stale negative result from before the content script
+      // loaded must not send this file to the backend-only path.
+      if (await figmaHelper.available({ force: true })) {
         try {
           applyResult(await figmaHelper.getFile(fileKey), 'helper');
           return;
