@@ -75,10 +75,7 @@ router.post('/session/create', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Error creating debug session:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -174,10 +171,7 @@ router.post('/launch', authenticateToken, permissionMatrix.requirePermission('de
         res.json(result);
     } catch (error) {
         console.error('Error launching debugger:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -234,10 +228,7 @@ router.post('/breakpoints/set', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Error setting breakpoints:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -284,10 +275,7 @@ router.post('/continue', authenticateToken, async (req, res) => {
         res.json(result);
     } catch (error) {
         console.error('Error continuing execution:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -334,10 +322,7 @@ router.post('/step-over', authenticateToken, async (req, res) => {
         res.json(result);
     } catch (error) {
         console.error('Error stepping over:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -384,10 +369,7 @@ router.post('/step-into', authenticateToken, async (req, res) => {
         res.json(result);
     } catch (error) {
         console.error('Error stepping into:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -434,10 +416,7 @@ router.post('/step-out', authenticateToken, async (req, res) => {
         res.json(result);
     } catch (error) {
         console.error('Error stepping out:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -484,10 +463,7 @@ router.post('/pause', authenticateToken, async (req, res) => {
         res.json(result);
     } catch (error) {
         console.error('Error pausing execution:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -526,10 +502,7 @@ router.get('/stack-trace/:sessionId', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Error getting stack trace:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -573,10 +546,7 @@ router.get('/variables/:sessionId', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Error getting variables:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -631,10 +601,7 @@ router.post('/evaluate', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Error evaluating expression:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -681,10 +648,7 @@ router.post('/terminate', authenticateToken, async (req, res) => {
         res.json(result);
     } catch (error) {
         console.error('Error terminating session:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -726,10 +690,7 @@ router.get('/session/:sessionId', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Error getting session:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -758,10 +719,7 @@ router.get('/sessions', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Error getting sessions:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
+        return sendInternalError(req, res, error);
     }
 });
 
@@ -814,10 +772,7 @@ router.post('/test/breakpoint-hit', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Error simulating breakpoint:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
+        return sendInternalError(req, res, error);
     }
 });
 

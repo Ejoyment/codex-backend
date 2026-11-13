@@ -182,9 +182,10 @@ router.get('/context', authenticateToken, async (req, res) => {
         );
         res.json({ success: true, context });
     } catch (error) {
-        console.error('Get design context error:', error);
-        const status = error.message?.includes('Figma not connected') ? 403 : 500;
-        res.status(status).json({ success: false, message: error.message });
+        if (error.message?.includes('Figma not connected')) {
+            return res.status(403).json({ success: false, message: 'Connect Figma first.' });
+        }
+        return sendInternalError(req, res, error, { message: 'Failed to read Figma design' });
     }
 });
 
@@ -363,10 +364,7 @@ router.post('/read', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Figma read error:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: error.message || 'Failed to read Figma design' 
-        });
+        return sendInternalError(req, res, error, { message: 'Failed to read Figma design' });
     }
 });
 

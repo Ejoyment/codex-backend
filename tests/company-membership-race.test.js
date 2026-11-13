@@ -91,7 +91,7 @@ test('simultaneous member invites claim only one slot and do not duplicate membe
       $expr: {
         $lt: [
           { $size: { $ifNull: ['$members', []] } },
-          { $ifNull: ['$subscription.memberLimit', 1] },
+          2,
         ],
       },
     }),

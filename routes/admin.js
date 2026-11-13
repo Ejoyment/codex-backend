@@ -6,7 +6,7 @@
  * without the env var every call 403s. Strictly rate-limited (static secret
  * guessing surface). Currently: user ban/unban (ToS termination enforcement).
  */
-const { sendInternalError } = require('../utils/httpErrors');
+const { sendError, sendInternalError } = require('../utils/httpErrors');
 const express = require('express');
 const crypto = require('crypto');
 const mongoose = require('mongoose');
@@ -110,9 +110,8 @@ function validTargetUserId(req, res) {
     return false;
 }
 
-function sendEntitlementError(res, error) {
-    const status = error.statusCode || 500;
-    res.status(status).json({ success: false, message: error.message });
+function sendEntitlementError(req, res, error) {
+    return sendError(req, res, error, { message: 'Could not update entitlements.' });
 }
 
 router.post('/entitlements/:userId/enterprise', adminLimiter, requireAdminKey, async (req, res) => {
@@ -142,7 +141,7 @@ router.post('/entitlements/:userId/enterprise', adminLimiter, requireAdminKey, a
         });
         res.json({ success: true, data: view });
     } catch (error) {
-        sendEntitlementError(res, error);
+        sendEntitlementError(req, res, error);
     }
 });
 
@@ -164,7 +163,7 @@ router.post('/companies/roles/backfill', adminLimiter, requireAdminKey, async (r
         });
         res.json({ success: true, data: result });
     } catch (error) {
-        res.status(error.statusCode || 500).json({ success: false, message: error.message });
+        return sendError(req, res, error);
     }
 });
 
@@ -175,7 +174,7 @@ router.get('/entitlements/:userId', adminLimiter, requireAdminKey, async (req, r
         if (!view) return res.status(404).json({ success: false, message: 'Entitlement not found' });
         res.json({ success: true, data: view });
     } catch (error) {
-        sendEntitlementError(res, error);
+        sendEntitlementError(req, res, error);
     }
 });
 

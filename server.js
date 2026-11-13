@@ -509,7 +509,17 @@ app.use('/api/debug', debugRoutes);
 // provisioning but still lets a user list, inspect and delete deployments.
 app.use('/api/deployments', checkTrialStatus, deploymentRoutes);
 app.use('/api/agent-confirmation', agentConfirmationRoutes);
-app.use('/api/v1/agent', checkTrialStatus, enforceCreditPool(), enforceCloudComputeLimit(), agentV1Routes);
+// Stopping a run must never be blocked by trial or credit gates: otherwise a
+// user who hit a quota could not cancel the job that is consuming it.
+const agentGate = (req, res, next) => {
+  if (req.method === 'POST' && req.path === '/cancel') return next();
+  return checkTrialStatus(req, res, () =>
+    enforceCreditPool()(req, res, () =>
+      enforceCloudComputeLimit()(req, res, next)
+    )
+  );
+};
+app.use('/api/v1/agent', agentGate, agentV1Routes);
 // Specs are project-level and part of the local project workflow, so the spec
 // engine is no longer tier-gated: a solo developer gets the full spec loop.
 app.use('/api/v1/specs', checkTrialStatus, specRoutes);
