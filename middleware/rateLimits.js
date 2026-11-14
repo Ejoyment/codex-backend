@@ -67,10 +67,19 @@ const agentDelegateLimiter = makeLimiter({
     message: 'Too many agent requests, please try again shortly.',
 });
 
+// 30 subagent spawns/min per IP — lighter-weight AI sub-delegations.
+const agentSubagentLimiter = makeLimiter({
+    name: 'agent-subagent',
+    windowMs: 60 * 1000,
+    max: 30,
+    message: 'Too many subagent requests, please try again shortly.',
+});
+
 module.exports = {
     messageSendLimiter,
     supportTicketLimiter,
     supportReplyLimiter,
     aiChatLimiter,
     agentDelegateLimiter,
+    agentSubagentLimiter,
 };

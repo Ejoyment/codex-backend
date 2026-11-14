@@ -1,12 +1,14 @@
 const { sendInternalError } = require('../utils/httpErrors');
 const express = require('express');
 const { trimToLast, MAX_TWEAKS, MAX_AGENT_LOG } = require('../utils/retention');
-const { agentDelegateLimiter } = require('../middleware/rateLimits');
+const { agentDelegateLimiter, agentSubagentLimiter } = require('../middleware/rateLimits');
 const router = express.Router();
 const { authenticateToken } = require('../middleware/auth');
 const { enforceConcurrentJobs, enforceTaskTimeout, enforceCreditPool, enforceCloudComputeLimit } = require('../middleware/tierEnforcement');
 const CreditPoolService = require('../utils/creditPoolService');
 const AgentExecution = require('../models/AgentExecution');
+const SubagentExecution = require('../models/SubagentExecution');
+const subagentService = require('../utils/subagentService');
 const LocalTask = require('../models/LocalTask');
 const LocalProject = require('../models/LocalProject');
 const SpecModel = require('../models/SpecModel');
@@ -708,6 +710,71 @@ router.get('/status/:taskId', authenticateToken, async (req, res) => {
     res.json({ success: true, execution });
   } catch (error) {
     console.error('Get execution status error:', error);
+    return sendInternalError(req, res, error);
+  }
+});
+
+router.post('/:executionId/subagents', authenticateToken, agentSubagentLimiter, async (req, res) => {
+  try {
+    const { executionId } = req.params;
+    const { role, instruction } = req.body;
+
+    const execution = await AgentExecution.findOne({ _id: executionId, userId: req.userId });
+    if (!execution) {
+      return res.status(404).json({ success: false, message: 'Agent execution not found' });
+    }
+
+    const subagent = await subagentService.spawnSubagent({
+      parentExecutionId: execution._id,
+      role,
+      instruction,
+      userId: req.userId,
+      sessionId: execution.sessionId || null,
+      taskId: execution.taskId || null,
+      projectId: execution.projectId || null,
+    });
+
+    realtimeBus.emitAgentProgress(req.userId, {
+      type: 'subagent:spawned',
+      executionId: execution._id,
+      subagentExecutionId: subagent._id,
+      role,
+      status: 'idle',
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Subagent spawned',
+      subagent,
+    });
+  } catch (error) {
+    console.error('Spawn subagent error:', error);
+    if (error.message && /invalid|required|not found/i.test(error.message)) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
+    return sendInternalError(req, res, error);
+  }
+});
+
+router.get('/:executionId/subagents', authenticateToken, async (req, res) => {
+  try {
+    const { executionId } = req.params;
+
+    const execution = await AgentExecution.findOne({ _id: executionId, userId: req.userId });
+    if (!execution) {
+      return res.status(404).json({ success: false, message: 'Agent execution not found' });
+    }
+
+    const subagents = await subagentService.listSubagents(execution._id, req.userId);
+
+    return res.json({
+      success: true,
+      executionId,
+      subagents,
+      count: subagents.length,
+    });
+  } catch (error) {
+    console.error('List subagents error:', error);
     return sendInternalError(req, res, error);
   }
 });
