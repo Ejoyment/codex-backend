@@ -389,6 +389,9 @@ export default function Editor() {
   const [selectedFile, setSelectedFile] = useState(null);
   const [openFiles, setOpenFiles] = useState([]);
   const openContentsRef = useRef({});
+  // Files whose content could not be loaded. Their buffer is empty for display
+  // reasons only, so saving it would overwrite the real file with nothing.
+  const failedLoadsRef = useRef({});
   const openOriginalsRef = useRef({});     // last locally-saved content per file (dirty = buffer !== this)
   const remoteBaselineRef = useRef({});     // last-known GitHub remote content (for SCM changes)
   const parkedRef = useRef({});             // saved-but-closed GitHub drafts (still deploy/push-able)
@@ -836,6 +839,9 @@ export default function Editor() {
 
   function schedulePersist() {
     if (typeof window === 'undefined') return;
+    // Never persist a draft for a file that failed to hydrate.
+    const selected = selectedFileRef.current;
+    if (selected && failedLoadsRef.current[getFileKey(selected)]) return;
     if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
     persistTimerRef.current = setTimeout(() => {
       persistTimerRef.current = null;
@@ -2074,6 +2080,7 @@ export default function Editor() {
     setShowProjectSelector(false);
     setStatus(null);
     if (!needsFetch) {
+      delete failedLoadsRef.current[fileKey];
       openContentsRef.current[fileKey] = initialContent;
       openOriginalsRef.current[fileKey] = baseline;
       if (sourceFile?.source === 'github' && remoteBaselineRef.current[fileKey] === undefined) {
@@ -2095,6 +2102,7 @@ export default function Editor() {
         if (sourceFile?.source === 'github' && remoteBaselineRef.current[fileKey] === undefined) {
           remoteBaselineRef.current[fileKey] = resolvedContent;
         }
+        delete failedLoadsRef.current[fileKey];
         openContentsRef.current[fileKey] = resolvedContent;
         openOriginalsRef.current[fileKey] = resolvedContent;
         setContent(resolvedContent);
@@ -2103,6 +2111,7 @@ export default function Editor() {
         refreshProblems();
       }).catch((error) => {
         if (requestId !== fileLoadSequenceRef.current) return;
+        failedLoadsRef.current[fileKey] = true;
         setFileLoading(false);
         setStatus({ type: 'error', msg: error?.status === 404 ? 'That file no longer exists in this workspace.' : `Could not load ${file.name || 'file'}: ${error.message}` });
       });
@@ -2215,6 +2224,10 @@ export default function Editor() {
   async function handleSave() {
     const file = selectedFile;
     if (!file) return;
+    if (failedLoadsRef.current[getFileKey(file)]) {
+      setStatus({ type: 'error', msg: 'This file did not load, so it cannot be saved. Reload it first.' });
+      return;
+    }
     try {
       setSaving(true);
       const fileKey = getFileKey(file);
