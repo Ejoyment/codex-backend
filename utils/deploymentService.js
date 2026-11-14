@@ -247,10 +247,10 @@ const NATIVE_DEP_RE = /node-pty|bcrypt|sharp|canvas|better-sqlite3|sqlite3|seria
 const APP_MANIFESTS = [
   'package.json', 'requirements.txt', 'go.mod', 'gemfile', 'composer.json',
   'pom.xml', 'build.gradle', 'build.gradle.kts', 'cargo.toml', 'mix.exs',
-  'package.swift', 'pubspec.yaml',
+  'package.swift', 'pubspec.yaml', 'tsconfig.json',
 ];
 // Signals that a nested package.json directory is the real app root.
-const NESTED_PKG_SIGNALS = ['package-lock.json', 'npm-shrinkwrap.json', 'yarn.lock', 'pnpm-lock.yaml', 'bun.lockb', 'dockerfile'];
+const NESTED_PKG_SIGNALS = ['package-lock.json', 'npm-shrinkwrap.json', 'yarn.lock', 'pnpm-lock.yaml', 'bun.lockb', 'dockerfile', 'tsconfig.json'];
 // Docker Compose cannot be represented by the single-container deploy path.
 const COMPOSE_NAMES = ['docker-compose.yml', 'docker-compose.yaml', 'compose.yml', 'compose.yaml'];
 
@@ -630,6 +630,125 @@ ${cmd}
     };
   };
 
+  // TypeScript projects: tsconfig.json + .ts source files. Compiles with tsc
+  // (or the project's own build script) and runs the emitted JavaScript entry
+  // point. Falls back to static only when no runnable entry point exists.
+  const typescriptResult = dir => {
+    const dk = dir.toLowerCase();
+    const tsConfig = findIn(dk, 'tsconfig.json');
+    const pkgEntry = findIn(dk, 'package.json');
+    const pkg = (pkgEntry && parseJsonSafe(text(pkgEntry))) || {};
+    const scripts = (pkg.scripts && typeof pkg.scripts === 'object' && !Array.isArray(pkg.scripts)) ? pkg.scripts : {};
+    const hasBuild = typeof scripts.build === 'string' && scripts.build.trim().length > 0;
+
+    // Read tsconfig outDir (default 'dist').
+    let outDir = 'dist';
+    if (tsConfig) {
+      const tsCfg = parseJsonSafe(text(tsConfig));
+      if (tsCfg && tsCfg.compilerOptions && typeof tsCfg.compilerOptions.outDir === 'string') {
+        outDir = tsCfg.compilerOptions.outDir.replace(/\/$/, '');
+      }
+    }
+
+    // Lock files for reproducible installs.
+    const locks = ['package-lock.json', 'npm-shrinkwrap.json', 'yarn.lock', 'pnpm-lock.yaml']
+      .filter(n => findIn(dk, n));
+    const copyLine = `COPY package.json${locks.length ? ' ' + locks.join(' ') : ''} ./`;
+    const install = `RUN npm install --no-audit --no-fund`;
+
+    // TypeScript entry points (.ts), checked before compiled output paths.
+    const tsEntryNames = ['server.ts', 'app.ts', 'index.ts', 'main.ts'];
+    const rootEntryName = tsEntryNames.find(n => findIn(dk, n));
+    let cmd = null;
+    let entryTsFile = null;
+    let entryJsOut = null;
+
+    const resolveTsCmd = (entryRel) => {
+      const tsRel = entryRel.replace(/^\.\//, '');
+      const jsRel = tsRel.replace(/\.ts$/, '.js');
+      // If tsconfig sets an outDir, the compiled file lands under it.
+      const outPath = outDir && outDir !== '.' ? `${outDir}/${jsRel.replace(/^\.\//, '')}` : jsRel;
+      entryTsFile = tsRel;
+      entryJsOut = outPath;
+      cmd = `CMD ["node", ${JSON.stringify(outPath)}]`;
+    };
+
+    if (rootEntryName) {
+      resolveTsCmd(rootEntryName);
+    } else if (typeof pkg.main === 'string' && pkg.main.trim()) {
+      const main = pkg.main.trim().replace(/^\.\//, '');
+      const candidates = [
+        main,
+        main.endsWith('.ts') ? main : main + '.ts',
+        main.endsWith('.js') ? main : main + '.ts',
+      ].map(c => (dir ? dir + '/' + c : c).toLowerCase());
+      const found = entries.find(e => candidates.includes(e.key));
+      if (found) {
+        resolveTsCmd(ctxRelOf(found, dir));
+      }
+    }
+
+    // package.json without a runnable TypeScript entry: cannot execute.
+    if (!cmd) return staticResult();
+
+    // Port detection: from start script, then from .ts source files.
+    let port = 3000;
+    const start = typeof scripts.start === 'string' ? scripts.start.trim() : '';
+    const startNode = start.match(/^node\s+([^\s;&|]+)/);
+    const startTs = start.match(/^(?:ts-node|tsx|npx\s+tsx|npx\s+ts-node)\s+([^\s;&|]+)/);
+
+    const scanFileForPort = (entryRel) => {
+      const key = (dir ? dir + '/' + entryRel : entryRel).toLowerCase();
+      const ef = entries.find(e => e.key === key);
+      if (ef) {
+        const t = text(ef);
+        const pm = t.match(/\.PORT\s*\|\|\s*(\d{4,5})/) || t.match(/\.listen\(\s*(\d{4,5})/) || t.match(/\bport\s*=\s*(\d{4,5})/i);
+        if (pm) return clampPort(pm[1]) || 3000;
+      }
+      return null;
+    };
+
+    let foundPort = null;
+    if (startNode) {
+      foundPort = scanFileForPort(startNode[1].replace(/^\.\//, ''));
+    } else if (startTs) {
+      foundPort = scanFileForPort(startTs[1].replace(/^\.\//, ''));
+    } else if (entryTsFile) {
+      foundPort = scanFileForPort(entryTsFile);
+    }
+    if (!foundPort) {
+      // Scan all .ts source files in context for port hints.
+      for (const e of entries) {
+        if (e.name.endsWith('.ts') && (!dir || e.key.startsWith(dk + '/'))) {
+          const t = text(e);
+          const pm = t.match(/\.PORT\s*\|\|\s*(\d{4,5})/) || t.match(/\.listen\(\s*(\d{4,5})/) || t.match(/\bport\s*=\s*(\d{4,5})/i);
+          if (pm) { foundPort = clampPort(pm[1]) || 3000; break; }
+        }
+      }
+    }
+    if (foundPort) port = foundPort;
+
+    const buildStep = hasBuild
+      ? `RUN npm run build`
+      : `RUN npx tsc --project tsconfig.json`;
+
+    return {
+      runtime: 'typescript',
+      exposePort: port,
+      contextDir: dir || '.',
+      dockerfile: `FROM node:20-alpine
+WORKDIR /app
+${copyLine}
+${install}
+COPY . .
+${buildStep}
+EXPOSE ${port}
+ENV PORT=${port}
+${cmd}
+`,
+    };
+  };
+
   const rustResult = dir => {
     const dk = dir.toLowerCase();
     const cargo = findIn(dk, 'cargo.toml');
@@ -840,6 +959,10 @@ CMD ["app"]
   // ones so a monorepo subdir never hijacks the root project.
   const rootDockerfile = inRoot('dockerfile');
   if (rootDockerfile) return dockerResult(rootDockerfile, '');
+  // TypeScript projects carry tsconfig.json; detect before package.json so a
+  // project with both tsconfig.json + package.json is treated as TypeScript
+  // (its source is .ts, not .js).
+  if (inRoot('tsconfig.json')) return typescriptResult('');
   if (inRoot('package.json')) return nodeResult('');
   if (inRoot('requirements.txt')) return pythonResult('');
   if (inRoot('go.mod')) return goResult('');
@@ -878,6 +1001,11 @@ CMD ["app"]
     const best = pickDir(nestedDockerfiles, e => APP_MANIFESTS.some(n => findIn(e.dirKey, n)));
     return dockerResult(best, best.dir);
   }
+  const nestedTsConfigs = entries.filter(e => e.dirKey !== '' && e.name === 'tsconfig.json');
+  if (nestedTsConfigs.length) {
+    const best = pickDir(nestedTsConfigs, e => APP_MANIFESTS.some(n => findIn(e.dirKey, n)));
+    return typescriptResult(best.dir);
+  }
   const nestedPkgs = entries.filter(e => e.dirKey !== '' && e.name === 'package.json');
   if (nestedPkgs.length) {
     const best = pickDir(nestedPkgs, e => NESTED_PKG_SIGNALS.some(n => findIn(e.dirKey, n)));
@@ -902,12 +1030,32 @@ CMD ["app"]
   const nestedDart = entries.filter(e => e.dirKey !== '' && e.name === 'pubspec.yaml');
   if (nestedDart.length) return dartResult(pickDir(nestedDart).dir);
 
+  // Source code extensions that indicate a server-side application. A project
+  // with these files but no recognized runtime manifest should fail clearly
+  // rather than silently serving source files as static downloads (which is
+  // what the old catch-all staticResult did).
+  const SERVER_SOURCE_EXTENSIONS = ['.ts', '.py', '.go', '.rb', '.java', '.rs', '.cs', '.fs', '.vb', '.ex', '.exs', '.dart', '.swift'];
+  const hasServerSource = entries.some(e => SERVER_SOURCE_EXTENSIONS.includes(path.extname(e.name).toLowerCase()));
+
   const anyNginx = entries.filter(e => e.name === 'nginx.conf');
   if (anyNginx.length) return staticResult(shallowest(anyNginx).rel);
   const phpFiles = entries.filter(e => e.name.endsWith('.php'));
   if (phpFiles.length) return phpResult(shallowest(phpFiles).dir);
-  if (entries.some(e => e.name.endsWith('.html'))) return staticResult();
-  return staticResult();
+  // Pure static sites (only HTML/CSS/JS/assets) → serve via nginx.
+  // Projects with unrecognized server-side source code → fail with a clear
+  // message instead of serving source files as static downloads.
+  if (entries.some(e => e.name.endsWith('.html')) && !hasServerSource) return staticResult();
+  if (!hasServerSource) return staticResult();
+  return {
+    runtime: 'unsupported',
+    exposePort: 80,
+    contextDir: '.',
+    unsupported: true,
+    reason: 'This project contains server-side source code but no recognized ' +
+      'build or runtime manifest (package.json, tsconfig.json, requirements.txt, ' +
+      'go.mod, cargo.toml, pom.xml, build.gradle, mix.exs, pubspec.yaml, Dockerfile, etc.). ' +
+      'Add a Dockerfile or a supported manifest so the platform can build and run it.',
+  };
 }
 
 // Build the archive-relative path for a file. `f.path` may be a directory
