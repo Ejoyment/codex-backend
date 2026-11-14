@@ -149,7 +149,7 @@ router.post(
       return res.status(400).json({ error: `Entry file not found: ${entry}` });
     }
 
-    const gate = rateGate(userId);
+    const gate = await rateGate(userId);
     if (!gate.allowed) {
       return res.status(429).json({ error: gate.reason });
     }
