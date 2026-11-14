@@ -5,8 +5,11 @@ const { findPersonalWorkspace, findPersonalWorkspaceById, ensurePersonalWorkspac
 function normalizeWorkspaceId(value) {
     if (!value) return null;
     if (typeof value === 'object') {
+        // Mongoose ObjectIds expose `_id` as themselves; unwrap the hex string
+        // instead of recursing forever.
+        if (typeof value.toHexString === 'function') return String(value);
         const nested = value.workspaceId || value.companyId || value.company || value._id || value.id;
-        return nested ? normalizeWorkspaceId(nested) : null;
+        return nested && nested !== value ? normalizeWorkspaceId(nested) : null;
     }
     const normalized = String(value).trim();
     return normalized || null;

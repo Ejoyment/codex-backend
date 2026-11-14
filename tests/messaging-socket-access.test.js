@@ -18,7 +18,7 @@ process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret-for-automated-te
 jest.mock('../models/Message', () => ({}));
 jest.mock('../models/Channel', () => ({ findById: jest.fn() }));
 jest.mock('../models/User', () => ({ findById: jest.fn() }));
-jest.mock('../models/Company', () => ({ findOne: jest.fn() }));
+jest.mock('../models/Company', () => ({ findOne: jest.fn(), findById: jest.fn() }));
 
 const Channel = require('../models/Channel');
 const User = require('../models/User');
@@ -105,6 +105,19 @@ beforeEach(() => {
   }));
   Company.findOne.mockImplementation((q) => ({
     select: () => ({ lean: async () => (isMemberQuery(q) ? { _id: '507f1f77bcf86cd799439013' } : null) }),
+  }));
+  // Canonical workspace resolution queries the company by id, then checks
+  // owner/members itself. Keep the same discriminating membership model.
+  Company.findById.mockImplementation((id) => ({
+    select: () => ({
+      lean: async () => (String(id) === '507f1f77bcf86cd799439013'
+        ? {
+          _id: '507f1f77bcf86cd799439013',
+          owner: 'userA',
+          members: currentMember ? [{ user: currentMember, role: 'member' }] : [],
+        }
+        : null),
+    }),
   }));
 });
 

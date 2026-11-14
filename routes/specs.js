@@ -59,6 +59,7 @@ router.post('/', authenticateToken, async (req, res) => {
         verificationCommand: verificationCommand || '',
         coverageThreshold: coverageThreshold ?? null,
         status: 'unvalidated',
+        verdict: null,
         lastValidatedAt: null,
         lastValidationResult: null,
         createdBy: req.userId,

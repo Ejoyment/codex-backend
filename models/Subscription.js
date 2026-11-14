@@ -485,7 +485,6 @@ subscriptionSchema.methods.syncTierRestrictions = function(tier = this.tier) {
 };
 
 module.exports = mongoose.model('Subscription', subscriptionSchema);
-
 // Indexes for the hot cron paths (billingCron per-minute trial scan,
 // creditPoolService hourly reset scan) — the schema previously had none
 // (only the userId unique index).
