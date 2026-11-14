@@ -95,4 +95,47 @@ function emitWorkspaceChange(workspaceId, event, data) {
     terminalNamespace.emit('workspace:change', payload);
 }
 
-module.exports = { setIO, emitCollab, emitSandbox, emitAgentProgress, emitDeploymentUpdate, emitNotification, emitNotificationRemoved, emitProfileUpdate, emitWorkspaceChange };
+// Subagent progress events on the /collab namespace, routed to the owning
+// user's `agent:<userId>` room — the same room LiveExecutionDrawer joins.
+// Payload shape: { subagentExecutionId, parentExecutionId, role, status, phase, message, output?, error? }
+function emitSubagentSpawned(userId, payload) {
+    if (!_io || !userId) return false;
+    _io.of('/collab').to(`agent:${userId}`).emit('agent:subagent:spawned', {
+        userId,
+        timestamp: new Date().toISOString(),
+        ...payload,
+    });
+    return true;
+}
+
+function emitSubagentProgress(userId, payload) {
+    if (!_io || !userId) return false;
+    _io.of('/collab').to(`agent:${userId}`).emit('agent:subagent:progress', {
+        userId,
+        timestamp: new Date().toISOString(),
+        ...payload,
+    });
+    return true;
+}
+
+function emitSubagentComplete(userId, payload) {
+    if (!_io || !userId) return false;
+    _io.of('/collab').to(`agent:${userId}`).emit('agent:subagent:complete', {
+        userId,
+        timestamp: new Date().toISOString(),
+        ...payload,
+    });
+    return true;
+}
+
+function emitSubagentError(userId, payload) {
+    if (!_io || !userId) return false;
+    _io.of('/collab').to(`agent:${userId}`).emit('agent:subagent:error', {
+        userId,
+        timestamp: new Date().toISOString(),
+        ...payload,
+    });
+    return true;
+}
+
+module.exports = { setIO, emitCollab, emitSandbox, emitAgentProgress, emitDeploymentUpdate, emitNotification, emitNotificationRemoved, emitProfileUpdate, emitWorkspaceChange, emitSubagentSpawned, emitSubagentProgress, emitSubagentComplete, emitSubagentError };

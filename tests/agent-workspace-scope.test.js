@@ -31,6 +31,7 @@ jest.mock('../middleware/auth', () => ({
 }));
 jest.mock('../middleware/rateLimits', () => ({
   agentDelegateLimiter: (req, _res, next) => next(),
+  agentSubagentLimiter: (req, _res, next) => next(),
   aiChatLimiter: (req, _res, next) => next(),
 }));
 jest.mock('../middleware/tierEnforcement', () => ({

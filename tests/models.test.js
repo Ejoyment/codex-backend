@@ -15,6 +15,7 @@ describe('Model Schemas', () => {
   const models = [
     'AIPairSession',
     'AgentExecution',
+    'SubagentExecution',
     'BillingSchedule',
     'Channel',
     'ChatMessage',
