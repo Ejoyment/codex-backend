@@ -467,6 +467,88 @@ describe('detectRuntime', () => {
     });
 });
 
+describe('detectRuntime typescript', () => {
+    const tsFiles = [
+        { name: 'tsconfig.json', path: '/', content: '{"compilerOptions":{"outDir":"dist"}}' },
+        { name: 'package.json', path: '/', content: '{"scripts":{"start":"node dist/server.js"}}' },
+        { name: 'server.ts', path: '/', content: "const port = process.env.PORT || 3000;\nconsole.log('listening on', port);\n" },
+    ];
+
+    test('tsconfig.json + server.ts → typescript runtime', () => {
+        const ts = detectRuntime(tsFiles);
+        expect(ts.runtime).toBe('typescript');
+        expect(ts.contextDir).toBe('.');
+        expect(ts.dockerfile).toContain('npx tsc --project tsconfig.json');
+        expect(ts.dockerfile).toContain('CMD ["node", "dist/server.js"]');
+        expect(ts.exposePort).toBe(3000);
+    });
+
+    test('tsconfig.json + package.json main field → typescript runtime', () => {
+        const ts = detectRuntime([
+            { name: 'tsconfig.json', path: '/', content: '{}' },
+            { name: 'package.json', path: '/', content: '{"main":"app.ts"}' },
+            { name: 'app.ts', path: '/', content: 'console.log("hi");\n' },
+        ]);
+        expect(ts.runtime).toBe('typescript');
+        expect(ts.dockerfile).toContain('CMD ["node"');
+    });
+
+    test('tsconfig.json without entry point → static fallback', () => {
+        const ts = detectRuntime([
+            { name: 'tsconfig.json', path: '/', content: '{}' },
+            { name: 'data.json', path: '/', content: '{}' },
+        ]);
+        expect(ts.runtime).toBe('static');
+    });
+
+    test('nested tsconfig.json → typescript in subdir', () => {
+        const ts = detectRuntime([
+            { name: 'README.md', path: '/', content: '# root' },
+            { name: 'tsconfig.json', path: '/api', content: '{}' },
+            { name: 'server.ts', path: '/api', content: 'console.log("api");\n' },
+            { name: 'package.json', path: '/api', content: '{"scripts":{"start":"node server.js"}}' },
+        ]);
+        expect(ts.runtime).toBe('typescript');
+        expect(ts.contextDir).toBe('api');
+    });
+
+    test('tsconfig.json beats package.json (root-first priority)', () => {
+        const ts = detectRuntime([
+            { name: 'tsconfig.json', path: '/', content: '{}' },
+            { name: 'package.json', path: '/', content: '{}' },
+            { name: 'index.ts', path: '/', content: 'console.log("ts");\n' },
+        ]);
+        expect(ts.runtime).toBe('typescript');
+    });
+});
+
+describe('detectRuntime unsupported fallback', () => {
+    test('server-side source with no manifest → unsupported, not static', () => {
+        const unsupported = detectRuntime([
+            { name: 'app.py', path: '/', content: 'print("hi")\n' },
+        ]);
+        expect(unsupported.runtime).toBe('unsupported');
+        expect(unsupported.unsupported).toBe(true);
+        expect(unsupported.reason).toContain('manifest');
+    });
+
+    test('typescript source without tsconfig.json → unsupported, not static', () => {
+        const unsupported = detectRuntime([
+            { name: 'server.ts', path: '/', content: 'console.log("hi")\n' },
+        ]);
+        expect(unsupported.runtime).toBe('unsupported');
+    });
+
+    test('pure static assets (html/css/js) → still static', () => {
+        const staticSite = detectRuntime([
+            { name: 'index.html', path: '/', content: '<h1>hi</h1>' },
+            { name: 'style.css', path: '/', content: 'body{}\n' },
+            { name: 'app.js', path: '/', content: 'console.log("hi");\n' },
+        ]);
+        expect(staticSite.runtime).toBe('static');
+    });
+});
+
 describe('ensureStaticEntry', () => {
     test('keeps an existing index.html untouched', () => {
         const entries = [
