@@ -48,6 +48,11 @@ const ephemeralSandboxSchema = new mongoose.Schema({
         default: 'provisioning'
     },
     previewUrl: { type: String, default: null },
+    // Readiness is split: the snapshot is always written, but the app is only
+    // "ready" when the repository was cloned and dependencies installed.
+    snapshotReady: { type: Boolean, default: false },
+    appReady: { type: Boolean, default: false },
+    previewMode: { type: String, enum: ['live', 'snapshot'], default: 'snapshot' },
     ports: [{ type: Number }],
     workdir: { type: String, default: null },
     logs: { type: String, default: '' },
