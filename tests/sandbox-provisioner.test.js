@@ -76,6 +76,10 @@ describe('provisionPipeline', () => {
     await provisioner.provisionPipeline(sandbox, workdir);
 
     expect(sandbox.status).toBe('ready');
+    // Clone and install ran, so this is a live app preview, not a snapshot.
+    expect(sandbox.appReady).toBe(true);
+    expect(sandbox.previewMode).toBe('live');
+    expect(sandbox.snapshotReady).toBe(true);
     const calls = sandboxSecurity.runEphemeral.mock.calls.map(([arg]) => arg);
     expect(calls.map((c) => c.cmd)).toEqual([
       ['git', 'clone', '--depth', '1', '--branch', 'feature/x', 'https://github.com/acme/app.git', '/workspace'],
@@ -119,6 +123,11 @@ describe('provisionPipeline', () => {
     await provisioner.provisionPipeline(sandbox, workdir);
 
     expect(sandbox.status).toBe('ready');
+    // Viewable, but nothing was cloned or installed.
+    expect(sandbox.appReady).toBe(false);
+    expect(sandbox.previewMode).toBe('snapshot');
+    expect(sandbox.snapshotReady).toBe(true);
+    expect(sandbox.logs).toContain('[readiness]');
     expect(sandboxSecurity.runEphemeral).not.toHaveBeenCalled();
     expect(childProcess.exec).not.toHaveBeenCalled();
     expect(sandbox.logs).toContain('[docker] Docker unavailable');
@@ -132,6 +141,8 @@ describe('provisionPipeline', () => {
     await provisioner.provisionPipeline(sandbox, workdir);
 
     expect(sandbox.status).toBe('ready');
+    expect(sandbox.appReady).toBe(false);
+    expect(sandbox.previewMode).toBe('snapshot');
     expect(sandbox.logs).toContain('[clone]');
     expect(fs.existsSync(path.join(workdir, 'src/bug.js'))).toBe(true);
     expect(childProcess.exec).not.toHaveBeenCalled();
@@ -162,7 +173,28 @@ describe('provisionPipeline', () => {
     await provisioner.provisionPipeline(sandbox, workdir);
 
     expect(sandbox.status).toBe('ready');
+    expect(sandbox.appReady).toBe(false);
+    expect(sandbox.previewMode).toBe('snapshot');
     expect(sandboxSecurity.runEphemeral).not.toHaveBeenCalled();
     expect(fs.existsSync(path.join(workdir, 'src/bug.js'))).toBe(true);
+  });
+
+  test('production without SANDBOX_PUBLIC_URL fails instead of handing out localhost', async () => {
+    const originalEnv = process.env.NODE_ENV;
+    const originalUrl = process.env.SANDBOX_PUBLIC_URL;
+    process.env.NODE_ENV = 'production';
+    delete process.env.SANDBOX_PUBLIC_URL;
+    try {
+      const sandbox = makeSandbox({ repository: null, branch: 'main', commitSha: null });
+      await provisioner.provisionPipeline(sandbox, makeWorkdir());
+
+      expect(sandbox.status).toBe('failed');
+      expect(sandbox.error).toBe('Sandbox preview URL is not configured');
+      expect(sandbox.previewUrl).toBeUndefined();
+    } finally {
+      process.env.NODE_ENV = originalEnv;
+      if (originalUrl === undefined) delete process.env.SANDBOX_PUBLIC_URL;
+      else process.env.SANDBOX_PUBLIC_URL = originalUrl;
+    }
   });
 });

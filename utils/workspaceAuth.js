@@ -58,8 +58,6 @@ async function assertWorkspaceAccess(workspaceId, userId) {
     }
     const wsId = String(workspaceId || '');
 
-    console.log('[assertWorkspaceAccess] wsId:', wsId, 'userId:', userId);
-
     // Try the requested workspace first (company the user belongs to).
     if (wsId) {
         const resolved = await resolveWorkspaceForUser(wsId, userId);
@@ -94,7 +92,7 @@ async function assertWorkspaceAccess(workspaceId, userId) {
 
     // Do not distinguish "no such workspace" from "not a member": the
     // former is an enumeration oracle across tenants.
-    console.log('[assertWorkspaceAccess] DENIED for wsId:', wsId, 'userId:', userId);
+    console.warn('[assertWorkspaceAccess] workspace access denied');
     return { ok: false, reason: 'Workspace not found or access denied' };
 }
 

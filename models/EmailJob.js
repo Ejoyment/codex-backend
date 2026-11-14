@@ -19,8 +19,12 @@ const emailJobSchema = new mongoose.Schema({
   lockToken: String,
   sentAt: Date,
   lastError: String,
+  // Set when the job reaches a terminal state so the TTL below can drop it.
+  // Pending/processing rows never get a purgeAt and are never reaped.
+  purgeAt: Date,
 }, { timestamps: true });
 
+emailJobSchema.index({ purgeAt: 1 }, { expireAfterSeconds: 0 });
 emailJobSchema.index({ dedupeKey: 1 }, { unique: true });
 emailJobSchema.index({ status: 1, availableAt: 1, createdAt: 1 });
 emailJobSchema.index({ status: 1, lockedUntil: 1 });

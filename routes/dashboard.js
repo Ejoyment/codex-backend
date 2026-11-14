@@ -7,6 +7,8 @@ const IntegrationData = require('../models/IntegrationData');
 const Subscription = require('../models/Subscription');
 const { authenticateToken } = require('../middleware/auth');
 const { canonicalTier } = require('../utils/tierNames');
+const providerSync = require('../utils/providerSync');
+const { sendError, sendInternalError } = require('../utils/httpErrors');
 
 /**
  * @swagger
@@ -389,28 +391,30 @@ router.get('/data/:platform', authenticateToken, async (req, res) => {
                     icon: guild.icon ? `https://cdn.discordapp.com/icons/${guild.id}/${guild.icon}.png` : null,
                     owner: guild.owner,
                     permissions: guild.permissions,
-                    // Mock channels for now - would need additional API calls per guild
-                    channels: [
-                        { id: '1', name: 'general', type: 'text' },
-                        { id: '2', name: 'announcements', type: 'text' },
-                        { id: '3', name: 'dev-chat', type: 'text' }
-                    ]
                 }));
+                // Channel lists need the bot token and one request per guild;
+                // `/api/discord/...` exposes them instead of inventing names.
+                realData.note = 'Discord channels are available through the Discord integration panel';
                 
             } else if (platform === 'figma' && integration.accessToken) {
-                // Fetch real Figma files
-                const filesResponse = await axios.get('https://api.figma.com/v1/me', {
-                    headers: {
-                        'Authorization': `Bearer ${integration.accessToken}`
-                    },
-                    timeout: 15000
-                });
-                
-                // Mock projects for now - Figma API structure is complex
-                realData.projects = [
-                    { id: '1', name: 'Design System', fileCount: 5 },
-                    { id: '2', name: 'Product Designs', fileCount: 12 }
-                ];
+                // Figma lists projects per team; there is no "my projects"
+                // endpoint, so a team id must be stored on the integration.
+                const teamId = integration.metadata?.get
+                    ? integration.metadata.get('figmaTeamId')
+                    : integration.metadata?.figmaTeamId;
+                if (teamId) {
+                    const projectsResponse = await axios.get(`https://api.figma.com/v1/teams/${encodeURIComponent(teamId)}/projects`, {
+                        headers: { 'Authorization': `Bearer ${integration.accessToken}` },
+                        timeout: 15000
+                    });
+                    realData.projects = (projectsResponse.data?.projects || []).map((project) => ({
+                        id: project.id,
+                        name: project.name,
+                    }));
+                } else {
+                    realData.projects = [];
+                    realData.note = 'Select a Figma team to list its projects';
+                }
             }
         } catch (apiError) {
             console.error(`${platform} API error:`, apiError.response?.data || apiError.message);
@@ -463,21 +467,16 @@ router.get('/data/:platform', authenticateToken, async (req, res) => {
  *       404:
  *         description: Integration not connected
  */
-// Sync integration data (mock for now)
+// Sync integration data from the provider. Replaces the previous snapshot so
+// repeated syncs do not accumulate rows.
 router.post('/sync/:platform', authenticateToken, async (req, res) => {
     try {
         const { platform } = req.params;
-        
-        console.log(`Sync request for platform: ${platform}, user: ${req.userId}`);
-        
-        // Check if integration is connected (using correct field names)
         const integration = await Integration.findOne({
             userId: req.userId,
-            provider: platform,  // Use provider instead of platform
-            isActive: true       // Use isActive instead of connected
+            provider: platform,
+            isActive: true
         });
-        
-        console.log(`Integration found:`, integration ? 'Yes' : 'No');
 
         if (!integration) {
             return res.status(404).json({
@@ -486,154 +485,25 @@ router.post('/sync/:platform', authenticateToken, async (req, res) => {
             });
         }
 
-        // Mock sync - in production, this would call actual APIs
-        // For now, create some sample data
-        const mockData = generateMockData(platform, req.userId);
-        
-        // Save mock data
-        for (const item of mockData) {
-            await IntegrationData.create(item);
+        const records = await providerSync.fetchPlatformData(integration);
+        const docs = records.map((item) => ({ ...item, userId: req.userId }));
+        if (docs.length) {
+            await IntegrationData.deleteMany({ userId: req.userId, platform });
+            await IntegrationData.insertMany(docs);
         }
 
         res.json({
             success: true,
-            message: `${platform} data synced successfully`,
-            itemsAdded: mockData.length
+            message: `${platform} data synced`,
+            itemsAdded: docs.length
         });
-
     } catch (error) {
-        console.error('Sync error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error syncing integration data'
-        });
+        if (error.status === 501) {
+            return sendInternalError(req, res, error, { status: 501, code: error.code, message: error.message });
+        }
+        return sendError(req, res, error);
     }
 });
 
-// Helper function to generate mock data
-function generateMockData(platform, userId) {
-    const now = new Date();
-    
-    switch (platform) {
-        case 'github':
-            return [
-                {
-                    userId,
-                    platform: 'github',
-                    dataType: 'repositories',
-                    data: {
-                        name: 'codex-frontend',
-                        description: 'Frontend application',
-                        stars: 42,
-                        language: 'JavaScript',
-                        updated: now
-                    },
-                    metadata: { totalItems: 1, lastActivity: now }
-                },
-                {
-                    userId,
-                    platform: 'github',
-                    dataType: 'commits',
-                    data: {
-                        message: 'Fix: Update dashboard layout',
-                        author: 'You',
-                        sha: 'abc123',
-                        date: now
-                    },
-                    metadata: { totalItems: 1, lastActivity: now }
-                }
-            ];
-        
-        case 'discord':
-            return [
-                {
-                    userId,
-                    platform: 'discord',
-                    dataType: 'messages',
-                    data: {
-                        content: 'Team standup at 10 AM',
-                        author: 'TeamBot',
-                        channel: 'general',
-                        timestamp: now
-                    },
-                    metadata: { totalItems: 1, unreadCount: 1, lastActivity: now }
-                },
-                {
-                    userId,
-                    platform: 'discord',
-                    dataType: 'members',
-                    data: {
-                        count: 15,
-                        online: 8
-                    },
-                    metadata: { totalItems: 15, lastActivity: now }
-                }
-            ];
-        
-        case 'slack':
-            return [
-                {
-                    userId,
-                    platform: 'slack',
-                    dataType: 'messages',
-                    data: {
-                        text: 'New deployment ready for review',
-                        user: 'DevOps',
-                        channel: 'deployments',
-                        timestamp: now
-                    },
-                    metadata: { totalItems: 1, unreadCount: 1, lastActivity: now }
-                }
-            ];
-        
-        case 'notion':
-            return [
-                {
-                    userId,
-                    platform: 'notion',
-                    dataType: 'pages',
-                    data: {
-                        title: 'Q1 Planning',
-                        type: 'page',
-                        lastEdited: now
-                    },
-                    metadata: { totalItems: 1, lastActivity: now }
-                }
-            ];
-        
-        case 'figma':
-            return [
-                {
-                    userId,
-                    platform: 'figma',
-                    dataType: 'files',
-                    data: {
-                        name: 'Dashboard Redesign',
-                        thumbnail: '',
-                        lastModified: now
-                    },
-                    metadata: { totalItems: 1, lastActivity: now }
-                }
-            ];
-        
-        case 'vscode':
-            return [
-                {
-                    userId,
-                    platform: 'vscode',
-                    dataType: 'recent',
-                    data: {
-                        file: 'dashboard.html',
-                        workspace: 'codex-project',
-                        lastOpened: now
-                    },
-                    metadata: { totalItems: 1, lastActivity: now }
-                }
-            ];
-        
-        default:
-            return [];
-    }
-}
 
 module.exports = router;

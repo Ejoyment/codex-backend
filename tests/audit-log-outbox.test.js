@@ -125,7 +125,7 @@ describe('audit outbox worker', () => {
       expect.objectContaining({ _id: '507f1f77bcf86cd799439013', status: 'processing' }),
       expect.objectContaining({
         $set: expect.objectContaining({ status: 'pending', lastError: 'still down' }),
-        $unset: { lockToken: 1, lockedUntil: 1 },
+        $unset: { lockToken: 1, lockedUntil: 1, purgeAt: 1 },
       })
     );
   });
@@ -138,7 +138,9 @@ describe('audit outbox worker', () => {
 
     expect(AuditOutbox.updateOne).toHaveBeenCalledWith(
       expect.any(Object),
-      expect.objectContaining({ $set: expect.objectContaining({ status: 'failed' }) })
+      expect.objectContaining({
+        $set: expect.objectContaining({ status: 'failed', purgeAt: expect.any(Date) }),
+      })
     );
   });
 

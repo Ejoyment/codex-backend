@@ -7,6 +7,7 @@ const POLL_INTERVAL_MS = 1000;
 const LOCK_DURATION_MS = 60 * 1000;
 const MAX_ATTEMPTS = 5;
 const MAX_JOBS_PER_POLL = 5;
+const TERMINAL_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 let timer = null;
 let activePoll = null;
@@ -77,7 +78,11 @@ async function processNextEmailJob() {
     await EmailJob.updateOne(
       { _id: job._id, status: 'processing', lockToken },
       {
-        $set: { status: 'sent', sentAt: new Date() },
+        $set: {
+          status: 'sent',
+          sentAt: new Date(),
+          purgeAt: new Date(Date.now() + TERMINAL_RETENTION_MS),
+        },
         $unset: { lockToken: 1, lockedUntil: 1, lastError: 1 },
       }
     );
@@ -91,8 +96,9 @@ async function processNextEmailJob() {
           status: terminal ? 'failed' : 'pending',
           availableAt: new Date(Date.now() + delayMs),
           lastError: error.message,
+          ...(terminal ? { purgeAt: new Date(Date.now() + TERMINAL_RETENTION_MS) } : {}),
         },
-        $unset: { lockToken: 1, lockedUntil: 1 },
+        $unset: { lockToken: 1, lockedUntil: 1, ...(terminal ? {} : { purgeAt: 1 }) },
       }
     );
     console.error(`[email-job] ${terminal ? 'permanently failed' : 'delivery failed'} (${job.type}):`, error.message);

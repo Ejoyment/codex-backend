@@ -672,7 +672,7 @@ const pkceStore = require('../utils/pkceStore');
  *       401:
  *         description: Unauthorized
  */
-router.get('/connect', authenticateToken, (req, res) => {
+router.get('/connect', authenticateToken, async (req, res) => {
     // Figma requires PKCE: generate a code_verifier and its SHA-256 code_challenge
     const codeVerifier = crypto.randomBytes(32).toString('base64url');
     const codeChallenge = crypto
@@ -681,7 +681,7 @@ router.get('/connect', authenticateToken, (req, res) => {
         .digest('base64url');
 
     // Store the verifier so /callback can retrieve it using the same state (userId)
-    pkceStore.set(req.userId, codeVerifier);
+    await pkceStore.set(req.userId, codeVerifier);
 
     const authUrl = buildFigmaAuthorizeUrl({
         clientId: process.env.FIGMA_CLIENT_ID,
@@ -738,11 +738,12 @@ router.get('/callback', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Invalid or expired state token' });
         }
 
-        const codeVerifier = pkceStore.get(userId);
+        // Redis consumes the verifier atomically on read when configured.
+        const codeVerifier = await pkceStore.get(userId);
         if (!codeVerifier) {
             return res.status(400).json({ success: false, message: 'PKCE verifier expired or missing. Please reconnect.' });
         }
-        pkceStore.delete(userId); // one-time use
+        await pkceStore.delete(userId); // no-op when the read already consumed it
 
         // Figma requires Basic Auth (client_id:client_secret base64-encoded) for token exchange
         const basicAuth = Buffer.from(

@@ -50,6 +50,9 @@ const debugHandoffSchema = new mongoose.Schema({
         expiresAt: Date,
         branch: String,
         commitSha: String,
+        // Snapshot-only previews are viewable but the app was not built.
+        appReady: { type: Boolean, default: false },
+        previewMode: { type: String, enum: ['live', 'snapshot'], default: 'snapshot' },
         status: {
             type: String,
             enum: ['provisioning', 'ready', 'expired', 'failed'],
