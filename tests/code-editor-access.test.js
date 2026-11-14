@@ -27,6 +27,8 @@ jest.mock('../models/LocalProject', () => ({ findById: jest.fn(), updateOne: jes
 jest.mock('../models/User', () => ({ exists: jest.fn(), findById: jest.fn() }));
 jest.mock('../utils/auditLogService', () => ({ addAuditLog: jest.fn(async () => null) }));
 jest.mock('../utils/personalWorkspace', () => ({
+  findPersonalWorkspace: jest.fn(async () => null),
+  findPersonalWorkspaceById: jest.fn(async () => null),
   ensurePersonalWorkspace: jest.fn(async (userId) => ({ _id: `personal-${userId}` })),
 }));
 jest.mock('../utils/virtualFileSystem', () => ({

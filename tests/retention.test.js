@@ -75,6 +75,24 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
+beforeEach(() => {
+  // Canonical workspace resolution queries by id, then checks membership.
+  const doc = {
+    _id: COMPANY,
+    owner: USER,
+    members: [
+      { user: USER, role: 'admin' },
+      { user: '507f1f77bcf86cd799439099', role: 'member' },
+    ],
+  };
+  const query = {
+    select: () => query,
+    lean: async () => doc,
+    then: (resolve, reject) => Promise.resolve(doc).then(resolve, reject),
+  };
+  Company.findById.mockReturnValue(query);
+});
+
 // All indexes declared on a schema: [[fields, options], ...].
 const schemaIndexes = (model) => model.schema.indexes();
 const hasTtlOn = (model, field) =>

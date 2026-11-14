@@ -4,6 +4,7 @@ const LocalTask = require('../models/LocalTask');
 const AgentExecution = require('../models/AgentExecution');
 const containerWorker = require('./containerWorker');
 const sddVerificationService = require('./sddVerificationService');
+const verificationRunner = require('./specVerificationRunner');
 
 function metaValue(execution, key) {
   const meta = execution?.metadata;
@@ -32,12 +33,28 @@ async function verifySpecsForExecution(execution, taskId) {
   const results = await Promise.all(
     specIds.map((id) => sddVerificationService.verifySpec(id, taskId || execution.taskId))
   );
+  // Approval blocks on a real failure only. `not_evaluated` is neutral: an
+  // unavailable runner or a manual check must never masquerade as a failure.
   const blocking = results.some((result) =>
+    result.verdict === 'fail' ||
+    result.verificationCommand?.status === 'fail' ||
     (result.requirements || []).some((requirement) => requirement.severity === 'blocking' && requirement.status === 'fail') ||
     (result.forbiddenImports || []).some((item) => item.status === 'fail') ||
     (result.results || []).some((item) => item.passed === false)
   );
   return { results, blocking };
+}
+
+function verificationSummary(specResults) {
+  const command = verificationRunner.summarizeCommandResults(
+    specResults.map((spec) => spec.verificationCommand).filter(Boolean)
+  ) || {
+    command: null,
+    status: 'not_evaluated',
+    reason: 'No verification command is configured for the attached specs.',
+    output: '',
+  };
+  return { specs: specResults, command, ranAt: new Date() };
 }
 
 async function approveExecution({
@@ -101,7 +118,7 @@ async function approveExecution({
     specResults = verification.results;
     if (verification.blocking) {
       execution.status = previousStatus;
-      execution.validationResult = { specs: specResults, ranAt: new Date() };
+      execution.validationResult = verificationSummary(specResults);
       await execution.save();
       return conflict('Blocking spec requirements failed; the branch was not merged', {
         execution,
@@ -246,7 +263,7 @@ async function approveExecution({
       ? 'Agent plan accepted (no file changes were proposed)'
       : 'Agent changes approved and merged',
   });
-  if (verifySpecs) execution.validationResult = { specs: specResults, ranAt: new Date() };
+  if (verifySpecs) execution.validationResult = verificationSummary(specResults);
   await execution.save();
   approvalSaved = true;
 

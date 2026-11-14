@@ -2,6 +2,8 @@ const { parentPort, workerData } = require('worker_threads');
 const agentRunner = require('./agentRunner');
 const sddVerificationService = require('./sddVerificationService');
 const agentChangeSet = require('./agentChangeSet');
+const gitService = require('./gitService');
+const verificationRunner = require('./specVerificationRunner');
 const AgentExecution = require('../models/AgentExecution');
 const LocalProject = require('../models/LocalProject');
 const LocalTask = require('../models/LocalTask');
@@ -315,8 +317,23 @@ async function runAgent() {
     }
     const proposedFiles = agentChangeSet.applyChangesToFileList(changes, codeFiles);
 
-    const specResults = await Promise.all(specs.map((spec) => sddVerificationService.verifySpecSnapshot(spec, proposedFiles)));
-    const sddResult = { specs: specResults, command: { status: 'pending', reason: 'Verification commands require an isolated workspace runner' } };
+    // Verify the branch as staged, not the pre-agent VFS. The worktree is the
+    // exact code a human is reviewing, so the verification command runs there.
+    const verificationDir = staged?.committed && workspaceId
+      ? gitService.agentWorktreePath(workspaceId, projectId, executionId)
+      : null;
+    const specResults = await sddVerificationService.verifySpecSnapshots(specs, proposedFiles, {
+      hostDir: verificationDir,
+    });
+    const command = verificationRunner.summarizeCommandResults(
+      specResults.map((spec) => spec.verificationCommand).filter(Boolean)
+    ) || {
+      command: null,
+      status: 'not_evaluated',
+      reason: 'No verification command is configured for the attached specs.',
+      output: '',
+    };
+    const sddResult = { specs: specResults, command, ranAt: new Date() };
 
     execution.status = 'awaiting_review';
     execution.filesChanged = filesChanged;

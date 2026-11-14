@@ -18,7 +18,7 @@ process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret-for-automated-te
 jest.mock('../models/CollaborationSession', () => ({ findOne: jest.fn(), create: jest.fn() }));
 jest.mock('../models/DesignSyncSession', () => ({ findOne: jest.fn() }));
 jest.mock('../models/EphemeralSandbox', () => ({ findOne: jest.fn() }));
-jest.mock('../models/Company', () => ({ findOne: jest.fn() }));
+jest.mock('../models/Company', () => ({ findOne: jest.fn(), findById: jest.fn() }));
 jest.mock('../models/User', () => ({
   exists: jest.fn(async (query) => ({ _id: query?._id || 'test-user' })),
 }));
@@ -124,6 +124,17 @@ beforeEach(() => {
   EphemeralSandbox.findOne.mockImplementation(async (q) => sandboxes[q?.sandboxKey] || null);
   Company.findOne.mockImplementation((q) => ({
     select: () => ({ lean: async () => (isMemberQuery(q) ? { _id: '507f1f77bcf86cd799439013' } : null) }),
+  }));
+  Company.findById.mockImplementation((id) => ({
+    select: () => ({
+      lean: async () => (String(id) === '507f1f77bcf86cd799439013'
+        ? {
+          _id: '507f1f77bcf86cd799439013',
+          owner: 'userA',
+          members: currentMember ? [{ user: currentMember, role: 'member' }] : [],
+        }
+        : null),
+    }),
   }));
 });
 

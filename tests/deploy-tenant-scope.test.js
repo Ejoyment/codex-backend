@@ -24,6 +24,7 @@ jest.mock('../models/CodeFile');
 jest.mock('../models/Company');
 jest.mock('../utils/personalWorkspace', () => ({
     findPersonalWorkspace: jest.fn(),
+    findPersonalWorkspaceById: jest.fn(),
     ensurePersonalWorkspace: jest.fn(),
 }));
 jest.mock('../utils/deploymentService', () => ({
@@ -37,7 +38,7 @@ const Company = require('../models/Company');
 const Deployment = require('../models/Deployment');
 const LocalProject = require('../models/LocalProject');
 const CodeFile = require('../models/CodeFile');
-const { findPersonalWorkspace, ensurePersonalWorkspace } = require('../utils/personalWorkspace');
+const { findPersonalWorkspace, findPersonalWorkspaceById, ensurePersonalWorkspace } = require('../utils/personalWorkspace');
 const deploymentsRouter = require('../routes/deployments');
 const { backfillFileContent } = require('../utils/deployContent');
 
@@ -62,6 +63,7 @@ describe('deployment tenant scoping', () => {
         Company.findOne.mockReturnValue(companyQuery(null));
         Company.findById.mockReturnValue(companyQuery(null));
         findPersonalWorkspace.mockResolvedValue({ _id: PERSONAL_ID, userId: USER_ID, type: 'personal' });
+        findPersonalWorkspaceById.mockResolvedValue(null);
         ensurePersonalWorkspace.mockResolvedValue({ _id: PERSONAL_ID, userId: USER_ID, type: 'personal' });
         CodeFile.find.mockReturnValue({ lean: async () => [] });
     });

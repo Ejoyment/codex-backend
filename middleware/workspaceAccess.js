@@ -99,33 +99,19 @@ async function resolveCompanyAccess(companyId, userId) {
     if (!companyId || !userId) return deniedAccess();
     const uid = String(userId);
 
-    if (String(companyId) === uid) {
-        const resolved = await resolveWorkspaceForUser(companyId, userId);
-        if (!resolved) return deniedAccess();
-        const role = memberRoleFor(resolved.workspace, uid);
-        if (!role) return deniedAccess();
-        return accessForRole(role, {
-            member: true,
-            owner: idString(resolved.workspace.owner) === uid,
-        });
-    }
+    // One canonical workspace identity: Company (team) or Subscription
+    // (personal). Every access check goes through the same resolver so a
+    // personal workspace cannot be treated as "not found" on one path and
+    // accepted on another.
+    const resolved = await resolveWorkspaceForUser(companyId, userId);
+    if (!resolved) return deniedAccess();
 
-    if (!require('mongoose').Types.ObjectId.isValid(companyId)) return deniedAccess();
-    const Company = require('../models/Company');
-    const company = await Company.findOne({
-        _id: companyId,
-        $or: [{ owner: userId }, { 'members.user': userId }]
-    }).select('_id owner members').lean();
-    if (!company) return deniedAccess();
-
-    let role = memberRoleFor(company, uid);
-    // The membership query is authoritative; a partial/legacy projection may
-    // omit `members`. Keep membership true but grant only viewer rights.
-    if (!role && !Array.isArray(company.members)) role = 'viewer';
+    const workspace = resolved.workspace;
+    const role = resolved.personal ? 'owner' : memberRoleFor(workspace, uid);
     if (!role) return deniedAccess();
     return accessForRole(role, {
         member: true,
-        owner: idString(company.owner) === uid,
+        owner: resolved.personal || idString(workspace.owner) === uid,
     });
 }
 
