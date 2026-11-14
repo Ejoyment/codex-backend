@@ -456,8 +456,7 @@ export default function Index() {
           </ScrollReveal>
           <StaggerChildren className="mkt-grid grid-cols-1 md:grid-cols-3" stagger={0.08}>
             {[
-              { name: 'X', handle: '@buildrshq', desc: 'Ship logs, launches, and build-in-public threads.' },
-              { name: 'GitHub', handle: 'github.com/codex-inc', desc: 'The pieces that are open, licensed to stay that way.' },
+              
               { name: 'Discord', handle: 'buildrshq community', desc: 'Talk to the builders — dev, feedback, and showcase.' },
             ].map((c) => (
               <StaggerItem key={c.name}>
