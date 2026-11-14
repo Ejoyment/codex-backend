@@ -233,7 +233,7 @@ export default function SignIn() {
               </button>
             </form>
 
-            <Link href="/setup-support-agent" className="support-link">
+            <Link href="/support" className="support-link">
               Support agent? Sign in here →
             </Link>
           </div>

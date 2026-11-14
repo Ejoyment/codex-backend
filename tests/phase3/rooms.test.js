@@ -163,22 +163,22 @@ describe('roomSocket — sequenced terminal relay', () => {
     return { of: jest.fn(() => ns), ns };
   };
 
-  test('pushChunk sequences output; chunksFrom resyncs from seq number', () => {
+  test('pushChunk sequences output; chunksFrom resyncs from seq number', async () => {
     const io = fakeIO();
     api = require('../../server/sockets/roomSocket')(io);
-    const a = api.pushChunk('room1', 'hello ');
-    const b = api.pushChunk('room1', 'world');
+    const a = await api.pushChunk('room1', 'hello ');
+    const b = await api.pushChunk('room1', 'world');
     expect(a.seq).toBe(1);
     expect(b.seq).toBe(2);
     // Fresh guest resyncs everything from 0.
-    const full = api.chunksFrom('room1', 0);
+    const full = await api.chunksFrom('room1', 0);
     expect(full.chunks.map((c) => c.chunk).join('')).toBe('hello world');
     // Reconnecting guest resyncs only what it missed.
-    const missed = api.chunksFrom('room1', 1);
+    const missed = await api.chunksFrom('room1', 1);
     expect(missed.chunks.length).toBe(1);
     expect(missed.chunks[0].chunk).toBe('world');
-    api.clearBuffer('room1');
-    expect(api.chunksFrom('room1', 0).chunks).toEqual([]);
+    await api.clearBuffer('room1');
+    expect((await api.chunksFrom('room1', 0)).chunks).toEqual([]);
   });
 });
 

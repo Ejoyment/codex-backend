@@ -46,6 +46,9 @@ const agentExecutionSchema = new mongoose.Schema({
   tweaks: [{ instruction: String, addedAt: Date, resultingDiff: String }],
   approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   approvedAt: { type: Date, default: null },
+  // Set when an approval claims the execution. A claim older than the reclaim
+  // window is treated as a crashed attempt and may be retried.
+  approvalStartedAt: { type: Date, default: null },
   rejectedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   rejectedAt: { type: Date, default: null },
   rejectionReason: { type: String, default: '' },

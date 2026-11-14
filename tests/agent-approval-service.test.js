@@ -85,6 +85,42 @@ describe('approveExecution', () => {
     expect(agentChangeSet.applyExecutionChanges).toHaveBeenCalledTimes(1);
   });
 
+  test('reclaims an approval claim that crashed past the 5-minute window', async () => {
+    const stale = execution({
+      status: 'approving',
+      approvalStartedAt: new Date(Date.now() - 6 * 60 * 1000),
+    });
+    AgentExecution.findOneAndUpdate.mockImplementation(async (filter) => (
+      filter.status === 'approving' ? { _id: EXECUTION_ID, status: 'approving' } : null
+    ));
+
+    const result = await approveExecution({ execution: stale, userId: 'user-id', workspaceId: WORKSPACE_ID });
+
+    expect(result.ok).toBe(true);
+    expect(AgentExecution.findOneAndUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'approving', approvalStartedAt: stale.approvalStartedAt }),
+      expect.objectContaining({ $set: expect.objectContaining({ status: 'approving', approvalStartedAt: expect.any(Date) }) }),
+      { new: true }
+    );
+  });
+
+  test('does not reclaim a fresh approving claim', async () => {
+    const fresh = execution({
+      status: 'approving',
+      approvalStartedAt: new Date(Date.now() - 30 * 1000),
+    });
+    AgentExecution.findOneAndUpdate.mockResolvedValue(null);
+
+    const result = await approveExecution({ execution: fresh, userId: 'user-id', workspaceId: WORKSPACE_ID });
+
+    expect(result).toMatchObject({ ok: false, status: 409 });
+    expect(AgentExecution.findOneAndUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ status: { $in: ['awaiting_review', 'awaiting_approval'] } }),
+      expect.anything(),
+      { new: true }
+    );
+  });
+
   test('does not apply project files when the Git merge fails', async () => {
     AgentExecution.findOneAndUpdate.mockResolvedValue({ _id: EXECUTION_ID, status: 'approving' });
     gitService.merge.mockResolvedValue({ success: false, error: 'merge conflict' });
