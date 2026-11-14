@@ -26,12 +26,27 @@ const CHANNEL_ID = '507f1f77bcf86cd799439099';
 // membership stubbed discriminatingly (USER is a member of COMPANY).
 jest.doMock('../middleware/auth', () => ({ authenticateToken: (req, res, next) => next() }));
 jest.doMock('../models/Company', () => ({
-    findById: jest.fn(() => ({
-        select: () => Promise.resolve({ members: [{ user: { toString: () => USER } }] }),
-    })),
+    findById: jest.fn(() => {
+        const doc = {
+            _id: '507f1f77bcf86cd799439013',
+            members: [{ user: { toString: () => '507f1f77bcf86cd799439011' }, role: 'member' }],
+        };
+        const query = {
+            select: () => query,
+            lean: async () => doc,
+            then: (resolve, reject) => Promise.resolve(doc).then(resolve, reject),
+        };
+        return query;
+    }),
     findOne: jest.fn(() => ({
-        select: () => ({ lean: async () => ({ _id: COMPANY }) }),
+        select: () => ({ lean: async () => ({ _id: '507f1f77bcf86cd799439013' }) }),
     })),
+}));
+
+jest.doMock('../utils/personalWorkspace', () => ({
+    findPersonalWorkspace: jest.fn(async () => null),
+    findPersonalWorkspaceById: jest.fn(async () => null),
+    ensurePersonalWorkspace: jest.fn(async () => null),
 }));
 
 // Must come after jest.doMock: with the require above, this resolves to the
@@ -78,9 +93,15 @@ beforeEach(() => {
     jest.clearAllMocks();
     // clearAllMocks keeps implementations — restore the discriminating defaults
     // (per-test overrides above must not leak into later tests).
-    Company.findById.mockImplementation(() => ({
-        select: () => Promise.resolve({ members: [{ user: { toString: () => USER } }] }),
-    }));
+    Company.findById.mockImplementation(() => {
+        const doc = { _id: COMPANY, members: [{ user: { toString: () => USER }, role: 'member' }, { user: { toString: () => OTHER }, role: 'member' }] };
+        const query = {
+            select: () => query,
+            lean: async () => doc,
+            then: (resolve, reject) => Promise.resolve(doc).then(resolve, reject),
+        };
+        return query;
+    });
     Company.findOne.mockImplementation(() => ({
         select: () => ({ lean: async () => ({ _id: COMPANY }) }),
     }));
@@ -143,6 +164,9 @@ describe('GET /api/messaging/channels/:id', () => {
 describe('POST /api/messaging/messages company inference', () => {
     test('rejects when the caller is not a member of the channel company (companyId omitted)', async () => {
         Company.findOne.mockImplementation(() => ({
+            select: () => ({ lean: async () => null }),
+        }));
+        Company.findById.mockImplementation(() => ({
             select: () => ({ lean: async () => null }),
         }));
         const res = await request(app)
@@ -214,6 +238,9 @@ describe('POST /api/messaging/channels/:id/members', () => {
 
     test('cannot invite a user from another tenant', async () => {
         Company.findOne.mockImplementation(() => ({
+            select: () => ({ lean: async () => null }),
+        }));
+        Company.findById.mockImplementation(() => ({
             select: () => ({ lean: async () => null }),
         }));
         const res = await request(app)

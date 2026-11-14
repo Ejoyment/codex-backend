@@ -24,14 +24,23 @@ const COMPANY = '507f1f77bcf86cd799439013';
 // would miss, sending real queries to a database that isn't there.
 jest.doMock('../middleware/auth', () => ({ authenticateToken: (req, res, next) => next() }));
 jest.doMock('../models/Company', () => ({
-    // requireCompanyMember chains .select('members')
-    findById: jest.fn(() => ({
-        select: () => Promise.resolve({ members: [{ user: { toString: () => USER } }] }),
-    })),
+    // requireCompanyMember chains .select('members'); canonical workspace
+    // resolution chains .select(...).lean().
+    findById: jest.fn(() => {
+        const doc = {
+            _id: '507f1f77bcf86cd799439013',
+            members: [{ user: { toString: () => '507f1f77bcf86cd799439011' }, role: 'member' }],
+        };
+        const query = {
+            select: () => query,
+            lean: async () => doc,
+            then: (resolve, reject) => Promise.resolve(doc).then(resolve, reject),
+        };
+        return query;
+    }),
     // userIsCompanyMember (rec 7: channel-company check on POST /messages)
-    // chains .select('_id').lean()
     findOne: jest.fn(() => ({
-        select: () => ({ lean: async () => ({ _id: COMPANY }) }),
+        select: () => ({ lean: async () => ({ _id: '507f1f77bcf86cd799439013' }) }),
     })),
 }));
 

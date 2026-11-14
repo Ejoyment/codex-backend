@@ -170,16 +170,25 @@ function terminalTone(type) {
   return '';
 }
 
+function canonicalCheckStatus(value) {
+  const status = String(value || '').toLowerCase();
+  if (status === 'passed' || status === 'pass' || status === 'success') return 'passed';
+  if (status === 'failed' || status === 'fail' || status === 'error') return 'failed';
+  if (status === 'running') return 'running';
+  return 'not_evaluated';
+}
+
 function validationRows(result) {
   if (!result) return [];
   const rows = [];
   if (Array.isArray(result.checks)) {
     for (const check of result.checks) {
       const passed = check?.passed ?? check?.ok;
+      const status = passed === true ? 'passed' : passed === false ? 'failed' : canonicalCheckStatus(check?.status);
       rows.push({
         label: check?.label || check?.name || 'Check',
         detail: check?.detail || check?.message || '',
-        status: passed === false ? 'failed' : passed === true ? 'passed' : check?.status || 'pending',
+        status,
       });
     }
   }
@@ -196,18 +205,35 @@ function validationRows(result) {
     rows.push({
       label: 'Command validation',
       detail: result.command.reason || result.command.command || '',
-      status: result.command.status || 'pending',
+      status: canonicalCheckStatus(result.command.status),
     });
   }
   if (Array.isArray(result.specs)) {
     for (const spec of result.specs) {
-      const checks = Array.isArray(spec?.results) ? spec.results : [];
-      const passedCount = checks.filter((check) => check?.passed !== false).length;
-      const passed = spec?.passed ?? spec?.success ?? (checks.length ? passedCount === checks.length : undefined);
+      if (spec?.success === false) {
+        rows.push({
+          label: `Spec: ${spec?.title || 'Specification'}`,
+          detail: spec?.error || 'Verification could not run.',
+          status: 'not_evaluated',
+        });
+        continue;
+      }
+      const requirements = Array.isArray(spec?.requirements) ? spec.requirements : [];
+      const legacy = Array.isArray(spec?.results) ? spec.results : [];
+      const statuses = requirements.length
+        ? requirements.map((item) => canonicalCheckStatus(item?.status))
+        : legacy.map((item) => (item?.passed === true ? 'passed' : item?.passed === false ? 'failed' : canonicalCheckStatus(item?.status)));
+      const passedCount = statuses.filter((status) => status === 'passed').length;
+      const failedCount = statuses.filter((status) => status === 'failed').length;
+      const notEvaluatedCount = statuses.filter((status) => status === 'not_evaluated').length;
+      const verdict = spec?.verdict || (failedCount ? 'fail' : notEvaluatedCount ? 'not_evaluated' : statuses.length ? 'pass' : 'not_evaluated');
+      const status = verdict === 'fail' ? 'failed' : verdict === 'pass' ? 'passed' : 'not_evaluated';
       rows.push({
         label: `Spec: ${spec?.title || spec?.name || spec?.specTitle || 'Specification'}`,
-        detail: checks.length ? `${passedCount}/${checks.length} requirements passed` : spec?.reason || '',
-        status: passed === false ? 'failed' : passed ? 'passed' : 'pending',
+        detail: statuses.length
+          ? `${passedCount} passed · ${failedCount} failed · ${notEvaluatedCount} not evaluated`
+          : spec?.reason || 'No executable requirements',
+        status,
       });
     }
   }
@@ -215,16 +241,14 @@ function validationRows(result) {
 }
 
 function ResultPill({ status }) {
-  const value = String(status || 'pending').toLowerCase();
-  const label = value === 'passed' || value === 'success'
+  const value = canonicalCheckStatus(status);
+  const label = value === 'passed'
     ? 'Passed'
-    : value === 'failed' || value === 'error'
+    : value === 'failed'
       ? 'Failed'
       : value === 'running'
         ? 'Running'
-        : value === 'skipped'
-          ? 'Skipped'
-          : 'Pending';
+        : 'Not evaluated';
   const className = label === 'Passed'
     ? s.statusMerged
     : label === 'Failed'
@@ -495,6 +519,16 @@ function SessionDetail({ execution, tab, onTab, onBack, onTweak, onRefresh, onNe
   const checks = useMemo(() => validationRows(execution.validationResult), [execution.validationResult]);
   const failedChecks = checks.filter((check) => String(check.status).toLowerCase() === 'failed').length;
   const passedChecks = checks.filter((check) => ['passed', 'success'].includes(String(check.status).toLowerCase())).length;
+  const notEvaluatedChecks = checks.filter((check) => String(check.status).toLowerCase() === 'not_evaluated').length;
+  const validationLabel = running
+    ? 'In progress'
+    : failedChecks
+      ? 'Blocked'
+      : !checks.length
+        ? 'Pending'
+        : notEvaluatedChecks
+          ? 'Needs evaluation'
+          : 'All checks passed';
   const progress = progressOf(execution);
 
   useEffect(() => {
@@ -820,10 +854,10 @@ function SessionDetail({ execution, tab, onTab, onBack, onTweak, onRefresh, onNe
           <div className={s.terminalHead}>
             <div>
               <h2 className={s.terminalTitle}>Validation results</h2>
-              <p className={s.muted}>Checks run against the task requirements and proposed changes.</p>
+              <p className={s.muted}>Approval blocks only on failed blocking checks. Not-evaluated checks are neutral and never count as failures.</p>
             </div>
-            <span className={`${s.statusPill} ${running ? s.statusRunning : checks.length ? s.statusMerged : s.statusNeutral}`}>
-              {running ? 'In progress' : merged && checks.length && !failedChecks ? 'All checks passed' : checks.length ? 'Complete' : 'Pending'}
+            <span className={`${s.statusPill} ${running ? s.statusRunning : failedChecks ? s.statusRejected : checks.length && !notEvaluatedChecks ? s.statusMerged : s.statusNeutral}`}>
+              {validationLabel}
             </span>
           </div>
           {merged && (
@@ -845,8 +879,8 @@ function SessionDetail({ execution, tab, onTab, onBack, onTweak, onRefresh, onNe
               <p className={s.validationTileValue} style={{ color: failedChecks ? '#ff8189' : '#9ab0ba' }}>{failedChecks}</p>
             </div>
             <div className={s.validationTile}>
-              <p className={s.validationTileLabel}>Spec file</p>
-              <p className={s.validationTileValue} style={{ fontSize: 12, fontFamily: 'var(--font-roboto-mono), monospace' }}>{execution.specRef || '—'}</p>
+              <p className={s.validationTileLabel}>Not evaluated</p>
+              <p className={s.validationTileValue} style={{ color: notEvaluatedChecks ? '#e5b84a' : '#9ab0ba' }}>{notEvaluatedChecks}</p>
             </div>
             <div className={s.validationTile}>
               <p className={s.validationTileLabel}>Ran at</p>
@@ -874,7 +908,7 @@ function SessionDetail({ execution, tab, onTab, onBack, onTweak, onRefresh, onNe
                   {running ? 'Validation runs after execution completes' : 'No validation results yet'}
                 </p>
                 <p style={{ margin: '6px 0 0' }}>
-                  {running ? 'Review changes once the agent finishes and all required checks pass.' : 'Start a validated session or add a spec to this workspace.'}
+                  {running ? 'Review changes once the agent finishes. Approval blocks only on failed blocking checks.' : 'Start a validated session or add a spec to this workspace.'}
                 </p>
               </div>
             </div>

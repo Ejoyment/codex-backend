@@ -17,7 +17,7 @@ process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret-for-automated-te
 jest.mock('../models/MeetingRoom', () => ({ findOne: jest.fn() }));
 jest.mock('../models/MeetingOverlay', () => ({ findOne: jest.fn() }));
 jest.mock('../models/User', () => ({ findById: jest.fn() }));
-jest.mock('../models/Company', () => ({ findOne: jest.fn() }));
+jest.mock('../models/Company', () => ({ findOne: jest.fn(), findById: jest.fn() }));
 
 const MeetingRoom = require('../models/MeetingRoom');
 const MeetingOverlay = require('../models/MeetingOverlay');
@@ -111,6 +111,17 @@ beforeEach(() => {
   // userC is a companyA member; everyone else is a stranger unless listed.
   Company.findOne.mockImplementation((q) => ({
     select: () => ({ lean: async () => (isMemberQuery(q) ? { _id: '507f1f77bcf86cd799439013' } : null) }),
+  }));
+  Company.findById.mockImplementation((id) => ({
+    select: () => ({
+      lean: async () => (String(id) === '507f1f77bcf86cd799439013'
+        ? {
+          _id: '507f1f77bcf86cd799439013',
+          owner: 'userA',
+          members: currentMember ? [{ user: currentMember, role: 'member' }] : [],
+        }
+        : null),
+    }),
   }));
 });
 

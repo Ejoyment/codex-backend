@@ -16,9 +16,15 @@ jest.mock('../models/LocalProject');
 jest.mock('../models/LocalTask');
 jest.mock('../models/CodeFile');
 jest.mock('../models/Company');
+jest.mock('../utils/personalWorkspace', () => ({
+    findPersonalWorkspace: jest.fn(),
+    findPersonalWorkspaceById: jest.fn(),
+    ensurePersonalWorkspace: jest.fn(),
+}));
 
 const Company = require('../models/Company');
 const LocalProject = require('../models/LocalProject');
+const { findPersonalWorkspace, findPersonalWorkspaceById, ensurePersonalWorkspace } = require('../utils/personalWorkspace');
 const projectsRouter = require('../routes/projects');
 
 const companyQuery = (result) => ({
@@ -32,9 +38,13 @@ describe('project workspace scoping', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
-        // workspaceAccess.userIsCompanyMember resolves membership via
-        // Company.findOne({ _id, $or: [owner, members.user] }).
+        // workspaceAccess.userIsCompanyMember resolves membership through the
+        // canonical workspace identity (company by id).
         Company.findOne.mockReturnValue(companyQuery(null));
+        Company.findById.mockReturnValue(companyQuery(null));
+        findPersonalWorkspace.mockResolvedValue(null);
+        findPersonalWorkspaceById.mockResolvedValue(null);
+        ensurePersonalWorkspace.mockResolvedValue(null);
         LocalProject.findOne.mockReturnValue({
             _id: '507f1f77bcf86cd799439013',
             workspaceId: null,
@@ -55,6 +65,10 @@ describe('project workspace scoping', () => {
     test('allows moving a project into a workspace the caller belongs to', async () => {
         const workspaceId = '507f1f77bcf86cd799439014';
         Company.findOne.mockReturnValue(companyQuery({
+            _id: workspaceId,
+            owner: '507f1f77bcf86cd799439011',
+        }));
+        Company.findById.mockReturnValue(companyQuery({
             _id: workspaceId,
             owner: '507f1f77bcf86cd799439011',
         }));

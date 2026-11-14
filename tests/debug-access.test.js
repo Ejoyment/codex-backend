@@ -13,8 +13,13 @@ const jwt = require('jsonwebtoken');
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret-for-automated-testing-32chars';
 
 jest.mock('../models/CodeFile', () => ({ findById: jest.fn(), findOne: jest.fn(), findByIdAndDelete: jest.fn(async () => null) }));
-jest.mock('../models/Company', () => ({ findOne: jest.fn() }));
+jest.mock('../models/Company', () => ({ findOne: jest.fn(), findById: jest.fn() }));
 jest.mock('../models/User', () => ({ exists: jest.fn(), findById: jest.fn() }));
+jest.mock('../utils/personalWorkspace', () => ({
+  findPersonalWorkspace: jest.fn(async () => null),
+  findPersonalWorkspaceById: jest.fn(async () => null),
+  ensurePersonalWorkspace: jest.fn(async () => null),
+}));
 jest.mock('../middleware/trial', () => ({
   getOrCreateSubscription: jest.fn(async () => ({ tier: 'pro' })),
 }));
@@ -91,6 +96,9 @@ beforeEach(() => {
   CodeFile.findById.mockImplementation(() => chainable(currentFile));
   CodeFile.findOne.mockImplementation(() => chainable(currentFile));
   Company.findOne.mockImplementation(() => ({
+    select: () => ({ lean: async () => currentCompany }),
+  }));
+  Company.findById.mockImplementation(() => ({
     select: () => ({ lean: async () => currentCompany }),
   }));
 });

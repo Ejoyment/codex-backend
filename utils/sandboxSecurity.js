@@ -189,8 +189,12 @@ async createIsolatedContainer(userId, workspaceId, options = {}) {
    * provisioning steps (clone, checkout, dependency install) — they must never
    * run on the API host. The container is always removed afterwards; on
    * timeout it is force-removed mid-run.
+   *
+   * `allowFailure` returns `{ output, exitCode, success }` for a non-zero exit
+   * instead of throwing. Verification needs the exit code and output of a
+   * failing test run to report it as a real failure.
    */
-  async runEphemeral({ hostDir, cmd, network = 'bridge', timeoutMs = 120000 } = {}) {
+  async runEphemeral({ hostDir, cmd, network = 'bridge', timeoutMs = 120000, allowFailure = false } = {}) {
     if (!this.docker) throw new Error('Docker not available');
     if (!hostDir || !path.isAbsolute(String(hostDir))) throw new Error('hostDir must be an absolute path');
     if (!Array.isArray(cmd) || cmd.length === 0 || cmd.some((part) => typeof part !== 'string')) {
@@ -238,18 +242,20 @@ async createIsolatedContainer(userId, workspaceId, options = {}) {
       if (timer) clearTimeout(timer);
 
       if (outcome === TIMEOUT) {
-        throw new Error(`Container command timed out after ${timeoutMs}ms: ${cmd[0]}`);
+        const error = new Error(`Container command timed out after ${timeoutMs}ms: ${cmd[0]}`);
+        error.code = 'SANDBOX_TIMEOUT';
+        throw error;
       }
 
       const statusCode = outcome?.StatusCode ?? outcome?.statusCode ?? 0;
       const rawLogs = await container.logs({ stdout: true, stderr: true, tail: 200 }).catch(() => '');
       const output = Buffer.isBuffer(rawLogs) ? rawLogs.toString('utf8') : String(rawLogs || '');
-      if (statusCode !== 0) {
+      if (statusCode !== 0 && !allowFailure) {
         throw new Error(
           `Container command failed (exit ${statusCode}): ${cmd.join(' ').slice(0, 200)}${output ? `\n${output.slice(-1200)}` : ''}`
         );
       }
-      return { output };
+      return { output, exitCode: statusCode, success: statusCode === 0 };
     } finally {
       if (container) {
         try { await container.remove({ force: true }); } catch (_) {}

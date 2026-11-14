@@ -35,13 +35,12 @@ async function userCanAccessProject(projectId, userId) {
   if (idOf(project.userId) === uid) return true;
   if ((project.members || []).some((member) => idOf(member) === uid)) return true;
 
-  // Collaborative escape hatch: membership in the project's workspace.
+  // Collaborative escape hatch: membership in the project's workspace. The
+  // workspace may be a Company (team) or a Subscription (personal); both
+  // resolve through the same canonical identity.
   if (project.workspaceId) {
-    const workspace = await Company.findById(project.workspaceId).select('owner members').lean();
-    if (workspace) {
-      if (idOf(workspace.owner) === uid) return true;
-      if ((workspace.members || []).some((member) => idOf(member.user || member) === uid)) return true;
-    }
+    const resolved = await resolveWorkspaceForUser(project.workspaceId, userId);
+    if (resolved) return true;
   }
 
   return false;

@@ -296,7 +296,8 @@ describe('Phase 2 - Spec-Driven & Autonomous Workflows', () => {
         requirements: [{ id: 'REQ-001', text: 'Review design', checkType: 'manual', severity: 'blocking' }],
       }, [{ path: 'src/index.js', content: 'export {};' }]);
 
-      expect(result.requirements[0].status).toBe('pending');
+      expect(result.requirements[0].status).toBe('not_evaluated');
+      expect(result.verdict).toBe('not_evaluated');
       expect(result.passed).toBe(false);
     });
   });

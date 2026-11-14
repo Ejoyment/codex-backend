@@ -115,8 +115,14 @@ export default function SpecWorkspace() {
             </div>
             <div className="p-4 bg-[#1d263b] rounded-lg border border-[#2a3446]">
               <div className="text-xs text-[#59687a] mb-1">Verification</div>
-              <div className={`text-lg font-bold ${verificationResult?.passed ? 'text-green-400' : 'text-yellow-400'}`}>
-                {verificationResult ? (verificationResult.passed ? 'Passed' : 'Failed') : 'Pending'}
+              <div className={`text-lg font-bold ${verificationResult?.verdict === 'pass' ? 'text-green-400' : verificationResult?.verdict === 'fail' ? 'text-red-400' : 'text-yellow-400'}`}>
+                {verificationResult
+                  ? verificationResult.verdict === 'pass'
+                    ? 'Passed'
+                    : verificationResult.verdict === 'fail'
+                      ? 'Failed'
+                      : 'Not evaluated'
+                  : 'Pending'}
               </div>
             </div>
           </div>
