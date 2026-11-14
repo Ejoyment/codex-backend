@@ -239,6 +239,8 @@ async function writeSnapshot(sandbox, workdir) {
         '',
         'Environment variables are captured in .env.sandbox (secrets are redacted).'
     ].join('\n'));
+
+    sandbox.snapshotReady = true;
 }
 
 // Provision a sandbox for a handoff. Persists a record, restores code state and
@@ -277,6 +279,12 @@ async function provision(handoff) {
 async function provisionPipeline(sandbox, workdir) {
     try {
         fs.mkdirSync(workdir, { recursive: true });
+        // The snapshot alone is viewable; the application is only ready when the
+        // clone and install actually ran. Track both separately so callers do
+        // not report a working app when only captured files are served.
+        let cloneOk = false;
+        let installOk = false;
+        let hasManifest = false;
 
         if (sandbox.repository) {
             // Validate repository URL before cloning — prevents RCE via ext:: or shell metacharacters
@@ -309,6 +317,7 @@ async function provisionPipeline(sandbox, workdir) {
                     if (sandbox.commitSha) {
                         await runInContainer(['git', '-C', '/workspace', 'checkout', sandbox.commitSha], workdir, 60000);
                     }
+                    cloneOk = true;
                     // Overlay the buggy file on top of the clone.
                     await writeSnapshot(sandbox, workdir);
                 } catch (cloneErr) {
@@ -319,12 +328,14 @@ async function provisionPipeline(sandbox, workdir) {
                 }
 
                 // Best-effort dependency install so the preview is live.
-                if (fs.existsSync(path.join(workdir, 'package.json'))) {
+                hasManifest = fs.existsSync(path.join(workdir, 'package.json'));
+                if (hasManifest) {
                     sandbox.status = 'installing';
                     await sandbox.save();
                     emit(sandbox.sandboxKey, 'sandbox:status', { sandboxKey: sandbox.sandboxKey, status: 'installing' });
                     try {
                         await runInContainer(['npm', 'install', '--no-audit', '--no-fund'], workdir, 180000);
+                        installOk = true;
                     } catch (installErr) {
                         sandbox.logs = (sandbox.logs || '') + `\n[install] ${installErr.message}`;
                     }
@@ -338,11 +349,25 @@ async function provisionPipeline(sandbox, workdir) {
         await sandbox.save();
         emit(sandbox.sandboxKey, 'sandbox:status', { sandboxKey: sandbox.sandboxKey, status: 'starting' });
 
+        // A localhost preview URL is unreachable for anyone but this host, so
+        // production must configure the public base instead of silently
+        // handing out a dead link.
+        if (process.env.NODE_ENV === 'production' && !process.env.SANDBOX_PUBLIC_URL) {
+            throw new Error('Sandbox preview URL is not configured');
+        }
+
+        const appReady = Boolean(sandbox.repository) && cloneOk && (!hasManifest || installOk);
+        if (!appReady) {
+            sandbox.logs = (sandbox.logs || '') + '\n[readiness] The preview serves the captured snapshot; the application was not built or started';
+        }
+
         const port = await startPreviewServer(sandbox, workdir);
         const base = process.env.SANDBOX_PUBLIC_URL || `http://localhost:${port}`;
         sandbox.previewUrl = `${base}/preview`;
         sandbox.ports = [port];
         sandbox.workdir = workdir;
+        sandbox.appReady = appReady;
+        sandbox.previewMode = appReady ? 'live' : 'snapshot';
         sandbox.status = 'ready';
         sandbox.readyAt = new Date();
         await sandbox.save();
@@ -351,14 +376,22 @@ async function provisionPipeline(sandbox, workdir) {
         if (handoffModel()) {
             await handoffModel().updateOne(
                 { _id: sandbox.handoffId },
-                { 'sandbox.status': 'ready', 'sandbox.url': sandbox.previewUrl, 'sandbox.commitSha': sandbox.commitSha }
+                {
+                    'sandbox.status': 'ready',
+                    'sandbox.url': sandbox.previewUrl,
+                    'sandbox.commitSha': sandbox.commitSha,
+                    'sandbox.appReady': sandbox.appReady,
+                    'sandbox.previewMode': sandbox.previewMode,
+                }
             ).catch(() => {});
         }
 
         emit(sandbox.sandboxKey, 'sandbox:ready', {
             sandboxKey: sandbox.sandboxKey,
             previewUrl: sandbox.previewUrl,
-            status: 'ready'
+            status: 'ready',
+            appReady,
+            previewMode: sandbox.previewMode
         });
     } catch (err) {
         sandbox.status = 'failed';

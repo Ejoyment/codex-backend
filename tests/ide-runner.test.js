@@ -272,33 +272,34 @@ describe('ideRunner — parseProblems', () => {
 });
 
 describe('ideRunner — rateGate', () => {
-  test('allows 20 runs per minute then rejects', () => {
+  // No REDIS_URL in the test process, so the in-process fallback is exercised.
+  test('allows 20 runs per minute then rejects', async () => {
     const user = `ratetest-${Date.now()}-${Math.random()}`;
     for (let i = 0; i < 20; i++) {
-      const g = rateGate(user);
+      const g = await rateGate(user);
       expect(g.allowed).toBe(true);
       g.release();
     }
-    expect(rateGate(user).allowed).toBe(false);
+    expect((await rateGate(user)).allowed).toBe(false);
   });
 
-  test('caps concurrent runs at 3', () => {
+  test('caps concurrent runs at 3', async () => {
     const user = `conctest-${Date.now()}-${Math.random()}`;
-    const gates = [rateGate(user), rateGate(user), rateGate(user)];
+    const gates = [await rateGate(user), await rateGate(user), await rateGate(user)];
     gates.forEach((g) => expect(g.allowed).toBe(true));
-    expect(rateGate(user).allowed).toBe(false);
+    expect((await rateGate(user)).allowed).toBe(false);
     gates[0].release();
-    expect(rateGate(user).allowed).toBe(true);
+    expect((await rateGate(user)).allowed).toBe(true);
     gates.forEach((g) => g.release());
   });
 
-  test('release never goes negative', () => {
+  test('release never goes negative', async () => {
     const user = `reltest-${Date.now()}-${Math.random()}`;
-    const g = rateGate(user);
+    const g = await rateGate(user);
     expect(g.allowed).toBe(true);
     g.release();
     g.release();
-    expect(rateGate(user).allowed).toBe(true);
+    expect((await rateGate(user)).allowed).toBe(true);
   });
 });
 

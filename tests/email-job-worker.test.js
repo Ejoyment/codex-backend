@@ -58,6 +58,26 @@ test('atomically claims and completes a queued welcome email', async () => {
   expect(emailService.sendTrialWelcomeEmail).toHaveBeenCalledTimes(1);
   expect(EmailJob.updateOne).toHaveBeenCalledWith(
     { _id: 'job-id', status: 'processing', lockToken: expect.any(String) },
-    expect.objectContaining({ $set: expect.objectContaining({ status: 'sent' }) })
+    expect.objectContaining({ $set: expect.objectContaining({ status: 'sent', purgeAt: expect.any(Date) }) })
+  );
+});
+
+test('sets a purge date when a job permanently fails', async () => {
+  EmailJob.findOneAndUpdate.mockResolvedValue({
+    _id: 'job-id',
+    type: 'trial_welcome',
+    attempts: 5,
+    payload: { email: 'person@example.com', fullName: 'Person', trialEndsAt: new Date() },
+    lockToken: 'worker-token',
+  });
+  emailService.sendTrialWelcomeEmail.mockRejectedValue(new Error('provider down'));
+
+  await processNextEmailJob();
+
+  expect(EmailJob.updateOne).toHaveBeenCalledWith(
+    { _id: 'job-id', status: 'processing', lockToken: expect.any(String) },
+    expect.objectContaining({
+      $set: expect.objectContaining({ status: 'failed', purgeAt: expect.any(Date) }),
+    })
   );
 });
