@@ -80,7 +80,7 @@ jest.mock('../models/Subscription', () => ({ findOne: jest.fn() }));
 
 jest.mock('../utils/personalWorkspace', () => ({
   findPersonalWorkspace: jest.fn(),
-  findPersonalWorkspaceById: jest.fn(async () => null),
+  findPersonalWorkspaceById: jest.fn(),
   ensurePersonalWorkspace: jest.fn(),
 }));
 jest.mock('../utils/gitService', () => ({
@@ -149,7 +149,7 @@ const CodeFile = require('../models/CodeFile');
 const AIPairSession = require('../models/AIPairSession');
 const ChatMessage = require('../models/ChatMessage');
 const Subscription = require('../models/Subscription');
-const { findPersonalWorkspace, ensurePersonalWorkspace } = require('../utils/personalWorkspace');
+const { findPersonalWorkspace, findPersonalWorkspaceById, ensurePersonalWorkspace } = require('../utils/personalWorkspace');
 const gitService = require('../utils/gitService');
 const agentChangeSet = require('../utils/agentChangeSet');
 const sddVerificationService = require('../utils/sddVerificationService');
@@ -198,6 +198,7 @@ beforeEach(() => {
 
   Company.findById.mockReturnValue(leanDoc(null));
   findPersonalWorkspace.mockResolvedValue(null);
+  findPersonalWorkspaceById.mockResolvedValue(null);
   LocalTask.findOne.mockResolvedValue(null);
   LocalTask.findOneAndUpdate.mockResolvedValue({});
   LocalTask.countDocuments.mockResolvedValue(0);

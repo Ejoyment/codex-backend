@@ -44,7 +44,16 @@ function companyDoc(overrides = {}) {
 }
 
 function setCompany(doc) {
-    Company.findOne.mockReturnValue(lookupChain(doc));
+    if (!doc) {
+        resolveWorkspaceForUser.mockResolvedValue(null);
+        return;
+    }
+    resolveWorkspaceForUser.mockImplementation(async (_workspaceId, userId) => {
+        const uid = String(userId);
+        const member = String(doc.owner) === uid
+            || (doc.members || []).some((entry) => String(entry.user) === uid);
+        return member ? { workspace: doc, personal: false } : null;
+    });
 }
 
 function fileOf(overrides = {}) {
@@ -59,8 +68,8 @@ function fileOf(overrides = {}) {
 
 beforeEach(() => {
     jest.clearAllMocks();
-    setCompany(companyDoc());
     resolveWorkspaceForUser.mockResolvedValue(null);
+    setCompany(companyDoc());
 });
 
 describe('resolveCompanyAccess role matrix', () => {
@@ -156,11 +165,9 @@ describe('resolveCompanyAccess role matrix', () => {
         expect(resolveWorkspaceForUser).toHaveBeenCalledWith(OWNER, OWNER);
     });
 
-    test('selected company fields include member roles', async () => {
-        const select = jest.fn(() => ({ lean: async () => companyDoc() }));
-        Company.findOne.mockReturnValue({ select });
+    test('resolves membership through the canonical workspace identity', async () => {
         await resolveCompanyAccess(COMPANY_ID, MEMBER);
-        expect(select).toHaveBeenCalledWith('_id owner members');
+        expect(resolveWorkspaceForUser).toHaveBeenCalledWith(COMPANY_ID, MEMBER);
     });
 });
 

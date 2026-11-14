@@ -7,7 +7,8 @@ import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch, projectApi } from '../lib/api';
 
-const CHECK_TYPES = ['code_pattern', 'test_name', 'file_exists', 'ai_review', 'manual'];
+const CHECK_TYPES = ['code_pattern', 'test_name', 'file_exists', 'ast_import', 'route', 'contract_test', 'ai_review', 'manual'];
+const CHECK_VALUE_TYPES = ['code_pattern', 'file_exists', 'test_name', 'ast_import', 'route', 'contract_test'];
 const RULE_CATEGORIES = ['Security', 'Architecture', 'Policy', 'Performance', 'Reliability', 'Other'];
 const EMPTY_REQUIREMENT = { id: 'SECURITY-001', category: 'Security', text: '', checkType: 'manual', checkValue: '', severity: 'blocking' };
 const EMPTY_FORM = {
@@ -19,9 +20,19 @@ const STATUS_STYLE = {
   unvalidated: { color: '#9aa1ae', Icon: CircleHelp },
   healthy: { color: '#34d399', Icon: CheckCircle2 },
   warning: { color: '#e5b84a', Icon: AlertTriangle },
+  partial: { color: '#9aa1ae', Icon: CircleHelp },
   failing: { color: '#f87171', Icon: ShieldAlert },
   drifted: { color: '#f87171', Icon: AlertTriangle },
 };
+
+function statusLabel(status) {
+  if (status === 'healthy') return 'All Pass';
+  if (status === 'failing') return 'Failed';
+  if (status === 'drifted') return 'Drifted';
+  if (status === 'warning') return 'Warnings';
+  if (status === 'partial') return 'Not evaluated';
+  return 'Unvalidated';
+}
 
 function lines(value) {
   return value.split('\n').map((item) => item.trim()).filter(Boolean);
@@ -55,6 +66,57 @@ function formatValidationTime(value) {
   return new Date(timestamp).toLocaleDateString();
 }
 
+function checkValueFor(requirement) {
+  const config = requirement.checkConfig || {};
+  switch (requirement.checkType) {
+    case 'code_pattern': return config.pattern || '';
+    case 'file_exists': return config.path || config.file || '';
+    case 'test_name': return config.testName || '';
+    case 'ast_import': return config.module || (Array.isArray(config.imports) ? config.imports.join(', ') : '');
+    case 'route': return [config.method ? String(config.method).toUpperCase() : '', config.path || config.route || ''].filter(Boolean).join(' ');
+    case 'contract_test': return config.command || '';
+    default: return '';
+  }
+}
+
+function checkConfigFor(type, value) {
+  const raw = String(value || '').trim();
+  if (type === 'code_pattern') return { pattern: raw };
+  if (type === 'file_exists') return { path: raw };
+  if (type === 'test_name') return { testName: raw };
+  if (type === 'ast_import') {
+    return raw.startsWith('!') ? { module: raw.slice(1), mode: 'forbid' } : { module: raw, mode: 'require' };
+  }
+  if (type === 'route') {
+    const parts = raw.split(/\s+/);
+    return parts.length >= 2 && /^[a-z]+$/i.test(parts[0])
+      ? { method: parts[0].toLowerCase(), path: parts.slice(1).join(' ') }
+      : { path: raw };
+  }
+  if (type === 'contract_test') return { command: raw };
+  return {};
+}
+
+function checkValueLabel(type) {
+  if (type === 'code_pattern') return 'Regex pattern';
+  if (type === 'file_exists') return 'File path';
+  if (type === 'test_name') return 'Test name';
+  if (type === 'ast_import') return 'Module (prefix ! to forbid)';
+  if (type === 'route') return 'Method and path';
+  if (type === 'contract_test') return 'Test command';
+  return 'Check value';
+}
+
+function checkValuePlaceholder(type) {
+  if (type === 'code_pattern') return "from ['\"]express['\"]";
+  if (type === 'file_exists') return 'src/index.ts';
+  if (type === 'test_name') return 'auth contract';
+  if (type === 'ast_import') return 'express';
+  if (type === 'route') return 'GET /health';
+  if (type === 'contract_test') return 'npm test -- auth';
+  return '';
+}
+
 function toForm(spec) {
   return {
     title: spec.title || '',
@@ -66,7 +128,7 @@ function toForm(spec) {
       category: requirement.category || 'Security',
       text: requirement.text || '',
       checkType: requirement.checkType || 'manual',
-      checkValue: requirement.checkConfig?.pattern || requirement.checkConfig?.path || requirement.checkConfig?.testName || '',
+      checkValue: checkValueFor(requirement),
       severity: requirement.severity || 'blocking',
     })) : [{ ...EMPTY_REQUIREMENT }],
     forbiddenImports: (spec.forbiddenImports || []).join('\n'),
@@ -171,9 +233,7 @@ export default function SpecsPage() {
       const existingRequirements = editing?._id ? editing.requirements || [] : [];
       const usedRuleIds = new Set();
       const requirements = form.requirements.filter((requirement) => requirement.text.trim()).map((requirement, index) => {
-        const checkConfig = requirement.checkType === 'code_pattern' ? { pattern: requirement.checkValue } :
-          requirement.checkType === 'file_exists' ? { path: requirement.checkValue } :
-            requirement.checkType === 'test_name' ? { testName: requirement.checkValue } : {};
+        const checkConfig = checkConfigFor(requirement.checkType, requirement.checkValue);
         let id = requirement.id.trim() || existingRequirements[index]?.id || '';
         if (!id || usedRuleIds.has(id)) {
           id = nextRuleId([...form.requirements, ...Array.from(usedRuleIds, (usedId) => ({ id: usedId }))], requirement.category);
@@ -233,9 +293,11 @@ export default function SpecsPage() {
         body: JSON.stringify({ specId: spec._id, projectId }),
       });
       const validation = result.verification || result;
+      const verdict = validation.verdict || (validation.passed ? 'pass' : 'not_evaluated');
       setSpecs((current) => current.map((item) => item._id === spec._id ? {
         ...item,
-        status: validation.status || (validation.passed ? 'healthy' : 'failing'),
+        status: validation.status || (verdict === 'fail' ? 'failing' : verdict === 'not_evaluated' ? 'partial' : 'healthy'),
+        verdict,
         lastValidatedAt: validation.checkedAt || new Date().toISOString(),
         lastValidationResult: validation,
       } : item));
@@ -339,9 +401,9 @@ export default function SpecsPage() {
                                     {CHECK_TYPES.map((type) => <option key={type} value={type}>{type.replace(/_/g, ' ')}</option>)}
                                   </select>
                                 </label>
-                                {['code_pattern', 'file_exists', 'test_name'].includes(requirement.checkType) && <label className="specs-editor-field">
-                                  <span>Check value</span>
-                                  <input className="ws-input" value={requirement.checkValue} onChange={(event) => updateRequirement(index, 'checkValue', event.target.value)} placeholder={requirement.checkType === 'code_pattern' ? 'Regex pattern' : requirement.checkType === 'file_exists' ? 'path/to/file' : 'Test name'} />
+                                {CHECK_VALUE_TYPES.includes(requirement.checkType) && <label className="specs-editor-field">
+                                  <span>{checkValueLabel(requirement.checkType)}</span>
+                                  <input className="ws-input" value={requirement.checkValue} onChange={(event) => updateRequirement(index, 'checkValue', event.target.value)} placeholder={checkValuePlaceholder(requirement.checkType)} />
                                 </label>}
                                 <label className="specs-editor-field">
                                   <span>Severity</span>
@@ -466,7 +528,7 @@ export default function SpecsPage() {
                             <span className="specs-library-item-top">
                               <span className="specs-library-item-title">{spec.title || spec.specId}</span>
                               <span className="specs-status" style={{ color: state.color }}>
-                                <StatusIcon />{spec.status === 'healthy' ? 'All Pass' : spec.status === 'failing' || spec.status === 'drifted' ? 'Failing' : spec.status || 'Unvalidated'}
+                                <StatusIcon />{statusLabel(spec.status)}
                               </span>
                             </span>
                             <span className="specs-library-item-path">{(spec.targetModules || []).join(', ') || spec.specId || 'No target modules'}</span>
@@ -484,6 +546,7 @@ export default function SpecsPage() {
                     const requirementResults = selectedSpec.lastValidationResult?.requirements || [];
                     const passedCount = requirementResults.filter((item) => item.status === 'pass').length;
                     const failedCount = requirementResults.filter((item) => item.status === 'fail').length;
+                    const notEvaluatedCount = requirementResults.filter((item) => !['pass', 'fail'].includes(item.status)).length;
                     const requirements = selectedSpec.requirements || [];
                     return (
                       <>
@@ -492,7 +555,7 @@ export default function SpecsPage() {
                             <div className="specs-detail-name">
                               <h2>{selectedSpec.title || selectedSpec.specId}</h2>
                               <span className="specs-detail-id">{selectedSpec.specId}</span>
-                              {selectedSpec.status === 'healthy' && <span className="specs-status specs-status-success">All Pass</span>}
+                              {selectedSpec.status && <span className="specs-status" style={{ color: (STATUS_STYLE[selectedSpec.status] || STATUS_STYLE.unvalidated).color }}>{statusLabel(selectedSpec.status)}</span>}
                             </div>
                             <p>{(selectedSpec.targetModules || []).join(', ')}</p>
                           </div>
@@ -510,8 +573,12 @@ export default function SpecsPage() {
                           <div><span>Total rules</span><strong>{requirements.length}</strong></div>
                           <div><span>Passing</span><strong className="is-passing">{passedCount}</strong></div>
                           <div><span>Failing</span><strong className="is-failing">{failedCount}</strong></div>
+                          <div><span>Not evaluated</span><strong className="is-pending">{notEvaluatedCount}</strong></div>
                           <div><span>Last validated</span><strong>{selectedSpec.lastValidatedAt ? formatValidationTime(selectedSpec.lastValidatedAt) : 'Never'}</strong></div>
                         </div>
+                        <p className="specs-trust-note">
+                          Approval blocks only on failed blocking requirements. Not-evaluated checks are neutral and never count as failures.
+                        </p>
 
                         {selectedSpec.description && <div className="specs-scope">
                           <h3>Purpose and scope</h3>

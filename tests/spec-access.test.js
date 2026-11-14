@@ -37,6 +37,12 @@ jest.mock('../models/SpecModel', () => ({
   find: jest.fn((...args) => mockSpecFind(...args))
 }));
 
+jest.mock('../utils/workspaceIdentity', () => ({
+  resolveWorkspaceForUser: jest.fn()
+}));
+
+const { resolveWorkspaceForUser } = require('../utils/workspaceIdentity');
+
 const { userCanAccessProject, userCanAccessSpec, userCanAccessWorkspace, getAccessibleProjects, getSpecWorkspaceId, getWorkspaceProjectIds, resolveAccessibleSpecs } = require('../utils/specAccess');
 
 const OWNER = 'user-owner';
@@ -55,6 +61,14 @@ beforeEach(() => {
   mockProjectSort.mockResolvedValue([]);
   mockCompanyListLean.mockResolvedValue([]);
   mockSpecFind.mockResolvedValue([]);
+  resolveWorkspaceForUser.mockImplementation(async (workspaceId, userId) => {
+    const workspace = await mockCompanyLean();
+    if (!workspace) return null;
+    const uid = String(userId);
+    if (String(workspace.owner) === uid) return { workspace, personal: false };
+    const isMember = (workspace.members || []).some((member) => String(member.user || member) === uid);
+    return isMember ? { workspace, personal: false } : null;
+  });
 });
 
 describe('userCanAccessProject', () => {

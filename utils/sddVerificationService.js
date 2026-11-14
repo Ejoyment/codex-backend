@@ -3,11 +3,11 @@ const SpecModel = require('../models/SpecModel');
 const LocalTask = require('../models/LocalTask');
 const LocalProject = require('../models/LocalProject');
 const CodeFile = require('../models/CodeFile');
-const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const acorn = require('acorn');
 const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
+const verificationRunner = require('./specVerificationRunner');
 
 const AST_LANGUAGES = {
   javascript: 'javascript',
@@ -23,6 +23,120 @@ const AST_LANGUAGES = {
   ruby: 'ruby',
   php: 'php',
 };
+
+const TRUST_STATES = Object.freeze(['pass', 'fail', 'not_evaluated']);
+
+/** Full project-relative path for a CodeFile-shaped object. */
+function fileFullPath(file) {
+  return verificationRunner.fullPathFor(file) || '';
+}
+
+/** Convert a simple glob (`src/**`, `*.js`) to an anchored RegExp. */
+function globToRegExp(pattern) {
+  const escaped = String(pattern || '')
+    .split('**')
+    .map((part) => part.split('*').map((segment) => segment.replace(/[.+^${}()|[\]\\]/g, '\\$&')).join('[^/]*'))
+    .join('.*');
+  return new RegExp(`^${escaped}$`);
+}
+
+function normalizeCheckStatus(value) {
+  const status = String(value || '').toLowerCase();
+  if (status === 'pass' || status === 'passed' || status === 'success') return 'pass';
+  if (status === 'fail' || status === 'failed' || status === 'error') return 'fail';
+  return 'not_evaluated';
+}
+
+/**
+ * Real import extraction. JavaScript/TypeScript goes through the AST; if the
+ * parser rejects the file (JSX, decorators, newer syntax) we fall back to a
+ * conservative import/require scan rather than silently reporting a pass.
+ */
+function collectImports(content) {
+  const text = String(content || '');
+  const imports = new Set();
+  try {
+    const ast = acorn.parse(text, { ecmaVersion: 2022, sourceType: 'module' });
+    const visit = (node) => {
+      if (!node || typeof node !== 'object') return;
+      if (node.type === 'ImportDeclaration' && node.source?.value) imports.add(node.source.value);
+      if (node.type === 'ExportAllDeclaration' && node.source?.value) imports.add(node.source.value);
+      if (node.type === 'ExportNamedDeclaration' && node.source?.value) imports.add(node.source.value);
+      if (node.type === 'CallExpression' && node.callee?.name === 'require' && node.arguments?.[0]?.value) {
+        imports.add(node.arguments[0].value);
+      }
+      for (const key of Object.keys(node)) {
+        if (key === 'loc' || key === 'range' || key === 'start' || key === 'end') continue;
+        const child = node[key];
+        if (Array.isArray(child)) child.forEach(visit);
+        else if (child && typeof child === 'object' && child.type) visit(child);
+      }
+    };
+    visit(ast);
+  } catch (_) {
+    const patterns = [
+      /(?:import|export)[\s\S]*?from\s*['"]([^'"]+)['"]/g,
+      /require\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
+      /import\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
+    ];
+    for (const regex of patterns) {
+      let match;
+      while ((match = regex.exec(text)) !== null) imports.add(match[1]);
+    }
+  }
+  return [...imports];
+}
+
+function routeMatches(content) {
+  const text = String(content || '');
+  const matches = [];
+  const patterns = [
+    // Express/Koa/Fastify style: app.get('/health', ...), router.post("/x")
+    /(?:^|[^\w.])(?:app|router|server|fastify)\.(get|post|put|patch|delete|all|use|options|head)\s*\(\s*['"`]([^'"`]+)['"`]/g,
+    // Python decorators: @app.get("/health"), @router.post('/x')
+    /@(?:app|router)\.(get|post|put|patch|delete|options|head)\s*\(\s*['"]([^'"]+)['"]/g,
+    // Next.js route handlers: export async function GET(...)
+    /export\s+(?:async\s+)?function\s+(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)\s*\(/g,
+  ];
+  for (const regex of patterns) {
+    let match;
+    while ((match = regex.exec(text)) !== null) {
+      matches.push({
+        method: String(match[1] || '').toLowerCase(),
+        path: match[2] || '',
+        index: match.index,
+      });
+    }
+  }
+  return matches;
+}
+
+function routeFromConfig(config = {}) {
+  const raw = config.route || config.path || config.url || '';
+  if (!raw) return { method: null, path: null };
+  const parts = String(raw).trim().split(/\s+/);
+  if (parts.length >= 2 && /^[a-z]+$/i.test(parts[0])) {
+    return { method: parts[0].toLowerCase(), path: parts.slice(1).join(' ') };
+  }
+  return {
+    method: config.method ? String(config.method).toLowerCase() : null,
+    path: String(raw),
+  };
+}
+
+function verdictFor(results = []) {
+  const blocking = results.filter((result) => result.severity === 'blocking');
+  if (blocking.some((result) => result.status === 'fail')) return 'fail';
+  if (blocking.some((result) => result.status === 'not_evaluated')) return 'not_evaluated';
+  return 'pass';
+}
+
+function statusForVerdict(verdict, results = []) {
+  if (verdict === 'fail') return 'failing';
+  if (verdict === 'not_evaluated') return 'partial';
+  const warning = results.some((result) => result.severity === 'warning' && result.status !== 'pass');
+  return warning ? 'warning' : 'healthy';
+}
 
 class SDDVerificationService {
   constructor() {
@@ -87,32 +201,59 @@ class SDDVerificationService {
         spec.targetModules = parsedSpec.frontmatter.target_modules || spec.targetModules;
       }
 
+      // Verification is project-scoped: one project, one contract. The
+      // workspace is collaboration context only and never widens the file set.
+      const codeFiles = await this.getSpecCodeFiles(spec);
+      const specObject = typeof spec.toObject === 'function' ? spec.toObject() : spec;
+
+      const commandResult = spec.verificationCommand
+        ? await verificationRunner.runVerificationCommand({
+          command: spec.verificationCommand,
+          files: codeFiles,
+        })
+        : null;
+      const requirementCommands = await this.runRequirementCommands(specObject, codeFiles);
+
       const assertions = Array.isArray(spec.assertions) ? spec.assertions : [];
       const results = [];
-      let allPassed = true;
-
       for (const assertion of assertions) {
-        const result = await this.evaluateAssertion(assertion, spec, taskId);
-        results.push(result);
-        if (!result.passed) {
-          allPassed = false;
-        }
+        results.push(await this.evaluateAssertion(assertion, spec, taskId, codeFiles));
       }
+      const legacyFailed = results.some((result) => result.status === 'fail');
 
-      const codeFiles = await this.getSpecCodeFiles(spec);
-      const structured = await this.verifySpecSnapshot(spec.toObject(), codeFiles);
-      const blockingFailed = structured.requirements.some((result) => result.severity === 'blocking' && result.status === 'fail') || structured.forbiddenImports.some((result) => result.status === 'fail');
-      const blockingPending = structured.requirements.some((result) => result.severity === 'blocking' && result.status === 'pending');
-      allPassed = allPassed && !blockingFailed && !blockingPending;
-      const hasWarnings = structured.requirements.some((result) => result.severity === 'warning' && result.status !== 'pass');
-      const status = blockingFailed ? 'failing' : (blockingPending || hasWarnings ? 'warning' : 'healthy');
+      const structured = await this.verifySpecSnapshot(specObject, codeFiles, {
+        commandResult,
+        requirementCommands,
+      });
+
+      const gateResults = [...structured.requirements];
+      if (structured.verificationCommand && structured.verificationCommand.status !== 'pass') {
+        gateResults.push({
+          id: 'verification-command',
+          severity: 'blocking',
+          status: structured.verificationCommand.status,
+        });
+      }
+      const verdict = legacyFailed ? 'fail' : verdictFor(gateResults);
+      const status = statusForVerdict(verdict, structured.requirements);
+      const allPassed = verdict === 'pass';
+
       spec.requirements = (spec.requirements || []).map((requirement) => {
         const result = structured.requirements.find((item) => item.id === requirement.id);
-        return result ? { ...requirement.toObject?.() || requirement, status: result.status, evidence: result.evidence } : requirement;
+        return result
+          ? { ...(requirement.toObject?.() || requirement), status: result.status, evidence: result.evidence }
+          : requirement;
       });
       spec.status = status;
+      spec.verdict = verdict;
       spec.lastValidatedAt = new Date();
-      spec.lastValidationResult = { ...structured, results, passed: allPassed, status };
+      spec.lastValidationResult = {
+        ...structured,
+        results,
+        verdict,
+        passed: allPassed,
+        status,
+      };
       await spec.save();
 
       if (taskId) {
@@ -120,7 +261,7 @@ class SDDVerificationService {
           $set: {
             'agentExecution.logs': [{
               timestamp: new Date(),
-              message: `Spec verification ${allPassed ? 'passed' : 'failed'}: ${assertions.length} assertions checked`
+              message: `Spec verification ${verdict === 'pass' ? 'passed' : verdict === 'fail' ? 'failed' : 'was not fully evaluated'}: ${assertions.length} assertions checked`
             }]
           }
         });
@@ -129,16 +270,23 @@ class SDDVerificationService {
       return {
         success: true,
         passed: allPassed,
+        verdict,
         specId: spec._id,
         checkedAssertions: assertions.length,
-        passedAssertions: results.filter(r => r.passed).length,
-        failedAssertions: results.filter(r => !r.passed).length,
+        passedAssertions: results.filter(r => r.status === 'pass').length,
+        failedAssertions: results.filter(r => r.status === 'fail').length,
+        notEvaluatedAssertions: results.filter(r => r.status === 'not_evaluated').length,
         results,
         requirements: structured.requirements,
         forbiddenImports: structured.forbiddenImports,
+        verificationCommand: structured.verificationCommand,
         status,
         checkedAt: spec.lastValidatedAt,
-        summary: allPassed ? 'All spec assertions passed' : 'One or more assertions failed',
+        summary: verdict === 'pass'
+          ? 'All blocking requirements passed'
+          : verdict === 'fail'
+            ? 'One or more blocking requirements failed'
+            : 'Some blocking requirements could not be evaluated',
       };
     } catch (error) {
       console.error('SDD verification error:', error);
@@ -146,105 +294,280 @@ class SDDVerificationService {
     }
   }
 
-  async verifySpecSnapshot(spec, codeFiles = []) {
-    const inScope = (filePath) => {
-      const patterns = [...(spec.targetModules || []), ...(spec.targetFiles || [])];
-      if (!patterns.length) return true;
-      return patterns.some((pattern) => {
-        const escaped = pattern.split('**')
-          .map((part) => part.split('*').map((segment) => segment.replace(/[.+^${}()|[\]\\]/g, '\\$&')).join('[^/]*'))
-          .join('.*');
-        return new RegExp(`^${escaped}$`).test(filePath);
+  /**
+   * Contract tests that carry their own command run separately from the
+   * spec-wide verification command. Capped so a spec cannot turn one
+   * verification click into an unbounded number of container runs.
+   */
+  async runRequirementCommands(spec, files = [], { hostDir = null } = {}) {
+    const commands = {};
+    const candidates = (spec.requirements || [])
+      .filter((requirement) => requirement.checkType === 'contract_test')
+      .filter((requirement) => requirement.checkConfig?.command)
+      .slice(0, 5);
+    for (const requirement of candidates) {
+      commands[requirement.id] = await verificationRunner.runVerificationCommand({
+        command: requirement.checkConfig.command,
+        files,
+        hostDir,
       });
+    }
+    return commands;
+  }
+
+  async verifySpecSnapshot(spec, codeFiles = [], options = {}) {
+    const { commandResult = null, requirementCommands = {} } = options;
+    const patterns = [...(spec.targetModules || []), ...(spec.targetFiles || [])];
+    const inScope = (filePath) => {
+      if (!patterns.length) return true;
+      return patterns.some((pattern) => globToRegExp(pattern).test(filePath));
     };
-    const files = codeFiles.filter((file) => inScope(file.path || file.name || ''));
-    const results = (spec.requirements || []).map((requirement) => {
+    const files = (codeFiles || []).map((file) => ({ ...file, fullPath: fileFullPath(file) }));
+    const scopedFiles = files.filter((file) => inScope(file.fullPath));
+
+    const evaluate = (requirement) => {
       const config = requirement.checkConfig || {};
-      let status = 'pending';
-      let evidence = 'This check requires human or secondary-model review.';
+      const base = {
+        id: requirement.id,
+        text: requirement.text,
+        severity: requirement.severity || 'blocking',
+        checkType: requirement.checkType || 'manual',
+      };
+
       if (requirement.checkType === 'file_exists') {
-        const path = config.path || config.file;
-        const passed = files.some((file) => (file.path || file.name) === path);
-        status = passed ? 'pass' : 'fail';
-        evidence = passed ? `Found ${path}` : `File not found: ${path || '(no path configured)'}`;
-      } else if (requirement.checkType === 'code_pattern') {
+        const wanted = String(config.path || config.file || config.glob || '').replace(/^\/+/, '');
+        if (!wanted) return { ...base, status: 'not_evaluated', evidence: 'No path configured for this file check.' };
+        const match = files.find((file) => (
+          /[*?]/.test(wanted) ? globToRegExp(wanted).test(file.fullPath) : file.fullPath === wanted
+        ));
+        return {
+          ...base,
+          status: match ? 'pass' : 'fail',
+          evidence: match ? `Found ${match.fullPath}` : `File not found: ${wanted}`,
+        };
+      }
+
+      if (requirement.checkType === 'code_pattern') {
+        if (!config.pattern) return { ...base, status: 'not_evaluated', evidence: 'No pattern configured for this check.' };
         try {
-          if (!config.pattern) throw new Error('No pattern configured');
           const pattern = new RegExp(config.pattern, config.flags || '');
-          const candidates = config.files?.length ? files.filter((file) => config.files.includes(file.path)) : files;
+          const candidates = config.files?.length
+            ? scopedFiles.filter((file) => config.files.some((candidate) => String(candidate).replace(/^\/+/, '') === file.fullPath))
+            : scopedFiles;
           const match = candidates.find((file) => pattern.test(file.content || ''));
-          status = match ? 'pass' : 'fail';
-          evidence = match ? `Pattern found in ${match.path}` : 'Pattern not found in the scoped files';
+          return {
+            ...base,
+            status: match ? 'pass' : 'fail',
+            evidence: match ? `Pattern found in ${match.fullPath}` : 'Pattern not found in the scoped files',
+          };
         } catch (error) {
-          status = 'fail';
-          evidence = `Invalid pattern: ${error.message}`;
+          return { ...base, status: 'fail', evidence: `Invalid pattern: ${error.message}` };
         }
       }
-      return { id: requirement.id, text: requirement.text, severity: requirement.severity, status, evidence };
-    });
+
+      if (requirement.checkType === 'ast_import') {
+        const raw = config.module || config.import || config.imports || config.pattern;
+        const configured = (Array.isArray(raw) ? raw : [raw]).filter(Boolean).map(String);
+        if (!configured.length) return { ...base, status: 'not_evaluated', evidence: 'No import configured for this check.' };
+        const mode = config.mode === 'forbid' || configured.every((value) => value.startsWith('!')) ? 'forbid' : 'require';
+        const wanted = configured.map((value) => value.replace(/^!/, ''));
+        const found = [];
+        for (const file of scopedFiles) {
+          for (const imported of collectImports(file.content)) {
+            if (wanted.some((module) => imported === module || imported.startsWith(`${module}/`))) {
+              found.push({ file: file.fullPath, module: imported });
+            }
+          }
+        }
+        const passed = mode === 'forbid' ? found.length === 0 : wanted.every((module) => (
+          found.some((item) => item.module === module || item.module.startsWith(`${module}/`))
+        ));
+        const evidence = mode === 'forbid'
+          ? (passed ? `No forbidden import of ${wanted.join(', ')}` : `Forbidden import ${found[0]?.module} in ${found[0]?.file}`)
+          : (passed ? `Found import ${wanted.join(', ')} in ${found[0]?.file}` : `Import not found: ${wanted.join(', ')}`);
+        return { ...base, status: passed ? 'pass' : 'fail', evidence };
+      }
+
+      if (requirement.checkType === 'route') {
+        const route = routeFromConfig(config);
+        if (!route.path) return { ...base, status: 'not_evaluated', evidence: 'No route path configured for this check.' };
+        const matches = [];
+        for (const file of scopedFiles) {
+          for (const candidate of routeMatches(file.content)) {
+            if (route.path && candidate.path !== route.path) continue;
+            if (route.method && candidate.method !== route.method) continue;
+            matches.push({ file: file.fullPath, ...candidate });
+          }
+        }
+        const label = `${route.method ? `${route.method.toUpperCase()} ` : ''}${route.path}`;
+        return {
+          ...base,
+          status: matches.length ? 'pass' : 'fail',
+          evidence: matches.length ? `Route ${label} found in ${matches[0].file}` : `Route ${label} not found`,
+        };
+      }
+
+      if (requirement.checkType === 'test_name' || requirement.checkType === 'contract_test') {
+        const result = requirementCommands[requirement.id] || commandResult;
+        if (!result) {
+          return {
+            ...base,
+            status: 'not_evaluated',
+            evidence: 'This check runs in the isolated verification runner, which was not available for this pass.',
+          };
+        }
+        const status = normalizeCheckStatus(result.status);
+        const detail = result.status === 'not_evaluated'
+          ? result.reason || 'The command did not run.'
+          : `${result.command || 'command'} exited ${result.exitCode ?? '?'}`;
+        const output = verificationRunner.tailOutput(result.output, 1200);
+        return {
+          ...base,
+          status,
+          evidence: output ? `${detail}\n${output}` : detail,
+        };
+      }
+
+      if (requirement.checkType === 'ai_review') {
+        return { ...base, status: 'not_evaluated', evidence: 'Requires human or secondary-model review.' };
+      }
+
+      return {
+        ...base,
+        status: 'not_evaluated',
+        evidence: requirement.checkType === 'manual'
+          ? 'Manual check — not evaluated automatically.'
+          : `Unsupported check type: ${requirement.checkType || '(none)'}`,
+      };
+    };
+
+    const results = (spec.requirements || []).map(evaluate);
+
     const forbiddenImportResults = (spec.forbiddenImports || []).map((forbidden) => {
-      const match = files.find((file) => (file.content || '').includes(forbidden));
-      return { forbidden, status: match ? 'fail' : 'pass', evidence: match ? `Found in ${match.path}` : 'Not found in scoped files' };
+      const match = scopedFiles.find((file) => {
+        const imports = collectImports(file.content);
+        if (imports.length) {
+          return imports.some((imported) => imported === forbidden || imported.startsWith(`${forbidden}/`));
+        }
+        return String(file.content || '').includes(forbidden);
+      });
+      return {
+        forbidden,
+        status: match ? 'fail' : 'pass',
+        evidence: match ? `Found in ${match.fullPath}` : 'Not found in the project files',
+      };
     });
-    const blockingFailures = results.filter((result) => result.severity === 'blocking' && result.status !== 'pass').length + forbiddenImportResults.filter((result) => result.status !== 'pass').length;
+
+    const gateResults = [
+      ...results,
+      ...forbiddenImportResults.map((result) => ({ severity: 'blocking', status: result.status })),
+    ];
+    const verdict = verdictFor(gateResults);
+
+    let verificationCommand = null;
+    if (spec.verificationCommand) {
+      verificationCommand = commandResult || {
+        command: spec.verificationCommand,
+        status: 'not_evaluated',
+        reason: 'Verification command has not run in this context.',
+        output: '',
+      };
+    }
+
     return {
       specId: spec._id,
       title: spec.title,
-      passed: blockingFailures === 0,
+      passed: verdict === 'pass',
+      verdict,
       requirements: results,
       forbiddenImports: forbiddenImportResults,
-      verificationCommand: spec.verificationCommand ? { command: spec.verificationCommand, status: 'pending', reason: 'Requires an isolated workspace runner' } : null,
+      verificationCommand,
       checkedAt: new Date(),
     };
   }
 
-  async evaluateAssertion(assertion, spec, taskId) {
+  /**
+   * Pre-approval verification for several specs against one proposed file set.
+   * Commands are deduplicated by command string so a shared command runs once.
+   */
+  async verifySpecSnapshots(specs = [], codeFiles = [], { hostDir = null } = {}) {
+    const commandResults = new Map();
+    for (const spec of specs) {
+      const command = String(spec.verificationCommand || '').trim();
+      if (!command || commandResults.has(command)) continue;
+      commandResults.set(command, await verificationRunner.runVerificationCommand({
+        command,
+        files: codeFiles,
+        hostDir,
+      }));
+    }
+
+    const results = [];
+    for (const spec of specs) {
+      const command = String(spec.verificationCommand || '').trim();
+      const requirementCommands = await this.runRequirementCommands(spec, codeFiles, { hostDir });
+      results.push(await this.verifySpecSnapshot(spec, codeFiles, {
+        commandResult: command ? commandResults.get(command) : null,
+        requirementCommands,
+      }));
+    }
+    return results;
+  }
+
+  async evaluateAssertion(assertion, spec, taskId, codeFiles = []) {
     const rule = assertion.rule || '';
     const target = assertion.target || '';
 
     try {
       if (rule.includes('RS256')) {
-        return await this.checkRS256Assertion(target, spec);
+        return await this.checkRS256Assertion(target, spec, codeFiles);
       }
       if (rule.includes('Token expiration')) {
-        return await this.checkTokenExpirationAssertion(target, spec);
+        return await this.checkTokenExpirationAssertion(target, spec, codeFiles);
       }
       if (rule.includes('middleware')) {
-        return await this.checkMiddlewareAssertion(target, spec);
+        return await this.checkMiddlewareAssertion(target, spec, codeFiles);
       }
       if (rule.includes('import')) {
-        return await this.checkImportAssertion(target, spec);
+        return await this.checkImportAssertion(target, spec, codeFiles);
       }
       if (rule.includes('test')) {
-        return await this.runTestAssertion(target, spec);
+        return await this.runTestAssertion(target, spec, codeFiles);
       }
 
       const result = await this.runGenericAssertion(rule, target, spec, taskId);
       return result;
     } catch (error) {
-      return { rule, passed: false, error: error.message, assertion };
+      return { rule, status: 'fail', passed: false, error: error.message, assertion };
     }
   }
 
-  async checkRS256Assertion(target, spec) {
-    const modules = spec.targetModules || [];
-    const files = await CodeFile.find({
-      path: { $in: [target, ...modules] },
-      company: spec.workspaceId
+  /** Files a legacy assertion applies to, always inside the project scope. */
+  legacyFiles(codeFiles, target, spec) {
+    const patterns = [target, ...(spec.targetModules || [])].filter(Boolean);
+    if (!patterns.length) return codeFiles;
+    return codeFiles.filter((file) => {
+      const full = fileFullPath(file);
+      return patterns.some((pattern) => {
+        const normalized = String(pattern).replace(/^\/+/, '');
+        return full === normalized || full.startsWith(`${normalized.replace(/\/$/, '')}/`) || globToRegExp(normalized).test(full);
+      });
     });
-    let foundRS256 = false;
-    for (const file of files) {
-      if (file.content && file.content.includes('RS256')) {
-        foundRS256 = true;
-        break;
-      }
-    }
-    return { rule: 'Must use RS256 algorithm for token signing', passed: foundRS256, assertion: { rule: 'Must use RS256 algorithm for token signing', target } };
   }
 
-  async checkTokenExpirationAssertion(target, spec) {
-    const modules = spec.targetModules || [];
-    const files = await CodeFile.find({ path: { $in: [target, ...modules] }, company: spec.workspaceId });
+  async checkRS256Assertion(target, spec, codeFiles = []) {
+    const files = this.legacyFiles(codeFiles, target, spec);
+    const foundRS256 = files.some((file) => String(file.content || '').includes('RS256'));
+    return {
+      rule: 'Must use RS256 algorithm for token signing',
+      status: foundRS256 ? 'pass' : 'fail',
+      passed: foundRS256,
+      assertion: { rule: 'Must use RS256 algorithm for token signing', target },
+    };
+  }
+
+  async checkTokenExpirationAssertion(target, spec, codeFiles = []) {
+    const files = this.legacyFiles(codeFiles, target, spec);
     let foundValid = true;
     for (const file of files) {
       if (file.content && file.content.includes('expire')) {
@@ -255,58 +578,64 @@ class SDDVerificationService {
         }
       }
     }
-    return { rule: 'Token expiration must not exceed 3600 seconds', passed: foundValid, assertion: { rule: 'Token expiration must not exceed 3600 seconds', target } };
+    return {
+      rule: 'Token expiration must not exceed 3600 seconds',
+      status: foundValid ? 'pass' : 'fail',
+      passed: foundValid,
+      assertion: { rule: 'Token expiration must not exceed 3600 seconds', target },
+    };
   }
 
-  async checkMiddlewareAssertion(target, spec) {
-    const modules = spec.targetModules || [];
-    const files = await CodeFile.find({ path: { $in: modules }, company: spec.workspaceId });
-    let found = true;
-    for (const file of files) {
-      if (file.content && !file.content.includes('rateLimiter')) {
-        found = false;
-        break;
-      }
-    }
-    return { rule: 'Must pass through rateLimiter middleware', passed: found, assertion: { rule: 'Must pass through rateLimiter middleware', target } };
+  async checkMiddlewareAssertion(target, spec, codeFiles = []) {
+    const files = this.legacyFiles(codeFiles, target, spec);
+    const found = files.every((file) => !file.content || String(file.content).includes('rateLimiter'));
+    return {
+      rule: 'Must pass through rateLimiter middleware',
+      status: found ? 'pass' : 'fail',
+      passed: found,
+      assertion: { rule: 'Must pass through rateLimiter middleware', target },
+    };
   }
 
-  async checkImportAssertion(target, spec) {
-    const modules = spec.targetModules || [];
-    const files = await CodeFile.find({ path: { $in: modules }, company: spec.workspaceId });
-    let found = true;
-    for (const file of files) {
-      if (file.content && !file.content.includes('require')) {
-        found = false;
-        break;
-      }
-    }
-    return { rule: 'Required imports must be present', passed: found, assertion: { rule: 'Required imports must be present', target } };
+  async checkImportAssertion(target, spec, codeFiles = []) {
+    const files = this.legacyFiles(codeFiles, target, spec);
+    const found = files.every((file) => !file.content || collectImports(file.content).length > 0);
+    return {
+      rule: 'Required imports must be present',
+      status: found ? 'pass' : 'fail',
+      passed: found,
+      assertion: { rule: 'Required imports must be present', target },
+    };
   }
 
-  async runTestAssertion(target, spec) {
-    try {
-      if (target && !/^[A-Za-z0-9_./-]+$/.test(target)) {
-        return { rule: 'Test suite binding', passed: false, assertion: { rule: 'Test suite binding', target }, error: 'Test selector contains unsupported characters' };
-      }
-      const args = ['run', 'test:spec'];
-      if (target) args.push('--', target);
-      const result = execFileSync('npm', args, {
-        cwd: process.cwd(),
-        timeout: 30000,
-        encoding: 'utf8'
-      });
-      return { rule: 'Test suite binding', passed: true, assertion: { rule: 'Test suite binding', target }, output: result };
-    } catch (error) {
-      return { rule: 'Test suite binding', passed: false, assertion: { rule: 'Test suite binding', target }, error: error.message };
+  async runTestAssertion(target, spec, codeFiles = []) {
+    if (target && !/^[A-Za-z0-9_./-]+$/.test(target)) {
+      return {
+        rule: 'Test suite binding',
+        status: 'fail',
+        passed: false,
+        assertion: { rule: 'Test suite binding', target },
+        error: 'Test selector contains unsupported characters',
+      };
     }
+    const command = `npm run test:spec${target ? ` -- ${target}` : ''}`;
+    const result = await verificationRunner.runVerificationCommand({ command, files: codeFiles });
+    const status = normalizeCheckStatus(result.status);
+    return {
+      rule: 'Test suite binding',
+      status,
+      passed: status === 'pass' ? true : status === 'fail' ? false : null,
+      assertion: { rule: 'Test suite binding', target },
+      output: result.output,
+      error: result.status === 'not_evaluated' ? result.reason : undefined,
+    };
   }
 
   async runGenericAssertion(rule, target, spec, taskId) {
     const specContent = spec.content || '';
     const assertionRegex = new RegExp(rule.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
     const passed = assertionRegex.test(specContent) || (target && assertionRegex.test(target));
-    return { rule, passed, assertion: { rule, target } };
+    return { rule, status: passed ? 'pass' : 'fail', passed, assertion: { rule, target } };
   }
 
   async parseAST(codeContent, language = 'javascript') {
@@ -405,7 +734,7 @@ class SDDVerificationService {
 
   async checkASTDrift(codeContent, spec, targetFile, language = 'javascript') {
     const driftWarnings = [];
-    const assertions = Array.isArray(spec.assertions) ? spec.assertions : [];
+    const assertions = Array.isArray(spec?.assertions) ? spec.assertions : [];
     const astAnalysis = await this.parseAST(codeContent, language);
 
     for (const assertion of assertions) {
@@ -481,12 +810,10 @@ class SDDVerificationService {
   }
 
   async runSDDVerification(scopeId, specId = null) {
-    // Accepts a project id (primary) or a workspace id (collaboration scope).
-    const scopeQuery = mongoose.Types.ObjectId.isValid(scopeId)
-      ? { $or: [{ projectId: scopeId }, { workspaceId: scopeId }] }
-      : { workspaceId: scopeId };
-    const query = specId ? { _id: specId } : scopeQuery;
-    const specs = await SpecModel.find(query).populate('workspaceId');
+    // Verification is project-scoped. `scopeId` is a project id; a workspace is
+    // collaboration context and must never widen the contract to other projects.
+    const query = specId ? { _id: specId } : { projectId: scopeId };
+    const specs = await SpecModel.find(query);
     const results = [];
 
     for (const spec of specs) {
@@ -501,7 +828,7 @@ class SDDVerificationService {
     return {
       success: true,
       totalSpecs: results.length,
-      allPassed: results.every(r => r.passed !== false),
+      allPassed: results.every(r => r.verdict === 'pass'),
       results,
       timestamp: new Date(),
     };
@@ -510,36 +837,38 @@ class SDDVerificationService {
   /**
    * The code a spec validates against.
    *
-   * Specs are project-scoped. A project inside a workspace validates against
-   * that workspace's VFS (CodeFile.company). A solo project has no workspace,
-   * so we fall back to the files the project owner created — otherwise a solo
-   * spec would always verify against an empty file set and report everything
-   * as "pending".
+   * Specs are project-scoped: one project, one contract. The workspace is
+   * collaboration context and is deliberately not part of this query, so two
+   * projects sharing a workspace can never verify against each other's files.
    */
   async resolveSpecCodeScope(spec) {
-    const workspaceId = await this.resolveSpecWorkspaceId(spec);
-    if (workspaceId) return { company: workspaceId };
-
-    const project = await this.resolveSpecProject(spec);
-    if (project?.userId) return { createdBy: project.userId };
-
-    return null;
+    if (!spec?.projectId) return null;
+    return { project: String(spec.projectId) };
   }
 
   async getSpecCodeFiles(spec) {
     const scope = await this.resolveSpecCodeScope(spec);
     if (!scope) return [];
-    return CodeFile.find(scope).select('path name language content').lean();
+    return CodeFile.find(scope).select('path name language content encoding contentOmitted').lean();
   }
 
   /**
    * A single target file, scoped the same way as getSpecCodeFiles so a drift
-   * check can never read a file belonging to someone else's workspace.
+   * check can never read a file belonging to another project.
    */
   async findSpecCodeFile(spec, filePath) {
     const scope = await this.resolveSpecCodeScope(spec);
     if (!scope) return null;
-    return CodeFile.findOne({ ...scope, path: filePath }).select('path name language content');
+    const normalized = String(filePath || '').replace(/^\/+/, '');
+    const fileName = normalized.split('/').pop();
+    const dir = normalized.includes('/') ? `/${normalized.slice(0, normalized.lastIndexOf('/'))}` : '/';
+    return CodeFile.findOne({
+      ...scope,
+      $or: [
+        { path: normalized },
+        { path: dir, name: fileName },
+      ],
+    }).select('path name language content encoding contentOmitted');
   }
 
   /**

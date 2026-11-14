@@ -9,6 +9,7 @@ const { authenticateToken } = require('../middleware/auth');
 const permissionMatrix = require('../middleware/permissionMatrix');
 const debugAdapter = require('../utils/debugAdapter');
 const CodeFile = require('../models/CodeFile');
+const { sendInternalError } = require('../utils/httpErrors');
 // Tenant isolation (audit rec 7): debug sessions drive live processes and
 // expose memory/variables, so every sessionId below must belong to the caller.
 // Session IDs are guessable (debug_<counter>_<timestamp>), not secrets.
