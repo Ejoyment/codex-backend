@@ -13,12 +13,13 @@ export function normalizeApiBaseUrl(raw) {
     .replace(/\/+$/, '');
 }
 
-export const API_BASE_URL = normalizeApiBaseUrl(
-  typeof window !== 'undefined' 
-    ? (localStorage.getItem('buildrsApiBase') || process.env.NEXT_PUBLIC_API_URL || '')
-    : (process.env.NEXT_PUBLIC_API_URL || '')
-);
+// The origin is build-time configuration only. It must never be read back from
+// storage: `apiFetch` attaches the bearer token to every request, so a
+// script-writable key would let any XSS or extension retarget where the token
+// is sent.
+export const API_BASE_URL = normalizeApiBaseUrl(process.env.NEXT_PUBLIC_API_URL || '');
 // The Buildrs Figma helper reads this to know which backend to sync files to.
+// This is a one-way publish of the configured origin, not an override input.
 if (typeof window !== 'undefined' && API_BASE_URL) {
   try {
     localStorage.setItem('buildrsApiBase', API_BASE_URL);

@@ -257,8 +257,6 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
         return res.status(403).json({ success: false, message: 'Project access denied' });
       }
     }
-    console.log('[Agent Delegate] task?.companyId:', task?.companyId);
-    console.log('[Agent Delegate] taskProject?.workspaceId:', taskProject?.workspaceId);
     let requestedWorkspaceId = req.body.workspaceId
       || task?.companyId?.toString()
       || taskProject?.workspaceId?.toString();
@@ -273,13 +271,11 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       requestedWorkspaceId = taskProject?.workspaceId?.toString();
       workspaceSource = 'project';
     }
-    console.log('[Agent Delegate] requestedWorkspaceId (initial):', requestedWorkspaceId, 'workspaceSource:', workspaceSource);
     if (!requestedWorkspaceId) {
       // Personal users have no company workspace — ensure a personal
       // subscription exists, then use userId as the workspace scope.
       await ensurePersonalWorkspace(req.userId);
       requestedWorkspaceId = req.userId;
-      console.log('[Agent Delegate] No workspaceId, using personal userId:', requestedWorkspaceId);
     } else {
       // Validate the requested workspace belongs to the user. If it doesn't
       // (e.g. stale companyId from before personal/workspace separation) but
@@ -290,20 +286,17 @@ router.post('/delegate', agentDelegateLimiter, authenticateToken, enforceConcurr
       // a stale selectedCompany ID). Check if task/project context exists to
       // justify the fallback.
       const access = await assertWorkspaceAccess(requestedWorkspaceId, req.userId);
-      console.log('[Agent Delegate] assertWorkspaceAccess result:', access);
       if (!access.ok) {
         const hasTaskOrProjectContext = task?.companyId || taskProject?.workspaceId;
         if (workspaceSource === 'task' || workspaceSource === 'project' || (workspaceSource === 'body' && hasTaskOrProjectContext)) {
           await ensurePersonalWorkspace(req.userId);
           requestedWorkspaceId = req.userId;
-          console.log('[Agent Delegate] Fallback to personal userId:', requestedWorkspaceId);
         } else {
           return res.status(403).json({ success: false, message: 'Workspace access denied' });
         }
       }
     }
     const workspaceAccess = await assertWorkspaceAccess(requestedWorkspaceId, req.userId);
-    console.log('[Agent Delegate] Final workspaceAccess:', workspaceAccess);
     if (!workspaceAccess.ok) {
       return res.status(403).json({ success: false, message: workspaceAccess.reason || 'Workspace access denied' });
     }
