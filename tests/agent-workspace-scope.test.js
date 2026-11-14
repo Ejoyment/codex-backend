@@ -80,6 +80,7 @@ jest.mock('../models/Subscription', () => ({ findOne: jest.fn() }));
 
 jest.mock('../utils/personalWorkspace', () => ({
   findPersonalWorkspace: jest.fn(),
+  findPersonalWorkspaceById: jest.fn(async () => null),
   ensurePersonalWorkspace: jest.fn(),
 }));
 jest.mock('../utils/gitService', () => ({

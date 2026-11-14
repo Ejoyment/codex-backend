@@ -16,6 +16,17 @@ function conflict(message, extra = {}) {
   return { ok: false, status: 409, message, ...extra };
 }
 
+// An approval that claimed the execution and then died (process restart,
+// deploy, crash) would otherwise leave it in `approving` forever. After this
+// window a retry may take the claim again.
+const APPROVAL_RECLAIM_MS = 5 * 60 * 1000;
+
+function approvalClaimIsStale(execution, now = Date.now()) {
+  if (!execution || execution.status !== 'approving' || !execution.approvalStartedAt) return false;
+  const started = new Date(execution.approvalStartedAt).getTime();
+  return Number.isFinite(started) && now - started >= APPROVAL_RECLAIM_MS;
+}
+
 async function verifySpecsForExecution(execution, taskId) {
   const specIds = metaValue(execution, 'specIds') || [execution.specRef].filter(Boolean);
   const results = await Promise.all(
@@ -43,16 +54,28 @@ async function approveExecution({
     return { ok: true, execution, alreadyApproved: true };
   }
   const previousStatus = execution.status;
+  const reclaiming = approvalClaimIsStale(execution);
   const claim = await AgentExecution.findOneAndUpdate(
-    {
-      _id: execution._id,
-      status: { $in: ['awaiting_review', 'awaiting_approval'] },
-    },
-    { $set: { status: 'approving' } },
+    reclaiming
+      ? {
+        _id: execution._id,
+        status: 'approving',
+        approvalStartedAt: execution.approvalStartedAt,
+      }
+      : {
+        _id: execution._id,
+        status: { $in: ['awaiting_review', 'awaiting_approval'] },
+      },
+    { $set: { status: 'approving', approvalStartedAt: new Date() } },
     { new: true }
   );
   if (!claim) {
-    return conflict('This execution is already being approved or is no longer awaiting approval', { execution });
+    return conflict(
+      reclaiming
+        ? 'Another approval attempt resumed this session; refresh to see its result'
+        : 'This execution is already being approved or is no longer awaiting approval',
+      { execution }
+    );
   }
   execution.status = 'approving';
   let approvalSaved = false;
@@ -301,4 +324,9 @@ async function rejectExecution({
   return { ok: true, execution, source };
 }
 
-module.exports = { approveExecution, rejectExecution };
+module.exports = {
+  APPROVAL_RECLAIM_MS,
+  approvalClaimIsStale,
+  approveExecution,
+  rejectExecution,
+};

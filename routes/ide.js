@@ -22,27 +22,9 @@ const {
   generateRunId,
   pickStrategy,
 } = require('../utils/ideRunner');
+const ideRuns = require('../utils/ideRunStore');
 
-const RUN_TTL_MS = 10 * 60 * 1000; // keep finished runs around for late streams
-const MAX_RUNS = 200;
 const HEARTBEAT_MS = 15000;
-
-/** runId -> run record */
-const runs = new Map();
-
-function sweepRuns() {
-  const now = Date.now();
-  for (const [id, run] of runs) {
-    if (now - run.createdAt > RUN_TTL_MS) runs.delete(id);
-  }
-  // Hard cap so a burst can't grow memory unbounded.
-  if (runs.size > MAX_RUNS) {
-    const oldest = [...runs.values()].sort((a, b) => a.createdAt - b.createdAt);
-    for (let i = 0; i < runs.size - MAX_RUNS; i++) runs.delete(oldest[i].id);
-  }
-}
-const sweepTimer = setInterval(sweepRuns, 60 * 1000);
-if (sweepTimer.unref) sweepTimer.unref();
 
 function sseSend(res, event, data) {
   res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
@@ -171,7 +153,7 @@ router.post(
       createdAt: Date.now(),
       finishedAt: null,
     };
-    runs.set(runId, run);
+    await ideRuns.create(run);
 
     // Respond immediately; execution streams over /stream.
     res.status(202).json({
@@ -198,7 +180,7 @@ router.post(
             if (run.output.length > 512 * 1024) {
               run.output = run.output.slice(-256 * 1024);
             }
-            for (const res of run.listeners) sseSend(res, 'output', { chunk });
+            ideRuns.publish(run, 'output', { chunk }).catch(() => {});
           },
         });
         run.status = result.success ? 'success' : 'failed';
@@ -221,12 +203,10 @@ router.post(
         if (run.result && typeof run.result.output === 'string') {
           run.output = run.result.output;
         }
-        for (const client of run.listeners) {
-          sseSend(client, 'status', { status: run.status });
-          sseSend(client, 'result', { ...run.result, error: run.error });
-          client.write('event: end\ndata: {}\n\n');
-          client.end();
-        }
+        await ideRuns.save(run);
+        await ideRuns.publish(run, 'status', { status: run.status });
+        await ideRuns.publish(run, 'result', { ...run.result, error: run.error });
+        await ideRuns.publish(run, 'end', {});
         run.listeners.clear();
       }
     })();
@@ -256,8 +236,8 @@ function ownsRun(req, run) {
  *       200:
  *         description: Run state
  */
-router.get('/run/:runId', authenticateToken, (req, res) => {
-  const run = runs.get(req.params.runId);
+router.get('/run/:runId', authenticateToken, async (req, res) => {
+  const run = await ideRuns.get(req.params.runId);
   if (!ownsRun(req, run)) return res.status(404).json({ error: 'Run not found' });
   res.json({
     runId: run.id,
@@ -291,8 +271,8 @@ router.get('/run/:runId', authenticateToken, (req, res) => {
  *       200:
  *         description: text/event-stream
  */
-router.get('/run/:runId/stream', authenticateToken, (req, res) => {
-  const run = runs.get(req.params.runId);
+router.get('/run/:runId/stream', authenticateToken, async (req, res) => {
+  const run = await ideRuns.get(req.params.runId);
   if (!ownsRun(req, run)) return res.status(404).json({ error: 'Run not found' });
 
   res.status(200);
@@ -316,7 +296,14 @@ router.get('/run/:runId/stream', authenticateToken, (req, res) => {
     return;
   }
 
-  run.listeners.add(res);
+  const unsubscribe = await ideRuns.subscribe(run, (event, data) => {
+    if (event === 'end') {
+      res.write('event: end\ndata: {}\n\n');
+      res.end();
+      return;
+    }
+    sseSend(res, event, data);
+  });
   const heartbeat = setInterval(() => {
     res.write(': ping\n\n');
   }, HEARTBEAT_MS);
@@ -324,7 +311,7 @@ router.get('/run/:runId/stream', authenticateToken, (req, res) => {
 
   req.on('close', () => {
     clearInterval(heartbeat);
-    run.listeners.delete(res);
+    unsubscribe();
   });
 });
 

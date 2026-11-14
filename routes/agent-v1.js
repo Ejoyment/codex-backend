@@ -720,7 +720,10 @@ router.post('/approve', authenticateToken, async (req, res) => {
       return res.status(404).json({ success: false, message: 'Execution not found' });
     }
 
-    if (execution.status !== 'awaiting_review' && execution.status !== 'awaiting_approval') {
+    const awaitingDecision = execution.status === 'awaiting_review' || execution.status === 'awaiting_approval';
+    // A crashed approval leaves the session in `approving`; allow a retry once
+    // the claim is past the reclaim window instead of failing forever.
+    if (!awaitingDecision && !agentApprovalService.approvalClaimIsStale(execution)) {
       return res.status(409).json({ success: false, message: 'Only sessions awaiting review can be approved' });
     }
     const workspaceAccess = await resolveExecutionWorkspace(execution, req.userId);

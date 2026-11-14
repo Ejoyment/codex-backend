@@ -1,4 +1,4 @@
-const { sendInternalError } = require('../utils/httpErrors');
+const { sendError, sendInternalError } = require('../utils/httpErrors');
 const express = require('express');
 const router = express.Router();
 const axios = require('axios');
@@ -6,6 +6,57 @@ const Integration = require('../models/Integration');
 const jwt = require('jsonwebtoken');
 const { createStateToken, verifyStateToken } = require('../utils/oauthState');
 const { authenticateToken } = require('../middleware/auth');
+
+const DISCORD_API = 'https://discord.com/api/v10';
+
+// Channels, message history, sends and webhooks need a bot token: a user OAuth
+// token cannot read a guild's channels. Without one, say so instead of
+// returning fabricated channels and fake message ids.
+function botNotConfigured() {
+    const error = new Error('Discord bot is not configured. Set DISCORD_BOT_TOKEN and invite the bot to the server.');
+    error.status = 501;
+    error.code = 'DISCORD_BOT_NOT_CONFIGURED';
+    return error;
+}
+
+async function discordBotAPI(endpoint, method = 'GET', data = null) {
+    const token = process.env.DISCORD_BOT_TOKEN;
+    if (!token) throw botNotConfigured();
+    try {
+        const response = await axios({
+            method,
+            url: `${DISCORD_API}${endpoint}`,
+            headers: {
+                Authorization: `Bot ${token}`,
+                'Content-Type': 'application/json'
+            },
+            data,
+            timeout: 20000
+        });
+        return response.data;
+    } catch (error) {
+        const status = error.response?.status;
+        console.error('[discord] bot request failed:', status || error.message);
+        const mapped = new Error(
+            status === 403 ? 'The Discord bot lacks permission in that channel'
+                : status === 404 ? 'Discord channel or guild not found'
+                    : 'Discord request failed'
+        );
+        mapped.status = status === 403 ? 403 : status === 404 ? 404 : 502;
+        mapped.code = 'DISCORD_REQUEST_FAILED';
+        throw mapped;
+    }
+}
+
+function respondDiscordError(req, res, error) {
+    if (error.code === 'DISCORD_BOT_NOT_CONFIGURED') {
+        return sendInternalError(req, res, error, { status: 501, code: error.code, message: error.message });
+    }
+    if (error.status === 502) {
+        return sendInternalError(req, res, error, { status: 502, code: error.code, message: 'Discord is unavailable right now. Please retry.' });
+    }
+    return sendError(req, res, error);
+}
 
 // Helper to get Discord integration
 async function getDiscordIntegration(userId) {
@@ -345,113 +396,108 @@ router.get('/guilds/:guildId', authenticateToken, async (req, res) => {
  *       500:
  *         description: Internal server error
  */
-// Get guild channels (requires bot - mock for now)
+// Get guild channels (bot token required)
 router.get('/guilds/:guildId/channels', authenticateToken, async (req, res) => {
     try {
         await getDiscordIntegration(req.userId);
-        
-        // Mock channels - in production, you'd need a bot with proper permissions
-        const mockChannels = [
-            { id: '1', name: 'general', type: 0, position: 0 },
-            { id: '2', name: 'announcements', type: 0, position: 1 },
-            { id: '3', name: 'dev-chat', type: 0, position: 2 },
-            { id: '4', name: 'Voice Channel', type: 2, position: 3 }
-        ];
-        
+        const channels = await discordBotAPI(`/guilds/${encodeURIComponent(req.params.guildId)}/channels`);
+
         res.json({
             success: true,
-            channels: mockChannels,
-            note: 'Full channel access requires Discord bot integration'
+            channels: (Array.isArray(channels) ? channels : []).map((channel) => ({
+                id: channel.id,
+                name: channel.name,
+                type: channel.type,
+                position: channel.position
+            }))
         });
     } catch (error) {
-        return sendInternalError(req, res, error);
+        return respondDiscordError(req, res, error);
     }
 });
 
 // ===== MESSAGES =====
 
-// Get channel messages (requires bot - mock for now)
+// Get channel messages (bot token required)
 router.get('/channels/:channelId/messages', authenticateToken, async (req, res) => {
     try {
         await getDiscordIntegration(req.userId);
-        const { limit = 50 } = req.query;
-        
-        // Mock messages - in production, requires bot token
-        const mockMessages = [
-            {
-                id: '1',
-                content: 'Welcome to the channel!',
-                author: {
-                    id: '123',
-                    username: 'ServerBot',
-                    avatar: null
-                },
-                timestamp: new Date(Date.now() - 3600000).toISOString()
-            },
-            {
-                id: '2',
-                content: 'Hey everyone! How\'s the project going?',
-                author: {
-                    id: '456',
-                    username: 'TeamMember',
-                    avatar: null
-                },
-                timestamp: new Date(Date.now() - 1800000).toISOString()
-            }
-        ];
-        
+        const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 100);
+        const messages = await discordBotAPI(`/channels/${encodeURIComponent(req.params.channelId)}/messages?limit=${limit}`);
+
         res.json({
             success: true,
-            messages: mockMessages.slice(0, limit),
-            note: 'Full message access requires Discord bot integration'
+            messages: (Array.isArray(messages) ? messages : []).map((message) => ({
+                id: message.id,
+                content: message.content,
+                author: {
+                    id: message.author?.id || null,
+                    username: message.author?.username || 'unknown',
+                    avatar: message.author?.avatar || null
+                },
+                timestamp: message.timestamp
+            }))
         });
     } catch (error) {
-        return sendInternalError(req, res, error);
+        return respondDiscordError(req, res, error);
     }
 });
 
-// Send message (requires bot - mock for now)
+// Send message (bot token required)
 router.post('/channels/:channelId/messages', authenticateToken, async (req, res) => {
     try {
         await getDiscordIntegration(req.userId);
-        const { content, embeds } = req.body;
-        
-        // Mock response - in production, requires bot token with MESSAGE_SEND permission
+        const { content, embeds } = req.body || {};
+        if ((!content || typeof content !== 'string') && !Array.isArray(embeds)) {
+            return res.status(400).json({ success: false, message: 'Provide message content or embeds' });
+        }
+
+        const message = await discordBotAPI(
+            `/channels/${encodeURIComponent(req.params.channelId)}/messages`,
+            'POST',
+            { content: typeof content === 'string' ? content : undefined, embeds }
+        );
+
         res.json({
             success: true,
             message: {
-                id: Date.now().toString(),
-                content,
-                timestamp: new Date().toISOString()
-            },
-            note: 'Sending messages requires Discord bot integration. Please set up a bot for full functionality.'
+                id: message.id,
+                content: message.content,
+                timestamp: message.timestamp
+            }
         });
     } catch (error) {
-        return sendInternalError(req, res, error);
+        return respondDiscordError(req, res, error);
     }
 });
 
 // ===== WEBHOOKS =====
 
-// Create webhook
+// Create webhook (bot token required)
 router.post('/channels/:channelId/webhooks', authenticateToken, async (req, res) => {
     try {
         await getDiscordIntegration(req.userId);
-        const { name, avatar } = req.body;
-        
-    // Mock response - requires bot or proper channel permissions
-    res.json({
-        success: true,
-        webhook: {
-            id: Date.now().toString(),
-            name,
-            url: 'https://discord.com/api/webhooks/[id]',
-            authKey: '[redacted]'
-        },
-        note: 'Creating webhooks requires proper channel permissions'
-    });
+        const { name, avatar } = req.body || {};
+        if (!name || typeof name !== 'string') {
+            return res.status(400).json({ success: false, message: 'Webhook name is required' });
+        }
+
+        const webhook = await discordBotAPI(
+            `/channels/${encodeURIComponent(req.params.channelId)}/webhooks`,
+            'POST',
+            { name, avatar }
+        );
+
+        res.json({
+            success: true,
+            webhook: {
+                id: webhook.id,
+                name: webhook.name,
+                url: webhook.url || null
+            }
+        });
     } catch (error) {
-        return sendInternalError(req, res, error);
+        return respondDiscordError(req, res, error);
     }
 });
 

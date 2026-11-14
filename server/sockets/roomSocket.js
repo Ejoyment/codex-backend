@@ -22,11 +22,23 @@ const roomService = require('../services/roomService');
 // cap one client could park ~500MB in memory with 1MB chunks.
 const MAX_CHUNK_BYTES = 64 * 1024;
 
-// In-memory terminal ring buffers: roomId -> { seq, chunks: [{ seq, chunk, ts }] }
+// Terminal ring buffers. Redis holds the list when configured (DES-03) so a
+// reconnecting client lands on any instance; the Map below is the fallback.
+// roomId -> { seq, chunks: [{ seq, chunk, ts }] }
 const terminalBuffers = new Map();
 const TERMINAL_BUFFER_CAP = 500;
 const TERMINAL_BUFFER_TTL_MS = 30 * 60 * 1000;
 const MAX_TERMINAL_BUFFERS = 200;
+const TERM_KEY_PREFIX = 'room:term:';
+const TERM_SEQ_PREFIX = 'room:termseq:';
+
+async function redisClients() {
+  try {
+    return await require('../../utils/redis').getRedisClients();
+  } catch {
+    return null;
+  }
+}
 
 function pruneBuffers(now = Date.now()) {
   for (const [roomId, buffer] of terminalBuffers) {
@@ -52,23 +64,68 @@ function getBuffer(roomId) {
   return b;
 }
 
-function pushChunk(roomId, chunk) {
+async function pushChunk(roomId, chunk) {
+  const text = String(chunk);
+  const redis = await redisClients();
+  if (redis) {
+    try {
+      const key = `${TERM_KEY_PREFIX}${roomId}`;
+      const seqKey = `${TERM_SEQ_PREFIX}${roomId}`;
+      const seq = Number(await redis.pub.incr(seqKey));
+      const entry = { seq, chunk: text, ts: Date.now() };
+      await redis.pub.multi()
+        .rpush(key, JSON.stringify(entry))
+        .ltrim(key, -TERMINAL_BUFFER_CAP, -1)
+        .pexpire(key, TERMINAL_BUFFER_TTL_MS)
+        .pexpire(seqKey, TERMINAL_BUFFER_TTL_MS)
+        .exec();
+      return entry;
+    } catch {
+      // Fall back to the local ring so output keeps flowing.
+    }
+  }
+
   const b = getBuffer(roomId);
   b.seq += 1;
-  const entry = { seq: b.seq, chunk: String(chunk), ts: Date.now() };
+  const entry = { seq: b.seq, chunk: text, ts: Date.now() };
   b.chunks.push(entry);
   if (b.chunks.length > TERMINAL_BUFFER_CAP) b.chunks.splice(0, b.chunks.length - TERMINAL_BUFFER_CAP);
   return entry;
 }
 
-function chunksFrom(roomId, fromSeq) {
+async function chunksFrom(roomId, fromSeq) {
+  const redis = await redisClients();
+  if (redis) {
+    try {
+      const rows = await redis.pub.lrange(`${TERM_KEY_PREFIX}${roomId}`, 0, -1);
+      if (rows.length) {
+        const parsed = rows.map((row) => { try { return JSON.parse(row); } catch { return null; } }).filter(Boolean);
+        if (parsed.length) {
+          const last = parsed[parsed.length - 1];
+          return { seq: last.seq, chunks: parsed.filter((c) => c.seq > (fromSeq || 0)) };
+        }
+      }
+      // The list expired but the counter may still be alive; report the seq
+      // without inventing chunks.
+      const seq = Number(await redis.pub.get(`${TERM_SEQ_PREFIX}${roomId}`)) || 0;
+      if (seq) return { seq, chunks: [] };
+    } catch {
+      // Fall back to the local ring.
+    }
+  }
+
   const b = terminalBuffers.get(roomId);
   if (!b) return { seq: 0, chunks: [] };
   return { seq: b.seq, chunks: b.chunks.filter((c) => c.seq > (fromSeq || 0)) };
 }
 
-function clearBuffer(roomId) {
+async function clearBuffer(roomId) {
   terminalBuffers.delete(roomId);
+  const redis = await redisClients();
+  if (!redis) return;
+  try {
+    await redis.pub.del(`${TERM_KEY_PREFIX}${roomId}`, `${TERM_SEQ_PREFIX}${roomId}`);
+  } catch { /* best effort */ }
 }
 
 module.exports = (io) => {
@@ -103,7 +160,7 @@ module.exports = (io) => {
         socket.join(`room:${roomId}`);
         joinedRooms.add(roomId);
         await roomService.touchActivity(room);
-        const { seq } = chunksFrom(roomId, 0);
+        const { seq } = await chunksFrom(roomId, 0);
         socket.emit('room:joined', { roomId, role, terminalSeq: seq });
         socket.to(`room:${roomId}`).emit('room:presence', { userId: socket.userId, role, joined: true });
       } catch (err) {
@@ -148,7 +205,7 @@ module.exports = (io) => {
         if (role !== 'host' && role !== 'controller') {
           return socket.emit('room:error', { message: 'Read-only: control not granted' });
         }
-        const entry = pushChunk(roomId, chunk);
+        const entry = await pushChunk(roomId, chunk);
         room.terminalSeq = entry.seq;
         await room.save();
         ns.to(`room:${roomId}`).emit('room:terminal-chunk', {
@@ -169,7 +226,7 @@ module.exports = (io) => {
         if (!room || room.status === 'closed') return;
         const role = roomService.getRole(room, socket.userId);
         if (!role) return;
-        const { seq, chunks } = chunksFrom(roomId, fromSeq || 0);
+        const { seq, chunks } = await chunksFrom(roomId, fromSeq || 0);
         socket.emit('room:terminal-resync', { roomId, seq, chunks });
       } catch (err) {
         console.error('[rooms] socket operation failed:', err.message);
@@ -212,7 +269,7 @@ module.exports = (io) => {
 
   async function broadcastClosed(roomId) {
     ns.to(`room:${roomId}`).emit('room:closed', { roomId });
-    clearBuffer(roomId);
+    await clearBuffer(roomId);
   }
 
   console.log('✓ Debug rooms (/rooms) namespace initialized');
