@@ -869,15 +869,24 @@ function parseProblems(errorStyle, output) {
 // Rate gate
 // ---------------------------------------------------------------------------
 
+// Counters live in Redis when REDIS_URL is configured (DES-02): a per-process
+// counter let a user get N x the allowance with N instances. Without Redis the
+// bounded in-memory map keeps single-node behaviour.
+const MAX_CONCURRENT_RUNS = 3;
+const MAX_RUNS_PER_MINUTE = 20;
+const ACTIVE_KEY_TTL_MS = 10 * 60 * 1000;
+const INCR_WITH_TTL_LUA = "local v = redis.call('INCR', KEYS[1]) if v == 1 then redis.call('PEXPIRE', KEYS[1], ARGV[1]) end return v";
+const DECR_FLOOR_ZERO_LUA = "local v = redis.call('DECR', KEYS[1]) if v < 0 then redis.call('SET', KEYS[1], 0) v = 0 end return v";
+
 const rateState = new Map(); // userId -> { stamps: number[], active: number }
 
-function rateGate(userId) {
+function memoryGate(userId) {
   const now = Date.now();
   const key = String(userId || 'anon');
   const state = rateState.get(key) || { stamps: [], active: 0 };
   state.stamps = state.stamps.filter((t) => now - t < 60000);
-  if (state.active >= 3) return { allowed: false, reason: 'Too many concurrent runs (max 3)' };
-  if (state.stamps.length >= 20) return { allowed: false, reason: 'Run rate limit exceeded (20/min)' };
+  if (state.active >= MAX_CONCURRENT_RUNS) return { allowed: false, reason: 'Too many concurrent runs (max 3)' };
+  if (state.stamps.length >= MAX_RUNS_PER_MINUTE) return { allowed: false, reason: 'Run rate limit exceeded (20/min)' };
   state.stamps.push(now);
   state.active += 1;
   rateState.set(key, state);
@@ -888,6 +897,51 @@ function rateGate(userId) {
       if (s) s.active = Math.max(0, s.active - 1);
     },
   };
+}
+
+async function rateGate(userId) {
+  const key = String(userId || 'anon');
+  let redis = null;
+  try {
+    redis = await require('./redis').getRedisClients();
+  } catch {
+    redis = null;
+  }
+  if (!redis) return memoryGate(key);
+
+  const activeKey = `ide:active:${key}`;
+  const rateKey = `ide:rate:${key}`;
+  const decr = (k) => redis.pub.eval(DECR_FLOOR_ZERO_LUA, 1, k).catch(() => {});
+
+  try {
+    const active = await redis.pub.eval(INCR_WITH_TTL_LUA, 1, activeKey, ACTIVE_KEY_TTL_MS);
+    if (Number(active) > MAX_CONCURRENT_RUNS) {
+      await decr(activeKey);
+      return { allowed: false, reason: 'Too many concurrent runs (max 3)' };
+    }
+
+    // One bucket per clock minute; the PX expiry clears it even without a sweep.
+    const bucket = Math.floor(Date.now() / 60000);
+    const count = await redis.pub.eval(INCR_WITH_TTL_LUA, 1, `${rateKey}:${bucket}`, 60000);
+    if (Number(count) > MAX_RUNS_PER_MINUTE) {
+      await decr(`${rateKey}:${bucket}`);
+      await decr(activeKey);
+      return { allowed: false, reason: 'Run rate limit exceeded (20/min)' };
+    }
+
+    let released = false;
+    return {
+      allowed: true,
+      release: () => {
+        if (released) return;
+        released = true;
+        decr(activeKey);
+      },
+    };
+  } catch {
+    // Redis blips must not break runs; fall back to the in-process gate.
+    return memoryGate(key);
+  }
 }
 
 // ---------------------------------------------------------------------------

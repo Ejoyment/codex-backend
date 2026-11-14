@@ -6,6 +6,7 @@ const POLL_INTERVAL_MS = 30 * 1000;
 const LOCK_DURATION_MS = 5 * 60 * 1000;
 const MAX_ATTEMPTS = 10;
 const MAX_JOBS_PER_POLL = 25;
+const TERMINAL_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 let timer = null;
 let activePoll = null;
@@ -51,8 +52,9 @@ async function processNextAuditJob() {
           status: terminal ? 'failed' : 'pending',
           availableAt: new Date(Date.now() + delayMs),
           lastError: error.message,
+          ...(terminal ? { purgeAt: new Date(Date.now() + TERMINAL_RETENTION_MS) } : {}),
         },
-        $unset: { lockToken: 1, lockedUntil: 1 },
+        $unset: { lockToken: 1, lockedUntil: 1, ...(terminal ? {} : { purgeAt: 1 }) },
       }
     );
     console.error(`[audit-outbox] ${terminal ? 'permanently failed' : 'retry scheduled'}:`, error.message);

@@ -192,6 +192,16 @@ describe('API base URL and endpoints', () => {
     expect(api).not.toMatch(/onrender\.com/);
   });
 
+  test('lib/api.js never derives the API origin from localStorage (SEC-02)', () => {
+    const api = readFrontend('lib/api.js');
+
+    // The bearer token follows this origin, so it must come from build config
+    // only. The extension key stays a write-only publish of that origin.
+    expect(api).not.toMatch(/getItem\(\s*['"]buildrsApiBase['"]\s*\)/);
+    expect(api).toMatch(/API_BASE_URL\s*=\s*normalizeApiBaseUrl\(process\.env\.NEXT_PUBLIC_API_URL/);
+    expect(api).toMatch(/localStorage\.setItem\('buildrsApiBase', API_BASE_URL\)/);
+  });
+
   test('all apiFetch calls use /api prefix', () => {
     const api = readFrontend('lib/api.js');
     // Find all apiFetch('/... patterns and ensure they start with /api

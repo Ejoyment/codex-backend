@@ -21,8 +21,11 @@ const auditOutboxSchema = new mongoose.Schema({
   lockedUntil: Date,
   lockToken: String,
   lastError: { type: String, default: '' },
+  // Only terminal (failed) rows get a purgeAt; pending work is never reaped.
+  purgeAt: Date,
 }, { timestamps: true });
 
+auditOutboxSchema.index({ purgeAt: 1 }, { expireAfterSeconds: 0 });
 auditOutboxSchema.index({ status: 1, availableAt: 1, createdAt: 1 });
 auditOutboxSchema.index({ status: 1, lockedUntil: 1 });
 

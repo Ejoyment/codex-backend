@@ -20,36 +20,36 @@ const {
 describe('figma PKCE store bounds', () => {
     beforeEach(() => pkceStore.clear());
 
-    test('round-trips a verifier, rejects it after the TTL and deletes it', () => {
-        pkceStore.set('user-1', 'verifier-1');
-        expect(pkceStore.get('user-1')).toBe('verifier-1');
+    test('round-trips a verifier, rejects it after the TTL and deletes it', async () => {
+        await pkceStore.set('user-1', 'verifier-1');
+        await expect(pkceStore.get('user-1')).resolves.toBe('verifier-1');
 
         const realNow = Date.now();
         const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(realNow + 60 * 1000);
         try {
-            expect(pkceStore.get('user-1')).toBeNull();
+            await expect(pkceStore.get('user-1')).resolves.toBeNull();
         } finally {
             nowSpy.mockRestore();
         }
         expect(pkceStore.size()).toBe(0);
     });
 
-    test('sweep prunes expired entries without a lookup', () => {
-        pkceStore.set('user-1', 'verifier-1');
-        pkceStore.set('user-2', 'verifier-2');
+    test('sweep prunes expired entries without a lookup', async () => {
+        await pkceStore.set('user-1', 'verifier-1');
+        await pkceStore.set('user-2', 'verifier-2');
 
         expect(pkceStore.size()).toBe(2);
         expect(pkceStore.prune(Date.now() + 60 * 1000)).toBe(0);
     });
 
-    test('hard cap evicts the oldest entries', () => {
-        pkceStore.set('user-1', 'verifier-1');
-        pkceStore.set('user-2', 'verifier-2');
-        pkceStore.set('user-3', 'verifier-3');
+    test('hard cap evicts the oldest entries', async () => {
+        await pkceStore.set('user-1', 'verifier-1');
+        await pkceStore.set('user-2', 'verifier-2');
+        await pkceStore.set('user-3', 'verifier-3');
 
         expect(pkceStore.size()).toBe(2);
-        expect(pkceStore.get('user-1')).toBeNull();
-        expect(pkceStore.get('user-3')).toBe('verifier-3');
+        await expect(pkceStore.get('user-1')).resolves.toBeNull();
+        await expect(pkceStore.get('user-3')).resolves.toBe('verifier-3');
     });
 });
 
