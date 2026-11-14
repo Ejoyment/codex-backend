@@ -929,13 +929,30 @@ function ensureStaticEntry(entries) {
   const rel = e => String(e.path || '').replace(/^\//, '');
   if (entries.some(e => rel(e) === 'index.html')) return entries;
 
-  const rootHtml = entries.filter(e => !rel(e).includes('/') && rel(e).toLowerCase().endsWith('.html'));
-  if (rootHtml.length === 1) {
+  // Any root .html file can serve as the site entry point; pick the first
+  // alphabetically so the result is deterministic.
+  const rootHtml = entries
+    .filter(e => !rel(e).includes('/') && rel(e).toLowerCase().endsWith('.html'))
+    .sort((a, b) => (rel(a) < rel(b) ? -1 : rel(a) > rel(b) ? 1 : 0));
+  if (rootHtml.length >= 1) {
     return [...entries, {
       name: 'index.html',
       path: 'index.html',
       content: rootHtml[0].content || '',
       encoding: rootHtml[0].encoding,
+    }];
+  }
+
+  // No root .html, but a nested .html exists: serve that as the entry point.
+  const nestedHtml = entries
+    .filter(e => rel(e).includes('/') && rel(e).toLowerCase().endsWith('.html'))
+    .sort((a, b) => (rel(a) < rel(b) ? -1 : rel(a) > rel(b) ? 1 : 0));
+  if (nestedHtml.length >= 1) {
+    return [...entries, {
+      name: 'index.html',
+      path: 'index.html',
+      content: nestedHtml[0].content || '',
+      encoding: nestedHtml[0].encoding,
     }];
   }
 
