@@ -107,31 +107,13 @@ function createServer() {
     if (server && io) return { server, io };
 
     server = http.createServer(app);
+    // One allowlist for both transports; socket.io rejects silently rather
+    // than throwing. See utils/originPolicy.js.
+    const { isAllowedOrigin } = require('./utils/originPolicy');
     io = socketIO(server, {
         cors: {
             origin: function (origin, callback) {
-                const extraOrigins = String(process.env.CORS_EXTRA_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
-                const allowed = [
-                    process.env.FRONTEND_URL,
-                    'https://buildrshq.dev',
-                    'http://buildrshq.dev',
-                    'https://www.buildrshq.dev',
-                    'http://www.buildrshq.dev',
-                    'https://waitlist.buildrshq.dev',
-                    'http://waitlist.buildrshq.dev',
-                    'http://localhost:3000',
-                    'http://localhost:3001',
-                    'http://localhost:3002',
-                    'http://localhost:5500',
-                    'http://127.0.0.1:3000',
-                    'http://127.0.0.1:3001',
-                ].filter(Boolean);
-
-                if (!origin || allowed.includes(origin) || extraOrigins.includes(origin) || /^http:\/\/localhost:\d+$/.test(origin) || /^http:\/\/127\.0\.0\.1:\d+$/.test(origin)) {
-                    callback(null, true);
-                } else {
-                    callback(null, false);
-                }
+                callback(null, isAllowedOrigin(origin));
             },
             credentials: true
         }
@@ -281,29 +263,12 @@ const figmaHelperCors = cors({
     allowedHeaders: ['Authorization', 'Content-Type'],
     maxAge: 600,
 });
+const { isAllowedOrigin } = require('./utils/originPolicy');
 const appCors = cors({
+    // Same allowlist as socket.io (utils/originPolicy.js); the HTTP copy
+    // throws so the failure is visible to the caller.
     origin: function (origin, callback) {
-        // Extra origins (preview deploys) come from CORS_EXTRA_ORIGINS only.
-        // Never wildcard a public suffix (*.onrender.com): anyone can host
-        // there, and credentials:true would expose sessions to them.
-        const extraOrigins = String(process.env.CORS_EXTRA_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
-        const allowed = [
-            process.env.FRONTEND_URL,
-            'https://buildrshq.dev',
-            'http://buildrshq.dev',
-            'https://www.buildrshq.dev',
-            'http://www.buildrshq.dev',
-            'https://waitlist.buildrshq.dev',
-            'http://waitlist.buildrshq.dev',
-            'http://localhost:3000',
-            'http://localhost:3001',
-            'http://localhost:3002',
-            'http://localhost:5500',
-            'http://127.0.0.1:3000',
-            'http://127.0.0.1:3001',
-        ].filter(Boolean);
-
-        if (!origin || allowed.includes(origin) || extraOrigins.includes(origin) || origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
+        if (isAllowedOrigin(origin)) {
             callback(null, true);
         } else {
             callback(new Error('Not allowed by CORS'));
