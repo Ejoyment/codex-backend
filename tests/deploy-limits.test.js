@@ -483,19 +483,38 @@ describe('ensureStaticEntry', () => {
         expect(index.content).toBe('<h1>game</h1>');
     });
 
-    test('no html → generated listing with URL-encoded hrefs and escaped labels', () => {
+    test('multiple root .html files → first alphabetically becomes index.html', () => {
+        const entries = [
+            { name: 'z.html', path: 'z.html', content: '<h1>z</h1>' },
+            { name: 'a.html', path: 'a.html', content: '<h1>a</h1>' },
+        ];
+        const out = ensureStaticEntry(entries);
+        const index = out.find(e => e.path === 'index.html');
+        expect(index.content).toBe('<h1>a</h1>');
+    });
+
+    test('nested .html only → served as root index.html', () => {
+        const entries = [
+            { name: 'page.html', path: 'sub/page.html', content: '<h1>nested</h1>' },
+            { name: 'data.json', path: 'data.json', content: '{}' },
+        ];
+        const out = ensureStaticEntry(entries);
+        const index = out.find(e => e.path === 'index.html');
+        expect(index.content).toBe('<h1>nested</h1>');
+    });
+
+    test('no html at all → generated listing with URL-encoded hrefs and escaped labels', () => {
         const entries = [
             { name: 'my file.txt', path: 'my file.txt', content: 'a' },
             { name: "it's.md", path: "it's.md", content: 'b' },
-            { name: 'x.html', path: 'sub/x.html', content: 'c' },
         ];
         const out = ensureStaticEntry(entries);
         const index = out.find(e => e.path === 'index.html');
         expect(index).toBeTruthy();
         expect(index.content).toContain('href="/my%20file.txt"');
-        expect(index.content).toContain('href="/sub/x.html"');
         expect(index.content).toContain('my file.txt');
         expect(index.content).not.toContain('href="/my file.txt"');
+        expect(index.content).not.toContain('.html');
     });
 });
 
