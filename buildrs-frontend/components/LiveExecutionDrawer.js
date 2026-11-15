@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
-import { X, Terminal, CheckCircle, Loader2, AlertTriangle, FileDiff } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { X, Terminal, CheckCircle, Loader2, AlertTriangle, FileDiff, Brain } from 'lucide-react';
 import { useXterm } from '../hooks/useXterm';
 import { SOCKET_URL } from '../lib/api';
+import { normalizeProgress } from '../lib/agentProgress';
+import { ReasoningPanel } from './AgentReasoning';
 
 let io;
 if (typeof window !== 'undefined') {
@@ -9,12 +11,11 @@ if (typeof window !== 'undefined') {
 }
 
 export default function LiveExecutionDrawer({ taskId, isOpen, onClose, executionId }) {
-  const [isOpen_state, setIsOpen] = useState(isOpen);
   const [logs, setLogs] = useState([]);
+  const [steps, setSteps] = useState([]);
   const [diffs, setDiffs] = useState([]);
   const [validationStatus, setValidationStatus] = useState(null);
-  const [activeTab, setActiveTab] = useState('terminal'); // terminal, diff, validation
-  const [socket] = useState(null);
+  const [activeTab, setActiveTab] = useState('terminal'); // terminal, reasoning, diff, validation
 
   const terminalContainerRef = useRef(null);
   const diffContainerRef = useRef(null);
@@ -35,23 +36,30 @@ export default function LiveExecutionDrawer({ taskId, isOpen, onClose, execution
     socket.on('agent:execution-complete', (data) => {
       setValidationStatus(data.result);
       setDiffs(data.result?.codeBlocks || []);
+      setSteps((prev) => [
+        ...prev,
+        normalizeProgress({ type: 'done', success: data.result?.success !== false, summary: data.result?.summary }),
+      ]);
     });
 
     socket.on('agent:progress', (data) => {
-      if (data.payload?.message) {
-        writeln(`[${data.payload.phase}] ${data.payload.message}`);
-        setLogs(prev => [...prev, { timestamp: new Date(), message: data.payload.message }]);
-      }
+      const step = normalizeProgress(data);
+      if (!step.label) return;
+      writeln(step.phase ? `[${step.phase}] ${step.label}` : step.label);
+      setSteps((prev) => [...prev, step]);
+      setLogs((prev) => [...prev, { at: step.at, message: step.label }]);
     });
 
-    socket.on('agent:cancelled', (data) => {
+    socket.on('agent:cancelled', () => {
       writeln('Execution cancelled by user');
       setValidationStatus({ success: false, message: 'Cancelled' });
+      setSteps((prev) => [...prev, normalizeProgress({ type: 'done', success: false, summary: { stopReason: 'Cancelled by user' } })]);
     });
 
     socket.on('agent:execution-error', (data) => {
       writeln(`Error: ${data.error}`);
       setValidationStatus({ success: false, error: data.error });
+      setSteps((prev) => [...prev, normalizeProgress({ type: 'done', success: false, summary: { stopReason: data.error || 'Execution failed' } })]);
     });
 
     socket.on('agent:approved', (data) => {
@@ -71,6 +79,10 @@ export default function LiveExecutionDrawer({ taskId, isOpen, onClose, execution
       } else {
         writeln(`❌ ${data.failedAssertions} assertions failed`);
       }
+      setSteps((prev) => [
+        ...prev,
+        normalizeProgress({ type: 'result', success: Boolean(data.passed), result: { message: data.passed ? 'All spec assertions passed' : `${data.failedAssertions} assertion(s) failed` } }),
+      ]);
     });
 
     return () => {
@@ -80,6 +92,7 @@ export default function LiveExecutionDrawer({ taskId, isOpen, onClose, execution
 
   const tabs = [
     { id: 'terminal', label: 'Terminal', icon: Terminal },
+    { id: 'reasoning', label: 'Reasoning', icon: Brain },
     { id: 'diff', label: 'Diff', icon: FileDiff },
     { id: 'validation', label: 'Validation', icon: CheckCircle },
   ];
@@ -120,6 +133,15 @@ export default function LiveExecutionDrawer({ taskId, isOpen, onClose, execution
         {activeTab === 'terminal' && (
           <div ref={terminalContainerRef} className="w-full h-full bg-[#121821]">
             <div id="terminal-container" className="w-full h-full" />
+          </div>
+        )}
+
+        {activeTab === 'reasoning' && (
+          <div className="w-full h-full bg-[#121821] p-4 overflow-auto">
+            <p className="mb-3 text-[10px] uppercase tracking-[0.14em] text-figma-text-faint">
+              {steps.length} step{steps.length === 1 ? '' : 's'} recorded
+            </p>
+            <ReasoningPanel steps={steps} />
           </div>
         )}
 
@@ -185,6 +207,7 @@ export default function LiveExecutionDrawer({ taskId, isOpen, onClose, execution
             onClick={() => {
               clear();
               setLogs([]);
+              setSteps([]);
             }}
             className="px-2 py-1 text-xs bg-figma-border-strong hover:bg-figma-border-strong text-figma-text-alt rounded"
           >
