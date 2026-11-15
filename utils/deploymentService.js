@@ -1186,6 +1186,28 @@ async function deployProject(subdomain, files, hooks = {}) {
   } catch (fsErr) {
     throw new DeployError(`Deployment storage is unavailable: ${fsErr.message}`, { stage: 'platform', fault: 'platform' });
   }
+
+  // Pre-flight disk check: ensure the VPS has enough free space for the
+  // project tarball + extracted files + Docker image + build working space.
+  // Require at least 1GB free; large projects need more.
+  try {
+    const dfOut = await sshExec(`df -B1 '${deployBase}' 2>/dev/null || true`).catch(() => '');
+    const lines = dfOut.trim().split('\n');
+    const last = lines[lines.length - 1];
+    const cols = last.split(/\s+/);
+    const availBytes = Number(cols[3]);
+    if (Number.isFinite(availBytes) && availBytes < 1024 * 1024 * 1024) {
+      throw new DeployError(
+        `Not enough disk space on the deployment server (${Math.round(availBytes / 1024 / 1024)} MB free). ` +
+          'Free up space or increase the VPS disk size before deploying large projects.',
+        { stage: 'platform', fault: 'platform' }
+      );
+    }
+  } catch (diskErr) {
+    if (diskErr instanceof DeployError) throw diskErr;
+    // Non-fatal: if we can't read disk stats, proceed and let the deploy fail naturally.
+  }
+
   const deploymentDir = `${deployBase}/${sanitizedSubdomain}`;
   const containerName = `deploy-${sanitizedSubdomain}`;
   const nextContainerName = `${containerName}-next-${Date.now()}`;
@@ -1521,8 +1543,12 @@ async function cleanupOldImages(subdomain) {
       // tags reference them, but each deploy-<sub>:<ts> tag is unique).
       await sshExec(`docker rmi -f ${imgId} 2>/dev/null || true`).catch(() => {});
     }
+    // Prune the Docker build cache — large projects (node_modules, target/,
+    // dist/, etc.) leave gigabytes of cached layers that never get cleaned
+    // automatically and fill the VPS disk across redeploys.
+    await sshExec(`docker builder prune -f 2>/dev/null || true`).catch(() => {});
   } catch (_) {
-    // Best-effort cleanup; never fail a deploy because image cleanup failed.
+    // Best-effort cleanup; never fail a deploy because image/cache cleanup failed.
   }
 }
 
