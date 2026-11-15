@@ -547,6 +547,22 @@ describe('detectRuntime unsupported fallback', () => {
         ]);
         expect(staticSite.runtime).toBe('static');
     });
+
+    test('root .htm file → static', () => {
+        const staticSite = detectRuntime([
+            { name: 'about.htm', path: '/', content: '<h1>about</h1>' },
+            { name: 'style.css', path: '/', content: 'body{}\n' },
+        ]);
+        expect(staticSite.runtime).toBe('static');
+    });
+
+    test('.htm file with server-side source → unsupported', () => {
+        const unsupported = detectRuntime([
+            { name: 'page.htm', path: '/', content: '<h1>hi</h1>' },
+            { name: 'app.py', path: '/', content: 'print("hi")\n' },
+        ]);
+        expect(unsupported.runtime).toBe('unsupported');
+    });
 });
 
 describe('ensureStaticEntry', () => {
@@ -563,6 +579,23 @@ describe('ensureStaticEntry', () => {
         const out = ensureStaticEntry(entries);
         const index = out.find(e => e.path === 'index.html');
         expect(index.content).toBe('<h1>game</h1>');
+    });
+
+    test('root .htm file becomes index.html', () => {
+        const entries = [{ name: 'about.htm', path: 'about.htm', content: '<h1>about</h1>' }];
+        const out = ensureStaticEntry(entries);
+        const index = out.find(e => e.path === 'index.html');
+        expect(index.content).toBe('<h1>about</h1>');
+    });
+
+    test('nested .htm only → served as root index.html', () => {
+        const entries = [
+            { name: 'page.htm', path: 'sub/page.htm', content: '<h1>nested htm</h1>' },
+            { name: 'data.json', path: 'data.json', content: '{}' },
+        ];
+        const out = ensureStaticEntry(entries);
+        const index = out.find(e => e.path === 'index.html');
+        expect(index.content).toBe('<h1>nested htm</h1>');
     });
 
     test('multiple root .html files → first alphabetically becomes index.html', () => {

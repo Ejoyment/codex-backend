@@ -361,7 +361,7 @@ EXPOSE 80
       : `FROM nginx:alpine
 RUN rm -f /usr/share/nginx/html/index.html /usr/share/nginx/html/50x.html
 COPY . /usr/share/nginx/html
-RUN echo 'server { listen 80; root /usr/share/nginx/html; index index.html index.htm; location ~* \\.[^/]+\$ { try_files \$uri =404; } location / { try_files \$uri \$uri/ /index.html; } }' > /etc/nginx/conf.d/default.conf
+RUN echo 'include /etc/nginx/mime.types; default_type text/html; server { listen 80; root /usr/share/nginx/html; index index.html index.htm; location / { try_files \$uri \$uri/ /index.html; } location ~* \\.(html|htm|css|js|ico|png|jpg|jpeg|gif|svg|woff|woff2|ttf|eot|json|xml|txt)\$ { try_files \$uri =404; } }' > /etc/nginx/conf.d/default.conf
 EXPOSE 80
 `,
   });
@@ -993,7 +993,8 @@ CMD ["app"]
   const rootNginx = inRoot('nginx.conf');
   if (rootNginx) return staticResult(ctxRelOf(rootNginx, ''));
   if (entries.some(e => e.dirKey === '' && e.name.endsWith('.php'))) return phpResult('');
-  if (entries.some(e => e.dirKey === '' && e.name.endsWith('.html'))) return staticResult();
+  const hasServerSource = entries.some(e => ['.ts', '.py', '.go', '.rb', '.java', '.rs', '.cs', '.fs', '.vb', '.ex', '.exs', '.dart', '.swift'].includes(path.extname(e.name).toLowerCase()));
+  if (entries.some(e => e.dirKey === '' && (e.name.endsWith('.html') || e.name.endsWith('.htm'))) && !hasServerSource) return staticResult();
 
   // Nested markers: build ONLY from the app dir (`docker build -f <dir>/Dockerfile <dir>`).
   const nestedDockerfiles = entries.filter(e => e.dirKey !== '' && e.name === 'dockerfile');
@@ -1034,8 +1035,7 @@ CMD ["app"]
   // with these files but no recognized runtime manifest should fail clearly
   // rather than silently serving source files as static downloads (which is
   // what the old catch-all staticResult did).
-  const SERVER_SOURCE_EXTENSIONS = ['.ts', '.py', '.go', '.rb', '.java', '.rs', '.cs', '.fs', '.vb', '.ex', '.exs', '.dart', '.swift'];
-  const hasServerSource = entries.some(e => SERVER_SOURCE_EXTENSIONS.includes(path.extname(e.name).toLowerCase()));
+  const isHtmlName = name => name.toLowerCase().endsWith('.html') || name.toLowerCase().endsWith('.htm');
 
   const anyNginx = entries.filter(e => e.name === 'nginx.conf');
   if (anyNginx.length) return staticResult(shallowest(anyNginx).rel);
@@ -1044,7 +1044,7 @@ CMD ["app"]
   // Pure static sites (only HTML/CSS/JS/assets) → serve via nginx.
   // Projects with unrecognized server-side source code → fail with a clear
   // message instead of serving source files as static downloads.
-  if (entries.some(e => e.name.endsWith('.html')) && !hasServerSource) return staticResult();
+  if (entries.some(e => isHtmlName(e.name)) && !hasServerSource) return staticResult();
   if (!hasServerSource) return staticResult();
   return {
     runtime: 'unsupported',
@@ -1075,12 +1075,13 @@ function buildFileRelPath(f) {
 // `entries` use archive-relative paths (see buildFileRelPath output).
 function ensureStaticEntry(entries) {
   const rel = e => String(e.path || '').replace(/^\//, '');
+  const isHtml = name => name.toLowerCase().endsWith('.html') || name.toLowerCase().endsWith('.htm');
   if (entries.some(e => rel(e) === 'index.html')) return entries;
 
-  // Any root .html file can serve as the site entry point; pick the first
+  // Any root .html/.htm file can serve as the site entry point; pick the first
   // alphabetically so the result is deterministic.
   const rootHtml = entries
-    .filter(e => !rel(e).includes('/') && rel(e).toLowerCase().endsWith('.html'))
+    .filter(e => !rel(e).includes('/') && isHtml(rel(e)))
     .sort((a, b) => (rel(a) < rel(b) ? -1 : rel(a) > rel(b) ? 1 : 0));
   if (rootHtml.length >= 1) {
     return [...entries, {
@@ -1091,9 +1092,9 @@ function ensureStaticEntry(entries) {
     }];
   }
 
-  // No root .html, but a nested .html exists: serve that as the entry point.
+  // No root .html/.htm, but a nested .html/.htm exists: serve that as the entry point.
   const nestedHtml = entries
-    .filter(e => rel(e).includes('/') && rel(e).toLowerCase().endsWith('.html'))
+    .filter(e => rel(e).includes('/') && isHtml(rel(e)))
     .sort((a, b) => (rel(a) < rel(b) ? -1 : rel(a) > rel(b) ? 1 : 0));
   if (nestedHtml.length >= 1) {
     return [...entries, {
