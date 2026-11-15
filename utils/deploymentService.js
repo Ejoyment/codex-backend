@@ -1369,6 +1369,7 @@ ${envArgs ? `${envArgs}\n` : ''}  --label 'traefik.enable=true' \\
   --label 'traefik.http.routers.${sanitizedSubdomain}.rule=Host(\`${sanitizedSubdomain}.${DOMAIN}\`) || Host(\`www.${sanitizedSubdomain}.${DOMAIN}\`)' \\
   --label 'traefik.http.routers.${sanitizedSubdomain}.entrypoints=websecure' \\
   --label 'traefik.http.routers.${sanitizedSubdomain}.tls.certresolver=letsencrypt' \\
+  --label 'traefik.http.routers.${sanitizedSubdomain}.service=${sanitizedSubdomain}' \\
   --label 'traefik.http.services.${sanitizedSubdomain}.loadbalancer.server.port=${exposePort}' \\
   ${imageTag}
 `;
