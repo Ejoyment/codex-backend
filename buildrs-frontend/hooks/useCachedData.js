@@ -51,7 +51,10 @@ export function useCachedData(userId, key, fetcher, options = {}) {
   } = options;
 
   const currentUserId = userId ? String(userId) : null;
-  const [data, setData] = useState(() => readCache(currentUserId, key) ?? initialData);
+  const [data, setData] = useState(() => {
+    const cached = readCache(currentUserId, key);
+    return cached ?? initialData ?? [];
+  });
   const [loading, setLoading] = useState(() => readCache(currentUserId, key) == null);
   const mounted = useRef(true);
   const requestRef = useRef(null);
