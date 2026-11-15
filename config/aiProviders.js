@@ -22,6 +22,34 @@ const PROVIDERS = Object.freeze({
     fallbackModelsEnv: 'OPENROUTER_FALLBACK_MODELS',
     endpoint: 'https://openrouter.ai/api/v1/chat/completions',
   }),
+  // Add virtual provider definitions so they show up in providerDefinitions()
+  gemini: Object.freeze({
+    implemented: true,
+    name: 'Gemini (via OpenRouter)',
+    type: 'cloud',
+    apiKeyEnv: 'OPENROUTER_API_KEY',
+    modelEnv: 'GEMINI_MODEL',
+    defaultModel: 'google/gemini-3.8-flash',
+    endpoint: 'https://openrouter.ai/api/v1/chat/completions',
+  }),
+  groq: Object.freeze({
+    implemented: true,
+    name: 'Groq (via OpenRouter)',
+    type: 'cloud',
+    apiKeyEnv: 'OPENROUTER_API_KEY',
+    modelEnv: 'GROQ_MODEL',
+    defaultModel: 'groq/llama-3.3-70b-versatile',
+    endpoint: 'https://openrouter.ai/api/v1/chat/completions',
+  }),
+  mistral: Object.freeze({
+    implemented: true,
+    name: 'Mistral (via OpenRouter)',
+    type: 'cloud',
+    apiKeyEnv: 'OPENROUTER_API_KEY',
+    modelEnv: 'MISTRAL_MODEL',
+    defaultModel: 'mistralai/mistral-large',
+    endpoint: 'https://openrouter.ai/api/v1/chat/completions',
+  })
 });
 
 // Map legacy provider keys to OpenRouter model prefixes so existing code
