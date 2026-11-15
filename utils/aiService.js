@@ -1,11 +1,13 @@
 /**
  * Multi-AI Service
- * Supports: Gemini, Mistral AI, Groq, and more
+ * All AI calls route through OpenRouter.
+ * Supports: Claude, Gemini, Mistral, Groq, Hugging Face, and more
+ * via OpenRouter model names (e.g. anthropic/claude-sonnet-5.5,
+ * google/gemini-3.8-flash, groq/llama-3.3-70b-versatile).
  * Automatic provider selection can fail over; explicit selections stay pinned.
  */
 
-const { GoogleGenerativeAI } = require('@google/generative-ai');
-const { providerDefinitions, implementedProviderNames } = require('../config/aiProviders');
+const { providerDefinitions, implementedProviderNames, modelForProvider, PROVIDER_TO_OPENROUTER_PREFIX } = require('../config/aiProviders');
 const { parsePrivacyMode } = require('./aiPrivacy');
 const { classifyAiError, retryDelayMs, sleep, DEFAULT_MAX_RETRIES } = require('./aiResilience');
 
@@ -74,9 +76,7 @@ class AIService {
                     key,
                     {
                         ...definition,
-                        client: key === 'gemini' && definition.apiKey
-                            ? new GoogleGenerativeAI(definition.apiKey)
-                            : null,
+                        client: null,
                     },
                 ];
             })
@@ -97,11 +97,13 @@ class AIService {
     /**
      * Resolve which provider to use for a call.
      *
-     * A per-request provider (passed by the caller, e.g. the user's selection
-     * or aiRouterService's routing decision) takes precedence over the
-     * process-wide default. Previously `chat()` read only `this.provider`,
-     * so aiRouterService's `provider` argument was silently discarded and
-     * requests could be sent to a provider different from the caller's choice.
+     * All cloud calls route through OpenRouter. Legacy provider keys
+     * (gemini, mistral, groq, huggingface) are transparently mapped to
+     * openrouter with an OpenRouter model name (e.g. provider=gemini
+     * becomes openrouter + model google/gemini-3.8-flash).
+     *
+     * A per-request provider (passed by the caller) takes precedence over the
+     * process-wide default.
      */
     resolveProvider(requested) {
         const explicit = requested && requested !== 'auto';
@@ -109,25 +111,33 @@ class AIService {
             ? this.provider
             : null;
 
+        // Map legacy provider keys to openrouter so existing callers that
+        // request provider=gemini|mistral|groq|huggingface still work — the
+        // call goes through OpenRouter with the mapped model name.
+        const mappedProvider = explicit && PROVIDER_TO_OPENROUTER_PREFIX[requested]
+            ? 'openrouter'
+            : requested;
+
         // An explicit request is validated strictly: never silently serve a
         // different provider than the caller named.
         if (explicit) {
-            if (!this.providers[requested]) {
+            if (!this.providers[mappedProvider]) {
                 throw new Error(`AI provider "${requested}" is not supported by this service.`);
             }
-            if (!this.providers[requested].available) {
-                throw new Error(`AI provider "${requested}" is selected but not configured. Add its API key or select an available provider.`);
+            if (!this.providers[mappedProvider].available) {
+                throw new Error(`AI provider "${requested}" is selected but not configured. Add OPENROUTER_API_KEY or select an available provider.`);
             }
-            return requested;
+            return mappedProvider;
         }
 
         if (configuredProvider) {
-            if (!this.providers[configuredProvider]) {
+            const mappedConfigured = PROVIDER_TO_OPENROUTER_PREFIX[configuredProvider]
+                ? 'openrouter'
+                : configuredProvider;
+            if (!this.providers[mappedConfigured]) {
                 throw new Error(`AI provider "${configuredProvider}" is not supported by this service.`);
             }
-            if (this.providers[configuredProvider].available) return configuredProvider;
-            // A stale default (the key was removed or renamed) must not take
-            // the whole platform down when another provider is configured.
+            if (this.providers[mappedConfigured].available) return mappedConfigured;
             const alternate = Object.keys(this.providers).find((key) => this.providers[key].available);
             if (alternate) {
                 console.warn(`[ai] AI_PROVIDER="${configuredProvider}" is not configured; using "${alternate}"`);
@@ -255,12 +265,18 @@ class AIService {
      * provider's fallback models (env-configurable). A Gemini 503 is usually
      * model-specific, so switching model inside the provider is faster than
      * switching provider.
+     *
+     * Model names are mapped to OpenRouter format (e.g. provider=gemini with
+     * model="3.8-flash" becomes "google/gemini-3.8-flash").
      */
     modelCandidates(provider, requestedModel) {
         const config = this.providers[provider];
         if (!config) return [];
+        const mappedModel = requestedModel
+            ? modelForProvider(provider, requestedModel)
+            : config.model;
         return [...new Set([
-            requestedModel || config.model,
+            mappedModel,
             ...(config.fallbackModels || []),
         ].filter(Boolean))];
     }
@@ -344,16 +360,8 @@ class AIService {
 
     async callProvider(provider, messages, codeContext) {
         switch (provider) {
-            case 'gemini':
-                return this.chatGemini(messages, codeContext);
-            case 'mistral':
-                return this.chatMistral(messages, codeContext);
-            case 'groq':
-                return this.chatGroq(messages, codeContext);
             case 'openrouter':
                 return this.chatOpenRouter(messages, codeContext);
-            case 'huggingface':
-                return this.chatHuggingFace(messages, codeContext);
             default:
                 throw new Error(`Unknown provider: ${provider}`);
         }
@@ -454,222 +462,11 @@ Please:
         return (ready.length ? ready : candidates)[0];
     }
 
-    // Gemini Implementation
-    async chatGemini(messages, codeContext) {
-        const config = this.providers.gemini;
-        const model = config.client.getGenerativeModel({
-            model: codeContext.model || config.model,
-            generationConfig: {
-                maxOutputTokens: parseInt(process.env.AI_MAX_TOKENS) || 8192,
-                temperature: parseFloat(process.env.AI_TEMPERATURE) || 0.7,
-            }
-        });
-
-        const systemMessages = messages
-            .filter((message) => message.role === 'system')
-            .map((message) => message.content);
-        const systemPrompt = [this.buildSystemPrompt(codeContext), ...systemMessages].join('\n\n');
-        const conversationHistory = this.formatMessagesForGemini(
-            messages.filter((message) => message.role !== 'system')
-        );
-        const fullPrompt = `${systemPrompt}\n\n${conversationHistory}`;
-
-        const result = await model.generateContent(fullPrompt, {
-            timeout: codeContext.timeoutMs || AI_REQUEST_TIMEOUT_MS,
-            signal: codeContext.signal || AbortSignal.timeout(AI_REQUEST_TIMEOUT_MS),
-        });
-        const response = result.response;
-        const text = response.text();
-
-        return {
-            success: true,
-            content: text,
-            codeBlocks: this.extractCodeBlocks(text),
-            fileReferences: this.extractFileReferences(text),
-            provider: 'gemini'
-        };
-    }
-
-    // Mistral AI Implementation
-    async chatMistral(messages, codeContext) {
-        const config = this.providers.mistral;
-        const systemPrompt = this.buildSystemPrompt(codeContext);
-        
-        const formattedMessages = [
-            { role: 'system', content: systemPrompt },
-            ...messages.map(m => ({
-                role: m.role,
-                content: m.content
-            }))
-        ];
-
-        const response = await fetch(config.endpoint, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${config.apiKey}`
-            },
-            body: JSON.stringify({
-                model: codeContext.model || config.model,
-                messages: formattedMessages,
-                max_tokens: resolveMaxTokens(codeContext, parseInt(process.env.AI_MAX_TOKENS) || 8192),
-                temperature: parseFloat(process.env.AI_TEMPERATURE) || 0.7
-            }),
-            signal: codeContext.signal || AbortSignal.timeout(codeContext.timeoutMs || AI_REQUEST_TIMEOUT_MS)
-        });
-
-        if (!response.ok) {
-            throw await providerHttpError('Mistral', response);
-        }
-
-        const data = await response.json();
-        const text = data.choices[0].message.content;
-
-        return {
-            success: true,
-            content: text,
-            codeBlocks: this.extractCodeBlocks(text),
-            fileReferences: this.extractFileReferences(text),
-            provider: 'mistral'
-        };
-    }
-
-    // Groq Implementation (Fast Inference)
-    async chatGroq(messages, codeContext) {
-        const config = this.providers.groq;
-        const systemPrompt = this.buildSystemPrompt(codeContext);
-        
-        const formattedMessages = [
-            { role: 'system', content: systemPrompt },
-            ...messages.map(m => ({
-                role: m.role,
-                content: m.content
-            }))
-        ];
-
-        const isAgentReasoning = codeContext.agentReasoning === true;
-        const isGptOss = String(codeContext.model || config.model).includes('gpt-oss');
-        const availableTools = Array.isArray(codeContext.availableTools) ? codeContext.availableTools : [];
-        const responseFormat = isAgentReasoning && isGptOss
-            ? {
-                type: 'json_schema',
-                json_schema: {
-                    name: 'agent_reasoning',
-                    strict: true,
-                    schema: {
-                        type: 'object',
-                        properties: {
-                            thought: { type: 'string' },
-                            goalAchieved: { type: 'boolean' },
-                            action: {
-                                type: 'object',
-                                properties: {
-                                    tool: { type: 'string', enum: [...availableTools, 'none'] },
-                                    parameters: { type: 'string' },
-                                },
-                                required: ['tool', 'parameters'],
-                                additionalProperties: false,
-                            },
-                        },
-                        required: ['thought', 'goalAchieved', 'action'],
-                        additionalProperties: false,
-                    },
-                },
-            }
-            : isAgentReasoning
-                ? { type: 'json_object' }
-                : undefined;
-        const response = await fetch(config.endpoint, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${config.apiKey}`
-            },
-            body: JSON.stringify({
-                model: codeContext.model || config.model,
-                messages: formattedMessages,
-                max_tokens: resolveMaxTokens(codeContext, parseInt(process.env.AI_MAX_TOKENS) || 8192),
-                temperature: parseFloat(process.env.AI_TEMPERATURE) || 0.7,
-                ...(isGptOss ? { reasoning_effort: 'low' } : {}),
-                ...(responseFormat ? { response_format: responseFormat } : {})
-            }),
-            signal: codeContext.signal || AbortSignal.timeout(codeContext.timeoutMs || AI_REQUEST_TIMEOUT_MS)
-        });
-
-        if (!response.ok) {
-            throw await providerHttpError('Groq', response);
-        }
-
-        const data = await response.json();
-        const msg = data.choices[0].message;
-        if (Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
-            throw new Error('Groq returned a native tool call, but this request uses application-managed agent tools');
-        }
-        const text = msg.content || msg.reasoning || '';
-
-        return {
-            success: true,
-            content: text,
-            codeBlocks: this.extractCodeBlocks(text),
-            fileReferences: this.extractFileReferences(text),
-            provider: 'groq'
-        };
-    }
-
-    // Hugging Face Implementation
-    async chatHuggingFace(messages, codeContext) {
-        const config = this.providers.huggingface;
-        const systemPrompt = this.buildSystemPrompt(codeContext);
-        const systemMessages = messages
-            .filter((message) => message.role === 'system')
-            .map((message) => message.content);
-        const conversation = messages
-            .filter((message) => message.role !== 'system')
-            .map((message) => `${message.role === 'assistant' ? 'Assistant' : 'User'}: ${message.content}`)
-            .join('\n\n');
-        const prompt = [
-            [systemPrompt, ...systemMessages].join('\n\n'),
-            conversation,
-            'Assistant:',
-        ].filter(Boolean).join('\n\n');
-
-        const response = await fetch(config.endpoint + (codeContext.model || config.model), {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${config.apiKey}`
-            },
-            body: JSON.stringify({
-                inputs: prompt,
-                parameters: {
-                    max_new_tokens: resolveMaxTokens(codeContext, parseInt(process.env.AI_MAX_TOKENS) || 2048),
-                    temperature: parseFloat(process.env.AI_TEMPERATURE) || 0.7,
-                    return_full_text: false
-                }
-            }),
-            signal: codeContext.signal || AbortSignal.timeout(codeContext.timeoutMs || AI_REQUEST_TIMEOUT_MS)
-        });
-
-        if (!response.ok) {
-            throw await providerHttpError('Hugging Face', response);
-        }
-
-        const data = await response.json();
-        const text = Array.isArray(data) ? data[0]?.generated_text : data?.generated_text;
-
-        return {
-            success: true,
-            content: text,
-            codeBlocks: this.extractCodeBlocks(text),
-            fileReferences: this.extractFileReferences(text),
-            provider: 'huggingface'
-        };
-    }
-
-    // OpenRouter Implementation (Claude via OpenRouter)
+    // OpenRouter Implementation (all AI models via OpenRouter)
     // OpenRouter is OpenAI-compatible: standard messages array, Bearer auth,
-    // json_object response format. Claude models accessed via OpenRouter
-    // (e.g. anthropic/claude-sonnet-4-20250514).
+    // json_object response format. All models (Claude, Gemini, Mistral, Groq,
+    // etc.) are accessed via OpenRouter model names (e.g.
+    // anthropic/claude-sonnet-5.5, google/gemini-3.8-flash).
     async chatOpenRouter(messages, codeContext) {
         const config = this.providers.openrouter;
         const systemMessages = messages

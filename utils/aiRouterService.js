@@ -1,4 +1,4 @@
-const { providerDefinitions, implementedProviderNames } = require('../config/aiProviders');
+const { providerDefinitions, implementedProviderNames, modelForProvider, PROVIDER_TO_OPENROUTER_PREFIX } = require('../config/aiProviders');
 const { parsePrivacyMode } = require('./aiPrivacy');
 const localBridge = require('./localBridge');
 
@@ -38,7 +38,9 @@ class AIRouterService {
 
   /**
    * Resolve an explicit request, deployment preference, or configured provider.
-   * An explicit selection is never replaced by a different provider.
+   * Legacy provider keys (gemini, mistral, groq, huggingface) are transparently
+   * mapped to openrouter so the call goes through OpenRouter with the mapped
+   * model name. An explicit selection is never replaced by a different provider.
    */
   resolveProviderName(requested) {
     const requestedProvider = requested && requested !== 'auto' ? requested : null;
@@ -46,23 +48,33 @@ class AIRouterService {
       ? process.env.AI_PROVIDER
       : null;
 
+    // Map legacy provider keys to openrouter so existing callers that
+    // request provider=gemini|mistral|groq|huggingface still work — the call
+    // goes through OpenRouter with the mapped model name.
+    const mappedRequested = requestedProvider && PROVIDER_TO_OPENROUTER_PREFIX[requestedProvider]
+      ? 'openrouter'
+      : requestedProvider;
+    const mappedConfigured = configuredProvider && PROVIDER_TO_OPENROUTER_PREFIX[configuredProvider]
+      ? 'openrouter'
+      : configuredProvider;
+
     // An explicit selection is never replaced by a different provider.
-    if (requestedProvider) {
-      if (!this.providers[requestedProvider]) {
+    if (mappedRequested) {
+      if (!this.providers[mappedRequested]) {
         throw new Error(`AI provider "${requestedProvider}" is not supported. Choose a configured provider or set AI_PROVIDER to a supported provider.`);
       }
-      if (!this.providers[requestedProvider].available) {
+      if (!this.providers[mappedRequested].available) {
         throw new Error(`AI provider "${requestedProvider}" is selected but not configured. Add its API key or select an available provider.`);
       }
-      return { provider: requestedProvider, substitutedFrom: null };
+      return { provider: mappedRequested, substitutedFrom: null };
     }
 
-    if (configuredProvider) {
-      if (!this.providers[configuredProvider]) {
+    if (mappedConfigured) {
+      if (!this.providers[mappedConfigured]) {
         throw new Error(`AI provider "${configuredProvider}" is not supported. Choose a configured provider or set AI_PROVIDER to a supported provider.`);
       }
-      if (this.providers[configuredProvider].available) {
-        return { provider: configuredProvider, substitutedFrom: null };
+      if (this.providers[mappedConfigured].available) {
+        return { provider: mappedConfigured, substitutedFrom: null };
       }
       // A stale default key removal should not disable AI entirely.
       const alternate = Object.keys(this.providers).find((key) => this.providers[key].available);
@@ -75,7 +87,7 @@ class AIRouterService {
 
     const provider = Object.keys(this.providers).find((key) => this.providers[key].available);
     if (!provider) {
-      throw new Error('No AI provider configured. Add an API key for Gemini, Mistral, Groq, or Hugging Face.');
+      throw new Error('No AI provider configured. Add OPENROUTER_API_KEY to the environment.');
     }
     return { provider, substitutedFrom: null };
   }
@@ -115,6 +127,8 @@ class AIRouterService {
     if (model === undefined || model === null) return null;
     const value = String(model).trim();
     if (!value) return null;
+    // OpenRouter model names (e.g. google/gemini-3.8-flash) pass through as-is.
+    if (value.includes('/')) return value;
     if (provider && value.toLowerCase() === String(provider).toLowerCase()) return null;
     // Cloud providers expose exactly one configured model. A saved preference
     // from an older build/newer model list must not fail the whole request:
