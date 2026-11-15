@@ -10,6 +10,7 @@ const SSH_PORT = parseInt(process.env.DEPLOY_SSH_PORT || '22');
 const SSH_USER = process.env.DEPLOY_SSH_USER || 'deployer';
 const DOMAIN = process.env.DEPLOY_DOMAIN || 'buildrshq.dev';
 const DEPLOY_SUBDIR = (process.env.DEPLOY_ROOT || 'deployments').replace(/^\/+/, '').replace(/^~\/?/, '');
+const DEPLOY_BASE = process.env.DEPLOY_BASE || '';
 const DEPLOY_TIMEOUT_MS = parseInt(process.env.DEPLOY_TIMEOUT_MS) || 900000;
 
 function getRawKey() {
@@ -38,12 +39,15 @@ async function getHomeDir() {
 async function findWritableBase() {
   if (!SSH_HOST) throw new Error('DEPLOY_SSH_HOST env not set');
   const homeDir = await getHomeDir();
-  const candidates = [
+  const candidates = [];
+  if (DEPLOY_BASE) candidates.push(DEPLOY_BASE);
+  candidates.push(
     `${homeDir}/deployments`,
     `${homeDir}/${DEPLOY_SUBDIR}`,
     '/var/tmp/deployments',
     '/tmp/deployments',
-  ];
+    '/mnt/HC_Volume_107473764/deployments',
+  );
   for (const dir of candidates) {
     try {
       await sshExec(`mkdir -p ${dir} && touch ${dir}/.writetest && rm -f ${dir}/.writetest`);
