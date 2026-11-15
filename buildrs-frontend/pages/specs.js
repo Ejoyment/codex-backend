@@ -6,6 +6,7 @@ import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch, projectApi } from '../lib/api';
+import PageHeader from '../components/PageHeader';
 
 const CHECK_TYPES = ['code_pattern', 'test_name', 'file_exists', 'ast_import', 'route', 'contract_test', 'ai_review', 'manual'];
 const CHECK_VALUE_TYPES = ['code_pattern', 'file_exists', 'test_name', 'ast_import', 'route', 'contract_test'];
@@ -467,20 +468,19 @@ export default function SpecsPage() {
             </section>
           ) : (
             <>
-          <div className="specs-page-heading">
-            <div>
-              <p className="specs-eyebrow">Build / Specifications</p>
-              <h1>Specifications</h1>
-              <p>Define and validate executable contracts for project architecture, dependencies, and verification.</p>
-            </div>
-            <div className="specs-project-select">
-              {projects.length > 0 && (
+          <PageHeader
+            className="specs-page-heading"
+            breadcrumbs={[{ label: 'Dashboard', href: '/dashboard' }, { label: 'Specifications' }]}
+            title="Specifications"
+            description="Define and validate executable contracts for project architecture, dependencies, and verification."
+            actions={projects.length > 0 && (
+              <div className="specs-project-select">
                 <select className="ws-select" value={projectId} onChange={(event) => setProjectId(event.target.value)} aria-label="Project">
                   {projects.map((project) => <option key={project.id || project._id} value={project.id || project._id}>{project.name}</option>)}
                 </select>
-              )}
-            </div>
-          </div>
+              </div>
+            )}
+          />
           <div className="specs-content">
             {notice && <div className="std-alert std-alert-error">{notice}</div>}
             {loadError && <div className="std-alert std-alert-error">{loadError}</div>}

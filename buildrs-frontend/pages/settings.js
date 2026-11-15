@@ -8,6 +8,7 @@ import { apiFetch, isDemoTourActive } from '../lib/api';
 import { rateLimit, validate, createSubmitGuard } from '../lib/security';
 import { getAvatarUrl } from '../lib/utils';
 import { normalizeTier } from '../lib/tier';
+import PageHeader from '../components/PageHeader';
 import { FREE_PLAN, planById } from '../lib/plans';
 import {
   Shield,
@@ -439,11 +440,11 @@ export default function Settings() {
 
         <main className="workspace-main">
           <div className="workspace-content set-page">
-            <header className="set-page-head">
-              <p className="set-breadcrumb">Manage <span>/</span> Settings</p>
-              <h1 className="set-title">Settings</h1>
-              <p className="set-subtitle">Manage account, AI preferences, Security Settings</p>
-            </header>
+            <PageHeader
+              className="set-page-head"
+              title="Settings"
+              description="Manage your account, AI preferences, and security settings."
+            />
 
             <nav className="set-tabs" role="tablist" aria-label="Settings sections">
               {TABS.map(({ id, label }) => (

@@ -851,6 +851,102 @@
   margin: 0 auto;
 }
 
+/* ---- Page header & breadcrumbs ---------------------------------------- */
+
+.ws-page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.ws-page-head-text {
+  min-width: 0;
+}
+
+.ws-page-crumbs {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.4rem;
+  padding: 0;
+  list-style: none;
+  font-family: var(--figma-font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--figma-text-faint);
+}
+
+.ws-page-crumbs li {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.ws-page-crumbs a {
+  color: var(--figma-text-faint);
+  text-decoration: none;
+  transition: color 120ms ease;
+}
+
+.ws-page-crumbs a:hover {
+  color: var(--figma-accent-soft);
+}
+
+.ws-page-crumbs a:focus-visible {
+  outline: 2px solid var(--figma-accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.ws-page-crumbs [aria-current='page'] {
+  color: var(--figma-accent);
+}
+
+.ws-page-crumbs .ws-crumb-sep {
+  width: 0.7rem;
+  height: 0.7rem;
+  flex: 0 0 auto;
+  color: var(--figma-text-ghost);
+}
+
+.ws-page-title {
+  margin: 0;
+  font-size: 1.45rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  color: var(--figma-text);
+}
+
+.ws-page-desc {
+  max-width: 68ch;
+  margin: 0.35rem 0 0;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--figma-text-faint);
+}
+
+.ws-page-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.45rem;
+  font-size: 0.72rem;
+  color: var(--figma-text-faint);
+}
+
+.ws-page-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
 /* ---- Header ----------------------------------------------------------- */
 
 .dash-crumb {

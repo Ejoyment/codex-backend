@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import AuthGuard from '../../components/AuthGuard';
 import Sidebar from '../../components/Sidebar';
+import Breadcrumbs from '../../components/Breadcrumbs';
 import { useCurrentCompany } from '../../hooks/useCurrentCompany';
 import { agentApi, apiFetch, projectApi } from '../../lib/api';
 import useAuthStore from '../../store/authStore';
@@ -412,8 +413,11 @@ export default function TaskDetails() {
               <>
                 <div className="tsk-detail-intro">
                   <div className="tsk-detail-breadcrumb">
-                    <Link href="/tasks">WORK</Link><span>/</span><Link href="/tasks">TASKS</Link><span>/</span><span>{taskStatus(task).toUpperCase()}</span>
-                    <span className={`tsk-detail-status status-${String(task.status || 'backlog').replace(/_/g, '-')}`}>{taskStatus(task)}</span>
+                    <Breadcrumbs items={[{ label: 'Tasks', href: '/tasks' }, { label: task.title || 'Task' }]}>
+                      <li>
+                        <span className={`tsk-detail-status status-${String(task.status || 'backlog').replace(/_/g, '-')}`}>{taskStatus(task)}</span>
+                      </li>
+                    </Breadcrumbs>
                   </div>
                   <div className="tsk-detail-title-row">
                     <div>

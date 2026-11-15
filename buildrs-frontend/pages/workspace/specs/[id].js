@@ -6,6 +6,7 @@ import Sidebar from '../../../components/Sidebar';
 import AuthGuard from '../../../components/AuthGuard';
 import useAuthStore from '../../../store/authStore';
 import { apiFetch } from '../../../lib/api';
+import PageHeader from '../../../components/PageHeader';
 import { FileCode as FileCodeIcon, Terminal, GitBranch, AlertTriangle, CheckCircle, Loader2 } from 'lucide-react';
 
 const SpecEditor = dynamic(() => import('../../../components/SpecEditor'), { ssr: false });
@@ -82,26 +83,33 @@ export default function SpecWorkspace() {
         <Sidebar />
         <main className="workspace-main flex-1 p-6 bg-[#121821] overflow-auto">
           <div className="mb-6">
-            <div className="flex items-center gap-3 mb-2">
-              <FileCodeIcon className="w-6 h-6 text-purple-400" />
-              <h1 className="text-2xl font-bold text-[#dee2f6]">{spec?.title}</h1>
-              <span className="text-xs bg-purple-600/20 text-purple-400 px-2 py-0.5 rounded">
-                {spec?.specId}
-              </span>
-            </div>
-            <div className="flex items-center gap-4 text-xs text-figma-text-faint">
-              <span>Updated: {spec?.updatedAt ? new Date(spec.updatedAt).toLocaleDateString() : 'Never'}</span>
-              {spec?.targetModules?.length > 0 && (
-                <span className="flex items-center gap-1">
-                  <GitBranch className="w-3 h-3" /> {spec.targetModules.length} modules
+            <PageHeader
+              breadcrumbs={[{ label: 'Specifications', href: '/specs' }, { label: spec?.title || 'Specification' }]}
+              title={(
+                <span className="flex items-center gap-3">
+                  <FileCodeIcon className="w-6 h-6 text-purple-400" />
+                  {spec?.title}
+                  <span className="text-xs bg-purple-600/20 text-purple-400 px-2 py-0.5 rounded">
+                    {spec?.specId}
+                  </span>
                 </span>
               )}
-              {spec?.assertions?.length > 0 && (
-                <span className="flex items-center gap-1">
-                  <AlertTriangle className="w-3 h-3" /> {spec.assertions.length} assertions
-                </span>
+              meta={(
+                <>
+                  <span>Updated: {spec?.updatedAt ? new Date(spec.updatedAt).toLocaleDateString() : 'Never'}</span>
+                  {spec?.targetModules?.length > 0 && (
+                    <span className="flex items-center gap-1">
+                      <GitBranch className="w-3 h-3" /> {spec.targetModules.length} modules
+                    </span>
+                  )}
+                  {spec?.assertions?.length > 0 && (
+                    <span className="flex items-center gap-1">
+                      <AlertTriangle className="w-3 h-3" /> {spec.assertions.length} assertions
+                    </span>
+                  )}
+                </>
               )}
-            </div>
+            />
           </div>
 
           <div className="grid grid-cols-3 gap-4 mb-6">

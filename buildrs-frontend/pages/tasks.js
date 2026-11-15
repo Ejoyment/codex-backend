@@ -6,6 +6,7 @@ import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch, projectApi } from '../lib/api';
 import CreateTaskWizard from '../components/CreateTaskWizard';
+import PageHeader from '../components/PageHeader';
 import FigmaFramePicker from '../components/figma/FigmaFramePicker';
 import {
   Plus,
@@ -383,31 +384,30 @@ export default function Tasks() {
             </>
           ) : (
             <>
-              <header className="workspace-header dash-header tsk-page-header">
-                <div>
-                  <p className="dash-crumb"><span>WORK</span><span className="sep">/</span> TASKS</p>
-                  <h1 className="dash-title">Tasks</h1>
-                  <div className="tsk-header-subtitle">
-                    <span>Plan, delegate, and ship connected engineering work.</span>
-                    {selectedCompany?.name && <span className="tsk-workspace-chip">{selectedCompany.name}</span>}
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    className="btn-workspace btn-secondary tsk-refresh-button"
-                    title="Refresh tasks"
-                    onClick={() => loadTasks(true)}
-                    disabled={loading}
-                  >
-                    <RotateCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                  </button>
-                  <button type="button" className="btn-workspace btn-primary" onClick={() => setShowWizard(true)}>
-                    <Plus className="w-4 h-4" />
-                    <span>New Task</span>
-                  </button>
-                </div>
-              </header>
+              <PageHeader
+                className="workspace-header dash-header tsk-page-header"
+                breadcrumbs={[{ label: 'Dashboard', href: '/dashboard' }, { label: 'Tasks' }]}
+                title="Tasks"
+                description="Plan, delegate, and ship connected engineering work."
+                meta={selectedCompany?.name ? <span className="tsk-workspace-chip">{selectedCompany.name}</span> : null}
+                actions={(
+                  <>
+                    <button
+                      type="button"
+                      className="btn-workspace btn-secondary tsk-refresh-button"
+                      title="Refresh tasks"
+                      onClick={() => loadTasks(true)}
+                      disabled={loading}
+                    >
+                      <RotateCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                    </button>
+                    <button type="button" className="btn-workspace btn-primary" onClick={() => setShowWizard(true)}>
+                      <Plus className="w-4 h-4" />
+                      <span>New Task</span>
+                    </button>
+                  </>
+                )}
+              />
 
               <div className="workspace-content">
                 <div className="tsk-content">
