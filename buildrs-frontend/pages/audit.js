@@ -176,10 +176,10 @@ export default function AuditLogs() {
                     ) : loading ? (
                       <p className="text-sm text-muted">Loading events...</p>
                     ) : error ? (
-                      <p className="text-sm text-[#ec1414]">{error}</p>
+                      <p className="text-sm text-figma-error-soft">{error}</p>
                     ) : logs.length === 0 ? (
                       <div className="text-center py-10">
-                        <Filter className="w-8 h-8 mx-auto mb-2" style={{ color: '#2a3446' }} />
+                        <Filter className="w-8 h-8 mx-auto mb-2" style={{ color: 'var(--figma-border-strong)' }} />
                         <p className="text-sm text-muted">
                           No activity yet. Events are recorded for deployments, file changes, git operations, invites and AI actions.
                         </p>

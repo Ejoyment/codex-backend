@@ -143,7 +143,7 @@ export default function Demo() {
                   Request demo <span className="mkt-arrow">→</span>
                 </button>
               </MagneticButton>
-              <p className="mkt-mono text-center text-[11px] text-[#59687a]">
+              <p className="mkt-mono text-center text-[11px] text-figma-text-faint">
                 replies within one business day · no obligation
               </p>
             </form>

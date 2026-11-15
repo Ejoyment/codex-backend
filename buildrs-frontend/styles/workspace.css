@@ -14,7 +14,7 @@
   --ws-border-strong: rgba(255, 255, 255, 0.14);
   --ws-text: var(--figma-text);
   --ws-text-muted: #a9b7c4;
-  --ws-text-faint: var(--figma-text-ghost);
+  --ws-text-faint: var(--figma-text-faint);
   --ws-blue: var(--figma-accent);
   --ws-green: var(--figma-success);
   --ws-purple: var(--figma-purple);
@@ -517,7 +517,7 @@
 }
 
 .status-offline {
-  background: #59687a;
+  background: var(--figma-border-strong);
 }
 
 .status-error {
@@ -803,7 +803,7 @@
 
 .workspace-sidebar::-webkit-scrollbar-thumb:hover,
 .workspace-content::-webkit-scrollbar-thumb:hover {
-  background: #2a3446;
+  background: var(--figma-border-strong);
 }
 
 @media (max-width: 1024px) {
@@ -2085,7 +2085,7 @@
   width: 7px;
   height: 7px;
   border-radius: 999px;
-  background: #59687a;
+  background: var(--figma-border-strong);
 }
 
 .tsk-tab-count {
@@ -7153,7 +7153,7 @@
   overflow: auto;
   padding: 0.3rem;
   background: #1d263b;
-  border: 1px solid #2a3446;
+  border: 1px solid var(--figma-border-strong);
   border-radius: 6px;
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.55);
 }
@@ -7960,7 +7960,7 @@
   outline: none;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
-.set-input::placeholder { color: var(--figma-text-ghost); }
+.set-input::placeholder { color: var(--figma-text-faint); }
 .set-input:focus { border-color: rgba(18, 220, 229, 0.6); box-shadow: 0 0 0 2px rgba(18, 220, 229, 0.12); }
 .set-input:disabled { opacity: 0.6; cursor: not-allowed; }
 .set-input.is-error { border-color: rgba(236, 20, 20, 0.6); }
@@ -8227,7 +8227,7 @@
 .set-provider-block { margin-top: 1.25rem; }
 .set-provider-chips { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.65rem; }
 .set-provider-chip { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.7rem; border-radius: 999px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); color: var(--figma-text-soft); font-size: 0.78rem; }
-.set-provider-type { color: var(--figma-text-ghost); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; }
+.set-provider-type { color: var(--figma-text-faint); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; }
 
 .set-integrations { border-top: 1px solid rgba(255,255,255,0.06); }
 .set-int-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.95rem 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
@@ -8256,7 +8256,7 @@
 .set-password-rules { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.4rem 0.75rem; list-style: none; padding: 0.85rem 1rem; margin: 0; border-radius: 9px; border: 1px solid rgba(255,255,255,0.06); background: rgba(255,255,255,0.02); }
 .set-password-rules li { display: flex; align-items: center; gap: 0.4rem; font-size: 0.78rem; }
 .set-password-rules li.is-pass { color: #56e5a9; }
-.set-password-rules li.is-fail { color: var(--figma-text-ghost); }
+.set-password-rules li.is-fail { color: var(--figma-text-faint); }
 .set-rule-icon { width: 13px; height: 13px; flex-shrink: 0; }
 .set-modal-actions { display: flex; justify-content: flex-end; gap: 0.75rem; padding-top: 0.5rem; }
 .set-password-success { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 0.75rem; padding: 1.25rem 0.5rem 0.5rem; }
@@ -8791,7 +8791,7 @@
 
 .ed-menubtn:hover,
 .ed-menubtn.is-open {
-  background: #2a3446;
+  background: var(--figma-border-strong);
   color: #dee2f6;
 }
 
@@ -8801,7 +8801,7 @@
   left: 0;
   min-width: 230px;
   background: #1d263b;
-  border: 1px solid #2a3446;
+  border: 1px solid var(--figma-border-strong);
   border-radius: 6px;
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
   padding: 0.3rem;
@@ -8840,7 +8840,7 @@
 
 .ed-menudrop-sep {
   height: 1px;
-  background: #2a3446;
+  background: var(--figma-border-strong);
   margin: 0.3rem 0.5rem;
 }
 
@@ -8863,7 +8863,7 @@
 
 .ed-actbar {
   width: 48px;
-  background: #2a3446;
+  background: var(--figma-border-strong);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -8981,7 +8981,7 @@
 }
 
 .ed-sidebar-btn:hover {
-  background: #2a3446;
+  background: var(--figma-border-strong);
   color: #dee2f6;
 }
 
@@ -9027,8 +9027,8 @@
   gap: 0.5rem;
   width: 100%;
   padding: 0.4rem 0.55rem;
-  background: #2a3446;
-  border: 1px solid #2a3446;
+  background: var(--figma-border-strong);
+  border: 1px solid var(--figma-border-strong);
   border-radius: 6px;
   color: #c7d2dd;
   font-size: 0.76rem;
@@ -9061,7 +9061,7 @@
   top: calc(100% - 0.1rem);
   margin-top: 0.35rem;
   background: #1d263b;
-  border: 1px solid #2a3446;
+  border: 1px solid var(--figma-border-strong);
   border-radius: 6px;
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.55);
   z-index: 50;
@@ -9114,7 +9114,7 @@
 .ed-filter {
   width: 100%;
   background: #0a0d15;
-  border: 1px solid #2a3446;
+  border: 1px solid var(--figma-border-strong);
   border-radius: 6px;
   padding: 0.4rem 0.6rem;
   font-size: 0.74rem;
@@ -9261,7 +9261,7 @@
 .ed-search-input {
   width: 100%;
   background: #0a0d15;
-  border: 1px solid #2a3446;
+  border: 1px solid var(--figma-border-strong);
   border-radius: 6px;
   padding: 0.45rem 0.6rem 0.45rem 1.9rem;
   font-size: 0.76rem;
@@ -9677,7 +9677,7 @@
 }
 
 .ed-tabclose:hover {
-  background: #2a3446;
+  background: var(--figma-border-strong);
   color: #dee2f6;
 }
 
@@ -9725,7 +9725,7 @@
 }
 
 .ed-breadcrumb-sep {
-  color: #2a3446;
+  color: var(--figma-border-strong);
 }
 
 .ed-editor {
@@ -9873,7 +9873,7 @@
 }
 
 .ed-panel-close:hover {
-  background: #2a3446;
+  background: var(--figma-border-strong);
   color: #dee2f6;
 }
 
@@ -9896,7 +9896,7 @@
   flex: 1;
   min-height: 0;
   background: #0a0d15;
-  border: 1px solid #2a3446;
+  border: 1px solid var(--figma-border-strong);
   border-radius: 4px;
   overflow: hidden;
 }
@@ -9910,7 +9910,7 @@
   padding: 0 0.6rem;
   flex-shrink: 0;
   background: #101d2c;
-  border-bottom: 1px solid #2a3446;
+  border-bottom: 1px solid var(--figma-border-strong);
   font-size: 0.7rem;
   letter-spacing: 0.01em;
   text-transform: none;
@@ -9931,13 +9931,13 @@
   font-size: 0.58rem;
   font-weight: 700;
   letter-spacing: 0.06em;
-  border: 1px solid #2a3446;
+  border: 1px solid var(--figma-border-strong);
   background: #1d263b;
   color: #9aaeba;
 }
 
 .ed-term-capsule.is-live {
-  border-color: #2a3446;
+  border-color: var(--figma-border-strong);
   background: #1d263b;
   color: #4ec9b0;
 }
@@ -9967,7 +9967,7 @@
   padding: 0.15rem 0.45rem;
   border-radius: 3px;
   background: #1d263b;
-  border: 1px solid #2a3446;
+  border: 1px solid var(--figma-border-strong);
   color: #c7d2dd;
   font-size: 0.64rem;
   letter-spacing: 0.02em;
@@ -10027,7 +10027,7 @@
 }
 
 .ed-status-icon:hover {
-  background: #2a3446;
+  background: var(--figma-border-strong);
 }
 
 .ed-status-icon svg {
@@ -10059,7 +10059,7 @@
 }
 
 .ed-status-item:hover {
-  background: #2a3446;
+  background: var(--figma-border-strong);
 }
 
 .ed-tier-badge {
@@ -10110,7 +10110,7 @@
 
 .ed-chat-bubble.is-ai {
   background: #1d263b;
-  border: 1px solid #2a3446;
+  border: 1px solid var(--figma-border-strong);
   color: #c8c8c8;
   margin-right: 1rem;
 }
@@ -10133,7 +10133,7 @@
 .ed-composer input {
   flex: 1;
   background: #0a0d15;
-  border: 1px solid #2a3446;
+  border: 1px solid var(--figma-border-strong);
   border-radius: 6px;
   padding: 0.5rem 0.6rem;
   font-size: 0.76rem;
@@ -10169,7 +10169,7 @@
   width: 520px;
   max-width: calc(100vw - 2rem);
   background: #101d2c;
-  border: 1px solid #2a3446;
+  border: 1px solid var(--figma-border-strong);
   border-radius: 8px;
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
   overflow: hidden;
@@ -10182,7 +10182,7 @@
   align-items: center;
   gap: 0.6rem;
   padding: 0.6rem 0.8rem;
-  border-bottom: 1px solid #2a3446;
+  border-bottom: 1px solid var(--figma-border-strong);
 }
 
 .ed-palette-head svg {
@@ -13321,7 +13321,7 @@
 
 .ail-composer-mode-hint {
   margin-left: auto;
-  color: #59687a;
+  color: var(--figma-text-faint);
   text-align: right;
 }
 
@@ -13611,7 +13611,7 @@
 }
 
 .ail-activity-copy small {
-  color: #59687a;
+  color: var(--figma-text-faint);
   font-size: 0.5rem;
 }
 
@@ -14462,7 +14462,7 @@
 
 .ail-agent-diff-line-number {
   padding-right: 0.55rem;
-  color: #59687a;
+  color: var(--figma-text-faint);
   text-align: right;
   user-select: none;
 }
@@ -14479,7 +14479,7 @@
 }
 
 .ail-agent-diff-line.is-context .ail-agent-diff-line-marker {
-  color: #59687a;
+  color: var(--figma-text-faint);
 }
 
 .ail-agent-diff-line.is-added {

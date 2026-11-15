@@ -119,7 +119,7 @@ export default function SpecEditor({ specId, workspaceId, projectId: projectIdPr
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center p-8 text-[#59687a]">
+      <div className="flex items-center justify-center p-8 text-figma-text-faint">
         Loading spec...
       </div>
     );
@@ -137,8 +137,8 @@ export default function SpecEditor({ specId, workspaceId, projectId: projectIdPr
   const parsed = parseFrontmatter(content || '');
 
   return (
-    <div className="flex flex-col h-full bg-[#1d263b] rounded-lg border border-[#2a3446] overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-2 border-b border-[#2a3446] bg-[#161d29]">
+    <div className="flex flex-col h-full bg-[#1d263b] rounded-lg border border-figma-border-strong overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-figma-border-strong bg-[#161d29]">
         <div className="flex items-center gap-2">
           <FileCodeIcon className="w-4 h-4 text-purple-400" />
           <span className="text-sm font-semibold text-[#dee2f6]">
@@ -173,11 +173,11 @@ export default function SpecEditor({ specId, workspaceId, projectId: projectIdPr
         </div>
       </div>
 
-      <div className="flex border-b border-[#2a3446]">
+      <div className="flex border-b border-figma-border-strong">
         <button
           onClick={() => setActiveTab('spec')}
           className={`px-4 py-2 text-xs font-semibold border-b-2 transition-colors ${
-            activeTab === 'spec' ? 'border-purple-500 text-purple-400' : 'border-transparent text-[#59687a]'
+            activeTab === 'spec' ? 'border-purple-500 text-purple-400' : 'border-transparent text-figma-text-faint'
           }`}
         >
           .spec.md
@@ -186,7 +186,7 @@ export default function SpecEditor({ specId, workspaceId, projectId: projectIdPr
           <button
             onClick={() => setActiveTab('code')}
             className={`px-4 py-2 text-xs font-semibold border-b-2 transition-colors ${
-              activeTab === 'code' ? 'border-blue-500 text-blue-400' : 'border-transparent text-[#59687a]'
+              activeTab === 'code' ? 'border-blue-500 text-blue-400' : 'border-transparent text-figma-text-faint'
             }`}
           >
             {targetFile.split('/').pop()}
@@ -197,7 +197,7 @@ export default function SpecEditor({ specId, workspaceId, projectId: projectIdPr
       <div className="flex-1 overflow-hidden">
         {activeTab === 'spec' && (
           <div className="flex h-full">
-            <div className="w-1/2 border-r border-[#2a3446]">
+            <div className="w-1/2 border-r border-figma-border-strong">
               <MonacoEditor
                 height="100%"
                 language="markdown"
@@ -236,7 +236,7 @@ export default function SpecEditor({ specId, workspaceId, projectId: projectIdPr
                               <XCircle className="w-3 h-3 text-red-400" />
                             )}
                             <span className="text-[#dee2f6]">{a.rule}</span>
-                            <span className="text-[#59687a]">→ {a.target}</span>
+                            <span className="text-figma-text-faint">→ {a.target}</span>
                           </div>
                         ))}
                       </div>
@@ -284,7 +284,7 @@ export default function SpecEditor({ specId, workspaceId, projectId: projectIdPr
       </div>
 
       {driftWarnings.length > 0 && (
-        <div className="border-t border-[#2a3446] p-3 bg-red-500/5">
+        <div className="border-t border-figma-border-strong p-3 bg-red-500/5">
           <div className="flex items-center gap-2 mb-2">
             <AlertTriangle className="w-4 h-4 text-yellow-400" />
             <span className="text-xs font-semibold text-yellow-400">AST Drift Warnings</span>
@@ -293,7 +293,7 @@ export default function SpecEditor({ specId, workspaceId, projectId: projectIdPr
             <div key={i} className="text-xs text-[#dee2f6] bg-[#161d29] p-2 rounded mb-1 flex items-center gap-2">
               <XCircle className="w-3 h-3 text-red-400 flex-shrink-0" />
               <span>{w.message}</span>
-              <span className="text-[#59687a] ml-auto">{w.file}</span>
+              <span className="text-figma-text-faint ml-auto">{w.file}</span>
             </div>
           ))}
         </div>

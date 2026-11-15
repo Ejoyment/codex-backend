@@ -341,7 +341,7 @@ export default function Messaging() {
                       {/* Messages */}
                       <div className="msg-scroll">
                         {loadingMessages && (
-                          <div className="text-center text-[#59687a] py-8 text-sm">Loading messages...</div>
+                          <div className="text-center text-figma-text-faint py-8 text-sm">Loading messages...</div>
                         )}
                         {!loadingMessages && messages.length === 0 && (
                           <div className="dash-empty" style={{ paddingTop: '3rem' }}>

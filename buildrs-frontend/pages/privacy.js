@@ -24,7 +24,7 @@ export default function Privacy() {
               Short version: your code is yours, we never sell your data, and we don’t train AI on
               your source. The details, below.
             </p>
-            <p className="mkt-mono mt-6 text-[12px] uppercase tracking-widest text-[#59687a]">
+            <p className="mkt-mono mt-6 text-[12px] uppercase tracking-widest text-figma-text-faint">
               last updated · november 1, 2026
             </p>
           </div>

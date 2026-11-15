@@ -23,7 +23,7 @@ export default function Cookies() {
             <p className="mkt-sub mt-6 max-w-[560px]">
               Essential cookies and browser storage only — no advertising, no analytics, no trackers.
             </p>
-            <p className="mkt-mono mt-6 text-[12px] uppercase tracking-widest text-[#59687a]">
+            <p className="mkt-mono mt-6 text-[12px] uppercase tracking-widest text-figma-text-faint">
               last modified · october 18, 2026
             </p>
           </div>

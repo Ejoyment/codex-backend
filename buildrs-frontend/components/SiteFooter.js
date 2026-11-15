@@ -75,10 +75,10 @@ export default function SiteFooter() {
         </div>
 
         <div className="mt-14 flex flex-col gap-4 border-t border-[#ffffff0f] pt-6 sm:flex-row sm:items-center sm:justify-between">
-          <p className="mkt-mono text-[11px] text-[#59687a]">
+          <p className="mkt-mono text-[11px] text-figma-text-faint">
             © 2026 buildrs · CODEX INC ENTERPRISE · built to ship
           </p>
-          <div className="mkt-mono flex items-center gap-2 text-[11px] text-[#59687a]">
+          <div className="mkt-mono flex items-center gap-2 text-[11px] text-figma-text-faint">
             <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: '#12dce5' }} />
             buildrshq.dev · status: stable
           </div>

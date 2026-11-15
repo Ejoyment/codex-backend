@@ -149,7 +149,7 @@ export default function Features() {
                 <div className="flex flex-col gap-4 p-7 sm:flex-row sm:items-start sm:justify-between sm:gap-8 sm:p-9">
                   <div className="sm:w-[300px] sm:shrink-0">
                     <div className="flex items-center gap-3">
-                      <p className="mkt-num text-sm text-[#59687a]">{layer.num}</p>
+                      <p className="mkt-num text-sm text-figma-text-faint">{layer.num}</p>
                       <h2 className="mkt-h3">{layer.name}</h2>
                       <span className={`mkt-pill ${layer.status}`}>{layer.status}</span>
                     </div>
@@ -162,7 +162,7 @@ export default function Features() {
                       <div key={title} className="group bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
                         <h3 className="text-[14px] font-semibold tracking-tight text-white">{title}</h3>
                         <p className="mt-1.5 text-[13px] leading-relaxed text-[#a9b7c4]">{desc}</p>
-                        <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">{tag}</p>
+                        <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-figma-text-faint">{tag}</p>
                       </div>
                     ))}
                   </div>
@@ -194,168 +194,168 @@ export default function Features() {
                 <p className="text-[13.5px] font-medium leading-snug text-white">Spec-driven agents (proposed changes + approvals)</p>
                 <span className="mkt-pill partial">Partial</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">agent-v1 · agentSocket · agentChangeSet</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-figma-text-faint">agent-v1 · agentSocket · agentChangeSet</p>
             </div>
             <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">Branch-isolated execution (agent branches)</p>
                 <span className="mkt-pill partial">Partial</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">gitService · agentChangeSet</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-figma-text-faint">gitService · agentChangeSet</p>
             </div>
             <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">SDD/spec verification (AST)</p>
                 <span className="mkt-pill partial">Partial</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">sddVerificationService</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-figma-text-faint">sddVerificationService</p>
             </div>
             <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">Specs CRUD</p>
                 <span className="mkt-pill partial">Partial</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">routes/specs.js</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-figma-text-faint">routes/specs.js</p>
             </div>
             <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">VFS + editor integration</p>
                 <span className="mkt-pill partial">Partial</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">CodeFile · editor routes</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-figma-text-faint">CodeFile · editor routes</p>
             </div>
             <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">Real-time co-editing (Yjs)</p>
                 <span className="mkt-pill live">Live</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">yjs CRDT</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-figma-text-faint">yjs CRDT</p>
             </div>
             <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">Terminal (node-pty)</p>
                 <span className="mkt-pill live">Live</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">terminal routes · pty</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-figma-text-faint">terminal routes · pty</p>
             </div>
             <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">Git operations (branches/commits/diff)</p>
                 <span className="mkt-pill live">Live</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">git routes · simple-git</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-figma-text-faint">git routes · simple-git</p>
             </div>
             <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">LSP + smart completions</p>
                 <span className="mkt-pill live">Live</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">lspManager</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-figma-text-faint">lspManager</p>
             </div>
             <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">Debug adapter (DAP)</p>
                 <span className="mkt-pill partial">Partial</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">debugAdapter</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-figma-text-faint">debugAdapter</p>
             </div>
             <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">IDE runner + sandbox execution</p>
                 <span className="mkt-pill live">Live</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">sandboxSecurity · docker</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-figma-text-faint">sandboxSecurity · docker</p>
             </div>
             <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">Meetings / RTC (WebRTC)</p>
                 <span className="mkt-pill live">Live</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">rtc routes · meetings</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-figma-text-faint">rtc routes · meetings</p>
             </div>
             <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">AI Pair (chat/session)</p>
                 <span className="mkt-pill live">Live</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">ai-pair routes</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-figma-text-faint">ai-pair routes</p>
             </div>
             <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">AI providers (Groq/Gemini/etc)</p>
                 <span className="mkt-pill live">Live</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">aiService</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-figma-text-faint">aiService</p>
             </div>
             <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">Multi-rail billing (Stripe/Paystack/Flutterwave)</p>
                 <span className="mkt-pill partial">Partial</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">paymentRouter · billingCron</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-figma-text-faint">paymentRouter · billingCron</p>
             </div>
             <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">Verified webhooks (3 rails, raw-body + timing-safe)</p>
                 <span className="mkt-pill live">Live</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">webhookSecurity</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-figma-text-faint">webhookSecurity</p>
             </div>
             <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">Entitlements & credit pool</p>
                 <span className="mkt-pill partial">Partial</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">subscription routes · creditPoolService</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-figma-text-faint">subscription routes · creditPoolService</p>
             </div>
             <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">Authentication (JWT/OAuth)</p>
                 <span className="mkt-pill live">Live</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">auth routes · middleware</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-figma-text-faint">auth routes · middleware</p>
             </div>
             <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">Projects / Tasks / Teams / Companies</p>
                 <span className="mkt-pill live">Live</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">projects · tasks · teams routes</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-figma-text-faint">projects · tasks · teams routes</p>
             </div>
             <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">Notifications</p>
                 <span className="mkt-pill live">Live</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">notificationService</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-figma-text-faint">notificationService</p>
             </div>
             <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">Deployments + VPS/SSH + Docker sandbox</p>
                 <span className="mkt-pill partial">Partial</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">deployments · vps routes</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-figma-text-faint">deployments · vps routes</p>
             </div>
             <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">Pipelines / CI</p>
                 <span className="mkt-pill partial">Partial</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">routes/pipelines.js</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-figma-text-faint">routes/pipelines.js</p>
             </div>
             <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">Support tickets + dashboard</p>
                 <span className="mkt-pill partial">Partial</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">support routes · dashboard</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-figma-text-faint">support routes · dashboard</p>
             </div>
             <div className="group rounded-xl border border-[#ffffff10] bg-[#121821] p-5 transition-colors hover:bg-[#161d29]">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[13.5px] font-medium leading-snug text-white">GitHub / Slack / Discord / Figma / Notion / MCP</p>
                 <span className="mkt-pill partial">Partial</span>
               </div>
-              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-[#59687a]">integration routes</p>
+              <p className="mkt-mono mt-3 text-[10.5px] uppercase tracking-widest text-figma-text-faint">integration routes</p>
             </div>
           </div>
         </section>

@@ -68,12 +68,12 @@ export default function UpcomingMeetings({ meetings = [] }) {
                   {status.label}
                 </span>
                 <span className="queue-due">
-                  <Calendar className="w-3 h-3 inline mr-1 align-text-top" style={{ color: '#59687a' }} />
+                  <Calendar className="w-3 h-3 inline mr-1 align-text-top" style={{ color: 'var(--figma-text-ghost)' }} />
                   {formatMeetingTime(meeting.scheduledAt)}
                 </span>
                 <span className="queue-due">{meeting.duration || 30} min</span>
                 <span className="queue-due">
-                  <Users className="w-3 h-3 inline mr-1 align-text-top" style={{ color: '#59687a' }} />
+                  <Users className="w-3 h-3 inline mr-1 align-text-top" style={{ color: 'var(--figma-text-ghost)' }} />
                   {meeting.participants?.length || 0}
                 </span>
               </div>

@@ -90,7 +90,7 @@ export default function Changelog() {
                     <p className="mkt-num text-lg text-white">v{v.version}</p>
                     {v.latest && <span className="mkt-pill live">latest</span>}
                   </div>
-                  <p className="mkt-mono mt-2 text-[11px] uppercase tracking-widest text-[#59687a]">{v.date}</p>
+                  <p className="mkt-mono mt-2 text-[11px] uppercase tracking-widest text-figma-text-faint">{v.date}</p>
                 </div>
                 <ul className="flex-1 space-y-3">
                   {v.changes.map(([kind, text]) => (
@@ -104,7 +104,7 @@ export default function Changelog() {
             ))}
           </div>
 
-          <p className="mkt-mono mt-6 text-center text-[11px] text-[#59687a]">
+          <p className="mkt-mono mt-6 text-center text-[11px] text-figma-text-faint">
             earlier releases · chronicled in the docs →{' '}
             <Link href="/docs" className="text-[#12dce5]">docs/buildrs/changelog</Link>
           </p>

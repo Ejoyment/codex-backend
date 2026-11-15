@@ -321,12 +321,12 @@ export default function Pricing() {
                   </span>
                 </div>
                 {yearly && plan.yearlyPrice && plan.price !== 'Custom' && (
-                  <p className="mkt-mono mt-1.5 text-[11px] text-[#59687a]">
+                  <p className="mkt-mono mt-1.5 text-[11px] text-figma-text-faint">
                     or ${plan.yearlyPrice}/yr billed annually
                   </p>
                 )}
                 {plan.price === 'Custom' && (
-                  <p className="mkt-mono mt-1.5 text-[11px] text-[#59687a]">
+                  <p className="mkt-mono mt-1.5 text-[11px] text-figma-text-faint">
                     Contact sales for a custom quote
                   </p>
                 )}
@@ -347,12 +347,12 @@ export default function Pricing() {
                     <li key={label} className="flex items-start gap-3 text-[13px]">
                       <span
                         className={`mkt-mono mt-0.5 flex h-4 w-4 items-center justify-center text-[10px] ${
-                          typeof on === 'boolean' ? (on ? 'text-[#12dce5]' : 'text-[#3a3d46]') : 'text-[#59687a]'
+                          typeof on === 'boolean' ? (on ? 'text-[#12dce5]' : 'text-[#3a3d46]') : 'text-figma-text-faint'
                         }`}
                       >
                         {typeof on === 'boolean' ? (on ? '✓' : '·') : on}
                       </span>
-                      <span className={typeof on === 'boolean' ? (on ? 'text-[#a9b7c4]' : 'text-[#59687a]') : 'text-[#a9b7c4]'}>{label}</span>
+                      <span className={typeof on === 'boolean' ? (on ? 'text-[#a9b7c4]' : 'text-figma-text-faint') : 'text-[#a9b7c4]'}>{label}</span>
                     </li>
                   ))}
                 </ul>
@@ -361,7 +361,7 @@ export default function Pricing() {
             ))}
           </StaggerChildren>
 
-          <p className="mkt-mono mt-6 text-center text-[11px] text-[#59687a]">
+          <p className="mkt-mono mt-6 text-center text-[11px] text-figma-text-faint">
             all prices in USD · billed via Stripe · Paystack · Flutterwave (Partial; multi-rail coverage per region) · enterprise has custom terms
           </p>
         </section>
@@ -397,7 +397,7 @@ export default function Pricing() {
                       <td className={row[3] !== '–' && row[3] !== 'Disabled' ? '!text-[#8a38f5]' : ''}>{row[3]}</td>
                       <td className={row[4] !== '–' && row[4] !== 'Disabled' ? '!text-[#03ba03]' : ''}>{row[4]}</td>
                       <td className={row[5] !== '–' && row[5] !== 'Disabled' ? '!text-[#e5b84a]' : ''}>{row[5]}</td>
-                      <td className="!text-[#ec1414]">{row[6]}</td>
+                      <td className="!text-figma-error-soft">{row[6]}</td>
                     </tr>
                   ))}
                 </tbody>

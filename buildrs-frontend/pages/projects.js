@@ -269,7 +269,7 @@ export default function Projects() {
                         </div>
                       </div>
 
-                      <div className="mt-3 h-1 overflow-hidden rounded-full bg-[#2a3446]">
+                      <div className="mt-3 h-1 overflow-hidden rounded-full bg-figma-border-strong">
                         <div className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-teal-400 transition-all" style={{ width: `${progress}%` }} />
                       </div>
 

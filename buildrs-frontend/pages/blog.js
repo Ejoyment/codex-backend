@@ -123,7 +123,7 @@ export default function Blog() {
                   <div className="mt-1.5"><span className="p">▸</span> indexing codebase · 1,284 files</div>
                   <div><span className="p">▸</span> reading src/components/dashboard.tsx</div>
                   <div className="mt-1.5"><span className="ok">✓</span> refactor applied — 42 lines removed</div>
-                  <div className="mt-4 text-[#59687a]">— from <span className="ok">ai pair, v2.5</span></div>
+                  <div className="mt-4 text-figma-text-faint">— from <span className="ok">ai pair, v2.5</span></div>
                 </div>
               </div>
             </div>
@@ -139,7 +139,7 @@ export default function Blog() {
               <Link href="#" className="group block h-full bg-[#121821] p-7 transition-colors hover:bg-[#161d29]">
                 <div className="flex items-center gap-3">
                   <span className="mkt-pill">{post.tag}</span>
-                  <span className="mkt-mono text-[10.5px] uppercase tracking-widest text-[#59687a]">
+                  <span className="mkt-mono text-[10.5px] uppercase tracking-widest text-figma-text-faint">
                     {post.date}
                   </span>
                 </div>
