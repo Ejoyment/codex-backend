@@ -753,6 +753,9 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
                     return;
                 }
                 console.log(`[deploy] ${sanitized}.buildrshq.dev is live`);
+                // Best-effort cleanup of old Docker images so redeploys don't
+                // fill the VPS disk with unused tagged images.
+                try { await depService.cleanupOldImages(sanitized); } catch (_) {}
                 liveStatus = 'success';
                 emitUpdate({
                     deployment: {

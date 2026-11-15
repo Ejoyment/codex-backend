@@ -1492,6 +1492,40 @@ async function isSubdomainTaken(subdomain) {
   } catch (_) { return false; }
 }
 
+// After a successful blue-green swap, remove old Docker images for this
+// subdomain so redeploys don't fill the VPS disk with unused tagged images.
+// Keeps the image currently running in the container.
+async function cleanupOldImages(subdomain) {
+  const sanitized = subdomain.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+  const containerName = `deploy-${sanitized}`;
+
+  try {
+    // Get the image ID currently in use by the running container.
+    const currentImg = (await sshExec(
+      `docker inspect ${containerName} --format '{{.Image}}' 2>/dev/null || true`
+    ).catch(() => '')).trim();
+
+    // List all images whose repository name matches deploy-<subdomain>.
+    const imgList = (await sshExec(
+      `docker images --filter "reference=deploy-${sanitized}" --format "{{.ID}} {{.Tag}}" 2>/dev/null || true`
+    ).catch(() => '')).trim();
+
+    if (!imgList) return;
+
+    for (const line of imgList.split('\n')) {
+      const parts = line.trim().split(/\s+/);
+      const imgId = parts[0];
+      const tag = parts.slice(1).join(' ');
+      if (!imgId || imgId === currentImg) continue;
+      // Remove by ID (tagged images can't be removed by tag alone if other
+      // tags reference them, but each deploy-<sub>:<ts> tag is unique).
+      await sshExec(`docker rmi -f ${imgId} 2>/dev/null || true`).catch(() => {});
+    }
+  } catch (_) {
+    // Best-effort cleanup; never fail a deploy because image cleanup failed.
+  }
+}
+
 module.exports = {
   sshExec,
   sshUploadFile,
@@ -1499,6 +1533,7 @@ module.exports = {
   detectRuntime,
   deployProject,
   stopDeployment,
+  cleanupOldImages,
   isSubdomainTaken,
   createTarballSync,
   assertSafeRelPath,
