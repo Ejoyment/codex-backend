@@ -88,6 +88,7 @@ export default function Tasks() {
   const [createdTask, setCreatedTask] = useState(null);
   const [cyclingId, setCyclingId] = useState(null);
   const [expandedTaskId, setExpandedTaskId] = useState(null);
+  const [activeTab, setActiveTab] = useState('all');
   const [specs, setSpecs] = useState([]);
   const [projects, setProjects] = useState([]);
   const [contextSavingId, setContextSavingId] = useState(null);
