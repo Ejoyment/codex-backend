@@ -1,10 +1,9 @@
 /**
  * Subagent model for the coordinator/worker view.
  *
- * The backend does not emit subagent runs yet, so `mockSubagentRun` fabricates a
- * plausible plan for layout work. It is deliberately shaped like the payload we
- * expect (role, task, status, progress, touched files) so swapping the mock for
- * real `agent:subagent` events only means replacing the factory call.
+ * Records come from `SubagentExecution` via `GET /api/v1/agent/:executionId/subagents`
+ * and live `agent:subagent:*` socket events (see utils/subagentService.js on the
+ * API side). Roles and statuses below mirror that model exactly.
  */
 
 export const SUBAGENT_ROLES = {
@@ -12,82 +11,101 @@ export const SUBAGENT_ROLES = {
     label: 'Coordinator',
     blurb: 'Owns the plan, delegates tasks and merges the results.',
   },
-  scout: {
-    label: 'Scout',
-    blurb: 'Reads the codebase and reports the files that matter.',
+  researcher: {
+    label: 'Researcher',
+    blurb: 'Investigates the codebase and returns findings and file leads.',
   },
-  builder: {
-    label: 'Builder',
-    blurb: 'Writes the change in an isolated sandbox.',
-  },
-  verifier: {
-    label: 'Verifier',
-    blurb: 'Runs tests and checks the diff against the request.',
+  coder: {
+    label: 'Coder',
+    blurb: 'Implements a focused change and returns the target files.',
   },
   reviewer: {
     label: 'Reviewer',
-    blurb: 'Summarises the change and flags what needs a human decision.',
+    blurb: 'Reviews a plan or code and returns prioritized feedback.',
+  },
+  tester: {
+    label: 'Tester',
+    blurb: 'Defines test cases and verification steps for a change.',
   },
 };
 
+/** Backend statuses: idle → running → complete | failed. */
 export const SUBAGENT_STATUSES = {
-  queued: { label: 'Queued', tone: 'idle' },
+  idle: { label: 'Queued', tone: 'idle' },
   running: { label: 'Running', tone: 'active' },
-  done: { label: 'Done', tone: 'success' },
-  blocked: { label: 'Blocked', tone: 'error' },
+  complete: { label: 'Done', tone: 'success' },
+  failed: { label: 'Failed', tone: 'error' },
 };
-
-const MOCK_PLAN = [
-  {
-    role: 'scout',
-    task: 'Find the components that own the requested surface',
-    status: 'done',
-    progress: 100,
-    durationMs: 42_000,
-    touchedFiles: ['components/Sidebar.js', 'styles/workspace.css'],
-  },
-  {
-    role: 'builder',
-    task: 'Implement the change and keep edits scoped to those files',
-    status: 'running',
-    progress: 64,
-    durationMs: 128_000,
-    touchedFiles: ['components/Sidebar.js'],
-  },
-  {
-    role: 'verifier',
-    task: 'Run the build and contrast checks against the new markup',
-    status: 'queued',
-    progress: 0,
-    touchedFiles: [],
-  },
-  {
-    role: 'reviewer',
-    task: 'Write the change summary and list review points',
-    status: 'queued',
-    progress: 0,
-    touchedFiles: [],
-  },
-];
 
 export function subagentStatusMeta(status) {
-  return SUBAGENT_STATUSES[status] || SUBAGENT_STATUSES.queued;
+  return SUBAGENT_STATUSES[status] || SUBAGENT_STATUSES.idle;
 }
 
 export function subagentRoleMeta(role) {
   return SUBAGENT_ROLES[role] || { label: role, blurb: '' };
 }
 
-/** Aggregates worker state into the numbers shown above the tree. */
-export function summarizeSubagents(run) {
-  const workers = run?.workers || [];
+/** Rough completion share used by the header bar; the API has no percentage. */
+const STATUS_PROGRESS = { idle: 0, running: 50, complete: 100, failed: 100 };
+
+export function subagentProgress(worker) {
+  return STATUS_PROGRESS[worker?.status] ?? 0;
+}
+
+/**
+ * Normalizes either a `SubagentExecution` record or an `agent:subagent:*`
+ * payload into the shape the tree renders.
+ */
+export function normalizeSubagent(source, at = Date.now()) {
+  if (!source) return null;
+  const id = source.subagentExecutionId || source._id;
+  if (!id) return null;
+  return {
+    id: String(id),
+    parentExecutionId: source.parentExecutionId ? String(source.parentExecutionId) : null,
+    role: source.role || 'researcher',
+    status: source.status || 'idle',
+    task: source.instruction || source.task || '',
+    output: typeof source.output === 'string' ? source.output : '',
+    error: source.error || '',
+    phase: source.phase || '',
+    message: source.message || '',
+    startedAt: source.startedAt || null,
+    completedAt: source.completedAt || null,
+    at,
+  };
+}
+
+/**
+ * Upserts a normalized worker by `id`. Progress and complete events omit fields
+ * that arrived earlier (the instruction, the output), so empty values never
+ * overwrite what is already known.
+ */
+export function mergeSubagent(workers, next) {
+  if (!next) return workers;
+  const index = workers.findIndex((worker) => worker.id === next.id);
+  if (index === -1) return [...workers, next];
+  const merged = { ...workers[index] };
+  Object.entries(next).forEach(([key, value]) => {
+    if (value === '' || value === null || value === undefined) return;
+    merged[key] = value;
+  });
+  const updated = [...workers];
+  updated[index] = merged;
+  return updated;
+}
+
+/**
+ * Aggregates worker state into the numbers shown above the tree.
+ * `progress` is the share of workers that reached a terminal state.
+ */
+export function summarizeSubagents(workers = []) {
   const counts = workers.reduce(
     (acc, worker) => ({ ...acc, [worker.status]: (acc[worker.status] || 0) + 1 }),
-    { queued: 0, running: 0, done: 0, blocked: 0 },
+    { idle: 0, running: 0, complete: 0, failed: 0 },
   );
-  const progress = workers.length
-    ? Math.round(workers.reduce((sum, worker) => sum + (Number(worker.progress) || 0), 0) / workers.length)
-    : 0;
+  const settled = counts.complete + counts.failed;
+  const progress = workers.length ? Math.round((settled / workers.length) * 100) : 0;
   return { total: workers.length, counts, progress };
 }
 
@@ -97,38 +115,8 @@ function formatDuration(ms) {
   return seconds >= 60 ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : `${seconds}s`;
 }
 
-export function formatSubagentDuration(ms) {
-  return formatDuration(ms);
-}
-
-/**
- * Builds the mock run shown while the backend has no subagent events.
- * `goal` is only used for the coordinator line so the preview relates to the
- * request in the composer.
- */
-export function mockSubagentRun(goal = '') {
-  const trimmed = String(goal || '').replace(/\s+/g, ' ').trim();
-  const summaryGoal = trimmed
-    ? (trimmed.length > 110 ? `${trimmed.slice(0, 110)}…` : trimmed)
-    : 'No request yet — start a run to replace this preview.';
-
-  const workers = MOCK_PLAN.map((worker, index) => ({
-    id: `${worker.role}-${index + 1}`,
-    ...worker,
-    ...subagentRoleMeta(worker.role),
-    statusMeta: subagentStatusMeta(worker.status),
-  }));
-
-  return {
-    mock: true,
-    coordinator: {
-      id: 'coordinator-1',
-      role: 'coordinator',
-      ...subagentRoleMeta('coordinator'),
-      task: summaryGoal,
-      status: 'running',
-      statusMeta: subagentStatusMeta('running'),
-    },
-    workers,
-  };
+export function formatSubagentDuration(worker) {
+  if (!worker?.startedAt) return '';
+  const end = worker.completedAt ? new Date(worker.completedAt).getTime() : Date.now();
+  return formatDuration(end - new Date(worker.startedAt).getTime());
 }
