@@ -112,8 +112,9 @@ export function useCachedData(userId, key, fetcher, options = {}) {
     // Kick off an initial background refresh (cache already rendered instantly).
     refresh();
 
+    let onVisible;
     if (refreshOnVisibility) {
-      const onVisible = () => {
+      onVisible = () => {
         if (document.visibilityState === 'visible') refresh();
       };
       document.addEventListener('visibilitychange', onVisible);
@@ -123,7 +124,7 @@ export function useCachedData(userId, key, fetcher, options = {}) {
 
     return () => {
       mounted.current = false;
-      if (refreshOnVisibility) {
+      if (refreshOnVisibility && onVisible) {
         document.removeEventListener('visibilitychange', onVisible);
       }
       if (interval) clearInterval(interval);
