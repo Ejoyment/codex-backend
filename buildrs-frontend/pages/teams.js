@@ -38,9 +38,6 @@ export default function Teams() {
 
   const tier = normalizeTier(subscription?.tier);
   const tierLimits = getTierLimits(tier);
-  const memberCountForLimit = selectedCompany ? (members.length || selectedCompany.memberCount || 0) : 0;
-  const memberLimitForCheck = selectedCompany?.memberLimit ?? tierLimits.maxMembers;
-  const inviteAtLimit = memberLimitForCheck !== -1 && memberCountForLimit >= memberLimitForCheck;
 
   const [selectedCompany, setSelectedCompany] = useState(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -70,6 +67,10 @@ export default function Teams() {
     }
     return valid;
   }, { refreshOnVisibility: true, intervalMs: 30000 });
+
+  const memberCountForLimit = selectedCompany ? (members.length || selectedCompany.memberCount || 0) : 0;
+  const memberLimitForCheck = selectedCompany?.memberLimit ?? tierLimits.maxMembers;
+  const inviteAtLimit = memberLimitForCheck !== -1 && memberCountForLimit >= memberLimitForCheck;
 
   useEffect(() => {
     const tick = () => {
