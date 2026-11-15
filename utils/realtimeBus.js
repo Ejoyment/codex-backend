@@ -52,6 +52,26 @@ function emitNotification(userId, payload) {
     return false;
 }
 
+// Emit authoritative unread count + by-category to all of a user's sockets.
+// Called whenever the read/unread state changes via REST API so every open
+// tab updates its bell badge in real time instead of drifting out of sync.
+async function emitNotificationCount(userId) {
+    if (!_io || !userId) return false;
+    try {
+        const NotificationService = require('./notificationService');
+        const count = await NotificationService.getUnreadCount(userId);
+        const byCategory = await NotificationService.getUnreadByCategory(userId);
+        _io.of('/notifications').to(`user:${userId}`).emit('notification:count', {
+            count,
+            byCategory: byCategory || {},
+        });
+        return true;
+    } catch (error) {
+        console.error('[realtimeBus] emitNotificationCount failed:', error.message);
+        return false;
+    }
+}
+
 // A server-owned notification disappeared (e.g. the trial ended). Clients use
 // this to drop the row immediately instead of waiting for the next refetch.
 function emitNotificationRemoved(userId, payload) {
@@ -138,4 +158,4 @@ function emitSubagentError(userId, payload) {
     return true;
 }
 
-module.exports = { setIO, emitCollab, emitSandbox, emitAgentProgress, emitDeploymentUpdate, emitNotification, emitNotificationRemoved, emitProfileUpdate, emitWorkspaceChange, emitSubagentSpawned, emitSubagentProgress, emitSubagentComplete, emitSubagentError };
+module.exports = { setIO, emitCollab, emitSandbox, emitAgentProgress, emitDeploymentUpdate, emitNotification, emitNotificationRemoved, emitProfileUpdate, emitWorkspaceChange, emitSubagentSpawned, emitSubagentProgress, emitSubagentComplete, emitSubagentError, emitNotificationCount };

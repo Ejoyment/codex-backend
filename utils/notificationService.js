@@ -225,6 +225,10 @@ class NotificationService {
             for (const n of saved) {
                 realtimeBus.emitNotification(String(n.userId), n.toJSON());
             }
+            // Push authoritative count to all of each user's open tabs
+            await Promise.all([...new Set(saved.map((n) => String(n.userId)))].map((uid) =>
+                realtimeBus.emitNotificationCount(uid)
+            ));
 
             return { created: saved.length, skipped: 0 };
         } catch (error) {

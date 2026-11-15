@@ -3,6 +3,7 @@ const router = express.Router();
 const { authenticateToken: auth } = require('../middleware/auth');
 const NotificationService = require('../utils/notificationService');
 const { syncTrialNotification } = require('../utils/trialNotification');
+const { emitNotificationCount } = require('../utils/realtimeBus');
 
 const currentUserId = (req) => req.userId || req.user?.userId || req.user?.id;
 
@@ -167,6 +168,10 @@ router.put('/:id/read', auth, async (req, res) => {
             });
         }
 
+        // Push authoritative unread count to all of the user's open tabs
+        // so bell badges stay in sync across devices.
+        await emitNotificationCount(userId);
+
         res.json({
             success: true,
             notification
@@ -219,6 +224,10 @@ router.put('/:id/unread', auth, async (req, res) => {
             });
         }
 
+        // Push authoritative unread count to all of the user's open tabs
+        // so bell badges stay in sync across devices.
+        await emitNotificationCount(userId);
+
         res.json({
             success: true,
             notification
@@ -252,6 +261,9 @@ router.put('/read-all', auth, async (req, res) => {
     try {
         const userId = currentUserId(req);
         const modifiedCount = await NotificationService.markAllAsRead(userId);
+
+        // Push authoritative count (0) to all of the user's open tabs
+        await emitNotificationCount(userId);
 
         res.json({
             success: true,
@@ -420,6 +432,10 @@ router.delete('/', auth, async (req, res) => {
 
         const { deletedCount, skipped } = await NotificationService.deleteNotifications(userId, ids);
 
+        // Push authoritative count to all of the user's open tabs so badges
+        // stay in sync after bulk deletion.
+        await emitNotificationCount(userId);
+
         res.json({
             success: true,
             deletedCount,
@@ -445,6 +461,10 @@ router.delete('/:id', auth, async (req, res) => {
         const notificationId = req.params.id;
 
         const result = await NotificationService.deleteNotification(notificationId, userId);
+
+        // Push authoritative count to all of the user's open tabs so badges
+        // stay in sync after deletion.
+        await emitNotificationCount(userId);
 
         if (result.status === 'missing') {
             return res.status(404).json({
