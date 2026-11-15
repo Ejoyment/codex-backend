@@ -231,13 +231,15 @@ export async function loadNotifications() {
   const store = useNotificationStore.getState();
   store.setLoading(true);
   try {
-    const [list, prefs] = await Promise.all([
+    const [list, prefs, countRes] = await Promise.all([
       notificationApi.list({ limit: MAX_VISIBLE }).catch(() => null),
       notificationApi.getPreferences().catch(() => null),
+      notificationApi.unreadCount().catch(() => null),
     ]);
     if (list?.success) store.setItems(list.notifications || []);
+    if (countRes?.success) store.setCount(countRes.count || 0);
+    else if (!list?.success) refreshCount();
     if (prefs?.success) store.setPreferences(prefs.preferences);
-    if (!list?.success) refreshCount();
   } finally {
     store.setLoading(false);
   }
