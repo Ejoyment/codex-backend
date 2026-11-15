@@ -13561,6 +13561,258 @@
   margin: 0;
 }
 
+.ail-subagents {
+  overflow: hidden;
+  border: 1px solid var(--figma-border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.ail-subagents-head {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.65rem;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ail-subagents-icon {
+  display: flex;
+  width: 1.6rem;
+  height: 1.6rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--figma-border);
+  border-radius: 6px;
+  color: var(--figma-text-faint);
+}
+
+.ail-subagents-icon.is-active {
+  border-color: rgba(18, 220, 229, 0.3);
+  background: rgba(18, 220, 229, 0.08);
+  color: var(--figma-accent);
+}
+
+.ail-subagents-title {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.ail-subagents-title strong {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--figma-text-alt);
+}
+
+.ail-subagents-title small {
+  font-family: var(--figma-font-mono);
+  font-size: 0.55rem;
+  letter-spacing: 0.04em;
+  color: var(--figma-text-faint);
+}
+
+.ail-subagents-badge {
+  flex: 0 0 auto;
+  padding: 0.05rem 0.3rem;
+  border: 1px solid rgba(229, 184, 74, 0.3);
+  border-radius: 4px;
+  color: var(--figma-warning);
+  font-size: 0.5rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ail-subagents-chevron {
+  width: 0.85rem;
+  height: 0.85rem;
+  flex: 0 0 auto;
+  color: var(--figma-text-faint);
+  transition: transform 140ms ease;
+}
+
+.ail-subagents-chevron.rotate-180 {
+  transform: rotate(180deg);
+}
+
+.ail-subagents-progress {
+  height: 2px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.ail-subagents-progress > span {
+  display: block;
+  height: 100%;
+  background: var(--figma-accent);
+  transition: width 320ms ease;
+}
+
+.ail-subagent-coordinator {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.6rem 0.65rem 0.5rem;
+}
+
+.ail-subagent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin: 0;
+  padding: 0.2rem 0.65rem 0.5rem 0.95rem;
+  list-style: none;
+}
+
+.ail-subagent {
+  position: relative;
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.45rem 0 0.45rem 0.35rem;
+}
+
+.ail-subagent::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 1px;
+  background: var(--figma-border-strong);
+}
+
+.ail-subagent::after {
+  content: '';
+  position: absolute;
+  top: 1.15rem;
+  left: 0;
+  width: 0.32rem;
+  height: 1px;
+  background: var(--figma-border-strong);
+}
+
+.ail-subagent-role {
+  display: flex;
+  width: 1.35rem;
+  height: 1.35rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--figma-border);
+  border-radius: 6px;
+  color: var(--figma-text-faint);
+}
+
+.ail-subagent.is-active .ail-subagent-role {
+  border-color: rgba(18, 220, 229, 0.3);
+  background: rgba(18, 220, 229, 0.08);
+  color: var(--figma-accent);
+}
+
+.ail-subagent.is-success .ail-subagent-role {
+  border-color: rgba(3, 186, 3, 0.25);
+  color: var(--figma-success);
+}
+
+.ail-subagent.is-error .ail-subagent-role {
+  border-color: rgba(236, 20, 20, 0.3);
+  color: var(--figma-error-soft);
+}
+
+.ail-subagent-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.ail-subagent-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+
+.ail-subagent-head strong {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--figma-text-soft);
+}
+
+.ail-subagent-status {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.25rem;
+  font-family: var(--figma-font-mono);
+  font-size: 0.52rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--figma-text-faint);
+}
+
+.ail-subagent-dot {
+  width: 0.35rem;
+  height: 0.35rem;
+  border-radius: 50%;
+  background: var(--figma-text-faint);
+}
+
+.ail-subagent-dot.is-active {
+  background: var(--figma-accent);
+  animation: statusPulse 1.2s infinite;
+}
+
+.ail-subagent-dot.is-success {
+  background: var(--figma-success);
+}
+
+.ail-subagent-dot.is-error {
+  background: var(--figma-error-soft);
+}
+
+.ail-subagent-task {
+  margin: 0.1rem 0 0;
+  font-size: 0.68rem;
+  line-height: 1.45;
+  color: var(--figma-text-faint);
+}
+
+.ail-subagent-bar {
+  height: 3px;
+  margin-top: 0.35rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.ail-subagent-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--figma-accent);
+  transition: width 320ms ease;
+}
+
+.ail-subagent-meta {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.2rem;
+  font-family: var(--figma-font-mono);
+  font-size: 0.52rem;
+  color: var(--figma-text-faint);
+}
+
+.ail-subagents-note {
+  margin: 0;
+  padding: 0 0.65rem 0.6rem;
+  font-size: 0.6rem;
+  line-height: 1.5;
+  color: var(--figma-text-faint);
+}
+
 .ail-thinking-bubble {
   border-style: dashed;
   border-color: rgba(18, 220, 229, 0.22);

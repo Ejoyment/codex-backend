@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import Head from 'next/head';
 import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
@@ -35,6 +35,8 @@ import { io } from 'socket.io-client';
 import { useCurrentCompany } from '../hooks/useCurrentCompany';
 import { normalizeProgress, progressLabel } from '../lib/agentProgress';
 import { ReasoningSummary, ThinkingBubble } from '../components/AgentReasoning';
+import { SubagentTree } from '../components/SubagentTree';
+import { mockSubagentRun } from '../lib/subagents';
 
 const LANGUAGES = ['JavaScript', 'TypeScript', 'Python', 'Java', 'Go', 'Rust', 'C++', 'Ruby', 'PHP'];
 const AI_MODEL_PREFERENCE_KEY = 'buildrs-ai-model-preference';
@@ -234,6 +236,11 @@ function AgentOperationsPanel({ session, agentMode, onToggleMode, loading, steps
     .filter((step) => ['iteration', 'result', 'done'].includes(step.type))
     .slice(-6)
     .reverse();
+  const goal = [...messages].reverse().find((message) => message.role === 'user')?.content || '';
+  const subagentRun = useMemo(
+    () => (agentMode ? mockSubagentRun(goal) : null),
+    [agentMode, goal],
+  );
 
   return (
     <aside className="ail-ops" aria-label="Agent operations">
@@ -304,6 +311,12 @@ function AgentOperationsPanel({ session, agentMode, onToggleMode, loading, steps
           </div>
         )}
       </section>
+
+      {subagentRun && (
+        <section className="ail-ops-section ail-subagents-section">
+          <SubagentTree run={subagentRun} />
+        </section>
+      )}
 
       <section className="ail-safety-card">
         <ShieldCheck className="h-4 w-4" />
