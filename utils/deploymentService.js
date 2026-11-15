@@ -361,7 +361,7 @@ EXPOSE 80
       : `FROM nginx:alpine
 RUN rm -f /usr/share/nginx/html/index.html /usr/share/nginx/html/50x.html
 COPY . /usr/share/nginx/html
-RUN echo 'include /etc/nginx/mime.types; default_type text/html; server { listen 80; root /usr/share/nginx/html; index index.html index.htm; location / { try_files \$uri \$uri/ /index.html; } location ~* \\.(html|htm|css|js|ico|png|jpg|jpeg|gif|svg|woff|woff2|ttf|eot|json|xml|txt)\$ { try_files \$uri =404; } }' > /etc/nginx/conf.d/default.conf
+RUN echo 'server { listen 80; root /usr/share/nginx/html; index index.html index.htm; location / { try_files \$uri \$uri/ /index.html; } }' > /etc/nginx/conf.d/default.conf
 EXPOSE 80
 `,
   });
