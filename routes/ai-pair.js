@@ -963,6 +963,11 @@ router.post('/chat', authenticateToken, aiChatLimiter, checkAILimits, async (req
                 agentContextBundle,
                 provider: selectedRouting?.provider,
                 model: effectiveModel,
+                // Subagents hang off this execution, so the orchestrator's
+                // delegation tools need its id. Three per run bounds the extra
+                // model calls a single request can cost.
+                executionId: String(execution._id),
+                subagentBudget: 3,
             };
 
             let result;

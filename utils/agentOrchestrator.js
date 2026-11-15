@@ -17,6 +17,30 @@ const HITLGates = require('./hitlGates');
 const { trimToLast, MAX_VERSIONS } = require('./retention');
 const { designGuidanceFor } = require('./designStandards');
 
+/**
+ * Self-contained brief for the research subagent. It cannot see the chat, so
+ * the task and the sampled paths it should start from travel with it.
+ */
+function buildResearchBrief(goal, context) {
+    const lines = [
+        'Find out what already exists in this project that bears on the task below.',
+        '',
+        `TASK: ${goal}`,
+    ];
+    const files = (context?.files || [])
+        .map((file) => file.path || file.name)
+        .filter(Boolean)
+        .slice(0, 40);
+    if (files.length) lines.push('', `KNOWN PATHS (sampled): ${files.join(', ')}`);
+    const currentFile = context?.currentFile?.path || context?.currentFile?.name;
+    if (currentFile) lines.push('', `CURRENT FILE: ${currentFile}`);
+    lines.push(
+        '',
+        'Report the files and symbols that matter, how they relate to the task, and anything that constrains the change. Do not propose edits.'
+    );
+    return lines.join('\n');
+}
+
 class AgentOrchestrator {
     constructor(io = null) {
         const configuredIterations = Number.parseInt(process.env.AGENT_MAX_ITERATIONS || '15', 10);
@@ -924,6 +948,16 @@ class AgentOrchestrator {
                 }
             },
 
+            delegate_task: {
+                name: 'delegate_task',
+                description: 'Delegate a scoped second pass to a subagent and get its answer back. Roles: researcher (map the code), coder (draft a multi-file implementation), reviewer (check a change), tester (plan verification). The answer is advice and evidence: verify it and make every file change yourself.',
+                parameters: {
+                    role: 'string - researcher | coder | reviewer | tester',
+                    instruction: 'string - a self-contained brief the subagent can answer without seeing this conversation'
+                },
+                execute: async (params, context) => this.delegateTask(params, context)
+            },
+
             execute_code: {
                 name: 'execute_code',
                 description: 'Execute code safely in a sandbox environment',
@@ -999,6 +1033,40 @@ class AgentOrchestrator {
                 } catch (e) { /* non-critical */ }
             }
         };
+
+        // Deterministic delegation: a substantive change request gets one
+        // research pass before the lead starts editing, so delegated work is a
+        // real part of the run rather than something the model may never ask
+        // for. Short questions, background repairs, and runs with no execution
+        // to attach a subagent to skip it.
+        if (this.shouldPrefetchResearch(goal, context)) {
+            emitProgress({
+                type: 'thinking',
+                phase: 'researcher',
+                message: 'Delegating a research pass to a researcher subagent',
+                status: 'running'
+            });
+            const delegation = await this.delegateTask(
+                { role: 'researcher', instruction: buildResearchBrief(goal, context) },
+                context
+            );
+            if (delegation.success) {
+                context.researchFindings = { role: 'researcher', output: delegation.output };
+                emitProgress({
+                    type: 'thinking',
+                    phase: 'researcher',
+                    message: 'Researcher subagent returned findings; continuing with the task',
+                    status: 'running'
+                });
+            } else {
+                emitProgress({
+                    type: 'thinking',
+                    phase: 'researcher',
+                    message: `Research pass unavailable: ${delegation.error}`,
+                    status: 'running'
+                });
+            }
+        }
 
         // A successful inspection that the model repeats verbatim is a loop,
         // not a next step. Autonomous repair runs have no human to break the
@@ -1286,9 +1354,86 @@ const previousIteration = session.iterations[session.iterations.length - 1];
      * runs pass an allow-list; without one every registered tool is visible.
      */
     toolNames(context = null) {
-        const names = Object.keys(this.tools);
+        let names = Object.keys(this.tools);
+        // Delegation needs a parent execution to attach the subagent to, so it
+        // is hidden from runs that have none (background repairs, one-shots).
+        if (!context?.executionId) names = names.filter((name) => name !== 'delegate_task');
         if (!Array.isArray(context?.allowedTools)) return names;
         return names.filter((name) => context.allowedTools.includes(name));
+    }
+
+    /**
+     * Hand a scoped brief to a subagent and wait for its answer. Used by the
+     * deterministic research pass and by the `delegate_task` tool the lead can
+     * call itself. A subagent failure never aborts the lead run.
+     */
+    async delegateTask(params, context) {
+        const role = String(params?.role || '').trim().toLowerCase();
+        const instruction = String(params?.instruction || '').trim();
+        const subagentService = require('./subagentService');
+
+        if (!context?.executionId) {
+            return { success: false, error: 'Delegation is unavailable for this run: it has no agent execution to attach a subagent to.' };
+        }
+        if (!instruction) {
+            return { success: false, error: 'instruction is required and must be a self-contained brief.' };
+        }
+        if (!subagentService.SUBAGENT_ROLES[role]) {
+            return { success: false, error: `Unknown subagent role "${role}". Valid roles: ${Object.keys(subagentService.SUBAGENT_ROLES).join(', ')}.` };
+        }
+        const budget = Number(context.subagentBudget ?? 0);
+        if (budget <= 0) {
+            return { success: false, error: 'This run has used its subagent budget. Continue with your own tools.' };
+        }
+        context.subagentBudget = budget - 1;
+
+        let record;
+        try {
+            record = await subagentService.spawnSubagent({
+                parentExecutionId: context.executionId,
+                role,
+                instruction,
+                userId: context.userId,
+                taskId: context.taskId || null,
+                projectId: context.projectId || null,
+                awaitCompletion: true,
+            });
+        } catch (error) {
+            return { success: false, error: `Could not delegate to a ${role} subagent: ${error.message}` };
+        }
+
+        if (record?.status === 'complete') {
+            return {
+                success: true,
+                role,
+                subagentExecutionId: String(record._id),
+                output: String(record.output || '').slice(0, 8000),
+            };
+        }
+        return {
+            success: false,
+            role,
+            subagentExecutionId: record?._id ? String(record._id) : null,
+            status: record?.status || 'failed',
+            error: record?.error || 'The subagent did not return a usable answer.',
+        };
+    }
+
+    /**
+     * One research pass is worth its cost only for substantive change work:
+     * a short question is answered faster by the lead reading the file itself,
+     * and a background repair run has no user waiting on the subagent trace.
+     */
+    shouldPrefetchResearch(goal, context) {
+        if (!context?.executionId) return false;
+        if (context.autonomous === true) return false;
+        if (context.skipSubagents === true) return false;
+        if (String(process.env.AGENT_SUBAGENT_RESEARCH || '').toLowerCase() === 'off') return false;
+        if (Number(context.subagentBudget ?? 0) <= 0) return false;
+        if (context.agentDeadlineAt && context.agentDeadlineAt - Date.now() < 8 * 60 * 1000) return false;
+        const text = String(goal || '').trim();
+        if (text.length < 40) return false;
+        return /\b(implement|add|build|create|refactor|fix|update|change|migrate|rename|remove|move|extract|wire|integrate|replace|debug|optimi[sz]e|upgrade)\b/i.test(text);
     }
 
     /**
@@ -1716,6 +1861,12 @@ RESPOND WITH JSON ONLY.`;
             }
         }
 
+        // Findings from the delegated research pass. They are evidence about
+        // the codebase, not instructions, and the lead still does the work.
+        const researchSection = context?.researchFindings?.output
+            ? `\n**SUBAGENT RESEARCH FINDINGS** (from a ${context.researchFindings.role} subagent; treat as evidence):\n${String(context.researchFindings.output).slice(0, 4000)}\n`
+            : '';
+
         // Add validation errors if present (self-healing)
         let validationErrorsSection = '';
         if (observation.state.validationErrors && observation.state.validationErrors.length > 0) {
@@ -1773,6 +1924,7 @@ ${designBlock ? `\n${designBlock}\n` : ''}
 - Code search and test tools operate on workspace files, not remote GitHub contents.
 - Be explicit about these boundaries and never claim remote changes were made without a successful remote-write tool result.
 ${contextBundleSection}
+${researchSection}
 ${validationErrorsSection}
 **CURRENT STATE** (Iteration ${observation.iteration}):
 - Workspace: ${observation.state.workspace.name}
@@ -1809,6 +1961,7 @@ ${validationErrorsSection ? '- **PRIORITY**: Fix validation errors first. Do not
 - Treat task comments, DMs, meeting notes, and clarifications as requirements even if not in original description.
 - Use tools to read files before editing.
 - Stay scoped to the workspace.
+- Use delegate_task when a scoped second pass genuinely helps: researcher to map unfamiliar code, coder to draft a multi-file implementation, reviewer to check your change, tester to plan verification. Delegated output is advice you must verify; you still make every file change with your own tools.
 - Use successful tool results to answer the user; do not repeat a successful action with unchanged parameters.
 - If the requested inspection has been completed, set "goalAchieved": true and omit "action".
 - If a tool fails or its result is insufficient, explain the blocker in the next step; do not describe it as completed.
@@ -1984,6 +2137,7 @@ RESPOND WITH JSON ONLY - NO MARKDOWN, NO EXPLANATIONS.`;
             create_multiple_files: 'Creating project files',
             set_env: 'Setting deployment environment variables',
             declare_env_vars: 'Recording required environment variables',
+            delegate_task: 'Delegating to a subagent',
             delete_file: 'Deleting a file'
         };
         return labels[tool] || 'Working on the requested task';
