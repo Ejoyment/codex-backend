@@ -293,7 +293,9 @@ router.post('/', authenticateToken, enforceDeploymentLimit(), async (req, res) =
         }
         // Validate/normalise env vars. Undefined input keeps whatever the
         // deployment already has (a redeploy without touching the env form).
+        console.log('[deploy] directEnv keys:', (directEnv || []).map(e => e.key));
         const envEntries = normalizeEnv(directEnv, { existing: deployment ? deployment.env : [] });
+        console.log('[deploy] envEntries stored:', envEntries.map(e => e.key));
         const repoFullName = resolvedRepo
             ? (resolvedRepo.fullName || (resolvedRepo.owner && resolvedRepo.name ? `${resolvedRepo.owner}/${resolvedRepo.name}` : null))
             : null;
