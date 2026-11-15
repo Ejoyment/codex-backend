@@ -34,9 +34,10 @@ async function collectAiProviders() {
     const cloudProviders = aiService.getProviderInfo()
         .filter((provider) => provider.available)
         .map((provider) => ({
-            key: provider.name,
+            key: provider.key,
             name: provider.displayName,
             model: provider.model,
+            models: [provider.model, ...(provider.fallbackModels || [])],
             type: 'cloud'
         }));
     const localProviders = await Promise.all(['ollama', 'lm-studio'].map(async (provider) => {
@@ -68,9 +69,9 @@ function firstModelFor(provider, override) {
         const models = provider.models || [];
         return override && models.includes(override) ? override : models[0] || null;
     }
-    // Cloud providers are pinned to exactly one configured model; a client
-    // override can't invent another one without failing the real request.
-    return provider.model || null;
+    // Cloud providers can expose multiple models (primary + fallbacks).
+    const models = provider.models || [provider.model];
+    return override && models.includes(override) ? override : models[0] || null;
 }
 
 function describeModel(provider, model) {

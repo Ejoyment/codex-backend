@@ -890,7 +890,7 @@ router.post('/reject', authenticateToken, async (req, res) => {
 router.post('/tweak', authenticateToken, async (req, res) => {
   let creditCharged = false;
   try {
-    const { executionId, instruction } = req.body;
+    const { executionId, instruction, modelTier } = req.body;
     if (!instruction?.trim()) return res.status(400).json({ success: false, message: 'Instruction is required' });
     const execution = await AgentExecution.findOne({ _id: executionId, userId: req.userId });
     if (!execution) return res.status(404).json({ success: false, message: 'Session not found' });
@@ -902,7 +902,21 @@ router.post('/tweak', authenticateToken, async (req, res) => {
     }
     const workspaceId = workspaceAccess.workspaceId;
 
-    const credit = await CreditPoolService.deductCredits(req.userId, AGENT_JOB_CREDIT_COST);
+    // Cost-prioritized model selection for tweaks:
+    // - cheap: use minimax/minimax-m3.1-flash (lowest token cost, good for simple tweaks)
+    // - standard: use the original execution's provider/model
+    // - premium: use the original execution's provider/model (explicit user choice)
+    // Default to cheap for tweaks to avoid burning big token credits on simple follow-ups.
+    const tier = modelTier && ['cheap', 'standard', 'premium'].includes(modelTier) ? modelTier : 'cheap';
+    const cheapModel = 'minimax/minimax-m3.1-flash';
+    const useCheapModel = tier === 'cheap';
+    const tweakProvider = useCheapModel ? 'openrouter' : (metaValue(execution, 'provider') || 'openrouter');
+    const tweakModel = useCheapModel ? cheapModel : aiRouterService.normalizeModel(metaValue(execution, 'provider') || 'openrouter', metaValue(execution, 'model') || execution.model || null);
+
+    const creditCost = useCheapModel
+      ? Math.floor(AGENT_JOB_CREDIT_COST * 0.4) // ~40% of full cost for cheap tier
+      : AGENT_JOB_CREDIT_COST;
+    const credit = await CreditPoolService.deductCredits(req.userId, creditCost);
     if (!credit.success) {
       return res.status(403).json({
         success: false,
@@ -914,7 +928,7 @@ router.post('/tweak', authenticateToken, async (req, res) => {
     }
     creditCharged = true;
 
-    execution.tweaks.push({ instruction: instruction.trim(), addedAt: new Date() });
+    execution.tweaks.push({ instruction: instruction.trim(), addedAt: new Date(), modelTier: tier });
     trimToLast(execution.tweaks, MAX_TWEAKS);
     execution.retryCount = (execution.retryCount || 0) + 1;
     execution.status = 'running';
@@ -922,14 +936,14 @@ router.post('/tweak', authenticateToken, async (req, res) => {
     execution.completedAt = null;
     execution.terminalLog.push({ timestamp: new Date(), type: 'follow_up', message: instruction.trim() });
     trimToLast(execution.terminalLog, MAX_AGENT_LOG);
+    execution.tweakModelTier = tier;
+    execution.tweakModelUsed = tweakModel;
     await execution.save();
     const specIds = metaValue(execution, 'specIds') || [];
     const localPrivacyMode = metaValue(execution, 'localPrivacyMode') || false;
-    const provider = metaValue(execution, 'provider') || 'gemini';
-    const model = aiRouterService.normalizeModel(provider, metaValue(execution, 'model') || execution.model || null);
     const targetTaskId = execution.taskId?.toString() || metaValue(execution, 'taskId') || null;
     const projectId = resolveProjectId({ execution });
-    spawnAgentWorker(execution._id.toString(), targetTaskId, workspaceId, projectId, specIds, provider, model, localPrivacyMode)
+    spawnAgentWorker(execution._id.toString(), targetTaskId, workspaceId, projectId, specIds, tweakProvider, tweakModel, localPrivacyMode)
       .then(async () => {
         if (await executionWasCancelled(execution._id)) return;
         execution.status = 'awaiting_review';
@@ -963,7 +977,7 @@ router.post('/tweak', authenticateToken, async (req, res) => {
           await refundAgentCredit(req.userId);
         }
       });
-    res.json({ success: true, execution });
+    res.json({ success: true, execution, tweakModelTier: tier, tweakModelUsed: tweakModel });
   } catch (error) {
     if (creditCharged) {
       creditCharged = false;

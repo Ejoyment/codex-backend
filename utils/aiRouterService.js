@@ -127,14 +127,15 @@ class AIRouterService {
     if (model === undefined || model === null) return null;
     const value = String(model).trim();
     if (!value) return null;
-    // OpenRouter model names (e.g. google/gemini-3.8-flash) pass through as-is.
+    // OpenRouter model names (e.g. google/gemini-4-argon) pass through as-is.
     if (value.includes('/')) return value;
     if (provider && value.toLowerCase() === String(provider).toLowerCase()) return null;
-    // Cloud providers expose exactly one configured model. A saved preference
-    // from an older build/newer model list must not fail the whole request:
-    // fall back to the configured model instead.
-    if (provider && !this.isLocalProvider(provider) && this.providers[provider]?.model) {
-      if (value !== this.providers[provider].model) return null;
+    // Cloud providers expose multiple models (primary + fallbacks).
+    // Accept any of them instead of rejecting non-primary models.
+    const config = this.providers[provider];
+    if (config && !this.isLocalProvider(provider)) {
+      const allModels = [config.model, ...(config.fallbackModels || [])];
+      if (!allModels.includes(value)) return null;
     }
     return value;
   }

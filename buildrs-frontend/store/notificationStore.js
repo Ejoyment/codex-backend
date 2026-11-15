@@ -151,12 +151,14 @@ function handleIncoming(notification) {
   if (!notification || !notification._id) return;
   const store = useNotificationStore.getState();
   if (store.items.some((n) => n._id === notification._id)) return;
-  if (seenIds().has(notification._id)) return;
 
+  // Only skip the toast if we've already shown this notification in this session.
+  // Always prepend to the store so the bell/dropdown stay in sync with the server.
   rememberSeen(notification._id);
   store.prepend(notification);
 
   const prefs = store.preferences || {};
+  const alreadySeen = seenIds().has(notification._id);
   playNotificationSound({
     muted: store.muted || prefs.sound === false,
     hiddenOnly: prefs.soundWhenHiddenOnly !== false,
@@ -164,7 +166,7 @@ function handleIncoming(notification) {
   });
 
   // Only the attention-grabbing ones raise a toast; the rest live in the bell.
-  if (notification.priority === 'high') {
+  if (notification.priority === 'high' && !alreadySeen) {
     useToastStore.getState().addToast(notification.message || notification.title, 'info', 6000);
   }
 }
@@ -185,7 +187,12 @@ async function refreshCount() {
 export function connectNotifications() {
   const token = typeof window !== 'undefined' ? localStorage.getItem('authToken') : null;
   if (!token) return null;
-  if (socket) return socket;
+  // Reuse an existing live socket; if it's closed, create a fresh one.
+  if (socket && socket.connected) return socket;
+  if (socket && !socket.connected) {
+    socket.disconnect();
+    socket = null;
+  }
 
   socket = io(`${SOCKET_URL}/notifications`, {
     auth: { token },
