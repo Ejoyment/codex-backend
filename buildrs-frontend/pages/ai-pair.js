@@ -36,7 +36,7 @@ import { useCurrentCompany } from '../hooks/useCurrentCompany';
 import { normalizeProgress, progressLabel } from '../lib/agentProgress';
 import { ReasoningSummary, ThinkingBubble } from '../components/AgentReasoning';
 import { SubagentTree } from '../components/SubagentTree';
-import { mockSubagentRun } from '../lib/subagents';
+import { mergeSubagent, normalizeSubagent } from '../lib/subagents';
 
 const LANGUAGES = ['JavaScript', 'TypeScript', 'Python', 'Java', 'Go', 'Rust', 'C++', 'Ruby', 'PHP'];
 const AI_MODEL_PREFERENCE_KEY = 'buildrs-ai-model-preference';
@@ -221,7 +221,7 @@ function formatAgentSummary(summary, success, error) {
   return success ? 'Task complete.' : 'Agent finished with issues.';
 }
 
-function AgentOperationsPanel({ session, agentMode, onToggleMode, loading, steps, messages, remaining, aiLimit }) {
+function AgentOperationsPanel({ session, agentMode, onToggleMode, loading, steps, messages, remaining, aiLimit, subagents = [] }) {
   const completedStep = [...steps].reverse().find((step) => step.type === 'done');
   const runStatus = loading
     ? 'Running'
@@ -237,9 +237,16 @@ function AgentOperationsPanel({ session, agentMode, onToggleMode, loading, steps
     .slice(-6)
     .reverse();
   const goal = [...messages].reverse().find((message) => message.role === 'user')?.content || '';
+  const coordinatorStatus = loading
+    ? 'running'
+    : completedStep
+      ? (completedStep.success ? 'complete' : 'failed')
+      : 'idle';
   const subagentRun = useMemo(
-    () => (agentMode ? mockSubagentRun(goal) : null),
-    [agentMode, goal],
+    () => (agentMode
+      ? { coordinator: { task: goal || 'No request yet.', status: coordinatorStatus }, workers: subagents }
+      : null),
+    [agentMode, goal, coordinatorStatus, subagents],
   );
 
   return (
@@ -518,6 +525,9 @@ export default function AiPair() {
   const [remaining, setRemaining] = useState(aiLimit);
   const [agentMode, setAgentMode] = useState(false);
   const [agentSteps, setAgentSteps] = useState([]);
+  const [subagents, setSubagents] = useState([]);
+  const [runExecutionId, setRunExecutionId] = useState(null);
+  const subagentParentRef = useRef(null);
   const [activeView, setActiveView] = useState('runs');
   const [agentSessions, setAgentSessions] = useState([]);
   const [selectedExecution, setSelectedExecution] = useState(null);
@@ -589,7 +599,25 @@ export default function AiPair() {
     const socketUrl = SOCKET_URL;
     const sock = io(`${socketUrl}/collab`, { auth: { token }, transports: ['websocket', 'polling'] });
     agentSocketRef.current = sock;
+    subagentParentRef.current = null;
+    setSubagents([]);
     sock.on('connect', () => sock.emit('agent:join'));
+
+    // The room is per user, so only accept workers that belong to the run the
+    // composer started. The first event establishes the parent execution id.
+    const acceptSubagent = (payload) => {
+      const worker = normalizeSubagent(payload);
+      if (!worker) return;
+      if (worker.parentExecutionId) {
+        if (!subagentParentRef.current) subagentParentRef.current = worker.parentExecutionId;
+        else if (subagentParentRef.current !== worker.parentExecutionId) return;
+      }
+      setSubagents((prev) => mergeSubagent(prev, worker));
+    };
+    sock.on('agent:subagent:spawned', acceptSubagent);
+    sock.on('agent:subagent:progress', acceptSubagent);
+    sock.on('agent:subagent:complete', acceptSubagent);
+    sock.on('agent:subagent:error', acceptSubagent);
     sock.on('agent:progress', (p) => {
       if (!p || !p.type) return;
       const step = normalizeProgress(p);
@@ -605,6 +633,22 @@ export default function AiPair() {
 
   function resetAgentRun() {
     setAgentSteps([]);
+    setSubagents([]);
+    setRunExecutionId(null);
+    subagentParentRef.current = null;
+  }
+
+  async function loadSubagents(executionId) {
+    try {
+      const data = await apiFetch(`/api/v1/agent/${executionId}/subagents`);
+      const records = (data.subagents || [])
+        .map((record) => normalizeSubagent(record, record.createdAt ? new Date(record.createdAt).getTime() : Date.now()))
+        .filter(Boolean)
+        .sort((a, b) => a.at - b.at);
+      setSubagents((prev) => records.reduce((acc, record) => mergeSubagent(acc, record), prev));
+    } catch (err) {
+      // Subagent history is informational; a failed fetch must not fail the run.
+    }
   }
 
   function toggleAgentMode() {
@@ -825,6 +869,12 @@ export default function AiPair() {
             ...prev,
             { type: 'done', status: 'done', success: result.success !== false, summary: result.summary },
           ]);
+          if (data.executionId) {
+            const executionId = String(data.executionId);
+            subagentParentRef.current = executionId;
+            setRunExecutionId(executionId);
+            loadSubagents(executionId);
+          }
           const hasSummary = Boolean(result.summary) && typeof result.summary === 'object';
           const summaryText = formatAgentSummary(result.summary, result.success, result.error);
           const aiMsg = {
@@ -1233,6 +1283,7 @@ export default function AiPair() {
                       messages={messages}
                       remaining={remaining}
                       aiLimit={effectiveAiLimit}
+                      subagents={subagents}
                     />
                   </div>
                 </div>

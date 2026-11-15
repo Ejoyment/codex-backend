@@ -13619,17 +13619,6 @@
   color: var(--figma-text-faint);
 }
 
-.ail-subagents-badge {
-  flex: 0 0 auto;
-  padding: 0.05rem 0.3rem;
-  border: 1px solid rgba(229, 184, 74, 0.3);
-  border-radius: 4px;
-  color: var(--figma-warning);
-  font-size: 0.5rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
 .ail-subagents-chevron {
   width: 0.85rem;
   height: 0.85rem;
@@ -13761,6 +13750,10 @@
   background: var(--figma-text-faint);
 }
 
+.ail-subagent-dot.is-idle {
+  background: var(--figma-text-faint);
+}
+
 .ail-subagent-dot.is-active {
   background: var(--figma-accent);
   animation: statusPulse 1.2s infinite;
@@ -13805,10 +13798,44 @@
   color: var(--figma-text-faint);
 }
 
-.ail-subagents-note {
-  margin: 0;
-  padding: 0 0.65rem 0.6rem;
+.ail-subagent-expand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--figma-accent-soft);
+  font: inherit;
+  cursor: pointer;
+}
+
+.ail-subagent-expand:hover {
+  color: var(--figma-accent-bright);
+}
+
+.ail-subagent-output {
+  max-height: 10rem;
+  margin: 0.35rem 0 0;
+  padding: 0.5rem 0.55rem;
+  overflow: auto;
+  border-radius: 6px;
+  background: var(--figma-bg-deep);
+  color: var(--figma-text-soft);
+  font-family: var(--figma-font-mono);
   font-size: 0.6rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.ail-subagent-output.is-error {
+  color: var(--figma-error-soft);
+}
+
+.ail-subagents-empty {
+  margin: 0;
+  padding: 0 0.65rem 0.65rem 0.95rem;
+  font-size: 0.64rem;
   line-height: 1.5;
   color: var(--figma-text-faint);
 }
