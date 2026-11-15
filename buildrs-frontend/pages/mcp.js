@@ -239,7 +239,7 @@ export default function McpPage() {
 
           <div className="workspace-content">
             <div className="dash-content">
-              {error && <p className="text-sm text-[#ec1414] mb-4">{error}</p>}
+              {error && <p className="text-sm text-figma-error-soft mb-4">{error}</p>}
 
               <section className="dash-section">
                 <div className="dash-section-head">
@@ -276,7 +276,7 @@ export default function McpPage() {
               ) : servers.length === 0 ? (
                 <div className="workspace-card">
                   <div className="workspace-card-body text-center py-10">
-                    <Server className="w-8 h-8 mx-auto mb-2" style={{ color: '#2a3446' }} />
+                    <Server className="w-8 h-8 mx-auto mb-2" style={{ color: 'var(--figma-border-strong)' }} />
                     <p className="text-sm text-muted">
                       No MCP servers configured. Add one to export its tools to the AI coding agent.
                     </p>
@@ -321,7 +321,7 @@ export default function McpPage() {
                                 <span className="pipeline-stage">+{(s.tools || []).length - 6} more</span>
                               )}
                             </div>
-                            {s.lastError && <p className="text-xs text-[#ec1414] mt-1">{s.lastError}</p>}
+                            {s.lastError && <p className="text-xs text-figma-error-soft mt-1">{s.lastError}</p>}
                             <div className="pipeline-actions">
                               <button type="button" className="btn-workspace btn-primary" style={{ fontSize: '0.72rem', padding: '0.3rem 0.6rem' }} onClick={() => probe(s)} disabled={probingId === s._id}>
                                 {probingId === s._id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PlugZap className="w-3.5 h-3.5" />}
@@ -384,7 +384,7 @@ export default function McpPage() {
                 <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
                 Enabled (available when the AI agent runs)
               </label>
-              {formError && <p className="text-xs text-[#ec1414]">{formError}</p>}
+              {formError && <p className="text-xs text-figma-error-soft">{formError}</p>}
               <div className="flex justify-end gap-3">
                 <button type="button" className="btn-workspace btn-secondary" onClick={() => setModalOpen(false)}>Cancel</button>
                 <button type="submit" className="btn-workspace btn-primary" disabled={saving}>

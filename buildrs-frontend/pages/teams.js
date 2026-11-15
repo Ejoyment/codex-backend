@@ -564,7 +564,7 @@ function CreateTeamModal({ onClose, onCreated }) {
             </span>
             <h3 className="ws-modal-title">Create Team</h3>
           </div>
-          <button type="button" onClick={onClose} className="text-[#59687a] hover:text-[#ffffff]">
+          <button type="button" onClick={onClose} className="text-figma-text-ghost hover:text-figma-text">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -671,7 +671,7 @@ function InviteMemberModal({ companies, selectedCompanyId, onClose }) {
             </span>
             <h3 className="ws-modal-title">Invite Member</h3>
           </div>
-          <button type="button" onClick={onClose} className="text-[#59687a] hover:text-[#ffffff]">
+          <button type="button" onClick={onClose} className="text-figma-text-ghost hover:text-figma-text">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -793,7 +793,7 @@ function CompanySettingsModal({ company, onClose, onUpdated }) {
             </span>
             <h3 className="ws-modal-title">Team Settings</h3>
           </div>
-          <button type="button" onClick={onClose} className="text-[#59687a] hover:text-[#ffffff]">
+          <button type="button" onClick={onClose} className="text-figma-text-ghost hover:text-figma-text">
             <X className="w-5 h-5" />
           </button>
         </div>

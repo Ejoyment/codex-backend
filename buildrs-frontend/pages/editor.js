@@ -2584,7 +2584,7 @@ export default function Editor() {
       colors: {
         'editor.background': '#0a0d15',
         'editor.foreground': '#c7d2dd',
-        'editorLineNumber.foreground': '#59687a',
+        'editorLineNumber.foreground': '#8b98a9',
         'editorLineNumber.activeForeground': '#9aaeba',
         'editorCursor.foreground': '#12dce5',
         'editor.selectionBackground': '#12dce533',
@@ -4098,7 +4098,7 @@ export default function Editor() {
                             onChange={(e) => setDeploySubdomain(e.target.value.replace(/[^a-z0-9-]/g, '-').toLowerCase())}
                             placeholder="my-app"
                             className="ws-input"
-                            style={{ minWidth: 0, flex: 1, fontFamily: 'var(--figma-font-mono)', background: '#0a0d15', borderColor: '#2a3446' }}
+                            style={{ minWidth: 0, flex: 1, fontFamily: 'var(--figma-font-mono)', background: '#0a0d15', borderColor: 'var(--figma-border-strong)' }}
                             required
                             minLength={2}
                           />
@@ -4803,7 +4803,7 @@ export default function Editor() {
                                   {selectedFigmaFile.thumbnail_url ? (
                                     <img src={selectedFigmaFile.thumbnail_url} alt={selectedFigmaFile.name || 'design'} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
                                   ) : (
-                                    <Layers className="w-8 h-8" style={{ color: '#2a3446' }} />
+                                    <Layers className="w-8 h-8" style={{ color: 'var(--figma-border-strong)' }} />
                                   )}
                                 </div>
                                 <button type="button" className="btn-workspace btn-primary" onClick={generateFromDesign}>
@@ -4887,7 +4887,7 @@ export default function Editor() {
                           })()}                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                             <input type="text" value={deploySubdomain} onChange={(e) => setDeploySubdomain(e.target.value.replace(/[^a-z0-9-]/g, '-').toLowerCase())}
                               placeholder="my-app" className="ws-input"
-                              style={{ fontFamily: 'var(--figma-font-mono)', background: '#0a0d15', borderColor: '#2a3446' }}
+                              style={{ fontFamily: 'var(--figma-font-mono)', background: '#0a0d15', borderColor: 'var(--figma-border-strong)' }}
                               autoFocus required minLength={2} />
                             <span className="text-sm whitespace-nowrap" style={{ color: '#748194' }}>.buildrshq.dev</span>
                             <button type="submit" disabled={deploying || deploySubdomain.length < 2} className="btn-workspace btn-primary">
@@ -5001,7 +5001,7 @@ export default function Editor() {
                 <input type="checkbox" checked={repoCreatePrivate} onChange={(e) => setRepoCreatePrivate(e.target.checked)} />
                 Make this repository private
               </label>
-              {repoCreateError && <p className="text-xs text-[#ec1414]">{repoCreateError}</p>}
+              {repoCreateError && <p className="text-xs text-figma-error-soft">{repoCreateError}</p>}
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', paddingTop: '0.5rem' }}>
                 <button type="button" className="btn-workspace btn-secondary" onClick={() => { setRepoCreateOpen(false); setRepoCreateError(null); }}>Cancel</button>
                 <button type="submit" className="btn-workspace btn-primary flex items-center gap-2" disabled={repoCreateBusy || !repoCreateName.trim()}>
@@ -5222,7 +5222,7 @@ export default function Editor() {
                   head: <b className="text-white">{gitStatus?.branch || 'main'}</b>
                 </p>
               ) : (
-                <p className="text-xs text-[#ec1414]">Select a GitHub repository in the Explorer first.</p>
+                <p className="text-xs text-figma-error-soft">Select a GitHub repository in the Explorer first.</p>
               )}
               <div>
                 <label className="ws-label">Title *</label>
@@ -5242,7 +5242,7 @@ export default function Editor() {
                   <input type="text" value={gitStatus?.branch || 'main'} className="ws-input" disabled />
                 </div>
               </div>
-              {prError && <p className="text-xs text-[#ec1414]">{prError}</p>}
+              {prError && <p className="text-xs text-figma-error-soft">{prError}</p>}
               {prDone && <p className="text-xs text-[#7ee787]">{prDone}</p>}
               <div className="flex justify-end gap-3">
                 <button type="button" className="btn-workspace btn-secondary" onClick={() => { setPrOpen(false); setPrError(null); setPrDone(null); }}>Cancel</button>
@@ -5274,7 +5274,7 @@ export default function Editor() {
                   <Loader2 className="w-4 h-4 animate-spin" /> Reading design and generating code...
                 </div>
               ) : codegenError ? (
-                <p className="text-sm text-[#ec1414]">{codegenError}</p>
+                <p className="text-sm text-figma-error-soft">{codegenError}</p>
               ) : codegenResult ? (
                 <div className="space-y-4">
                   <p className="text-xs text-muted">

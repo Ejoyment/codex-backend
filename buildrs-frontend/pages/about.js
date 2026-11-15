@@ -110,7 +110,7 @@ export default function About() {
               {TIMELINE.map(([tag, text], i) => (
                 <StaggerItem key={tag}>
                 <div className="flex gap-5 bg-[#121821] p-6">
-                  <p className="mkt-num text-sm text-[#59687a]">{`0${i + 1}`}</p>
+                  <p className="mkt-num text-sm text-figma-text-faint">{`0${i + 1}`}</p>
                   <div>
                     <p className="mkt-mono text-[10.5px] uppercase tracking-widest text-[#12dce5]">{tag}</p>
                     <p className="mt-2 text-[13.5px] leading-relaxed text-[#a9b7c4]">{text}</p>

@@ -89,7 +89,7 @@ export default function SpecWorkspace() {
                 {spec?.specId}
               </span>
             </div>
-            <div className="flex items-center gap-4 text-xs text-[#59687a]">
+            <div className="flex items-center gap-4 text-xs text-figma-text-faint">
               <span>Updated: {spec?.updatedAt ? new Date(spec.updatedAt).toLocaleDateString() : 'Never'}</span>
               {spec?.targetModules?.length > 0 && (
                 <span className="flex items-center gap-1">
@@ -105,16 +105,16 @@ export default function SpecWorkspace() {
           </div>
 
           <div className="grid grid-cols-3 gap-4 mb-6">
-            <div className="p-4 bg-[#1d263b] rounded-lg border border-[#2a3446]">
-              <div className="text-xs text-[#59687a] mb-1">Target Modules</div>
+            <div className="p-4 bg-[#1d263b] rounded-lg border border-figma-border-strong">
+              <div className="text-xs text-figma-text-faint mb-1">Target Modules</div>
               <div className="text-lg font-bold text-[#dee2f6]">{spec?.targetModules?.length || 0}</div>
             </div>
-            <div className="p-4 bg-[#1d263b] rounded-lg border border-[#2a3446]">
-              <div className="text-xs text-[#59687a] mb-1">Assertions</div>
+            <div className="p-4 bg-[#1d263b] rounded-lg border border-figma-border-strong">
+              <div className="text-xs text-figma-text-faint mb-1">Assertions</div>
               <div className="text-lg font-bold text-[#dee2f6]">{spec?.assertions?.length || 0}</div>
             </div>
-            <div className="p-4 bg-[#1d263b] rounded-lg border border-[#2a3446]">
-              <div className="text-xs text-[#59687a] mb-1">Verification</div>
+            <div className="p-4 bg-[#1d263b] rounded-lg border border-figma-border-strong">
+              <div className="text-xs text-figma-text-faint mb-1">Verification</div>
               <div className={`text-lg font-bold ${verificationResult?.verdict === 'pass' ? 'text-green-400' : verificationResult?.verdict === 'fail' ? 'text-red-400' : 'text-yellow-400'}`}>
                 {verificationResult
                   ? verificationResult.verdict === 'pass'
@@ -140,7 +140,7 @@ export default function SpecWorkspace() {
                 setDriftReport(null);
                 setVerificationResult(null);
               }}
-              className="flex items-center gap-2 px-4 py-2 bg-[#2a3446] hover:bg-[#2a3446] text-[#dee2f6] text-sm font-semibold rounded-lg"
+              className="flex items-center gap-2 px-4 py-2 bg-figma-border-strong hover:bg-figma-border-strong text-[#dee2f6] text-sm font-semibold rounded-lg"
             >
               <AlertTriangle className="w-4 h-4" />
               Check Drift
@@ -157,7 +157,7 @@ export default function SpecWorkspace() {
                 {driftReport.reports?.map((r, i) => (
                   <div key={i} className="text-xs text-[#dee2f6] bg-[#161d29] p-2 rounded">
                     <span className="text-red-400">⚠ {r.message}</span>
-                    <span className="text-[#59687a] ml-2">{r.file}</span>
+                    <span className="text-figma-text-faint ml-2">{r.file}</span>
                   </div>
                 ))}
               </div>

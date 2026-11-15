@@ -357,7 +357,7 @@ function AddConventionModal({ companyId, onClose, onCreated }) {
             </span>
             <h3 className="ws-modal-title">Add Convention</h3>
           </div>
-          <button type="button" onClick={onClose} className="text-[#59687a] hover:text-[#ffffff]">
+          <button type="button" onClick={onClose} className="text-figma-text-ghost hover:text-figma-text">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -420,7 +420,7 @@ function AddConventionModal({ companyId, onClose, onCreated }) {
 
           <div className="mb-4">
             <label className="ws-label">
-              Examples <span className="text-[#59687a] font-normal">(one per line)</span>
+              Examples <span className="text-figma-text-faint font-normal">(one per line)</span>
             </label>
             <textarea
               rows={3}

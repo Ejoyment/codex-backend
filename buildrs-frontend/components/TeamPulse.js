@@ -41,7 +41,7 @@ export default function TeamPulse({ companies = [] }) {
             </div>
             <div className="queue-meta">
               <span className="queue-due">
-                <Users className="w-3 h-3 inline mr-1 align-text-top" style={{ color: '#59687a' }} />
+                <Users className="w-3 h-3 inline mr-1 align-text-top" style={{ color: 'var(--figma-text-ghost)' }} />
                 {company.memberCount || 0} member{(company.memberCount || 0) !== 1 ? 's' : ''}
               </span>
               {company.memberLimit && (

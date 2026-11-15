@@ -1,3 +1,32 @@
+const fs = require('fs');
+const path = require('path');
+
+/**
+ * The Figma token file is the single source of truth for colour. Read the
+ * `--figma-*` custom properties here instead of duplicating hex values, so a
+ * token change in design-tokens.css reaches Tailwind utilities automatically.
+ */
+function readFigmaTokens() {
+  const file = path.join(__dirname, 'styles', 'design-tokens.css');
+  const css = fs.readFileSync(file, 'utf8');
+  const tokens = {};
+  const declaration = /--figma-([a-z0-9-]+)\s*:\s*([^;]+);/g;
+  let match = declaration.exec(css);
+  while (match) {
+    const value = match[2].trim();
+    if (/^#[0-9a-f]{3,8}$/i.test(value) || /^rgba?\(/i.test(value)) {
+      tokens[match[1]] = value;
+    }
+    match = declaration.exec(css);
+  }
+  if (!tokens.bg || !tokens.accent) {
+    throw new Error(`Could not read Figma tokens from ${file}`);
+  }
+  return tokens;
+}
+
+const t = readFigmaTokens();
+
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   content: [
@@ -8,118 +37,136 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // Figma semantic aliases
+        // Figma semantic aliases, derived from styles/design-tokens.css.
         figma: {
-          bg: '#0f131c',
-          deep: '#0a0d15',
-          alt: '#090e16',
-          surface: '#101d2c',
-          raised: '#1d263b',
-          blue: '#1a3345',
-          accent: '#12dce5',
-          'accent-bright': '#68f7ff',
-          'accent-soft': '#a4edf0',
-          purple: '#8a38f5',
-          'purple-soft': '#c795e8',
-          text: '#ffffff',
-          'text-soft': '#c7d2dd',
-          'text-alt': '#dee2f6',
-          'text-muted': '#9aaeba',
-          'text-faint': '#748194',
-          'text-ghost': '#59687a',
-          success: '#03ba03',
-          error: '#ec1414',
-          warning: '#e5b84a',
-          info: '#1478e8',
+          bg: t.bg,
+          deep: t['bg-deep'],
+          alt: t['bg-alt'],
+          surface: t.surface,
+          raised: t['surface-raised'],
+          'surface-raised': t['surface-raised'],
+          blue: t['surface-blue'],
+          overlay: t.overlay,
+          accent: t.accent,
+          'accent-bright': t['accent-bright'],
+          'accent-soft': t['accent-soft'],
+          'accent-dim': t['accent-dim'],
+          'accent-deep': t['accent-deep'],
+          purple: t.purple,
+          'purple-soft': t['purple-soft'],
+          'blue-text': t['blue-text'],
+          text: t.text,
+          'text-secondary': t['text-secondary'],
+          'text-soft': t['text-soft'],
+          'text-alt': t['text-alt'],
+          'text-muted': t['text-muted'],
+          'text-faint': t['text-faint'],
+          'text-ghost': t['text-ghost'],
+          success: t.success,
+          'success-deep': t['success-deep'],
+          'success-light': t['success-light'],
+          error: t.error,
+          'error-soft': t['error-soft'],
+          warning: t.warning,
+          info: t.info,
+          'info-deep': t['info-deep'],
+          border: t.border,
+          'border-strong': t['border-strong'],
+          'border-soft': t['border-soft'],
+          'border-faint': t['border-faint'],
+          'border-accent': t['border-accent'],
+          'border-accent-strong': t['border-accent-strong'],
+          panel: t.panel,
+          'panel-deep': t['panel-deep'],
         },
 
         // Legacy aliases now point at the Figma palette.
-        navy: '#0f131c',
+        navy: t.bg,
         'navy-light': '#121821',
-        'navy-dark': '#0a0d15',
+        'navy-dark': t['bg-deep'],
         'navy-lighter': '#1a2230',
-        'blue-accent': '#12dce5',
-        'green-accent': '#03ba03',
-        'purple-accent': '#8a38f5',
+        'blue-accent': t.accent,
+        'green-accent': t.success,
+        'purple-accent': t.purple,
 
         // Tailwind ramps overridden with Figma values so existing utility
         // classes inherit the design system automatically.
         blue: {
-          300: '#a4edf0',
-          400: '#68f7ff',
-          500: '#12dce5',
-          600: '#0fb9c1',
-          700: '#0c969c',
+          300: t['accent-soft'],
+          400: t['accent-bright'],
+          500: t.accent,
+          600: t['accent-dim'],
+          700: t['accent-deep'],
         },
         cyan: {
-          300: '#a4edf0',
-          400: '#68f7ff',
-          500: '#12dce5',
-          600: '#0fb9c1',
-          700: '#0c969c',
+          300: t['accent-soft'],
+          400: t['accent-bright'],
+          500: t.accent,
+          600: t['accent-dim'],
+          700: t['accent-deep'],
         },
         emerald: {
-          300: '#56e5a9',
-          400: '#03ba03',
-          500: '#039503',
+          300: t['success-light'],
+          400: t.success,
+          500: t['success-deep'],
           600: '#028002',
         },
         green: {
-          300: '#56e5a9',
-          400: '#03ba03',
-          500: '#039503',
+          300: t['success-light'],
+          400: t.success,
+          500: t['success-deep'],
           600: '#028002',
         },
         red: {
-          300: '#ec8f8f',
-          400: '#ec1414',
+          300: t['error-soft'],
+          400: t.error,
           500: '#d61111',
           600: '#b90e0e',
         },
         purple: {
-          300: '#c795e8',
+          300: t['purple-soft'],
           400: '#a862f0',
-          500: '#8a38f5',
+          500: t.purple,
           600: '#7429d6',
         },
         violet: {
-          300: '#c795e8',
+          300: t['purple-soft'],
           400: '#a862f0',
-          500: '#8a38f5',
+          500: t.purple,
           600: '#7429d6',
         },
         zinc: {
-          200: '#dee2f6',
-          300: '#c7d2dd',
-          400: '#9aaeba',
-          500: '#748194',
-          600: '#59687a',
+          200: t['text-alt'],
+          300: t['text-soft'],
+          400: t['text-muted'],
+          500: t['text-faint'],
+          600: t['text-ghost'],
           700: '#3a4657',
-          800: '#1d263b',
-          900: '#101d2c',
-          950: '#0a0d15',
+          800: t['surface-raised'],
+          900: t.surface,
+          950: t['bg-deep'],
         },
         slate: {
-          200: '#dee2f6',
-          300: '#c7d2dd',
-          400: '#9aaeba',
-          500: '#748194',
-          600: '#59687a',
+          200: t['text-alt'],
+          300: t['text-soft'],
+          400: t['text-muted'],
+          500: t['text-faint'],
+          600: t['text-ghost'],
           700: '#3a4657',
-          800: '#1d263b',
-          900: '#101d2c',
-          950: '#0a0d15',
+          800: t['surface-raised'],
+          900: t.surface,
+          950: t['bg-deep'],
         },
         gray: {
-          200: '#dee2f6',
-          300: '#c7d2dd',
-          400: '#9aaeba',
-          500: '#748194',
-          600: '#59687a',
+          200: t['text-alt'],
+          300: t['text-soft'],
+          400: t['text-muted'],
+          500: t['text-faint'],
+          600: t['text-ghost'],
           700: '#3a4657',
-          800: '#1d263b',
-          900: '#101d2c',
-          950: '#0a0d15',
+          800: t['surface-raised'],
+          900: t.surface,
+          950: t['bg-deep'],
         },
       },
       fontFamily: {

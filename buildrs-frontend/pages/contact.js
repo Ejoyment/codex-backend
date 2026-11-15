@@ -104,7 +104,7 @@ export default function Contact() {
             {CHANNELS.map((c) => (
               <StaggerItem key={c.title}>
               <div className="mkt-cell h-full">
-                <p className="mkt-mono text-[10.5px] uppercase tracking-widest text-[#59687a]">{c.tag}</p>
+                <p className="mkt-mono text-[10.5px] uppercase tracking-widest text-figma-text-faint">{c.tag}</p>
                 <h3 className="mkt-h3 mt-3">{c.title}</h3>
                 <p className="mt-2 text-[13.5px] leading-relaxed text-[#a9b7c4]">{c.desc}</p>
                 {c.href.startsWith('mailto:') ? (

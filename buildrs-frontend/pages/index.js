@@ -206,7 +206,7 @@ export default function Index() {
                     Explore the platform <span className="mkt-arrow">↗</span>
                   </Link>
                 </div>
-                <p className="mkt-mono mt-8 text-xs text-[#59687a]">
+                <p className="mkt-mono mt-8 text-xs text-figma-text-faint">
                   free plan · no credit card · ready in under a minute
                 </p>
               </ScrollReveal>
@@ -232,7 +232,7 @@ export default function Index() {
               <div className="px-2 py-8 sm:px-4">
                 <p className="mkt-num text-3xl text-white sm:text-4xl">{s.k}</p>
                 <p className="mt-3 text-[13px] leading-snug text-[#a9b7c4]">{s.v}</p>
-                <p className="mkt-mono mt-2 text-[10.5px] text-[#59687a]">{s.note}</p>
+                <p className="mkt-mono mt-2 text-[10.5px] text-figma-text-faint">{s.note}</p>
               </div>
               </StaggerItem>
             ))}
@@ -249,7 +249,7 @@ export default function Index() {
                 </p>
                 <h2 className="mkt-h2">One workspace, every layer.</h2>
               </div>
-              <p className="mkt-mono hidden text-[11px] uppercase tracking-widest text-[#59687a] lg:block">
+              <p className="mkt-mono hidden text-[11px] uppercase tracking-widest text-figma-text-faint lg:block">
                 click a layer
               </p>
             </div>
@@ -261,7 +261,7 @@ export default function Index() {
               <Link href="/features" className="mkt-cell group block h-full">
                 <div className="flex items-center justify-between gap-3">
                   <h3 className="mkt-h3 flex items-center gap-3">
-                    <span className="mkt-mono text-sm text-[#59687a]">▸</span>
+                    <span className="mkt-mono text-sm text-figma-text-faint">▸</span>
                     {s.name}
                   </h3>
                   <span className={`mkt-pill ${s.status}`}>{s.status}</span>
@@ -270,7 +270,7 @@ export default function Index() {
                   <span className="mkt-mono text-[10.5px] uppercase tracking-widest text-[#748194]">it can: </span>
                   {s.desc}
                 </p>
-                <p className="mkt-mono mt-4 text-[10.5px] uppercase tracking-widest text-[#59687a]">
+                <p className="mkt-mono mt-4 text-[10.5px] uppercase tracking-widest text-figma-text-faint">
                   {s.badge}
                 </p>
               </Link>
@@ -299,7 +299,7 @@ export default function Index() {
                   {b.icon}
                 </div>
                 <h3 className="mkt-h3">{b.title}</h3>
-                <p className="mkt-mono mt-1 text-[10.5px] uppercase tracking-widest text-[#59687a]">{b.tag}</p>
+                <p className="mkt-mono mt-1 text-[10.5px] uppercase tracking-widest text-figma-text-faint">{b.tag}</p>
                 <p className="mt-3 text-[13.5px] leading-relaxed text-[#a9b7c4]">{b.desc}</p>
               </div>
               </StaggerItem>
@@ -348,7 +348,7 @@ export default function Index() {
                           {name.slice(0, 1).toUpperCase()}
                         </span>
                         <span className="mkt-mono text-[#a9b7c4]">{name}</span>
-                        <span className="mkt-mono text-[#59687a]">{act}</span>
+                        <span className="mkt-mono text-figma-text-faint">{act}</span>
                       </div>
                     ))}
                   </div>
@@ -432,7 +432,7 @@ export default function Index() {
               {WHY.map((w) => (
                 <StaggerItem key={w.num}>
                 <div className="flex gap-6 border-t border-[#ffffff10] pt-6">
-                  <p className="mkt-num text-sm text-[#59687a]">{w.num}</p>
+                  <p className="mkt-num text-sm text-figma-text-faint">{w.num}</p>
                   <div>
                     <h3 className="mkt-h3">{w.title}</h3>
                     <p className="mt-2.5 text-[14px] leading-relaxed text-[#a9b7c4]">{w.desc}</p>

@@ -120,7 +120,7 @@ export default function Careers() {
                 </p>
                 <h2 className="mkt-h2">We are hiring.</h2>
               </div>
-              <p className="mkt-mono hidden text-[11px] uppercase tracking-widest text-[#59687a] lg:block">
+              <p className="mkt-mono hidden text-[11px] uppercase tracking-widest text-figma-text-faint lg:block">
                 {JOBS.length} positions · remote
               </p>
             </div>
@@ -135,7 +135,7 @@ export default function Careers() {
                     <h3 className="mkt-h3">{job.title}</h3>
                     <span className="mkt-pill">{job.dept}</span>
                   </div>
-                  <p className="mkt-mono mt-2 text-[11px] uppercase tracking-widest text-[#59687a]">
+                  <p className="mkt-mono mt-2 text-[11px] uppercase tracking-widest text-figma-text-faint">
                     {job.location} · {job.type}
                   </p>
                   <p className="mt-3 max-w-[560px] text-[13.5px] leading-relaxed text-[#a9b7c4]">{job.desc}</p>

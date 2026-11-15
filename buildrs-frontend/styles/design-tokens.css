@@ -21,18 +21,23 @@
   --figma-accent-soft: #a4edf0;
   --figma-accent-dim: #0fb9c1;
   --figma-accent-deep: #0c969c;
-  --figma-purple: #8a38f5;
+  --figma-purple: #9a4ff8;
   --figma-purple-soft: #c795e8;
   --figma-blue-text: #b0c6ff;
 
-  /* ---- Text ------------------------------------------------------------ */
+  /* ---- Text ------------------------------------------------------------
+     4.5:1 body-text tiers: text, text-alt, text-soft, text-muted,
+     text-secondary, text-faint (>=4.5:1 on every surface token).
+     3:1 UI/icon tier: text-ghost. Never use text-ghost for readable copy.
+     Status colours are UI-tier; use *-soft for status text. See
+     scripts/check-contrast.mjs, which enforces both tiers.             */
   --figma-text: #ffffff;
   --figma-text-secondary: rgba(255, 255, 255, 0.6);
   --figma-text-soft: #c7d2dd;
   --figma-text-alt: #dee2f6;
   --figma-text-muted: #9aaeba;
-  --figma-text-faint: #748194;
-  --figma-text-ghost: #59687a;
+  --figma-text-faint: #909cad;
+  --figma-text-ghost: #748194;
 
   /* ---- Status ---------------------------------------------------------- */
   --figma-success: #03ba03;
@@ -42,11 +47,12 @@
   --figma-error: #ec1414;
   --figma-error-soft: #ec8f8f;
   --figma-warning: #e5b84a;
-  --figma-info: #1478e8;
+  --figma-info: #54a4f2;
   --figma-info-deep: #014c85;
 
   /* ---- Borders & translucent fills ------------------------------------ */
   --figma-border: rgba(255, 255, 255, 0.1);
+  --figma-border-strong: #2a3446;
   --figma-border-soft: rgba(255, 255, 255, 0.06);
   --figma-border-faint: rgba(255, 255, 255, 0.03);
   --figma-border-accent: rgba(18, 220, 229, 0.1);
