@@ -6,6 +6,7 @@ import AuthGuard from './AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch, projectApi } from '../lib/api';
 import useDeploymentRealtime, { applyDeploymentPatch } from '../lib/useDeploymentRealtime';
+import PageHeader from './PageHeader';
 import {
   ArrowLeft,
   ExternalLink,
@@ -438,18 +439,17 @@ export default function DeploymentPage() {
               {!selectedId ? (
                 <>
                   {/* ---------- LIST (Figma 718:69712) ---------- */}
-                  <header className="deploy-head">
-                    <div className="deploy-head-text">
-                      <p className="deploy-crumb">Ship / Deployment</p>
-                      <h1 className="deploy-title">Deployment</h1>
-                      <p className="deploy-subtitle">
-                        Move validated code through preview, staging, and production with branch and build context intact
-                      </p>
-                    </div>
-                    <button type="button" className="deploy-btn-primary" onClick={openCreate}>
-                      <Plus className="w-4 h-4" /> New Deployment
-                    </button>
-                  </header>
+                  <PageHeader
+                    className="deploy-head"
+                    breadcrumbs={[{ label: 'Dashboard', href: '/dashboard' }, { label: 'Deployment' }]}
+                    title="Deployment"
+                    description="Move validated code through preview, staging, and production with branch and build context intact."
+                    actions={(
+                      <button type="button" className="deploy-btn-primary" onClick={openCreate}>
+                        <Plus className="w-4 h-4" /> New Deployment
+                      </button>
+                    )}
+                  />
 
                   <section className="deploy-kpis">
                     {kpis.map((k) => (

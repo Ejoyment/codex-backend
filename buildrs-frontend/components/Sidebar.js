@@ -25,31 +25,19 @@ import {
 import { getAvatarUrl } from '../lib/utils';
 import WorkspaceGlobalHeader from './WorkspaceGlobalHeader';
 
+// Four groups, in the order a session actually moves: build it, ship it, work
+// on it with others, then administer it. Every destination stays one click away.
 const NAV_SECTIONS = [
   {
-    label: 'WORK',
+    label: 'BUILD',
     items: [
       { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
       { href: '/projects', label: 'Projects', icon: FolderKanban },
       { href: '/tasks', label: 'Tasks', icon: CheckSquare },
-    ],
-  },
-  {
-    label: 'BUILD',
-    items: [
       { href: '/editor', label: 'Editor', icon: Edit3 },
-      { href: '/figma', label: 'Figma', icon: Figma },
-      { href: '/ai-agents', label: 'AI Agent', icon: Sparkles },
       { href: '/specs', label: 'Specs', icon: FileText },
-      { href: '/mcp', label: 'MCP Server', icon: Server },
-    ],
-  },
-  {
-    label: 'COLLABORATE',
-    items: [
-      { href: '/teams', label: 'Team', icon: Users },
-      { href: '/debug-room', label: 'Debug Room', icon: Radio },
-      { href: '/integrations', label: 'Integrations', icon: Brain },
+      { href: '/ai-agents', label: 'AI Agent', icon: Sparkles },
+      { href: '/figma', label: 'Figma', icon: Figma },
     ],
   },
   {
@@ -60,7 +48,16 @@ const NAV_SECTIONS = [
     ],
   },
   {
-    label: 'MANAGE',
+    label: 'COLLABORATE',
+    items: [
+      { href: '/teams', label: 'Team', icon: Users },
+      { href: '/debug-room', label: 'Debug Room', icon: Radio },
+      { href: '/integrations', label: 'Integrations', icon: Brain },
+      { href: '/mcp', label: 'MCP Server', icon: Server },
+    ],
+  },
+  {
+    label: 'SETTINGS',
     items: [
       { href: '/billing', label: 'Billing & Plans', icon: Plug2 },
       { href: '/audit', label: 'Audit Report', icon: ShieldCheck },

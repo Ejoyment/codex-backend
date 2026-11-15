@@ -271,25 +271,49 @@ export default function Dashboard() {
                 ) : isEmpty ? (
                   /* Empty state */
                   <div className="space-y-4">
-                    <section className="flex min-h-[116px] flex-col items-center justify-center rounded-xl border border-white/[0.07] bg-[#0d1119] px-5 py-3 text-center">
-                      <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-full bg-cyan-500/10 text-cyan-400">
-                        <FolderKanban className="h-4 w-4" />
+                    <section className="rounded-xl border border-white/[0.07] bg-[#0d1119] px-5 py-4">
+                      <div className="mx-auto flex max-w-xl flex-col items-center text-center">
+                        <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-full bg-cyan-500/10 text-cyan-400">
+                          <FolderKanban className="h-4 w-4" />
+                        </div>
+                        {!projects?.length && (
+                          <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.14em] text-figma-text-faint">Step 1 of 2</p>
+                        )}
+                        <h3 className="text-sm font-semibold text-white">
+                          {projects?.length ? 'Your project workspace is ready' : 'Create your first project'}
+                        </h3>
+                        <p className="mt-1 text-[11px] text-zinc-400">
+                          {projects?.length
+                            ? 'Add a task to start tracking work, or delegate one straight to an agent.'
+                            : 'A project holds your specs, tasks, and branches. Everything else starts here.'}
+                        </p>
+                        <button
+                          type="button"
+                          className="mt-3 rounded-md bg-cyan-500 px-3 py-1.5 text-[11px] font-semibold text-slate-950 transition hover:bg-cyan-400"
+                          onClick={() => setIsCreatingProject(true)}
+                        >
+                          {projects?.length ? 'Create another project' : 'Create project'}
+                        </button>
+                        {!projects?.length && (
+                          <div className="mt-4 flex w-full flex-col items-center gap-1.5 border-t border-white/5 pt-3">
+                            <p className="text-[11px] text-zinc-400">
+                              <span className="mr-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-figma-text-faint">Step 2</span>
+                              Delegate your first task and watch the agent work.
+                            </p>
+                            <button
+                              type="button"
+                              className="rounded-full border border-cyan-500/60 px-2.5 py-0.5 text-[10px] font-medium text-cyan-400 transition hover:bg-cyan-500/10"
+                              onClick={() => router.push('/ai-agents')}
+                            >
+                              Delegate your first task <ArrowRight className="ml-1 inline h-3 w-3" />
+                            </button>
+                          </div>
+                        )}
                       </div>
-                      <h3 className="text-sm font-semibold text-white">{projects?.length ? 'Your project workspace is ready' : 'No active projects'}</h3>
-                      <p className="mt-1 text-[11px] text-zinc-500">
-                        {projects?.length
-                          ? 'Your workspace is ready. Create a task to start making progress.'
-                          : 'You haven’t created any projects yet. Start building your first workspace.'}
-                      </p>
-                      <button
-                        type="button"
-                        className="mt-2 rounded-md bg-cyan-500 px-3 py-1.5 text-[11px] font-semibold text-slate-950 transition hover:bg-cyan-400"
-                        onClick={() => setIsCreatingProject(true)} // <-- UPDATED HERE
-                      >
-                        {projects?.length ? 'Create Another Project' : 'Create Project'}
-                      </button>
                     </section>
 
+                    {(projects?.length > 0) && (
+                    <>
                     <section className="flex min-h-[204px] flex-col items-center justify-center rounded-xl border border-white/[0.07] bg-[#0d1119] px-5 py-6 text-center">
                       <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-full bg-amber-500/10 text-amber-400">
                         <AlertTriangle className="h-4 w-4" />
@@ -314,6 +338,8 @@ export default function Dashboard() {
                         <p className="mt-2">No additional output yet.<br />Next step will appear here.</p>
                       </div>
                     </section>
+                    </>
+                    )}
 
                     <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
                       <section className="rounded-xl border border-white/[0.07] bg-[#0d1119] p-4 lg:col-span-2">
