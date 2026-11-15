@@ -34,7 +34,7 @@ async function collectAiProviders() {
     const cloudProviders = aiService.getProviderInfo()
         .filter((provider) => provider.available)
         .map((provider) => ({
-            key: provider.key,
+            key: provider.name,
             name: provider.displayName,
             model: provider.model,
             models: [provider.model, ...(provider.fallbackModels || [])],
