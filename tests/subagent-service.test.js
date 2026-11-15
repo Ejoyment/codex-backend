@@ -287,6 +287,50 @@ describe('runSubagentLoop lighter-weight loop', () => {
   });
 });
 
+describe('spawnSubagent awaitCompletion', () => {
+  // The lead agent folds the answer into its own run, so it needs the finished
+  // record; the REST route keeps the fire-and-forget behaviour.
+  const makeAwaitableDoc = () => {
+    const doc = makeSubagent({ status: 'idle' });
+    doc.lean = jest.fn(() => ({ ...doc }));
+    return doc;
+  };
+
+  test('waits for the loop and returns the finished record', async () => {
+    const doc = makeAwaitableDoc();
+    SubagentExecution.findById.mockResolvedValue(doc);
+
+    const result = await subagentService.spawnSubagent({
+      parentExecutionId,
+      role: 'researcher',
+      instruction: 'research login',
+      userId,
+      awaitCompletion: true,
+    });
+
+    expect(result.status).toBe('complete');
+    expect(result.output).toBe('Research findings: login flow lives in src/auth.');
+    expect(realtimeBus.emitSubagentComplete).toHaveBeenCalled();
+  });
+
+  test('returns the failed record instead of throwing when the subagent fails', async () => {
+    aiRouterService.routeChat.mockResolvedValue({ success: false, error: 'provider unavailable' });
+    const doc = makeAwaitableDoc();
+    SubagentExecution.findById.mockResolvedValue(doc);
+
+    const result = await subagentService.spawnSubagent({
+      parentExecutionId,
+      role: 'coder',
+      instruction: 'implement x',
+      userId,
+      awaitCompletion: true,
+    });
+
+    expect(result.status).toBe('failed');
+    expect(result.error).toBe('provider unavailable');
+  });
+});
+
 describe('SUBAGENT_ROLES', () => {
   test('exposes all four roles', () => {
     expect(Object.keys(subagentService.SUBAGENT_ROLES)).toEqual(

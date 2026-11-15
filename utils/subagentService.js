@@ -202,7 +202,7 @@ async function runSubagentLoop(subagentExecutionId, role, instruction, userId) {
  * loop. The loop runs in the background; the caller gets the subagent record
  * immediately. Subagent failure is isolated and never crashes the lead agent.
  */
-async function spawnSubagent({ parentExecutionId, role, instruction, userId, sessionId, taskId, projectId }) {
+async function spawnSubagent({ parentExecutionId, role, instruction, userId, sessionId, taskId, projectId, awaitCompletion = false }) {
   if (!parentExecutionId) throw new Error('parentExecutionId is required');
   if (!role) throw new Error('role is required');
   if (!instruction?.trim()) throw new Error('instruction is required');
@@ -241,12 +241,36 @@ async function spawnSubagent({ parentExecutionId, role, instruction, userId, ses
     instruction: subagent.instruction,
   });
 
-  // Fire-and-forget the lighter-weight loop; failures are isolated.
-  runSubagentLoop(subagent._id.toString(), role, subagent.instruction, userId).catch(() => {
-    // Errors are already logged and persisted inside runSubagentLoop.
-  });
+  const loop = runSubagentLoop(subagent._id.toString(), role, subagent.instruction, userId);
 
-  return subagent;
+  // Callers that only need the record (the REST spawn route) get it at once.
+  if (!awaitCompletion) {
+    loop.catch(() => {
+      // Errors are already logged and persisted inside runSubagentLoop.
+    });
+    return subagent;
+  }
+
+  // Callers that fold the answer into an in-flight run (the lead agent) wait
+  // for the loop. A failed subagent stays isolated: the stored record carries
+  // the error and the caller decides what to do with it.
+  let outcome = null;
+  try {
+    outcome = await loop;
+  } catch (error) {
+    console.error(`[subagent-service] subagent ${role} (${subagent._id}) did not finish:`, error.message);
+    return subagent;
+  }
+
+  // The loop already knows how the run ended; re-reading the record would cost
+  // a query and hand back a second copy of the same document.
+  const snapshot = typeof subagent.toObject === 'function' ? subagent.toObject() : { ...subagent };
+  return {
+    ...snapshot,
+    status: outcome?.success ? 'complete' : 'failed',
+    output: outcome?.output || snapshot.output || '',
+    error: outcome?.error || snapshot.error || '',
+  };
 }
 
 async function listSubagents(parentExecutionId, userId) {
