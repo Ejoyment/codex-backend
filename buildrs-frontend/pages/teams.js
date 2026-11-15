@@ -68,7 +68,7 @@ export default function Teams() {
     return valid;
   }, { refreshOnVisibility: true, intervalMs: 30000 });
 
-  const memberCountForLimit = selectedCompany ? (members.length || selectedCompany.memberCount || 0) : 0;
+  const memberCountForLimit = selectedCompany ? ((members || []).length || selectedCompany.memberCount || 0) : 0;
   const memberLimitForCheck = selectedCompany?.memberLimit ?? tierLimits.maxMembers;
   const inviteAtLimit = memberLimitForCheck !== -1 && memberCountForLimit >= memberLimitForCheck;
 
@@ -90,12 +90,12 @@ export default function Teams() {
     setSelectedCompany(null);
   };
 
-  const totalMembers = companies.reduce((sum, c) => sum + (c.members?.length || 0), 0);
-  const ownedTeams = companies.filter((c) => c.owner === user?._id || c.owner?._id === user?._id).length;
-  const managedTeams = companies.filter((c) => c.owner === user?._id || c.owner?._id === user?._id || c.userRole === 'owner' || c.userRole === 'admin').length;
+  const totalMembers = (companies || []).reduce((sum, c) => sum + (c.members?.length || 0), 0);
+  const ownedTeams = (companies || []).filter((c) => c.owner === user?._id || c.owner?._id === user?._id).length;
+  const managedTeams = (companies || []).filter((c) => c.owner === user?._id || c.owner?._id === user?._id || c.userRole === 'owner' || c.userRole === 'admin').length;
 
   const kpis = [
-    { label: 'Workspaces', value: companies.length, sub: 'teams you belong to', color: 'blue', Icon: Building2 },
+    { label: 'Workspaces', value: (companies || []).length, sub: 'teams you belong to', color: 'blue', Icon: Building2 },
     { label: 'Total Members', value: totalMembers, sub: 'across all teams', color: 'green', Icon: Users },
     { label: 'Owned', value: ownedTeams, sub: 'you control', color: 'orange', Icon: Crown },
     { label: 'Managed', value: managedTeams, sub: 'admin access', color: 'purple', Icon: Settings },
@@ -120,7 +120,7 @@ export default function Teams() {
               <h1 className="dash-title">{selectedCompany ? selectedCompany.name : 'Teams'}</h1>
               <div className="dash-statusline">
                 <span className="status-indicator status-online" />
-                <span>{loadingCompanies ? 'Loading...' : `${companies.length} teams · ${totalMembers} members`}</span>
+                <span>{loadingCompanies ? 'Loading...' : `${(companies || []).length} teams · ${totalMembers} members`}</span>
                 <span className="dash-clock">· {clock || '—:——:——'}</span>
               </div>
             </div>
@@ -181,7 +181,7 @@ export default function Teams() {
                   currentUser={user}
                   onOpenSettings={() => setShowSettingsModal(true)}
                 />
-              ) : companies.length === 0 ? (
+              ) : (companies || []).length === 0 ? (
                 <EmptyState onCreateClick={() => setShowCreateModal(true)} />
               ) : (
                 <>
@@ -214,10 +214,10 @@ export default function Teams() {
                         <span className="dot" />
                         <b>Workspaces</b> · select to manage
                       </div>
-                      <span className="badge-count">{companies.length} teams</span>
+                      <span className="badge-count">{(companies || []).length} teams</span>
                     </div>
                     <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {companies.map((company) => (
+                      {(companies || []).map((company) => (
                         <TeamCard
                           key={company._id}
                           company={company}
@@ -321,10 +321,10 @@ function TeamCard({ company, currentUser, onClick }) {
 function TeamDetail({ company, members, loadingMembers, currentUser, onOpenSettings }) {
   const isOwner = company.owner === currentUser?._id || company.owner?._id === currentUser?._id;
   const canManage = isOwner || company.userRole === 'admin' || company.userRole === 'owner';
-  const memberCount = company.members?.length || members.length || 0;
+  const memberCount = company.members?.length || (members || []).length || 0;
   const limit = company.memberLimit;
   const fillPct = limit ? Math.min(Math.round((memberCount / limit) * 100), 100) : 0;
-  const adminCount = members.filter((m) => m.role === 'admin' || m.role === 'owner').length;
+  const adminCount = (members || []).filter((m) => m.role === 'admin' || m.role === 'owner').length;
 
   return (
     <div className="space-y-5">
@@ -402,7 +402,7 @@ function TeamDetail({ company, members, loadingMembers, currentUser, onOpenSetti
             </span>
             <h2 className="workspace-card-title">Members</h2>
           </div>
-          <span className="badge-count">{members.length} active</span>
+          <span className="badge-count">{(members || []).length} active</span>
         </div>
         {loadingMembersData ? (
           <div className="workspace-card-body">
@@ -413,7 +413,7 @@ function TeamDetail({ company, members, loadingMembers, currentUser, onOpenSetti
               <p className="dash-empty-title">Loading members...</p>
             </div>
           </div>
-        ) : members.length === 0 ? (
+        ) : (members || []).length === 0 ? (
           <div className="workspace-card-body">
             <div className="dash-empty">
               <div className="dash-empty-ico">
@@ -425,7 +425,7 @@ function TeamDetail({ company, members, loadingMembers, currentUser, onOpenSetti
           </div>
         ) : (
           <div>
-            {members.map((m, i) => (
+            {(members || []).map((m, i) => (
               <MemberRow key={m.user?._id || i} member={m} />
             ))}
           </div>
@@ -674,7 +674,7 @@ function InviteMemberModal({ companies, selectedCompanyId, onClose }) {
               className="ws-select"
             >
               <option value="">Select a team</option>
-              {companies.map((c) => (
+              {(companies || []).map((c) => (
                 <option key={c._id} value={c._id}>
                   {c.name}
                 </option>
