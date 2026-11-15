@@ -935,7 +935,10 @@ export default function AiPair() {
                       onChange={(event) => setDraftAiModel(event.target.value ? JSON.parse(event.target.value) : null)}
                     >
                       {aiProviders.flatMap((provider) => {
-                        const models = provider.type === 'cloud' ? [provider.model] : provider.models || [];
+                        const models =
+                          provider.type === 'cloud'
+                            ? provider.models || [provider.model]
+                            : provider.models || [];
                         return models.map((model) => (
                           <option key={`${provider.key}:${model}`} value={JSON.stringify({ provider: provider.key, model })}>
                             {provider.name} · {model}
