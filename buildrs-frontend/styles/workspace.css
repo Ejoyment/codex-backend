@@ -13365,6 +13365,295 @@
   box-shadow: 0 0 0 3px rgba(3,186,3,0.1);
 }
 
+/* ---- Agent status + reasoning ----------------------------------------- */
+
+@keyframes statusPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.ail-conv-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.55rem;
+}
+
+.ail-status-pill {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.22rem 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--figma-text-faint);
+  font-size: 0.58rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.ail-status-pill > span {
+  width: 0.38rem;
+  height: 0.38rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.ail-status-pill.is-thinking {
+  color: var(--figma-text-alt);
+  border-color: rgba(18, 220, 229, 0.2);
+}
+
+.ail-status-pill.is-acting {
+  color: var(--figma-accent);
+  border-color: rgba(18, 220, 229, 0.35);
+  background: rgba(18, 220, 229, 0.08);
+}
+
+.ail-status-pill.is-acting > span {
+  animation: statusPulse 1.2s infinite;
+}
+
+.ail-status-pill.is-review {
+  color: var(--figma-warning);
+  border-color: rgba(229, 184, 74, 0.35);
+  background: rgba(229, 184, 74, 0.08);
+}
+
+.ail-reason-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin: 0.35rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ail-reason {
+  display: flex;
+  gap: 0.55rem;
+}
+
+.ail-reason-marker {
+  display: flex;
+  width: 1.4rem;
+  height: 1.4rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--figma-border);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--figma-text-faint);
+}
+
+.ail-reason.is-active .ail-reason-marker {
+  border-color: rgba(18, 220, 229, 0.3);
+  background: rgba(18, 220, 229, 0.08);
+  color: var(--figma-accent);
+}
+
+.ail-reason.is-success .ail-reason-marker {
+  border-color: rgba(3, 186, 3, 0.3);
+  color: var(--figma-success);
+}
+
+.ail-reason.is-error .ail-reason-marker {
+  border-color: rgba(236, 20, 20, 0.3);
+  color: var(--figma-error-soft);
+}
+
+.ail-reason-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.ail-reason-label {
+  margin: 0;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: var(--figma-text-soft);
+}
+
+.ail-reason.is-error .ail-reason-label {
+  color: var(--figma-error-soft);
+}
+
+.ail-reason-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.15rem;
+  font-family: var(--figma-font-mono);
+  font-size: 0.56rem;
+  letter-spacing: 0.04em;
+  color: var(--figma-text-faint);
+}
+
+.ail-reason-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.22rem;
+  padding: 0.05rem 0.3rem;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.ail-reason-time {
+  margin-left: auto;
+}
+
+.ail-reason-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--figma-accent-soft);
+  font: inherit;
+  cursor: pointer;
+}
+
+.ail-reason-toggle:hover {
+  color: var(--figma-accent-bright);
+}
+
+.ail-reason-toggle svg {
+  transition: transform 140ms ease;
+}
+
+.ail-reason-toggle svg.rotate-180 {
+  transform: rotate(180deg);
+}
+
+.ail-reason-detail {
+  max-height: 11rem;
+  margin: 0.35rem 0 0;
+  padding: 0.5rem 0.6rem;
+  overflow: auto;
+  border-radius: 6px;
+  background: var(--figma-bg-deep);
+  color: var(--figma-text-soft);
+  font-family: var(--figma-font-mono);
+  font-size: 0.62rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.ail-reason-empty {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+  padding: 0.65rem 0.7rem;
+  border: 1px dashed var(--figma-border);
+  border-radius: 8px;
+  color: var(--figma-text-faint);
+  font-size: 0.72rem;
+}
+
+.ail-reason-empty p {
+  margin: 0;
+}
+
+.ail-thinking-bubble {
+  border-style: dashed;
+  border-color: rgba(18, 220, 229, 0.22);
+  background: rgba(18, 220, 229, 0.04);
+}
+
+.ail-thinking-icon {
+  color: var(--figma-accent);
+}
+
+.ail-thinking-time {
+  margin-left: auto;
+  font-family: var(--figma-font-mono);
+  font-size: 0.56rem;
+  color: var(--figma-text-faint);
+}
+
+.ail-thinking-intent {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--figma-text-alt);
+}
+
+.ail-thinking-bubble .ail-reason-list {
+  margin-top: 0.5rem;
+}
+
+.ail-thinking-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.45rem;
+  font-family: var(--figma-font-mono);
+  font-size: 0.6rem;
+  color: var(--figma-text-faint);
+}
+
+.ail-thinking-progress > span {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: var(--figma-accent);
+  animation: statusPulse 1.2s infinite;
+}
+
+.ail-summary {
+  margin-top: 0.6rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--figma-border);
+  border-left: 2px solid var(--figma-accent);
+  border-radius: 8px;
+  background: rgba(18, 220, 229, 0.04);
+}
+
+.ail-summary.is-error {
+  border-left-color: var(--figma-error-soft);
+  background: rgba(236, 20, 20, 0.05);
+}
+
+.ail-summary-head {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.4rem;
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--figma-text-faint);
+}
+
+.ail-summary dl {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0;
+}
+
+.ail-summary dt {
+  font-family: var(--figma-font-mono);
+  font-size: 0.55rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--figma-text-faint);
+}
+
+.ail-summary dd {
+  margin: 0.1rem 0 0;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--figma-text-soft);
+  white-space: pre-wrap;
+}
+
 .ail-scroll {
   padding: 1.35rem clamp(1rem, 3vw, 2.3rem);
 }

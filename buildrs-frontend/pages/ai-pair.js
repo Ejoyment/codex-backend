@@ -33,6 +33,8 @@ import { getTierLimits, normalizeTier } from '../lib/tier';
 import { useRouter } from 'next/router';
 import { io } from 'socket.io-client';
 import { useCurrentCompany } from '../hooks/useCurrentCompany';
+import { normalizeProgress, progressLabel } from '../lib/agentProgress';
+import { ReasoningSummary, ThinkingBubble } from '../components/AgentReasoning';
 
 const LANGUAGES = ['JavaScript', 'TypeScript', 'Python', 'Java', 'Go', 'Rust', 'C++', 'Ruby', 'PHP'];
 const AI_MODEL_PREFERENCE_KEY = 'buildrs-ai-model-preference';
@@ -166,6 +168,37 @@ function renderCodeBlocks(text, keyPrefix = '') {
   });
 }
 
+/** Appends a live step to the open thinking message (the newest one that is not sealed). */
+function attachStepToThinking(messages, step) {
+  let index = -1;
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    if (messages[i].role === 'thinking') {
+      index = i;
+      break;
+    }
+  }
+  if (index < 0 || messages[index].done) return messages;
+  const target = messages[index];
+  const next = [...messages];
+  next[index] = {
+    ...target,
+    intent: progressLabel(step),
+    steps: [...(target.steps || []), step].slice(-20),
+  };
+  return next;
+}
+
+/** Seals every open thinking message so the transcript stops animating. */
+function closeThinking(messages, failed = false) {
+  let changed = false;
+  const next = messages.map((message) => {
+    if (message.role !== 'thinking' || message.done) return message;
+    changed = true;
+    return { ...message, done: true, failed };
+  });
+  return changed ? next : messages;
+}
+
 function formatAgentSummary(summary, success, error) {
   if (typeof summary === 'string' && summary.trim()) return summary;
   if (summary && typeof summary === 'object') {
@@ -184,33 +217,6 @@ function formatAgentSummary(summary, success, error) {
   if (summary?.stopReason) return `The agent stopped before completing the request: ${summary.stopReason}`;
   if (typeof summary?.goal === 'string' && summary.goal.trim()) return summary.goal;
   return success ? 'Task complete.' : 'Agent finished with issues.';
-}
-
-function getAgentProgressLabel(step) {
-  if (step.type === 'done') {
-    return step.success ? 'Task complete' : step.summary?.stopReason || 'Task stopped';
-  }
-  const tool = step.action?.tool || step.tool;
-  const labels = {
-    list_files: 'Inspecting repository files',
-    get_repository_status: 'Checking repository status',
-    read_file: 'Reading a source file',
-    search_code: 'Searching project code',
-    analyze_code: 'Analyzing source code',
-    run_tests: 'Running tests',
-    execute_code: 'Running code in the sandbox',
-    create_file: 'Creating a file',
-    update_file: 'Updating a file',
-    create_multiple_files: 'Creating project files',
-    delete_file: 'Deleting a file',
-  };
-  if (step.type === 'result') {
-    const actionLabel = labels[tool] || 'Step';
-    return step.result?.success
-      ? `${actionLabel} complete`
-      : `${actionLabel} needs attention${step.result?.message ? `: ${String(step.result.message).slice(0, 120)}` : ''}`;
-  }
-  return labels[tool] || step.message || 'Working on the requested task';
 }
 
 function AgentOperationsPanel({ session, agentMode, onToggleMode, loading, steps, messages, remaining, aiLimit }) {
@@ -284,7 +290,7 @@ function AgentOperationsPanel({ session, agentMode, onToggleMode, loading, steps
                 <li key={`${step.iteration || step.type}-${index}`} className={isDone || isResult ? (succeeded ? 'is-success' : 'is-error') : 'is-active'}>
                   <span className="ail-activity-marker">{isDone || isResult ? (succeeded ? <CheckCircle2 /> : <XCircle />) : <span />}</span>
                   <span className="ail-activity-copy">
-                    <strong>{getAgentProgressLabel(step)}</strong>
+                    <strong>{progressLabel(step)}</strong>
                     {step.iteration > 0 && <small>Step {step.iteration}</small>}
                   </span>
                 </li>
@@ -572,19 +578,10 @@ export default function AiPair() {
     agentSocketRef.current = sock;
     sock.on('connect', () => sock.emit('agent:join'));
     sock.on('agent:progress', (p) => {
-      if (p && p.type) {
-        const progress = {
-          type: p.type,
-          iteration: p.iteration,
-          maxIterations: p.maxIterations,
-          message: p.message,
-          action: p.action,
-          result: p.result,
-          success: p.success,
-          summary: p.summary,
-        };
-        setAgentSteps((prev) => [...prev.slice(-19), progress]);
-      }
+      if (!p || !p.type) return;
+      const step = normalizeProgress(p);
+      setAgentSteps((prev) => [...prev.slice(-19), step]);
+      setMessages((prev) => attachStepToThinking(prev, step));
     });
     return () => {
       sock.emit('agent:leave');
@@ -773,7 +770,13 @@ export default function AiPair() {
     setInput('');
     setLoading(true);
     setError(null);
-    if (agentMode) resetAgentRun();
+    if (agentMode) {
+      resetAgentRun();
+      setMessages((prev) => [
+        ...prev,
+        { role: 'thinking', intent: 'Planning the change…', steps: [], at: Date.now(), done: false },
+      ]);
+    }
 
     try {
       const data = await apiFetch('/api/ai-pair/chat', {
@@ -809,15 +812,17 @@ export default function AiPair() {
             ...prev,
             { type: 'done', status: 'done', success: result.success !== false, summary: result.summary },
           ]);
+          const hasSummary = Boolean(result.summary) && typeof result.summary === 'object';
           const summaryText = formatAgentSummary(result.summary, result.success, result.error);
           const aiMsg = {
             role: 'assistant',
-            content: summaryText,
-            agentSummary: result.summary,
+            content: hasSummary ? '' : summaryText,
+            agentSummary: hasSummary ? result.summary : null,
+            agentSuccess: result.success !== false,
             agentSteps: steps,
             timestamp: new Date().toISOString(),
           };
-          setMessages((prev) => [...prev, aiMsg]);
+          setMessages((prev) => [...closeThinking(prev, result.success === false), aiMsg]);
         } else {
           const aiMsg = {
             role: 'assistant',
@@ -825,7 +830,7 @@ export default function AiPair() {
             codeChanges: data.actions && data.actions.length ? data.actions : [],
             timestamp: new Date().toISOString(),
           };
-          setMessages((prev) => [...prev, aiMsg]);
+          setMessages((prev) => [...closeThinking(prev), aiMsg]);
         }
         if (typeof data.aiLimit === 'number') {
           setRemaining(data.aiLimit);
@@ -837,7 +842,10 @@ export default function AiPair() {
       if (
         requestId === chatSendRequestRef.current &&
         sessionRequestId === chatSessionRequestRef.current
-      ) setError(err.message || 'Failed to send message');
+      ) {
+        setMessages((prev) => closeThinking(prev, true));
+        setError(err.message || 'Failed to send message');
+      }
     } finally {
       if (requestId === chatSendRequestRef.current) setLoading(false);
     }
@@ -876,6 +884,15 @@ export default function AiPair() {
         if (requestId === chatSessionRequestRef.current) setError(err.message || 'Could not load conversation');
       });
   }
+
+  const lastStep = agentSteps[agentSteps.length - 1];
+  const agentStatus = loading
+    ? (lastStep && ['iteration', 'result'].includes(lastStep.type)
+      ? { key: 'acting', label: 'Acting' }
+      : { key: 'thinking', label: 'Thinking' })
+    : (['awaiting_review', 'awaiting_approval'].includes(selectedExecution?.status)
+      ? { key: 'review', label: 'Waiting for your review' }
+      : { key: 'idle', label: 'Idle' });
 
   return (
     <AuthGuard>
@@ -1054,7 +1071,12 @@ export default function AiPair() {
                           <span className="ail-conv-avatar"><Bot className="h-4 w-4" /></span>
                           <div><strong>{activeSession?.repositoryName || activeSession?.repoName || 'AI Pair workspace'}</strong><span>{activeSession ? `${activeSession.language || 'Code'} · ${agentMode ? 'Agent workflow' : 'Pairing'}` : 'Create or select a session to begin'}</span></div>
                         </div>
-                        <div className={`ail-connection-state ${activeSession ? 'is-connected' : ''}`}><span />{activeSession ? 'Session ready' : 'Not connected'}</div>
+                        <div className="ail-conv-status">
+                          <span className={`ail-status-pill is-${agentStatus.key}`} aria-live="polite">
+                            <span />{agentStatus.label}
+                          </span>
+                          <div className={`ail-connection-state ${activeSession ? 'is-connected' : ''}`}><span />{activeSession ? 'Session ready' : 'Not connected'}</div>
+                        </div>
                       </div>
                       {error && (
                         <div className="std-alert std-alert-error mx-4 mt-4">
@@ -1090,7 +1112,9 @@ export default function AiPair() {
                         ) : (
                           <>
                             {messages.map((msg, i) => (
-                              msg.role === 'user' ? (
+                              msg.role === 'thinking' ? (
+                                <ThinkingBubble key={i} message={msg} />
+                              ) : msg.role === 'user' ? (
                                 <div key={i} className="ail-msg-row is-user">
                                   <div className="ail-bubble ail-bubble-user">
                                     <div className="ail-msg-head">
@@ -1109,7 +1133,10 @@ export default function AiPair() {
                                       <Bot className="w-3.5 h-3.5" style={{ color: '#12dce5' }} />
                                       <span className="ail-msg-who">AI</span>
                                     </div>
-                                    {renderCodeBlocks(msg.content, `a${i}`)}
+                                    {msg.content ? renderCodeBlocks(msg.content, `a${i}`) : null}
+                                    {msg.agentSummary && (
+                                      <ReasoningSummary summary={msg.agentSummary} success={msg.agentSuccess !== false} />
+                                    )}
                                     {msg.agentSteps && msg.agentSteps.length > 0 && (
                                       <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                                         {msg.agentSteps.map((s, si) => (
@@ -1129,43 +1156,13 @@ export default function AiPair() {
                                 </div>
                               )
                             ))}
-                            {loading && (
-                              <>
-                                {agentMode && agentSteps.length > 0 ? (
-                                  <div className="ail-msg-row">
-                                    <div className="ail-bubble ail-bubble-ai" style={{ width: '100%' }}>
-                                      <div className="ail-msg-head">
-                                        <Bot className="w-3.5 h-3.5" style={{ color: '#12dce5' }} />
-                                        <span className="ail-msg-who">Agent working...</span>
-                                      </div>
-                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.5rem' }}>
-                                        {agentSteps.filter((s) => ['thinking', 'iteration', 'result', 'done'].includes(s.type)).map((s, idx) => {
-                                          const isCompleteEvent = s.type === 'result' || s.type === 'done';
-                                          const succeeded = s.type === 'done' ? s.success : s.result?.success;
-                                          const ProgressIcon = isCompleteEvent
-                                            ? (succeeded ? CheckCircle2 : XCircle)
-                                            : Loader2;
-                                          return (
-                                            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.78rem', color: isCompleteEvent && !succeeded ? '#ec1414' : '#c8ccd4' }}>
-                                              <ProgressIcon className={`w-3 h-3 ${!isCompleteEvent ? 'animate-spin' : ''}`} style={{ color: isCompleteEvent ? (succeeded ? '#03ba03' : '#ec1414') : '#12dce5' }} />
-                                              <span className="mkt-mono">
-                                                {s.iteration ? `step ${s.iteration} · ` : ''}{getAgentProgressLabel(s)}
-                                              </span>
-                                            </div>
-                                          );
-                                        })}
-                                      </div>
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <div className="ail-msg-row">
-                                    <div className="ail-thinking ail-typing">
-                                      <Loader2 className="w-4 h-4 animate-spin" style={{ color: '#12dce5' }} />
-                                      <span className="ail-msg-who">{agentMode ? 'Agent thinking...' : 'Thinking...'}</span>
-                                    </div>
-                                  </div>
-                                )}
-                              </>
+                            {loading && !agentMode && (
+                              <div className="ail-msg-row">
+                                <div className="ail-thinking ail-typing">
+                                  <Loader2 className="w-4 h-4 animate-spin" style={{ color: '#12dce5' }} />
+                                  <span className="ail-msg-who">Thinking...</span>
+                                </div>
+                              </div>
                             )}
                             <div ref={messagesEndRef} />
                           </>
