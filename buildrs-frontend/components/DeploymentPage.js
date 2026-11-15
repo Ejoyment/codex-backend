@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import Sidebar from './Sidebar';
@@ -6,6 +6,7 @@ import AuthGuard from './AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch, projectApi } from '../lib/api';
 import useDeploymentRealtime, { applyDeploymentPatch } from '../lib/useDeploymentRealtime';
+import { useCachedData } from '../hooks/useCachedData';
 import {
   ArrowLeft,
   ExternalLink,
@@ -139,9 +140,17 @@ export default function DeploymentPage() {
   const user = useAuthStore((s) => s.user);
   const subscription = useAuthStore((s) => s.subscription);
   const router = useRouter();
+  const userId = user?._id || user?.id || user?.userId || null;
 
-  const [deployments, setDeployments] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    data: deployments,
+    loading: loadingDeployments,
+    refresh: refreshDeployments,
+  } = useCachedData(userId, 'deployments', async () => {
+    const data = await apiFetch('/api/deployments', { noCache: true });
+    return data?.deployments || [];
+  }, { refreshOnVisibility: true, intervalMs: 30000 });
+
   const [error, setError] = useState(null);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
@@ -172,18 +181,14 @@ export default function DeploymentPage() {
   const [wizardError, setWizardError] = useState(null);
 
   const loadDeployments = useCallback(async (options = {}) => {
-    try {
-      const data = await apiFetch('/api/deployments', options);
-      if (data?.deployments) setDeployments(data.deployments);
-      setError(null);
-    } catch (err) {
-      setError(err?.data?.message || err?.message || 'Failed to load deployments');
-    } finally {
-      setLoading(false);
+    if (options.noCache) {
+      await refreshDeployments();
+      return;
     }
-  }, []);
+    // Default load is handled by useCachedData.
+  }, [refreshDeployments]);
 
-  useEffect(() => { loadDeployments(); }, [loadDeployments]);
+  useEffect(() => { refreshDeployments(); }, [refreshDeployments]);
 
   // Instant status/steps/logs from the server. Polling below stays as a
   // fallback for missed events and older backends.
@@ -194,7 +199,7 @@ export default function DeploymentPage() {
       const summary = { ...update.deployment };
       delete summary.buildLogs;
       delete summary.runtimeLogs;
-      setDeployments((prev) => prev.map((d) => (String(d._id) === id ? { ...d, ...summary } : d)));
+      refreshDeployments();
     }
     setDetail((prev) => (prev && String(prev._id) === id ? applyDeploymentPatch(prev, update) : prev));
   }, []));
@@ -220,9 +225,7 @@ export default function DeploymentPage() {
           }
           return data.deployment;
         });
-        setDeployments((prev) => prev.map((d) => (d._id === id
-          ? { ...d, status: data.deployment.status, deployedUrl: data.deployment.deployedUrl }
-          : d)));
+        refreshDeployments();
         return data.deployment;
       }
     } catch (err) {
@@ -352,7 +355,7 @@ export default function DeploymentPage() {
         }),
       });
       if (data?.deployment) {
-        setDeployments((prev) => [data.deployment, ...prev.filter((x) => x._id !== data.deployment._id)]);
+        await refreshDeployments();
         setDetail(data.deployment);
       }
     } catch (err) {
@@ -364,7 +367,7 @@ export default function DeploymentPage() {
     if (!window.confirm(`Stop ${d.subdomain}.buildrshq.dev? This tears down the running container.`)) return;
     try {
       await apiFetch(`/api/deployments/${d._id}`, { method: 'DELETE' });
-      setDeployments((prev) => prev.map((x) => (x._id === d._id ? { ...x, status: 'stopped', deployedUrl: null } : x)));
+      await refreshDeployments();
       if (detail?._id === d._id) setDetail({ ...detail, status: 'stopped' });
     } catch (err) {
       setError(err?.data?.message || err?.data?.error || err?.message || 'Failed to stop deployment');
@@ -489,7 +492,7 @@ export default function DeploymentPage() {
                       </div>
                     </div>
 
-                    {loading ? (
+                    {loadingDeployments ? (
                       <div className="deploy-card deploy-empty"><Loader2 className="w-5 h-5 animate-spin" /> Loading deployments…</div>
                     ) : filtered.length === 0 ? (
                       <div className="deploy-card deploy-empty">
