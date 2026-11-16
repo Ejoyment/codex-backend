@@ -22,6 +22,7 @@ import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
 import { useCurrentCompany } from '../hooks/useCurrentCompany';
 import { agentApi, apiFetch } from '../lib/api';
+import { useCachedData } from '../hooks/useCachedData';
 import s from '../styles/AiAgents.module.css';
 
 const MODEL_PREFERENCE_KEY = 'buildrs-ai-model-preference';
@@ -996,9 +997,21 @@ function AiAgentsPage() {
   const user = useAuthStore((state) => state.user);
   const subscription = useAuthStore((state) => state.subscription);
   const { selectedCompany } = useCurrentCompany();
+  const userId = user?._id || user?.id || user?.userId || null;
 
-  const [sessions, setSessions] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const view = router.query.view;
+  const sessionId = router.query.session;
+  const activeTab = ['terminal', 'diff', 'validation'].includes(tab) ? tab : 'terminal';
+
+  const {
+    data: sessions,
+    loading: loadingSessions,
+    refresh: refreshSessions,
+  } = useCachedData(userId, 'ai-sessions', async () => {
+    const data = await agentApi.sessions();
+    return { success: true, data: Array.isArray(data.sessions) ? data.sessions : [] };
+  }, { refreshOnVisibility: true, intervalMs: 15000 });
+
   const [loadError, setLoadError] = useState('');
   const [actionError, setActionError] = useState('');
   const [notice, setNotice] = useState('');
@@ -1007,36 +1020,12 @@ function AiAgentsPage() {
   const [model, setModel] = useState(null);
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [tab, setTab] = useState('terminal');
-  const requestRef = useRef(0);
-
-  const view = router.query.view;
-  const sessionId = router.query.session;
-  const activeTab = ['terminal', 'diff', 'validation'].includes(tab) ? tab : 'terminal';
-
-  const loadSessions = useCallback(async ({ quiet = false } = {}) => {
-    const requestId = ++requestRef.current;
-    if (!quiet) setLoading(true);
-    try {
-      const data = await agentApi.sessions();
-      if (requestId !== requestRef.current) return;
-      setSessions(Array.isArray(data.sessions) ? data.sessions : []);
-      setLoadError('');
-    } catch (err) {
-      if (requestId === requestRef.current) setLoadError(err.message || 'Could not load agent sessions');
-    } finally {
-      if (requestId === requestRef.current && !quiet) setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadSessions();
-  }, [loadSessions]);
 
   useEffect(() => {
     const running = sessions.some((session) => ['queued', 'running', 'approving'].includes(session.status));
-    const interval = setInterval(() => loadSessions({ quiet: true }), running ? 4000 : 15000);
+    const interval = setInterval(() => refreshSessions(), running ? 4000 : 15000);
     return () => clearInterval(interval);
-  }, [loadSessions, sessions]);
+  }, [refreshSessions, sessions]);
 
   useEffect(() => {
     try {
@@ -1091,13 +1080,13 @@ function AiAgentsPage() {
     try {
       await agentApi.approve(session._id, session.taskId);
       setNotice('Session approved and merged.');
-      await loadSessions({ quiet: true });
+      await refreshSessions();
     } catch (err) {
       setActionError(err.message || 'The session could not be approved.');
     } finally {
       setBusy(false);
     }
-  }, [session, loadSessions]);
+  }, [session, refreshSessions]);
 
   const reject = useCallback(async () => {
     if (!session) return;
@@ -1107,13 +1096,13 @@ function AiAgentsPage() {
     try {
       await agentApi.reject(session._id, session.taskId);
       setNotice('Session rejected and the task rolled back.');
-      await loadSessions({ quiet: true });
+      await refreshSessions();
     } catch (err) {
       setActionError(err.message || 'The session could not be rejected.');
     } finally {
       setBusy(false);
     }
-  }, [session, loadSessions]);
+  }, [session, refreshSessions]);
 
   const cancelRun = useCallback(async () => {
     if (!session) return;
@@ -1122,13 +1111,13 @@ function AiAgentsPage() {
     setNotice('');
     try {
       await agentApi.cancel(session._id);
-      await loadSessions({ quiet: true });
+      await refreshSessions();
     } catch (err) {
       setActionError(err.message || 'The session could not be stopped.');
     } finally {
       setBusy(false);
     }
-  }, [session, loadSessions]);
+  }, [session, refreshSessions]);
 
   const submitTweak = useCallback(async (instruction) => {
     if (!session) return;
@@ -1137,14 +1126,14 @@ function AiAgentsPage() {
     try {
       await agentApi.tweak(session._id, session.taskId, instruction);
       setNotice('Tweak submitted. The agent will update this branch.');
-      await loadSessions({ quiet: true });
+      await refreshSessions();
       router.push({ pathname: '/ai-agents', query: { session: session._id } });
     } catch (err) {
       setActionError(err.message || 'The tweak could not be submitted.');
     } finally {
       setBusy(false);
     }
-  }, [session, loadSessions, router]);
+  }, [session, refreshSessions, router]);
 
   const saveModel = useCallback((next) => {
     setModel(next);
@@ -1168,7 +1157,7 @@ function AiAgentsPage() {
           onBack={() => router.push('/ai-agents')}
           onStarted={async (id) => {
             setActionError('');
-            await loadSessions({ quiet: true });
+            await refreshSessions();
             if (id) router.replace({ pathname: '/ai-agents', query: { session: id } });
           }}
           onOpenModelPicker={() => setShowModelPicker(true)}
@@ -1177,7 +1166,7 @@ function AiAgentsPage() {
     }
 
     if (sessionId) {
-      if (!session && loading) {
+      if (!session && loadingSessions) {
         return <div className={s.stateBlock}><Loader2 size={22} className={s.spinner} /> Loading session…</div>;
       }
       if (!session) {
@@ -1218,7 +1207,7 @@ function AiAgentsPage() {
           }}
           onBack={() => router.push('/ai-agents')}
           onTweak={() => router.push({ pathname: '/ai-agents', query: { session: session._id, view: 'tweak' } })}
-          onRefresh={() => loadSessions({ quiet: true })}
+          onRefresh={() => refreshSessions()}
           onNewSession={() => router.push('/ai-agents?view=start')}
           busy={busy}
           notice={notice}
@@ -1230,7 +1219,7 @@ function AiAgentsPage() {
       );
     }
 
-    if (loading && !sessions.length) {
+    if (loadingSessions && !sessions.length) {
       return <div className={s.stateBlock}><Loader2 size={22} className={s.spinner} /> Loading sessions…</div>;
     }
 
