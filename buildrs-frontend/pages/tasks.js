@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import Sidebar from '../components/Sidebar';
@@ -21,7 +21,6 @@ import {
   MoreHorizontal,
 } from 'lucide-react';
 import { useCurrentCompany } from '../hooks/useCurrentCompany';
-import { useCachedData } from '../hooks/useCachedData';
 
 const STATUS_OPTIONS = ['backlog', 'in_progress', 'in_review', 'blocked', 'done'];
 const STATUS_LABELS = { backlog: 'Backlog', in_progress: 'In Progress', in_review: 'In Review', blocked: 'Blocked', done: 'Done' };
@@ -82,50 +81,24 @@ export default function Tasks() {
   const user = useAuthStore((s) => s.user);
   const subscription = useAuthStore((s) => s.subscription);
   const { selectedCompany } = useCurrentCompany();
-  const userId = user?._id || user?.id || user?.userId || null;
 
+  const [tasks, setTasks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [activeTab, setActiveTab] = useState('all');
   const [showWizard, setShowWizard] = useState(false);
   const [createdTask, setCreatedTask] = useState(null);
   const [cyclingId, setCyclingId] = useState(null);
   const [expandedTaskId, setExpandedTaskId] = useState(null);
-  const [activeTab, setActiveTab] = useState('all');
   const [specs, setSpecs] = useState([]);
   const [projects, setProjects] = useState([]);
+  const [projectsLoading, setProjectsLoading] = useState(true);
+  const [projectsError, setProjectsError] = useState('');
   const [contextSavingId, setContextSavingId] = useState(null);
   const [delegatingId, setDelegatingId] = useState(null);
   const [actionError, setActionError] = useState('');
   const [clock, setClock] = useState('');
   const [hasHydrated, setHasHydrated] = useState(false);
-
-  const {
-    data: tasks,
-    loading: loadingTasks,
-    refresh: refreshTasks,
-  } = useCachedData(userId, 'tasks', async () => {
-    const data = await apiFetch('/api/projects/tasks', { noCache: true });
-    if (data.success === false) throw new Error(data.message || 'Failed to load tasks');
-    return (data.tasks || []).map(normalizeTask);
-  }, { refreshOnVisibility: true, intervalMs: 30000 });
-
-  const {
-    data: specsData,
-    loading: loadingSpecs,
-    refresh: refreshSpecs,
-  } = useCachedData(userId, 'specs', async () => {
-    const data = await apiFetch('/api/specs', { noCache: true });
-    if (data.success === false) throw new Error(data.message || 'Failed to load specs');
-    return data.specs || [];
-  }, { refreshOnVisibility: true, intervalMs: 30000 });
-
-  const {
-    data: projectsData,
-    loading: loadingProjects,
-    refresh: refreshProjects,
-  } = useCachedData(userId, 'projects', async () => {
-    const data = await projectApi.list({ noCache: true });
-    if (!data.success || !Array.isArray(data.projects)) throw new Error(data.message || 'Could not load projects');
-    return data.projects;
-  }, { refreshOnVisibility: true, intervalMs: 30000 });
 
   useEffect(() => {
     setHasHydrated(true);
@@ -136,6 +109,22 @@ export default function Tasks() {
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, []);
+
+  const loadTasks = useCallback(async (force = false) => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await apiFetch('/api/projects/tasks', force ? { forceRefresh: true } : undefined);
+      if (data.success === false) throw new Error(data.message || 'Failed to load tasks');
+      setTasks((data.tasks || []).map(normalizeTask));
+    } catch (err) {
+      setError(err.message || 'Failed to load tasks');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadTasks(); }, [loadTasks]);
 
   const activeAgentTaskIds = tasks
     .filter((task) => task.agentSessionId && ['queued', 'running'].includes(task.agentExecution?.status))
@@ -149,73 +138,213 @@ export default function Tasks() {
       const taskIds = activeAgentTaskIds.split(',');
       const updates = await Promise.all(taskIds.map(async (taskId) => {
         try {
-          const data = await apiFetch(`/api/projects/tasks/${taskId}`, { noCache: true });
-          return data.success ? data.task : null;
-        } catch {
+          const result = await apiFetch(`/api/v1/agent/status/${taskId}`, { noCache: true });
+          if (!result.execution) return null;
+          const execution = result.execution;
+          const lastFailure = [...(execution.terminalLog || [])].reverse()
+            .find((entry) => entry.type === 'error')?.message;
+          return {
+            taskId,
+            status: execution.status === 'awaiting_review' ? 'awaiting_approval' : execution.status,
+            error: execution.status === 'failed'
+              ? (execution.summary || lastFailure || 'The agent stopped without a detailed error.')
+              : '',
+          };
+        } catch (statusError) {
+          console.error(`Could not refresh agent status for task ${taskId}:`, statusError.message);
           return null;
         }
       }));
       if (!active) return;
-      updates.forEach((updatedTask) => {
-        if (!updatedTask) return;
-        setTasks((prev) => prev.map((t) => (t.id === updatedTask.id ? { ...t, ...updatedTask } : t)));
-      });
+      const byTaskId = new Map(updates.filter(Boolean).map((update) => [update.taskId, update]));
+      if (byTaskId.size) {
+        setTasks((current) => current.map((task) => {
+          const update = byTaskId.get(task.id);
+          return update ? {
+            ...task,
+            agentExecution: { ...task.agentExecution, status: update.status, error: update.error },
+          } : task;
+        }));
+      }
     };
     refreshAgentStatuses();
-    const interval = setInterval(refreshAgentStatuses, 15000);
-    return () => { active = false; clearInterval(interval); };
+    const intervalId = setInterval(refreshAgentStatuses, 5000);
+    return () => {
+      active = false;
+      clearInterval(intervalId);
+    };
   }, [activeAgentTaskIds]);
+
+  useEffect(() => {
+    if (router.isReady && (router.query.action === 'new' || router.query.newTask === '1')) {
+      setShowWizard(true);
+    }
+  }, [router.isReady, router.query.action, router.query.newTask]);
+
+  // "Create task" from the Figma page prefills the linked frame.
+  const queryString = (key) => (typeof router.query[key] === 'string' ? router.query[key] : '');
+  const defaultFigma = queryString('figmaFileKey')
+    ? {
+      fileKey: queryString('figmaFileKey'),
+      fileName: queryString('figmaFileName'),
+      nodeId: queryString('figmaNodeId'),
+      nodeName: queryString('figmaNodeName'),
+    }
+    : null;
+
+  useEffect(() => {
+    if (!createdTask) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setCreatedTask(null);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [createdTask]);
+
+  useEffect(() => {
+    let active = true;
+    setProjectsLoading(true);
+    // Specs are project-level, so the picker is driven by the projects this
+    // user can reach — not by a workspace. Solo users still get their specs.
+    (async () => {
+      try {
+        const { projects = [] } = await projectApi.list();
+        if (!active) return;
+        setProjects(projects);
+        setProjectsError('');
+        const lists = await Promise.all(
+          projects.map(async (project) => {
+            try {
+              const data = await apiFetch(`/api/v1/specs/project/${project.id || project._id}`);
+              const projectId = String(project.id || project._id);
+              return (data.specs || []).map((spec) => ({ ...spec, projectId }));
+            } catch {
+              return [];
+            }
+          })
+        );
+        if (!active) return;
+        const seen = new Set();
+        setSpecs(
+          lists.flat().filter((spec) => {
+            const key = String(spec._id);
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          })
+        );
+      } catch (loadError) {
+        if (active) {
+          setSpecs([]);
+          setProjectsError(loadError.message || 'Could not load projects. You can still create an unlinked task.');
+        }
+      } finally {
+        if (active) setProjectsLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
 
   const filteredTasks = activeTab === 'all' ? tasks : tasks.filter((t) => t.status === activeTab);
 
-  const handleTaskAction = async (taskId, action) => {
-    setDelegatingId(taskId);
+  const cycleStatus = async (task) => {
+    const idx = STATUS_OPTIONS.indexOf(task.status);
+    const nextStatus = STATUS_OPTIONS[(idx + 1) % STATUS_OPTIONS.length];
     try {
-      const data = await apiFetch(`/api/projects/tasks/${taskId}/${action}`, { method: 'POST', noCache: true });
-      if (data.success === false) throw new Error(data.message || `Failed to ${action} task`);
-      setDelegatingId(null);
-      refreshTasks();
-      refreshSpecs();
-    } catch (err) {
-      setDelegatingId(null);
-      setActionError(err.message || `Failed to ${action} task`);
-    }
-  };
-
-  const handleSaveContext = async (taskId, context) => {
-    setContextSavingId(taskId);
-    try {
-      const data = await apiFetch(`/api/projects/tasks/${taskId}/context`, {
-        method: 'POST',
-        body: JSON.stringify({ context }),
-        noCache: true,
+      setCyclingId(task.id);
+      const data = await apiFetch(`/api/projects/tasks/${task.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ status: nextStatus }),
       });
-      if (data.success === false) throw new Error(data.message || 'Failed to save context');
-      setContextSavingId(null);
-      refreshTasks();
+      setTasks((prev) => prev.map((t) => (t.id === task.id ? normalizeTask({ ...t, ...data.task }) : t)));
     } catch (err) {
-      setContextSavingId(null);
-      setActionError(err.message || 'Failed to save context');
+      console.error('Failed to update task status:', err);
+    } finally {
+      setCyclingId(null);
     }
   };
 
-  const handleCreateTask = async (formData) => {
+  const saveTaskContext = async (task, patch) => {
+    setContextSavingId(task.id);
+    setActionError('');
+    try {
+      const data = await apiFetch(`/api/projects/tasks/${task.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ ...patch, companyId: selectedCompany?._id }),
+      });
+      setTasks((current) => current.map((item) => item.id === task.id ? normalizeTask({ ...item, ...data.task }) : item));
+    } catch (error) {
+      setActionError(error.message || 'Could not update task context');
+    } finally {
+      setContextSavingId(null);
+    }
+  };
+
+  const delegateTask = async (task) => {
+    const unresolvedBlockers = (task.blockedBy || []).some((blockerId) => {
+      const blocker = tasks.find((item) => item.id === String(blockerId?._id || blockerId));
+      return blocker && blocker.status !== 'done';
+    });
+    if (unresolvedBlockers) {
+      setActionError('Resolve blocking tasks before delegating this task.');
+      return;
+    }
+    setDelegatingId(task.id);
+    setActionError('');
+    try {
+      let modelPreference = null;
+      try {
+        modelPreference = JSON.parse(window.localStorage.getItem('buildrs-ai-model-preference') || 'null');
+        // Older builds could persist the provider key in the model slot
+        // (e.g. {provider:'groq', model:'groq'}), which the API rejects.
+        // Treat that as "use the provider default".
+        if (modelPreference?.model && modelPreference.model === modelPreference.provider) {
+          modelPreference = null;
+          window.localStorage.removeItem('buildrs-ai-model-preference');
+        }
+      } catch {
+        window.localStorage.removeItem('buildrs-ai-model-preference');
+      }
+      const result = await apiFetch('/api/v1/agent/delegate', {
+        method: 'POST',
+        timeoutMs: 300000,
+        body: JSON.stringify({
+          taskId: task.id,
+          workspaceId: selectedCompany._id,
+          specIds: task.specIds || [],
+          provider: modelPreference?.provider,
+          model: modelPreference?.model,
+        }),
+      });
+      if (result.success) await loadTasks(true);
+    } catch (error) {
+      setActionError(error.message || 'Could not delegate this task');
+    } finally {
+      setDelegatingId(null);
+    }
+  };
+
+  const handleTaskCreated = (task) => {
+    const normalizedTask = normalizeTask(task);
+    setTasks((previous) => [normalizedTask, ...previous]);
+    setCreatedTask(normalizedTask);
     setShowWizard(false);
-    try {
-      const data = await apiFetch('/api/projects/tasks', {
-        method: 'POST',
-        body: JSON.stringify(formData),
-        noCache: true,
-      });
-      if (data.success === false) throw new Error(data.message || 'Failed to create task');
-      setCreatedTask(data.task);
-      refreshTasks();
-      refreshSpecs();
-      refreshProjects();
-    } catch (err) {
-      setActionError(err.message || 'Failed to create task');
-    }
   };
+
+  const tabCount = (tab) => {
+    if (tab === 'all') return tasks.length;
+    return tasks.filter((t) => t.status === tab).length;
+  };
+
+  const pct = (count) => (tasks.length ? Math.round((count / tasks.length) * 100) : 0);
+
+  const agentTaskCount = tasks.filter((task) => task.agentSessionId).length;
+  const kpis = [
+    { key: 'total', filter: 'all', label: 'Total tasks', value: tasks.length, sub: 'Across all columns', badge: 'Live' },
+    { key: 'in-progress', filter: 'in_progress', label: 'In progress', value: tabCount('in_progress'), sub: `${pct(tabCount('in_progress'))}% of total`, badge: 'Active' },
+    { key: 'agent-coverage', filter: 'all', label: 'Agent coverage', value: `${pct(agentTaskCount)}%`, sub: `${agentTaskCount} of ${tasks.length} tasks`, badge: `${agentTaskCount} agents` },
+    { key: 'completion', filter: 'done', label: 'Completion rate', value: `${pct(tabCount('done'))}%`, sub: `${tabCount('done')} of ${tasks.length} done`, badge: 'Healthy' },
+  ];
 
   if (!hasHydrated) {
     return (
@@ -231,137 +360,315 @@ export default function Tasks() {
         <title>Tasks - BuildrsHQ</title>
         <link rel="icon" href="/buildrs.png" />
       </Head>
-      <div className="min-h-screen bg-[#0e141d] text-white">
+
+      <div className="workspace-container tsk-workspace-shell">
         <Sidebar user={user} subscription={subscription} />
 
         <main className="workspace-main">
-          <div className="p-6">
-            <h1 className="text-2xl font-bold text-white mb-6">Tasks</h1>
-
-            {actionError && (
-              <div className="mb-4 p-3 rounded bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm">
-                {actionError}
-              </div>
-            )}
-
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-              <div className="flex items-center gap-2">
-                <ButtonPlus onClick={() => setShowWizard(true)}>New Task</ButtonPlus>
-              </div>
-            </div>
-
-            <div className="flex gap-2 overflow-x-auto pb-2 mb-4 scrollbar-hide">
-              {TABS.map((tab) => {
-                const isActive = activeTab === tab.key;
-                return (
-                  <button
-                    key={tab.key}
-                    onClick={() => setActiveTab(tab.key)}
-                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition ${isActive
-                      ? 'bg-cyan-400 text-slate-950'
-                      : 'bg-[#161f2e] border border-white/10 text-zinc-400 hover:bg-white/5'
-                    }`}
-                  >
-                    <span className="w-2 h-2 rounded-full mr-1.5" style={{ backgroundColor: TAB_DOTS[tab.key] }} />
-                    {tab.label}
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse border border-white/5">
-                <thead>
-                  <tr>
-                    <th className="pb-3 text-[10px] font-semibold text-zinc-500 uppercase border-b border-white/5">Task</th>
-                    <th className="pb-3 text-[10px] font-semibold text-zinc-500 uppercase border-b border-white/5">Status</th>
-                    <th className="pb-3 text-[10px] font-semibold text-zinc-500 uppercase border-b border-white/5">Priority</th>
-                    <th className="pb-3 text-[10px] font-semibold text-zinc-500 uppercase border-b border-white/5">Updated</th>
-                    <th className="pb-3 text-[10px] font-semibold text-zinc-500 uppercase border-b border-white/5">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {loadingTasks ? (
-                    <tr>
-                      <td colSpan={5} className="p-4 text-center text-zinc-400">Loading tasks…</td>
-                    </tr>
-                  ) : filteredTasks.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="p-4 text-center text-zinc-500">No tasks found</td>
-                    </tr>
-                  ) : (
-                    filteredTasks.map((task) => (
-                      <tr key={task.id} className="border-b border-white/5 hover:bg-white/5">
-                        <td className="p-3">
-                          <div className="flex items-center gap-2">
-                            <span className={`w-2 h-2 rounded-full ${STATUS_TINTS[task.status]?.dot || '#9aaeba'}`} />
-                            <span className="text-sm text-white truncate">{task.title}</span>
-                          </div>
-                        </td>
-                        <td className="p-3">
-                          <span className={`px-2 py-0.5 rounded text-[9px] font-medium ${STATUS_TINTS[task.status]?.bg || 'bg-zinc-800'} ${STATUS_TINTS[task.status]?.text || 'text-zinc-400'}`}>
-                            {STATUS_LABELS[task.status] || task.status}
-                          </span>
-                        </td>
-                        <td className="p-3 text-[10px] text-zinc-400">{PRIORITY_LABELS[task.priority || 'medium']}</td>
-                        <td className="p-3 text-[10px] text-zinc-400">{formatCreatedDate(task.createdAt)}</td>
-                        <td className="p-3">
-                          <div className="flex gap-1">
-                            {task.status !== 'done' && (
-                              <button
-                                onClick={() => handleTaskAction(task.id, 'approve')}
-                                className="px-2 py-1 rounded bg-emerald-500/10 text-emerald-400 text-xs hover:bg-emerald-500/20"
-                                disabled={delegatingId === task.id}
-                              >
-                                Approve
-                              </button>
-                            )}
-                            {task.status !== 'rejected' && task.status !== 'done' && (
-                              <button
-                                onClick={() => handleTaskAction(task.id, 'reject')}
-                                className="px-2 py-1 rounded bg-rose-500/10 text-rose-400 text-xs hover:bg-rose-500/20"
-                                disabled={delegatingId === task.id}
-                              >
-                                Reject
-                              </button>
-                            )}
-                            <button
-                              onClick={() => handleTaskAction(task.id, 'tweak')}
-                              className="px-2 py-1 rounded bg-cyan-500/10 text-cyan-400 text-xs hover:bg-cyan-500/20"
-                              disabled={delegatingId === task.id}
-                            >
-                              Tweak
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {showWizard && (
+          {showWizard ? (
+            <>
               <CreateTaskWizard
                 onClose={() => setShowWizard(false)}
-                onCreated={handleCreateTask}
+                onCreated={handleTaskCreated}
+                companyId={selectedCompany?._id || selectedCompany?.id}
+                user={user}
+                projects={projects}
+                projectsLoading={projectsLoading}
+                specs={specs}
+                projectsError={projectsError}
+                defaultProjectId={typeof router.query.projectId === 'string' ? router.query.projectId : ''}
+                defaultFigma={defaultFigma}
+                key={defaultFigma ? `${defaultFigma.fileKey}:${defaultFigma.nodeId}` : 'new-task'}
               />
-            )}
-          </div>
+            </>
+          ) : (
+            <>
+              <header className="workspace-header dash-header tsk-page-header">
+                <div>
+                  <p className="dash-crumb"><span>WORK</span><span className="sep">/</span> TASKS</p>
+                  <h1 className="dash-title">Tasks</h1>
+                  <div className="tsk-header-subtitle">
+                    <span>Plan, delegate, and ship connected engineering work.</span>
+                    {selectedCompany?.name && <span className="tsk-workspace-chip">{selectedCompany.name}</span>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    className="btn-workspace btn-secondary tsk-refresh-button"
+                    title="Refresh tasks"
+                    onClick={() => loadTasks(true)}
+                    disabled={loading}
+                  >
+                    <RotateCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                  </button>
+                  <button type="button" className="btn-workspace btn-primary" onClick={() => setShowWizard(true)}>
+                    <Plus className="w-4 h-4" />
+                    <span>New Task</span>
+                  </button>
+                </div>
+              </header>
+
+              <div className="workspace-content">
+                <div className="tsk-content">
+                  {actionError && <div className="std-alert std-alert-error mb-5">{actionError}<button type="button" className="ml-auto" onClick={() => setActionError('')}><X className="w-4 h-4" /></button></div>}
+                  {error && (
+                    <div className="std-alert std-alert-error mb-6">
+                      <Loader2 className="w-4 h-4 flex-shrink-0" />
+                      <p>{error}</p>
+                    </div>
+                  )}
+
+                  <section className="tsk-kpis" aria-label="Task metrics">
+                      {kpis.map((kpi) => (
+                        <button
+                          type="button"
+                          key={kpi.key}
+                          className={`tsk-kpi ${activeTab === kpi.filter ? 'tsk-kpi-active' : ''}`}
+                          onClick={() => setActiveTab(kpi.filter)}
+                          aria-pressed={activeTab === kpi.filter}
+                        >
+                          <div className="tsk-kpi-top">
+                            <span>{kpi.label}</span>
+                            <span className={`tsk-kpi-badge ${kpi.badge === 'Healthy' || kpi.badge === 'Live' ? 'is-good' : ''}`}>{kpi.badge}</span>
+                          </div>
+                          <div className="tsk-kpi-bottom">
+                            <strong>{kpi.value}</strong>
+                            <span>{kpi.sub}</span>
+                          </div>
+                        </button>
+                      ))}
+                  </section>
+
+                  <div className="tsk-board-toolbar">
+                    <div className="tsk-tabs">
+                      {TABS.map((tab) => {
+                        const isActive = activeTab === tab.key;
+                        return (
+                          <button
+                            key={tab.key}
+                            type="button"
+                            className={`tsk-tab ${isActive ? 'is-active' : ''}`}
+                            onClick={() => setActiveTab(tab.key)}
+                          >
+                            {tab.key !== 'all' && (
+                              <span className="tsk-tab-dot" style={{ background: TAB_DOTS[tab.key] }} />
+                            )}
+                            {tab.label}
+                            <span className="tsk-tab-count">{tabCount(tab.key)}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="tsk-board-summary">
+                      <span><b>{filteredTasks.length}</b> {filteredTasks.length === 1 ? 'task' : 'tasks'}</span>
+                      <span className="tsk-summary-separator" />
+                      <span><Bot className="w-3.5 h-3.5" /> {agentTaskCount} agent runs</span>
+                      <span className="tsk-summary-updated">Updated {clock || 'just now'}</span>
+                    </div>
+                  </div>
+
+                  {loading ? (
+                    <div className="tsk-board-state">
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      <span>Loading tasks...</span>
+                    </div>
+                  ) : (
+                    <div className="tsk-board">
+                      {STATUS_OPTIONS.filter((status) => activeTab === 'all' || status === activeTab).map((status) => {
+                        const laneTasks = filteredTasks.filter((task) => task.status === status);
+                        const statusTint = STATUS_TINTS[status];
+                        const laneTitle = status === 'backlog' ? 'To Do' : status === 'in_review' ? 'Review' : STATUS_LABELS[status];
+                        return (
+                          <section className={`tsk-lane tsk-lane-${status}`} key={status}>
+                            <header className="tsk-lane-heading">
+                              <span className="tsk-lane-dot" style={{ background: statusTint.dot }} />
+                              <h2>{laneTitle}</h2>
+                              <span className="tsk-lane-count">{laneTasks.length}</span>
+                            </header>
+                            <div className="tsk-lane-cards">
+                              {laneTasks.length ? laneTasks.map((task) => {
+                                const priorityTint = PRIORITY_TINTS[task.priority] || PRIORITY_TINTS.medium;
+                                const projectId = String(task.projectId?._id || task.projectId || task.project?._id || task.project || '');
+                                const projectName = task.project?.name || task.projectName || projects.find((project) => String(project.id || project._id) === projectId)?.name || 'No project';
+                                const linkedSpec = specs.find((spec) => (task.specIds || []).includes(String(spec._id)));
+                                const assignee = typeof task.assignee === 'string' ? task.assignee : task.assignee?.fullName || task.assignee?.name;
+                                const taskShortId = String(task.id).slice(-4).toUpperCase();
+                                const isExpanded = expandedTaskId === task.id;
+                                const agentActive = agentIsActive(task);
+                                return (
+                                  <article
+                                    className={`tsk-card ${isExpanded ? 'is-expanded' : ''}`}
+                                    key={task.id}
+                                    role="link"
+                                    tabIndex={0}
+                                    aria-label={`View details for ${task.title}`}
+                                    onClick={() => router.push(`/tasks/${task.id}`)}
+                                    onKeyDown={(event) => {
+                                      if (event.target !== event.currentTarget) return;
+                                      if (event.key === 'Enter' || event.key === ' ') {
+                                        event.preventDefault();
+                                        router.push(`/tasks/${task.id}`);
+                                      }
+                                    }}
+                                  >
+                                    <div className="tsk-card-top">
+                                      <span className="tsk-card-id">T-{taskShortId}</span>
+                                      <div className="tsk-card-actions">
+                                        {task.priority && <span className="tsk-priority" style={{ background: priorityTint.bg, color: priorityTint.text }}>• {PRIORITY_LABELS[task.priority] || task.priority}</span>}
+                                        <button
+                                          type="button"
+                                          className="tsk-card-status"
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            cycleStatus(task);
+                                          }}
+                                          disabled={cyclingId === task.id}
+                                          title={`Status: ${STATUS_LABELS[task.status] || task.status}. Click to cycle.`}
+                                          aria-label={`Change status for ${task.title}`}
+                                        >
+                                          {cyclingId === task.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <span style={{ background: statusTint.dot }} />}
+                                        </button>
+                                        <button type="button" className="tsk-card-menu" title="Task context and delegation" aria-label={`${isExpanded ? 'Close' : 'Open'} task details for ${task.title}`} aria-expanded={isExpanded} onClick={(event) => {
+                                          event.stopPropagation();
+                                          setExpandedTaskId((current) => current === task.id ? null : task.id);
+                                        }}>
+                                          <MoreHorizontal className="w-4 h-4" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                    <h3 className="tsk-card-title">{task.title}</h3>
+                                    {task.description && <p className="tsk-card-description">{task.description}</p>}
+                                    <div className="tsk-card-tags">
+                                      <span>{projectName}</span>
+                                      {task.status && <span>{STATUS_LABELS[task.status] || task.status}</span>}
+                                    </div>
+                                    <div className="tsk-card-meta">
+                                      <div><FileText className="w-3.5 h-3.5" /><span>Spec · {linkedSpec?.title || ((task.specIds || []).length ? `${task.specIds.length} attached` : 'No spec linked')}</span><ChevronRight className="w-3 h-3" /></div>
+                                      <div><GitBranch className="w-3.5 h-3.5" /><span>Figma · {task.figmaNodeName || task.figmaNodeId || task.figmaFileName || 'No frame linked'}</span><ChevronRight className="w-3 h-3" /></div>
+                                    </div>
+                                    <div className="tsk-card-footer">
+                                      <span className="tsk-assignee"><span className="tsk-assignee-avatar">{(assignee || (task.agentSessionId ? 'AI' : '?')).slice(0, 1).toUpperCase()}</span>{assignee || (task.agentSessionId ? 'AI Agent' : 'Unassigned')}</span>
+                                      <span className={`tsk-agent-state ${agentActive ? 'is-running' : ''}`}>{task.agentSessionId ? task.agentExecution?.status || (agentActive ? 'Agent running' : 'Agent idle') : 'Ready for agent'}</span>
+                                    </div>
+                                    {task.agentExecution?.status === 'failed' && <p className="tsk-create-error-note" role="alert">Agent failed: {task.agentExecution.error || 'Open task details for execution diagnostics.'}</p>}
+                                    {isExpanded && <div className="tsk-card-details" onClick={(event) => event.stopPropagation()}>
+                                      <div className="grid gap-6 lg:grid-cols-2">
+                                        <section>
+                                          <h3 className="mb-2 text-xs font-semibold uppercase text-[#9aaeba]">Context</h3>
+                                          <div className="grid gap-3 sm:grid-cols-2">
+                                            <div className="text-xs text-[#9aaeba]">Figma design
+                                              <FigmaFramePicker
+                                                className="mt-1"
+                                                value={{
+                                                  fileKey: task.figmaFileKey || '',
+                                                  fileName: task.figmaFileName || '',
+                                                  nodeId: task.figmaNodeId || '',
+                                                  nodeName: task.figmaNodeName || '',
+                                                }}
+                                                disabled={contextSavingId === task.id}
+                                                onChange={(figma) => saveTaskContext(task, {
+                                                  figmaFileKey: figma.fileKey || null,
+                                                  figmaFileName: figma.fileName || null,
+                                                  figmaNodeId: figma.nodeId || null,
+                                                  figmaNodeName: figma.nodeName || null,
+                                                })}
+                                              />
+                                            </div>
+                                            <label className="text-xs text-[#9aaeba]">Blocked by
+                                              <select className="ws-select mt-1 min-h-10" multiple value={(task.blockedBy || []).map((id) => String(id?._id || id))} onChange={(event) => {
+                                                const blockedBy = [...event.target.selectedOptions].map((option) => option.value);
+                                                setTasks((current) => current.map((item) => item.id === task.id ? { ...item, blockedBy } : item));
+                                                saveTaskContext(task, { blockedBy, specIds: task.specIds || [] });
+                                              }}>{tasks.filter((item) => item.id !== task.id).map((item) => <option key={item.id} value={item.id}>{item.title} · {STATUS_LABELS[item.status]}</option>)}</select>
+                                            </label>
+                                          </div>
+                                          <div className="mt-4">
+                                            <p className="mb-2 text-xs text-[#9aaeba]">Attached specs <span className="text-[#748194]">(validation contracts)</span></p>
+                                            {specs.length ? <div className="grid gap-2 sm:grid-cols-2">{specs.map((spec) => <label key={spec._id} className="flex items-start gap-2 text-sm text-[#c7d2dd]">
+                                              <input type="checkbox" checked={(task.specIds || []).includes(String(spec._id))} onChange={(event) => {
+                                                const specIds = event.target.checked ? [...new Set([...(task.specIds || []), String(spec._id)])] : (task.specIds || []).filter((id) => id !== String(spec._id));
+                                                const nextTask = { ...task, specIds };
+                                                setTasks((current) => current.map((item) => item.id === task.id ? nextTask : item));
+                                                saveTaskContext(nextTask, { specIds });
+                                              }} />
+                                              <span>{spec.title}<span className="block text-xs text-[#748194]">{spec.status || 'unvalidated'}</span></span>
+                                            </label>)}</div> : <p className="text-xs text-[#748194]">Create a spec in Specs to add executable validation.</p>}
+                                          </div>
+                                        </section>
+                                        <section>
+                                          <h3 className="mb-2 text-xs font-semibold uppercase text-[#9aaeba]">Execution</h3>
+                                          {task.branch && <p className="mb-2 flex items-center gap-2 text-sm text-[#c7d2dd]"><GitBranch className="w-4 h-4 text-[#12dce5]" /><code>{task.branch}</code></p>}
+                                          {task.agentSessionId && <p className="mb-3 text-xs text-[#9aaeba]">Session {String(task.agentSessionId)} · {task.agentExecution?.status || 'active'}</p>}
+                                          {task.pullRequestId && <p className="mb-3 text-sm text-[#c7d2dd]">Pull request: {task.pullRequestId}</p>}
+                                          <div className="flex flex-wrap gap-2">
+                                            <button type="button" className="btn-workspace btn-primary" onClick={() => delegateTask(task)} disabled={delegatingId === task.id || agentActive || task.status === 'blocked' || !selectedCompany?._id || contextSavingId === task.id} title={agentActive ? 'This task already has an active agent session' : undefined}>
+                                              {delegatingId === task.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bot className="w-4 h-4" />}
+                                              {delegatingId === task.id
+                                                ? 'Delegating'
+                                                : agentActive
+                                                  ? 'Agent assigned'
+                                                  : task.agentSessionId
+                                                    ? 'Retry agent'
+                                                    : 'Delegate to AI Agent'}
+                                            </button>
+                                            {task.agentSessionId && <button type="button" className="btn-workspace btn-secondary" onClick={() => window.location.assign(`/ai-pair?executionId=${task.agentSessionId}`)}><ExternalLink className="w-4 h-4" /> Open session</button>}
+                                            {contextSavingId === task.id && <span className="self-center text-xs text-[#9aaeba]">Saving context</span>}
+                                          </div>
+                                          {!(task.specIds || []).length && <p className="mt-3 text-xs text-[#e5b84a]">Attach a spec to give this run an explicit contract and automated checks.</p>}
+                                        </section>
+                                      </div>
+                                    </div>}
+                                  </article>
+                                );
+                              }) : <div className="tsk-lane-empty">No {laneTitle.toLowerCase()} tasks</div>}
+                            </div>
+                          </section>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+          {createdTask && (
+            <div
+              className="tsk-created-overlay"
+              role="presentation"
+              onMouseDown={(event) => {
+                if (event.target === event.currentTarget) setCreatedTask(null);
+              }}
+            >
+              <section className="tsk-created-modal" role="dialog" aria-modal="true" aria-labelledby="tsk-created-title">
+                <header className="tsk-created-modal-header">
+                  <span className="tsk-created-success-icon"><CheckCircle2 className="w-5 h-5" /></span>
+                  <h2 id="tsk-created-title">Task created successfully</h2>
+                  <button type="button" onClick={() => setCreatedTask(null)} aria-label="Close task confirmation"><X className="w-4 h-4" /></button>
+                </header>
+                <div className="tsk-created-modal-body">
+                  <p className="tsk-created-eyebrow">TASK DETAILS</p>
+                  <dl>
+                    <div><dt>Task title</dt><dd>{createdTask.title}</dd></div>
+                    <div><dt>Description</dt><dd title={createdTask.description || ''}>{createdTask.description || 'No description'}</dd></div>
+                    <div><dt>Status</dt><dd>{createdTask.status === 'backlog' ? 'To do' : STATUS_LABELS[createdTask.status] || createdTask.status || 'To do'}</dd></div>
+                    <div><dt>Priority</dt><dd>{PRIORITY_LABELS[createdTask.priority] || createdTask.priority || 'Medium'}</dd></div>
+                    <div><dt>Assigned</dt><dd>{createdTask.assigneeName || createdTask.assignee?.fullName || createdTask.assignee?.name || 'Unassigned'}</dd></div>
+                    <div><dt>Due date</dt><dd>{formatCreatedDate(createdTask.dueDate)}</dd></div>
+                    <div><dt>Project</dt><dd>{projects.find((project) => String(project.id || project._id) === String(createdTask.projectId?._id || createdTask.projectId || ''))?.name || createdTask.project?.name || 'No project'}</dd></div>
+                    <div><dt>Labels</dt><dd className="tsk-created-labels">{createdTask.labels?.length ? createdTask.labels.map((label, index) => <span className={`tsk-label-chip label-${index % 3}`} key={`${label}-${index}`}>{label}</span>) : 'None'}</dd></div>
+                  </dl>
+                  {createdTask.delegationError && <p className="tsk-created-delegation-error">{createdTask.delegationError}</p>}
+                </div>
+                <footer className="tsk-created-modal-actions">
+                  <button type="button" className="tsk-create-cancel" onClick={() => setCreatedTask(null)}>Done</button>
+                  <button type="button" className="tsk-create-submit" onClick={() => router.push(`/tasks/${createdTask.id}`)}>View Task</button>
+                </footer>
+              </section>
+            </div>
+          )}
         </main>
       </div>
     </AuthGuard>
-  );
-}
-
-function ButtonPlus({ onClick, children }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex items-center gap-2 px-4 py-2 rounded-lg bg-cyan-400 text-slate-950 text-xs font-bold shadow-lg shadow-cyan-500/20 transition hover:bg-cyan-300"
-    >
-      <Plus size={14} /> {children}
-    </button>
   );
 }

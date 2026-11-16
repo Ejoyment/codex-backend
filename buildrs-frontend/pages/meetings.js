@@ -1,11 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch, normalizeCompanies } from '../lib/api';
-import { useCachedData } from '../hooks/useCachedData';
 import {
   Video,
   Plus,
@@ -256,39 +255,67 @@ export default function Meetings() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const subscription = useAuthStore((s) => s.subscription);
-  const userId = user?._id || user?.id || user?.userId || null;
 
+  const [companies, setCompanies] = useState([]);
   const [selectedCompany, setSelectedCompany] = useState(null);
+  const [meetings, setMeetings] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [clock, setClock] = useState('');
 
-  const {
-    data: companies,
-    loading: loadingCompanies,
-    refresh: refreshCompanies,
-  } = useCachedData(userId, 'companies', async () => {
-    const res = await apiFetch('/api/company/my-companies', { noCache: true });
-    const list = normalizeCompanies(res.companies);
-    if (list.length > 0) setSelectedCompany(list[0]);
-    return list;
-  }, { refreshOnVisibility: true, intervalMs: 30000 });
+  useEffect(() => {
+    const tick = () => {
+      setClock(new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }));
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
 
-  const {
-    data: meetings,
-    loading: loadingMeetings,
-    refresh: refreshMeetings,
-  } = useCachedData(userId, `meetings:${selectedCompany?._id || 'none'}`, async () => {
-    if (!selectedCompany) return [];
-    const res = await apiFetch(`/api/meetings?companyId=${selectedCompany._id}`, { noCache: true });
-    return res.meetings || [];
-  }, { refreshOnVisibility: true, intervalMs: 30000 });
+  const fetchCompanies = useCallback(async () => {
+    try {
+      const res = await apiFetch('/api/company/my-companies');
+      const list = normalizeCompanies(res.companies);
+      setCompanies(list);
+      if (list.length > 0) setSelectedCompany(list[0]);
+      return list;
+    } catch (err) {
+      console.error('Failed to fetch companies:', err);
+      setCompanies([]);
+      return [];
+    }
+  }, []);
+
+  const fetchMeetings = useCallback(async (companyId) => {
+    if (!companyId) { setMeetings([]); setLoading(false); return; }
+    try {
+      setLoading(true);
+      const res = await apiFetch(`/api/meetings?companyId=${companyId}`);
+      setMeetings(res.meetings || []);
+    } catch (err) {
+      console.error('Failed to fetch meetings:', err);
+      setMeetings([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchCompanies().then((list) => {
+      if (list.length > 0) fetchMeetings(list[0]._id);
+    });
+  }, [fetchCompanies, fetchMeetings]);
+
+  useEffect(() => {
+    if (selectedCompany) fetchMeetings(selectedCompany._id);
+  }, [selectedCompany, fetchMeetings]);
 
   const handleJoin = (meeting) => {
     router.push(`/meeting-room?roomId=${meeting.roomId || meeting._id}`);
   };
 
   const handleMeetingCreated = () => {
-    if (selectedCompany) refreshMeetings();
+    if (selectedCompany) fetchMeetings(selectedCompany._id);
   };
 
   const liveMeetings = meetings.filter((m) => m.status === 'ongoing').length;
@@ -322,7 +349,7 @@ export default function Meetings() {
               <h1 className="dash-title">Meetings</h1>
               <div className="dash-statusline">
                 <span className="status-indicator status-online" />
-                <span>{loadingMeetings ? 'Loading...' : `${meetings.length} meetings`}</span>
+                <span>{loading ? 'Loading...' : `${meetings.length} meetings`}</span>
                 <span className="dash-clock">· {clock || '—:——:——'}</span>
               </div>
             </div>
@@ -371,7 +398,7 @@ export default function Meetings() {
                     </div>
                   </div>
                 </div>
-              ) : loadingMeetings ? (
+              ) : loading ? (
                 <div className="workspace-card">
                   <div className="workspace-card-body">
                     <div className="dash-empty">

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { AlertTriangle, Check, CheckCircle2, CircleHelp, FileCode2, FolderGit2, Loader2, Plus, Play, ShieldAlert, X } from 'lucide-react';
@@ -6,7 +6,6 @@ import Sidebar from '../components/Sidebar';
 import AuthGuard from '../components/AuthGuard';
 import useAuthStore from '../store/authStore';
 import { apiFetch, projectApi } from '../lib/api';
-import { useCachedData } from '../hooks/useCachedData';
 
 const CHECK_TYPES = ['code_pattern', 'test_name', 'file_exists', 'ast_import', 'route', 'contract_test', 'ai_review', 'manual'];
 const CHECK_VALUE_TYPES = ['code_pattern', 'file_exists', 'test_name', 'ast_import', 'route', 'contract_test'];
@@ -143,11 +142,14 @@ export default function SpecsPage() {
   const user = useAuthStore((state) => state.user);
   const subscription = useAuthStore((state) => state.subscription);
   const router = useRouter();
-  const userId = user?._id || user?.id || user?.userId || null;
   // Specs belong to a project. A workspace is optional collaboration context,
   // so a solo project gets the full spec workflow with no workspace at all.
+  const [projects, setProjects] = useState([]);
   const [projectId, setProjectId] = useState('');
+  const [loadingProjects, setLoadingProjects] = useState(true);
+  const [specs, setSpecs] = useState([]);
   const [selectedSpecId, setSelectedSpecId] = useState('');
+  const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
@@ -155,33 +157,42 @@ export default function SpecsPage() {
   const [editing, setEditing] = useState(null);
   const [successSpec, setSuccessSpec] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
-
-  const {
-    data: projects,
-    loading: loadingProjects,
-    refresh: refreshProjects,
-  } = useCachedData(userId, 'projects', async () => {
-    const result = await projectApi.list({ noCache: true });
-    return result.projects || [];
-  }, { refreshOnVisibility: true, intervalMs: 30000 });
-
-  const {
-    data: specs,
-    loading: loadingSpecs,
-    refresh: refreshSpecs,
-  } = useCachedData(userId, `specs:${projectId}`, async () => {
-    if (!projectId) return [];
-    const result = await apiFetch(`/api/v1/specs/project/${projectId}`, { noCache: true });
-    return result.specs || [];
-  }, { refreshOnVisibility: true, intervalMs: 30000 });
-
   const selectedSpec = specs.find((spec) => spec._id === selectedSpecId) || specs[0] || null;
 
   useEffect(() => {
-    if (projects.length && !projectId) {
-      setProjectId(projects[0]?.id || projects[0]?._id || '');
+    let active = true;
+    (async () => {
+      setLoadingProjects(true);
+      try {
+        const result = await projectApi.list();
+        if (!active) return;
+        const list = result.projects || [];
+        setProjects(list);
+        setProjectId((current) => current || list[0]?.id || list[0]?._id || '');
+      } catch (error) {
+        if (active) setLoadError(error.message || 'Could not load projects');
+      } finally {
+        if (active) setLoadingProjects(false);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
+  const loadSpecs = useCallback(async () => {
+    if (!projectId) { setSpecs([]); setLoading(false); return; }
+    setLoading(true);
+    setLoadError('');
+    try {
+      const result = await apiFetch(`/api/v1/specs/project/${projectId}`);
+      setSpecs(result.specs || []);
+    } catch (error) {
+      setLoadError(error.message || 'Could not load specs');
+    } finally {
+      setLoading(false);
     }
-  }, [projects, projectId]);
+  }, [projectId]);
+
+  useEffect(() => { loadSpecs(); }, [loadSpecs]);
 
   const closeEditor = () => {
     setEditing(null);
@@ -259,7 +270,7 @@ export default function SpecsPage() {
         }),
       });
       if (!result.success || !result.spec) throw new Error(result.message || 'Could not save this spec');
-      await refreshSpecs();
+      setSpecs((current) => [result.spec, ...current.filter((item) => item._id !== result.spec?._id)]);
       if (editing?._id) {
         setSelectedSpecId(result.spec?._id || '');
       } else {
@@ -283,7 +294,13 @@ export default function SpecsPage() {
       });
       const validation = result.verification || result;
       const verdict = validation.verdict || (validation.passed ? 'pass' : 'not_evaluated');
-      await refreshSpecs();
+      setSpecs((current) => current.map((item) => item._id === spec._id ? {
+        ...item,
+        status: validation.status || (verdict === 'fail' ? 'failing' : verdict === 'not_evaluated' ? 'partial' : 'healthy'),
+        verdict,
+        lastValidatedAt: validation.checkedAt || new Date().toISOString(),
+        lastValidationResult: validation,
+      } : item));
     } catch (error) {
       setNotice(error.message || 'Validation failed');
     } finally {
@@ -295,7 +312,7 @@ export default function SpecsPage() {
     if (!window.confirm(`Delete "${spec.title}"? Tasks attached to it will need a replacement spec.`)) return;
     try {
       await apiFetch(`/api/v1/specs/${spec._id}`, { method: 'DELETE' });
-      await refreshSpecs();
+      setSpecs((current) => current.filter((item) => item._id !== spec._id));
       if (selectedSpecId === spec._id) setSelectedSpecId('');
     } catch (error) {
       setNotice(error.message || 'Could not delete this spec');
@@ -466,7 +483,8 @@ export default function SpecsPage() {
           </div>
           <div className="specs-content">
             {notice && <div className="std-alert std-alert-error">{notice}</div>}
-            {loadingSpecs ? <div className="specs-empty"><Loader2 className="w-5 h-5 animate-spin" /></div> : !projects.length ? (
+            {loadError && <div className="std-alert std-alert-error">{loadError}</div>}
+            {loadingProjects ? <div className="specs-empty"><Loader2 className="w-5 h-5 animate-spin" /></div> : !projects.length ? (
               <div className="specs-empty-card">
                 <FolderGit2 className="w-7 h-7 text-[#2fd6e6] mb-4" />
                 <p className="dash-empty-title">No projects yet</p>
@@ -485,7 +503,7 @@ export default function SpecsPage() {
                       <Plus className="w-4 h-4" /><span>New Spec</span>
                     </button>
                   </div>
-                  {loadingSpecs ? <div className="specs-empty"><Loader2 className="w-5 h-5 animate-spin" /><span>Loading specs...</span></div> : specs.length === 0 ? (
+                  {loading ? <div className="specs-empty"><Loader2 className="w-5 h-5 animate-spin" /><span>Loading specs...</span></div> : specs.length === 0 ? (
                     <div className="specs-empty">
                       <FileCode2 className="w-6 h-6" />
                       <p>No specs in this project</p>

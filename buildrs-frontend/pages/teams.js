@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import Sidebar from '../components/Sidebar';
@@ -7,7 +7,6 @@ import useAuthStore from '../store/authStore';
 import { apiFetch, normalizeCompanies } from '../lib/api';
 import { getTierLimits, normalizeTier } from '../lib/tier';
 import { getAvatarUrl } from '../lib/utils';
-import { useCachedData } from '../hooks/useCachedData';
 import {
   Plus,
   Users,
@@ -34,43 +33,16 @@ export default function Teams() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const subscription = useAuthStore((s) => s.subscription);
-  const userId = user?._id || user?.id || user?.userId || null;
 
-  const tier = normalizeTier(subscription?.tier);
-  const tierLimits = getTierLimits(tier);
-
+  const [companies, setCompanies] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [selectedCompany, setSelectedCompany] = useState(null);
+  const [members, setMembers] = useState([]);
+  const [loadingMembers, setLoadingMembers] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [clock, setClock] = useState('');
-
-  const {
-    data: companies,
-    loading: loadingCompanies,
-    refresh: refreshCompanies,
-  } = useCachedData(userId, 'companies', async () => {
-    const res = await apiFetch('/api/company/my-companies', { noCache: true });
-    return normalizeCompanies(res.companies);
-  }, { refreshOnVisibility: true, intervalMs: 30000 });
-
-  const {
-    data: members,
-    loading: loadingMembersData,
-    refresh: refreshMembers,
-  } = useCachedData(userId, `members:${selectedCompany?._id || 'none'}`, async () => {
-    if (!selectedCompany) return [];
-    const res = await apiFetch(`/api/company/${selectedCompany._id}/members`, { noCache: true });
-    const valid = (res.members || []).filter(m => m && m.user);
-    if (valid.length !== (res.members || []).length) {
-      console.warn(`Filtered ${ (res.members || []).length - valid.length } member(s) with missing user reference for company ${selectedCompany._id}`);
-    }
-    return valid;
-  }, { refreshOnVisibility: true, intervalMs: 30000 });
-
-  const memberCountForLimit = selectedCompany ? ((members || []).length || selectedCompany.memberCount || 0) : 0;
-  const memberLimitForCheck = selectedCompany?.memberLimit ?? tierLimits.maxMembers;
-  const inviteAtLimit = memberLimitForCheck !== -1 && memberCountForLimit >= memberLimitForCheck;
 
   useEffect(() => {
     const tick = () => {
@@ -81,21 +53,74 @@ export default function Teams() {
     return () => clearInterval(id);
   }, []);
 
+  const tier = normalizeTier(subscription?.tier);
+  const tierLimits = getTierLimits(tier);
+  const memberCountForLimit = selectedCompany ? (members.length || selectedCompany.memberCount || 0) : 0;
+  const memberLimitForCheck = selectedCompany?.memberLimit ?? tierLimits.maxMembers;
+  const inviteAtLimit = memberLimitForCheck !== -1 && memberCountForLimit >= memberLimitForCheck;
+
+  const handleSettingsUpdated = (updated) => {
+    setCompanies((prev) => prev.map((c) => (c._id === updated._id || c._id === updated.id ? { ...c, ...updated } : c)));
+    setSelectedCompany((prev) => (prev ? { ...prev, ...updated } : prev));
+    setShowSettingsModal(false);
+  };
+
+  const fetchCompanies = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await apiFetch('/api/company/my-companies');
+      setCompanies(normalizeCompanies(res.companies));
+    } catch (err) {
+      console.error('Failed to fetch companies:', err);
+      setCompanies([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const fetchMembers = useCallback(async (companyId) => {
+    try {
+      setLoadingMembers(true);
+      const res = await apiFetch(`/api/company/${companyId}/members`);
+      const valid = (res.members || []).filter(m => m && m.user);
+      if (valid.length !== (res.members || []).length) {
+        console.warn(`Filtered ${ (res.members || []).length - valid.length } member(s) with missing user reference for company ${companyId}`);
+      }
+      setMembers(valid);
+    } catch (err) {
+      console.error('Failed to fetch members:', err);
+      setMembers([]);
+    } finally {
+      setLoadingMembers(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchCompanies();
+  }, [fetchCompanies]);
+
+  useEffect(() => {
+    if (router.query.action === 'invite') {
+      setShowInviteModal(true);
+    }
+  }, [router.query]);
+
   const handleSelectCompany = (company) => {
     setSelectedCompany(company);
-    refreshMembers();
+    fetchMembers(company._id);
   };
 
   const handleBackToList = () => {
     setSelectedCompany(null);
+    setMembers([]);
   };
 
-  const totalMembers = (companies || []).reduce((sum, c) => sum + (c.members?.length || 0), 0);
-  const ownedTeams = (companies || []).filter((c) => c.owner === user?._id || c.owner?._id === user?._id).length;
-  const managedTeams = (companies || []).filter((c) => c.owner === user?._id || c.owner?._id === user?._id || c.userRole === 'owner' || c.userRole === 'admin').length;
+  const totalMembers = companies.reduce((sum, c) => sum + (c.members?.length || 0), 0);
+  const ownedTeams = companies.filter((c) => c.owner === user?._id || c.owner?._id === user?._id).length;
+  const managedTeams = companies.filter((c) => c.owner === user?._id || c.owner?._id === user?._id || c.userRole === 'owner' || c.userRole === 'admin').length;
 
   const kpis = [
-    { label: 'Workspaces', value: (companies || []).length, sub: 'teams you belong to', color: 'blue', Icon: Building2 },
+    { label: 'Workspaces', value: companies.length, sub: 'teams you belong to', color: 'blue', Icon: Building2 },
     { label: 'Total Members', value: totalMembers, sub: 'across all teams', color: 'green', Icon: Users },
     { label: 'Owned', value: ownedTeams, sub: 'you control', color: 'orange', Icon: Crown },
     { label: 'Managed', value: managedTeams, sub: 'admin access', color: 'purple', Icon: Settings },
@@ -120,7 +145,7 @@ export default function Teams() {
               <h1 className="dash-title">{selectedCompany ? selectedCompany.name : 'Teams'}</h1>
               <div className="dash-statusline">
                 <span className="status-indicator status-online" />
-                <span>{loadingCompanies ? 'Loading...' : `${(companies || []).length} teams · ${totalMembers} members`}</span>
+                <span>{loading ? 'Loading...' : `${companies.length} teams · ${totalMembers} members`}</span>
                 <span className="dash-clock">· {clock || '—:——:——'}</span>
               </div>
             </div>
@@ -162,7 +187,7 @@ export default function Teams() {
 
           <div className="workspace-content">
             <div className="tm-content">
-              {loadingCompanies ? (
+              {loading ? (
                 <div className="workspace-card">
                   <div className="workspace-card-body">
                     <div className="dash-empty">
@@ -177,11 +202,11 @@ export default function Teams() {
                 <TeamDetail
                   company={selectedCompany}
                   members={members}
-                  loadingMembers={loadingMembersData}
+                  loadingMembers={loadingMembers}
                   currentUser={user}
                   onOpenSettings={() => setShowSettingsModal(true)}
                 />
-              ) : (companies || []).length === 0 ? (
+              ) : companies.length === 0 ? (
                 <EmptyState onCreateClick={() => setShowCreateModal(true)} />
               ) : (
                 <>
@@ -214,10 +239,10 @@ export default function Teams() {
                         <span className="dot" />
                         <b>Workspaces</b> · select to manage
                       </div>
-                      <span className="badge-count">{(companies || []).length} teams</span>
+                      <span className="badge-count">{companies.length} teams</span>
                     </div>
                     <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {(companies || []).map((company) => (
+                      {companies.map((company) => (
                         <TeamCard
                           key={company._id}
                           company={company}
@@ -238,7 +263,7 @@ export default function Teams() {
         <CreateTeamModal
           onClose={() => setShowCreateModal(false)}
           onCreated={(company) => {
-            refreshCompanies();
+            setCompanies((prev) => [...prev, company]);
             setShowCreateModal(false);
           }}
         />
@@ -321,10 +346,10 @@ function TeamCard({ company, currentUser, onClick }) {
 function TeamDetail({ company, members, loadingMembers, currentUser, onOpenSettings }) {
   const isOwner = company.owner === currentUser?._id || company.owner?._id === currentUser?._id;
   const canManage = isOwner || company.userRole === 'admin' || company.userRole === 'owner';
-  const memberCount = company.members?.length || (members || []).length || 0;
+  const memberCount = company.members?.length || members.length || 0;
   const limit = company.memberLimit;
   const fillPct = limit ? Math.min(Math.round((memberCount / limit) * 100), 100) : 0;
-  const adminCount = (members || []).filter((m) => m.role === 'admin' || m.role === 'owner').length;
+  const adminCount = members.filter((m) => m.role === 'admin' || m.role === 'owner').length;
 
   return (
     <div className="space-y-5">
@@ -402,9 +427,9 @@ function TeamDetail({ company, members, loadingMembers, currentUser, onOpenSetti
             </span>
             <h2 className="workspace-card-title">Members</h2>
           </div>
-          <span className="badge-count">{(members || []).length} active</span>
+          <span className="badge-count">{members.length} active</span>
         </div>
-        {loadingMembersData ? (
+        {loadingMembers ? (
           <div className="workspace-card-body">
             <div className="dash-empty">
               <div className="dash-empty-ico">
@@ -413,7 +438,7 @@ function TeamDetail({ company, members, loadingMembers, currentUser, onOpenSetti
               <p className="dash-empty-title">Loading members...</p>
             </div>
           </div>
-        ) : (members || []).length === 0 ? (
+        ) : members.length === 0 ? (
           <div className="workspace-card-body">
             <div className="dash-empty">
               <div className="dash-empty-ico">
@@ -425,7 +450,7 @@ function TeamDetail({ company, members, loadingMembers, currentUser, onOpenSetti
           </div>
         ) : (
           <div>
-            {(members || []).map((m, i) => (
+            {members.map((m, i) => (
               <MemberRow key={m.user?._id || i} member={m} />
             ))}
           </div>
@@ -674,7 +699,7 @@ function InviteMemberModal({ companies, selectedCompanyId, onClose }) {
               className="ws-select"
             >
               <option value="">Select a team</option>
-              {(companies || []).map((c) => (
+              {companies.map((c) => (
                 <option key={c._id} value={c._id}>
                   {c.name}
                 </option>
