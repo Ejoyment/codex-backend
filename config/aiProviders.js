@@ -9,13 +9,13 @@
 const PROVIDERS = Object.freeze({
   openrouter: Object.freeze({
     implemented: true,
-    name: 'OpenRouter',
+    name: 'Claude Sonnet 5.5',
     type: 'cloud',
     apiKeyEnv: 'OPENROUTER_API_KEY',
     modelEnv: 'OPENROUTER_MODEL',
     defaultModel: 'anthropic/claude-sonnet-5.5',
     defaultFallbackModels: [
-      'google/gemini-4-argon',
+      'anthropic/claude-sonnet-5',
       'deepseek/deepseek-v4.1-flash',
       'minimax/minimax-m3.1-flash',
     ],
@@ -25,29 +25,29 @@ const PROVIDERS = Object.freeze({
   // Add virtual provider definitions so they show up in providerDefinitions()
   gemini: Object.freeze({
     implemented: true,
-    name: 'Gemini (via OpenRouter)',
+    name: 'Claude Sonnet 5',
     type: 'cloud',
     apiKeyEnv: 'OPENROUTER_API_KEY',
     modelEnv: 'GEMINI_MODEL',
-    defaultModel: 'google/gemini-4-argon',
+    defaultModel: 'anthropic/claude-sonnet-5',
     endpoint: 'https://openrouter.ai/api/v1/chat/completions',
   }),
   groq: Object.freeze({
     implemented: true,
-    name: 'Deepseek (via OpenRouter)',
+    name: 'Claude Haiku 5.5',
     type: 'cloud',
     apiKeyEnv: 'OPENROUTER_API_KEY',
     modelEnv: 'GROQ_MODEL',
-    defaultModel: 'deepseek/deepseek-v4.1-flash',
+    defaultModel: 'anthropic/claude-haiku-5.5',
     endpoint: 'https://openrouter.ai/api/v1/chat/completions',
   }),
   mistral: Object.freeze({
     implemented: true,
-    name: 'Minimax (via OpenRouter)',
+    name: 'Claude Fable 5.2',
     type: 'cloud',
     apiKeyEnv: 'OPENROUTER_API_KEY',
     modelEnv: 'MISTRAL_MODEL',
-    defaultModel: 'minimax/minimax-m3.1-flash',
+    defaultModel: 'anthropic/claude-fable-5.2',
     endpoint: 'https://openrouter.ai/api/v1/chat/completions',
   })
 });
