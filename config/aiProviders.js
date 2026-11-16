@@ -16,8 +16,8 @@ const PROVIDERS = Object.freeze({
     defaultModel: 'anthropic/claude-sonnet-5.5',
     defaultFallbackModels: [
       'anthropic/claude-sonnet-5',
-      'deepseek/deepseek-v4.1-flash',
-      'minimax/minimax-m3.1-flash',
+      'anthropic/claude-haiku-5.5',
+      'anthropic/claude-fable-5.2',
     ],
     fallbackModelsEnv: 'OPENROUTER_FALLBACK_MODELS',
     endpoint: 'https://openrouter.ai/api/v1/chat/completions',
