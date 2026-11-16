@@ -1001,6 +1001,8 @@ function AiAgentsPage() {
 
   const view = router.query.view;
   const sessionId = router.query.session;
+
+  const [tab, setTab] = useState('terminal');
   const activeTab = ['terminal', 'diff', 'validation'].includes(tab) ? tab : 'terminal';
 
   const {
@@ -1019,7 +1021,6 @@ function AiAgentsPage() {
   const [search, setSearch] = useState('');
   const [model, setModel] = useState(null);
   const [showModelPicker, setShowModelPicker] = useState(false);
-  const [tab, setTab] = useState('terminal');
 
   useEffect(() => {
     const running = sessions.some((session) => ['queued', 'running', 'approving'].includes(session.status));
