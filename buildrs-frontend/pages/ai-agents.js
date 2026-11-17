@@ -354,7 +354,7 @@ function ModelPicker({ current, onClose, onSave }) {
           <div className={s.stateBlock}><Loader2 size={22} className={s.spinner} /></div>
         ) : (
           providers.map((provider) => {
-            const models = provider.type === 'cloud' ? [provider.model] : provider.models || [];
+            const models = provider.models || [provider.model];
             return (
               <div key={provider.key} className={s.providerGroup}>
                 <p className={s.providerName}>{provider.name || provider.key}</p>
