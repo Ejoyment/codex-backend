@@ -89,9 +89,22 @@ function describeModel(provider, model) {
     };
 }
 
-router.get('/providers', authenticateToken, async (req, res) => {
-    const { providers, defaultProvider } = await collectAiProviders();
-    res.json({ success: true, providers, defaultProvider });
+router.get('/providers', authenticateToken, async (req, res, next) => {
+    // Hard timeout so the providers endpoint can never hang the frontend
+    // if a local LLM server is unreachable.
+    const timeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('providers timeout')), 8000)
+    );
+    try {
+        const { providers, defaultProvider } = await Promise.race([
+            collectAiProviders(),
+            timeout
+        ]);
+        res.json({ success: true, providers, defaultProvider });
+    } catch (error) {
+        // Return whatever we have rather than hanging forever
+        res.json({ success: true, providers: [], defaultProvider: null });
+    }
 });
 
 /**
