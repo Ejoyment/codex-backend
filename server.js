@@ -93,7 +93,13 @@ if (process.env.SENTRY_DSN) {
             return event;
         },
     });
-    app.use(Sentry.Handlers.requestHandler());
+    // Request handler middleware may not exist in all Sentry Node versions;
+    // guard against undefined so a missing API never crashes boot.
+    if (Sentry.Handlers && Sentry.Handlers.requestHandler) {
+        app.use(Sentry.Handlers.requestHandler());
+    } else {
+        console.log('⚠ Sentry requestHandler middleware unavailable — continuing without it');
+    }
     console.log('✓ Sentry initialized');
 } else {
     console.log('⚠ Sentry DSN not set — error tracking disabled');
@@ -546,7 +552,11 @@ app.use('/api/ai-context', figmaContextRoutes, teamMemoryRoutes, ticketBridgeRou
 // ============================================================
 if (process.env.SENTRY_DSN) {
     const Sentry = require('@sentry/node');
-    app.use(Sentry.Handlers.errorHandler());
+    if (Sentry.Handlers && Sentry.Handlers.errorHandler) {
+        app.use(Sentry.Handlers.errorHandler());
+    } else {
+        console.log('⚠ Sentry errorHandler middleware unavailable — continuing without it');
+    }
 }
 
 // Swagger API Documentation
