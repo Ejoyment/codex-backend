@@ -42,7 +42,12 @@ async function collectAiProviders() {
         }));
     const localProviders = await Promise.all(['ollama', 'lm-studio'].map(async (provider) => {
         try {
-            const models = await localBridge.getModels(provider);
+            // Timeout guard: local LLM servers often don't respond, don't let
+            // them hang the provider list endpoint indefinitely.
+            const models = await Promise.race([
+                localBridge.getModels(provider),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('local model timeout')), 5000))
+            ]);
             return models.length ? { key: provider, name: provider === 'ollama' ? 'Ollama (BYOM)' : 'LM Studio (BYOM)', type: 'local', models } : null;
         } catch (error) {
             return null;
@@ -52,11 +57,11 @@ async function collectAiProviders() {
         ...cloudProviders,
         ...localProviders.filter(Boolean).map(({ key, name, type, models }) => ({ key, name, type, models }))
     ];
-    if (aiRouterService.localPrivacyMode) {
+    if (aiRouterService && aiRouterService.localPrivacyMode) {
         providers = providers.filter((provider) => provider.type === 'local');
     }
     const configuredDefault = process.env.AI_PROVIDER;
-    const preferredProvider = aiRouterService.localPrivacyMode ? process.env.LOCAL_AI_PROVIDER : configuredDefault;
+    const preferredProvider = aiRouterService && aiRouterService.localPrivacyMode ? process.env.LOCAL_AI_PROVIDER : configuredDefault;
     const defaultProvider = providers.some((provider) => provider.key === preferredProvider)
         ? preferredProvider
         : providers[0]?.key || null;
