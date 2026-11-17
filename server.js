@@ -173,6 +173,9 @@ async function startServer(port = process.env.PORT || 3000) {
     // and with bufferCommands disabled the createIndex() calls below would
     // then throw "before initial connection is complete".
     await mongoConnection.ensureConnected();
+    // Create indexes after connection so sort queries don't exceed MongoDB's
+    // 32MB in-memory sort limit on large collections.
+    await require('./models/CodeFile').createIndexes();
     initAfterMongoConnect();
     await Promise.all([
         require('./models/BillingSchedule').collection.createIndex(

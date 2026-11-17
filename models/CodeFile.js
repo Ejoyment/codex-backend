@@ -154,6 +154,12 @@ codeFileSchema.statics.pathKeyFor = pathKeyFor;
 codeFileSchema.index({ company: 1, name: 1 });
 codeFileSchema.index({ createdBy: 1 });
 codeFileSchema.index({ language: 1 });
+// Compound indexes for the file list endpoint: filter by company/project,
+// sort by updatedAt descending. Without these, large collections exceed
+// MongoDB's 32MB in-memory sort limit.
+codeFileSchema.index({ company: 1, updatedAt: -1 });
+codeFileSchema.index({ project: 1, updatedAt: -1 });
+codeFileSchema.index({ updatedAt: -1 });
 
 // Update size before saving
 codeFileSchema.pre('save', function(next) {
