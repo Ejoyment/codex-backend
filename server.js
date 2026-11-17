@@ -65,6 +65,39 @@ const debugRoomsRoutes = require('./routes/debug-rooms');
 const waitlistRoutes = require('./routes/waitlist');
 
 const app = express();
+
+// ============================================================
+// Sentry error tracking — initialized before middleware so every
+// request is captured. DSN-gated: no SENTRY_DSN, no traffic.
+// ============================================================
+if (process.env.SENTRY_DSN) {
+    const Sentry = require('@sentry/node');
+    Sentry.init({
+        dsn: process.env.SENTRY_DSN,
+        environment: process.env.NODE_ENV || 'development',
+        release: process.env.SENTRY_RELEASE || undefined,
+        tracesSampleRate: parseFloat(process.env.SENTRY_TRACES_SAMPLE_RATE || '0'),
+        profilesSampleRate: parseFloat(process.env.SENTRY_PROFILES_SAMPLE_RATE || '0'),
+        sendDefaultPii: true,
+        beforeSend(event, hint) {
+            // Never send request bodies or query strings that may contain secrets.
+            if (event.request && event.request.url) {
+                try {
+                    const url = new URL(event.request.url);
+                    url.search = '';
+                    event.request.url = url.toString();
+                } catch {
+                    // leave as-is if unparseable
+                }
+            }
+            return event;
+        },
+    });
+    app.use(Sentry.Handlers.requestHandler());
+    console.log('✓ Sentry initialized');
+} else {
+    console.log('⚠ Sentry DSN not set — error tracking disabled');
+}
 const http = require('http');
 const socketIO = require('socket.io');
 const rateLimit = require('express-rate-limit');
@@ -507,6 +540,14 @@ app.use('/api/v1/billing/flutterwave', flutterwaveBillingRoutes);
 app.use('/api/projects', checkTrialStatus, enforceDeploymentLimit(), projectRoutes);
 app.use('/api/ai-context', figmaContextRoutes, teamMemoryRoutes, ticketBridgeRoutes);
 
+// ============================================================
+// Sentry error handler — must be registered AFTER all routes so
+// it catches errors from every route handler. DSN-gated.
+// ============================================================
+if (process.env.SENTRY_DSN) {
+    const Sentry = require('@sentry/node');
+    app.use(Sentry.Handlers.errorHandler());
+}
 
 // Swagger API Documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs, {

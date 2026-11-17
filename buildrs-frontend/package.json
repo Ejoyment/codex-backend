@@ -11,6 +11,7 @@
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
     "@paystack/inline-js": "2.24.0",
+    "@sentry/react": "^8.40.0",
     "@webcontainer/api": "^1.6.4",
     "@stripe/stripe-js": "3.5.0",
     "@xterm/addon-fit": "^0.10.0",
