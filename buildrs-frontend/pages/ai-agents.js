@@ -325,7 +325,12 @@ function ModelPicker({ current, onClose, onSave }) {
     let active = true;
     (async () => {
       try {
-        const data = await apiFetch('/api/ai-pair/providers');
+        // Hard timeout so the provider picker never hangs the UI if the
+        // backend is slow or unreachable.
+        const data = await Promise.race([
+          apiFetch('/api/ai-pair/providers'),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Provider request timed out')), 8000))
+        ]);
         if (!active) return;
         setProviders(data.providers || []);
       } catch (err) {

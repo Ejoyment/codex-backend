@@ -652,7 +652,10 @@ export default function AiPair() {
   async function fetchAiProviders(force = false) {
     setLoadingAiProviders(true);
     try {
-      const data = await apiFetch('/api/ai-pair/providers', force ? { forceRefresh: true } : undefined);
+      const data = await Promise.race([
+        apiFetch('/api/ai-pair/providers', force ? { forceRefresh: true } : undefined),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Provider request timed out')), 8000))
+      ]);
       if (!data.success) throw new Error(data.message || 'Could not load AI models');
       setAiProviders(data.providers || []);
       const saved = selectedAiModel || (() => {
