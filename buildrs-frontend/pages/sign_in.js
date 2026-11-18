@@ -1,6 +1,6 @@
 import Head from 'next/head';
 import Link from 'next/link';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { authApi } from '../lib/api';
 import useAuthStore from '../store/authStore';
@@ -19,6 +19,8 @@ export default function SignIn() {
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
   const [rateLimited, setRateLimited] = useState(false);
+  const [platformStats, setPlatformStats] = useState(null);
+  const [statsLoading, setStatsLoading] = useState(true);
   const setAuth = useAuthStore((s) => s.setAuth);
   const toast = useToastStore();
 
@@ -31,6 +33,26 @@ export default function SignIn() {
     });
     return result.valid;
   }, []);
+
+  const fetchPlatformStats = useCallback(async () => {
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ''}/api/platform/stats`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) setPlatformStats(data);
+      }
+    } catch {
+      // Silently fail — stats are non-critical
+    } finally {
+      setStatsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPlatformStats();
+    const interval = setInterval(fetchPlatformStats, 30000);
+    return () => clearInterval(interval);
+  }, [fetchPlatformStats]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -125,10 +147,10 @@ export default function SignIn() {
             </div>
             <div className="stats-grid">
               {[
-                { label: 'PRs merged today', value: '247', color: '#12dce5' },
-                { label: 'AI reviews', value: '1,834', color: '#03ba03' },
-                { label: 'Active sessions', value: '3,291', color: '#e5b84a' },
-                { label: 'Avg AI latency', value: '94ms', color: '#12dce5' },
+                { label: 'PRs merged today', value: platformStats?.prsMergedToday ?? '--', color: '#12dce5' },
+                { label: 'AI reviews', value: platformStats?.aiReviews ?? '--', color: '#03ba03' },
+                { label: 'Active sessions', value: platformStats?.activeSessions ?? '--', color: '#e5b84a' },
+                { label: 'Avg AI latency', value: platformStats?.avgAiLatencyMs != null ? `${platformStats.avgAiLatencyMs}ms` : '--', color: '#12dce5' },
               ].map((s, i) => (
                 <div key={s.label} className="stat-card" style={{ animation: 'authFadeUp 0.5s ease-out forwards', opacity: 0, animationDelay: `${i * 100}ms` }}>
                   <div className="stat-value" style={{ color: s.color }}>{s.value}</div>
@@ -138,7 +160,7 @@ export default function SignIn() {
             </div>
             <div className="live-indicator">
               <div className="ping-dot" />
-              <span>Live platform metrics · Updated every 30s</span>
+              <span>{statsLoading ? 'Loading live metrics…' : 'Live platform metrics · Updated every 30s'}</span>
             </div>
           </div>
 

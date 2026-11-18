@@ -610,7 +610,8 @@ app.get('/', (req, res) => {
             support: '/api/support',
             meetings: '/api/meetings',
             messaging: '/api/messaging',
-            collaboration: '/api/collaboration'
+            collaboration: '/api/collaboration',
+            platformStats: '/api/platform/stats'
         },
         quickStart: {
             apiDocs: 'GET /api-docs',
@@ -619,6 +620,55 @@ app.get('/', (req, res) => {
             getMe: 'GET /api/auth/me (requires token)'
         }
     });
+});
+
+// Public platform stats — no auth required, used by sign-in page
+app.get('/api/platform/stats', async (req, res) => {
+    try {
+        const LocalTask = require('./models/LocalTask');
+        const AgentExecution = require('./models/AgentExecution');
+        const CollaborationSession = require('./models/CollaborationSession');
+        const now = new Date();
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        
+        const [completedTasks, agentExecs, activeSessions] = await Promise.all([
+            LocalTask.countDocuments({
+                status: 'completed',
+                updatedAt: { $gte: todayStart }
+            }),
+            AgentExecution.countDocuments({
+                status: 'completed',
+                updatedAt: { $gte: todayStart }
+            }),
+            CollaborationSession.countDocuments({ status: 'active' })
+        ]);
+
+        // Average AI latency from recent agent executions (ms)
+        const recentExecs = await AgentExecution.find({
+            updatedAt: { $gte: new Date(Date.now() - 60 * 60 * 1000) },
+            status: 'completed'
+        }).select('startedAt completedAt').limit(50).lean();
+        
+        let avgLatencyMs = null;
+        const durations = recentExecs
+            .map(e => e.completedAt && e.startedAt ? new Date(e.completedAt) - new Date(e.startedAt) : null)
+            .filter(Boolean);
+        if (durations.length > 0) {
+            avgLatencyMs = Math.round(durations.reduce((a, b) => a + b, 0) / durations.length);
+        }
+
+        res.json({
+            success: true,
+            prsMergedToday: completedTasks,
+            aiReviews: agentExecs,
+            activeSessions,
+            avgAiLatencyMs: avgLatencyMs,
+            updatedAt: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('Platform stats error:', error.message);
+        res.status(500).json({ success: false, message: 'Failed to fetch platform stats' });
+    }
 });
 
 // API Documentation endpoint
