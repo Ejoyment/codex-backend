@@ -118,16 +118,28 @@ export default function Sidebar({
                     || (item.href !== '/dashboard' && pathname.startsWith(item.href + '/'))
                     || (item.href === '/deploy' && pathname === '/ci-cd');
                   const isDisabled = item.disabled;
+                  const LinkComponent = Link;
                   return (
-                    <div
-                      key={item.href + item.label}
-                      className={`sidebar-nav-item ${isDisabled ? 'disabled' : ''} ${isActive ? 'active' : ''}`}
-                      style={{ cursor: isDisabled ? 'not-allowed' : 'pointer' }}
-                      onClick={(e) => { if (isDisabled) e.preventDefault(); }}
-                    >
-                      <Icon className="sidebar-nav-icon" />
-                      <span>{item.label}</span>
-                    </div>
+                    isDisabled ? (
+                      <div
+                        key={item.href + item.label}
+                        className={`sidebar-nav-item ${isDisabled ? 'disabled' : ''} ${isActive ? 'active' : ''}`}
+                        style={{ cursor: 'not-allowed' }}
+                        onClick={(e) => e.preventDefault()}
+                      >
+                        <Icon className="sidebar-nav-icon" />
+                        <span>{item.label}</span>
+                      </div>
+                    ) : (
+                      <Link
+                        key={item.href + item.label}
+                        href={item.href}
+                        className={`sidebar-nav-item ${isActive ? 'active' : ''}`}
+                      >
+                        <Icon className="sidebar-nav-icon" />
+                        <span>{item.label}</span>
+                      </Link>
+                    )
                   );
                 })}
               </div>
