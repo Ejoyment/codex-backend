@@ -7,7 +7,6 @@ import {
   Users,
   FileCode2,
   Sparkles,
-  GitPullRequest,
   Plug2,
   Settings,
   ShieldCheck,
@@ -47,15 +46,14 @@ const NAV_SECTIONS = [
   {
     label: 'COLLABORATE',
     items: [
-      { href: '/teams', label: 'Team', icon: Users },
-      { href: '/debug-room', label: 'Debug Room', icon: Radio },
+      { href: '/teams', label: 'Team', icon: Users, disabled: true },
+      { href: '/debug-room', label: 'Debug Room', icon: Radio, disabled: true },
       { href: '/integrations', label: 'Integrations', icon: Brain },
     ],
   },
   {
     label: 'SHIP',
     items: [
-      { href: '/source-code', label: 'Git & PRs', icon: GitPullRequest },
       { href: '/deploy', label: 'Deploy', icon: Rocket },
     ],
   },
@@ -119,15 +117,17 @@ export default function Sidebar({
                   const isActive = pathname === item.href
                     || (item.href !== '/dashboard' && pathname.startsWith(item.href + '/'))
                     || (item.href === '/deploy' && pathname === '/ci-cd');
+                  const isDisabled = item.disabled;
                   return (
-                    <Link
+                    <div
                       key={item.href + item.label}
-                      href={item.href}
-                      className={`sidebar-nav-item ${isActive ? 'active' : ''}`}
+                      className={`sidebar-nav-item ${isDisabled ? 'disabled' : ''} ${isActive ? 'active' : ''}`}
+                      style={{ cursor: isDisabled ? 'not-allowed' : 'pointer' }}
+                      onClick={(e) => { if (isDisabled) e.preventDefault(); }}
                     >
                       <Icon className="sidebar-nav-icon" />
                       <span>{item.label}</span>
-                    </Link>
+                    </div>
                   );
                 })}
               </div>

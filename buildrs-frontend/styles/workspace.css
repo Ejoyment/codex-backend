@@ -430,6 +430,18 @@
   color: var(--ws-blue);
 }
 
+.sidebar-nav-item.disabled {
+  opacity: 0.45;
+  color: var(--ws-text-muted);
+  cursor: not-allowed;
+  background: transparent;
+}
+
+.sidebar-nav-item.disabled:hover {
+  background: transparent;
+  color: var(--ws-text-muted);
+}
+
 .sidebar-nav-icon {
   width: 16px;
   height: 16px;
